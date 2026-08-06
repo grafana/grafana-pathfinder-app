@@ -196,6 +196,85 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
+  // Paired-tab runs replay the command on the live tab. Dropping targetState
+  // here would make the live tab blind-click a toggle that the controller-side
+  // guide explicitly asked to put in a given state.
+  it('carries targetState from the command onto the replayed action', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'toggle-step',
+      runId: 'run-1',
+      action: { targetAction: 'highlight', refTarget: '#drawer-toggle', targetState: true },
+    });
+
+    await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalled());
+    expect(executeOf(FocusHandler)).toHaveBeenCalledWith(expect.objectContaining({ targetState: true }), true);
+    uninstall();
+  });
+
+  // Same guarantee one level down: a composite's internal actions carry the
+  // field too, on both the auto-replay path and the guided relay.
+  it('carries targetState onto each replayed internal action of a multistep', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'ms-toggle',
+      runId: 'run-1',
+      action: {
+        targetAction: 'multistep',
+        refTarget: '',
+        internalActions: [{ targetAction: 'highlight', refTarget: '#drawer-toggle', targetState: true }],
+      },
+    });
+
+    await waitFor(() => expect(executeOf(FocusHandler)).toHaveBeenCalledTimes(2));
+    expect(executeOf(FocusHandler)).toHaveBeenNthCalledWith(1, expect.objectContaining({ targetState: true }), false);
+    expect(executeOf(FocusHandler)).toHaveBeenNthCalledWith(2, expect.objectContaining({ targetState: true }), true);
+    uninstall();
+  });
+
+  it('carries targetState onto each guided step handed to the guided handler', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'g-toggle',
+      runId: 'run-g-toggle',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [{ targetAction: 'button', refTarget: '#explain', targetState: 'aria-expanded:true' }],
+      },
+    });
+
+    const executeGuidedStep = (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
+    await waitFor(() => expect(executeGuidedStep).toHaveBeenCalled());
+    expect(executeGuidedStep).toHaveBeenCalledWith(
+      expect.objectContaining({ targetState: 'aria-expanded:true' }),
+      0,
+      1
+    );
+    uninstall();
+  });
+
   it('paces each composite action through show then do', async () => {
     const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, { showToDoMs: 0, settleMs: 0, interStepMs: 0 }, openAuthGate);

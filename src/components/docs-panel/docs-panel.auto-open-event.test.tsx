@@ -98,3 +98,43 @@ describe('Phase 0 tripwire: pathfinder-auto-open-docs CustomEvent contract', () 
     expect(owner!.src).toContain(REQUIRED_REFERENCES.sourceCoercion);
   });
 });
+
+/**
+ * #1450 — the auto-open listener must be mounted on EVERY surface that can own
+ * the display, each mode-gated to its own surface. The listener lives in one
+ * hook, but the fire-and-forget event is dropped unless the surface that owns
+ * the display has actually called `useAutoOpenListener`. Nothing else pins that
+ * these three exact call sites exist, so deleting one would leave the hook's own
+ * focused tests green while silently recreating the pre-#1450 regression (a
+ * docs-link click into the void). This tripwire fails the moment a surface stops
+ * mounting the listener or mounts it with the wrong surface gate.
+ */
+const SURFACE_MOUNT_OWNERS = [
+  { file: 'docs-panel.tsx', call: "useAutoOpenListener(model, 'sidebar')" },
+  { file: '../floating-panel/FloatingPanelManager.tsx', call: "useAutoOpenListener(panel, 'floating')" },
+  { file: '../full-screen/FullScreenPanel.tsx', call: "useAutoOpenListener(panel, 'fullscreen')" },
+];
+
+describe('Auto-open listener is mounted on all launch surfaces (#1450)', () => {
+  it.each(SURFACE_MOUNT_OWNERS)('$file mounts useAutoOpenListener with its surface gate', ({ file, call }) => {
+    const src = fs.readFileSync(path.join(PANEL_ROOT, file), 'utf-8');
+    expect(src).toContain(call);
+  });
+});
+
+/**
+ * #1450 transition-order invariant. `isSidebarMounted` doubles as "a listener
+ * is ready," so a surface must clear it on unmount ONLY when it still owns the
+ * mode. During a sidebar → floating/fullscreen transition the incoming surface
+ * (a separate React root) can set the flag true before the outgoing sidebar's
+ * cleanup runs; an unconditional clear there clobbers readiness and strands
+ * every later intercepted link. ContextSidebar is not runtime-mountable in Jest
+ * (needs a scenes/ui theme provider — see the header note), so this pins the
+ * mode-gated clear at the source, matching the tripwire style above.
+ */
+describe('Sidebar cleanup is mode-gated to avoid clobbering a successor surface (#1450)', () => {
+  it('module.tsx clears the mounted flag only while the sidebar still owns the mode', () => {
+    const moduleSrc = fs.readFileSync(path.join(PANEL_ROOT, '..', '..', 'module.tsx'), 'utf-8');
+    expect(moduleSrc).toMatch(/getMode\(\)\s*===\s*'sidebar'\s*\)\s*\{\s*sidebarState\.setIsSidebarMounted\(false\)/);
+  });
+});

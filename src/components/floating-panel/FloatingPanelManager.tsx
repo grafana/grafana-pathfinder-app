@@ -3,7 +3,7 @@ import { ThemeContext } from '@grafana/data';
 import { config, locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
-import { useContentReset } from '../docs-panel/hooks';
+import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
@@ -47,6 +47,22 @@ export function FloatingPanelManager() {
     document.addEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     return () => {
       document.removeEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
+    };
+  }, []);
+
+  // Re-sync from the singleton on a floating launch. A quiet transient-Back exit
+  // (#1448) clears the session without emitting PANEL_MODE_CHANGE_EVENT, so our
+  // cached mode can be stale-'fullscreen' while getMode() has reverted to a
+  // persisted 'floating'. Without this, the next floating launch's
+  // REQUEST_FLOATING_GUIDE_EVENT fires into a void — FloatingPanelInner (its only
+  // listener) is unmounted — and the guide is stranded. Re-deriving here remounts
+  // the inner, which then consumes the pending guide on mount (a no-op when the
+  // cached mode already matches).
+  useEffect(() => {
+    const resync = () => setMode(panelModeManager.getMode());
+    document.addEventListener(REQUEST_FLOATING_GUIDE_EVENT, resync);
+    return () => {
+      document.removeEventListener(REQUEST_FLOATING_GUIDE_EVENT, resync);
     };
   }, []);
 
@@ -177,6 +193,9 @@ function FloatingPanelInner() {
     guideOpenInFlightRef.current = true;
   }, []);
   useAutoLaunchTutorial(panel, { onIncoming: markGuideOpenInFlight });
+  // Receive intercepted docs links while the floating panel owns the surface
+  // (#1450). Mode-gated to 'floating' so a dock-back can't double-open.
+  useAutoOpenListener(panel, 'floating');
 
   // Get active tab content
   const activeTab = tabs.find((t) => t.id === activeTabId);

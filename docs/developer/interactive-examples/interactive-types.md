@@ -43,6 +43,32 @@ This guide explains the supported interactive action types, when to use each, wh
 }
 ```
 
+### Toggle targets (`highlight` and `button`)
+
+Both actions click unconditionally on Do, which is wrong for any target with
+toggle semantics — the outcome depends on where the user left the UI. Add
+`targetstate` to declare the state you want instead:
+
+- **Show**: unchanged; highlights the control without touching it.
+- **Do**: reads the control, clicks only if the state differs, then re-reads to
+  confirm. Already in the requested state means no click and the step still
+  completes, so re-running is safe.
+- **Use when**: the target expands, collapses, presses, checks or selects —
+  switches, expanders, dropdown triggers, radio options.
+
+```json
+{
+  "type": "interactive",
+  "action": "highlight",
+  "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
+  "targetstate": "true",
+  "content": "Open the edit sidebar"
+}
+```
+
+See `targetstate` in [json-guide-format.md](./json-guide-format.md) for the
+auto-detection order and the explicit `"attribute:value"` form.
+
 ### formfill
 
 - **Purpose**: fill inputs, textareas (including Monaco), selects, and ARIA comboboxes.

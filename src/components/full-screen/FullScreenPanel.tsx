@@ -4,7 +4,7 @@ import { getAppEvents, locationService } from '@grafana/runtime';
 import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
-import { useContentReset } from '../docs-panel/hooks';
+import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
@@ -21,7 +21,7 @@ import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../util
 import pluginJson from '../../plugin.json';
 import { FullScreenLayout } from './FullScreenLayout';
 import { getFullScreenStyles } from './full-screen.styles';
-import { dockOnLeavingFullScreen } from './full-screen-autodock';
+import { dockOnLeavingFullScreen, type HistoryAction } from './full-screen-autodock';
 
 // Lazy-loaded so the editor only ships when the user actually opens it full screen.
 const BlockEditor = lazy(() =>
@@ -181,6 +181,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     onIncoming: markGuideOpenInFlight,
     skipLaunch: skipLaunchWhenGuideInFlight,
   });
+  // Receive intercepted docs links while the full-screen page owns the surface
+  // (#1450). Mode-gated to 'fullscreen' so a dock-back can't double-open.
+  useAutoOpenListener(panel, 'fullscreen');
 
   // Active tab projection.
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -211,7 +214,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   useEffect(() => {
     const fullScreenPathname = `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`;
     const history = locationService.getHistory();
-    const unlisten = history.listen((location: { pathname: string }) => {
+    const unlisten = history.listen((location: { pathname: string }, action: HistoryAction) => {
       const { guideUrl: latestGuideUrl, title: latestTitle } = dockInputsRef.current;
       dockOnLeavingFullScreen({
         pathname: location.pathname,
@@ -219,6 +222,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
         myPluginId: pluginJson.id,
         guideUrl: latestGuideUrl,
         title: latestTitle,
+        action,
       });
     });
     return unlisten;

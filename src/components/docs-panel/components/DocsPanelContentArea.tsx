@@ -432,7 +432,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         }
                         if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
                           const slug = getMilestoneSlug(activeTab.currentUrl);
-                          const journeyBase = activeTab.baseUrl;
+                          const journeyBase = stableContent.metadata.learningJourney?.baseUrl;
                           if (slug && journeyBase) {
                             markMilestoneDone(
                               journeyBase,

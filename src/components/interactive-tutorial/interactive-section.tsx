@@ -624,13 +624,11 @@ export function InteractiveSection({
 
       try {
         // Execute the action using existing interactive logic
-        const actionOutcome = await executeInteractiveAction(
-          stepInfo.targetAction!,
-          stepInfo.refTarget!,
-          stepInfo.targetValue,
-          'do',
-          stepInfo.targetComment
-        );
+        const actionOutcome = await executeInteractiveAction({
+          ...stepInfo,
+          targetAction: stepInfo.targetAction!,
+          buttonType: 'do',
+        });
         if (actionOutcome === 'error') {
           logger.warn(`Sequence action did not complete for ${stepInfo.stepId}`);
           return false;
@@ -923,13 +921,7 @@ export function InteractiveSection({
 
             // First, show the step (highlight it) - skip for multi-step components OR if showMe is false
             if (!stepInfo.isMultiStep && stepInfo.showMe !== false) {
-              await executeInteractiveAction(
-                stepInfo.targetAction!,
-                stepInfo.refTarget!,
-                stepInfo.targetValue,
-                'show',
-                stepInfo.targetComment
-              );
+              await executeInteractiveAction({ ...stepInfo, targetAction: stepInfo.targetAction!, buttonType: 'show' });
 
               // Wait for highlight to be visible and animation to complete
               // Check cancellation during wait

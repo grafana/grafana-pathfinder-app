@@ -51,7 +51,7 @@ const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHig
   await import('./utils/experiments');
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
-const { getFeatureFlagValue } = await import('./utils/openfeature');
+const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
 
 // The pathfinder.enabled kill-switch is the only gate on whether Pathfinder mounts.
 const pathfinderEnabled = getFeatureFlagValue('pathfinder.enabled', true);
@@ -65,8 +65,18 @@ const hostname = window.location.hostname;
 try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
     // Session enrichment (identity, surface, experiment cohorts) is owned by initFaro.
-    const { initFaro } = await import('./lib/faro');
-    initFaro().catch((e) => logger.exception(e, { source: 'Faro init' }));
+    const { initFaro, resolveSessionReplayOptions } = await import('./lib/faro');
+    // Session replay is a second remote switch on top — also default-on, so a
+    // missing flag means recording. It captures the whole page, masked, from
+    // the first time Pathfinder is opened. The rate is a volume dial on top of
+    // the switch, range-checked in lib/telemetry/replay. Both are read once,
+    // here: a later flip reaches a tab only on its next load.
+    initFaro(
+      resolveSessionReplayOptions(
+        getFeatureFlagValue('pathfinder.session-replay', true),
+        getNumberFlagValue('pathfinder.session-replay-sampling-rate', 1)
+      )
+    ).catch((e) => logger.exception(e, { source: 'Faro init' }));
   }
 } catch (e) {
   logger.exception(e, { source: 'Faro init' });
@@ -340,7 +350,16 @@ if (pathfinderEnabled) {
         window.dispatchEvent(mountEvent);
 
         return () => {
-          sidebarState.setIsSidebarMounted(false);
+          // Only clear the shared mounted flag if the sidebar is still the
+          // active surface. During a sidebar → floating/fullscreen transition
+          // `setMode` has already committed the new mode and the incoming
+          // surface's mount effect (a separate React root) may have set the
+          // flag true before this cleanup runs; clobbering it would strand the
+          // link-interception and HomePanel gates thinking no Pathfinder
+          // surface is up. Mirrors FloatingPanelManager / FullScreenPanel.
+          if (panelModeManager.getMode() === 'sidebar') {
+            sidebarState.setIsSidebarMounted(false);
+          }
           reportPathfinderSurfaceClosed('sidebar');
 
           // Track sidebar close via component unmount

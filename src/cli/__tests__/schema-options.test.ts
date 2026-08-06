@@ -252,6 +252,11 @@ describe('integration with the live JsonInteractiveBlockSchema', () => {
         '--action <highlight|button|formfill|navigate|hover|noop|popout>',
         '--reftarget <string>',
         '--targetvalue <string>',
+        // Only registers because targetstate is a plain string. While it was
+        // `z.union([z.boolean(), z.string()])`, describeField reported
+        // 'unsupported' and the flag was silently skipped — the CLI had no way
+        // to set targetstate at all.
+        '--targetstate <string>',
         '--content <string>',
         '--tooltip <string>',
         '--requirements <item>',

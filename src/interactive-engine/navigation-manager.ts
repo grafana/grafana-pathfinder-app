@@ -9,6 +9,7 @@ import {
   getStickyHeaderOffset,
   getVisibleHighlightTarget,
   isPathfinderContent,
+  readToggleState,
 } from '../lib/dom';
 import { logger } from '../lib/logging';
 import { sanitizeDocumentationHTML } from '../security';
@@ -21,6 +22,7 @@ export interface NavigationOptions {
 }
 
 const NAV_ITEM_SELECTOR = 'a[data-testid="data-testid Nav menu item"]';
+const MEGA_MENU_SELECTOR = '[data-testid="data-testid navigation mega-menu"]';
 
 export class NavigationManager {
   private activeCleanupHandlers: Array<() => void> = [];
@@ -1268,7 +1270,7 @@ export class NavigationManager {
    */
   async ensureNavigationOpen(element: HTMLElement): Promise<void> {
     return this.openAndDockNavigation(element, {
-      checkContext: true, // Only run if element is in navigation
+      checkContext: true, // Only run if element is inside the mega menu
       logWarnings: false, // Silent operation
       ensureDocked: true, // Always dock if open
     });
@@ -1431,18 +1433,9 @@ export class NavigationManager {
    * Check if a parent section is already expanded by examining the expand button state
    */
   private isParentSectionExpanded(expandButton: HTMLButtonElement): boolean {
-    // Check aria-expanded attribute
-    const ariaExpanded = expandButton.getAttribute('aria-expanded');
-    if (ariaExpanded === 'true') {
-      return true;
-    }
-
-    // Check if the button has collapsed/expanded classes or icons
-    const ariaLabel = expandButton.getAttribute('aria-label') || '';
-
-    // If aria-label says "Collapse" instead of "Expand", it's already expanded
-    if (ariaLabel.includes('Collapse') || ariaLabel.includes('collapse')) {
-      return true;
+    const state = readToggleState(expandButton);
+    if (state !== 'unknown') {
+      return state === 'true';
     }
 
     // Check for visual indicators (chevron direction, etc.)
@@ -1502,7 +1495,7 @@ export class NavigationManager {
    * that it's open so that other steps can be executed.
    * @param element - The element that may require navigation to be open
    * @param options - The options for the navigation
-   * @param options.checkContext - Whether to check if the element is within navigation (default false)
+   * @param options.checkContext - Whether to require that the element is inside the mega menu (default false)
    * @param options.logWarnings - Whether to log warnings (default true)
    * @param options.ensureDocked - Whether to ensure the navigation is docked when we're done. (default true)
    * @returns Promise that resolves when navigation is properly configured
@@ -1510,11 +1503,11 @@ export class NavigationManager {
   async openAndDockNavigation(element?: HTMLElement, options: NavigationOptions = {}): Promise<void> {
     const { checkContext = false, logWarnings = true, ensureDocked = true } = options;
 
-    if (checkContext && element) {
-      const isInNavigation = element.closest('nav, [class*="nav"], [class*="menu"], [class*="sidebar"]') !== null;
-      if (!isInNavigation) {
-        return;
-      }
+    // Only the mega menu counts as "navigation" — Grafana renders page toolbars and
+    // breadcrumbs as <nav> too, so a looser ancestor test opens the sidebar for
+    // ordinary page targets.
+    if (checkContext && element && !element.closest(MEGA_MENU_SELECTOR)) {
+      return;
     }
 
     const megaMenuToggle = document.querySelector('#mega-menu-toggle') as HTMLButtonElement;

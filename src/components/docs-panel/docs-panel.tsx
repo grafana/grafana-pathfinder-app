@@ -1061,7 +1061,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
-  useAutoOpenListener(model);
+  useAutoOpenListener(model, 'sidebar');
   // removed — using restored custom overflow state below
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;

@@ -323,10 +323,19 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       paddingTop: theme.spacing(1),
     }),
     guideList: css({
+      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
+    }),
+  };
+};
+
+export const getGuideListStyles = (theme: GrafanaTheme2) => {
+  const colors = getColorPalette(theme);
+
+  return {
+    list: css({
       display: 'flex',
       flexDirection: 'column',
       gap: theme.spacing(0.5),
-      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
     }),
     guideItem: css({
       display: 'flex',
@@ -360,6 +369,34 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
+    }),
+  };
+};
+
+// ============================================================================
+// COVER-PAGE TABLE OF CONTENTS STYLES
+// ============================================================================
+
+export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
+  return {
+    container: css({
+      margin: `${theme.spacing(2)} 0`,
+      padding: theme.spacing(2),
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+    }),
+    heading: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      margin: `0 0 ${theme.spacing(1.5)}`,
+      fontSize: theme.typography.h5.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+    }),
+    headingIcon: css({
+      color: theme.colors.text.secondary,
     }),
   };
 };

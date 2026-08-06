@@ -120,6 +120,39 @@ class PanelModeManager {
   }
 
   /**
+   * Whether a transient auto-launch session is active (`_transientMode !== null`;
+   * see the persistence contract). Public accessor consulted by the full-screen
+   * auto-dock to tell a transient launch's return path apart from a deliberate
+   * full-screen adoption. Past the auto-dock's `getMode() === 'fullscreen'`
+   * guard a true value necessarily means a transient _fullscreen_ session.
+   */
+  public isTransient(): boolean {
+    return this._transientMode !== null;
+  }
+
+  /**
+   * End a transient auto-launch session WITHOUT persisting or forcing a surface
+   * open — drops the in-memory override so `getMode()` falls back to the stored
+   * preference. The quiet counterpart to `setModeTransient`, used when the user
+   * leaves a transient full-screen excursion via browser Back (#1448): we must
+   * neither reopen a surface nor overwrite the preference the launch never
+   * expressed. No-ops when no session is active.
+   *
+   * Reports `reportPathfinderSurfaceClosed('fullscreen')` for parity with the
+   * other full-screen exits. Deliberately does NOT dispatch
+   * `PANEL_MODE_CHANGE_EVENT`: the caller has already navigated away and
+   * unmounted the surface, so no live listener consumes the transition (unlike
+   * the three mutators, which drive a visible surface change).
+   */
+  public endTransientSession(): void {
+    if (this._transientMode === null) {
+      return;
+    }
+    this._transientMode = null;
+    reportPathfinderSurfaceClosed('fullscreen');
+  }
+
+  /**
    * Conditional mode change — the default path for automatic transitions
    * (teardown, auto-dock, self-heal, cold-load sync) and for deliberate
    * RETURN-to-base gestures (fullscreen back-arrow, floating close). Persists

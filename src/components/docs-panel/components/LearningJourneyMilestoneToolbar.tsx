@@ -150,14 +150,14 @@ export function LearningJourneyMilestoneToolbar({
     // advances even though there's nothing to "complete". The DOM scope
     // comes from `contentRoot` (sidebar) or the global content attribute
     // (fullscreen) — both restrict the search to the active panel.
-    if (activeTab.currentUrl && activeTab.baseUrl) {
+    if (activeTab.currentUrl) {
       const root: ParentNode =
         contentRoot?.current ?? document.querySelector('[data-pathfinder-content="true"]') ?? document;
       const hasInteractiveSteps = root.querySelectorAll('[data-step-id]').length > 0;
       if (!hasInteractiveSteps) {
         const slug = getMilestoneSlug(activeTab.currentUrl);
         if (slug) {
-          void markMilestoneDone(activeTab.baseUrl, slug, lj.totalMilestones, {
+          void markMilestoneDone(lj.baseUrl, slug, lj.totalMilestones, {
             packageManifest: activeTab.content?.metadata?.packageManifest,
             guideTitle: activeTab.title,
           });
