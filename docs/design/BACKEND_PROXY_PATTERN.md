@@ -190,8 +190,11 @@ One definition each, package-wide:
 
 - the aggregation feature-toggle name — one Go constant per served group, never a scattered
   literal: `completionRecordsAggregationToggle`
-  (`aggregation.pathfinderbackend-ext-grafana-app.enabled`) and the older
-  `pathfinderBackendAggregationToggle` (`…-grafana-com.enabled`). Note what the toggle does and
+  (`aggregation.pathfinderbackend-ext-grafana-app.enabled`, and `customGuideAggregationToggle` is
+  the same derived value — both surfaces are served on the `.app` group) and the older
+  `pathfinderBackendAggregationToggle` (`…-grafana-com.enabled`). The `.app` names derive from
+  `appPlatformGroup` via `aggregationToggle` so they cannot drift from the group; the legacy `.com`
+  literal is the named counterpart that pins that derivation. Note what the toggle does and
   does not tell you: it reports that an aggregation layer is served, so a real stack can (and
   does) report **both** true at once. It is a precondition, not the availability answer — route
   availability is whatever the capability/resolver path returns, which additionally requires an

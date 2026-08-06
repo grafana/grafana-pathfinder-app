@@ -383,18 +383,26 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 	}
 	// Terminal 4xx: schema/validation rejected upstream, or identity-scoped
 	// 401/403. Echo the upstream status VERBATIM; the client drops these (except
-	// 401, which it retries as transient — an expired token recovers). A 404 is
-	// preserved, not remapped: the create POSTs to the completionrecords
-	// COLLECTION, so an upstream 404 means the group/route is not served on this
-	// stack. That is the structural "route not deployed here" signal — the front
-	// end disarms writes for the session and keeps the queued item — never a
-	// per-record drop.
-	if status == http.StatusForbidden {
+	// 401, which it retries as transient). A 404 is preserved, not remapped: the
+	// create POSTs to the completionrecords COLLECTION, so an upstream 404 means
+	// the group/route is not served on this stack. That is the structural "route
+	// not deployed here" signal — the front end disarms writes for the session and
+	// keeps the queued item — never a per-record drop.
+	switch status {
+	case http.StatusUnauthorized:
+		// The handler's own 401 gate already rejected a missing/expired inbound ID
+		// token, so an upstream 401 means the MINTED access token was rejected —
+		// wrong audience, bad access policy, or scopes the CAP token does not carry —
+		// which does not self-heal while the client keeps retrying it as transient.
+		// Same retry-until-the-30-day-horizon shape the 403 and token-exchange warns
+		// exist for, so log at the same Faro-visible level.
+		logger.Warn("completion write unauthorized upstream (minted credential rejected, retried)", "status", status, "error", err)
+	case http.StatusForbidden:
 		// A 403 is terminal and drops the completion, but it is not expected to be
 		// transient: it signals a systemic RBAC/grant-rollout denial, so log at a
 		// level the Faro telemetry layer surfaces rather than Debug/Info.
 		logger.Warn("completion write forbidden upstream (terminal, dropped)", "status", status, "error", err)
-	} else {
+	default:
 		logger.Info("completion write terminal upstream failure", "status", status, "error", err)
 	}
 	a.writeError(w, "completion-write-rejected", status)
