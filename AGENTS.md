@@ -68,7 +68,7 @@ For the annotated tier definitions, the per-subsystem reference, and the key dep
 
 ### Backend (`pkg/`)
 
-The Go backend is a thin bridge between the React frontend and the **Coda VM provisioning service**. No database — all state is ephemeral or delegated to Coda. Three primary request paths: HTTP resource API (`resources.go`), streaming terminal over Grafana Live (`stream.go` + `terminal.go` + `wsconn.go`), and the Coda JWT client (`coda.go`).
+The Go backend is a thin bridge from the React frontend to Coda and Grafana App Platform. Pathfinder owns no database: VM state is delegated to Coda, completion records are durable App Platform resources, and process-local caches remain ephemeral. Its primary request paths are the HTTP resource API (`resources.go`), streaming terminal over Grafana Live (`stream.go` + `terminal.go` + `wsconn.go`), the Coda JWT client (`coda.go`), and the App Platform LIST/create client (`app_platform_client.go`).
 
 When touching `pkg/`, load `.cursor/rules/coda.mdc` (agent-facing constraints) and `docs/developer/CODA.md` (full SSH / relay / credential-refresh reference). Plugin entrypoint is `pkg/main.go`.
 

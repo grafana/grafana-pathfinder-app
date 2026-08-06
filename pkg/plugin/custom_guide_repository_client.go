@@ -11,9 +11,11 @@ import (
 // customGuideGroupVersion is the App Platform API group/version that serves the
 // InteractiveGuide kind; the plural resource is "interactiveguides". Tracks
 // grafana-pathfinder-backend kinds/interactiveguide.cue (groupOverride
-// pathfinderbackend.ext.grafana.com).
+// pathfinderbackend.ext.grafana.app) — the Grafana App Platform (GAP) group.
 const (
-	customGuideGroupVersion = "pathfinderbackend.ext.grafana.com/v1alpha1"
+	// Derived from appPlatformGroup (app_platform_client.go) so it cannot drift
+	// from the group name.
+	customGuideGroupVersion = appPlatformGroup + "/v1alpha1"
 	customGuideResource     = "interactiveguides"
 
 	// customGuideListPageSize bounds each upstream LIST page. The proxy drains
@@ -27,6 +29,17 @@ const (
 	// are stripped in-process during shaping — so the per-page cap is generous.
 	customGuideListMaxBytes = 8 * 1024 * 1024
 )
+
+// customGuideAggregationToggle is the boot-time toggle the aggregation layer sets
+// when the pathfinderbackend GAP API (group above) is served on this instance;
+// mirrors the front-end check in src/utils/interactive-guides-api.ts. Equal to
+// completionRecordsAggregationToggle, since both surfaces are now served on the
+// .app group. It is a PRECONDITION, not the availability answer — a real stack
+// reports both the .app and the legacy .com toggle true, so route availability
+// comes from the capability/resolver path, which additionally requires an app
+// URL, a namespace, and a provisioned on-behalf-of credential. Derived from
+// appPlatformGroup so it cannot drift from the group name.
+var customGuideAggregationToggle = aggregationToggle(appPlatformGroup)
 
 // customGuideManifest mirrors #Manifest in pathfinder-backend's
 // kinds/interactiveguide.cue. Decoded loosely (a plain struct, not the
@@ -78,15 +91,15 @@ type customGuideHTTPClient struct {
 	inner *appPlatformListClient
 }
 
-// newCustomGuideHTTPClient builds a lister that calls appURL with identity
-// derived from the caller's ID token (forwardIdentityHeaders). A
+// newCustomGuideHTTPClient builds a lister that calls appURL as the user the
+// caller's ID token identifies, using an access token minted from that token. A
 // namespace-scoped LIST returns every InteractiveGuide in the namespace
 // (Kubernetes RBAC is namespace-, not object-, scoped), which is what lets one
 // refresh serve every caller (see the identity-invariance note in
 // custom_guide_repository.go). A caller lacking list permission gets a 401/403,
 // surfaced as an identity-scoped terminal error.
-func newCustomGuideHTTPClient(appURL, idToken string, logger log.Logger) *customGuideHTTPClient {
-	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, idToken, logger)}
+func newCustomGuideHTTPClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *customGuideHTTPClient {
+	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, minter, idToken, logger)}
 }
 
 // ListPage fetches one page of InteractiveGuides for the namespace and shapes

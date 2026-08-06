@@ -13,6 +13,12 @@ type Settings struct {
 	CodaRelayURL   string `json:"codaRelayUrl"`
 	EnrollmentKey  string `json:"-"`
 	RefreshToken   string `json:"-"`
+
+	// StackID and OBOToken are provisioned per stack by stack-state-service and
+	// are what the App Platform proxy routes authenticate with. Absent on local
+	// dev and on stacks that predate provisioning.
+	StackID  string `json:"stackId"`
+	OBOToken string `json:"-"`
 }
 
 // ParseSettings parses the plugin settings from Grafana's AppInstanceSettings.
@@ -32,6 +38,9 @@ func ParseSettings(appSettings backend.AppInstanceSettings) (*Settings, error) {
 	}
 	if refreshToken, ok := appSettings.DecryptedSecureJSONData["codaRefreshToken"]; ok {
 		settings.RefreshToken = refreshToken
+	}
+	if oboToken, ok := appSettings.DecryptedSecureJSONData["accessToken"]; ok {
+		settings.OBOToken = oboToken
 	}
 
 	return settings, nil

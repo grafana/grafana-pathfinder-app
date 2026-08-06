@@ -68,10 +68,15 @@ func rec(userID, guideSource, guideID, title, category, pathID, source, complete
 	}
 }
 
-// testGrafanaConfig is the healthy config: aggregation toggle on, app URL set.
+// testGrafanaConfig is the healthy config shared by the completion and
+// custom-guide proxy tests: the aggregation toggles on and an app URL set.
+// Both the legacy `.com` and the `.app` toggle are enabled because a real stack
+// reports both true — the toggle says an aggregation layer is served, not which
+// platform or which route is usable. Route availability comes from the
+// capability/resolver path, which these tests exercise directly.
 func testGrafanaConfig() map[string]string {
 	return map[string]string{
-		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle,
+		featuretoggles.EnabledFeatures: completionRecordsAggregationToggle + "," + pathfinderBackendAggregationToggle,
 		sdkconfig.AppURL:               "http://grafana.example",
 	}
 }
@@ -354,6 +359,57 @@ func TestCache_Singleflight(t *testing.T) {
 
 	if l.callCount() != 1 {
 		t.Fatalf("singleflight should collapse %d concurrent misses to 1 LIST, got %d", n, l.callCount())
+	}
+}
+
+func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var calls atomic.Int32
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		if calls.Add(1) == 1 {
+			close(firstStarted)
+			<-releaseFirst
+			return &completionRecordPage{Records: []completionRecordSpec{
+				rec("user:1", "bundled", "old", "Old", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100),
+			}}, nil
+		}
+		return &completionRecordPage{Records: []completionRecordSpec{
+			rec("user:1", "bundled", "new", "New", "interactive", "", "objectives", "2026-07-10T01:00:00Z", 100),
+		}}, nil
+	}}
+	resetCompletionRecordsCache()
+	t.Cleanup(resetCompletionRecordsCache)
+
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		_, _ = getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	}()
+	<-firstStarted
+
+	invalidateCompletionIndex(testNamespace)
+	fresh, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("post-invalidation refresh: %v", err)
+	}
+	if got := fresh.byUser["user:1"][0].GuideID; got != "new" {
+		t.Fatalf("post-invalidation guide = %q, want new", got)
+	}
+
+	close(releaseFirst)
+	<-firstDone
+
+	cached, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("cached read: %v", err)
+	}
+	if got := cached.byUser["user:1"][0].GuideID; got != "new" {
+		t.Fatalf("stale in-flight refresh replaced the cache with %q", got)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("LIST calls = %d, want 2", got)
 	}
 }
 
@@ -666,7 +722,7 @@ func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
 	l := singlePageLister()
 	withLister(t, l)
 
-	cfg := map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle} // no app URL
+	cfg := map[string]string{featuretoggles.EnabledFeatures: completionRecordsAggregationToggle} // no app URL
 	rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
