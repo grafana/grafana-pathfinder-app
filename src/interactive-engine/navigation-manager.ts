@@ -9,6 +9,7 @@ import {
   getStickyHeaderOffset,
   getVisibleHighlightTarget,
   isPathfinderContent,
+  readToggleState,
 } from '../lib/dom';
 import { logger } from '../lib/logging';
 import { sanitizeDocumentationHTML } from '../security';
@@ -1432,18 +1433,9 @@ export class NavigationManager {
    * Check if a parent section is already expanded by examining the expand button state
    */
   private isParentSectionExpanded(expandButton: HTMLButtonElement): boolean {
-    // Check aria-expanded attribute
-    const ariaExpanded = expandButton.getAttribute('aria-expanded');
-    if (ariaExpanded === 'true') {
-      return true;
-    }
-
-    // Check if the button has collapsed/expanded classes or icons
-    const ariaLabel = expandButton.getAttribute('aria-label') || '';
-
-    // If aria-label says "Collapse" instead of "Expand", it's already expanded
-    if (ariaLabel.includes('Collapse') || ariaLabel.includes('collapse')) {
-      return true;
+    const state = readToggleState(expandButton);
+    if (state !== 'unknown') {
+      return state === 'true';
     }
 
     // Check for visual indicators (chevron direction, etc.)

@@ -30,14 +30,14 @@ Load these files **only when working in the relevant domain**.
 
 ## Security, review, and testing
 
-| File                       | When to load                                                                                                | Auto-triggered by globs                                  |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `frontend-security.mdc`    | Frontend security (from security team)                                                                      | `*.ts`, `*.tsx`, `*.js`, `*.jsx`                         |
-| `react-antipatterns.mdc`   | PR reviews (on hit), hooks/effects/state. An index — routes each R-code to a themed file holding the detail | --                                                       |
-| `testingStrategy.mdc`      | Writing or reviewing tests                                                                                  | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
-| `docs/design/PR_REVIEW.md` | PR review standards: pattern catalog (R1-R21, F1-F6, QC1-QC7, G1-G7), reviewer schema, comment prefixes     | --                                                       |
-| `E2E_TESTING_CONTRACT.md`  | E2E testing, `data-test-*` attributes                                                                       | --                                                       |
-| `E2E_TESTING.md`           | E2E guide test runner: CLI reference, options, troubleshooting, error classification, environment variables | --                                                       |
+| File                       | When to load                                                                                                                                                                                                                        | Auto-triggered by globs                                  |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `frontend-security.mdc`    | Frontend security (from security team)                                                                                                                                                                                              | `*.ts`, `*.tsx`, `*.js`, `*.jsx`                         |
+| `react-antipatterns.mdc`   | PR reviews (on hit), hooks/effects/state. An index — routes each R-code to a themed file holding the detail                                                                                                                         | --                                                       |
+| `testingStrategy.mdc`      | Writing or reviewing tests                                                                                                                                                                                                          | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
+| `docs/design/PR_REVIEW.md` | PR review standards: pattern catalog (R1-R21, F1-F6, QC1-QC7, G1-G7), reviewer schema, comment prefixes                                                                                                                             | --                                                       |
+| `E2E_TESTING_CONTRACT.md`  | E2E testing, `data-test-*` attributes                                                                                                                                                                                               | --                                                       |
+| `E2E_TESTING.md`           | E2E guide test runner: CLI reference, package-aware testing (guides, paths/journeys), milestone expansion and dependency planning, report selection metadata, options, troubleshooting, error classification, environment variables | --                                                       |
 
 ## Release, flags, and CI
 

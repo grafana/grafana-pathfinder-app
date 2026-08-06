@@ -11,6 +11,7 @@
 import {
   BaseTransport,
   initializeFaro,
+  SessionInstrumentation,
   type TransportItem,
   type UserActionInternalInterface,
 } from '@grafana/faro-web-sdk';
@@ -67,5 +68,51 @@ describe('faro-web-sdk user action contract', () => {
     );
     expect(userActionEvent).toBeDefined();
     expect(JSON.stringify(userActionEvent!.payload)).toContain('pathfinder_contract_emit');
+  });
+});
+
+// setFaroSessionAttributes re-stamps the whole session meta on every surface
+// change (sidebar open, close, pop-out). If the SDK treated that as a new
+// session, one visit would fan out into a session per open — and with session
+// replay that means a recording per open, not per visit.
+describe('faro-web-sdk session identity contract', () => {
+  const transport = new CaptureTransport();
+  const faro = initializeFaro({
+    app: { name: 'pathfinder-session-identity-test', version: '0.0.0' },
+    transports: [transport],
+    instrumentations: [new SessionInstrumentation()],
+    sessionTracking: { enabled: true, persistent: false, session: { attributes: { surface: 'closed' } } },
+    isolate: true,
+    globalObjectKey: 'pathfinderSessionIdentityTest',
+    batching: { enabled: false },
+    dedupe: false,
+  });
+
+  const restampSurface = (surface: string) => {
+    const session = faro.api.getSession();
+    faro.api.setSession({ ...session, attributes: { ...session?.attributes, surface } });
+  };
+
+  it('keeps one session id across repeated surface re-stamps', () => {
+    const initialId = faro.api.getSession()?.id;
+    expect(initialId).toBeDefined();
+
+    for (const surface of ['sidebar', 'closed', 'floating', 'closed', 'sidebar']) {
+      restampSurface(surface);
+    }
+
+    expect(faro.api.getSession()?.id).toBe(initialId);
+    expect(faro.api.getSession()?.attributes?.['surface']).toBe('sidebar');
+  });
+
+  it('emits no additional session_start when only attributes change', async () => {
+    transport.items = [];
+    restampSurface('kiosk');
+    await waitFor(() => transport.items.length > 0, 200);
+
+    const sessionStarts = transport.items.filter(
+      (item) => item.type === 'event' && (item.payload as { name?: string }).name === 'session_start'
+    );
+    expect(sessionStarts).toHaveLength(0);
   });
 });

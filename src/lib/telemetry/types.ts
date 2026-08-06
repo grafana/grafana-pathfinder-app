@@ -31,6 +31,8 @@ export const TELEMETRY_EVENTS = {
   requirementsExhausted: 'pathfinder_requirements_exhausted',
   sequenceActionError: 'pathfinder_sequence_action_error',
   completionWriteDegraded: 'pathfinder_completion_write_degraded',
+  sessionReplayActivationFailed: 'pathfinder_session_replay_activation_failed',
+  sessionReplaySamplingFallback: 'pathfinder_session_replay_sampling_fallback',
 } as const;
 
 export const TELEMETRY_MEASUREMENTS = {

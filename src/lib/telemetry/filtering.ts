@@ -9,7 +9,7 @@ import {
 } from '../../constants';
 import { currentPlatform } from '../platform';
 import { isPathfinderOpen } from './surface';
-import { normalizeTelemetryUrl } from './url';
+import { normalizeTelemetryUrl, stripUrlSecrets } from './url';
 
 const APP_NAME = packageJson.name;
 const LOCAL_OVERRIDE_KEY = 'pathfinder.faro.local';
@@ -145,9 +145,10 @@ function redactEmbeddedUrls(text: string): string {
 // Pathfinder, and PerformanceInstrumentation's resource entries must be
 // attributable to a domain we actually fetch from. Page-wide navigation
 // timing (the whole page's load, not a specific resource) is always dropped.
-// Everything else — our own pushed events/user-actions/measurements — only
-// ever originates from this isolated instance's own API, so it passes
-// through unfiltered.
+// Everything else — our own pushed events/user-actions/measurements, plus the
+// faro.session_recording.* stream — only ever originates from this isolated
+// instance's own API, so it passes through unfiltered. Replay payloads are
+// scrubbed at their own source, in telemetry/replay-scrub.
 export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): TransportItem<APIEvent> | null {
   if (isExceptionItem(item)) {
     const isExplicit = item.payload.context?.[EXPLICIT_REPORT_MARKER] === 'true';
@@ -176,9 +177,36 @@ export function filterPathfinderTelemetry(item: TransportItem<APIEvent>): Transp
   return item;
 }
 
+// Faro builds page meta as `url: location.href`, verbatim, on every item —
+// independent of anything the payload filters touch. On a Grafana URL the
+// query is where the user's own choices live: `var-*` template values,
+// Explore's serialized queries, `?doc=` deep links. Grafana Cloud's collector
+// then explodes that query into `page.attributes`, so `var-member`,
+// `var-ticker` and friends arrive as first-class searchable fields. Dropping
+// the query here removes both — there is nothing left to explode.
+//
+// The path stays. Knowing which board a session was on is the point; the
+// board's name is not a secret to anyone who can already read the telemetry.
+export function redactPageUrl(item: TransportItem<APIEvent>): TransportItem<APIEvent> {
+  const url = item.meta.page?.url;
+  if (typeof url !== 'string') {
+    return item;
+  }
+  const redacted = stripUrlSecrets(url);
+  return redacted === url ? item : { ...item, meta: { ...item.meta, page: { ...item.meta.page, url: redacted } } };
+}
+
 // Latched for the rest of the page load: the sidebar-close mirror fires
 // after unmount, when the docked key is already gone.
 let pathfinderWasOpen = false;
+
+// Latching on the surface transition rather than only on the next item to
+// come through: a surface that opens and closes before anything is pushed
+// would otherwise leave the gate shut, and session replay is the payload most
+// likely to arrive late — its chunk is fetched on that same open.
+export function markPathfinderActive(): void {
+  pathfinderWasOpen ||= isPathfinderOpen();
+}
 
 // Attribution (filterPathfinderTelemetry) asks "is this ours?"; this gate
 // asks "is Pathfinder actually in use?". Everything except exceptions and

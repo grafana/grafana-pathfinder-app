@@ -171,7 +171,7 @@ jobs:
         if: steps.check-for-backend.outputs.has-backend == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26'
+          go-version-file: go.mod
 
       - name: Test backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
@@ -224,7 +224,7 @@ jobs:
         if: steps.check-for-backend.outputs.has-backend == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26'
+          go-version-file: go.mod
 
       - name: Build backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
@@ -323,9 +323,9 @@ jobs:
        needs.test-backend.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
-      contents: read  # required by the shared action's checkout step
+      contents: read # required by the shared action's checkout step
       id-token: write # required by get-vault-secrets for OIDC auth to Vault
-      actions: read   # required to fetch job URLs from the GitHub API
+      actions: read # required to fetch job URLs from the GitHub API
     steps:
       - name: Build Slack payload
         id: payload

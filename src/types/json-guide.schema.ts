@@ -50,6 +50,21 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
 });
 
 /**
+ * Desired end state for a toggle target. `true`/`false` auto-detects the
+ * control's state signal; `"<attribute>:<value>"` names it explicitly.
+ */
+const TargetStateSchema = z
+  .string()
+  .optional()
+  .refine(
+    (value) => value === undefined || value === 'true' || value === 'false' || /^[a-zA-Z][\w-]*:.+$/.test(value.trim()),
+    { error: 'targetstate must be "true", "false", or "<attribute>:<value>" (e.g. "aria-expanded:true")' }
+  )
+  .describe(
+    'Desired end state for a toggle target. The step reads the control and only clicks when the state differs, so it is safe to re-run. Use "true"/"false" to auto-detect (aria-expanded, aria-pressed, checked, aria-checked, aria-selected), or "<attribute>:<value>" when the control exposes state some other way. Authoring a bare `true`/`false` is accepted: `normalizeJsonGuideAliases` coerces it to the string form before this schema runs, because the backend InteractiveGuide CRD cannot model a boolean-or-string field.'
+  );
+
+/**
  * Schema for safe URLs (http/https only).
  */
 const SafeUrlSchema = z
@@ -140,6 +155,7 @@ export const JsonStepSchema = z
       .string()
       .optional()
       .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    targetstate: TargetStateSchema,
     requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
     tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
     description: z.string().optional().describe('Step description shown to the user'),
@@ -286,6 +302,7 @@ export const JsonInteractiveBlockSchema = z
       .string()
       .optional()
       .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    targetstate: TargetStateSchema,
     content: z
       .string()
       .min(1, 'Interactive content is required')
@@ -1039,6 +1056,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'reftarget',
 
     'targetvalue',
+    'targetstate',
     'requirements',
     'tooltip',
     'description',
@@ -1063,6 +1081,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'reftarget',
 
     'targetvalue',
+    'targetstate',
     'content',
     'tooltip',
     'requirements',
