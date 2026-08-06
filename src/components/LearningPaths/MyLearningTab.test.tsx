@@ -3,6 +3,7 @@
  *  - the launch flow: the pending affordance while `prepareGuideLaunch` runs,
  *    and the unmount guard that stops a resolved launch from navigating the
  *    user after they've left the page;
+ *  - the My Courses / Completed repartition and Discover More launching;
  *  - guide-open URL resolution — App Platform path members (RFC
  *    CUSTOM-GUIDE-PACKAGES.md §6.11) launch via their `backend-guide:` URL
  *    (resolved through getGuideUrlForPath), falling through to `bundled:<id>`
@@ -26,8 +27,11 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 jest.mock('@grafana/i18n', () => ({
-  t: (_key: string, fallback: string, vars?: Record<string, unknown>) =>
-    vars ? fallback.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k])) : fallback,
+  t: (key: string, fallback: string, vars?: Record<string, unknown>) => {
+    const template =
+      key === 'myLearning.discoverMoreMilestones' && vars?.count === 1 ? '{{count}} milestone' : fallback;
+    return vars ? template.replace(/\{\{(\w+)\}\}/g, (_, k) => String(vars[k])) : template;
+  },
 }));
 
 jest.mock('@grafana/ui', () => ({
@@ -41,17 +45,24 @@ let mockPaths: any[] = [];
 let mockGuideMetadata: Record<string, any> = {};
 const mockGetPathGuides = jest.fn();
 const mockGetGuideUrlForPath = jest.fn();
+let mockDiscoverItems: Array<{ id: string; title: string; contentUrl: string; milestoneCount?: number }> = [];
+let mockDiscoverExcludeTitles: Set<string> | undefined;
 
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
   getPathsData: () => ({ guideMetadata: mockGuideMetadata }),
+  useDiscoverMore: ({ excludeTitles }: { excludeTitles?: Set<string> }) => {
+    mockDiscoverExcludeTitles = excludeTitles;
+    return { items: mockDiscoverItems, isLoading: false };
+  },
   useLearningPaths: () => ({
     paths: mockPaths,
     badgesWithStatus: [],
-    progress: { completedGuides: [], earnedBadges: [], streakDays: 0 },
+    progress: { completedGuides: ['guide-2'], earnedBadges: [], streakDays: 0 },
     getPathGuides: mockGetPathGuides,
-    getPathProgress: () => 0,
-    isPathCompleted: () => false,
+    getPathProgress: (id: string) =>
+      id === 'path-done' ? 100 : id === 'path-1' ? 50 : id === 'edge-low' ? 1 : id === 'edge-high' ? 99 : 0,
+    isPathCompleted: (id: string) => id === 'path-done',
     getGuideUrlForPath: mockGetGuideUrlForPath,
     resetPath: jest.fn(),
     streakInfo: { days: 0 },
@@ -104,17 +115,45 @@ const okResult: PrepareGuideLaunchResult = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  // Default: a single URL-based path, matching the launch-flow suite below.
+  mockDiscoverItems = [];
+  mockDiscoverExcludeTitles = undefined;
+  mockGuideMetadata = {};
+  // Default: the bundled path mix the launch-flow suite below asserts against.
   mockPaths = [
     {
       id: 'path-1',
-      title: 'First path',
+      title: 'Started path',
       guides: ['guide-1'],
       url: 'https://grafana.com/docs/learning-paths/path-1/',
     },
+    {
+      id: 'path-new',
+      title: 'New path',
+      guides: ['guide-new'],
+    },
+    {
+      id: 'edge-low',
+      title: 'Barely started',
+      guides: ['guide-1'],
+    },
+    {
+      id: 'edge-high',
+      title: 'Almost done',
+      guides: ['guide-1'],
+    },
+    {
+      id: 'path-done',
+      title: 'Done path',
+      guides: ['guide-2'],
+    },
   ];
-  mockGuideMetadata = {};
-  mockGetPathGuides.mockReturnValue([{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }]);
+  mockGetPathGuides.mockImplementation((id: string) =>
+    id === 'path-done'
+      ? [{ id: 'guide-2', title: 'Guide two', completed: true, isCurrent: false }]
+      : id === 'path-new'
+        ? [{ id: 'guide-new', title: 'New guide', completed: false, isCurrent: true }]
+        : [{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }]
+  );
   mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/learning-paths/path-1/guide-1/');
 });
 
@@ -163,6 +202,72 @@ describe('MyLearningTab launch flow', () => {
     await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
     expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' }));
     expect(onOpenGuide).not.toHaveBeenCalled();
+  });
+
+  it('keeps every not-yet-complete path in My Courses and only 100% in Completed', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
+    const completed = screen.getByTestId(testIds.learningPaths.completedSection);
+
+    // Not-started (0%), boundary (1%/99%), and mid-progress (50%) all stay in My
+    // Courses so a first-time user's bundled onboarding paths never disappear.
+    expect(myCourses).toHaveTextContent('New path');
+    expect(myCourses).toHaveTextContent('Barely started');
+    expect(myCourses).toHaveTextContent('Started path');
+    expect(myCourses).toHaveTextContent('Almost done');
+    expect(myCourses).not.toHaveTextContent('Done path');
+
+    expect(completed).toHaveTextContent('Done path');
+    expect(completed).toHaveTextContent('Done');
+    expect(completed).not.toHaveTextContent('New path');
+    expect(completed).not.toHaveTextContent('Almost done');
+
+    // Everything shown in My Courses / Completed is suppressed from Discover
+    // More, so a bundled path never double-lists.
+    expect(mockDiscoverExcludeTitles).toEqual(
+      new Set(['New path', 'Barely started', 'Started path', 'Almost done', 'Done path'])
+    );
+  });
+
+  it('renders the stable My Learning section landmarks', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.getByTestId(testIds.learningPaths.myCoursesSection)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.learningPaths.badgesSection)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.learningPaths.discoverMoreSection)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.learningPaths.completedSection)).toBeInTheDocument();
+  });
+
+  it('labels Discover more path metadata as milestones', () => {
+    mockDiscoverItems = [
+      { id: 'pkg-1', title: 'Package one', contentUrl: 'https://cdn.example/pkg-1/content.json', milestoneCount: 1 },
+      { id: 'pkg-2', title: 'Package two', contentUrl: 'https://cdn.example/pkg-2/content.json', milestoneCount: 2 },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const firstCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
+    const secondCard = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-2'));
+    expect(firstCard).toHaveTextContent('1 milestone');
+    expect(secondCard).toHaveTextContent('2 milestones');
+    expect(firstCard).not.toHaveTextContent('guide');
+    expect(secondCard).not.toHaveTextContent('guide');
+  });
+
+  it('launches a Discover More item through prepareGuideLaunch', async () => {
+    mockDiscoverItems = [{ id: 'pkg-1', title: 'Package one', contentUrl: 'https://cdn.example/pkg-1/content.json' }];
+    prepareMock.mockResolvedValue(okResult);
+    const onOpenGuide = jest.fn();
+
+    render(<MyLearningTab onOpenGuide={onOpenGuide} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.discoverMoreStart('pkg-1')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
+    expect(prepareMock).toHaveBeenCalledWith(
+      'https://cdn.example/pkg-1/content.json',
+      expect.objectContaining({ title: 'Package one' })
+    );
   });
 });
 

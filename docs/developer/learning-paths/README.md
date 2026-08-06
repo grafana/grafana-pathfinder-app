@@ -4,21 +4,23 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 
 ## File listing
 
-| File                            | Purpose                                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------------- |
-| `index.ts`                      | Public API barrel export                                                                    |
-| `paths-data.ts`                 | Runtime platform selection (OSS vs Grafana Cloud)                                           |
-| `paths.json`                    | OSS path definitions (static, bundled guide IDs)                                            |
-| `paths-cloud.json`              | Grafana Cloud path definitions (superset of OSS; includes URL-based paths)                  |
-| `badges.ts`                     | 12 badge definitions, trigger types, and earning logic                                      |
-| `learning-paths.hook.ts`        | Main `useLearningPaths()` hook — unified state management                                   |
-| `streak-tracker.ts`             | Streak calculation, milestones, and display helpers                                         |
-| `fetch-path-guides.ts`          | Fetches guide lists from remote `index.json` for URL-based paths                            |
-| `app-platform-paths.ts`         | Synthesizes `LearningPath` entries from the namespace's App Platform custom-guide catalogue |
-| `useNextLearningAction.ts`      | `useNextLearningAction()` hook and pure `computeNextAction()` for the UserProfileBar        |
-| `learning-paths.test.ts`        | Tests for the main hook                                                                     |
-| `fetch-path-guides.test.ts`     | Tests for remote guide fetching                                                             |
-| `useNextLearningAction.test.ts` | Tests for next-action computation                                                           |
+| File                            | Purpose                                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `index.ts`                      | Public API barrel export                                                                                |
+| `paths-data.ts`                 | Runtime platform selection (OSS vs Grafana Cloud)                                                       |
+| `paths.json`                    | OSS path definitions (static, bundled guide IDs)                                                        |
+| `paths-cloud.json`              | Grafana Cloud path definitions (superset of OSS; includes URL-based paths)                              |
+| `badges.ts`                     | 12 badge definitions, trigger types, and earning logic                                                  |
+| `learning-paths.hook.ts`        | Main `useLearningPaths()` hook — unified state management                                               |
+| `streak-tracker.ts`             | Streak calculation, milestones, and display helpers                                                     |
+| `fetch-path-guides.ts`          | Fetches guide lists from remote `index.json` for URL-based paths                                        |
+| `app-platform-paths.ts`         | Synthesizes `LearningPath` entries from the namespace's App Platform custom-guide catalogue             |
+| `useNextLearningAction.ts`      | `useNextLearningAction()` hook and pure `computeNextAction()` for the UserProfileBar                    |
+| `useDiscoverMore.ts`            | `useDiscoverMore()` hook — surfaces external learning paths for the My Learning "Discover more" section |
+| `learning-paths.test.ts`        | Tests for the main hook                                                                                 |
+| `fetch-path-guides.test.ts`     | Tests for remote guide fetching                                                                         |
+| `useNextLearningAction.test.ts` | Tests for next-action computation                                                                       |
+| `useDiscoverMore.test.ts`       | Tests for the Discover more hook                                                                        |
 
 ## Path types
 
@@ -223,6 +225,10 @@ A pure function (no hooks) that computes the next learning action. It sorts path
 3. Completed paths are skipped
 
 From the highest-priority path, it selects the first guide with `isCurrent: true`. For URL-based paths, the returned `guideUrl` points to the path URL; for static paths, it uses the guide's metadata URL or falls back to `bundled:{guideId}`.
+
+### `useDiscoverMore()`
+
+Surfaces novel external learning paths for the My Learning "Discover more" section. It deliberately bypasses the context recommender's path-targeting — which returns few or zero packages on the home surface — and instead pulls the full upstream package index (`repository.json`, proxied by the backend) via `fetchOnlinePackageRecommendations`. It keeps only `path`-typed entries (whole learning paths, not individual guides), mapping each to a `DiscoverMoreItem` whose `contentUrl` points at the package's `content.json`. It returns up to `count` items (default 5), skipping any whose title is already shown elsewhere on the page (via `excludeTitles`). Fails soft: the client never throws and yields an empty index when offline, so the UI renders an empty state rather than an error.
 
 ## Integration points
 
