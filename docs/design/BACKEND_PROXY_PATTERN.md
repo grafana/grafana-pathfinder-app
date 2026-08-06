@@ -293,9 +293,10 @@ where a create differs from a read:
   what #1434 sends), so reusing a key for different content resolves to the first record for that
   key. Client-supplied names are never accepted.
 - **Client fact fields are validated against the CRD's value domains** (source, category, and
-  platform enums; `completionPercent` bounds; per-field byte caps and a control-character reject on
-  the free-text fields; `durationMs` rejected when negative or above a 24h ceiling — a larger value
-  is a producer bug, not durable data) and `completedAt` is bounded to a sane window
+  platform enums; `completionPercent` bounds; per-field byte caps, a UTF-8 validity check, and a
+  control-character reject on the free-text fields; `durationMs` rejected when negative or above a
+  24h ceiling — a larger value is a producer bug, not durable data) and `completedAt` is bounded to
+  a sane window
   (`[now − 30d, now + 5m]`) to tolerate delayed offline/queued retries while rejecting gross
   backdating; any violation is a terminal 400. The **30-day backdating horizon is the durability
   boundary of the whole feature**: a completion queued offline longer than 30 days is deterministically
