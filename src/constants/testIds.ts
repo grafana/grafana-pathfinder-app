@@ -302,6 +302,12 @@ export const testIds = {
     resetProgressButton: 'learning-paths-reset-progress',
     badgeToast: 'learning-paths-badge-toast',
     badgeToastDismiss: 'learning-paths-badge-toast-dismiss',
+    myCoursesSection: 'my-learning-courses-section',
+    badgesSection: 'my-learning-badges-section',
+    discoverMoreSection: 'my-learning-discover-section',
+    completedSection: 'my-learning-completed-section',
+    discoverMoreCard: (id: string) => `discover-more-card-${id}`,
+    discoverMoreStart: (id: string) => `discover-more-start-${id}`,
     tableOfContents: 'learning-paths-toc',
   },
 
