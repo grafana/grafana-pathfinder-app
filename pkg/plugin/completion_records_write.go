@@ -310,11 +310,20 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 	}, nil
 }
 
-// validateBoundedText rejects oversized or control-character content in a
-// client-supplied free-text field (→ terminal 400).
+// validateBoundedText rejects oversized, invalid-UTF-8, or control-character
+// content in a client-supplied free-text field (→ terminal 400).
 func validateBoundedText(field, value string, maxBytes int) error {
 	if len(value) > maxBytes {
 		return fmt.Errorf("%s exceeds %d bytes", field, maxBytes)
+	}
+	// BELT-AND-BRACES, not a live defect fix: unreachable from every caller today.
+	// All current callers pass JSON-decoded values, and encoding/json replaces
+	// invalid UTF-8 at DECODE time, so `value` is always already valid here (a
+	// hostile 1024-byte field arrives as 3072 valid bytes and the cap above
+	// rejects it). This exists so the validator's contract still holds if a
+	// non-JSON caller is ever added; do not read it as guarding a reachable bug.
+	if !utf8.ValidString(value) {
+		return fmt.Errorf("%s contains invalid UTF-8", field)
 	}
 	for _, r := range value {
 		if r < 0x20 || r == 0x7f {

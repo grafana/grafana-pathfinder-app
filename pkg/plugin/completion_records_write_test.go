@@ -476,6 +476,32 @@ func TestCompletionWrite_AcceptsEveryFrontendValue(t *testing.T) {
 	}
 }
 
+// validateBoundedText's UTF-8 branch is exercised DIRECTLY, not through the
+// request path. Going through a request would prove nothing: encoding/json
+// replaces invalid UTF-8 at decode, so a hostile field arrives already valid and
+// merely trips the byte cap — a green test that never reaches this guard. The
+// branch is unreachable from today's callers by construction; this pins the
+// validator's own contract for any future non-JSON caller.
+func TestValidateBoundedText_RejectsInvalidUTF8(t *testing.T) {
+	invalid := string([]byte{0xff, 0xfe, 0xfd})
+
+	err := validateBoundedText("guideTitle", invalid, completionMaxTitleLen)
+	if err == nil {
+		t.Fatal("invalid UTF-8 must be rejected")
+	}
+	if !strings.Contains(err.Error(), "invalid UTF-8") {
+		t.Errorf("error = %q, want the invalid-UTF-8 reason (not the byte cap or control-character check)", err)
+	}
+
+	// The guard must not reject legitimate multi-byte text, nor a genuine U+FFFD
+	// the client meant to send (which is what a JSON-decoded hostile byte becomes).
+	for _, valid := range []string{"Grafana データソース", "café", "�"} {
+		if err := validateBoundedText("guideTitle", valid, completionMaxTitleLen); err != nil {
+			t.Errorf("valid UTF-8 %q rejected: %v", valid, err)
+		}
+	}
+}
+
 func TestDecodeCompletionWriteRequest_RejectsTrailingAndOversizedBodies(t *testing.T) {
 	tests := []struct {
 		name string
