@@ -123,6 +123,35 @@ export interface ContextData {
   platform: string; // 'oss' or 'cloud'
 }
 
+/**
+ * One completed (guideSource, guideId) the current user has finished, distilled
+ * from the plugin-backend `/completion-records/my` envelope into the fields the
+ * recommender needs to weight suggestions. This is the STABLE input contract for
+ * the recommender-side work (Completion Records epic step 8): field names here
+ * are snake_case to match the rest of ContextPayload's wire format, and are
+ * derived from — not identical to — the camelCase proxy envelope.
+ */
+export interface CompletionContextItem {
+  guide_source: string;
+  guide_id: string;
+  guide_category?: string;
+  path_id?: string;
+  count: number;
+  latest_completed_at?: string;
+  max_completion_percent: number;
+}
+
+/**
+ * The user's own completion history attached to a recommend request. Present
+ * only when the read proxy reported the feature available for this caller;
+ * absent entirely when the proxy is unavailable, errors, or times out (see
+ * completion-records-client.ts). `as_of` is the proxy's collation timestamp.
+ */
+export interface CompletionContext {
+  as_of?: string;
+  items: CompletionContextItem[];
+}
+
 export interface ContextPayload {
   path: string;
   datasources: string[];
@@ -133,6 +162,7 @@ export interface ContextPayload {
   platform: string;
   source?: string; // Cloud instance source
   language?: string; // User's preferred language/locale
+  completions?: CompletionContext; // Optional: the user's own completion history, when the read proxy is available
 }
 
 export interface RecommenderResponse {

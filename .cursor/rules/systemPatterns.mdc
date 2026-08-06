@@ -107,7 +107,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 
 **Tier 1 — support:**
 
-- `lib/` — Shared utilities. Sub-areas: `analytics.ts`, `user-storage.ts`, `dom/` (selector pipeline: detect → generate → validate → retry), `async-utils.ts`, `package-recommendations-client.ts`.
+- `lib/` — Shared utilities. Sub-areas: `analytics.ts`, `user-storage.ts`, `dom/` (selector pipeline: detect → generate → validate → retry), `async-utils.ts`, `package-recommendations-client.ts`, `completion-records-client.ts` (fail-soft `/completion-records/my` read-proxy client feeding the recommend payload).
 - `security/` — URL allowlists, HTML / log sanitization. Entry: `security/index.ts`. Key: `parseUrlSafely`, `validateTutorialUrl`, `sanitizeDocumentationHTML`. See `.cursor/rules/frontend-security.mdc`.
 - `styles/` — Theme-aware CSS-in-JS factories (Emotion). One `*.styles.ts` per component.
 - `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `alignment-pending-context.ts`.
