@@ -341,8 +341,10 @@ func TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable(t *testi
 // to arrive intact AFTER the success status line was received.
 type errAfterStatusBody struct{}
 
-func (errAfterStatusBody) Read([]byte) (int, error) { return 0, fmt.Errorf("simulated body read failure") }
-func (errAfterStatusBody) Close() error             { return nil }
+func (errAfterStatusBody) Read([]byte) (int, error) {
+	return 0, fmt.Errorf("simulated body read failure")
+}
+func (errAfterStatusBody) Close() error { return nil }
 
 // successThenBodyReadErrorTransport answers every request with a bare 201 whose
 // body errors on the first Read.

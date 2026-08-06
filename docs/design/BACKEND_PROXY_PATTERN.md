@@ -221,9 +221,13 @@ One definition each, package-wide:
   metrics or structured logs — a cache without them is undiagnosable on-call, and index-size
   visibility is the early warning before a memory ceiling.
 - **First-request credential diagnostics:** on the first upstream LIST, log the response status
-  and which identity headers were present. The most likely production incident for this shape is
-  "the credential model doesn't authenticate on a real stack" — this log turns that from a
-  mystery into a one-line diagnosis.
+  and which outbound credential was sent — the header **name** plus a redaction placeholder,
+  never the token or any part of it. Name the field for what it carries (`outboundCredential`):
+  a key that calls a bearer credential an identity header is the same category error that made
+  this proxy 401 everywhere, and it invites the next reader to treat a real credential as
+  non-sensitive. The most likely production incident for this shape is "the credential model
+  doesn't authenticate on a real stack" — this log turns that from a mystery into a one-line
+  diagnosis.
 
 ## 10. Testing
 

@@ -194,7 +194,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 			"resource", resource,
 			"status", resp.StatusCode,
 			"idTokenPresent", c.idToken != "",
-			"identityHeaders", auth.AccessTokenHeader+"=<obo-access-token>")
+			"outboundCredential", auth.AccessTokenHeader+"=<obo-access-token>")
 	})
 
 	if resp.StatusCode != http.StatusOK {
@@ -272,7 +272,7 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 			"resource", resource,
 			"status", resp.StatusCode,
 			"idTokenPresent", c.idToken != "",
-			"identityHeaders", auth.AccessTokenHeader+"=<obo-access-token>")
+			"outboundCredential", auth.AccessTokenHeader+"=<obo-access-token>")
 	})
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
