@@ -187,7 +187,6 @@ function GuideReaderInner({
         onContentReady={handleContentReady}
         onGuideComplete={() =>
           recordGuideCompletionForSurface({
-            baseUrl: content.url,
             contentUrl: content.url,
             currentUrl: content.url,
             contentType: content.type,

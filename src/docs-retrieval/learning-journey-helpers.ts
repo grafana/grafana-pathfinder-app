@@ -481,9 +481,14 @@ export function recordStandaloneGuideCompletion(context: CompletionContext): voi
  * affordance, so completing a guide in any of them records the same fact.
  */
 export interface SurfaceCompletionInput {
-  /** activeTab.baseUrl — the journey/guide base (undefined when there is no tab). */
+  /**
+   * activeTab.baseUrl — the SURFACE base, which is the milestone URL when a tab
+   * was opened directly at a milestone. Drives bundled progress only; the
+   * milestone storage key is `metadata.learningJourney.baseUrl` (the resolved
+   * cover URL every other milestone writer keys on).
+   */
   baseUrl?: string;
-  /** content.url — fallback base for bundled detection when the tab has none. */
+  /** content.url — fallback surface base for bundled detection when the tab has none. */
   contentUrl?: string;
   /** activeTab.currentUrl — the milestone URL used to derive the milestone slug. */
   currentUrl?: string;
@@ -502,8 +507,11 @@ export interface SurfaceCompletionInput {
  * than each surface re-deciding (or forgetting to emit).
  */
 export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): void {
-  const { baseUrl: journeyBase, contentUrl, currentUrl, contentType, metadata, guideTitle } = input;
-  const baseUrl = journeyBase || contentUrl;
+  const { baseUrl, contentUrl, currentUrl, contentType, metadata, guideTitle } = input;
+  // Two distinct keys: the surface base a tab happens to be pinned at, and the
+  // journey's resolved cover URL that milestone progress is stored under.
+  const surfaceBase = baseUrl || contentUrl;
+  const journeyBase = metadata?.learningJourney?.baseUrl;
   const slug = contentType === 'learning-journey' && currentUrl ? getMilestoneSlug(currentUrl) : '';
   const willMarkMilestone = Boolean(slug && journeyBase);
   const completionContext: CompletionContext = {
@@ -511,11 +519,11 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
     repository: metadata?.repository,
     guideTitle,
   };
-  if (baseUrl?.startsWith('bundled:')) {
+  if (surfaceBase?.startsWith('bundled:')) {
     if (willMarkMilestone) {
-      setMilestoneCompletionPercentage(baseUrl, 100);
+      setMilestoneCompletionPercentage(surfaceBase, 100);
     } else {
-      setJourneyCompletionPercentage(baseUrl, 100, completionContext);
+      setJourneyCompletionPercentage(surfaceBase, 100, completionContext);
     }
   }
   if (willMarkMilestone && journeyBase) {
@@ -525,7 +533,7 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
       resolveExpectedMilestoneIds(metadata?.learningJourney),
       completionContext
     );
-  } else if (!baseUrl?.startsWith('bundled:')) {
+  } else if (!surfaceBase?.startsWith('bundled:')) {
     recordStandaloneGuideCompletion(completionContext);
   }
 }
@@ -597,6 +605,13 @@ export async function markMilestoneDone(
   await markGuideCompleted(milestoneSlug);
 
   // Completion-emission boundary for the milestone-as-guide path.
+  //
+  // Accepted for the MVP, not an oversight: the durable key is the bare final URL
+  // segment, unqualified by the owning journey, so two journeys under the same
+  // source that share a milestone slug produce the same key and conflate in the
+  // warehouse. Local progress is unaffected — milestone progress is stored per
+  // journey base URL — so a collision never grants unearned credit. Tracked for
+  // RFC reconciliation.
   const milestoneIdentity = resolveCompletionIdentity({
     repository: context?.repository ?? manifestGuideSource(context?.packageManifest),
     fallbackId: milestoneSlug,

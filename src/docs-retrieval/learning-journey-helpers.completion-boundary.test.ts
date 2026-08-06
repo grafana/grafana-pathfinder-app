@@ -362,8 +362,15 @@ describe('whole-journey membership, not count (journey-threshold-membership)', (
 });
 
 describe('surface emitter routing matrix (bundled/remote × milestone/standalone)', () => {
-  const lj = (slug: string) =>
-    ({ milestones: [{ number: 1, title: slug, duration: '5m', url: `https://ex/${slug}/`, isActive: false }] }) as any;
+  const lj = (slug: string, baseUrl: string) =>
+    ({
+      learningJourney: {
+        baseUrl,
+        currentMilestone: 1,
+        totalMilestones: 1,
+        milestones: [{ number: 1, title: slug, duration: '5m', url: `https://ex/${slug}/`, isActive: false }],
+      },
+    }) as any;
   // markMilestoneDone is fire-and-forget with internal awaits; drain the queue.
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -376,7 +383,7 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
       metadata: {
         title: '',
         packageManifest: { id: 'linux-journey', repository: 'app-platform' },
-        ...lj('select-platform'),
+        ...lj('select-platform', 'bundled:linux'),
       },
       guideTitle: 'LJ',
     });
@@ -423,7 +430,7 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
       contentUrl: 'https://ex/lj',
       currentUrl: 'https://ex/m1/content.json',
       contentType: 'learning-journey',
-      metadata: { title: '', packageManifest: { id: 'lj', repository: 'app-platform' }, ...lj('m1') },
+      metadata: { title: '', packageManifest: { id: 'lj', repository: 'app-platform' }, ...lj('m1', 'https://ex/lj') },
       guideTitle: 'LJ',
     });
     await flush();
@@ -432,6 +439,84 @@ describe('surface emitter routing matrix (bundled/remote × milestone/standalone
     expect(guide).toHaveLength(1);
     expect(guide[0]).toMatchObject({ guideId: 'm1', guideCategory: 'learning-journey' });
     expect(journeySetMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('milestone opened directly (surface base is the milestone, not the journey cover)', () => {
+  const COVER = 'https://ex/lp/linux/';
+  const MILESTONE = 'https://ex/lp/linux/install-alloy/content.json';
+  const FIRST = 'https://ex/lp/linux/select-platform/content.json';
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  /** Key-aware milestone storage so the journey key actually written is observable. */
+  function stubMilestoneStorage(seed: Record<string, string[]> = {}): Map<string, Set<string>> {
+    const progress = new Map<string, Set<string>>(Object.entries(seed).map(([base, slugs]) => [base, new Set(slugs)]));
+    milestoneMarkCompletedMock.mockImplementation((base: string, slug: string) => {
+      const completed = progress.get(base) ?? new Set<string>();
+      completed.add(slug);
+      progress.set(base, completed);
+      return Promise.resolve();
+    });
+    milestoneGetCompletedMock.mockImplementation((base: string) =>
+      Promise.resolve(progress.get(base) ?? new Set<string>())
+    );
+    return progress;
+  }
+
+  function completeLastMilestoneFromRecommendationsTab() {
+    recordGuideCompletionForSurface({
+      // Opening a milestone from the recommendations panel pins the tab's
+      // baseUrl to the MILESTONE url, not the journey cover.
+      baseUrl: MILESTONE,
+      contentUrl: MILESTONE,
+      currentUrl: MILESTONE,
+      contentType: 'learning-journey',
+      metadata: {
+        title: 'Install Alloy',
+        packageManifest: { id: 'linux-journey', repository: 'app-platform', type: 'journey' },
+        learningJourney: {
+          currentMilestone: 2,
+          totalMilestones: 2,
+          baseUrl: COVER,
+          milestones: [
+            { number: 1, title: 'Select platform', duration: '5m', url: FIRST, isActive: false },
+            { number: 2, title: 'Install Alloy', duration: '5m', url: MILESTONE, isActive: true },
+          ],
+        },
+      },
+      guideTitle: 'Install Alloy',
+    });
+  }
+
+  it('stores milestone progress under the journey cover url, not the milestone url', async () => {
+    const progress = stubMilestoneStorage();
+
+    completeLastMilestoneFromRecommendationsTab();
+    await flush();
+
+    expect(milestoneMarkCompletedMock).toHaveBeenCalledWith(COVER, 'install-alloy');
+    expect(progress.get(COVER)).toEqual(new Set(['install-alloy']));
+    expect(progress.has(MILESTONE)).toBe(false);
+  });
+
+  it('satisfies the expected-set check, awards the path badge, and fires the journey record', async () => {
+    stubMilestoneStorage({ [COVER]: ['select-platform'] });
+    getPathsDataMock.mockReturnValue({
+      paths: [{ id: 'linux-path', title: 'Linux', url: COVER, badgeId: 'linux-badge' }],
+    });
+
+    completeLastMilestoneFromRecommendationsTab();
+    await flush();
+
+    expect(awardBadgeMock).toHaveBeenCalledWith('linux-badge');
+    const journey = emitted.filter((f) => f.kind === 'journey');
+    expect(journey).toHaveLength(1);
+    expect(journey[0]).toMatchObject({
+      guideSource: 'app-platform',
+      guideId: 'linux-journey',
+      pathId: 'linux-path',
+      completionPercent: 100,
+    });
   });
 });
 
