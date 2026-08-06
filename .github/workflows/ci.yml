@@ -422,6 +422,13 @@ jobs:
         with:
           skip-grafana-react-19-preview-image: false
 
+  # Triage note: a red leg whose only step is "Set up job", logging "Failed to
+  # resolve action download info" with Service Unavailable / Bad Gateway, is a
+  # GitHub Actions service failure while resolving this job's pinned actions. No
+  # step ran, so it is never a plugin or test failure, and because resolution is
+  # per-job some legs pass while others fail in the same run. Re-run the failed
+  # legs; every action here is already pinned to an existing commit, so there is
+  # no repo-side fix.
   playwright-tests:
     needs: [resolve-versions, build]
     if: ${{ needs.resolve-versions.outputs.has-e2e == 'true' }}
