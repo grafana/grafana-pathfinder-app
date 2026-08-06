@@ -195,8 +195,8 @@ func TestCustomGuide_IdentityScopedFailureIsPerRequest(t *testing.T) {
 
 	// Caller 1 is denied by the aggregator → soft-200 capability false.
 	rr1, b1 := doCustomGuide(t, "/custom-guide-repository", "user:1")
-	if rr1.Code != http.StatusOK || b1.Capability.Available || b1.Capability.Reason != reasonBackendUnavailable {
-		t.Fatalf("denied caller should get soft-200 backend-unavailable; status=%d cap=%+v", rr1.Code, b1.Capability)
+	if rr1.Code != http.StatusOK || b1.Capability.Available || b1.Capability.Reason != "upstream-403" {
+		t.Fatalf("denied caller should get soft-200 upstream-403; status=%d cap=%+v", rr1.Code, b1.Capability)
 	}
 	// Caller 2 is authorized and served normally — no poisoning from caller 1.
 	_, b2 := doCustomGuide(t, "/custom-guide-repository", "user:2")
@@ -287,8 +287,8 @@ func TestCustomGuide_TerminalReturnsCapabilityFalse(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("terminal failure should be soft-200, got %d", rr.Code)
 	}
-	if body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
-		t.Errorf("expected capability false/backend-unavailable, got %+v", body.Capability)
+	if body.Capability.Available || body.Capability.Reason != "upstream-404" {
+		t.Errorf("expected capability false/upstream-404, got %+v", body.Capability)
 	}
 }
 
@@ -348,8 +348,8 @@ func TestCustomGuide_ToggleOffStructurallyUnavailable(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("toggle-off should be soft-200, got %d", rr.Code)
 	}
-	if body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
-		t.Errorf("expected backend-unavailable, got %+v", body.Capability)
+	if body.Capability.Available || body.Capability.Reason != reasonFeatureToggleDisabled {
+		t.Errorf("expected feature-toggle-disabled, got %+v", body.Capability)
 	}
 	if l.callCount() != 0 {
 		t.Errorf("structurally unavailable must not hit upstream; got %d LISTs", l.callCount())
@@ -361,14 +361,27 @@ func TestCustomGuide_NoAppURLStructurallyUnavailable(t *testing.T) {
 	l := singlePageGuideLister()
 	withGuideLister(t, l)
 
-	cfg := map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle} // no app URL
+	cfg := map[string]string{featuretoggles.EnabledFeatures: customGuideAggregationToggle} // no app URL
 	_, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
 
-	if body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
-		t.Errorf("expected backend-unavailable with no app URL, got %+v", body.Capability)
+	if body.Capability.Available || body.Capability.Reason != reasonAppURLUnavailable {
+		t.Errorf("expected app-url-unavailable with no app URL, got %+v", body.Capability)
 	}
 	if l.callCount() != 0 {
 		t.Errorf("structurally unavailable must not hit upstream; got %d LISTs", l.callCount())
+	}
+}
+
+// An unprovisioned stack has no way to authenticate as the caller upstream, so
+// the route reports itself unavailable rather than attempting a call that can
+// only 401. No lister override here: this is the real resolve path.
+func TestCustomGuide_NoOBOCredentialsStructurallyUnavailable(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	_, body := doCustomGuideReq(t, customGuideRequest(t, "/custom-guide-repository", "user:1"))
+
+	if body.Capability.Available || body.Capability.Reason != reasonOBOUnavailable {
+		t.Errorf("expected obo-unavailable without provisioned credentials, got %+v", body.Capability)
 	}
 }
 
@@ -409,7 +422,7 @@ func TestCustomGuideHTTPClient_StripsBlocksPreservesManifest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newCustomGuideHTTPClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	c := newCustomGuideHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	page, err := c.ListPage(context.Background(), testNamespace, "")
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)

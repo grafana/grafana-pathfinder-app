@@ -257,6 +257,8 @@ interface RecommendationsSectionProps {
   recommendations: Recommendation[];
   featuredRecommendations: Recommendation[];
   customGuides: PublishedGuide[];
+  customGuidePaths: PublishedGuide[];
+  customGuideOrphans: PublishedGuide[];
   isLoadingCustomGuides: boolean;
   customGuidesExpanded: boolean;
   suggestedGuidesExpanded: boolean;
@@ -277,6 +279,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   recommendations,
   featuredRecommendations,
   customGuides,
+  customGuidePaths,
+  customGuideOrphans,
   isLoadingCustomGuides,
   customGuidesExpanded,
   suggestedGuidesExpanded,
@@ -378,6 +382,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         {hasCustomGuidesContent && (
           <CustomGuidesSection
             guides={customGuides}
+            paths={customGuidePaths}
+            orphanGuides={customGuideOrphans}
             isLoading={isLoadingCustomGuides}
             expanded={customGuidesExpanded}
             onToggleExpanded={toggleCustomGuidesExpansion}
@@ -1073,6 +1079,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   });
   const {
     guides: customGuides,
+    paths: customGuidePaths,
+    orphanGuides: customGuideOrphans,
     isLoading: isLoadingCustomGuides,
     hasLoaded: hasLoadedCustomGuides,
   } = usePublishedGuides();
@@ -1120,6 +1128,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             recommendations={recommendations}
             featuredRecommendations={contextData.featuredRecommendations}
             customGuides={customGuides}
+            customGuidePaths={customGuidePaths}
+            customGuideOrphans={customGuideOrphans}
             isLoadingCustomGuides={isLoadingCustomGuides}
             customGuidesExpanded={customGuidesExpanded}
             suggestedGuidesExpanded={suggestedGuidesExpanded}

@@ -64,14 +64,14 @@ type completionHTTPClient struct {
 	inner *appPlatformListClient
 }
 
-// newCompletionHTTPClient builds a lister that calls appURL with identity
-// derived from the caller's ID token (forwardIdentityHeaders). A
+// newCompletionHTTPClient builds a lister that calls appURL as the user the
+// caller's ID token identifies, using an access token minted from that token. A
 // namespace-scoped LIST returns every record in the namespace (Kubernetes
 // RBAC is namespace-, not object-, scoped), which is what lets one refresh
 // collate all users. If a caller lacks list permission on completionrecords
 // the upstream returns 401/403, surfaced as an identity-scoped terminal error.
-func newCompletionHTTPClient(appURL, idToken string, logger log.Logger) *completionHTTPClient {
-	return &completionHTTPClient{inner: newAppPlatformListClient(appURL, idToken, logger)}
+func newCompletionHTTPClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *completionHTTPClient {
+	return &completionHTTPClient{inner: newAppPlatformListClient(appURL, minter, idToken, logger)}
 }
 
 // ListPage fetches one page of CompletionRecords for the namespace.
