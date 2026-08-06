@@ -173,6 +173,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       targetValue,
+      targetState,
       targetComment,
       postVerify,
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
@@ -480,13 +481,14 @@ export const InteractiveStep = forwardRef<
         }
 
         // Execute the action using existing interactive logic
-        const actionOutcome = await executeInteractiveAction(
+        const actionOutcome = await executeInteractiveAction({
           targetAction,
           refTarget,
-          currentTargetValue,
-          'do',
-          targetComment
-        );
+          targetValue: currentTargetValue,
+          targetState,
+          targetComment,
+          buttonType: 'do',
+        });
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
           return false;
@@ -552,6 +554,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       currentTargetValue,
+      targetState,
       targetComment,
       postVerify,
       verifyStepResult,
@@ -711,7 +714,7 @@ export const InteractiveStep = forwardRef<
           phase: 'show',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
         });
         if (!doIt) {
           // Simple controller steps complete optimistically because no live acknowledgement is available.
@@ -733,13 +736,14 @@ export const InteractiveStep = forwardRef<
           lazyRender,
           scrollContainer,
           async () => {
-            const outcome = await executeInteractiveAction(
+            const outcome = await executeInteractiveAction({
               targetAction,
               refTarget,
-              currentTargetValue,
-              'show',
-              targetComment
-            );
+              targetValue: currentTargetValue,
+              targetState,
+              targetComment,
+              buttonType: 'show',
+            });
             return outcome !== 'error';
           },
           targetAction
@@ -769,6 +773,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       currentTargetValue,
+      targetState,
       targetComment,
       doIt,
       disabled,
@@ -822,7 +827,7 @@ export const InteractiveStep = forwardRef<
           phase: 'do',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
         });
         // Simple controller steps complete optimistically because no live acknowledgement is available.
         persistCompletion();
@@ -863,6 +868,7 @@ export const InteractiveStep = forwardRef<
       executeStep,
       targetAction,
       currentTargetValue,
+      targetState,
       analyticsStepMeta,
       mode,
       controllerChannel,
@@ -959,6 +965,7 @@ export const InteractiveStep = forwardRef<
         data-targetaction={targetAction}
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}
+        data-targetstate={targetState === undefined ? undefined : String(targetState)}
         data-targetcomment={targetComment}
         data-openguide={openGuide}
         data-step-id={stepId || renderedStepId}

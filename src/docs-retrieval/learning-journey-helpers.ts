@@ -26,6 +26,8 @@ import {
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
+export { getMilestoneSlug } from '../lib/learning-journey-url';
+
 /**
  * Optional manifest/display context threaded from the completion call sites so
  * the recorder can key on `(guideSource, guideId) = (manifest.repository,
@@ -458,18 +460,6 @@ export async function getAllJourneyCompletionsAsync(): Promise<Record<string, nu
 // ============================================================================
 // MILESTONE COMPLETION HELPERS
 // ============================================================================
-
-/**
- * Extracts the milestone slug (guide ID) from a milestone URL.
- * e.g. "https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/" -> "select-platform"
- * e.g. "https://grafana.com/docs/.../select-platform/content.json" -> "select-platform"
- */
-export function getMilestoneSlug(milestoneUrl: string): string {
-  // Strip content.json or unstyled.html suffixes added during content fetching
-  const cleanUrl = milestoneUrl.replace(/\/(content\.json|unstyled\.html)$/, '');
-  const segments = cleanUrl.replace(/\/+$/, '').split('/');
-  return segments[segments.length - 1] || '';
-}
 
 /**
  * Marks a learning journey milestone as completed.

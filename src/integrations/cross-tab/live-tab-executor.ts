@@ -159,6 +159,7 @@ export function installLiveTabExecutor(
       refTarget: action.refTarget ?? '',
       targetAction: action.targetAction,
       targetValue: action.targetValue,
+      targetState: action.targetState,
       targetComment: action.targetComment,
       tagName: 'button',
       textContent: `${isShow ? 'Show me' : 'Do'}: ${action.refTarget ?? ''}`,
@@ -240,12 +241,7 @@ export function installLiveTabExecutor(
         return false;
       }
       const result = await guidedHandler.executeGuidedStep(
-        {
-          targetAction: action.targetAction as GuidedAction['targetAction'],
-          refTarget: action.refTarget,
-          targetValue: action.targetValue,
-          targetComment: action.targetComment,
-        },
+        { ...action, targetAction: action.targetAction as GuidedAction['targetAction'] },
         i,
         actions.length
       );

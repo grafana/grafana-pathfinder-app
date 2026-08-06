@@ -199,7 +199,7 @@ export const CodeBlockStep = forwardRef<
       setIsShowRunning(true);
       try {
         // Highlight the target Monaco editor using the interactive engine
-        await executeInteractiveAction('highlight', refTarget, undefined, 'show');
+        await executeInteractiveAction({ targetAction: 'highlight', refTarget, buttonType: 'show' });
       } catch (err) {
         logger.error('[CodeBlockStep] Show me failed', { error: err });
       } finally {

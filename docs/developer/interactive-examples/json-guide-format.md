@@ -179,6 +179,7 @@ A single interactive step with "Show me" and "Do it" buttons.
 | `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop` actions)        |
 | `content`         | string   | ✅       | —                   | Markdown description shown to user                                 |
 | `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex, see below)           |
+| `targetstate`     | string   | ❌       | —                   | Desired end state for a toggle target (see below)                  |
 | `tooltip`         | string   | ❌       | —                   | Tooltip shown on highlight (supports markdown)                     |
 | `requirements`    | string[] | ❌       | —                   | Conditions that must be met                                        |
 | `objectives`      | string[] | ❌       | —                   | Objectives marked complete after this step                         |
@@ -195,15 +196,88 @@ A single interactive step with "Show me" and "Do it" buttons.
 
 **Action Types:**
 
-| Action      | Description                    | `reftarget`             | `targetvalue`                          |
-| ----------- | ------------------------------ | ----------------------- | -------------------------------------- |
-| `highlight` | Highlight an element           | CSS selector            | —                                      |
-| `button`    | Click a button                 | Button text or selector | —                                      |
-| `formfill`  | Enter text in input            | CSS selector            | Text to enter                          |
-| `navigate`  | Navigate to URL                | URL path                | —                                      |
-| `hover`     | Hover over element             | CSS selector            | —                                      |
-| `noop`      | Informational step (no action) | Optional                | —                                      |
-| `popout`    | Dock or undock the docs panel  | —                       | `"floating"` or `"sidebar"` (required) |
+| Action      | Description                    | `reftarget`             | `targetvalue`                          | `targetstate` |
+| ----------- | ------------------------------ | ----------------------- | -------------------------------------- | ------------- |
+| `highlight` | Highlight an element           | CSS selector            | —                                      | ✅            |
+| `button`    | Click a button                 | Button text or selector | —                                      | ✅            |
+| `formfill`  | Enter text in input            | CSS selector            | Text to enter                          | —             |
+| `navigate`  | Navigate to URL                | URL path                | —                                      | —             |
+| `hover`     | Hover over element             | CSS selector            | —                                      | —             |
+| `noop`      | Informational step (no action) | Optional                | —                                      | —             |
+| `popout`    | Dock or undock the docs panel  | —                       | `"floating"` or `"sidebar"` (required) | —             |
+
+**Toggle targets — `targetstate`:**
+
+Without `targetstate`, a step clicks its target unconditionally. For anything with
+toggle semantics that is a trap: the step's effect depends on where the user left
+the UI. Clicking Grafana's dashboard **+ New** button when the drawer is already
+open _closes_ it, taking the next step's target out of the DOM with it.
+
+`targetstate` declares the state you want instead of the click you want. The step
+reads the control, clicks only if the state differs, then re-reads to confirm — so
+it is safe to re-run and converges from either starting state.
+
+```json
+{
+  "type": "interactive",
+  "action": "highlight",
+  "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
+  "targetstate": "true",
+  "content": "Open the edit sidebar."
+}
+```
+
+`"true"` / `"false"` auto-detects the control's state signal, probing `checked`,
+`aria-pressed`, `aria-expanded`, `aria-checked`, `aria-selected`, and finally an
+`aria-label` that names the action ("Collapse …" means already expanded). If the
+step targets a wrapper, it descends to the control that actually holds the state —
+necessary for Grafana's `Switch`, where the stable `data-testid` sits on a wrapper
+whose click does nothing.
+
+A bare `true` / `false` is accepted too and means the same thing — validation
+coerces it to the string form. The stored value is always a string, because the
+backend `InteractiveGuide` CRD cannot model a field that is boolean-or-string
+(the generated Kubernetes schema would be invalid), and a raw boolean sent to
+that API is rejected. Prefer `"true"` when writing guides by hand so the file
+matches what round-trips.
+
+When a control carries its state somewhere else, name the attribute:
+
+```json
+{ "targetstate": "data-state:open" }
+```
+
+Naming an attribute also changes _where_ the state is read. The step looks for
+that attribute on the element you selected first, then on its descendants —
+rather than descending to the nearest checkbox or ARIA toggle, which is what the
+`true`/`false` form does. That matters because the named-attribute form exists
+for controls with no standard signal, so the element you point at usually is not
+one the auto-detector would recognise. The click still lands on the interactive
+control, which is not always the element carrying the attribute.
+
+A step with `targetstate` never blocks. Requirements are unaffected — the
+control exists in both states, so `exists-reftarget` still passes and "Do it"
+stays enabled. Pressing it when the control is already in the requested state
+does nothing and marks the step complete, so the user always moves on. Two
+cases warn rather than fail:
+
+- the control exposes no readable state → clicks unconditionally, i.e. exactly
+  today's behaviour
+- the click ran but the state did not change → completes, leaving the user free
+  to set it by hand
+
+So adding `targetstate` can never make a working step worse, and can never
+strand someone mid-guide.
+
+When there is nothing to change, the comment box says so — "Already in the right
+position — nothing to change." is prepended above your own comment, so the guide
+never instructs someone to flip a control that is already correct. This applies
+to "Show me", to each step of a multistep, and to guided steps, which complete
+straight away rather than waiting for a click that would undo the state.
+
+Note that `targetstate` does not auto-complete a top-level step on arrival — the
+user still presses "Do it", it just does nothing. Auto-completing an
+already-satisfied step is what `objectives` is for.
 
 **Formfill Validation:**
 
@@ -494,6 +568,28 @@ Executes multiple actions **automatically** when user clicks "Do it".
 | `objectives`   | string[]   | ❌       | Objectives tracked                |
 | `skippable`    | boolean    | ❌       | Allow skipping                    |
 
+Individual steps accept `targetstate` too, and a sequence is where toggles bite
+hardest — one blind click part-way through can remove the target the next step
+needs:
+
+```json
+{
+  "type": "multistep",
+  "content": "Open the edit sidebar and add a panel.",
+  "steps": [
+    {
+      "action": "highlight",
+      "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
+      "targetstate": "true"
+    },
+    {
+      "action": "highlight",
+      "reftarget": "div[data-testid='data-testid sidebar add new panel']"
+    }
+  ]
+}
+```
+
 #### Guided Block
 
 Highlights elements and **waits for user** to perform actions.
@@ -529,6 +625,12 @@ Highlights elements and **waits for user** to perform actions.
 | `requirements`  | string[]   | ❌       | Requirements for the block               |
 | `objectives`    | string[]   | ❌       | Objectives tracked                       |
 | `skippable`     | boolean    | ❌       | Allow skipping                           |
+
+Steps accept `targetstate` here too, with the meaning adjusted for a step the
+user performs: a control already in the requested state completes immediately
+instead of asking the user to click it. Without that, the guide would tell
+someone to click a toggle that is already correct, and their click would move it
+the wrong way.
 
 #### Quiz Block
 

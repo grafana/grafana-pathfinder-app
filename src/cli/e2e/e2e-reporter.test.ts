@@ -10,7 +10,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { E2E_REPORT_SCHEMA_VERSION, E2ETestReportSchema, type E2ETestReport } from './schemas/e2e-report.schema';
+import {
+  E2E_REPORT_SCHEMA_VERSION,
+  E2ETestReportSchema,
+  MultiGuideReportSchema,
+  type E2ETestReport,
+} from './schemas/e2e-report.schema';
 import {
   contentDigest,
   generateMultiGuideReport,
@@ -83,6 +88,16 @@ describe('generateMultiGuideReport — dependency-skipped guides', () => {
     expect(report.summary.totalGuides).toBe(2);
     expect(report.summary.skippedGuides).toBe(0);
     expect(report.guides.every((g) => g.abortReason === undefined)).toBe(true);
+  });
+
+  it('includes a schema-valid explicit metapackage selection', () => {
+    const report = generateMultiGuideReport([ranGuide('only-milestone')], undefined, {
+      id: 'single-milestone-path',
+      type: 'path',
+    });
+
+    expect(report.selection).toEqual({ id: 'single-milestone-path', type: 'path' });
+    expect(() => MultiGuideReportSchema.parse(report)).not.toThrow();
   });
 
   it('counts provisioning failures as failed guides', () => {

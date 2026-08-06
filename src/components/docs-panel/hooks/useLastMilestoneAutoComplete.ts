@@ -34,7 +34,8 @@ export function useLastMilestoneAutoComplete({
   contentRef,
 }: UseLastMilestoneAutoCompleteParams): void {
   React.useEffect(() => {
-    if (!stableContent || stableContent.type !== 'learning-journey' || !activeTab?.currentUrl || !activeTab?.baseUrl) {
+    const journey = stableContent?.metadata.learningJourney;
+    if (!stableContent || stableContent.type !== 'learning-journey' || !journey || !activeTab?.currentUrl) {
       return;
     }
 
@@ -52,8 +53,8 @@ export function useLastMilestoneAutoComplete({
       if (!hasInteractiveSteps) {
         const slug = getMilestoneSlug(activeTab.currentUrl!);
         if (slug) {
-          void markMilestoneDone(activeTab.baseUrl!, slug, stableContent.metadata?.learningJourney?.totalMilestones, {
-            packageManifest: stableContent.metadata?.packageManifest,
+          void markMilestoneDone(journey.baseUrl, slug, journey.totalMilestones, {
+            packageManifest: stableContent.metadata.packageManifest,
             guideTitle: activeTab.title,
           });
         }
@@ -65,5 +66,5 @@ export function useLastMilestoneAutoComplete({
     // milestone-by-milestone `currentUrl` changes is the load-bearing trigger.
     // `activeTab.title` is only read to label the completion fact; re-arming
     // the timer on a title change is harmless.
-  }, [stableContent, activeTab?.currentUrl, activeTab?.baseUrl, activeTab?.title, contentRef]);
+  }, [stableContent, activeTab?.currentUrl, activeTab?.title, contentRef]);
 }

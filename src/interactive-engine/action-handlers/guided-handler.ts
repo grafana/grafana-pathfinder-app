@@ -13,11 +13,13 @@ import { withFaroUserAction } from '../../lib/faro';
 import { createInteractionName, UserInteraction } from '../../lib/analytics';
 import { type CompletionResult, outcomeFromCompletionResult } from '../outcome-classifier';
 import { isCssSelector } from '../../lib/dom/selector-detector';
+import { parseTargetState, resolveStateSource, satisfiesTargetState } from '../../lib/dom/toggle-state';
 import { GuidedAction } from '../../types/interactive-actions.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { matchFormValue } from '../auto-completion/action-matcher';
 import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
+import { commentForTargetState } from './toggle-click';
 
 export type { CompletionResult };
 
@@ -175,7 +177,9 @@ export class GuidedHandler {
         targetAction,
         stepIndex,
         totalSteps,
-        action.targetComment,
+        // The completion listener above already resolved if the state matched,
+        // so without this the box would flash "click this" and vanish.
+        commentForTargetState(action.targetComment, targetElement, action.targetState),
         action.isSkippable,
         action.formHint, // Pass form hint for formfill validation feedback
         action.targetValue, // Pass target value for data-test-target-value attribute
@@ -641,6 +645,17 @@ export class GuidedHandler {
     // Create completion promise based on action type (listener attached immediately)
     // Note: This method is only called for non-noop actions, so we can safely narrow the type
     const actionType = action.targetAction as 'hover' | 'button' | 'highlight' | 'formfill';
+
+    // A toggle already in the requested state must not be handed to the user to
+    // click — clicking it would move it away, which is the whole toggle problem
+    // with a human in the loop. Mirrors the pre-filled formfill case below.
+    if (actionType === 'button' || actionType === 'highlight') {
+      const target = parseTargetState(action.targetState);
+      if (target && satisfiesTargetState(resolveStateSource(targetElement, target), target) === true) {
+        return Promise.resolve('completed');
+      }
+    }
+
     const completionPromise = this.attachCompletionListener(
       actionType,
       targetElement,
