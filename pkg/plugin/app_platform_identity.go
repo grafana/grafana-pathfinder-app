@@ -17,7 +17,9 @@ import (
 // Trust boundary: structural (non-signature) validation is defensible only
 // because requests reach the plugin exclusively via Grafana's trusted
 // server→plugin forwarding — see "App Platform proxies — identity trust
-// boundary" in docs/developer/CODA.md.
+// boundary" in docs/developer/CODA.md. The ID token is an identity
+// attestation, never an outbound credential: proxy routes exchange it for an
+// access token (pkg/plugin/auth) and send that instead.
 
 // validIDToken reports whether the request carries a structurally valid
 // Grafana ID token: well-formed JWT with `exp` present and unexpired.
@@ -37,16 +39,6 @@ func subjectFromIDToken(r *http.Request) (string, bool) {
 	return sub, true
 }
 
-// forwardIdentityHeaders stamps the outbound identity for plugin→aggregator
-// calls: `Authorization: Bearer <id-token>` plus the ID-token header, both
-// synthesized from the caller's inbound ID token. Never forward Cookie, and
-// never replay the inbound Authorization header — Grafana strips it before
-// plugin resource handlers.
-func forwardIdentityHeaders(dst http.Header, idToken string) {
-	dst.Set("Authorization", "Bearer "+idToken)
-	dst.Set(backend.GrafanaUserSignInTokenHeaderName, idToken)
-}
-
 // completionWriterIdentity derives the server-stamped identity for a completion
 // write from the caller's forwarded Grafana context. The stable user id (the
 // ID-token `sub`) is REQUIRED and fails closed. Login and display name are
@@ -54,6 +46,11 @@ func forwardIdentityHeaders(dst http.Header, idToken string) {
 // permitted value): the ID-token `username`/`name` claims first, then the
 // trusted PluginContext.User (the SDK's authenticated session, matching
 // coda_exec.go), never the spoofable raw X-Grafana-User header.
+//
+// Every value here comes from the INBOUND request. The outbound on-behalf-of
+// access token is a credential, not the source of the stamped subject — moving
+// identity onto it would silently change what gets attributed
+// (TestCompletionWrite_SubjectComesFromInboundIDToken pins this).
 func completionWriterIdentity(r *http.Request) (userID, userLogin, userDisplayName string, ok bool) {
 	userID, ok = subjectFromIDToken(r)
 	if !ok {

@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,7 +13,23 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
+	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
+
+// stubMinter stands in for auth.Exchanger so client tests never need an
+// auth-api: it echoes a fixed token, or fails when err is set.
+type stubMinter struct {
+	token string
+	err   error
+}
+
+func (s stubMinter) Mint(context.Context, string) (string, error) {
+	if s.err != nil {
+		return "", s.err
+	}
+	return s.token, nil
+}
 
 func TestBuildAppPlatformURL(t *testing.T) {
 	got := buildAppPlatformURL("http://grafana.example/", "pathfinderbackend.ext.grafana.app/v1alpha1", "stacks-1", "completionrecords")
@@ -27,9 +44,9 @@ func TestBuildAppPlatformURL(t *testing.T) {
 	}
 }
 
-// The on-the-wire outbound identity contract: Authorization Bearer + ID-token
-// header derived from the caller's ID token, and never a Cookie or a replayed
-// inbound Authorization value.
+// The on-the-wire outbound credential contract: the minted access token on
+// X-Access-Token, and nothing else — no ID token in either header slot, no
+// Cookie, no replayed inbound Authorization value.
 func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 	var gotHeaders []http.Header
 	var gotQueries []string
@@ -47,7 +64,7 @@ func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newCompletionHTTPClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	c := newCompletionHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 
 	page1, err := c.ListPage(context.Background(), "stacks-1", "")
 	if err != nil {
@@ -61,11 +78,16 @@ func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 	}
 
 	for i, h := range gotHeaders {
-		if got := h.Get("Authorization"); got != "Bearer id-token-abc" {
-			t.Errorf("request %d: Authorization = %q, want Bearer id-token-abc", i, got)
+		if got := h.Get(auth.AccessTokenHeader); got != "at-xyz" {
+			t.Errorf("request %d: %s = %q, want the minted token at-xyz", i, auth.AccessTokenHeader, got)
 		}
-		if got := h.Get(backend.GrafanaUserSignInTokenHeaderName); got != "id-token-abc" {
-			t.Errorf("request %d: %s = %q, want id-token-abc", i, backend.GrafanaUserSignInTokenHeaderName, got)
+		// The ID token is an attestation, not a credential: it must not leave the
+		// plugin, in either header slot.
+		if got := h.Get("Authorization"); got != "" {
+			t.Errorf("request %d: Authorization must not be sent, got %q", i, got)
+		}
+		if got := h.Get(backend.GrafanaUserSignInTokenHeaderName); got != "" {
+			t.Errorf("request %d: %s must not be sent, got %q", i, backend.GrafanaUserSignInTokenHeaderName, got)
 		}
 		if got := h.Get("Cookie"); got != "" {
 			t.Errorf("request %d: Cookie must never be forwarded, got %q", i, got)
@@ -76,6 +98,31 @@ func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 	}
 	if gotQueries[1] != "continue=tok-2&limit=500" {
 		t.Errorf("second query = %q, want continue token + limit", gotQueries[1])
+	}
+}
+
+// A failed exchange must abort the request rather than fall back to an
+// unauthenticated call, and must stay transient (no HTTP status) so the caller
+// retries instead of caching a terminal failure.
+func TestAppPlatformListClient_MintFailureAbortsRequest(t *testing.T) {
+	var upstreamCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{}})
+	}))
+	defer srv.Close()
+
+	c := newCompletionHTTPClient(srv.URL, stubMinter{err: errors.New("exchange refused")}, "id-token-abc", log.DefaultLogger)
+
+	_, err := c.ListPage(context.Background(), "stacks-1", "")
+	if err == nil {
+		t.Fatal("expected an error when the exchange fails")
+	}
+	if upstreamCalls != 0 {
+		t.Errorf("upstream was called %d times, want 0", upstreamCalls)
+	}
+	if isTerminalUpstreamError(err) {
+		t.Errorf("mint failure should be transient, got terminal: %v", err)
 	}
 }
 
@@ -115,11 +162,14 @@ func TestAppPlatformCreateClient_RequestContract(t *testing.T) {
 		if r.URL.Path != "/apis/g/v1/namespaces/stacks-1/things" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
-		if got := r.Header.Get("Authorization"); got != "Bearer id-token-abc" {
-			t.Errorf("Authorization = %q", got)
+		if got := r.Header.Get(auth.AccessTokenHeader); got != "at-xyz" {
+			t.Errorf("%s = %q, want the minted token at-xyz", auth.AccessTokenHeader, got)
 		}
-		if got := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName); got != "id-token-abc" {
-			t.Errorf("%s = %q", backend.GrafanaUserSignInTokenHeaderName, got)
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Errorf("Authorization must not be sent, got %q", got)
+		}
+		if got := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName); got != "" {
+			t.Errorf("%s must not be sent, got %q", backend.GrafanaUserSignInTokenHeaderName, got)
 		}
 		if got := r.Header.Get("Content-Type"); got != "application/json" {
 			t.Errorf("Content-Type = %q", got)
@@ -133,16 +183,48 @@ func TestAppPlatformCreateClient_RequestContract(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newAppPlatformListClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	client := newAppPlatformListClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	if err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(payload), 1024); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 }
 
+// The create path's companion to TestAppPlatformListClient_MintFailureAbortsRequest:
+// a failed exchange must abort BEFORE any upstream POST (never fall back to an
+// unauthenticated write), stay transient so the queued fact is retried rather
+// than dropped, and be distinguishable as an exchange failure so the handler can
+// log it loudly.
+func TestAppPlatformCreateClient_MintFailureAbortsRequest(t *testing.T) {
+	var upstreamCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	client := newAppPlatformListClient(srv.URL, stubMinter{err: errors.New("exchange refused")}, "id-token-abc", log.DefaultLogger)
+	err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), 1024)
+	if err == nil {
+		t.Fatal("expected an error when the exchange fails")
+	}
+	if upstreamCalls != 0 {
+		t.Errorf("upstream was called %d times, want 0", upstreamCalls)
+	}
+	if _, hasStatus := upstreamStatusOf(err); hasStatus {
+		t.Errorf("a mint failure must carry no upstream status (so it classifies transient): %v", err)
+	}
+	if isTerminalUpstreamError(err) {
+		t.Errorf("mint failure should be transient, got terminal: %v", err)
+	}
+	if !isTokenExchangeError(err) {
+		t.Errorf("mint failure must be identifiable as a token-exchange error: %v", err)
+	}
+}
+
 // TestCompletionHTTPClient_Create_WireComposition composes the production
 // completionHTTPClient.Create over the real HTTP adapter and pins the on-the-wire
-// contract the CRD sees: the completionrecords collection URL, the forwarded
-// identity headers, and the COMPLETE serialized CompletionRecord object
+// contract the CRD sees: the completionrecords collection URL, the outbound
+// credential headers, and the COMPLETE serialized CompletionRecord object
 // (apiVersion/kind/metadata + full spec). The handler and adapter layers can each
 // pass in isolation while this composition drifts — finding 5.
 func TestCompletionHTTPClient_Create_WireComposition(t *testing.T) {
@@ -158,7 +240,7 @@ func TestCompletionHTTPClient_Create_WireComposition(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newCompletionHTTPClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	client := newCompletionHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	spec := completionRecordWriteSpec{
 		GuideID: "first-dashboard", GuideSource: "bundled", GuideTitle: "First dashboard",
 		PathID: "", Source: "objectives", CompletedAt: "2026-07-20T10:00:00Z",
@@ -175,11 +257,22 @@ func TestCompletionHTTPClient_Create_WireComposition(t *testing.T) {
 	if gotPath != wantPath {
 		t.Errorf("path = %q, want %q", gotPath, wantPath)
 	}
-	if got := gotHeaders.Get("Authorization"); got != "Bearer id-token-abc" {
-		t.Errorf("Authorization = %q, want Bearer id-token-abc", got)
+	// The regression guard for the credential model: the write must carry the
+	// minted on-behalf-of access token and NOTHING else. An ID token in either
+	// header slot is a credential nothing on the outbound path accepts — it 401s
+	// at our own stack — and stubbing the upstream is exactly what let that pass
+	// green before, so assert the absence explicitly.
+	if got := gotHeaders.Get(auth.AccessTokenHeader); got != "at-xyz" {
+		t.Errorf("%s = %q, want the minted token at-xyz", auth.AccessTokenHeader, got)
 	}
-	if got := gotHeaders.Get(backend.GrafanaUserSignInTokenHeaderName); got != "id-token-abc" {
-		t.Errorf("%s = %q, want id-token-abc", backend.GrafanaUserSignInTokenHeaderName, got)
+	if got := gotHeaders.Get("Authorization"); got != "" {
+		t.Errorf("Authorization must not be sent on a create, got %q", got)
+	}
+	if got := gotHeaders.Get(backend.GrafanaUserSignInTokenHeaderName); got != "" {
+		t.Errorf("%s must not be sent on a create, got %q", backend.GrafanaUserSignInTokenHeaderName, got)
+	}
+	if got := gotHeaders.Get("Cookie"); got != "" {
+		t.Errorf("Cookie must never be forwarded, got %q", got)
 	}
 	if got := gotHeaders.Get("Content-Type"); got != "application/json" {
 		t.Errorf("Content-Type = %q, want application/json", got)
@@ -237,7 +330,7 @@ func TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable(t *testi
 	}))
 	defer srv.Close()
 
-	client := newCompletionHTTPClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	client := newCompletionHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	obj := completionRecordObject{Metadata: completionRecordObjectMeta{Name: "completion-abc"}}
 	if err := client.Create(context.Background(), "stacks-1", obj); err != nil {
 		t.Fatalf("Create returned error on an over-cap 201 body: %v (must be treated as success)", err)
@@ -271,6 +364,7 @@ func (successThenBodyReadErrorTransport) RoundTrip(*http.Request) (*http.Respons
 func TestAppPlatformCreateClient_SuccessBodyReadErrorIsNotRetryable(t *testing.T) {
 	client := &appPlatformListClient{
 		appURL:     "http://example.invalid",
+		minter:     stubMinter{token: "at-xyz"},
 		idToken:    "id-token-abc",
 		httpClient: &http.Client{Transport: successThenBodyReadErrorTransport{}},
 		logger:     log.DefaultLogger,
@@ -282,19 +376,26 @@ func TestAppPlatformCreateClient_SuccessBodyReadErrorIsNotRetryable(t *testing.T
 
 // TestAppPlatformCreateClient_RedirectNeverFollowed proves the C1 contract: an
 // authenticated create that receives a 3xx must NOT follow it — the redirect
-// target receives neither the ID token nor the POST body, and the redirected
-// response is surfaced as a non-contract upstream status (classified transient,
-// never acknowledged as a durable create). Covers 302, 307, and 308: 307/308
-// preserve the method and body, so they are the dangerous replay cases.
+// target receives neither the outbound credential nor the POST body, and the
+// redirected response is surfaced as a non-contract upstream status (classified
+// transient, never acknowledged as a durable create). Covers 302, 307, and 308:
+// 307/308 preserve the method and body, so they are the dangerous replay cases.
+//
+// The stake rose with the on-behalf-of model: the header at risk is now
+// X-Access-Token carrying a live minted bearer credential, which is strictly
+// worse to leak than an identity attestation. Go does not treat that custom
+// header as sensitive, so nothing but CheckRedirect stops it crossing origins.
 func TestAppPlatformCreateClient_RedirectNeverFollowed(t *testing.T) {
 	for _, code := range []int{http.StatusFound, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
 		t.Run(fmt.Sprintf("%d", code), func(t *testing.T) {
 			var targetHits int
-			var targetSawToken, targetSawBody bool
+			var targetSawCredential, targetSawBody bool
 			target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				targetHits++
-				if r.Header.Get("Authorization") != "" || r.Header.Get(backend.GrafanaUserSignInTokenHeaderName) != "" {
-					targetSawToken = true
+				if r.Header.Get(auth.AccessTokenHeader) != "" ||
+					r.Header.Get("Authorization") != "" ||
+					r.Header.Get(backend.GrafanaUserSignInTokenHeaderName) != "" {
+					targetSawCredential = true
 				}
 				if body, _ := io.ReadAll(r.Body); len(body) > 0 {
 					targetSawBody = true
@@ -309,7 +410,7 @@ func TestAppPlatformCreateClient_RedirectNeverFollowed(t *testing.T) {
 			}))
 			defer redirector.Close()
 
-			client := newAppPlatformListClient(redirector.URL, "id-token-secret", log.DefaultLogger)
+			client := newAppPlatformListClient(redirector.URL, stubMinter{token: "at-secret"}, "id-token-secret", log.DefaultLogger)
 			err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{"secret":"payload"}`), 1024)
 			if err == nil {
 				t.Fatalf("a %d redirect must not be acknowledged as a durable create", code)
@@ -324,13 +425,52 @@ func TestAppPlatformCreateClient_RedirectNeverFollowed(t *testing.T) {
 			if targetHits != 0 {
 				t.Errorf("redirect target received %d requests, want 0 (redirect must not be followed)", targetHits)
 			}
-			if targetSawToken {
-				t.Error("redirect target received the ID token — credential exfiltration")
+			if targetSawCredential {
+				t.Error("redirect target received the minted access token — credential exfiltration")
 			}
 			if targetSawBody {
 				t.Error("redirect target received the POST body")
 			}
 		})
+	}
+}
+
+// The LIST companion to the create redirect test: a GET that receives a 3xx must
+// not follow it either, so the minted credential never crosses to the redirect
+// target.
+func TestAppPlatformListClient_RedirectNeverFollowed(t *testing.T) {
+	var targetHits int
+	var targetSawCredential bool
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetHits++
+		if r.Header.Get(auth.AccessTokenHeader) != "" ||
+			r.Header.Get("Authorization") != "" ||
+			r.Header.Get(backend.GrafanaUserSignInTokenHeaderName) != "" {
+			targetSawCredential = true
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{}})
+	}))
+	defer target.Close()
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", target.URL+"/redirected")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	client := newCompletionHTTPClient(redirector.URL, stubMinter{token: "at-secret"}, "id-token-secret", log.DefaultLogger)
+	_, err := client.ListPage(context.Background(), "stacks-1", "")
+	if err == nil {
+		t.Fatal("an unfollowed redirect must surface as an error, not an empty page")
+	}
+	if status, ok := upstreamStatusOf(err); !ok || status != http.StatusFound {
+		t.Fatalf("upstream status = %d (%v), want the unfollowed 302", status, ok)
+	}
+	if targetHits != 0 {
+		t.Errorf("redirect target received %d requests, want 0", targetHits)
+	}
+	if targetSawCredential {
+		t.Error("redirect target received the minted access token — credential exfiltration")
 	}
 }
 
@@ -366,7 +506,7 @@ func TestAppPlatformCreateClient_ResponseContract(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client := newAppPlatformListClient(srv.URL, "id-token-abc", log.DefaultLogger)
+			client := newAppPlatformListClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 			err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), tc.maxBytes)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)

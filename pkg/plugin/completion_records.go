@@ -610,12 +610,22 @@ func (a *App) resolveCompletionBackend(r *http.Request) (lister completionRecord
 	if completionListerOverride != nil {
 		return completionListerOverride, namespace, true, ""
 	}
-	return newCompletionHTTPClient(appURL, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+	if a.oboExchanger == nil {
+		return nil, namespace, false, reasonOBOUnavailable
+	}
+	return newCompletionHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
 }
 
 // resolveCompletionWriteBackend is the write-path companion to
 // resolveCompletionBackend: same structural-availability gate, but it returns a
 // creator (POST) and honors completionCreatorOverride for tests.
+//
+// The nil-exchanger guard is repeated here rather than folded into
+// resolveCompletionConfig because each resolver applies it AFTER its own test
+// override, and because it must not be possible to add a third resolver that
+// silently inherits a real client with no credential. A stack with no
+// provisioned on-behalf-of token takes the structural path (→ 404 → the front
+// end disarms the session and keeps its queued facts), never a hard failure.
 func (a *App) resolveCompletionWriteBackend(r *http.Request) (creator completionRecordCreator, namespace string, available bool, reason string) {
 	appURL, namespace, idToken, available, reason := a.resolveCompletionConfig(r)
 	if !available {
@@ -624,7 +634,10 @@ func (a *App) resolveCompletionWriteBackend(r *http.Request) (creator completion
 	if completionCreatorOverride != nil {
 		return completionCreatorOverride, namespace, true, ""
 	}
-	return newCompletionHTTPClient(appURL, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+	if a.oboExchanger == nil {
+		return nil, namespace, false, reasonOBOUnavailable
+	}
+	return newCompletionHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
 }
 
 // resolveCompletionConfig resolves the shared "is the aggregated CRUD API

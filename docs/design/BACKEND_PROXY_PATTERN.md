@@ -1,10 +1,11 @@
 # Backend App Platform proxy pattern
 
 **Scope:** plugin-backend (`pkg/plugin/`) routes that proxy a paginated App Platform CRUD
-endpoint served by the pathfinder-backend aggregator. Completion records live on
-`pathfinderbackend.ext.grafana.app/v1alpha1`; the custom-guide catalogue is served on the older
-`pathfinderbackend.ext.grafana.com/v1alpha1` group and is migrated separately by its owner. Each
-group is advertised by its own boot toggle (below), so the two surfaces gate independently.
+endpoint served by the pathfinder-backend aggregator. Both current proxies — completion records
+and the custom-guide catalogue — address `pathfinderbackend.ext.grafana.app/v1alpha1`; the older
+`pathfinderbackend.ext.grafana.com/v1alpha1` group is legacy and no longer gates either surface.
+A group's boot toggle says its aggregation layer is served, which is a precondition and not the
+availability answer — see §8.
 
 **Why this doc exists:** pathfinder-backend is CRD-only — only its manifest deploys, custom
 server code never runs — so every piece of intelligence (identity, caching, collation, failure
@@ -81,22 +82,29 @@ the fixed internal aggregator.
 
 ### Outbound (plugin → aggregator)
 
-- Forward **identity derived from the ID token only**, via ONE shared
-  `forwardIdentityHeaders(dst, token)` helper so proxies cannot drift.
-- The only runtime-verified configuration (dev-stack smoke, commit `89d6bd5e` on
-  `feat/external-import-api`) is `Authorization: Bearer <id-token>` **+** `X-Grafana-Id`, both
-  synthesized from the inbound ID token, with the `idForwarding` toggle on (standard on Cloud).
-  That evidence is from the sibling guides-import proxy — same aggregator, different kind — not
-  from these routes themselves; extrapolating is reasonable, but each new proxy confirms the
-  header set via its own §10 runtime smoke. Start with both headers; if a live smoke proves
-  `X-Grafana-Id` alone suffices, narrow to that and record it.
+- Send **one credential: an access token minted for the caller**, on `X-Access-Token`, via the
+  shared `pkg/plugin/auth` exchanger so proxies cannot drift.
+- **An ID token is not a credential.** It is an identity attestation, and nothing on the outbound
+  path accepts one on its own: Grafana's front door only reads an access token from
+  `X-Access-Token` (`ExtendedJWT`), and an ID token placed in `Authorization: Bearer` is claimed
+  by the API-key client and then fails to decode, so the request 401s at the plugin's own stack
+  and never reaches the aggregator. An earlier revision of this section recommended
+  `Authorization: Bearer <id-token>` + `X-Grafana-Id` on the strength of a dev-stack smoke that
+  had, in fact, only ever been run with a `glsa_` service-account token. Do not reintroduce it.
+- The exchange is the same flow `grafana-dbo11y-app` runs in production: exchange the inbound
+  `X-Grafana-Id` for an on-behalf-of access token at auth-api, using the CAP token
+  stack-state-service provisions into the plugin's `secureJsonData`, then send that. The minted
+  token carries the user in its actor claim, so no separate identity header goes with it. The
+  instance's embedded aggregator signs the onward hop to GAP itself, which is why the audience is
+  the stack's own front door (`grafana`) and not the API group.
+- **A stack with no provisioned CAP token is structurally unavailable** (`reason:
+"obo-unavailable"`), not a transient failure. A failed exchange, by contrast, is transient: it
+  carries no HTTP status, so the shared classifier retries rather than caching a terminal result.
 - **Never forward `Cookie`.** No branch in this repo's history has ever needed it against the
   aggregator; the caller's full session is the broadest possible ambient grant and the classic
   confused-deputy shape.
 - **Never replay the inbound `Authorization` header.** Grafana strips it before plugin resource
-  handlers (verified on a dev stack: every Editor call returned 502 "authorization header
-  missing" until the ID-token switch), so replaying it forwards an absent header — dead code that
-  reads as load-bearing.
+  handlers, so replaying it forwards an absent header — dead code that reads as load-bearing.
 - Write down the trust assumption **once**, in `docs/developer/CODA.md`, identically for all
   proxies: structural (non-signature) JWT validation is defensible _only_ because requests reach
   the plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend
@@ -182,10 +190,14 @@ One definition each, package-wide:
 
 - the aggregation feature-toggle name — one Go constant per served group, never a scattered
   literal: `completionRecordsAggregationToggle`
-  (`aggregation.pathfinderbackend-ext-grafana-app.enabled`) gates the completion routes, and the
-  older `pathfinderBackendAggregationToggle` (`…-grafana-com.enabled`) gates the custom-guide
-  surface. Distinct groups take distinct toggles; do not collapse them onto one constant;
-- the identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `forwardIdentityHeaders`;
+  (`aggregation.pathfinderbackend-ext-grafana-app.enabled`) and the older
+  `pathfinderBackendAggregationToggle` (`…-grafana-com.enabled`). Note what the toggle does and
+  does not tell you: it reports that an aggregation layer is served, so a real stack can (and
+  does) report **both** true at once. It is a precondition, not the availability answer — route
+  availability is whatever the capability/resolver path returns, which additionally requires an
+  app URL, a namespace, and a provisioned on-behalf-of credential;
+- the identity helpers (§3): `validIDToken`, `subjectFromIDToken`, and the `pkg/plugin/auth`
+  token exchanger every proxy authenticates with;
 - the paginated LIST client + `buildAppPlatformURL` (§1);
 - the single-flight + cache scaffolding (done-channel, `WithoutCancel`, per-namespace map);
 - the existing `timeNow` seam (`package_recommendations.go`) — **all** time reads go through it:
@@ -230,9 +242,13 @@ deployed plugin proxy), so the proxy exists not to lend privilege but for
 what a direct client write does not do for us: server-stamp identity/org/stack fields (the CRD
 validates field presence, not truth), enforce a per-user rate limit, invalidate the read cache on
 create, and classify failures into the transient/terminal taxonomy the front-end queue consumes.
-**Trust model (MVP):** because a Viewer can create the same CRD directly, these are
+**Trust model (today):** because a Viewer can create the same CRD directly, these are
 **lightweight self-reported records, not attested facts** — the server stamping is a best-effort
-convenience, not an enforced identity boundary. The residual merge gate
+convenience, not an enforced identity boundary. That is a **current, time-bounded limitation, not
+a permanent design property**: closing the forgery gap with a platform-side operator is under
+active discussion with the App Platform team, and this paragraph should be revisited when that
+lands. Until then, do not describe these records as enforced attribution — and do not describe the
+gap as unfixable. The residual merge gate
 is a live Viewer-attributed write through the _deployed_ plugin proxy — proving the proxy's identity
 forwarding end-to-end, not the RBAC layer, which is now cleared. The proxy reuses the read
 shape's shared machinery — the URL builder (§1), trusted-context namespace (§2), the identity
@@ -285,17 +301,28 @@ where a create differs from a read:
   the next load); the 404 is never a per-record drop and is never remapped to another status.
   The full status/outcome table: **201** created (durable); **401** transient — echoed verbatim and
   retried client-side after re-auth (an expired session/token recovers), the one 4xx that is not a
-  drop; **404** structural disarm/keep; **408 / 429 / 5xx / 3xx / network** transient; **all other
+  drop; **404** structural disarm/keep; **408 / 429 / 5xx / 3xx / network / token-exchange failure**
+  transient; **all other
   4xx** terminal (validation / schema — the client drops it), **including 403**: an upstream 403 is
   a systemic RBAC/grant-rollout denial that will not fix itself by retrying, so it is terminal/drop
   and logged at a Faro-visible level (warn), not treated as transient. On the transient path the
   client retries with capped exponential backoff — the proxy sets `Retry-After` as a standard hint,
   but Grafana's `backendSrv` strips response headers from its thrown `FetchError`, so the front-end
   client cannot honor it. Redirects are never followed on an
-  authenticated call (an unfollowed 3xx would otherwise leak the ID token / replay the POST body to
-  the redirect target); the App Platform create accepts only 200/201, and any other 2xx or 3xx is
+  authenticated call: the outbound credential is now a **minted on-behalf-of access token** — a
+  live bearer credential, strictly worse to leak than an identity attestation — and Go does not
+  classify the custom `X-Access-Token` header as sensitive, so a followed cross-origin 3xx would
+  hand it (and, on 307/308, the POST body) to the redirect target. The App Platform create accepts
+  only 200/201, and any other 2xx or 3xx is
   treated as an invalid upstream response and mapped to a retryable 502. The same idempotency key is
   sent on every retry, so a committed-but-unacknowledged write resolves to a 409 idempotent success.
+- **Credential availability is structural, exchange failure is not.** The write resolver gates on a
+  provisioned on-behalf-of exchanger exactly as the read resolver does: absent → `obo-unavailable`
+  → 404 → the client disarms the session and keeps its queued facts. A _failed exchange_ on a
+  provisioned stack is the opposite case — an auth-api blip that recovers — so it carries no HTTP
+  status and rides the existing transient path. It is logged at **warn** (Faro-visible), because
+  the one bad shape here, a provisioned credential whose environment is missing its
+  delegated-permissions grant, would otherwise retry silently until the 30-day retention horizon.
 
 **Store cutover (`.com` → `.app`).** Completion records read and write exclusively on the `.app`
 group; `main` previously read the legacy `.com` group. The backend owner **confirmed the legacy
@@ -341,10 +368,10 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 - Namespace from trusted context; delete `?namespace=` + `isValidNamespace` (§2)
 - Structurally validate the ID token via the shared helper; fail closed before the upstream call
   (§3) — today the token is forwarded verbatim with only a presence check
-- Outbound: add `Authorization: Bearer <id-token>` alongside `X-Grafana-Id` via the shared
-  `forwardIdentityHeaders` helper (§3) — today it sends `X-Grafana-Id` only
-  (`custom_guide_repository.go:285`), half the runtime-verified shape, and may not authenticate
-  against the aggregator on a real stack. Both PRs must terminate at the same helper output
+- Outbound: mint an on-behalf-of access token from the inbound ID token and send it on
+  `X-Access-Token` via the shared `pkg/plugin/auth` exchanger (§3). Forwarding the ID token in any
+  header slot does not authenticate against the aggregator on a real stack. Both PRs must
+  terminate at the same exchanger
 - Missing/invalid identity → soft-200 `identity-unavailable` capability envelope, not 401 (§7)
 - Paginate (`limit` + `continue`) + aggregate budget + aggregate deadline (§1) — today a single
   request ignores `metadata.continue` entirely
@@ -358,9 +385,9 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 
 ### PR #1398 (completion records) — smaller delta
 
-- Outbound headers: drop `Cookie`; replace the verbatim `Authorization` replay (Grafana strips
-  the inbound header, so it forwards nothing) with `Bearer <id-token>` derived from
-  `X-Grafana-Id` — the runtime-verified shape — via the shared helper (§3)
+- Outbound headers: drop `Cookie`; drop the verbatim `Authorization` replay (Grafana strips the
+  inbound header, so it forwards nothing) and send only an access token minted from `X-Grafana-Id`
+  on `X-Access-Token`, via the shared `pkg/plugin/auth` exchanger (§3)
 - Reject `exp == 0` in `subjectFromIDToken`; the `typed prefix preserved verbatim` case in
   `completion_identity_test.go` builds its token with no `exp` claim and asserts success — give
   it a real `exp` and add an explicit missing-`exp` rejection case (§3, §10)

@@ -69,9 +69,11 @@ func rec(userID, guideSource, guideID, title, category, pathID, source, complete
 }
 
 // testGrafanaConfig is the healthy config shared by the completion and
-// custom-guide proxy tests: both aggregation toggles on (they gate on different
-// group-derived toggles — completion on the .app group, custom guides on the
-// .com group) and an app URL set.
+// custom-guide proxy tests: the aggregation toggles on and an app URL set.
+// Both the legacy `.com` and the `.app` toggle are enabled because a real stack
+// reports both true — the toggle says an aggregation layer is served, not which
+// platform or which route is usable. Route availability comes from the
+// capability/resolver path, which these tests exercise directly.
 func testGrafanaConfig() map[string]string {
 	return map[string]string{
 		featuretoggles.EnabledFeatures: completionRecordsAggregationToggle + "," + pathfinderBackendAggregationToggle,

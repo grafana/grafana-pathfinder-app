@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
+	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
 
 // Shared paginated LIST client for App Platform proxy routes
@@ -36,11 +38,11 @@ func aggregationToggle(group string) string {
 	return "aggregation." + strings.ReplaceAll(group, ".", "-") + ".enabled"
 }
 
-// pathfinderBackendAggregationToggle mirrors the front-end availability check
-// in src/utils/fetchBackendGuides.ts: the boot-time toggle the aggregation
-// layer sets when the pathfinderbackend API is served on this instance.
-// Still hand-written on the legacy .com group (issues #1431/#1432); a future
-// consumer of aggregationToggle once that group is migrated.
+// pathfinderBackendAggregationToggle is the legacy .com group's boot toggle
+// (issues #1431/#1432). Both proxies now address the .app group, so nothing
+// gates on this; it is kept as the named counterpart that pins the .app toggle
+// derivation against a silent rename. A real stack reports BOTH toggles true, so
+// neither one answers "is this route usable here?" — the resolvers do.
 const pathfinderBackendAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-com.enabled"
 
 // appPlatformUpstreamTimeout caps a single LIST page fetch. The aggregate
@@ -68,27 +70,71 @@ type appPlatformListPage struct {
 	Continue string
 }
 
+// accessTokenMinter exchanges a caller's ID token for a short-lived access
+// token scoped to that user. Satisfied by auth.Exchanger; an interface here so
+// tests can stub the exchange without an auth-api.
+type accessTokenMinter interface {
+	Mint(ctx context.Context, idToken string) (string, error)
+}
+
+// tokenExchangeError marks a failure to MINT the outbound on-behalf-of
+// credential, as distinct from a failure of the upstream call itself. It
+// carries no HTTP status, so the shared classifier already treats it as
+// transient — an auth-api blip recovers on a later attempt, which is the
+// intended behaviour. The distinct type exists so a caller can log it loudly:
+// exchange failing while a credential IS provisioned means the environment is
+// missing its delegated-permissions grant, and that would otherwise retry
+// silently until the retention horizon. Structural absence of a credential is
+// a different case entirely and never reaches here — the resolvers gate on a
+// nil exchanger and report reasonOBOUnavailable instead.
+type tokenExchangeError struct{ err error }
+
+func (e *tokenExchangeError) Error() string { return "mint access token: " + e.err.Error() }
+func (e *tokenExchangeError) Unwrap() error { return e.err }
+
+// isTokenExchangeError reports whether a failure came from the token exchange
+// rather than from the upstream App Platform call.
+func isTokenExchangeError(err error) bool {
+	var te *tokenExchangeError
+	return errors.As(err, &te)
+}
+
+// mintAccessToken exchanges the caller's ID token for the outbound credential.
+// Minting per request rather than per client is deliberate: authlib caches by
+// subject for most of the token's 10-minute life, so this is a cache hit on all
+// but the first call for a given user.
+func mintAccessToken(ctx context.Context, minter accessTokenMinter, idToken string) (string, error) {
+	token, err := minter.Mint(ctx, idToken)
+	if err != nil {
+		return "", &tokenExchangeError{err: err}
+	}
+	return token, nil
+}
+
 // appPlatformListClient fetches pages of a namespace LIST from the stack's
-// own aggregated App Platform API, riding the caller's identity (§3).
+// own aggregated App Platform API, as the calling user (§3).
 type appPlatformListClient struct {
 	appURL     string
+	minter     accessTokenMinter
 	idToken    string
 	httpClient *http.Client
 	logger     log.Logger
 }
 
-func newAppPlatformListClient(appURL, idToken string, logger log.Logger) *appPlatformListClient {
+func newAppPlatformListClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *appPlatformListClient {
 	return &appPlatformListClient{
 		appURL:  appURL,
+		minter:  minter,
 		idToken: idToken,
 		httpClient: &http.Client{
 			Timeout: appPlatformUpstreamTimeout,
 			// Never follow redirects on an authenticated App Platform call: Go does
-			// not classify the custom X-Grafana-Id identity header as sensitive, so a
-			// followed cross-origin 3xx would leak the caller's ID token (and, on
-			// 307/308, replay the POST body) to the redirect target, and a redirected
-			// create must never be acknowledged as a durable write. Returning the last
-			// response lets the caller map the unexpected 3xx onto a retryable status.
+			// not classify the custom X-Access-Token header as sensitive, so a
+			// followed cross-origin 3xx would hand the redirect target a live
+			// on-behalf-of bearer credential (and, on 307/308, replay the POST body),
+			// and a redirected create must never be acknowledged as a durable write.
+			// Returning the last response lets the caller map the unexpected 3xx onto
+			// a retryable status.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 		logger: logger,
@@ -125,11 +171,16 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
+	accessToken, err := mintAccessToken(reqCtx, c.minter, c.idToken)
+	if err != nil {
+		return nil, fmt.Errorf("app platform list: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("app platform list: build request: %w", err)
 	}
-	forwardIdentityHeaders(req.Header, c.idToken)
+	req.Header.Set(auth.AccessTokenHeader, accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -143,7 +194,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 			"resource", resource,
 			"status", resp.StatusCode,
 			"idTokenPresent", c.idToken != "",
-			"identityHeaders", "Authorization=Bearer<id-token>,X-Grafana-Id")
+			"identityHeaders", auth.AccessTokenHeader+"=<obo-access-token>")
 	})
 
 	if resp.StatusCode != http.StatusOK {
@@ -197,11 +248,16 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
+	accessToken, err := mintAccessToken(reqCtx, c.minter, c.idToken)
+	if err != nil {
+		return fmt.Errorf("app platform create: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(obj))
 	if err != nil {
 		return fmt.Errorf("app platform create: build request: %w", err)
 	}
-	forwardIdentityHeaders(req.Header, c.idToken)
+	req.Header.Set(auth.AccessTokenHeader, accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
@@ -216,7 +272,7 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 			"resource", resource,
 			"status", resp.StatusCode,
 			"idTokenPresent", c.idToken != "",
-			"identityHeaders", "Authorization=Bearer<id-token>,X-Grafana-Id")
+			"identityHeaders", auth.AccessTokenHeader+"=<obo-access-token>")
 	})
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {

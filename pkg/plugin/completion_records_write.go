@@ -19,16 +19,20 @@ import (
 // Completion Records durable write proxy (docs/design/BACKEND_PROXY_PATTERN.md).
 //
 // POST /completion-records persists one terminal completion as a CompletionRecord
-// in the stack's aggregated App Platform store. Authorization is delegated to
-// App Platform RBAC on the caller's own forwarded identity — on the served group
-// the basic viewer role grants write on CompletionRecord, so the proxy adds no
-// privilege beyond what that token already gets upstream.
+// in the stack's aggregated App Platform store. The outbound call carries a
+// short-lived on-behalf-of access token minted from the caller's inbound ID token
+// (pkg/plugin/auth), so authorization is still delegated to App Platform RBAC as
+// the calling user — on the served group the basic viewer role grants write on
+// CompletionRecord, so the proxy adds no privilege beyond what that user already
+// gets upstream.
 //
-// These are lightweight self-reported records, not attested facts (MVP): because
-// a Viewer can create the same CRD directly, the proxy's server-side stamping is
-// a best-effort convenience, not an enforced identity boundary. What the proxy
-// adds over a direct write is server-stamped identity/org/stack fields (the CRD
-// validates field PRESENCE, not truth), per-user rate limiting
+// These are lightweight self-reported records, not attested facts: because a
+// Viewer can create the same CRD directly, the proxy's server-side stamping is a
+// best-effort convenience, not an enforced identity boundary. That is a current,
+// time-bounded limitation — a platform-side operator to close the forgery gap is
+// under discussion with the App Platform team — not a permanent design property.
+// What the proxy adds over a direct write is server-stamped identity/org/stack
+// fields (the CRD validates field PRESENCE, not truth), per-user rate limiting
 // (completion_records_write_ratelimit.go), read-cache invalidation on a
 // successful create, and the transient/terminal retry taxonomy the front-end
 // queue depends on.
@@ -40,10 +44,12 @@ import (
 //          re-auth, so the client retries it with backoff.
 //   - 404  structural "route not served on this stack" signal; the front end
 //          disarms writes for the session (pending items persist for the next
-//          load) rather than dropping. The create POSTs to the completionrecords
-//          COLLECTION, so an upstream 404 means the whole group/route is absent
-//          — it is never a per-record miss and is never remapped away.
-//   - 408 / 429 / 5xx / 3xx / network — transient; the client retries with
+//          load) rather than dropping. Two ways in: an upstream 404 (the create
+//          POSTs to the completionrecords COLLECTION, so it means the whole
+//          group/route is absent, never a per-record miss), and a stack with no
+//          provisioned on-behalf-of credential (reasonOBOUnavailable) — the
+//          production case in ops/prod today (#1503).
+//   - 408 / 429 / 5xx / 3xx / network / token-exchange failure — transient; the client retries with
 //          exponential backoff. Retry-After is set as a standard backpressure
 //          hint, though Grafana's backendSrv does not expose response headers to
 //          the front-end client.
@@ -342,9 +348,20 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 	logger := a.ctxLogger(r.Context())
 	status, hasStatus := upstreamStatusOf(err)
 	if !hasStatus {
-		// Network / timeout / decode — no HTTP status, treat as transient.
+		// Network / timeout / decode / token exchange — no HTTP status, treat as
+		// transient.
 		w.Header().Set("Retry-After", strconv.Itoa(completionWriteRetryAfterSeconds))
-		logger.Debug("completion write transient (no upstream status)", "error", err)
+		if isTokenExchangeError(err) {
+			// Retryable, but never routine: the credential IS provisioned (a stack
+			// without one never reaches here — see resolveCompletionWriteBackend), so
+			// a persistent failure means the environment is missing its delegated-
+			// permissions grant and every queued write will retry until the 30-day
+			// horizon. Log at the same Faro-visible level as the 403 decision so that
+			// is loud rather than silent.
+			logger.Warn("completion write token exchange failed (transient, retried)", "error", err)
+		} else {
+			logger.Debug("completion write transient (no upstream status)", "error", err)
+		}
 		a.writeError(w, "completion-write-unavailable", http.StatusServiceUnavailable)
 		return
 	}

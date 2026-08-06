@@ -107,4 +107,38 @@ describe('OnlineCdnPackageResolver', () => {
       global.fetch = originalFetch;
     }
   });
+
+  it('returns validation-error for a path with empty cover blocks (RFC Appendix A F15)', async () => {
+    (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
+      baseUrl,
+      packages: [
+        {
+          id: 'empty-path',
+          path: 'empty-path/',
+          title: 'Empty path',
+          type: 'path',
+          manifest: { id: 'empty-path', type: 'path', milestones: ['a'] },
+        },
+      ],
+    });
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ id: 'empty-path', title: 'Empty path', blocks: [] }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const resolver = new OnlineCdnPackageResolver();
+      const result = await resolver.resolve('empty-path', { loadContent: true });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe('validation-error');
+        expect(result.error.message).toContain('no cover content');
+      }
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });

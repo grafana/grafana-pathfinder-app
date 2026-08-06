@@ -194,24 +194,3 @@ func TestValidIDToken(t *testing.T) {
 		})
 	}
 }
-
-// forwardIdentityHeaders defines the outbound identity contract: Bearer +
-// X-Grafana-Id derived from the ID token, never Cookie, never a replay of the
-// inbound Authorization header.
-func TestForwardIdentityHeaders(t *testing.T) {
-	dst := http.Header{}
-	forwardIdentityHeaders(dst, "tok-123")
-
-	if got := dst.Get("Authorization"); got != "Bearer tok-123" {
-		t.Errorf("Authorization = %q, want Bearer tok-123", got)
-	}
-	if got := dst.Get(backend.GrafanaUserSignInTokenHeaderName); got != "tok-123" {
-		t.Errorf("%s = %q, want tok-123", backend.GrafanaUserSignInTokenHeaderName, got)
-	}
-	if got := dst.Get("Cookie"); got != "" {
-		t.Errorf("Cookie must never be forwarded, got %q", got)
-	}
-	if len(dst) != 2 {
-		t.Errorf("expected exactly 2 identity headers, got %d: %v", len(dst), dst)
-	}
-}

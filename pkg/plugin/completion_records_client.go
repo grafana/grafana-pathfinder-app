@@ -34,10 +34,10 @@ const (
 // this instance. The completion routes (read, write, capability) gate on
 // this alone: completion data lives only on the .app group, so where it is
 // not served the feature is correctly unavailable (the front end handles
-// unavailable/404 gracefully). Distinct from the old-group
-// pathfinderBackendAggregationToggle, which still gates the
-// separately-migrated custom-guide surface. Derived from appPlatformGroup so
-// it cannot drift from the group name.
+// unavailable/404 gracefully). It is a PRECONDITION, not the availability
+// answer — the resolvers additionally require an app URL, a namespace, and a
+// provisioned on-behalf-of credential. Derived from appPlatformGroup so it
+// cannot drift from the group name.
 var completionRecordsAggregationToggle = aggregationToggle(appPlatformGroup)
 
 // completionRecordSpec mirrors the fields of the CompletionRecord `spec` that
@@ -135,14 +135,14 @@ type completionHTTPClient struct {
 	inner *appPlatformListClient
 }
 
-// newCompletionHTTPClient builds a lister that calls appURL with identity
-// derived from the caller's ID token (forwardIdentityHeaders). A
+// newCompletionHTTPClient builds a lister that calls appURL as the user the
+// caller's ID token identifies, using an access token minted from that token. A
 // namespace-scoped LIST returns every record in the namespace (Kubernetes
 // RBAC is namespace-, not object-, scoped), which is what lets one refresh
 // collate all users. If a caller lacks list permission on completionrecords
 // the upstream returns 401/403, surfaced as an identity-scoped terminal error.
-func newCompletionHTTPClient(appURL, idToken string, logger log.Logger) *completionHTTPClient {
-	return &completionHTTPClient{inner: newAppPlatformListClient(appURL, idToken, logger)}
+func newCompletionHTTPClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *completionHTTPClient {
+	return &completionHTTPClient{inner: newAppPlatformListClient(appURL, minter, idToken, logger)}
 }
 
 // ListPage fetches one page of CompletionRecords for the namespace.

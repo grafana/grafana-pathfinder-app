@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { config } from '@grafana/runtime';
 
 import type {
   LearningPath,
@@ -31,7 +32,10 @@ import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
 import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
+import { fetchAppPlatformLearningPaths, type AppPlatformPathsResult } from './app-platform-paths';
 import { markGuideCompleted as coordinatorMarkGuideCompleted } from './badge-coordinator';
+
+const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: {} };
 
 // ============================================================================
 // CONSTANTS
@@ -89,6 +93,12 @@ export function useLearningPaths(): UseLearningPathsReturn {
   const [dynamicGuideData, setDynamicGuideData] = useState<Record<string, FetchedPathGuides>>({});
   const [isDynamicLoading, setIsDynamicLoading] = useState<boolean>(() => getPathsData().paths.some((p) => p.url));
 
+  // App Platform paths/journeys ingested at runtime from the custom-guide
+  // catalogue (RFC CUSTOM-GUIDE-PACKAGES.md §6.11) — a separate source from
+  // the bundled paths.json scaffold and the CDN index.json dynamic fetch
+  // above, merged into `paths` the same way.
+  const [appPlatformData, setAppPlatformData] = useState<AppPlatformPathsResult>(EMPTY_APP_PLATFORM_RESULT);
+
   // Get raw paths for the current platform (OSS or Cloud)
   const rawPaths = useMemo(() => {
     return getPathsData().paths;
@@ -127,16 +137,42 @@ export function useLearningPaths(): UseLearningPathsReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Build effective paths: merge dynamic guides into URL-based paths
+  // Fetch App Platform paths/journeys on mount. Independent of the
+  // path.url-based effect above — this reads the namespace's own custom-guide
+  // catalogue rather than a per-path remote index.json.
+  useEffect(() => {
+    const namespace = config.namespace;
+    if (!namespace) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const result = await fetchAppPlatformLearningPaths(namespace);
+      if (!cancelled) {
+        setAppPlatformData(result);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Build effective paths: merge dynamic guides into URL-based paths, then
+  // append App Platform paths (bundled-first — matches the composite
+  // resolver's precedence convention, RFC §6.6).
   const paths = useMemo((): LearningPath[] => {
-    return rawPaths.map((path) => {
+    const merged = rawPaths.map((path) => {
       const dynamic = dynamicGuideData[path.id];
       if (path.url && dynamic) {
         return { ...path, guides: dynamic.guides };
       }
       return path;
     });
-  }, [rawPaths, dynamicGuideData]);
+    return [...merged, ...appPlatformData.paths];
+  }, [rawPaths, dynamicGuideData, appPlatformData]);
 
   /**
    * Gets guide metadata, scoped to a specific path when provided.
@@ -147,7 +183,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
    * is omitted (callers without path context), all dynamic metadata is
    * scanned for backwards compatibility.
    *
-   * Falls back to static metadata from paths.json / paths-cloud.json.
+   * Falls back to App Platform catalogue metadata, then to static metadata
+   * from paths.json / paths-cloud.json.
    */
   const resolveGuideMetadata = useCallback(
     (guideId: string, pathId?: string): GuideMetadataEntry => {
@@ -163,10 +200,13 @@ export function useLearningPaths(): UseLearningPathsReturn {
           }
         }
       }
+      if (appPlatformData.guideMetadata[guideId]) {
+        return appPlatformData.guideMetadata[guideId];
+      }
       const { guideMetadata } = getPathsData();
       return guideMetadata[guideId] || { title: guideId, estimatedMinutes: 5 };
     },
-    [dynamicGuideData]
+    [dynamicGuideData, appPlatformData]
   );
 
   // Load progress from storage

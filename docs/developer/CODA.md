@@ -168,14 +168,23 @@ unexpired, with the `sub` claim extracted verbatim only on routes that serve per
 plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend is not
 independently reachable with a client-set `X-Grafana-Id`.
 
-Outbound, proxies forward identity derived from the ID token only — `Authorization: Bearer
-<id-token>` plus `X-Grafana-Id`, both synthesized from the inbound token via
-`forwardIdentityHeaders` — never the caller's `Cookie`, and never a replay of the inbound
-`Authorization` header (Grafana strips it before plugin resource handlers reach the plugin).
+Outbound, the ID token is never used as a credential. Proxies exchange it for a short-lived
+on-behalf-of access token (`pkg/plugin/auth`, using the CAP token stack-state-service provisions
+into `secureJsonData`) and send that on `X-Access-Token` — never the caller's `Cookie`, never a
+replay of the inbound `Authorization` header (Grafana strips it before plugin resource handlers
+reach the plugin), and never the ID token itself, which no hop on the outbound path accepts as
+authentication. A stack with no provisioned CAP token reports `capability.reason:
+"obo-unavailable"`.
 
 The write proxy (`POST /completion-records`, `pkg/plugin/completion_records_write.go`) applies the
 same inbound gate but fails **closed with a 401** rather than a soft-200; the front-end client
 retries 401s as transient, since an expired session or forwarded token recovers after re-auth.
+Outbound it uses the same minted `X-Access-Token` as the read path, and takes the same
+`obo-unavailable` structural path on an unprovisioned stack — surfaced to the write route as a
+404, which disarms writes for the session while the front end keeps its queued facts for a later
+drain. The credential is provisioned in **dev** today; ops and prod are tracked at
+[#1503](https://github.com/grafana/grafana-pathfinder-app/issues/1503), so that clean-degrade path
+is the live production behaviour, not a corner case.
 Every identity field written into the record (`userId` from the
 ID-token `sub`, `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`) is stamped
 **server-side from the verified request context**; body-supplied identity is never read (the typed
@@ -187,12 +196,14 @@ spoofable raw `X-Grafana-User` header. They gate nothing, and the read path join
 the proxy adds no privilege — on the served `.app` group the basic viewer role grants write on
 `CompletionRecord` (verified 2026-07-24 with a real Viewer user via a **direct** App Platform write
 — POST → 201, RBAC enforced — NOT through the deployed plugin proxy). Because a Viewer can create
-the same CRD directly, completion records are **lightweight self-reported records, not attested
-facts** (MVP); the proxy's server stamping is a best-effort convenience, not an enforced identity
-boundary. It is retained because a direct write does not rate-limit per user, invalidate the read
-cache, or classify failures for the retry queue. The residual merge gate is a live Viewer-attributed
-write through the deployed plugin proxy — proving identity forwarding end-to-end, not the
-(now-cleared) RBAC layer.
+the same CRD directly, completion records are today **lightweight self-reported records, not
+attested facts**; the proxy's server stamping is a best-effort convenience, not an enforced
+identity boundary. Treat that as a **current limitation, not a design property** — closing the
+forgery gap with a platform-side operator is under active discussion with the App Platform team,
+and the wording here should be revisited when that lands. Meanwhile the proxy is retained because a
+direct write does not rate-limit per user, invalidate the read cache, or classify failures for the
+retry queue. The residual merge gate is a live Viewer-attributed write through the deployed plugin
+proxy — proving identity forwarding end-to-end, not the (now-cleared) RBAC layer.
 The request body is limited to one 64 KiB JSON value with per-field byte caps on free text. A
 successful write invalidates the read cache with a generation fence so an older in-flight LIST
 cannot make stale data fresh again, and clears the negative-cache cooldown.

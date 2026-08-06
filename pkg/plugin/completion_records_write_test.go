@@ -687,6 +687,12 @@ func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
 		{"unexpected success status", &appPlatformUpstreamError{status: 202, msg: "not created"}, http.StatusBadGateway, ""},
 		{"unfollowed redirect mapped to retryable 502", &appPlatformUpstreamError{status: 302, msg: "moved"}, http.StatusBadGateway, ""},
 		{"network error is transient", fmt.Errorf("dial tcp: connection refused"), http.StatusServiceUnavailable, ""},
+		// A token exchange that fails at RUNTIME (the credential IS provisioned) is
+		// an auth-api blip, not a structural absence: retryable, so the queued fact
+		// survives. Structural absence takes the separate obo-unavailable → 404 path
+		// (TestCompletionWriteHandler_UnprovisionedStackReturns404) and must never
+		// land here, or an unprovisioned stack would retry until the 30-day horizon.
+		{"token exchange failure is transient", &tokenExchangeError{err: fmt.Errorf("auth-api unavailable")}, http.StatusServiceUnavailable, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -733,6 +739,67 @@ func TestCompletionWrite_Forbidden403IsTerminalDrop(t *testing.T) {
 	}
 	if isTransientUpstreamStatus(http.StatusForbidden) {
 		t.Errorf("403 must not be classified transient")
+	}
+}
+
+// A runtime token-exchange failure is retryable, but it must not be silent. The
+// one bad shape it can hide — a provisioned credential in an environment whose
+// delegated-permissions grant is missing — retries every queued write until the
+// 30-day retention horizon, so it is logged at warn (the same Faro-visible bar
+// as the terminal-403 decision), never at debug alongside ordinary network blips.
+func TestCompletionWrite_TokenExchangeFailureIsLoudAndRetryable(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	withCreator(t, &fakeCreator{err: &tokenExchangeError{err: fmt.Errorf("auth-api unavailable")}})
+
+	logger := newCapturingLogger()
+	app := newTestApp(t)
+	app.logger = logger
+
+	rec := doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 (transient — a brief auth-api blip must recover)", rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Error("Retry-After missing: an exchange failure must be retried, not dropped")
+	}
+	if !logger.warnedWith("token exchange") {
+		t.Errorf("exchange failure must be logged at warn (Faro-visible), got %+v", *logger.lines)
+	}
+
+	// An ordinary network failure stays at debug — only the exchange case is loud,
+	// or the signal drowns.
+	quiet := newCapturingLogger()
+	app.logger = quiet
+	withCreator(t, &fakeCreator{err: fmt.Errorf("dial tcp: connection refused")})
+	doWrite(t, app, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
+	if quiet.warnedWith("token exchange") {
+		t.Error("a plain network failure must not be reported as a token-exchange failure")
+	}
+}
+
+// The stamped subject comes from the INBOUND ID token, and only from there. The
+// outbound credential changed from the ID token to a minted on-behalf-of access
+// token; this pins that the change did not — and a future outbound refactor
+// cannot silently — move identity onto the minted token instead.
+func TestCompletionWrite_SubjectComesFromInboundIDToken(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// A plain numeric subject, matching what a real stack forwards; the format
+	// follows the identity provider, so nothing may depend on its shape.
+	const inboundSubject = "user:27"
+	rec := doWrite(t, nil, writeRequest(t, inboundSubject, validWriteBody(), testGrafanaConfig()))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if creator.last.Spec.UserID != inboundSubject {
+		t.Errorf("stamped userId = %q, want the inbound ID token's sub %q", creator.last.Spec.UserID, inboundSubject)
+	}
+	// The record name is derived from the same trusted subject, so it must track
+	// the inbound token too.
+	if want := completionRecordName(inboundSubject, "evt-default"); creator.last.Metadata.Name != want {
+		t.Errorf("record name = %q, want %q (derived from the inbound subject)", creator.last.Metadata.Name, want)
 	}
 }
 
