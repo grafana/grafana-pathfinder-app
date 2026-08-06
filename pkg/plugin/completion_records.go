@@ -597,11 +597,12 @@ func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsRespon
 
 // resolveCompletionBackend determines whether the aggregated CRUD API is
 // structurally reachable for this request and returns a lister to use.
-// "Structurally unavailable" (feature toggle off, no app URL, no namespace) is
-// a "never works here" condition surfaced as capability=false, distinct from a
-// transient LIST failure. The namespace comes from the trusted plugin context,
-// never from a query parameter. Config resolution runs before the test-only
-// lister override so the structural-unavailability branch stays testable.
+// "Structurally unavailable" (feature toggle off, no app URL, no namespace, no
+// provisioned on-behalf-of credential) is a "never works here" condition
+// surfaced as capability=false, distinct from a transient LIST failure. The
+// namespace comes from the trusted plugin context, never from a query
+// parameter. Config resolution runs before the test-only lister override so the
+// structural-unavailability branch stays testable.
 func (a *App) resolveCompletionBackend(r *http.Request) (lister completionRecordLister, namespace string, available bool, reason string) {
 	appURL, namespace, idToken, available, reason := a.resolveCompletionConfig(r)
 	if !available {
