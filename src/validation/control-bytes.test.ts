@@ -1,8 +1,8 @@
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const SRC_DIR = path.resolve(__dirname, '..');
-const REPO_ROOT = path.resolve(SRC_DIR, '..');
+const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 const BINARY_EXTENSIONS = new Set([
   '.png',
@@ -87,22 +87,25 @@ function findControlBytes(content: Buffer, relPath: string): ControlByteHit[] {
   return hits;
 }
 
-function collectScannableFiles(): string[] {
-  const files: string[] = [];
-
-  function walk(dir: string) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(fullPath);
-      } else if (entry.isFile() && !BINARY_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
-        files.push(fullPath);
-      }
-    }
+function listTrackedFiles(): string[] {
+  try {
+    return execFileSync('git', ['ls-files', '-z'], { cwd: REPO_ROOT, maxBuffer: 64 * 1024 * 1024 })
+      .toString('utf-8')
+      .split('\0')
+      .filter(Boolean);
+  } catch (error) {
+    throw new Error(
+      `Could not enumerate tracked files with \`git ls-files\` in ${REPO_ROOT}. This guard scans ` +
+        `the committed tree, so it needs a git checkout with git on PATH.\n${String(error)}`
+    );
   }
+}
 
-  walk(SRC_DIR);
-  return files;
+function collectScannableFiles(): string[] {
+  return listTrackedFiles()
+    .filter((relPath) => !BINARY_EXTENSIONS.has(path.extname(relPath).toLowerCase()))
+    .map((relPath) => path.join(REPO_ROOT, ...relPath.split('/')))
+    .filter((fullPath) => fs.existsSync(fullPath) && fs.statSync(fullPath).isFile());
 }
 
 function formatFailure(hits: ControlByteHit[]): string {
@@ -115,7 +118,7 @@ function formatFailure(hits: ControlByteHit[]): string {
   const suggestion = escapeFor(hits[0]?.byte ?? 0);
 
   return [
-    `Raw control ${hits.length === 1 ? 'byte' : 'bytes'} found in source under src/:`,
+    `Raw control ${hits.length === 1 ? 'byte' : 'bytes'} found in tracked source:`,
     '',
     ...locations,
     '',
@@ -140,14 +143,22 @@ function formatFailure(hits: ControlByteHit[]): string {
   ].join('\n');
 }
 
-describe('Source files contain no raw control bytes', () => {
+describe('Tracked files contain no raw control bytes', () => {
   const files = collectScannableFiles();
 
   it('should find source files to scan', () => {
     expect(files.length).toBeGreaterThan(100);
   });
 
-  it('should have no raw control bytes anywhere under src/', () => {
+  it('should scan tracked files outside src/, not just src/', () => {
+    const outsideSrc = files.filter((file) => !file.startsWith(path.join(REPO_ROOT, 'src') + path.sep));
+
+    expect(outsideSrc).toEqual(
+      expect.arrayContaining([path.join(REPO_ROOT, 'pkg', 'main.go'), path.join(REPO_ROOT, 'AGENTS.md')])
+    );
+  });
+
+  it('should have no raw control bytes anywhere in the tracked tree', () => {
     const hits = files.flatMap((file) =>
       findControlBytes(fs.readFileSync(file), path.relative(REPO_ROOT, file).split(path.sep).join('/'))
     );
