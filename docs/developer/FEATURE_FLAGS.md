@@ -155,7 +155,16 @@ interface HighlightedGuideConfig {
 
 A typical A/B setup serves the **same** `pages[]` to both arms with **different** `guideId` values, so the only thing varying between cohorts is the guide content. Analytics distinguishes which arm via the existing `TrackingHook` exposure event (`pathfinder_feature_flag_evaluated` with `tracking_key: highlighted_guide_experiment`).
 
-**Those three values are the whole set.** The variant arrives from MTFF, so it can be anything; a value outside the table — a typo'd `treament`, a stale arm name, an empty string — rejects the **entire** payload and the plugin falls back to the default `excluded` config. Nothing is enrolled: no auto-open, no once-per-browser marker, no exposure event, and no arm attached to analytics or session telemetry. Renaming an arm therefore turns it off rather than half-enrolling its cohort under a bogus label.
+**Those three values are the whole set.** The variant arrives from MTFF, so it can be anything; a value outside the table — a typo'd `treament`, a stale arm name, an empty string — rejects the **entire** payload. Rejection is whole-payload, not field-level: `pages`, `guideId`, `docType` and `resetCache` are all discarded along with the bad variant, so "rename an arm and set `resetCache: true`" clears nothing. Nobody is enrolled — no auto-open, no once-per-browser marker, and no arm attached to analytics or session telemetry. Renaming an arm therefore turns it off rather than half-enrolling its cohort under a bogus label.
+
+**Where a rejected payload lands depends on the source**, which is the thing to know when debugging:
+
+| Rejected payload from             | Result                                                                                                                                                          |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MTFF (the remote flag)            | The default `excluded` config above                                                                                                                             |
+| `localStorage` override (QA/demo) | The override is **ignored** and the remote MTFF value applies. Locally there is no MTFF provider, so this looks like the default — on a Cloud stack it does not |
+
+Either way the plugin logs a `warn` naming the source and a low-cardinality reason (`unknown_variant` or `invalid_shape`), once per source per page load. An unrecognized variant never produced a `pathfinder_feature_flag_evaluated` exposure event in the first place — `reportFeatureFlagExposure` only tracks `control` and `treatment` — so exposure counts are not a signal that a payload is broken. The `warn` is.
 
 **Page-pattern semantics — note the difference**: Empty `pages` is treated as **no match**, NOT "all pages" (unlike `pathfinder.experiment-variant`). This makes the safe default of `{ variant: 'excluded', pages: [] }` a true no-op even if the variant is accidentally flipped without configuring pages. Patterns support the same `*` suffix wildcards as `matchPathPattern`.
 
