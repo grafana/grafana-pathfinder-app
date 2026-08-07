@@ -81,9 +81,12 @@ export const BLOCK_SCHEMA_MAP = {
  * editor (Structure palette group). A CLI flow for its nested content is a
  * follow-up; for now authors should use the editor.
  *
- * `challenge` provisions a Coda VM and gates completion on a requirement token
- * (`successCriteria`), neither of which the CLI can verify at authoring time.
- * It is authored through the block editor's Challenge form.
+ * `challenge` gates completion on a requirement token (`successCriteria`) that
+ * only resolves against a live Grafana, so the CLI cannot check an author's
+ * criteria at authoring time — a typo'd requirement would ship as an
+ * unsolvable challenge. It is authored through the block editor's Challenge
+ * form, whose chip-based requirements editor is backed by the runtime
+ * requirements vocabulary. This holds for both `standard` and `coda` modes.
  *
  * The completeness test asserts that this set, unioned with the keys of
  * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES`. Adding a new block

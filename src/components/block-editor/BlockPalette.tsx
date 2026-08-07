@@ -293,9 +293,8 @@ export function BlockPalette({
     setPaletteWasOpen(isOpen);
   }
 
-  // Filtered + grouped views derived from `availableTypes`. We keep
-  // the original group order; types within a group keep their
-  // BLOCK_TYPE_ORDER relative ordering.
+  // Filtered + grouped views derived from `availableTypes`. Group order and
+  // intra-group order both come from BLOCK_TYPE_GROUPS.
   const filteredGroups = useMemo(() => {
     const q = filter.trim().toLowerCase();
     const match = (type: BlockType): boolean => {

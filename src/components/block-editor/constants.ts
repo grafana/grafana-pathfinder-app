@@ -149,33 +149,8 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
 };
 
 /**
- * Ordered list of block types for the palette.
- * Note: 'html' is intentionally excluded - it's only supported for legacy content.
- */
-export const BLOCK_TYPE_ORDER: BlockType[] = [
-  'markdown',
-  'image',
-  'video',
-  'section',
-  'collapsible',
-  'conditional',
-  'interactive',
-  'multistep',
-  'guided',
-  'terminal',
-  'terminal-connect',
-  'challenge',
-  'code-block',
-  'quiz',
-  'input',
-  'grot-guide',
-  'snippet-ref',
-];
-
-/**
- * Palette groupings — drives the section headers in `BlockPalette`.
- * Order is preserved; types within each group keep their `BLOCK_TYPE_ORDER`
- * relative ordering.
+ * Palette groupings — drives the section headers in `BlockPalette`, and the
+ * single source of palette membership and ordering.
  *
  * - **Content** — passive, author-authored material the user reads.
  * - **Interactive** — blocks that require user action or input at runtime.
@@ -230,6 +205,13 @@ const _palettePartitionIsTotal: UngroupedBlockType extends never
   ? true
   : ['block types missing from BLOCK_TYPE_GROUPS and PALETTE_EXCLUDED_BLOCK_TYPES:', UngroupedBlockType] = true;
 void _palettePartitionIsTotal;
+
+/**
+ * Flat list of every block type offered in the palette, derived from the group
+ * definitions so membership has exactly one source. Combined with the partition
+ * check above, a block type is reachable unless it is deliberately excluded.
+ */
+export const BLOCK_TYPE_ORDER: BlockType[] = BLOCK_TYPE_GROUPS.flatMap((group) => group.types);
 
 /**
  * Local storage key for persisting editor state.
