@@ -154,6 +154,10 @@ export const ManifestJsonObjectSchema = z.object({
 
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.default(DEFAULT_TEST_ENVIRONMENT),
+
+  // Opaque rollup stats — validated as "is an object" only; contents are
+  // deliberately unvalidated pending grafana/pathfinder-rfcs#14.
+  stats: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -225,6 +229,7 @@ export const RepositoryEntrySchema = z.object({
   ...packageMetadataSchemaFields,
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.optional(),
+  stats: z.record(z.string(), z.unknown()).optional(),
 }) satisfies z.ZodType<RepositoryEntry>;
 
 /**

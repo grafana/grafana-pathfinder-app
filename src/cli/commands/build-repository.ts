@@ -148,6 +148,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.replaces = manifest.replaces?.length ? manifest.replaces : undefined;
     entry.targeting = manifest.targeting;
     entry.testEnvironment = manifest.testEnvironment;
+    entry.stats = manifest.stats;
   }
 
   return { id, dirName, entry, warnings, errors };

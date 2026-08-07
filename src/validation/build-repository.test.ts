@@ -9,6 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { buildRepository } from '../cli/commands/build-repository';
+import { RepositoryJsonSchema } from '../types/package.schema';
 
 function createTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-build-repo-'));
@@ -318,6 +319,63 @@ describe('buildRepository', () => {
     expect(entry).toBeDefined();
     expect(entry!.depends).toBeUndefined();
     expect(entry!.recommends).toBeUndefined();
+  });
+
+  it('should carry manifest stats through into repository entries unstripped for multiple packages', () => {
+    writeJson(path.join(tmpDir, 'guide-with-stats', 'content.json'), {
+      id: 'guide-with-stats',
+      title: 'Guide with stats',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-stats', 'manifest.json'), {
+      id: 'guide-with-stats',
+      type: 'guide',
+      stats: { steps: 4, blocks: 12, sections: 3 },
+    });
+
+    writeJson(path.join(tmpDir, 'journey-with-stats', 'content.json'), {
+      id: 'journey-with-stats',
+      title: 'Journey with stats',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'journey-with-stats', 'manifest.json'), {
+      id: 'journey-with-stats',
+      type: 'journey',
+      milestones: ['guide-with-stats'],
+      stats: { steps: 9, blocks: 27, sections: 6, milestones: 1 },
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+
+    const guide = repository['guide-with-stats'];
+    expect(guide).toBeDefined();
+    expect(guide!.stats).toEqual({ steps: 4, blocks: 12, sections: 3 });
+
+    const journey = repository['journey-with-stats'];
+    expect(journey).toBeDefined();
+    expect(journey!.stats).toEqual({ steps: 9, blocks: 27, sections: 6, milestones: 1 });
+
+    const roundTripped = RepositoryJsonSchema.parse(JSON.parse(JSON.stringify(repository)));
+    expect(roundTripped['guide-with-stats']?.stats).toEqual({ steps: 4, blocks: 12, sections: 3 });
+    expect(roundTripped['journey-with-stats']?.stats).toEqual({ steps: 9, blocks: 27, sections: 6, milestones: 1 });
+  });
+
+  it('should leave stats undefined when the manifest omits it', () => {
+    writeJson(path.join(tmpDir, 'no-stats', 'content.json'), {
+      id: 'no-stats',
+      title: 'No stats',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'no-stats', 'manifest.json'), {
+      id: 'no-stats',
+      type: 'guide',
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['no-stats']).toBeDefined();
+    expect(repository['no-stats']!.stats).toBeUndefined();
   });
 
   it('should handle non-existent root directory', () => {

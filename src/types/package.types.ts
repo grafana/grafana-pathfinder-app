@@ -167,6 +167,14 @@ export interface ManifestJson {
 
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
+
+  /**
+   * Opaque rollup statistics computed by the content repository (e.g. step,
+   * block, and section counts). Deliberately untyped at this stage — the CLI
+   * carries it through unvalidated pending the field-shape decision in
+   * https://github.com/grafana/pathfinder-rfcs/pull/14.
+   */
+  stats?: Record<string, unknown>;
 }
 
 // ============ REPOSITORY INDEX ============
@@ -180,6 +188,8 @@ export interface RepositoryEntry extends PackageMetadataFields {
   path: string;
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
+  /** Opaque rollup statistics carried through from the package manifest. */
+  stats?: Record<string, unknown>;
 }
 
 /**
