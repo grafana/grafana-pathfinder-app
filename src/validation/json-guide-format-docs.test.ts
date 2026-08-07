@@ -5,7 +5,7 @@
  * "Block Types Summary" table and a per-type section heading in
  * json-guide-format.md. Block types are read out of the schema at runtime, so
  * adding a variant to the union fails this test until the reference documents
- * it. Coverage only — the prose itself stays hand-written.
+ * it.
  */
 
 import * as fs from 'fs';
@@ -16,6 +16,9 @@ import { JsonBlockSchema } from '../types/json-guide.schema';
 const DOC_RELATIVE_PATH = 'docs/developer/interactive-examples/json-guide-format.md';
 const DOC_PATH = path.resolve(__dirname, '../..', DOC_RELATIVE_PATH);
 const SUMMARY_HEADING = '### Block Types Summary';
+
+/** Bump deliberately: a short count means the union shrank or Zod's internals moved. */
+const EXPECTED_BLOCK_TYPE_COUNT = 19;
 
 function unwrap(schema: any): any {
   const inner = schema?._zod?.def?.innerType;
@@ -47,7 +50,6 @@ function blockTypesFromSchema(): string[] {
   return [...types].sort();
 }
 
-/** Compare heading text to type names ignoring case, hyphens, and spacing. */
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -85,7 +87,7 @@ function claimedByLongerType(heading: string, blockType: string): boolean {
 describe('JSON guide format reference', () => {
   it('reads every block type out of the schema union', () => {
     expect(blockTypes).toContain('markdown');
-    expect(blockTypes.length).toBeGreaterThan(15);
+    expect(blockTypes).toHaveLength(EXPECTED_BLOCK_TYPE_COUNT);
   });
 
   it('locates the block types summary table', () => {

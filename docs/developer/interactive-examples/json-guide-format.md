@@ -1027,7 +1027,7 @@ A capture-the-flag style task: a title, a markdown brief, optional progressive h
 - **Omitted in JSON** — the runtime treats the block as `"coda"`. Challenges predate `"standard"`, so an existing guide with no `mode` keeps its original Coda behavior.
 - **Created in the block editor** — the challenge form writes `mode` explicitly and seeds a brand-new block with `"standard"`, the cheaper authoring path. Opening a legacy block that has no `mode` infers `"coda"`, either from the presence of a VM or setup field or as the safe fallback.
 
-Both defaults are intentional. Set `mode` explicitly in hand-written JSON so the block does not depend on which path it came through.
+**Always write `mode` explicitly in hand-written JSON.** A challenge with no `mode` resolves to `"coda"` and provisions a VM, which is rarely what an author omitting the field intended. Read the availability note at the end of this section before choosing that path.
 
 Standard mode:
 
@@ -1060,33 +1060,39 @@ Coda mode:
 }
 ```
 
-| Field             | Type                     | Required | Default   | Description                                                                       |
-| ----------------- | ------------------------ | -------- | --------- | --------------------------------------------------------------------------------- |
-| `mode`            | `"coda"` \| `"standard"` | ❌       | see above | Execution model                                                                   |
-| `title`           | string                   | ✅       | —         | Short title shown above the brief                                                 |
-| `brief`           | string                   | ✅       | —         | Markdown problem statement                                                        |
-| `successCriteria` | string                   | ✅       | —         | Requirement evaluated when the user clicks "Check my work"                        |
-| `id`              | string                   | ❌       | —         | Block ID                                                                          |
-| `vmTemplate`      | string                   | ❌       | `vm-aws`  | VM template to provision; ignored when `mode` is `"standard"`                     |
-| `vmScenario`      | string                   | ❌       | —         | Scenario for the `alloy-scenario` template; ignored when `mode` is `"standard"`   |
-| `vmApp`           | string                   | ❌       | —         | App for the `sample-app` template; ignored when `mode` is `"standard"`            |
-| `setupScript`     | string                   | ❌       | —         | Bash script run server-side once the VM is ready                                  |
-| `setupCommands`   | string[]                 | ❌       | —         | **Deprecated** — bash commands run sequentially server-side; prefer `setupScript` |
-| `hintLevels`      | `{ text: string }[]`     | ❌       | `[]`      | Progressive hints revealed on demand                                              |
-| `failureMessage`  | string                   | ❌       | —         | Message shown when the success check fails                                        |
-| `requirements`    | string[]                 | ❌       | —         | Prerequisite conditions for the challenge                                         |
-| `objectives`      | string[]                 | ❌       | —         | Objectives marked complete after this block                                       |
-| `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                    |
+| Field             | Type                     | Required | Default   | Description                                                                        |
+| ----------------- | ------------------------ | -------- | --------- | ---------------------------------------------------------------------------------- |
+| `mode`            | `"coda"` \| `"standard"` | ❌       | see above | Execution model                                                                    |
+| `title`           | string                   | ✅       | —         | Short title shown above the brief                                                  |
+| `brief`           | string                   | ✅       | —         | Markdown problem statement                                                         |
+| `successCriteria` | string                   | ✅       | —         | Requirement evaluated when the user clicks "Check my work"                         |
+| `id`              | string                   | ❌       | —         | Block ID                                                                           |
+| `vmTemplate`      | string                   | ❌       | `vm-aws`  | VM template to provision; ignored when `mode` is `"standard"`                      |
+| `vmScenario`      | string                   | ❌       | —         | Scenario for the `alloy-scenario` template; ignored when `mode` is `"standard"`    |
+| `vmApp`           | string                   | ❌       | —         | App for the `sample-app` template; ignored when `mode` is `"standard"`             |
+| `setupScript`     | string                   | ❌       | —         | Bash script run server-side once the VM is ready                                   |
+| `setupCommands`   | string[]                 | ❌       | —         | **Deprecated** — bash commands run sequentially server-side; prefer `setupScript`  |
+| `hintLevels`      | `{ text: string }[]`     | ❌       | `[]`      | Progressive hints revealed on demand                                               |
+| `failureMessage`  | string                   | ❌       | —         | Message shown when the success check fails, replacing the checker's own error text |
+| `requirements`    | string[]                 | ❌       | —         | Prerequisite conditions for the challenge                                          |
+| `objectives`      | string[]                 | ❌       | —         | Objectives marked complete after this block                                        |
+| `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                     |
 
-`hintLevels` is an array of objects, not an array of strings. Each entry is `{ "text": "..." }` with non-empty text, and hints are revealed one at a time in array order.
+`requirements`, `objectives`, and `skippable` are accepted by the schema, but the challenge runtime does not receive them yet — the block always renders, never contributes to objective tracking, and shows no skip control. Do not rely on them to gate a challenge or to credit an objective.
 
-`setupScript` and `setupCommands` do the same job, and `setupScript` wins when both are present. The whole `setupScript` string is passed to the remote login shell as a single command, so multi-line scripts, heredocs, and control flow all work. `setupCommands` is kept only for back-compat: opening a legacy block in the block editor joins the array with newlines into `setupScript` and drops `setupCommands` on save, so a block migrates the first time an author edits it. Write `setupScript` in new content.
+`hintLevels` is an array of objects, not an array of strings. Each entry is `{ "text": "..." }` with non-empty text, and hints are revealed one at a time in array order. Hints appear only once the challenge is ready to attempt or has failed a check, so a learner stuck waiting on VM provisioning cannot reach them.
 
-Challenges in `"coda"` mode need the Coda terminal integration enabled by the administrator; `"standard"` mode has no such dependency.
+`setupScript` and `setupCommands` are not equivalent. The whole `setupScript` string is passed to the remote login shell as a single command with a 120-second budget, so multi-line scripts, heredocs, and control flow all work. Each `setupCommands` entry is a separate remote invocation with its own 30-second budget and no shared shell state, so `cd`, `export`, and heredocs do not carry from one entry to the next; the first non-zero exit abandons the remaining entries.
+
+`setupScript` takes precedence, but only when it is non-empty after trimming — a whitespace-only `setupScript` falls through to `setupCommands`. `setupCommands` is kept only for back-compat: opening a legacy block in the block editor joins the array with newlines into `setupScript` and drops `setupCommands` on save, so a block migrates the first time an author edits it. Write `setupScript` in new content.
+
+Switching a challenge from `"coda"` to `"standard"` in the block editor discards `setupScript` along with the VM fields, and switching back does not restore it. Copy the script out first if you might need it again.
+
+Coda mode is gated on two settings at once: the plugin's Coda-terminal setting, and per-user dev mode for the user viewing the guide. Both must be on, so coda mode is currently a development-only path rather than something an administrator turns on for everyone. When the gate is closed the block neither errors nor hides — it sits on "Provisioning challenge VM…" indefinitely, offering only a Cancel button ([#1541](https://github.com/grafana/grafana-pathfinder-app/issues/1541)). Because a challenge with no `mode` resolves to `"coda"`, an omitted `mode` is the most common way to reach that state. `"standard"` mode has no such dependency and works on every stack.
 
 #### Snippet reference block
 
-A pointer to a published snippet. The parser never sees this block — every `snippet-ref` is expanded before rendering, and the referenced snippet's blocks are spliced in at the ref's position. A guide therefore picks up the snippet's published content on every load, subject to a short cache: successful resolutions are held for about five minutes, so a republished snippet can take that long to appear. Failed resolutions are not cached.
+A pointer to a published snippet. The renderer never sees this block — the guide schema accepts `snippet-ref`, and every ref is expanded after validation and before render, splicing the referenced snippet's blocks in at the ref's position. A guide therefore picks up the snippet's published content on every load, subject to a short cache: successful resolutions are held for five minutes, so a republished snippet can take that long to appear. Failed resolutions are not cached, so a broken ref is retried on every load.
 
 ```json
 {
@@ -1095,16 +1101,16 @@ A pointer to a published snippet. The parser never sees this block — every `sn
 }
 ```
 
-| Field       | Type   | Required | Description                                                                                         |
-| ----------- | ------ | -------- | --------------------------------------------------------------------------------------------------- |
-| `snippetId` | string | ✅       | Upstream snippet ID to resolve at parse time. Must be kebab-case: `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` |
-| `id`        | string | ❌       | Stable identifier for this snippet-ref instance                                                     |
+| Field       | Type   | Required | Description                                                                                                             |
+| ----------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `snippetId` | string | ✅       | Upstream snippet ID, resolved after validation and before render. Must be kebab-case: `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` |
+| `id`        | string | ❌       | Stable identifier for this snippet-ref instance                                                                         |
 
-A ref may sit at the top level of `blocks`, or nested inside a `section`, a `conditional` (in either `whenTrue` or `whenFalse`), or an `assistant`.
+A ref may sit at the top level of `blocks`, or nested inside a `section`, a `conditional` (in either `whenTrue` or `whenFalse`), or an `assistant`. It may not sit inside a `collapsible` — that container holds content blocks only, and the schema rejects a ref there.
 
 Snippets cannot reference other snippets. The snippet schema rejects `snippet-ref` at every supported nesting depth, so a snippet body may contain any other block type but never a ref.
 
-If a ref cannot be resolved — unknown ID, catalog fetch failure — it is replaced with an inert markdown placeholder that names the snippet ID. The guide still renders, but nothing interactive appears in the ref's place.
+If a ref cannot be resolved — unknown ID, catalog fetch failure — it is replaced with an inert markdown placeholder naming the snippet ID and an error code. The guide still renders, but nothing interactive appears in the ref's place. The resolver does not distinguish a missing snippet from a transient failure, so an unknown ID reports `network-error` rather than a not-found code.
 
 ---
 
@@ -1130,7 +1136,7 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 | `grot-guide`       | Interactive | Choose-your-own-adventure decision tree                                         |
 | `quiz`             | Assessment  | Knowledge check with single/multiple choice                                     |
 | `input`            | Assessment  | Collects user responses as variables                                            |
-| `snippet-ref`      | Reusable    | Expands a published snippet in place at parse time                              |
+| `snippet-ref`      | Reusable    | Expands a published snippet in place before render                              |
 
 ---
 
