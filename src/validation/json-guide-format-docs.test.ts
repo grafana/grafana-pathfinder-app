@@ -15,6 +15,7 @@ import { JsonBlockSchema } from '../types/json-guide.schema';
 
 const DOC_RELATIVE_PATH = 'docs/developer/interactive-examples/json-guide-format.md';
 const DOC_PATH = path.resolve(__dirname, '../..', DOC_RELATIVE_PATH);
+const SUMMARY_HEADING = '### Block Types Summary';
 
 function unwrap(schema: any): any {
   const inner = schema?._zod?.def?.innerType;
@@ -51,8 +52,21 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/** The summary table alone — other field tables also carry rows like `| \`section\``. */
+function summaryTableSection(markdown: string): string {
+  const lines = markdown.split('\n');
+  const start = lines.findIndex((line) => line.trim() === SUMMARY_HEADING);
+  if (start === -1) {
+    return '';
+  }
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => line.startsWith('#') || line.trim() === '---');
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n');
+}
+
 const blockTypes = blockTypesFromSchema();
 const doc = fs.readFileSync(DOC_PATH, 'utf-8');
+const summaryTable = summaryTableSection(doc);
 const headings = doc
   .split('\n')
   .filter((line) => line.startsWith('#### '))
@@ -74,9 +88,16 @@ describe('JSON guide format reference', () => {
     expect(blockTypes.length).toBeGreaterThan(15);
   });
 
+  it('locates the block types summary table', () => {
+    expect(
+      summaryTable.includes('| Block Type') ||
+        `No "${SUMMARY_HEADING}" table found in ${DOC_RELATIVE_PATH}; the per-type row checks cannot run.`
+    ).toBe(true);
+  });
+
   describe.each(blockTypes)('%s', (blockType) => {
     it('has a row in the block types summary table', () => {
-      const hasRow = doc.includes(`| \`${blockType}\``);
+      const hasRow = summaryTable.includes(`| \`${blockType}\``);
       expect(
         hasRow ||
           `Block type "${blockType}" has no summary-table row. Add one to the "Block Types Summary" table in ${DOC_RELATIVE_PATH}.`

@@ -1053,9 +1053,9 @@ Coda mode:
   "type": "challenge",
   "mode": "coda",
   "title": "Fix the broken scrape config",
-  "brief": "The Prometheus config in `/etc/prometheus` has a bad scrape target. Repair it.",
+  "brief": "The Prometheus config in `/etc/prometheus` has an invalid scrape setting. Repair it so `promtool check config` passes.",
   "vmTemplate": "vm-aws",
-  "setupScript": "set -euo pipefail\nsed -i 's/localhost:9999/localhost:9090/' /etc/prometheus/prometheus.yml.broken",
+  "setupScript": "set -euo pipefail\nsed -i 's/scrape_interval:/scrape_intervall:/' /etc/prometheus/prometheus.yml",
   "successCriteria": "coda-exit-zero:promtool check config /etc/prometheus/prometheus.yml"
 }
 ```
@@ -1086,7 +1086,7 @@ Challenges in `"coda"` mode need the Coda terminal integration enabled by the ad
 
 #### Snippet reference block
 
-A pointer to a published snippet. The parser never sees this block — every `snippet-ref` is expanded before rendering, and the referenced snippet's blocks are spliced in at the ref's position. A guide therefore picks up the snippet's latest published content on every load.
+A pointer to a published snippet. The parser never sees this block — every `snippet-ref` is expanded before rendering, and the referenced snippet's blocks are spliced in at the ref's position. A guide therefore picks up the snippet's published content on every load, subject to a short cache: successful resolutions are held for about five minutes, so a republished snippet can take that long to appear. Failed resolutions are not cached.
 
 ```json
 {
