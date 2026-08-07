@@ -78,7 +78,7 @@ func isUsableState(state string) bool {
 
 // isVMNotFoundError returns true when the error indicates the VM no longer exists (HTTP 404).
 func isVMNotFoundError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "VM not found")
+	return isCodaNotFoundError(err) || (err != nil && strings.Contains(err.Error(), "VM not found"))
 }
 
 // codaUpstreamError carries the upstream HTTP status alongside the message so
