@@ -7,9 +7,8 @@
  * `edit-block` to look up the schema for an existing block.
  *
  * The registry is the single place where new block types are wired into the
- * authoring CLI. Forgetting to register a block type added to
- * `VALID_BLOCK_TYPES` is caught by the completeness test in
- * `block-registry.test.ts`.
+ * authoring CLI. Forgetting to register a newly added block type is caught by
+ * the completeness test in `block-registry.test.ts`.
  */
 
 import type { z } from 'zod';
@@ -89,9 +88,10 @@ export const BLOCK_SCHEMA_MAP = {
  * requirements vocabulary. This holds for both `standard` and `coda` modes.
  *
  * The completeness test asserts that this set, unioned with the keys of
- * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES`. Adding a new block
- * type to `VALID_BLOCK_TYPES` therefore forces a deliberate decision: register
- * it for CLI authoring or document why it's excluded.
+ * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES` — which is derived
+ * from `KNOWN_FIELDS`, itself total over `JsonBlock['type']`. Adding a member
+ * to the block union therefore forces a deliberate decision here: register it
+ * for CLI authoring or document why it's excluded.
  */
 export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set([
   'grot-guide',

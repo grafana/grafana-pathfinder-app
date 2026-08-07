@@ -1,10 +1,5 @@
 import { VALID_BLOCK_TYPES } from '../../types/json-guide.schema';
-import {
-  BLOCK_TYPE_GROUPS,
-  BLOCK_TYPE_METADATA,
-  BLOCK_TYPE_ORDER,
-  PALETTE_EXCLUDED_BLOCK_TYPES,
-} from './constants';
+import { BLOCK_TYPE_GROUPS, BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, PALETTE_EXCLUDED_BLOCK_TYPES } from './constants';
 import type { BlockType } from './types';
 
 /**
