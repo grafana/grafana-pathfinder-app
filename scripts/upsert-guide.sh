@@ -159,6 +159,29 @@ fi
 
 BASE="https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NAMESPACE}/interactiveguides"
 
+# Writes the envelope and prints the response. Deliberately not `curl -f`:
+# on a rejection the K8s Status body names the offending field, and -f
+# discards it.
+write_resource() {
+  local method="$1" url="$2" payload="$3" response code body
+  response=$(curl -sS -w $'\n%{http_code}' -X "$method" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H 'Content-Type: application/json' \
+    "$url" -d "$payload")
+  code="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+
+  if [[ "$code" != 2* ]]; then
+    local detail
+    detail=$(echo "$body" | jq -r '.message // empty' 2>/dev/null) || detail=
+    [[ -n "$detail" ]] || detail="$body"
+    echo "${method} ${url} failed: HTTP ${code}" >&2
+    echo "$detail" >&2
+    return 1
+  fi
+  echo "$body"
+}
+
 # GET to decide between create and update. We intentionally accept any
 # status here so we can branch on it; -f would exit on non-2xx.
 RESPONSE=$(curl -sS -w $'\n%{http_code}' -H "Authorization: Bearer ${TOKEN}" "${BASE}/${NAME}")
@@ -182,10 +205,7 @@ case "$HTTP_CODE" in
         spec: $spec
       }')
     echo "Updating ${NAME} (resourceVersion=${RESOURCE_VERSION})..." >&2
-    curl -sSf -X PUT \
-      -H "Authorization: Bearer ${TOKEN}" \
-      -H 'Content-Type: application/json' \
-      "${BASE}/${NAME}" -d "$ENVELOPE"
+    write_resource PUT "${BASE}/${NAME}" "$ENVELOPE"
     ;;
   404)
     ENVELOPE=$(jq -n \

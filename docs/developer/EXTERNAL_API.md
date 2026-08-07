@@ -79,6 +79,66 @@ To upload as a draft instead of publishing, set `"status": "draft"` explicitly i
 
 Requirements: `curl`, `jq`. Run `scripts/upsert-guide.sh --help` for the full reference.
 
+## Uploading a learning path
+
+A learning path or journey is not a special kind — it's an
+`InteractiveGuide` whose `spec.manifest.type` is `"path"` or
+`"journey"` and whose `spec.manifest.milestones` lists the ids of its
+member guides. Each member is its own `InteractiveGuide`.
+
+[`scripts/upsert-learning-path.sh`](../../scripts/upsert-learning-path.sh)
+uploads a whole package directory — the two-file `manifest.json` +
+`content.json` model used by
+[grafana/interactive-tutorials](https://github.com/grafana/interactive-tutorials):
+
+```bash
+scripts/upsert-learning-path.sh \
+  --stack learn.grafana.net \
+  --token "$GRAFANA_SA_TOKEN" \
+  --package ./drilldown-logs-lj
+```
+
+It resolves each id in `milestones` to the subdirectory whose
+`manifest.json` declares that id — the directory name is not the id
+(`drilldown-logs-view-logs` lives in `view-logs/`) — uploads the
+milestones first and the path's own cover page last, so the path never
+references a guide that doesn't exist yet. Subdirectories absent from
+`milestones` are ignored, which keeps website-only prelude pages
+(`business-value-*`) out of the upload. Re-running is idempotent.
+
+Per-resource create/update is delegated to `upsert-guide.sh`, so the
+slug rule, namespace detection, and RBAC are identical. Pass
+`--dry-run` to see every payload without writing, and `--help` for the
+full flag list.
+
+### `spec.id` must be a valid resource name
+
+For a standalone guide, `metadata.name` and `spec.id` may diverge
+harmlessly. For a path they must not:
+
+- `manifest.milestones` and the custom-guide catalogue key on **`spec.id`**.
+- Milestone resolution and `backend-guide:` content URLs GET by **`metadata.name`**.
+
+`metadata.name` is the slugified `spec.id`, so any id that isn't
+already slug-shaped produces a resource the path can't reach, and every
+milestone 404s with no error surfaced in the UI. The script refuses to
+upload in that case; rename the package instead.
+
+### Block fields the CRD doesn't declare
+
+The CRD's block schema is generated from `#Block` / `#NestedBlock` /
+`#Step` in `kinds/interactiveguide.cue` and currently lags the app's
+block schema — `autoCollapse`, `start`, `end`, `code`, `language`, and
+`command` have no home in it. Blocks nested three or more levels deep
+fall under `x-kubernetes-preserve-unknown-fields` and survive; anything
+shallower is **silently pruned**. There is no 422 and no warning from
+the API: the write returns 200 and the field is simply gone on the next
+GET. `upsert-learning-path.sh` warns per resource, and
+`--strict-blocks` turns the warning into a failure.
+
+The fix is to add the missing fields to `#Block`/`#NestedBlock` in the
+backend's CUE and regenerate.
+
 ## Authentication
 
 Every request needs a `Authorization: Bearer <service-account-token>`
@@ -128,10 +188,35 @@ The wire format is the standard Kubernetes envelope:
 | `spec.schemaVersion`       | no       | Optional content-format version (e.g. `"1.0"`).                                                                                                                                                                                                                    |
 | `spec.status`              | no       | Publication state. Valid values: `"draft"` (visible only in the editor library) and `"published"` (live in the docs panel). Omitted = treated as draft.                                                                                                            |
 | `spec.blocks`              | yes      | Array of content blocks. The full schema is owned by the CUE definition in [grafana-pathfinder-backend/kinds/interactiveguide.cue](https://github.com/grafana/grafana-pathfinder-backend/blob/main/kinds/interactiveguide.cue) — that file is the source of truth. |
+| `spec.manifest`            | no       | Package metadata: grouping, sequencing, dependencies. Absent for content-only guides. See [Manifest](#manifest).                                                                                                                                                   |
 
 The CRD schema **is the validator**. Submit unknown fields and you'll
 get a `422 Unprocessable Entity` with a K8s `Status` envelope explaining
 which field is wrong.
+
+### Manifest
+
+`spec.manifest` is what makes a guide a member of a package repository,
+and what makes a path a path.
+
+| Field              | Required | Description                                                                                                                                                                    |
+| ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `type`             | yes      | `"guide"`, `"path"`, or `"journey"`. Only `path`/`journey` may carry `milestones`.                                                                                             |
+| `repository`       | yes      | Provenance label. Defaults to `"app-platform"` when omitted, so in practice you can leave it out.                                                                              |
+| `description`      | no       | Short summary shown in listings and used as the milestone label when the member guide's content isn't loaded.                                                                  |
+| `milestones`       | no       | Ordered list of member package ids, for `path`/`journey`. Each id must be the `spec.id` of another `InteractiveGuide` in the namespace.                                        |
+| `author`           | no       | `{ name?, team? }`. No other keys — the CRD rejects them.                                                                                                                      |
+| `category`         | no       | Free-form grouping label.                                                                                                                                                      |
+| `depends`          | no       | CNF (AND of ORs): an **array of arrays**. A single dependency is a singleton clause — `[["a"], ["b"]]` is "a AND b", `[["a","b"]]` is "a OR b". A bare string is not accepted. |
+| `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. Anything not typed above goes here.                                                                            |
+
+`recommends`, `suggests`, `provides`, `targeting`, `testEnvironment`,
+and `startingLocation` have no typed home yet, so
+`upsert-learning-path.sh` writes them under `additionalFields` rather
+than dropping them. Note that the frontend reads `recommends` and
+`suggests` from the top level of the manifest, so they have no effect
+while they live in `additionalFields` — promoting a key out of
+`additionalFields` into a real CUE field is additive and safe.
 
 ## Examples
 
