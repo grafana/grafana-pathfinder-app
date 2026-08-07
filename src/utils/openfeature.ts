@@ -556,6 +556,10 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
   if (typeof record.variant !== 'string' || !Array.isArray(record.pages) || typeof record.guideId !== 'string') {
     return null;
   }
+  const VALID_VARIANTS: ReadonlySet<HighlightedGuideConfig['variant']> = new Set(['excluded', 'control', 'treatment']);
+  if (!VALID_VARIANTS.has(record.variant as HighlightedGuideConfig['variant'])) {
+    return null;
+  }
   const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set([
     'docs-page',
     'learning-journey',
