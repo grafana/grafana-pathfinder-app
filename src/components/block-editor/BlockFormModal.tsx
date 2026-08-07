@@ -109,8 +109,11 @@ export interface BlockFormModalProps {
   onSwitchBlockType?: (newType: BlockType) => void;
 }
 
-// Map block types to form components - defined outside render
-const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = {
+// Map block types to form components - defined outside render.
+// Total over BlockType: `null` means "no authoring form in this editor", which
+// the `!FormComponent` guard below renders as nothing. Keeping it total means a
+// new block type cannot be added without deciding whether it is authorable here.
+const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps> | null> = {
   markdown: MarkdownBlockForm,
   html: HtmlBlockForm,
   image: ImageBlockForm,
@@ -129,6 +132,9 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   'code-block': CodeBlockForm,
   'grot-guide': GrotGuideBlockForm,
   'snippet-ref': SnippetRefBlockForm,
+  // Assistant containers are authored by toggling AI customization on a
+  // markdown block, not as a standalone block.
+  assistant: null,
 };
 
 /**

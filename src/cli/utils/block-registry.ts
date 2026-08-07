@@ -81,12 +81,21 @@ export const BLOCK_SCHEMA_MAP = {
  * editor (Structure palette group). A CLI flow for its nested content is a
  * follow-up; for now authors should use the editor.
  *
+ * `challenge` provisions a Coda VM and gates completion on a requirement token
+ * (`successCriteria`), neither of which the CLI can verify at authoring time.
+ * It is authored through the block editor's Challenge form.
+ *
  * The completeness test asserts that this set, unioned with the keys of
  * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES`. Adding a new block
  * type to `VALID_BLOCK_TYPES` therefore forces a deliberate decision: register
  * it for CLI authoring or document why it's excluded.
  */
-export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set(['grot-guide', 'snippet-ref', 'collapsible']);
+export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  'grot-guide',
+  'snippet-ref',
+  'collapsible',
+  'challenge',
+]);
 
 /**
  * Block-type discriminator strings the CLI knows how to create. Sourced

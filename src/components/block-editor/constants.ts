@@ -139,6 +139,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Snippet',
     description: 'Reuse a published snippet by reference (always loads the latest)',
   },
+  assistant: {
+    type: 'assistant',
+    icon: '✨',
+    grafanaIcon: 'ai',
+    name: 'Assistant',
+    description: 'AI-customizable container (authored via markdown block customization)',
+  },
 };
 
 /**
@@ -174,11 +181,7 @@ export const BLOCK_TYPE_ORDER: BlockType[] = [
  * - **Interactive** — blocks that require user action or input at runtime.
  * - **Structure** — containers and special-purpose framing blocks.
  */
-export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
-  id: 'content' | 'interactive' | 'structure' | 'reusable';
-  label: string;
-  types: BlockType[];
-}> = [
+export const BLOCK_TYPE_GROUPS = [
   {
     id: 'content',
     label: 'Content',
@@ -187,7 +190,7 @@ export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
   {
     id: 'interactive',
     label: 'Interactive',
-    types: ['interactive', 'multistep', 'guided', 'input', 'quiz', 'terminal', 'terminal-connect'],
+    types: ['interactive', 'multistep', 'guided', 'input', 'quiz', 'terminal', 'terminal-connect', 'challenge'],
   },
   {
     id: 'structure',
@@ -199,7 +202,34 @@ export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
     label: 'Reusable',
     types: ['snippet-ref'],
   },
-] as const;
+] as const satisfies ReadonlyArray<{
+  id: 'content' | 'interactive' | 'structure' | 'reusable';
+  label: string;
+  types: readonly BlockType[];
+}>;
+
+/**
+ * Block types deliberately absent from the palette groups.
+ *
+ * - `html` is legacy-only; authors should use markdown.
+ * - `assistant` is authored by toggling AI customization on a markdown block,
+ *   not as a standalone palette entry.
+ */
+export const PALETTE_EXCLUDED_BLOCK_TYPES = ['html', 'assistant'] as const satisfies readonly BlockType[];
+
+type GroupedBlockType = (typeof BLOCK_TYPE_GROUPS)[number]['types'][number];
+type UngroupedBlockType = Exclude<BlockType, GroupedBlockType | (typeof PALETTE_EXCLUDED_BLOCK_TYPES)[number]>;
+
+/**
+ * Compile-time ratchet: `BlockPalette` renders by mapping `BLOCK_TYPE_GROUPS`,
+ * so a block type in neither a group nor the exclusion list is unreachable in
+ * the UI with no other symptom. (`challenge` was in exactly that state.)
+ * Adding a block type therefore forces a deliberate decision here.
+ */
+const _palettePartitionIsTotal: UngroupedBlockType extends never
+  ? true
+  : ['block types missing from BLOCK_TYPE_GROUPS and PALETTE_EXCLUDED_BLOCK_TYPES:', UngroupedBlockType] = true;
+void _palettePartitionIsTotal;
 
 /**
  * Local storage key for persisting editor state.
