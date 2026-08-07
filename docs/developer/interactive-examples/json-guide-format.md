@@ -117,13 +117,13 @@ Embed YouTube or native HTML5 video.
 }
 ```
 
-| Field      | Type                      | Required | Description                           |
-| ---------- | ------------------------- | -------- | ------------------------------------- |
-| `src`      | string                    | ✅       | Video URL (embed URL for YouTube)     |
-| `provider` | `"youtube"` \| `"native"` | ❌       | Video provider (default: `"youtube"`) |
-| `title`    | string                    | ❌       | Video title for accessibility         |
-| `start`    | number                    | ❌       | Start time in seconds                 |
-| `end`      | number                    | ❌       | End time in seconds                   |
+| Field      | Type                                   | Required | Description                       |
+| ---------- | -------------------------------------- | -------- | --------------------------------- |
+| `src`      | string                                 | ✅       | Video URL (embed URL for YouTube) |
+| `provider` | `"youtube"` \| `"native"` \| `"vimeo"` | ❌       | Video provider hint               |
+| `title`    | string                                 | ❌       | Video title for accessibility     |
+| `start`    | number                                 | ❌       | Start time in seconds             |
+| `end`      | number                                 | ❌       | End time in seconds               |
 
 **YouTube Example:**
 
@@ -906,7 +906,6 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
   "content": "Try this PromQL query:",
   "code": "rate(http_requests_total[5m])",
   "language": "promql",
-  "filename": "example.promql",
   "reftarget": "textarea.inputarea"
 }
 ```
@@ -916,8 +915,7 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
 | `content`      | string   | ❌       | Markdown description shown above the code block                        |
 | `code`         | string   | ✅       | The code snippet                                                       |
 | `language`     | string   | ❌       | Syntax highlighting language (e.g., `promql`, `logql`, `yaml`, `json`) |
-| `filename`     | string   | ❌       | Filename label shown above the code (purely informational)             |
-| `reftarget`    | string   | ❌       | CSS selector of a Monaco editor — when set, an Insert button appears   |
+| `reftarget`    | string   | ✅       | Verified CSS selector of the target Monaco editor                      |
 | `requirements` | string[] | ❌       | Conditions that must be met for this step                              |
 | `objectives`   | string[] | ❌       | Objectives marked complete after this step                             |
 | `skippable`    | boolean  | ❌       | Allow skipping                                                         |
@@ -936,7 +934,7 @@ A shell command shown with copy-to-clipboard and an "Execute" button that runs t
 
 | Field          | Type     | Required | Description                                                 |
 | -------------- | -------- | -------- | ----------------------------------------------------------- |
-| `content`      | string   | ❌       | Markdown description shown above the command                |
+| `content`      | string   | ✅       | Markdown description shown above the command                |
 | `command`      | string   | ✅       | The shell command                                           |
 | `requirements` | string[] | ❌       | Conditions that must be met (commonly `is-terminal-active`) |
 | `skippable`    | boolean  | ❌       | Allow skipping                                              |
@@ -967,7 +965,54 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 
 See [`CODA.md`](../CODA.md) for the full VM template catalog and lifecycle details.
 
-#### Grot Guide Block
+#### Challenge block
+
+A task that checks a learner's work against a Pathfinder requirement. `standard` mode runs against the learner's Grafana; `coda` mode uses a provisioned Coda VM.
+
+```json
+{
+  "type": "challenge",
+  "mode": "standard",
+  "title": "Create a dashboard",
+  "brief": "Create a dashboard named **Service overview**.",
+  "successCriteria": "has-dashboard-named:Service overview",
+  "hintLevels": [{ "text": "Open Dashboards, then select New." }]
+}
+```
+
+| Field             | Type                     | Required | Description                                           |
+| ----------------- | ------------------------ | -------- | ----------------------------------------------------- |
+| `mode`            | `"coda"` \| `"standard"` | ❌       | Execution model (defaults to `"coda"`)                |
+| `title`           | string                   | ✅       | Short challenge title                                 |
+| `brief`           | string                   | ✅       | Markdown problem statement                            |
+| `successCriteria` | string                   | ✅       | Pathfinder requirement evaluated by **Check my work** |
+| `vmTemplate`      | string                   | ❌       | Coda VM template                                      |
+| `vmScenario`      | string                   | ❌       | Scenario for the Alloy scenario template              |
+| `vmApp`           | string                   | ❌       | App for the sample-app template                       |
+| `setupScript`     | string                   | ❌       | Script run after the Coda VM is ready                 |
+| `setupCommands`   | string[]                 | ❌       | Deprecated setup command list; prefer `setupScript`   |
+| `hintLevels`      | `{ text: string }[]`     | ❌       | Progressive hints                                     |
+| `failureMessage`  | string                   | ❌       | Message shown when the success check fails            |
+| `requirements`    | string[]                 | ❌       | Conditions that must be met before starting           |
+| `objectives`      | string[]                 | ❌       | Objectives marked complete                            |
+| `skippable`       | boolean                  | ❌       | Allow skipping                                        |
+
+#### Snippet reference block
+
+References a reusable snippet by kebab-case ID. The reference is resolved during parsing and does not reach the renderer.
+
+```json
+{
+  "type": "snippet-ref",
+  "snippetId": "configure-prometheus-query"
+}
+```
+
+| Field       | Type   | Required | Description                                   |
+| ----------- | ------ | -------- | --------------------------------------------- |
+| `snippetId` | string | ✅       | Kebab-case ID of the reusable snippet to load |
+
+#### Grot Guide block
 
 A choose-your-own-adventure decision tree where each screen offers options that branch to other screens.
 
@@ -975,43 +1020,46 @@ A choose-your-own-adventure decision tree where each screen offers options that 
 {
   "type": "grot-guide",
   "id": "intro-tree",
-  "title": "Choose your path",
+  "welcome": {
+    "title": "Choose your path",
+    "body": "Pick the path that best matches your goal.",
+    "ctas": [{ "text": "Start", "screenId": "start" }]
+  },
   "screens": [
     {
+      "type": "question",
       "id": "start",
       "title": "What do you want to do?",
-      "body": "Pick the path that best matches your goal.",
       "options": [
-        { "label": "Set up Prometheus", "next": "prometheus" },
-        { "label": "Set up Loki", "next": "loki" }
+        { "text": "Set up Prometheus", "screenId": "prometheus" },
+        { "text": "Set up Loki", "screenId": "loki" }
       ]
     },
     {
+      "type": "result",
       "id": "prometheus",
       "title": "Set up Prometheus",
       "body": "Open the connections page to add a Prometheus data source.",
-      "options": [{ "label": "Done", "next": "end" }]
+      "links": []
     },
     {
+      "type": "result",
       "id": "loki",
       "title": "Set up Loki",
       "body": "Open the connections page to add a Loki data source.",
-      "options": [{ "label": "Done", "next": "end" }]
-    },
-    { "id": "end", "title": "All set", "body": "You're ready to start querying." }
-  ],
-  "startScreen": "start"
+      "links": []
+    }
+  ]
 }
 ```
 
-| Field         | Type           | Required | Description                                          |
-| ------------- | -------------- | -------- | ---------------------------------------------------- |
-| `id`          | string         | ❌       | Block ID                                             |
-| `title`       | string         | ❌       | Title shown above the screen                         |
-| `screens`     | `GrotScreen[]` | ✅       | The decision-tree screens (see below)                |
-| `startScreen` | string         | ❌       | ID of the first screen (defaults to the first entry) |
+| Field     | Type                | Required | Description                       |
+| --------- | ------------------- | -------- | --------------------------------- |
+| `id`      | string              | ❌       | Block ID                          |
+| `welcome` | `GrotGuideWelcome`  | ✅       | Welcome copy and entry-point CTAs |
+| `screens` | `GrotGuideScreen[]` | ✅       | Question and result screens       |
 
-Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each option has a `label` and a `next` screen ID. A screen with no `options` ends the tree. The block editor includes a YAML import flow for converting Grot Guide YAML directly into JSON.
+Welcome CTAs and question options use `{ "text", "screenId" }`; every `screenId` must resolve to a screen. A question screen has `type: "question"` and an `options` array. A result screen has `type: "result"`, markdown `body`, and optional links. The block editor includes a YAML import flow for converting Grot Guide YAML directly into JSON.
 
 ---
 
@@ -1022,8 +1070,8 @@ Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each
 | `markdown`         | Content     | Formatted text with headings, lists, code, tables                               |
 | `html`             | Content     | Raw HTML for migration/custom content                                           |
 | `image`            | Content     | Embedded images with optional dimensions                                        |
-| `video`            | Content     | YouTube or native HTML5 video embeds                                            |
-| `code-block`       | Content     | Code snippet with copy and optional Monaco-editor insert                        |
+| `video`            | Content     | YouTube, Vimeo, or native HTML5 video embeds                                    |
+| `code-block`       | Content     | Code snippet with copy and Monaco-editor insert                                 |
 | `section`          | Structure   | Container for grouped interactive steps with "Do Section"                       |
 | `collapsible`      | Structure   | Hides nested content behind a toggle                                            |
 | `conditional`      | Structure   | Shows different content based on runtime conditions                             |
@@ -1033,7 +1081,9 @@ Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each
 | `guided`           | Interactive | User-performed sequence with detection                                          |
 | `terminal`         | Interactive | A shell command with copy and execute (requires Coda terminal)                  |
 | `terminal-connect` | Interactive | Button that provisions a sandbox VM and opens a terminal panel                  |
+| `challenge`        | Interactive | Task checked against a Pathfinder requirement                                   |
 | `grot-guide`       | Interactive | Choose-your-own-adventure decision tree                                         |
+| `snippet-ref`      | Structure   | Reference to a reusable snippet resolved during parsing                         |
 | `quiz`             | Assessment  | Knowledge check with single/multiple choice                                     |
 | `input`            | Assessment  | Collects user responses as variables                                            |
 
@@ -1262,7 +1312,6 @@ All types are exported from `src/types/json-guide.types.ts`:
 import {
   // Root structure
   JsonGuide,
-  JsonMatchMetadata,
 
   // Block union
   JsonBlock,
@@ -1275,6 +1324,7 @@ import {
 
   // Structural blocks
   JsonSectionBlock,
+  JsonCollapsibleBlock,
   JsonConditionalBlock,
   ConditionalDisplayMode,
   ConditionalSectionConfig,
@@ -1292,6 +1342,12 @@ import {
   JsonQuizBlock,
   JsonQuizChoice,
   JsonInputBlock,
+  JsonTerminalBlock,
+  JsonTerminalConnectBlock,
+  JsonChallengeBlock,
+  JsonCodeBlockBlock,
+  JsonGrotGuideBlock,
+  JsonSnippetRefBlock,
 } from '../types/json-guide.types';
 ```
 
@@ -1304,6 +1360,7 @@ import {
   isImageBlock,
   isVideoBlock,
   isSectionBlock,
+  isCollapsibleBlock,
   isConditionalBlock,
   isAssistantBlock,
   isInteractiveBlock,
@@ -1311,6 +1368,12 @@ import {
   isGuidedBlock,
   isQuizBlock,
   isInputBlock,
+  isTerminalBlock,
+  isTerminalConnectBlock,
+  isChallengeBlock,
+  isCodeBlockBlock,
+  isGrotGuideBlock,
+  isSnippetRefBlock,
   hasAssistantEnabled,
 } from '../types/json-guide.types';
 ```
@@ -1327,6 +1390,8 @@ import {
   CURRENT_SCHEMA_VERSION,
 } from '../types/json-guide.schema';
 ```
+
+The prescriptive coupling checklist and the limits of the automated drift checks are documented in [schema-type coupling rules](../../../.cursor/rules/schema-coupling.mdc). The recursive JSON guide schemas rely on manual paired review plus focused tests; unlike several non-recursive package schemas, they are not declared with `satisfies z.ZodType<T>`.
 
 ## See also
 
