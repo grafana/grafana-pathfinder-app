@@ -10,7 +10,6 @@ export {
   RECOMMENDATIONS_TAB_ID,
   DEVTOOLS_TAB_ID,
   EDITOR_TAB_ID,
-  GUIDE_STRIP_EXCLUDED_TAB_TYPES,
   getGuideStripTabs,
   isNonContentTab,
   hasOnlyNonContentTabs,

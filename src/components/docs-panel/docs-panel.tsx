@@ -629,13 +629,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     let newActiveTabId = this.state.activeTabId;
 
     // Closing a background tab must not move focus — the user may be sitting on
-    // a strip-excluded view (Dev Tools) and closing a guide from the overflow menu.
+    // another tab and closing a guide from the overflow menu.
     if (this.state.activeTabId === tabId) {
-      // Adjacency walks the rendered strip, not raw tab state: strip-excluded
-      // chrome holds no slot, so handing it focus would leave no visible tab
-      // marked active. A strip-excluded tab closed via Ctrl+W has no neighbours
-      // of its own, so it inherits the last strip tab instead of sending the
-      // user home to re-navigate. Recommendations is the empty-strip fallback.
+      // Adjacency walks the rendered strip, not raw tab state: the
+      // recommendations rail holds no strip slot, so handing it focus would
+      // leave no visible tab marked active. A tab outside the strip closed via
+      // Ctrl+W has no neighbours of its own, so it inherits the last strip tab
+      // instead of sending the user home. Recommendations is the empty-strip
+      // fallback.
       const stripTabs = getGuideStripTabs(currentTabs);
       const closedIndex = stripTabs.findIndex((t) => t.id === tabId);
       const replacement =
@@ -710,7 +711,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   /**
    * Open the Dev Tools view (or switch to it if already open).
-   * Singleton lives in tab state for routing but is excluded from the guide strip.
+   * Singleton strip tab opened from the overflow menu when Dev Mode is on.
    */
   public openDevToolsTab(): void {
     const existingTab = this.state.tabs.find((t) => t.id === DEVTOOLS_TAB_ID);
