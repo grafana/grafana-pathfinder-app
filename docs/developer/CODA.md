@@ -154,6 +154,25 @@ All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resou
 | `/completion-records/capability` | GET    | `handleCompletionCapability` | Cheap identity + upstream-reachability probe                                    |
 | `/health`                        | GET    | `handleHealth`               | Plugin health (includes `codaRegistered`)                                       |
 
+**Error statuses on the Coda-backed routes** (`/vms`, `/vms/{id}`, `/sample-apps`, `/alloy-scenarios`):
+
+| Status | When                                                                                                |
+| ------ | --------------------------------------------------------------------------------------------------- |
+| `401`  | Credential failure — local token refresh failed, or Coda replied `401`. Uniform across all of them. |
+| `404`  | `GET /vms/{id}` only, when Coda replies `404`.                                                      |
+| `429`  | `POST /vms` only, from the local quota guard. An upstream `429` (Coda-side quota) is a `500`.       |
+| `503`  | Coda is not registered (no client configured).                                                      |
+| `500`  | Everything else — request construction, transport, decode failures, and any other upstream status.  |
+
+Classification is by **typed error, never by message prose**: `CodaClient` returns
+`codaUpstreamError{status, msg}` for non-success responses and `codaAuthSetupError` when local
+credentials cannot be obtained, and handlers branch on `isCodaAuthError` / `isCodaNotFoundError`
+via `errors.As` (`pkg/plugin/coda.go`, mapped to a status by `writeCodaError` in `resources.go`).
+This mirrors `appPlatformUpstreamError` in `app_platform_client.go`. Do not reintroduce
+`strings.Contains` over `err.Error()` — that is what caused expired tokens to surface as `500` on
+`/sample-apps` and `/alloy-scenarios` (issue #1521); `pkg/plugin/coda_error_classification_test.go`
+pins the per-route mapping. A `401` returns a fixed message and never echoes the upstream body.
+
 ### App Platform proxies — identity trust boundary
 
 The `/completion-records/*` routes (and any future plugin-backend proxy of the App Platform
@@ -409,7 +428,7 @@ The terminal panel is shown when **both** `isDevMode` and `pluginConfig.enableCo
 
 ### Auth expired / registration invalid
 
-If Coda returns 401, the backend logs `"authentication failed, please re-register"`. Fix: re-enter the enrollment key in plugin settings and re-register.
+If Coda returns 401, the backend logs and returns `"authentication failed: token may be invalid or expired, please re-register"` with HTTP `401` on every Coda-backed resource route (see [HTTP resource handlers](#http-resource-handlers-pkgpluginresourcesgo)). Fix: re-enter the enrollment key in plugin settings and re-register.
 
 ### VM stuck in provisioning
 
