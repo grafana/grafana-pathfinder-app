@@ -104,7 +104,7 @@ function clauseCandidates(clause: string | string[]): string[] {
 }
 
 function cycleKey(cycle: string[]): string {
-  return [...new Set(cycle)].sort().join('\u0000');
+  return [...new Set(cycle)].sort().join('\x00');
 }
 
 /**
