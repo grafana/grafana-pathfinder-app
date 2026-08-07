@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -77,7 +78,84 @@ func isUsableState(state string) bool {
 
 // isVMNotFoundError returns true when the error indicates the VM no longer exists (HTTP 404).
 func isVMNotFoundError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "VM not found")
+	return isCodaNotFoundError(err)
+}
+
+// maxCodaErrorBodyBytes bounds how much of an upstream error body we buffer.
+const maxCodaErrorBodyBytes = 2048
+
+// codaUpstreamError carries the upstream HTTP status alongside the message so
+// callers classify failures by status rather than by message prose. Mirrors
+// appPlatformUpstreamError in app_platform_client.go.
+//
+// detail carries upstream body text that Error() deliberately omits, for
+// server-side logging only. It must never reach an HTTP response body.
+type codaUpstreamError struct {
+	status int
+	msg    string
+	detail string
+}
+
+func (e *codaUpstreamError) Error() string { return e.msg }
+
+// codaErrorDetail returns upstream body text withheld from the error message,
+// so callers can log what they must not return. Empty when there is none.
+func codaErrorDetail(err error) string {
+	var upstreamErr *codaUpstreamError
+	if errors.As(err, &upstreamErr) {
+		return upstreamErr.detail
+	}
+	return ""
+}
+
+// codaAuthSetupError marks a failure to obtain local Coda credentials. Treating
+// this as a credential failure preserves the pre-#1533 classification, which
+// also reports upstream token-endpoint outages as 401; see issue #1535.
+type codaAuthSetupError struct {
+	err error
+}
+
+func (e *codaAuthSetupError) Error() string { return "authentication failed: " + e.err.Error() }
+
+func (e *codaAuthSetupError) Unwrap() error { return e.err }
+
+// isCodaAuthError reports whether a Coda call failed because credentials could
+// not be obtained locally or were rejected upstream with HTTP 401.
+func isCodaAuthError(err error) bool {
+	var setupErr *codaAuthSetupError
+	if errors.As(err, &setupErr) {
+		return true
+	}
+	return isCodaUpstreamStatus(err, http.StatusUnauthorized)
+}
+
+// isCodaNotFoundError reports whether a Coda call failed with HTTP 404 upstream.
+func isCodaNotFoundError(err error) bool {
+	return isCodaUpstreamStatus(err, http.StatusNotFound)
+}
+
+func isCodaUpstreamStatus(err error, status int) bool {
+	var upstreamErr *codaUpstreamError
+	return errors.As(err, &upstreamErr) && upstreamErr.status == status
+}
+
+// newCodaUpstreamError builds a typed error from a non-success Coda response.
+// 401 keeps a fixed, actionable message and carries the upstream body as detail
+// instead, so credential-failure body text is logged but never surfaced.
+func newCodaUpstreamError(resp *http.Response) error {
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxCodaErrorBodyBytes))
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return &codaUpstreamError{
+			status: http.StatusUnauthorized,
+			msg:    "authentication failed: token may be invalid or expired, please re-register",
+			detail: strings.TrimSpace(string(bodyBytes)),
+		}
+	}
+	return &codaUpstreamError{
+		status: resp.StatusCode,
+		msg:    fmt.Sprintf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes)),
+	}
 }
 
 // RegisterRequest represents the request body for registering with Coda.
@@ -193,7 +271,7 @@ func (c *CodaClient) refreshAccessToken(ctx context.Context) (string, error) {
 func (c *CodaClient) setAuthHeader(ctx context.Context, req *http.Request) error {
 	token, err := c.getAccessToken(ctx)
 	if err != nil {
-		return err
+		return &codaAuthSetupError{err: err}
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	return nil
@@ -283,7 +361,7 @@ func (c *CodaClient) CreateVM(ctx context.Context, template, owner string, confi
 	}
 
 	if err := c.setAuthHeader(ctx, req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
@@ -293,21 +371,22 @@ func (c *CodaClient) CreateVM(ctx context.Context, template, owner string, confi
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
-	}
-
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, fmt.Errorf("VM quota exceeded: you have reached the maximum number of VMs, please wait for existing VMs to expire")
+		return nil, &codaUpstreamError{
+			status: resp.StatusCode,
+			msg:    "VM quota exceeded: you have reached the maximum number of VMs, please wait for existing VMs to expire",
+		}
 	}
 
 	if resp.StatusCode == http.StatusConflict {
-		return nil, fmt.Errorf("VM conflict: a VM may already exist for this user")
+		return nil, &codaUpstreamError{
+			status: resp.StatusCode,
+			msg:    "VM conflict: a VM may already exist for this user",
+		}
 	}
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, newCodaUpstreamError(resp)
 	}
 
 	var vm VM
@@ -326,7 +405,7 @@ func (c *CodaClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
 	}
 
 	if err := c.setAuthHeader(ctx, req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
+		return nil, err
 	}
 
 	resp, err := c.client.Do(req)
@@ -335,17 +414,15 @@ func (c *CodaClient) GetVM(ctx context.Context, vmID string) (*VM, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
-	}
-
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("VM not found: %s", vmID)
+		return nil, &codaUpstreamError{
+			status: resp.StatusCode,
+			msg:    fmt.Sprintf("VM not found: %s", vmID),
+		}
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, newCodaUpstreamError(resp)
 	}
 
 	var vm VM
@@ -370,7 +447,7 @@ func (c *CodaClient) DeleteVM(ctx context.Context, vmID string, force bool) erro
 	}
 
 	if err := c.setAuthHeader(ctx, req); err != nil {
-		return fmt.Errorf("authentication failed: %w", err)
+		return err
 	}
 
 	resp, err := c.client.Do(req)
@@ -379,13 +456,8 @@ func (c *CodaClient) DeleteVM(ctx context.Context, vmID string, force bool) erro
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
-	}
-
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+		return newCodaUpstreamError(resp)
 	}
 
 	return nil
@@ -417,7 +489,7 @@ func (c *CodaClient) ListVMs(ctx context.Context, opts *ListVMsOptions) ([]VM, e
 	}
 
 	if err := c.setAuthHeader(ctx, req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
+		return nil, err
 	}
 
 	resp, err := c.client.Do(req)
@@ -426,13 +498,8 @@ func (c *CodaClient) ListVMs(ctx context.Context, opts *ListVMsOptions) ([]VM, e
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("authentication failed: token may be invalid or expired, please re-register")
-	}
-
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, newCodaUpstreamError(resp)
 	}
 
 	var listResp VMListResponse
@@ -517,7 +584,7 @@ func (c *CodaClient) ListAlloyScenarios(ctx context.Context) (*AlloyScenariosRes
 	}
 
 	if err := c.setAuthHeader(ctx, req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
+		return nil, err
 	}
 
 	resp, err := c.client.Do(req)
@@ -527,8 +594,7 @@ func (c *CodaClient) ListAlloyScenarios(ctx context.Context) (*AlloyScenariosRes
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, newCodaUpstreamError(resp)
 	}
 
 	var result AlloyScenariosResponse
@@ -547,7 +613,7 @@ func (c *CodaClient) ListSampleApps(ctx context.Context) (*SampleAppsResponse, e
 	}
 
 	if err := c.setAuthHeader(ctx, req); err != nil {
-		return nil, fmt.Errorf("authentication failed: %w", err)
+		return nil, err
 	}
 
 	resp, err := c.client.Do(req)
@@ -557,8 +623,7 @@ func (c *CodaClient) ListSampleApps(ctx context.Context) (*SampleAppsResponse, e
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes))
+		return nil, newCodaUpstreamError(resp)
 	}
 
 	var result SampleAppsResponse

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
 // registerRoutes sets up the HTTP routes for the plugin.
@@ -214,12 +216,7 @@ func (a *App) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	vm, err := a.coda.CreateVM(r.Context(), req.Template, user, req.Config)
 	if err != nil {
 		ctxLogger.Error("Failed to create VM", "error", err)
-		// Check if this is an auth error
-		if strings.Contains(err.Error(), "authentication failed") {
-			a.writeError(w, err.Error(), http.StatusUnauthorized)
-		} else {
-			a.writeError(w, err.Error(), http.StatusInternalServerError)
-		}
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -237,12 +234,10 @@ func (a *App) handleGetVM(w http.ResponseWriter, r *http.Request, vmID string) {
 	vm, err := a.coda.GetVM(r.Context(), vmID)
 	if err != nil {
 		ctxLogger.Error("Failed to get VM", "vmID", vmID, "error", err)
-		if strings.Contains(err.Error(), "not found") {
+		if isCodaNotFoundError(err) {
 			a.writeError(w, "VM not found", http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "authentication failed") {
-			a.writeError(w, err.Error(), http.StatusUnauthorized)
 		} else {
-			a.writeError(w, err.Error(), http.StatusInternalServerError)
+			a.writeCodaError(w, ctxLogger, err)
 		}
 		return
 	}
@@ -265,12 +260,7 @@ func (a *App) handleDeleteVM(w http.ResponseWriter, r *http.Request, vmID string
 	force := r.URL.Query().Get("force") == "true"
 	if err := a.coda.DeleteVM(r.Context(), vmID, force); err != nil {
 		ctxLogger.Error("Failed to delete VM", "vmID", vmID, "error", err)
-		// Check if this is an auth error
-		if strings.Contains(err.Error(), "authentication failed") {
-			a.writeError(w, err.Error(), http.StatusUnauthorized)
-		} else {
-			a.writeError(w, err.Error(), http.StatusInternalServerError)
-		}
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -288,12 +278,7 @@ func (a *App) handleListVMs(w http.ResponseWriter, r *http.Request) {
 	vms, err := a.coda.ListVMs(r.Context(), nil)
 	if err != nil {
 		ctxLogger.Error("Failed to list VMs", "error", err)
-		// Check if this is an auth error
-		if strings.Contains(err.Error(), "authentication failed") {
-			a.writeError(w, err.Error(), http.StatusUnauthorized)
-		} else {
-			a.writeError(w, err.Error(), http.StatusInternalServerError)
-		}
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -316,11 +301,7 @@ func (a *App) handleSampleApps(w http.ResponseWriter, r *http.Request) {
 	apps, err := a.coda.ListSampleApps(r.Context())
 	if err != nil {
 		ctxLogger.Error("Failed to list sample apps", "error", err)
-		if strings.Contains(err.Error(), "authentication failed") {
-			a.writeError(w, err.Error(), http.StatusUnauthorized)
-		} else {
-			a.writeError(w, err.Error(), http.StatusInternalServerError)
-		}
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -343,11 +324,7 @@ func (a *App) handleAlloyScenarios(w http.ResponseWriter, r *http.Request) {
 	scenarios, err := a.coda.ListAlloyScenarios(r.Context())
 	if err != nil {
 		ctxLogger.Error("Failed to list alloy scenarios", "error", err)
-		if strings.Contains(err.Error(), "authentication failed") {
-			a.writeError(w, err.Error(), http.StatusUnauthorized)
-		} else {
-			a.writeError(w, err.Error(), http.StatusInternalServerError)
-		}
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -377,4 +354,18 @@ func (a *App) writeError(w http.ResponseWriter, message string, statusCode int) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// writeCodaError maps a Coda client error to an HTTP status: credential
+// failures become 401, everything else 500. Upstream body text withheld from
+// the response is logged here so credential failures stay diagnosable.
+func (a *App) writeCodaError(w http.ResponseWriter, logger log.Logger, err error) {
+	if detail := codaErrorDetail(err); detail != "" {
+		logger.Error("Coda upstream detail withheld from response", "detail", detail)
+	}
+	if isCodaAuthError(err) {
+		a.writeError(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	a.writeError(w, err.Error(), http.StatusInternalServerError)
 }
