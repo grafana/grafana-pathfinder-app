@@ -12,7 +12,7 @@ Functional-first and pragmatic: small composable functions, immutable data and p
 
 ### Control characters in source
 
-Never paste a raw control byte into a tracked file — write it as an escape (`\x00`, `\x1b`) or build it with `String.fromCharCode`. One raw byte makes `file` classify the whole file as `data`, so `grep -r` and `rg` skip it silently and return a _shorter_ result set that reads as complete; that trap produced a false bug report (issue #1519). Tab, newline, and carriage return are fine. `src/validation/control-bytes.test.ts` scans every tracked file and fails on anything else.
+Never paste a raw control byte into a tracked file — write it as an escape (`\x00`, `\x1b`) or build it with `String.fromCharCode`. One raw byte makes `file` classify the whole file as `data`, so `grep -r` and `rg` skip it silently and return a _shorter_ result set that reads as complete; that trap produced a false bug report (issue #1519). Tab, newline, and carriage return are fine. `src/validation/control-bytes.test.ts` scans every tracked file except binary asset extensions, and fails on anything else.
 
 ### Comments
 
