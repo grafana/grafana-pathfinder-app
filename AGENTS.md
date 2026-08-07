@@ -10,6 +10,10 @@ It targets beginners and intermediate users learning Grafana, not experts after 
 
 Functional-first and pragmatic: small composable functions, immutable data and pure functions for core logic, side effects isolated at the edges rather than eliminated. React should read like the Grafana codebase.
 
+### Control characters in source
+
+Never paste a raw control byte into a tracked file — write it as an escape (`\x00`, not `\u0000`) or build it with `String.fromCharCode`. One raw byte makes `grep -r` and `rg` skip the whole file silently, returning a shorter result set that reads as complete. Tab, newline, and carriage return are fine. `src/validation/control-bytes.test.ts` enforces this over every tracked file, and its failure message explains the rest.
+
 ### Comments
 
 **Default to no comments.** Add one only when removing it would confuse a reader who can already read the surrounding code. The narrow band that earns one: counterintuitive-but-correct code, hidden invariants the type system can't express, external-bug workarounds (with an upstream link), and security or correctness warnings. If the comment won't fit on one short line, rename or restructure instead.
