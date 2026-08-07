@@ -1013,6 +1013,99 @@ A choose-your-own-adventure decision tree where each screen offers options that 
 
 Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each option has a `label` and a `next` screen ID. A screen with no `options` ends the tree. The block editor includes a YAML import flow for converting Grot Guide YAML directly into JSON.
 
+#### Challenge block
+
+A capture-the-flag style task: a title, a markdown brief, optional progressive hints, and a "Check my work" button that evaluates a single requirement token. The `mode` field picks the execution model, and most of the other fields follow from it.
+
+| Mode         | Behavior                                                                                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `"standard"` | Runs against the learner's own Grafana. Nothing is provisioned, and the brief and "Check my work" are available immediately. `successCriteria` is any Pathfinder requirement, such as `has-datasource:prometheus`. |
+| `"coda"`     | Provisions a Coda VM with a terminal, runs the setup script, then reveals "Check my work". `successCriteria` is typically `coda-exit-zero:<command>`.                                                              |
+
+`mode` is optional, and it resolves to a different value depending on how the block reaches you:
+
+- **Omitted in JSON** — the runtime treats the block as `"coda"`. Challenges predate `"standard"`, so an existing guide with no `mode` keeps its original Coda behavior.
+- **Created in the block editor** — the challenge form writes `mode` explicitly and seeds a brand-new block with `"standard"`, the cheaper authoring path. Opening a legacy block that has no `mode` infers `"coda"`, either from the presence of a VM or setup field or as the safe fallback.
+
+Both defaults are intentional. Set `mode` explicitly in hand-written JSON so the block does not depend on which path it came through.
+
+Standard mode:
+
+```json
+{
+  "type": "challenge",
+  "mode": "standard",
+  "title": "Connect your first data source",
+  "brief": "Add a Prometheus data source so the rest of this guide has something to query.",
+  "successCriteria": "has-datasource:prometheus",
+  "failureMessage": "No Prometheus data source yet — check the connections page.",
+  "hintLevels": [
+    { "text": "Start from Connections > Data sources." },
+    { "text": "The Add new data source button is in the top right." }
+  ]
+}
+```
+
+Coda mode:
+
+```json
+{
+  "type": "challenge",
+  "mode": "coda",
+  "title": "Fix the broken scrape config",
+  "brief": "The Prometheus config in `/etc/prometheus` has a bad scrape target. Repair it.",
+  "vmTemplate": "vm-aws",
+  "setupScript": "set -euo pipefail\nsed -i 's/localhost:9999/localhost:9090/' /etc/prometheus/prometheus.yml.broken",
+  "successCriteria": "coda-exit-zero:promtool check config /etc/prometheus/prometheus.yml"
+}
+```
+
+| Field             | Type                     | Required | Default   | Description                                                                       |
+| ----------------- | ------------------------ | -------- | --------- | --------------------------------------------------------------------------------- |
+| `mode`            | `"coda"` \| `"standard"` | ❌       | see above | Execution model                                                                   |
+| `title`           | string                   | ✅       | —         | Short title shown above the brief                                                 |
+| `brief`           | string                   | ✅       | —         | Markdown problem statement                                                        |
+| `successCriteria` | string                   | ✅       | —         | Requirement evaluated when the user clicks "Check my work"                        |
+| `id`              | string                   | ❌       | —         | Block ID                                                                          |
+| `vmTemplate`      | string                   | ❌       | `vm-aws`  | VM template to provision; ignored when `mode` is `"standard"`                     |
+| `vmScenario`      | string                   | ❌       | —         | Scenario for the `alloy-scenario` template; ignored when `mode` is `"standard"`   |
+| `vmApp`           | string                   | ❌       | —         | App for the `sample-app` template; ignored when `mode` is `"standard"`            |
+| `setupScript`     | string                   | ❌       | —         | Bash script run server-side once the VM is ready                                  |
+| `setupCommands`   | string[]                 | ❌       | —         | **Deprecated** — bash commands run sequentially server-side; prefer `setupScript` |
+| `hintLevels`      | `{ text: string }[]`     | ❌       | `[]`      | Progressive hints revealed on demand                                              |
+| `failureMessage`  | string                   | ❌       | —         | Message shown when the success check fails                                        |
+| `requirements`    | string[]                 | ❌       | —         | Prerequisite conditions for the challenge                                         |
+| `objectives`      | string[]                 | ❌       | —         | Objectives marked complete after this block                                       |
+| `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                    |
+
+`hintLevels` is an array of objects, not an array of strings. Each entry is `{ "text": "..." }` with non-empty text, and hints are revealed one at a time in array order.
+
+`setupScript` and `setupCommands` do the same job, and `setupScript` wins when both are present. The whole `setupScript` string is passed to the remote login shell as a single command, so multi-line scripts, heredocs, and control flow all work. `setupCommands` is kept only for back-compat: opening a legacy block in the block editor joins the array with newlines into `setupScript` and drops `setupCommands` on save, so a block migrates the first time an author edits it. Write `setupScript` in new content.
+
+Challenges in `"coda"` mode need the Coda terminal integration enabled by the administrator; `"standard"` mode has no such dependency.
+
+#### Snippet reference block
+
+A pointer to a published snippet. The parser never sees this block — every `snippet-ref` is expanded before rendering, and the referenced snippet's blocks are spliced in at the ref's position. A guide therefore picks up the snippet's latest published content on every load.
+
+```json
+{
+  "type": "snippet-ref",
+  "snippetId": "connect-prometheus-data-source"
+}
+```
+
+| Field       | Type   | Required | Description                                                                                         |
+| ----------- | ------ | -------- | --------------------------------------------------------------------------------------------------- |
+| `snippetId` | string | ✅       | Upstream snippet ID to resolve at parse time. Must be kebab-case: `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` |
+| `id`        | string | ❌       | Stable identifier for this snippet-ref instance                                                     |
+
+A ref may sit at the top level of `blocks`, or nested inside a `section`, a `conditional` (in either `whenTrue` or `whenFalse`), or an `assistant`.
+
+Snippets cannot reference other snippets. The snippet schema rejects `snippet-ref` at every supported nesting depth, so a snippet body may contain any other block type but never a ref.
+
+If a ref cannot be resolved — unknown ID, catalog fetch failure — it is replaced with an inert markdown placeholder that names the snippet ID. The guide still renders, but nothing interactive appears in the ref's place.
+
 ---
 
 ### Block Types Summary
@@ -1033,9 +1126,11 @@ Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each
 | `guided`           | Interactive | User-performed sequence with detection                                          |
 | `terminal`         | Interactive | A shell command with copy and execute (requires Coda terminal)                  |
 | `terminal-connect` | Interactive | Button that provisions a sandbox VM and opens a terminal panel                  |
+| `challenge`        | Interactive | Task with hints and a "Check my work" success check                             |
 | `grot-guide`       | Interactive | Choose-your-own-adventure decision tree                                         |
 | `quiz`             | Assessment  | Knowledge check with single/multiple choice                                     |
 | `input`            | Assessment  | Collects user responses as variables                                            |
+| `snippet-ref`      | Reusable    | Expands a published snippet in place at parse time                              |
 
 ---
 
