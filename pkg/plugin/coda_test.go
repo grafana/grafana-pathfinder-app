@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
 	"testing"
 )
 
@@ -37,10 +39,12 @@ func TestIsVMNotFoundError(t *testing.T) {
 		expected bool
 	}{
 		{"nil error", nil, false},
-		{"VM not found error", errors.New("VM not found: abc-123"), true},
+		{"upstream 404", &codaUpstreamError{status: http.StatusNotFound, msg: "VM not found: abc-123"}, true},
+		{"wrapped upstream 404", fmt.Errorf("resolve: %w", &codaUpstreamError{status: http.StatusNotFound, msg: "VM not found: abc-123"}), true},
 		{"generic error", errors.New("connection timeout"), false},
 		{"auth error", errors.New("authentication failed"), false},
-		{"partial match", errors.New("the VM not found message"), true},
+		{"prose-only not found message", errors.New("VM not found: abc-123"), false},
+		{"upstream 500 with not-found text in body", &codaUpstreamError{status: http.StatusInternalServerError, msg: `unexpected status code 500: {"error":"VM not found in region"}`}, false},
 	}
 
 	for _, tt := range tests {

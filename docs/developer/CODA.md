@@ -158,20 +158,36 @@ All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resou
 
 | Status | When                                                                                                |
 | ------ | --------------------------------------------------------------------------------------------------- |
+| `400`  | `POST /vms` only, when the request body does not decode.                                            |
 | `401`  | Credential failure — local token refresh failed, or Coda replied `401`. Uniform across all of them. |
 | `404`  | `GET /vms/{id}` only, when Coda replies `404`.                                                      |
+| `405`  | `/sample-apps` and `/alloy-scenarios` only, for any method other than `GET`.                        |
 | `429`  | `POST /vms` only, from the local quota guard. An upstream `429` (Coda-side quota) is a `500`.       |
 | `503`  | Coda is not registered (no client configured).                                                      |
 | `500`  | Everything else — request construction, transport, decode failures, and any other upstream status.  |
 
 Classification is by **typed error, never by message prose**: `CodaClient` returns
-`codaUpstreamError{status, msg}` for non-success responses and `codaAuthSetupError` when local
-credentials cannot be obtained, and handlers branch on `isCodaAuthError` / `isCodaNotFoundError`
-via `errors.As` (`pkg/plugin/coda.go`, mapped to a status by `writeCodaError` in `resources.go`).
-This mirrors `appPlatformUpstreamError` in `app_platform_client.go`. Do not reintroduce
-`strings.Contains` over `err.Error()` — that is what caused expired tokens to surface as `500` on
-`/sample-apps` and `/alloy-scenarios` (issue #1521); `pkg/plugin/coda_error_classification_test.go`
-pins the per-route mapping. A `401` returns a fixed message and never echoes the upstream body.
+`codaUpstreamError{status, msg, detail}` for non-success responses and `codaAuthSetupError` when
+local credentials cannot be obtained, and handlers branch on `isCodaAuthError` /
+`isCodaNotFoundError` via `errors.As` (`pkg/plugin/coda.go`, mapped to a status by `writeCodaError`
+in `resources.go`). This mirrors `appPlatformUpstreamError` in `app_platform_client.go`. Do not
+reintroduce `strings.Contains` over `err.Error()` — that is what caused expired tokens to surface as
+`500` on `/sample-apps` and `/alloy-scenarios` (issue #1521);
+`pkg/plugin/coda_error_classification_test.go` pins the per-route mapping.
+
+A `401` returns a fixed message and never echoes the upstream body. The body is still read —
+bounded to `maxCodaErrorBodyBytes` — into the error's `detail` field, which `writeCodaError` logs
+and no response ever renders, so a failed registration stays diagnosable server-side.
+
+Two consequences of keying on status rather than prose, both on paths that were only ever reachable
+by accident:
+
+- An upstream non-`401` whose **response body** happens to contain the text `authentication failed`
+  used to produce `401`; it now correctly produces `500`.
+- On `GET /vms/{id}`, an upstream non-`404` whose **response body** happens to contain `not found`
+  used to produce `404`; it now correctly produces `500`. The same applies to `isVMNotFoundError`,
+  which no longer treats a `5xx` mentioning a missing VM as a destroyed VM, so the terminal path
+  retries instead of burning a quota slot on a needless reprovision.
 
 ### App Platform proxies — identity trust boundary
 

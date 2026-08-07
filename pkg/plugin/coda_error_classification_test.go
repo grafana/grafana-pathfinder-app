@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -89,6 +91,44 @@ func TestNewCodaUpstreamErrorDoesNotLeakBodyOn401(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "secret upstream detail") {
 		t.Errorf("401 message leaked the upstream body: %q", err.Error())
+	}
+}
+
+// The upstream 401 body must be recoverable for logging and absent from the
+// error message that becomes the HTTP response body.
+func TestNewCodaUpstreamErrorCapturesBodyAsDetailOn401(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusUnauthorized,
+		Body:       io.NopCloser(strings.NewReader(`{"error":"instance not enrolled"}`)),
+	}
+
+	err := newCodaUpstreamError(resp)
+
+	if detail := codaErrorDetail(err); detail != `{"error":"instance not enrolled"}` {
+		t.Errorf("codaErrorDetail() = %q, want the upstream body", detail)
+	}
+	if strings.Contains(err.Error(), "instance not enrolled") {
+		t.Errorf("Error() leaked the upstream body: %q", err.Error())
+	}
+}
+
+func TestNewCodaUpstreamErrorBoundsBodyRead(t *testing.T) {
+	huge := strings.Repeat("a", maxCodaErrorBodyBytes*3)
+	resp := &http.Response{
+		StatusCode: http.StatusUnauthorized,
+		Body:       io.NopCloser(strings.NewReader(huge)),
+	}
+
+	if got := len(codaErrorDetail(newCodaUpstreamError(resp))); got != maxCodaErrorBodyBytes {
+		t.Errorf("detail length = %d, want %d", got, maxCodaErrorBodyBytes)
+	}
+}
+
+func TestCodaErrorDetailEmptyWithoutUpstreamError(t *testing.T) {
+	for _, err := range []error{nil, errors.New("boom"), &codaAuthSetupError{err: errors.New("boom")}} {
+		if detail := codaErrorDetail(err); detail != "" {
+			t.Errorf("codaErrorDetail(%v) = %q, want empty", err, detail)
+		}
 	}
 }
 
@@ -266,6 +306,85 @@ func TestCodaListRoutesSurfaceReRegisterHint(t *testing.T) {
 				t.Errorf("body = %q, want a re-register hint", rec.Body.String())
 			}
 		})
+	}
+}
+
+// handleGetVM is the one route whose error path is not solely writeCodaError —
+// it branches on isCodaNotFoundError first. These two cases pin that the 404
+// branch neither swallows an upstream 401 nor fires on not-found body prose.
+func TestGetVMNotFoundBranchDoesNotShadowOtherStatuses(t *testing.T) {
+	t.Run("upstream 401 returns 401 with the re-register message", func(t *testing.T) {
+		srv := codaTestServer(t, http.StatusUnauthorized, `{"error":"token expired"}`)
+		rec := serveCoda(codaTestApp(srv.URL, true), http.MethodGet, "/vms/vm-1", "")
+
+		assertStatus(t, rec, http.StatusUnauthorized)
+		if want := "token may be invalid or expired, please re-register"; !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("body = %q, want it to contain %q", rec.Body.String(), want)
+		}
+		if strings.Contains(rec.Body.String(), "token expired") {
+			t.Errorf("body leaked the upstream detail: %q", rec.Body.String())
+		}
+	})
+
+	// Before the typed-error change this returned 404 "VM not found", because the
+	// handler substring-matched "not found" against the upstream body.
+	t.Run("upstream 500 with not-found body prose returns 500", func(t *testing.T) {
+		srv := codaTestServer(t, http.StatusInternalServerError, `{"error":"VM not found in region"}`)
+		rec := serveCoda(codaTestApp(srv.URL, true), http.MethodGet, "/vms/vm-1", "")
+
+		assertStatus(t, rec, http.StatusInternalServerError)
+	})
+}
+
+// isVMNotFoundError drives the terminal reprovision decision at stream.go:414
+// and :588, so pin it against a real GetVM response rather than a hand-built
+// error.
+func TestIsVMNotFoundErrorAgainstRealGetVM(t *testing.T) {
+	t.Run("upstream 404", func(t *testing.T) {
+		srv := codaTestServer(t, http.StatusNotFound, `{"error":"gone"}`)
+		_, err := codaTestApp(srv.URL, true).coda.GetVM(context.Background(), "vm-1")
+
+		if !isVMNotFoundError(err) {
+			t.Errorf("isVMNotFoundError(%v) = false, want true", err)
+		}
+	})
+
+	t.Run("upstream 500 mentioning a missing VM", func(t *testing.T) {
+		srv := codaTestServer(t, http.StatusInternalServerError, `{"error":"VM not found in region"}`)
+		_, err := codaTestApp(srv.URL, true).coda.GetVM(context.Background(), "vm-1")
+
+		if isVMNotFoundError(err) {
+			t.Errorf("isVMNotFoundError(%v) = true; a 5xx must not read as a destroyed VM", err)
+		}
+	})
+}
+
+// The local quota guard in handleCreateVM is the only 429 producer on any Coda
+// route; an upstream 429 is deliberately still a 500 (issue #1535).
+func TestCreateVMLocalQuotaGuardReturns429(t *testing.T) {
+	var activeVMs []VM
+	for i := 0; i < maxUserVMs; i++ {
+		activeVMs = append(activeVMs, VM{ID: fmt.Sprintf("vm-%d", i), Owner: "tester", State: "active"})
+	}
+	listBody, err := json.Marshal(VMListResponse{VMs: activeVMs})
+	if err != nil {
+		t.Fatalf("marshal list response: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("quota guard should short-circuit before CreateVM, got %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(listBody)
+	}))
+	t.Cleanup(srv.Close)
+
+	rec := serveCoda(codaTestApp(srv.URL, true), http.MethodPost, "/vms", `{"template":"vm-aws"}`)
+
+	assertStatus(t, rec, http.StatusTooManyRequests)
+	if !strings.Contains(rec.Body.String(), "VM quota exceeded") {
+		t.Errorf("body = %q, want a quota message", rec.Body.String())
 	}
 }
 

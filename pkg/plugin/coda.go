@@ -78,21 +78,39 @@ func isUsableState(state string) bool {
 
 // isVMNotFoundError returns true when the error indicates the VM no longer exists (HTTP 404).
 func isVMNotFoundError(err error) bool {
-	return isCodaNotFoundError(err) || (err != nil && strings.Contains(err.Error(), "VM not found"))
+	return isCodaNotFoundError(err)
 }
+
+// maxCodaErrorBodyBytes bounds how much of an upstream error body we buffer.
+const maxCodaErrorBodyBytes = 2048
 
 // codaUpstreamError carries the upstream HTTP status alongside the message so
 // callers classify failures by status rather than by message prose. Mirrors
 // appPlatformUpstreamError in app_platform_client.go.
+//
+// detail carries upstream body text that Error() deliberately omits, for
+// server-side logging only. It must never reach an HTTP response body.
 type codaUpstreamError struct {
 	status int
 	msg    string
+	detail string
 }
 
 func (e *codaUpstreamError) Error() string { return e.msg }
 
-// codaAuthSetupError marks a failure to obtain local Coda credentials, which is
-// an authentication failure even though no upstream request was made.
+// codaErrorDetail returns upstream body text withheld from the error message,
+// so callers can log what they must not return. Empty when there is none.
+func codaErrorDetail(err error) string {
+	var upstreamErr *codaUpstreamError
+	if errors.As(err, &upstreamErr) {
+		return upstreamErr.detail
+	}
+	return ""
+}
+
+// codaAuthSetupError marks a failure to obtain local Coda credentials. Treating
+// this as a credential failure preserves the pre-#1533 classification, which
+// also reports upstream token-endpoint outages as 401; see issue #1535.
 type codaAuthSetupError struct {
 	err error
 }
@@ -122,16 +140,18 @@ func isCodaUpstreamStatus(err error, status int) bool {
 }
 
 // newCodaUpstreamError builds a typed error from a non-success Coda response.
-// 401 keeps a fixed, actionable message so upstream body text is never
-// surfaced for credential failures.
+// 401 keeps a fixed, actionable message and carries the upstream body as detail
+// instead, so credential-failure body text is logged but never surfaced.
 func newCodaUpstreamError(resp *http.Response) error {
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, maxCodaErrorBodyBytes))
+
 	if resp.StatusCode == http.StatusUnauthorized {
 		return &codaUpstreamError{
 			status: http.StatusUnauthorized,
 			msg:    "authentication failed: token may be invalid or expired, please re-register",
+			detail: strings.TrimSpace(string(bodyBytes)),
 		}
 	}
-	bodyBytes, _ := io.ReadAll(resp.Body)
 	return &codaUpstreamError{
 		status: resp.StatusCode,
 		msg:    fmt.Sprintf("unexpected status code %d: %s", resp.StatusCode, string(bodyBytes)),

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
 
 // registerRoutes sets up the HTTP routes for the plugin.
@@ -214,7 +216,7 @@ func (a *App) handleCreateVM(w http.ResponseWriter, r *http.Request) {
 	vm, err := a.coda.CreateVM(r.Context(), req.Template, user, req.Config)
 	if err != nil {
 		ctxLogger.Error("Failed to create VM", "error", err)
-		a.writeCodaError(w, err)
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -235,7 +237,7 @@ func (a *App) handleGetVM(w http.ResponseWriter, r *http.Request, vmID string) {
 		if isCodaNotFoundError(err) {
 			a.writeError(w, "VM not found", http.StatusNotFound)
 		} else {
-			a.writeCodaError(w, err)
+			a.writeCodaError(w, ctxLogger, err)
 		}
 		return
 	}
@@ -258,7 +260,7 @@ func (a *App) handleDeleteVM(w http.ResponseWriter, r *http.Request, vmID string
 	force := r.URL.Query().Get("force") == "true"
 	if err := a.coda.DeleteVM(r.Context(), vmID, force); err != nil {
 		ctxLogger.Error("Failed to delete VM", "vmID", vmID, "error", err)
-		a.writeCodaError(w, err)
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -276,7 +278,7 @@ func (a *App) handleListVMs(w http.ResponseWriter, r *http.Request) {
 	vms, err := a.coda.ListVMs(r.Context(), nil)
 	if err != nil {
 		ctxLogger.Error("Failed to list VMs", "error", err)
-		a.writeCodaError(w, err)
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -299,7 +301,7 @@ func (a *App) handleSampleApps(w http.ResponseWriter, r *http.Request) {
 	apps, err := a.coda.ListSampleApps(r.Context())
 	if err != nil {
 		ctxLogger.Error("Failed to list sample apps", "error", err)
-		a.writeCodaError(w, err)
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -322,7 +324,7 @@ func (a *App) handleAlloyScenarios(w http.ResponseWriter, r *http.Request) {
 	scenarios, err := a.coda.ListAlloyScenarios(r.Context())
 	if err != nil {
 		ctxLogger.Error("Failed to list alloy scenarios", "error", err)
-		a.writeCodaError(w, err)
+		a.writeCodaError(w, ctxLogger, err)
 		return
 	}
 
@@ -355,8 +357,12 @@ func (a *App) writeError(w http.ResponseWriter, message string, statusCode int) 
 }
 
 // writeCodaError maps a Coda client error to an HTTP status: credential
-// failures become 401, everything else 500.
-func (a *App) writeCodaError(w http.ResponseWriter, err error) {
+// failures become 401, everything else 500. Upstream body text withheld from
+// the response is logged here so credential failures stay diagnosable.
+func (a *App) writeCodaError(w http.ResponseWriter, logger log.Logger, err error) {
+	if detail := codaErrorDetail(err); detail != "" {
+		logger.Error("Coda upstream detail withheld from response", "detail", detail)
+	}
 	if isCodaAuthError(err) {
 		a.writeError(w, err.Error(), http.StatusUnauthorized)
 		return
