@@ -34,10 +34,27 @@ describe('loadDocsTabContentResult', () => {
     expect(mockFetchPackageContent).toHaveBeenCalledWith(
       'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
       packageManifest,
+      undefined,
       undefined
     );
     expect(mockFetchPackageById).not.toHaveBeenCalled();
     expect(mockFetchContent).not.toHaveBeenCalled();
+  });
+
+  it('threads the recommendation-level repository through to fetchPackageContent', async () => {
+    mockFetchPackageContent.mockResolvedValueOnce({ content: null, error: 'x', errorType: 'other' });
+
+    const packageManifest = { id: 'alerting-101', type: 'guide' };
+    await loadDocsTabContentResult('https://interactive-learning.grafana.net/packages/alerting-101/content.json', {
+      packageInfo: { packageId: 'alerting-101', packageManifest, repository: 'app-platform' },
+    });
+
+    expect(mockFetchPackageContent).toHaveBeenCalledWith(
+      'https://interactive-learning.grafana.net/packages/alerting-101/content.json',
+      packageManifest,
+      undefined,
+      'app-platform'
+    );
   });
 
   it('falls back to fetchPackageById when package URL is empty but packageId is known', async () => {
@@ -55,7 +72,7 @@ describe('loadDocsTabContentResult', () => {
       },
     });
 
-    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest);
+    expect(mockFetchPackageById).toHaveBeenCalledWith('alerting-101', packageManifest, undefined);
     expect(mockFetchPackageContent).not.toHaveBeenCalled();
     expect(mockFetchContent).not.toHaveBeenCalled();
   });

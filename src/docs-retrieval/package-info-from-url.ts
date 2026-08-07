@@ -67,6 +67,10 @@ export async function fetchPackageInfoFromUrl(url: string): Promise<PackageOpenI
     return {
       packageId: typeof manifest.id === 'string' ? manifest.id : undefined,
       packageManifest: manifest as unknown as Record<string, unknown>,
+      // Carry the manifest's repository to the top-level completion key. The
+      // schema defaults an absent repository to 'interactive-tutorials', so this
+      // is the true source when the author set one and the default otherwise.
+      repository: typeof manifest.repository === 'string' ? manifest.repository : undefined,
     };
   } catch {
     return undefined;

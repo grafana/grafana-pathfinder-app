@@ -6,6 +6,7 @@ import { fetchUnifiedContent } from '../../docs-retrieval';
 
 jest.mock('../../docs-retrieval', () => ({
   fetchUnifiedContent: jest.fn(),
+  recordGuideCompletionForSurface: jest.fn(),
 }));
 
 // Feature provider needs no real OpenFeature client for this test.
@@ -17,13 +18,19 @@ jest.mock('../OpenFeatureProvider', () => ({
 // responsibilities (fetch → render, close, error) rather than ContentRenderer
 // internals (covered by its own suite).
 jest.mock('../content-renderer/content-renderer', () => ({
-  ContentRenderer: () => {
+  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => {
     const { useInteractiveMode } = require('../../global-state/interactive-mode-context');
-    return <div data-testid="mock-content">mode:{useInteractiveMode()}</div>;
+    return (
+      <div data-testid="mock-content">
+        mode:{useInteractiveMode()}
+        <button onClick={onGuideComplete}>Complete rendered guide</button>
+      </div>
+    );
   },
 }));
 
 const mockFetchContent = fetchUnifiedContent as jest.MockedFunction<typeof fetchUnifiedContent>;
+const { recordGuideCompletionForSurface } = jest.requireMock('../../docs-retrieval');
 
 describe('GuideReaderOverlay', () => {
   let closeSpy: jest.SpyInstance;
@@ -114,6 +121,29 @@ describe('GuideReaderOverlay', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  it('routes a completed guide through the shared surface-neutral emitter', async () => {
+    mockFetchContent.mockResolvedValue({
+      content: {
+        url: 'https://example.com/remote-guide/content.json',
+        type: 'interactive',
+        metadata: { title: 'Remote guide', packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
+      },
+    } as any);
+
+    render(<GuideReaderOverlay doc="https://example.com/remote-guide/content.json" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Complete rendered guide' }));
+
+    expect(recordGuideCompletionForSurface).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentUrl: 'https://example.com/remote-guide/content.json',
+        contentType: 'interactive',
+        metadata: { title: 'Remote guide', packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
+        guideTitle: 'Remote guide',
+      })
+    );
   });
 
   it('surfaces an error when the guide cannot be loaded', async () => {

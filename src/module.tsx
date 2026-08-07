@@ -21,6 +21,7 @@ import {
 // Surgical import (not the ./lib/telemetry barrel): module.tsx is the entry
 // point, and the barrel would pull the whole telemetry package into module.js.
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from './lib/telemetry/surface';
+import { armCompletionWriteHook } from './completion-records';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -137,6 +138,13 @@ const plugin = new AppPlugin<{}>()
 
 // Override init() to handle auto-open when plugin loads
 plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
+  // Arm the durable completion-write hook from the universal plugin bootstrap
+  // rather than only the root App page: plugin.init fires once per session for
+  // every entry surface (sidebar, floating, full-screen, controller), so a guide
+  // completed in any of them records. Idempotent and a no-op without a resolvable
+  // user/org identity — see armCompletionWriteHook.
+  armCompletionWriteHook();
+
   const jsonData = meta?.jsonData || {};
   const config = getConfigWithDefaults(jsonData);
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);

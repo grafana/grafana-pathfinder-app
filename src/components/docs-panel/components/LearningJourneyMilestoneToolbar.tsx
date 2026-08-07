@@ -32,7 +32,12 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../../docs-retrieval';
+import {
+  getJourneyProgress,
+  getMilestoneSlug,
+  markMilestoneDone,
+  resolveExpectedMilestoneIds,
+} from '../../../docs-retrieval';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
@@ -157,8 +162,9 @@ export function LearningJourneyMilestoneToolbar({
       if (!hasInteractiveSteps) {
         const slug = getMilestoneSlug(activeTab.currentUrl);
         if (slug) {
-          void markMilestoneDone(lj.baseUrl, slug, lj.totalMilestones, {
+          void markMilestoneDone(lj.baseUrl, slug, resolveExpectedMilestoneIds(lj), {
             packageManifest: activeTab.content?.metadata?.packageManifest,
+            repository: activeTab.content?.metadata?.repository,
             guideTitle: activeTab.title,
           });
         }

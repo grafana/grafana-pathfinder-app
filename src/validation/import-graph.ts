@@ -59,6 +59,7 @@ export const ROOT_LEVEL_TIER_MAP: Record<string, number> = {
   'constants.ts': 0,
   'constants.test.ts': 0,
   'module.tsx': 4,
+  'module.bootstrap.test.ts': 4,
 };
 
 export const ROOT_LEVEL_ALLOWED_FILES = new Set(Object.keys(ROOT_LEVEL_TIER_MAP));
