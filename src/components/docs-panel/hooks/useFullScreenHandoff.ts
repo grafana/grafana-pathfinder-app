@@ -57,11 +57,12 @@ import type { CombinedPanelState } from '../../../types/content-panel.types';
 
 interface FullScreenModel {
   state: CombinedPanelState;
+  saveTabsToStorage(): Promise<void>;
 }
 
 export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: boolean): void {
   React.useEffect(() => {
-    const handleFullScreenRequest = () => {
+    const handleFullScreenRequest = async () => {
       if (isSessionActive) {
         getAppEvents().publish({
           type: 'alert-info',
@@ -86,8 +87,10 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
         });
         // Remember where we came from so explicit Exit can land back on the
         // user's prior Grafana page instead of the plugin home.
+        const saveTabs = model.saveTabsToStorage();
         panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
-        panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor' });
+        panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor', tabId: activeTab.id });
+        await saveTabs;
         panelModeManager.setModePersisted('fullscreen');
         locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
         return;
@@ -111,16 +114,19 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
         return;
       }
 
+      const saveTabs = model.saveTabsToStorage();
       panelModeManager.setPendingGuide({
         url: guideUrl,
         title: activeTab.title,
         type: activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs',
+        tabId: activeTab.id,
         // Forward synthetic packageInfo (e.g. PR-tester journeys whose URL
         // is a raw GitHub URL, not a recognised package URL) so the
         // full-screen page rebuilds the milestone toolbar after the handoff.
         packageInfo: activeTab.packageInfo,
       });
 
+      await saveTabs;
       reportAppInteraction(UserInteraction.FullScreenEnter, {
         guide_url: guideUrl,
         guide_title: activeTab.title,

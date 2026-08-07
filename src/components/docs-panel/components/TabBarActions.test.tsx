@@ -293,21 +293,21 @@ describe('TabBarActions', () => {
     const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
 
     it('is not rendered when the user cannot edit', () => {
-      render(<TabBarActions isEditorUser={false} onOpenEditorTab={jest.fn()} />);
+      render(<TabBarActions isEditorUser={false} onCreateEditorTab={jest.fn()} />);
       openMenu();
       expect(screen.queryByRole('menuitem', { name: /create guide/i })).not.toBeInTheDocument();
     });
 
     it('is rendered for editor users and opens the editor on click', () => {
-      const onOpenEditorTab = jest.fn();
+      const onCreateEditorTab = jest.fn();
       const { reportAppInteraction } = require('../../../lib/analytics');
-      render(<TabBarActions isEditorUser onOpenEditorTab={onOpenEditorTab} />);
+      render(<TabBarActions isEditorUser onCreateEditorTab={onCreateEditorTab} />);
       openMenu();
 
       const item = screen.getByRole('menuitem', { name: /create guide/i });
       fireEvent.click(item);
 
-      expect(onOpenEditorTab).toHaveBeenCalledTimes(1);
+      expect(onCreateEditorTab).toHaveBeenCalledTimes(1);
       expect(reportAppInteraction).toHaveBeenCalledWith(
         'docs_panel_interaction',
         expect.objectContaining({ action: 'open_editor', source: 'header_menu_editor' })

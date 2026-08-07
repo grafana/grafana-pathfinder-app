@@ -202,8 +202,9 @@ export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
 ] as const;
 
 /**
- * Local storage key for persisting editor state.
- * Canonical value lives in the centralized `StorageKeys` registry.
+ * Prefix for per-tab editor documents (`${BLOCK_EDITOR_STORAGE_KEY}:${tabId}`).
+ * The bare key is singleton-era legacy only — migrated on read. Do not use as a
+ * live document key; always pass an explicit per-tab `storageKey`.
  */
 export const BLOCK_EDITOR_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_STATE;
 
@@ -212,12 +213,6 @@ export const BLOCK_EDITOR_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_STATE;
  * Allows recording to survive page refreshes (e.g., when saving a dashboard)
  */
 export const RECORDING_STATE_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_RECORDING_STATE;
-
-/**
- * Local storage key for persisting backend tracking state (resource name, status).
- * Ensures the correct save/update button is shown after a page refresh.
- */
-export const BACKEND_TRACKING_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_BACKEND_TRACKING;
 
 /**
  * Default guide metadata for new guides

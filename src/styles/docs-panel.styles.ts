@@ -221,10 +221,14 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     position: 'relative', // Positioning context for absolute dropdown
     flexShrink: 0, // Don't shrink, stay compact
     // container-type makes this a query container for the wordmark's narrow-width
-    // hide — which also makes it a stacking context, so lift the whole bar above
-    // page content (below modals) to keep the overflow dropdown painting on top.
+    // hide — which also makes it a stacking context. That traps the overflow
+    // dropdown: its own z-index only orders it *within* the bar, so the bar's
+    // level is what competes with the content below. Panel content pins its own
+    // chrome (block editor header, health bar) at `navbarFixed`, and those come
+    // later in the DOM — a tie there hid the dropdown behind the editor header.
+    // Outrank them here, while staying below tooltips, modals, and portals.
     containerType: 'inline-size',
-    zIndex: theme.zIndex.navbarFixed,
+    zIndex: theme.zIndex.dropdown,
   }),
   tabList: css({
     label: 'combined-journey-tab-list',
@@ -330,14 +334,13 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 0,
-    // Flexible width that respects container bounds
     flex: '1 1 80px',
-    minWidth: 0, // Allow flex shrinking below content size
-    maxWidth: '220px', // Still cap maximum width for aesthetics
+    minWidth: 0,
+    maxWidth: '220px',
     position: 'relative',
     transition: 'all 0.2s ease',
     color: theme.colors.text.secondary,
-    overflow: 'hidden', // Prevent content overflow
+    overflow: 'hidden',
     '&:hover': {
       backgroundColor: 'transparent',
       color: theme.colors.text.primary,
@@ -348,7 +351,6 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     '&:not(:first-child)': {
       marginLeft: theme.spacing(0.25),
     },
-    // Underline (hidden by default, shown on active)
     '&::after': {
       content: '""',
       position: 'absolute',
@@ -366,7 +368,6 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     backgroundColor: 'transparent',
     color: theme.colors.text.primary,
     fontWeight: theme.typography.fontWeightMedium,
-    // Primary blue underline like Grafana UI Tabs
     '&::after': {
       backgroundImage: theme.colors.gradients.brandHorizontal,
     },
@@ -378,8 +379,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(1),
     width: '100%',
-    minWidth: 0, // Allow shrinking to fit parent
-    overflow: 'hidden', // Prevent overflow
+    minWidth: 0,
+    overflow: 'hidden',
   }),
   tabIcon: css({
     label: 'combined-journey-tab-icon',
@@ -394,18 +395,23 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     fontWeight: 'inherit',
     color: 'inherit',
     flex: 1,
-    minWidth: 0, // Critical for allowing text truncation in flex containers
-    maxWidth: '100%', // Ensure it doesn't exceed parent
+    minWidth: 0,
+    maxWidth: '100%',
   }),
   editorTabTitle: css({
     label: 'combined-journey-editor-tab-title',
-    fontStyle: 'italic',
     fontWeight: theme.typography.fontWeightLight,
   }),
-  editorTabDraftBadge: css({
-    label: 'combined-journey-editor-tab-draft-badge',
-    flexShrink: 0,
-    // Compact so the badge fits tab chrome without dominating the title.
+  editorTabTitleModified: css({
+    label: 'combined-journey-editor-tab-title-modified',
+    fontStyle: 'italic',
+  }),
+  editorTabStatusBadge: css({
+    label: 'combined-journey-editor-tab-status-badge',
+    // Shrink/clip under pressure so the close control stays in frame.
+    flexShrink: 1,
+    minWidth: 0,
+    overflow: 'hidden',
     fontSize: '10px',
     padding: `0 ${theme.spacing(0.5)}`,
     lineHeight: '16px',
@@ -458,7 +464,10 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     position: 'absolute',
     top: '100%',
     right: 0, // Align with the right edge of the chevron button
-    zIndex: 9999, // Stack above other tab-bar items (the bar's z-index lifts the dropdown above page content)
+    // Orders the dropdown above the bar's other children only — the bar is a
+    // stacking context, so this value cannot lift it above panel content. The
+    // bar's own z-index does that. Above `tabOverflow` (1), the chevron it hangs from.
+    zIndex: 2,
     minWidth: '220px',
     maxWidth: '320px',
     backgroundColor: theme.colors.background.primary,
@@ -542,7 +551,6 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
   }),
   editorDropdownItemTitle: css({
     label: 'combined-journey-editor-dropdown-item-title',
-    fontStyle: 'italic',
     fontWeight: theme.typography.fontWeightLight,
   }),
   dropdownItemClose: css({

@@ -67,7 +67,7 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
     prismStyles: 'prismStyles',
     model: {
       setActiveTab: jest.fn(),
-      openEditorTab: jest.fn(),
+      createEditorTab: jest.fn(),
       confirmAlignment: jest.fn(),
       dismissAlignment: jest.fn(),
     } as any,

@@ -146,3 +146,11 @@ describe('loadGuide viewMode restoration', () => {
     expect(result.current.state.viewMode).toBe('preview');
   });
 });
+
+describe('new guide identity', () => {
+  it('uses the caller-provided unique local ID', () => {
+    const { result } = renderHook(() => useBlockEditor({ newGuideId: 'new-guide-tab-123' }));
+
+    expect(result.current.state.guide.id).toBe('new-guide-tab-123');
+  });
+});

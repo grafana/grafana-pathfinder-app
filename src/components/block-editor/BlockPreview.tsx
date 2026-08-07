@@ -43,7 +43,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
 
-  // Progress key matches the URL used in content rendering
+  // Progress key matches the URL used in content rendering.
   const progressKey = `block-editor://preview/${guide.id}`;
   const { hasProgress: hasInteractiveProgress, reset } = useGuidePreviewProgress(progressKey);
 
@@ -108,13 +108,13 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
         title: showTitle ? guide.title : '',
       },
       type: 'learning-journey',
-      url: `block-editor://preview/${guide.id}`,
+      url: progressKey,
       lastFetched: new Date().toISOString(),
       isNativeJson: true,
     };
 
     return { content: rawContent, isEmpty: false };
-  }, [guide, showTitle]);
+  }, [guide, showTitle, progressKey]);
 
   // Show error state if parsing failed
   if (errors.length > 0) {

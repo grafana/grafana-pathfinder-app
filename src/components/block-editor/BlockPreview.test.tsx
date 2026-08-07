@@ -9,9 +9,14 @@ jest.mock('../content-renderer/content-renderer', () => ({
   ContentRenderer: () => <div data-testid="preview-content-renderer" />,
 }));
 
-jest.mock('./hooks/useGuidePreviewProgress', () => ({
-  useGuidePreviewProgress: () => ({ hasProgress: false, reset: jest.fn() }),
-}));
+const mockUseGuidePreviewProgress = jest.fn((_key: string) => ({ hasProgress: false, reset: jest.fn() }));
+jest.mock('./hooks/useGuidePreviewProgress', () => {
+  const actual = jest.requireActual('./hooks/useGuidePreviewProgress');
+  return {
+    ...actual,
+    useGuidePreviewProgress: (key: string) => mockUseGuidePreviewProgress(key),
+  };
+});
 
 const inlineSnippetRefsInGuideMock = jest.fn();
 jest.mock('../../snippet-engine', () => {
@@ -38,6 +43,7 @@ describe('BlockPreview snippet handling', () => {
   beforeEach(() => {
     inlineSnippetRefsInGuideMock.mockReset();
     inlineSnippetRefsInGuideMock.mockResolvedValue(resolvedGuide);
+    mockUseGuidePreviewProgress.mockClear();
   });
 
   it('does not surface a false unresolved-snippet warning for a valid ref', async () => {

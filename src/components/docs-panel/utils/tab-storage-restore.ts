@@ -11,7 +11,7 @@
 import type { LearningJourneyTab, LearningJourneyTabType, PersistedTabData } from '../../../types/content-panel.types';
 import { isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../../security';
 import { logger } from '../../../lib/logging';
-import { DEVTOOLS_TAB_ID, EDITOR_TAB_ID, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
+import { DEVTOOLS_TAB_ID, RECOMMENDATIONS_TAB_ID, SINGLETON_TAB_IDS } from './tab-kinds';
 
 /**
  * Tab storage interface for dependency injection
@@ -57,6 +57,7 @@ export function createUrlValidator(isDevMode: boolean): UrlValidator {
  * Runtime behavior dispatches on `type`; singleton IDs remain stable identity
  * keys. Reserved IDs and types must therefore agree in both directions so a
  * malformed content record cannot acquire privileged singleton behavior.
+ * Editor is multi-instance and may use any unique ID.
  */
 function getCanonicalPersistedTabType(data: PersistedTabData): LearningJourneyTabType | null {
   const type: unknown = data.type ?? 'learning-journey';
@@ -67,12 +68,12 @@ function getCanonicalPersistedTabType(data: PersistedTabData): LearningJourneyTa
   if (type === 'devtools') {
     return data.id === DEVTOOLS_TAB_ID ? type : null;
   }
-  if (type === 'editor') {
-    return data.id === EDITOR_TAB_ID ? type : null;
+  if (SINGLETON_TAB_IDS.has(data.id)) {
+    return null;
   }
 
-  if (data.id === RECOMMENDATIONS_TAB_ID || data.id === DEVTOOLS_TAB_ID || data.id === EDITOR_TAB_ID) {
-    return null;
+  if (type === 'editor') {
+    return type;
   }
 
   return type === 'learning-journey' || type === 'docs' || type === 'interactive' ? type : null;
@@ -106,7 +107,6 @@ export async function restoreTabsFromStorage(
     };
 
     if (!parsedData || parsedData.length === 0) {
-      // Return recommendations home if no stored data
       return [recommendationsTab];
     }
 
@@ -138,6 +138,21 @@ export async function restoreTabsFromStorage(
         return;
       }
 
+      // Editor tabs have no URLs; keep persisted id for per-tab draft storage.
+      if (type === 'editor') {
+        tabs.push({
+          id: data.id,
+          title: data.title || 'New Guide',
+          baseUrl: '',
+          currentUrl: '',
+          content: null,
+          isLoading: false,
+          error: null,
+          type: 'editor',
+        });
+        return;
+      }
+
       // Handle devtools tab specially - it has no URLs to validate
       if (type === 'devtools') {
         tabs.push({
@@ -149,21 +164,6 @@ export async function restoreTabsFromStorage(
           isLoading: false,
           error: null,
           type: 'devtools',
-        });
-        return;
-      }
-
-      // Handle editor tab specially - it has no URLs to validate
-      if (type === 'editor') {
-        tabs.push({
-          id: EDITOR_TAB_ID,
-          title: data.title || 'New Guide',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-          type: 'editor',
         });
         return;
       }
@@ -228,7 +228,7 @@ export async function restoreActiveTabFromStorage(tabStorage: TabStorage, tabs: 
     if (activeTabId) {
       const tabExists = tabs.some((t) => t.id === activeTabId);
 
-      // Restore the stored tab if it exists (including Dev Tools — strip-excluded but persisted).
+      // Restore the stored tab if it exists.
       // closeTab ensures recommendations is saved when the strip is empty.
       return tabExists ? activeTabId : RECOMMENDATIONS_TAB_ID;
     }

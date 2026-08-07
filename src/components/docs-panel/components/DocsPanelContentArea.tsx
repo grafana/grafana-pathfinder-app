@@ -35,6 +35,7 @@ import {
   pickControllerTabOpenAction,
   RECOMMENDATIONS_TAB_ID,
 } from '../utils';
+import { editorTabStorageKey } from '../../block-editor/editor-tab-storage';
 import {
   reportAppInteraction,
   UserInteraction,
@@ -167,7 +168,20 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           return (
             <div className={styles.devToolsContent} data-testid="editor-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                <BlockEditor />
+                {/* key remounts the editor per tab so each instance hydrates
+                    from its own per-tab draft storage */}
+                <BlockEditor
+                  key={activeTab.id}
+                  storageKey={editorTabStorageKey(activeTab.id)}
+                  onGuideTitleChange={(title) => model.updateEditorTabTitle(activeTab.id, title)}
+                  onFocusExistingGuide={(resourceName) =>
+                    model.focusEditorTabForResource(resourceName, { excludeTabId: activeTab.id })
+                  }
+                  onFindGuideIdCollision={(guideId) =>
+                    model.findEditorTabForGuideId(guideId, { excludeTabId: activeTab.id })
+                  }
+                  onDiscardGuideIdCollision={(tabId) => model.discardEditorTab(tabId)}
+                />
               </Suspense>
             </div>
           );
@@ -261,7 +275,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
           return (
             <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
-              {/* Return to Editor Banner - only shown for WYSIWYG preview */}
+              {/* Unused: nothing opens bundled:wysiwyg-preview; return-to-editor nav is stale. */}
               {isWysiwygPreview && (
                 <div className={styles.returnToEditorBanner} data-testid={testIds.devTools.previewBanner}>
                   <div className={styles.returnToEditorLeft} data-testid={testIds.devTools.previewModeIndicator}>
@@ -270,7 +284,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </div>
                   <button
                     className={styles.returnToEditorButton}
-                    onClick={() => model.openEditorTab()}
+                    onClick={() => model.createEditorTab()}
                     data-testid={testIds.devTools.returnToEditorButton}
                   >
                     <Icon name="arrow-left" size="sm" />

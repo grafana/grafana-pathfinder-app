@@ -254,7 +254,6 @@ export const testIds = {
     publishButton: 'block-editor-publish-button',
     viewModeToggle: 'block-editor-view-mode-toggle',
     moreActionsButton: 'block-editor-more-actions-button',
-    newGuideButton: 'block-editor-new-guide-button',
     libraryButton: 'block-editor-library-button',
     blockItem: (blockId: string) => `block-editor-item-${blockId}`,
     form: (formType: string) => `block-editor-form-${formType}`,

@@ -23,7 +23,6 @@ export interface HeaderKebabProps {
   /** Whether block-selection mode is currently active. */
   isSelectionMode: boolean;
   onToggleSelectionMode: () => void;
-  onNewGuide: () => void;
   onOpenGuideLibrary: () => void;
   onOpenImport: () => void;
   onCopy: () => void;
@@ -35,7 +34,7 @@ export interface HeaderKebabProps {
 }
 
 /**
- * "More actions" kebab menu: guide actions (New, Library, block selection), a
+ * "More actions" kebab menu: guide actions (Library, block selection), a
  * context-sensitive publish shortcut, view controls (pop out / dock, full
  * screen), and file actions (import, copy/download JSON, GitHub PR, tour).
  */
@@ -49,7 +48,6 @@ export function HeaderKebab({
   hasBlocks,
   isSelectionMode,
   onToggleSelectionMode,
-  onNewGuide,
   onOpenGuideLibrary,
   onOpenImport,
   onCopy,
@@ -63,7 +61,7 @@ export function HeaderKebab({
 
   const { panelMode, handleTogglePanelMode, handleGoFullScreen } = usePanelModeControls();
 
-  // Context-sensitive publish/unpublish shortcut, rendered after the New/Library section.
+  // Context-sensitive publish/unpublish shortcut, rendered after the Library section.
   const moreMenuContextItem = () => {
     if (!isBackendAvailable) {
       return null;
@@ -99,7 +97,6 @@ export function HeaderKebab({
   const showSelectionItem = viewMode === 'edit' && hasBlocks;
   const moreMenu = (
     <Menu>
-      <Menu.Item label="New guide" icon="file-blank" onClick={onNewGuide} testId={testIds.blockEditor.newGuideButton} />
       {showSelectionItem && (
         <Menu.Item
           label={isSelectionMode ? 'Exit selection mode' : 'Select blocks for merging'}
@@ -116,7 +113,7 @@ export function HeaderKebab({
           testId={testIds.blockEditor.libraryButton}
         />
       )}
-      <Menu.Divider />
+      {(showSelectionItem || (isBackendAvailable && hasBackendGuides)) && <Menu.Divider />}
       {contextItem}
       {contextItem && <Menu.Divider />}
       {/* Full screen is hidden when already fullscreen (the FullScreenLayout
