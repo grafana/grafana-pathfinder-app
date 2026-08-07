@@ -73,6 +73,119 @@ Notes:
 
 Some contributors test their local `dist/` build against a live Grafana Cloud stack instead of (or alongside) the Docker Grafana above, using [Graft](https://github.com/grafana/plugin-graft) — an internal, Grafanista-only browser-extension + local-server tool that intercepts Cloud requests and serves your local build with hot reload. See [`GRAFT_TESTING.md`](GRAFT_TESTING.md) for what this means when debugging or reviewing changes.
 
+## Testing private CDN with local builds
+
+This flow tests a local Pathfinder app build against the dev private CDN domain (`interactive-learning-private.grafana-dev.net`).
+The CDN and bucket stay in cloud.
+The app UI and signer run locally.
+
+### Prerequisites
+
+- `docs-plugin` local Grafana is running on `http://localhost:3000`.
+- `grafana-pathfinder-backend` local Grafana is running on `http://grafana.k3d.localhost:9999`.
+- You have a valid dev signing key ID and secret that match the deployed dev Fastly verifier.
+
+### Prepare the backend plugin in k3d
+
+The local k3d Grafana for `grafana-pathfinder-backend` will fail startup if the app plugin artifact is missing.
+Build and deploy the plugin artifact before testing signer endpoints.
+
+```bash
+cd ~/ext/grafana/grafana-pathfinder-backend
+make build/plugin
+make local/deploy_plugin
+```
+
+Verify backend Grafana is healthy:
+
+```bash
+curl -s http://grafana.k3d.localhost:9999/api/health
+```
+
+### Upload a test guide package to the private bucket
+
+Use a known-valid bundled guide as fixture content.
+
+```bash
+GUIDE_ID="qa-first-dashboard-$(date +%s)"
+BASE_PREFIX="internal/e2e/${GUIDE_ID}"
+SRC_BASE=~/ext/grafana/docs-plugin/src/bundled-interactives/first-dashboard
+
+gcloud storage cp "${SRC_BASE}/content.json" "gs://interactive-learning-dev-private/${BASE_PREFIX}/content.json"
+gcloud storage cp "${SRC_BASE}/manifest.json" "gs://interactive-learning-dev-private/${BASE_PREFIX}/manifest.json"
+```
+
+### Configure local signer settings
+
+The local `grafana-pathfinder-backend` branch includes `POST /v1/cdn/sign`.
+Configure the secure settings once.
+Use plugin ID `pathfinderbackend-app`.
+
+```bash
+curl -u admin:admin \
+  -H 'Content-Type: application/json' \
+  -X POST http://grafana.k3d.localhost:9999/api/plugins/pathfinderbackend-app/settings \
+  -d '{
+    "enabled": true,
+    "secureJsonData": {
+      "cdn_private_base_url": "https://interactive-learning-private.grafana-dev.net",
+      "cdn_signing_key_id": "key1",
+      "cdn_signing_secret": "<DEV_SIGNING_SECRET>"
+    }
+  }'
+```
+
+### Mint a signed URL and verify edge behavior
+
+```bash
+PATH_ONLY="/${BASE_PREFIX}/content.json"
+SIGNED_URL=$(curl -s -u admin:admin \
+  -H 'Content-Type: application/json' \
+  -X POST http://grafana.k3d.localhost:9999/api/plugins/pathfinderbackend-app/resources/v1/cdn/sign \
+  -d "{\"path\":\"${PATH_ONLY}\",\"expiresInSeconds\":300}" | jq -r '.url')
+
+curl -i "${SIGNED_URL}"
+curl -i "https://interactive-learning-private.grafana-dev.net${PATH_ONLY}"
+```
+
+Expected status codes:
+
+- signed URL: `200`
+- unsigned URL: `403`
+
+### Open the guide in the local UI
+
+Deep-link the signed URL into the local plugin.
+
+```bash
+DOC_PARAM=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "${SIGNED_URL}")
+open "http://localhost:3000/a/grafana-pathfinder-app?doc=${DOC_PARAM}"
+```
+
+Expected result: the guide renders in the local docs panel while content is served from the private CDN.
+
+### Troubleshooting
+
+If you get `Unable to load documentation`, check these first:
+
+- The signed URL has expired. Mint a fresh URL and retry.
+- The docs-plugin branch includes private interactive domain support.
+- The backend plugin settings were saved on `pathfinderbackend-app`, not `pathfinder-backend`.
+
+## Testing a public learning journey
+
+Use this to verify that normal public Grafana docs journeys still render in the local app.
+This does not use the private CDN signer flow.
+
+```bash
+PUBLIC_JOURNEY_URL="https://grafana.com/docs/learning-journeys/"
+DOC_PARAM=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "${PUBLIC_JOURNEY_URL}")
+open "http://localhost:3000/a/grafana-pathfinder-app?doc=${DOC_PARAM}"
+```
+
+Expected result: the journey page opens in the docs panel.
+If you want a specific journey, replace `PUBLIC_JOURNEY_URL` with that full `https://grafana.com/docs/...` link.
+
 ## Pre-merge check
 
 Run before pushing or opening a pull request. CI runs the same set:

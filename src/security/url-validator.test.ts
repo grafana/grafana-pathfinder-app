@@ -106,10 +106,19 @@ describe('Interactive Learning URL validators', () => {
       );
     });
 
+    it('should return true for private interactive-learning domains', () => {
+      expect(isInteractiveLearningUrl('https://interactive-learning-private.grafana-dev.net')).toBe(true);
+      expect(isInteractiveLearningUrl('https://interactive-learning-private.grafana-ops.net/guide/')).toBe(true);
+      expect(isInteractiveLearningUrl('https://interactive-learning-private.grafana.net/tutorial/unstyled.html')).toBe(
+        true
+      );
+    });
+
     it('should return false for domain hijacking attempts', () => {
       expect(isInteractiveLearningUrl('https://interactive-learning.grafana.net.evil.com/guide/')).toBe(false);
       expect(isInteractiveLearningUrl('https://a-interactive-learning.grafana.net/guide/')).toBe(false);
       expect(isInteractiveLearningUrl('https://interactive-learning.grafana-dev.net.evil.com/guide/')).toBe(false);
+      expect(isInteractiveLearningUrl('https://interactive-learning-private.grafana.net.evil.com/guide/')).toBe(false);
     });
 
     it('should return false for other Grafana domains', () => {
@@ -198,6 +207,7 @@ describe('Localhost URL validators', () => {
     it('should always allow interactive learning URLs', () => {
       expect(isAllowedContentUrl('https://interactive-learning.grafana.net/guide/')).toBe(true);
       expect(isAllowedContentUrl('https://interactive-learning.grafana-dev.net/tutorial/')).toBe(true);
+      expect(isAllowedContentUrl('https://interactive-learning-private.grafana-dev.net/tutorial/')).toBe(true);
     });
 
     it('should reject localhost URLs in production mode', () => {
@@ -261,6 +271,11 @@ describe('Localhost URL validators', () => {
 
     it('should accept interactive learning dev URLs', () => {
       const result = validateTutorialUrl('https://interactive-learning.grafana-dev.net/tutorial/');
+      expect(result.isValid).toBe(true);
+    });
+
+    it('should accept private interactive learning URLs', () => {
+      const result = validateTutorialUrl('https://interactive-learning-private.grafana-dev.net/tutorial/');
       expect(result.isValid).toBe(true);
     });
 
