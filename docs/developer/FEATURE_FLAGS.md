@@ -155,6 +155,8 @@ interface HighlightedGuideConfig {
 
 A typical A/B setup serves the **same** `pages[]` to both arms with **different** `guideId` values, so the only thing varying between cohorts is the guide content. Analytics distinguishes which arm via the existing `TrackingHook` exposure event (`pathfinder_feature_flag_evaluated` with `tracking_key: highlighted_guide_experiment`).
 
+**Those three values are the whole set.** The variant arrives from MTFF, so it can be anything; a value outside the table — a typo'd `treament`, a stale arm name, an empty string — rejects the **entire** payload and the plugin falls back to the default `excluded` config. Nothing is enrolled: no auto-open, no once-per-browser marker, no exposure event, and no arm attached to analytics or session telemetry. Renaming an arm therefore turns it off rather than half-enrolling its cohort under a bogus label.
+
 **Page-pattern semantics — note the difference**: Empty `pages` is treated as **no match**, NOT "all pages" (unlike `pathfinder.experiment-variant`). This makes the safe default of `{ variant: 'excluded', pages: [] }` a true no-op even if the variant is accidentally flipped without configuring pages. Patterns support the same `*` suffix wildcards as `matchPathPattern`.
 
 **Once-per-browser semantics**: The auto-open marker is keyed `{hostname}:{guideId}` in localStorage (not sessionStorage). A new `guideId` from MTFF — including the arm-specific value at variant assignment time — produces a new key, so changing the experiment's guide naturally re-fires auto-open without operator intervention. Use `resetCache: true` to force-clear all markers for the current hostname (sentinel-guarded so true→true reloads don't repeatedly clear).

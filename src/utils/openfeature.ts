@@ -510,7 +510,8 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
  * Reads `pathfinder.highlighted-guide-experiment` and validates the extra fields
  * (`guideId`, `autoOpen`) on top of the base `ExperimentConfig` shape. Falls back
  * to `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded') when the flag is
- * missing, malformed, or evaluation throws.
+ * missing, malformed, carries a variant outside the known arms, or evaluation
+ * throws.
  *
  * Supports the localStorage flag-override mechanism for QA / demos.
  *
