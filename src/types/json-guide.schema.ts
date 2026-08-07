@@ -1256,8 +1256,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
 
 /**
  * All valid block type names. Derived from `KNOWN_FIELDS` so the two cannot
- * disagree — a hand-maintained copy previously drifted (`challenge` was absent
- * from both, which blinded the CLI registry-completeness test that anchors here).
+ * disagree; the CLI registry-completeness test anchors here.
  */
 export const VALID_BLOCK_TYPES: ReadonlySet<string> = new Set(
   Object.keys(KNOWN_FIELDS).filter((key) => !key.startsWith('_'))

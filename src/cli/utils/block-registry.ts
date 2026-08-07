@@ -77,15 +77,17 @@ export const BLOCK_SCHEMA_MAP = {
  * a snippet should use the editor's Reusable palette group.
  *
  * `collapsible` is a presentational container authored through the block
- * editor (Structure palette group). A CLI flow for its nested content is a
- * follow-up; for now authors should use the editor.
+ * editor (Structure palette group). Nothing structural blocks registering it —
+ * its shape matches `section` and `tree.ts` already descends into its `blocks`
+ * — the CLI flow simply hasn't been built. Note its children are restricted to
+ * `PresentationalBlockSchema`, which `add-block --parent` does not enforce.
  *
- * `challenge` gates completion on a requirement token (`successCriteria`) that
- * only resolves against a live Grafana, so the CLI cannot check an author's
- * criteria at authoring time — a typo'd requirement would ship as an
- * unsolvable challenge. It is authored through the block editor's Challenge
- * form, whose chip-based requirements editor is backed by the runtime
- * requirements vocabulary. This holds for both `standard` and `coda` modes.
+ * `challenge` has no CLI flow for `hintLevels`: it is `z.array(z.object(...))`,
+ * which the schema-options bridge reports as `unsupported` (`array of object`,
+ * schema-options.ts:119) and drops. Progressive hints are the block's whole
+ * point, so `add-block challenge` would silently produce a hintless challenge.
+ * An `add-hint` sibling command is the prerequisite for registering it. Every
+ * other field projects fine, in both `standard` and `coda` modes.
  *
  * The completeness test asserts that this set, unioned with the keys of
  * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES` — which is derived

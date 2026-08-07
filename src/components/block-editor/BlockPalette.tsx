@@ -406,7 +406,11 @@ export function BlockPalette({
                   <div className={styles.emptyFilter}>No block types match &quot;{filter}&quot;</div>
                 ) : (
                   filteredGroups.map((group) => (
-                    <div key={group.id} className={styles.group}>
+                    <div
+                      key={group.id}
+                      className={styles.group}
+                      data-testid={testIds.blockEditor.paletteGroup(group.id)}
+                    >
                       <div className={styles.groupHeader}>{group.label}</div>
                       <div className={styles.grid}>
                         {group.types.map((type) => {

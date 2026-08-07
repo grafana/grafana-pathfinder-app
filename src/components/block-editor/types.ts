@@ -12,10 +12,7 @@ import type { JsonBlock, JsonGuide, JsonStep, JsonInteractiveAction } from '../.
  */
 export type ViewMode = 'edit' | 'preview' | 'json';
 
-/**
- * Block type identifiers. Derived from the schema union rather than restated —
- * the hand-written copy had drifted (`assistant` was missing).
- */
+/** Block type identifiers. */
 export type BlockType = JsonBlock['type'];
 
 /**

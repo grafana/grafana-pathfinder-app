@@ -116,7 +116,7 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     icon: '🏆',
     grafanaIcon: 'shield-exclamation',
     name: 'Challenge',
-    description: 'CTF-style task in a Coda VM with progressive hints',
+    description: 'Hands-on task with progressive hints and a check-my-work button',
   },
   'code-block': {
     type: 'code-block',
@@ -196,21 +196,14 @@ type GroupedBlockType = (typeof BLOCK_TYPE_GROUPS)[number]['types'][number];
 type UngroupedBlockType = Exclude<BlockType, GroupedBlockType | (typeof PALETTE_EXCLUDED_BLOCK_TYPES)[number]>;
 
 /**
- * Compile-time ratchet: `BlockPalette` renders by mapping `BLOCK_TYPE_GROUPS`,
- * so a block type in neither a group nor the exclusion list is unreachable in
- * the UI with no other symptom. (`challenge` was in exactly that state.)
- * Adding a block type therefore forces a deliberate decision here.
+ * `BlockPalette` renders by mapping `BLOCK_TYPE_GROUPS`, so a block type in
+ * neither a group nor the exclusion list is absent from the palette silently.
  */
 const _palettePartitionIsTotal: UngroupedBlockType extends never
   ? true
   : ['block types missing from BLOCK_TYPE_GROUPS and PALETTE_EXCLUDED_BLOCK_TYPES:', UngroupedBlockType] = true;
 void _palettePartitionIsTotal;
 
-/**
- * Flat list of every block type offered in the palette, derived from the group
- * definitions so membership has exactly one source. Combined with the partition
- * check above, a block type is reachable unless it is deliberately excluded.
- */
 export const BLOCK_TYPE_ORDER: BlockType[] = BLOCK_TYPE_GROUPS.flatMap((group) => group.types);
 
 /**

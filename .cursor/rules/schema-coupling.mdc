@@ -50,8 +50,11 @@ export const JsonGuideSchema = z.object({
 }).passthrough() satisfies z.ZodType<JsonGuide>;
 
 // 3. Add to KNOWN_FIELDS
+// `KnownFieldsMetaKey` is the union of the non-block registry keys
+// ('_guide' | '_step' | '_choice' | '_manifest' | ...), declared just above
+// KNOWN_FIELDS in json-guide.schema.ts.
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
-  _guide: new Set(['id', 'title', 'blocks', 'match', 'schemaVersion', 'newField']), // ADD HERE
+  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks', 'newField']), // ADD HERE
   // ...
 } satisfies Record<JsonBlock['type'] | KnownFieldsMetaKey, ReadonlySet<string>>;
 ```

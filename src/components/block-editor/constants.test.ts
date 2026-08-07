@@ -3,10 +3,10 @@ import { BLOCK_TYPE_GROUPS, BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, PALETTE_EXCLU
 import type { BlockType } from './types';
 
 /**
- * `BlockPalette` renders the intersection of `BLOCK_TYPE_GROUPS` and
- * `BLOCK_TYPE_ORDER`, so a block type absent from either is unreachable in the
- * UI with no other symptom — it can still have metadata, a form, and a schema.
- * `challenge` was in exactly that state.
+ * `BlockPalette` renders by mapping `BLOCK_TYPE_GROUPS`, so a block type absent
+ * from every group is absent from the palette even when it has metadata, a form
+ * and a schema — which is how `challenge` came to be unreachable from the
+ * palette while remaining reachable via "Switch type".
  *
  * The compile-time partition check in `constants.ts` proves group coverage and
  * `BLOCK_TYPE_ORDER` is derived from the groups; these assertions add the
