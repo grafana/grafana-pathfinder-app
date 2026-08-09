@@ -553,7 +553,12 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
     return null;
   }
   const record = value as Record<string, unknown>;
-  if (typeof record.variant !== 'string' || !Array.isArray(record.pages) || typeof record.guideId !== 'string') {
+  if (
+    typeof record.variant !== 'string' ||
+    !Array.isArray(record.pages) ||
+    !record.pages.every((p) => typeof p === 'string') ||
+    typeof record.guideId !== 'string'
+  ) {
     return null;
   }
   const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set([
