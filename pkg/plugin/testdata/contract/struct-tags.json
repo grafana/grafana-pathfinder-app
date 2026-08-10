@@ -1,0 +1,282 @@
+{
+  "PackageEntry": [
+    {
+      "field": "ID",
+      "json": "id",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Path",
+      "json": "path",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Title",
+      "json": "title",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Description",
+      "json": "description",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Type",
+      "json": "type",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Targeting",
+      "json": "targeting",
+      "type": "*plugin.PackageTargeting",
+      "omitempty": true
+    },
+    {
+      "field": "Manifest",
+      "json": "manifest",
+      "type": "map[string]interface {}",
+      "omitempty": true
+    }
+  ],
+  "PackageRecommendationsResponse": [
+    {
+      "field": "BaseURL",
+      "json": "baseUrl",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Packages",
+      "json": "packages",
+      "type": "[]plugin.PackageEntry",
+      "omitempty": false
+    }
+  ],
+  "PackageTargeting": [
+    {
+      "field": "Match",
+      "json": "match",
+      "type": "json.RawMessage",
+      "omitempty": false
+    }
+  ],
+  "collatedCompletion": [
+    {
+      "field": "GuideSource",
+      "json": "guideSource",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideID",
+      "json": "guideId",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideTitle",
+      "json": "guideTitle",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "GuideCategory",
+      "json": "guideCategory",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "PathID",
+      "json": "pathId",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Count",
+      "json": "count",
+      "type": "int",
+      "omitempty": false
+    },
+    {
+      "field": "LatestCompletedAt",
+      "json": "latestCompletedAt",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "LatestSource",
+      "json": "latestSource",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "MaxCompletionPercent",
+      "json": "maxCompletionPercent",
+      "type": "int64",
+      "omitempty": false
+    }
+  ],
+  "completionCapability": [
+    {
+      "field": "Available",
+      "json": "available",
+      "type": "bool",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "omitempty": true
+    }
+  ],
+  "customGuideCapability": [
+    {
+      "field": "Available",
+      "json": "available",
+      "type": "bool",
+      "omitempty": false
+    },
+    {
+      "field": "Reason",
+      "json": "reason",
+      "type": "string",
+      "omitempty": true
+    }
+  ],
+  "customGuideManifest": [
+    {
+      "field": "Type",
+      "json": "type",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Repository",
+      "json": "repository",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Description",
+      "json": "description",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Milestones",
+      "json": "milestones",
+      "type": "[]string",
+      "omitempty": true
+    },
+    {
+      "field": "Category",
+      "json": "category",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Author",
+      "json": "author",
+      "type": "*struct",
+      "omitempty": true
+    },
+    {
+      "field": "Depends",
+      "json": "depends",
+      "type": "[]json.RawMessage",
+      "omitempty": true
+    }
+  ],
+  "customGuideManifest.author": [
+    {
+      "field": "Name",
+      "json": "name",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Team",
+      "json": "team",
+      "type": "string",
+      "omitempty": true
+    }
+  ],
+  "customGuideRepositoryEntry": [
+    {
+      "field": "ID",
+      "json": "id",
+      "type": "string",
+      "omitempty": false
+    },
+    {
+      "field": "Title",
+      "json": "title",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Status",
+      "json": "status",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Manifest",
+      "json": "manifest",
+      "type": "*plugin.customGuideManifest",
+      "omitempty": true
+    }
+  ],
+  "customGuideRepositoryResponse": [
+    {
+      "field": "Capability",
+      "json": "capability",
+      "type": "plugin.customGuideCapability",
+      "omitempty": false
+    },
+    {
+      "field": "Guides",
+      "json": "guides",
+      "type": "[]plugin.customGuideRepositoryEntry",
+      "omitempty": false
+    },
+    {
+      "field": "AsOf",
+      "json": "asOf",
+      "type": "string",
+      "omitempty": true
+    }
+  ],
+  "myCompletionsResponse": [
+    {
+      "field": "Capability",
+      "json": "capability",
+      "type": "plugin.completionCapability",
+      "omitempty": false
+    },
+    {
+      "field": "UserID",
+      "json": "userId",
+      "type": "string",
+      "omitempty": true
+    },
+    {
+      "field": "Completions",
+      "json": "completions",
+      "type": "[]plugin.collatedCompletion",
+      "omitempty": false
+    },
+    {
+      "field": "AsOf",
+      "json": "asOf",
+      "type": "string",
+      "omitempty": true
+    }
+  ]
+}
