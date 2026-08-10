@@ -593,7 +593,7 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
 
   // The resolved overlay is keyed to the inputs it was computed from, so an
   // overlay from a previous guide never paints after html/baseUrl change.
-  const overlayKey = `${html} ${baseUrl}`;
+  const overlayKey = `${html}\x00${baseUrl}`;
   const [snippetOverlay, setSnippetOverlay] = useState<{ key: string; result: ContentParseResult } | null>(null);
 
   useEffect(() => {
