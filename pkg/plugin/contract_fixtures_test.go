@@ -359,6 +359,9 @@ func doPackageRecommendations(t *testing.T, index map[string]map[string]any, man
 	resetPackageRecommendationsCache()
 	t.Cleanup(resetPackageRecommendationsCache)
 	freezeContractTime(t)
+	// The enrichment budget is wall-clock, so the default 3 s could theoretically
+	// expire on a loaded runner and drop `manifest` from the golden.
+	withEnrichBudgetOverride(t, time.Minute)
 	withFetcherOverride(t, packageIndexFetcher(t, index, manifest))
 
 	r, _ := http.NewRequest(http.MethodGet, "/package-recommendations", nil)
