@@ -37,6 +37,7 @@ import {
   setJourneyCompletionPercentage,
   setJourneyCompletionPercentageAsync,
   markMilestoneDone,
+  getMilestoneSlug,
 } from './learning-journey-helpers';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
 
@@ -149,6 +150,15 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
     await markMilestoneDone('base', 'm1');
     expect(milestoneMarkCompletedMock).toHaveBeenCalledWith('base', 'm1');
     expect(markGuideCompletedMock).toHaveBeenCalledWith('m1');
+  });
+
+  it('records a private App Platform member under its bare id, not the backend-guide: scheme (finding #1)', async () => {
+    // The member launch URL is `backend-guide:<id>`; getMilestoneSlug must strip
+    // the scheme so completion is keyed the way LearningPath.guides reads it back
+    // — otherwise My Learning path progress is stuck at 0%.
+    await markMilestoneDone('base', getMilestoneSlug('backend-guide:fe-alerting-01'));
+    expect(markGuideCompletedMock).toHaveBeenCalledWith('fe-alerting-01');
+    expect(milestoneMarkCompletedMock).toHaveBeenCalledWith('base', 'fe-alerting-01');
   });
 
   it('the same milestone marked done from multiple surfaces emits one guide completion', async () => {

@@ -383,4 +383,48 @@ describe('createCompositeResolver', () => {
     const { RecommenderPackageResolver } = require('./recommender-resolver');
     expect(RecommenderPackageResolver).toHaveBeenCalledWith('https://custom-recommender.example.com');
   });
+
+  // Finding #4: app-platform is the composite's last resolver, so its failure is
+  // the `lastFailure` returned on every all-miss. Only failures from an actual
+  // upstream attempt carry `repository` (and should evict); the cheap declines
+  // (GAP off / no namespace) must NOT, or negative caching is repealed for every
+  // tier. These run against the real createCompositeResolver, not a 1-resolver
+  // composite, which is why the existing single-resolver tests missed it.
+  it('caches an all-miss when app-platform merely declines (untagged failure)', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    // A cheap decline (e.g. GAP toggle off) — no request issued, no repository tag.
+    (mockAppPlatformResolver.resolve as jest.Mock).mockResolvedValue({
+      ok: false,
+      id: 'missing',
+      error: { code: 'not-found', message: 'App Platform backend is not available on this instance' },
+    });
+
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    await resolver.resolve('missing');
+    await resolver.resolve('missing');
+
+    expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    expect(mockRecommenderResolver.resolve).toHaveBeenCalledTimes(1);
+    expect(mockAppPlatformResolver.resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-resolves an all-miss when app-platform made a real attempt (tagged failure)', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    // A real upstream not-found (member not yet published) — tagged so a later
+    // publish is picked up.
+    (mockAppPlatformResolver.resolve as jest.Mock).mockResolvedValue({
+      ok: false,
+      id: 'fe-x',
+      error: { code: 'not-found', message: 'not published yet' },
+      repository: 'app-platform',
+    });
+
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    await resolver.resolve('fe-x');
+    await resolver.resolve('fe-x');
+
+    expect(mockAppPlatformResolver.resolve).toHaveBeenCalledTimes(2);
+  });
 });

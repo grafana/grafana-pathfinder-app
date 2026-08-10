@@ -60,7 +60,9 @@ export class CompositePackageResolver implements PackageResolver {
           this.cache.delete(cacheKey);
         }
       })
-      .catch(() => {});
+      // A rejected resolve() must not linger as a permanently-cached rejected
+      // promise — evict so the next call retries instead of replaying it.
+      .catch(() => this.cache.delete(cacheKey));
 
     return promise;
   }

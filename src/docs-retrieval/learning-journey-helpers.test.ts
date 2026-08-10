@@ -3,8 +3,15 @@
  * (RFC CUSTOM-GUIDE-PACKAGES.md §6.5) — a path whose next/previous member
  * hasn't published yet must not dead-end the toolbar.
  */
-import { getNextMilestoneUrl, getPreviousMilestoneUrl } from './learning-journey-helpers';
-import type { RawContent, Milestone } from '../types/content.types';
+import {
+  countUnlockedMilestones,
+  generateJourneyContentWithExtras,
+  getMilestoneSlug,
+  getNextMilestoneUrl,
+  getPreviousMilestoneUrl,
+  isLastMilestone,
+} from './learning-journey-helpers';
+import type { RawContent, Milestone, LearningJourneyMetadata } from '../types/content.types';
 
 function milestone(number: number, overrides: Partial<Milestone> = {}): Milestone {
   return {
@@ -34,6 +41,77 @@ function journeyContent(currentMilestone: number, milestones: Milestone[], baseU
     },
   };
 }
+
+describe('getMilestoneSlug', () => {
+  it('strips the backend-guide: scheme so private members key on the bare id (finding #1)', () => {
+    expect(getMilestoneSlug('backend-guide:fe-alerting-01')).toBe('fe-alerting-01');
+  });
+
+  it('leaves path-style doc URLs untouched (last segment)', () => {
+    expect(getMilestoneSlug('https://grafana.com/docs/learning-paths/linux/select-platform/')).toBe('select-platform');
+    expect(getMilestoneSlug('https://grafana.com/docs/.../select-platform/content.json')).toBe('select-platform');
+  });
+});
+
+function ljMetadata(currentMilestone: number, milestones: Milestone[]): LearningJourneyMetadata {
+  return {
+    title: 'Test path',
+    currentMilestone,
+    totalMilestones: milestones.length,
+    milestones,
+    baseUrl: 'backend-guide:path',
+  } as LearningJourneyMetadata;
+}
+
+describe('countUnlockedMilestones', () => {
+  it('counts only unlocked (navigable) milestones', () => {
+    expect(countUnlockedMilestones([milestone(1), milestone(2, { isLocked: true, url: '' }), milestone(3)])).toBe(2);
+  });
+});
+
+describe('isLastMilestone (locked-aware)', () => {
+  it('is true on the last UNLOCKED milestone even when locked entries follow', () => {
+    const content = journeyContent(2, [milestone(1), milestone(2), milestone(3, { isLocked: true, url: '' })]);
+    expect(isLastMilestone(content)).toBe(true);
+  });
+
+  it('is false on a milestone that still has an unlocked successor', () => {
+    const content = journeyContent(1, [milestone(1), milestone(2), milestone(3)]);
+    expect(isLastMilestone(content)).toBe(false);
+  });
+});
+
+describe('generateJourneyContentWithExtras — locked-milestone handling', () => {
+  it('cover CTA targets the first UNLOCKED milestone, not a locked milestone 1', () => {
+    const html = generateJourneyContentWithExtras(
+      '',
+      ljMetadata(0, [milestone(1, { isLocked: true, url: '' }), milestone(2, { url: 'backend-guide:m2' })])
+    );
+    expect(html).toContain('data-milestone-url="backend-guide:m2"');
+    expect(html).not.toContain('data-milestone-url=""');
+  });
+
+  it('omits the cover CTA entirely when nothing is published yet', () => {
+    const html = generateJourneyContentWithExtras(
+      '',
+      ljMetadata(0, [milestone(1, { isLocked: true, url: '' }), milestone(2, { isLocked: true, url: '' })])
+    );
+    expect(html).not.toContain('data-journey-start');
+  });
+
+  it('hides the bottom "Next →" when every remaining milestone is locked', () => {
+    const html = generateJourneyContentWithExtras(
+      '',
+      ljMetadata(2, [milestone(1), milestone(2), milestone(3, { isLocked: true, url: '' })])
+    );
+    expect(html).not.toContain('Next →');
+  });
+
+  it('still renders "Next →" when an unlocked successor exists', () => {
+    const html = generateJourneyContentWithExtras('', ljMetadata(1, [milestone(1), milestone(2), milestone(3)]));
+    expect(html).toContain('Next →');
+  });
+});
 
 describe('getNextMilestoneUrl', () => {
   it('returns the immediate next milestone when it is resolved', () => {

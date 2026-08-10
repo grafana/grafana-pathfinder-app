@@ -50,10 +50,13 @@ export const JsonGuideSchema = z.object({
 }).passthrough() satisfies z.ZodType<JsonGuide>;
 
 // 3. Add to KNOWN_FIELDS
-export const KNOWN_FIELDS = {
-  _guide: ['id', 'title', 'blocks', 'match', 'schemaVersion', 'newField'], // ADD HERE
+// `KnownFieldsMetaKey` is the union of the non-block registry keys
+// ('_guide' | '_step' | '_choice' | '_manifest' | ...), declared just above
+// KNOWN_FIELDS in json-guide.schema.ts.
+export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
+  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks', 'newField']), // ADD HERE
   // ...
-};
+} satisfies Record<JsonBlock['type'] | KnownFieldsMetaKey, ReadonlySet<string>>;
 ```
 
 ## When Modifying Schemas
@@ -90,6 +93,8 @@ All schemas use `.passthrough()` to allow unknown fields. This means:
 - Newer guides with new fields will still parse successfully
 - Unknown fields generate warnings, not errors (unless `--strict` mode)
 - The `KNOWN_FIELDS` object determines what triggers warnings
+
+`KNOWN_FIELDS` is **total** over `JsonBlock['type']`, enforced by its trailing `satisfies` clause: a block type with no entry is invisible to `detectUnknownFields`, which returns no warnings for it, so a typo'd optional field would pass `--strict`. Its public type stays `Record<string, ReadonlySet<string>>` so callers can index it with an unvalidated `block.type`. `VALID_BLOCK_TYPES` is derived from its non-`_` keys — never hand-maintain a parallel list of block types.
 
 ## Validation Module Structure
 
@@ -132,7 +137,7 @@ When modifying JSON guide types or schemas:
 
 - [ ] Type change has corresponding schema change
 - [ ] Schema change has corresponding type change (if structural)
-- [ ] `KNOWN_FIELDS` updated for new fields
+- [ ] `KNOWN_FIELDS` updated for new fields, and given an entry for any new block type
 - [ ] `npm run typecheck` passes
 - [ ] `npm run validate:strict` passes
 - [ ] Validation tests pass

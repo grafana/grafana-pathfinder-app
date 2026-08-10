@@ -7,8 +7,13 @@ jest.mock('../utils/fetchBackendGuides', () => ({
   isBackendApiAvailable: () => mockAvailable,
 }));
 
+jest.mock('./telemetry/facade', () => ({
+  recordCustomGuideCatalogueUnavailable: jest.fn(),
+}));
+
 import { getBackendSrv } from '@grafana/runtime';
 import { fetchCustomGuideRepository, invalidateCustomGuideRepositoryCache } from './custom-guide-repository-client';
+import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
 
 const mockGet = jest.fn();
 
@@ -39,6 +44,29 @@ describe('fetchCustomGuideRepository', () => {
     });
   });
 
+  it("stamps repository: 'app-platform' on each manifest even when the response omits it", async () => {
+    mockGet.mockResolvedValue({
+      capability: { available: true },
+      // The CR manifest leaves repository omitempty; one entry even carries the
+      // stale CDN default. Both must come back tagged app-platform so the launch
+      // packageInfo does not fabricate a public websiteUrl / mislabel completion.
+      guides: [
+        { id: 'fe-alerting-path', title: 'Alerting', status: 'published', manifest: { type: 'path' } },
+        {
+          id: 'fe-guide',
+          title: 'Guide',
+          status: 'published',
+          manifest: { type: 'guide', repository: 'interactive-tutorials' },
+        },
+      ],
+    });
+
+    const result = await fetchCustomGuideRepository('stacks-123');
+
+    expect(result[0]!.manifest?.repository).toBe('app-platform');
+    expect(result[1]!.manifest?.repository).toBe('app-platform');
+  });
+
   it('returns an empty array when the proxy reports itself unavailable', async () => {
     mockGet.mockResolvedValue({
       capability: { available: false, reason: 'backend-unavailable' },
@@ -48,6 +76,7 @@ describe('fetchCustomGuideRepository', () => {
     const result = await fetchCustomGuideRepository('stacks-123');
 
     expect(result).toEqual([]);
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('backend-unavailable');
   });
 
   it('returns an empty array when the backend API is unavailable, without fetching', async () => {

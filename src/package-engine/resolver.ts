@@ -25,7 +25,6 @@ import type {
 import { RepositoryJsonSchema } from '../types/package.schema';
 
 import { loadBundledContent, loadBundledManifest } from './loader';
-import { nonEmptyCoverBlocksError } from './cover-validation';
 
 const BUNDLED_REPOSITORY = 'bundled';
 
@@ -102,10 +101,6 @@ export class BundledPackageResolver implements PackageResolver {
     }
 
     const manifest = manifestResult.ok ? manifestResult.data : undefined;
-    const coverError = nonEmptyCoverBlocksError(packageId, manifest, content);
-    if (coverError) {
-      return coverError;
-    }
 
     return {
       ok: true,

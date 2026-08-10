@@ -80,12 +80,11 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 	// A stack without provisioned on-behalf-of credentials still loads: the App
 	// Platform proxy routes report capability=false and the rest of the plugin
 	// is unaffected.
-	oboExchanger, err := auth.New(settings.OBOToken, settings.StackID, tokenExchangeURL)
+	oboExchanger, err := auth.New(settings.OBOToken, tokenExchangeURL)
+	app.oboExchanger = oboExchanger
 	if err != nil {
 		logger.Warn("On-behalf-of auth setup failed, App Platform proxy routes disabled", "error", err)
-	}
-	app.oboExchanger = oboExchanger
-	if oboExchanger == nil {
+	} else if oboExchanger == nil {
 		logger.Info("On-behalf-of auth not provisioned, App Platform proxy routes disabled")
 	}
 

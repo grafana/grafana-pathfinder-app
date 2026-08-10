@@ -184,10 +184,9 @@ function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
  * nothing and the guide parses to zero elements — a broken cover instead of
  * a milestone list (RFC CUSTOM-GUIDE-PACKAGES.md Appendix A F15).
  *
- * Bundled/CDN packages are additionally guarded at load time (see
- * nonEmptyCoverBlocksError in package-engine) — this is the only gate for
- * App Platform content, which has no equivalent schema-level enforcement
- * (the intended CUE constraint didn't survive codegen).
+ * This runtime repair is the only empty-cover protection that actually runs:
+ * it applies to every repository (bundled, CDN, App Platform), repairing the
+ * cover rather than rejecting the package.
  */
 export function ensureNonEmptyCoverContent(jsonContent: string): string {
   try {
@@ -198,12 +197,10 @@ export function ensureNonEmptyCoverContent(jsonContent: string): string {
         blocks: [
           {
             type: 'markdown',
-            // i18n gap, deliberate: this is the one user-facing string authored
-            // in docs-retrieval (a content-transform tier that has no `t()` and
-            // shouldn't grow an i18n/tier dependency just for a rare misconfig).
-            // It only appears for an empty-cover path (a publishing error), so it
-            // ships untranslated by choice. If this stops being an edge case,
-            // thread a localized string down from the component layer instead.
+            // Deliberately untranslated: only reachable on an empty-cover path (a
+            // publishing error), and docs-retrieval is a content-transform tier
+            // with no i18n wiring. If this stops being an edge case, thread a
+            // localized string down from the component layer instead.
             content: 'Cover content is missing for this path. Check back soon, or contact whoever published it.',
           },
         ],
@@ -239,7 +236,12 @@ export async function fetchPackageContent(
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
 
   const manifestId = needsMilestones && typeof packageManifest?.id === 'string' ? packageManifest.id : '';
-  const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
+  // Only public packages have a grafana.com docs page. Suppressing the slug for
+  // private App Platform paths here keeps every downstream websiteUrl synthesis
+  // (path cover + per-milestone) from fabricating a public URL the toolbar would
+  // `window.open` to a 404 and report to analytics (unretractable).
+  const pathSlug =
+    manifestId && packageManifest?.repository !== 'app-platform' ? derivePathSlug(manifestId) : undefined;
   const milestoneIds = needsMilestones ? getManifestMilestoneIds(packageManifest) : [];
   const shouldResolveMilestones =
     needsMilestones && (!preResolvedMilestones || preResolvedMilestones.length === 0) && milestoneIds.length > 0;
@@ -280,6 +282,8 @@ export async function fetchPackageContent(
         milestones,
         baseUrl,
         summary: result.content.metadata.singleDoc?.summary,
+        // pathSlug is already suppressed for private packages at derivation, so a
+        // non-null slug means this is a public path with a grafana.com docs page.
         ...(pathSlug != null && {
           websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
         }),

@@ -66,7 +66,7 @@ func (l capturingLogger) FromContext(_ context.Context) log.Logger {
 func newTestAppWithOBO(t *testing.T) *App {
 	t.Helper()
 	app := newTestApp(t)
-	ex, err := auth.New("test-cap-token", "1", auth.DefaultTokenExchangeURL)
+	ex, err := auth.New("test-cap-token", auth.DefaultTokenExchangeURL)
 	if err != nil {
 		t.Fatalf("building test exchanger: %v", err)
 	}

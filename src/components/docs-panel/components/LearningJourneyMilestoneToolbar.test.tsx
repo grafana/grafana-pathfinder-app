@@ -38,6 +38,8 @@ jest.mock('../../../docs-retrieval', () => ({
   getJourneyProgress: () => 0,
   getMilestoneSlug: jest.requireActual('../../../lib/learning-journey-url').getMilestoneSlug,
   markMilestoneDone: (...args: unknown[]) => markMilestoneDoneMock(...args),
+  countUnlockedMilestones: (ms: Array<{ isLocked?: boolean }> | undefined) =>
+    (ms ?? []).filter((m) => !m.isLocked).length,
 }));
 
 jest.mock('../utils', () => ({

@@ -10,6 +10,10 @@ It targets beginners and intermediate users learning Grafana, not experts after 
 
 Functional-first and pragmatic: small composable functions, immutable data and pure functions for core logic, side effects isolated at the edges rather than eliminated. React should read like the Grafana codebase.
 
+### Control characters in source
+
+Never paste a raw control byte into a tracked file — write it as an escape (`\x00`, not `\u0000`) or build it with `String.fromCharCode`. One raw byte makes `grep -r` and `rg` skip the whole file silently, returning a shorter result set that reads as complete. Tab, newline, and carriage return are fine. `src/validation/control-bytes.test.ts` enforces this over every tracked file, and its failure message explains the rest.
+
 ### Comments
 
 **Default to no comments.** Add one only when removing it would confuse a reader who can already read the surrounding code. The narrow band that earns one: counterintuitive-but-correct code, hidden invariants the type system can't express, external-bug workarounds (with an upstream link), and security or correctness warnings. If the comment won't fit on one short line, rename or restructure instead.
@@ -68,7 +72,7 @@ For the annotated tier definitions, the per-subsystem reference, and the key dep
 
 ### Backend (`pkg/`)
 
-The Go backend is a thin bridge from the React frontend to Coda and Grafana App Platform. Pathfinder owns no database: VM state is delegated to Coda, completion records are durable App Platform resources, and process-local caches remain ephemeral. Its primary request paths are the HTTP resource API (`resources.go`), streaming terminal over Grafana Live (`stream.go` + `terminal.go` + `wsconn.go`), the Coda JWT client (`coda.go`), and the App Platform LIST/create client (`app_platform_client.go`).
+The Go backend is a thin bridge from the React frontend to Coda and Grafana App Platform. Pathfinder owns no database: VM state is delegated to Coda, completion records are durable App Platform resources, and process-local caches remain ephemeral. Four primary request paths: HTTP resource API (`resources.go`), streaming terminal over Grafana Live (`stream.go` + `terminal.go` + `wsconn.go`), the Coda JWT client (`coda.go`), and the **App Platform proxies** (`custom_guide_repository.go`, `completion_records.go` + `completion_records_write.go` over the shared LIST/create client in `app_platform_client.go`) that read and write namespace-scoped resources on the stack's aggregated App Platform API. Those proxies authenticate with an **on-behalf-of (OBO) access token** minted from the caller's `X-Grafana-Id` in the `pkg/plugin/auth` seam — see `docs/design/BACKEND_PROXY_PATTERN.md`.
 
 When touching `pkg/`, load `.cursor/rules/coda.mdc` (agent-facing constraints) and `docs/developer/CODA.md` (full SSH / relay / credential-refresh reference). Plugin entrypoint is `pkg/main.go`.
 

@@ -409,13 +409,13 @@ Terminal block types (`terminal`, `terminal-connect`) are only shown in the bloc
 
 **jsonData** (public):
 
-| Key                  | Type    | Default | Description                                                                                                      |
-| -------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
-| `enableCodaTerminal` | boolean | `false` | Feature gate for terminal UI                                                                                     |
-| `codaRegistered`     | boolean | `false` | Set after successful Coda registration                                                                           |
-| `codaApiUrl`         | string  | —       | Coda Server HTTPS URL                                                                                            |
-| `codaRelayUrl`       | string  | —       | Relay WSS URL                                                                                                    |
-| `stackId`            | string  | —       | Stack ID provisioned by stack-state-service; the App Platform proxies derive the `stacks-<id>` namespace from it |
+| Key                  | Type    | Default | Description                                                                                                                                                                 |
+| -------------------- | ------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enableCodaTerminal` | boolean | `false` | Feature gate for terminal UI                                                                                                                                                |
+| `codaRegistered`     | boolean | `false` | Set after successful Coda registration                                                                                                                                      |
+| `codaApiUrl`         | string  | —       | Coda Server HTTPS URL                                                                                                                                                       |
+| `codaRelayUrl`       | string  | —       | Relay WSS URL                                                                                                                                                               |
+| `stackId`            | string  | —       | Stack ID provisioned by stack-state-service. The plugin backend does not read it: the App Platform proxies take the `stacks-<id>` namespace from the request plugin-context |
 
 **secureJsonData** (encrypted):
 

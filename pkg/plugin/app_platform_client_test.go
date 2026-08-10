@@ -18,13 +18,18 @@ import (
 )
 
 // stubMinter stands in for auth.Exchanger so client tests never need an
-// auth-api: it echoes a fixed token, or fails when err is set.
+// auth-api: it echoes a fixed token, or fails when err is set, and records the
+// namespace + id token it was called with so tests can pin subject forwarding.
 type stubMinter struct {
-	token string
-	err   error
+	token        string
+	err          error
+	gotNamespace string
+	gotIDToken   string
 }
 
-func (s stubMinter) Mint(context.Context, string) (string, error) {
+func (s *stubMinter) Mint(_ context.Context, namespace, idToken string) (string, error) {
+	s.gotNamespace = namespace
+	s.gotIDToken = idToken
 	if s.err != nil {
 		return "", s.err
 	}
@@ -64,7 +69,8 @@ func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newCompletionHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	minter := &stubMinter{token: "at-xyz"}
+	c := newCompletionHTTPClient(srv.URL, minter, "id-token-abc", log.DefaultLogger)
 
 	page1, err := c.ListPage(context.Background(), "stacks-1", "")
 	if err != nil {
@@ -93,6 +99,15 @@ func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 			t.Errorf("request %d: Cookie must never be forwarded, got %q", i, got)
 		}
 	}
+	// Subject forwarding: the caller's ID token and the server-derived namespace
+	// must reach the minter, or the OBO token would be minted for the wrong
+	// user/stack.
+	if minter.gotIDToken != "id-token-abc" {
+		t.Errorf("minter received idToken %q, want id-token-abc", minter.gotIDToken)
+	}
+	if minter.gotNamespace != "stacks-1" {
+		t.Errorf("minter received namespace %q, want stacks-1", minter.gotNamespace)
+	}
 	if gotQueries[0] != "limit=500" {
 		t.Errorf("first query = %q, want limit=500", gotQueries[0])
 	}
@@ -112,7 +127,7 @@ func TestAppPlatformListClient_MintFailureAbortsRequest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newCompletionHTTPClient(srv.URL, stubMinter{err: errors.New("exchange refused")}, "id-token-abc", log.DefaultLogger)
+	c := newCompletionHTTPClient(srv.URL, &stubMinter{err: errors.New("exchange refused")}, "id-token-abc", log.DefaultLogger)
 
 	_, err := c.ListPage(context.Background(), "stacks-1", "")
 	if err == nil {
@@ -153,6 +168,36 @@ func TestAppPlatformListClient_UpstreamErrorClassification(t *testing.T) {
 	}
 }
 
+// Each proxy must gate on the aggregation toggle for ITS OWN API group — the Go
+// mirror of the toggle derivation in src/utils/interactive-guides-api.ts (group,
+// dots→dashes). Both routes now address the GAP `.app` group, so they share one
+// toggle by design; this pins the derivation, not route availability (a real
+// stack reports both the `.app` and legacy `.com` toggles true, so neither
+// answers "is this route usable here?" — the capability/resolver path does).
+func TestAggregationToggleMatchesGroup(t *testing.T) {
+	toggleForGroupVersion := func(gv string) string {
+		group := strings.SplitN(gv, "/", 2)[0]
+		return "aggregation." + strings.ReplaceAll(group, ".", "-") + ".enabled"
+	}
+
+	cases := []struct {
+		name         string
+		groupVersion string
+		toggle       string
+	}{
+		{"custom-guide (GAP .app)", customGuideGroupVersion, customGuideAggregationToggle},
+		{"completion-records (GAP .app)", completionRecordsGroupVersion, completionRecordsAggregationToggle},
+	}
+	for _, tt := range cases {
+		if got := toggleForGroupVersion(tt.groupVersion); got != tt.toggle {
+			t.Errorf("%s: derived toggle %q, but the proxy uses %q", tt.name, got, tt.toggle)
+		}
+		if tt.toggle == pathfinderBackendAggregationToggle {
+			t.Errorf("%s: must not gate on the legacy .com toggle %q", tt.name, pathfinderBackendAggregationToggle)
+		}
+	}
+}
+
 func TestAppPlatformCreateClient_RequestContract(t *testing.T) {
 	const payload = `{"apiVersion":"g/v1","kind":"Thing"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +228,7 @@ func TestAppPlatformCreateClient_RequestContract(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newAppPlatformListClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	client := newAppPlatformListClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	if err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(payload), 1024); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -202,7 +247,7 @@ func TestAppPlatformCreateClient_MintFailureAbortsRequest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newAppPlatformListClient(srv.URL, stubMinter{err: errors.New("exchange refused")}, "id-token-abc", log.DefaultLogger)
+	client := newAppPlatformListClient(srv.URL, &stubMinter{err: errors.New("exchange refused")}, "id-token-abc", log.DefaultLogger)
 	err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), 1024)
 	if err == nil {
 		t.Fatal("expected an error when the exchange fails")
@@ -240,7 +285,7 @@ func TestCompletionHTTPClient_Create_WireComposition(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := newCompletionHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	client := newCompletionHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	spec := completionRecordWriteSpec{
 		GuideID: "first-dashboard", GuideSource: "bundled", GuideTitle: "First dashboard",
 		PathID: "", Source: "objectives", CompletedAt: "2026-07-20T10:00:00Z",
@@ -330,7 +375,7 @@ func TestCompletionHTTPClient_Create_OversizedSuccessBodyIsNotRetryable(t *testi
 	}))
 	defer srv.Close()
 
-	client := newCompletionHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	client := newCompletionHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	obj := completionRecordObject{Metadata: completionRecordObjectMeta{Name: "completion-abc"}}
 	if err := client.Create(context.Background(), "stacks-1", obj); err != nil {
 		t.Fatalf("Create returned error on an over-cap 201 body: %v (must be treated as success)", err)
@@ -366,7 +411,7 @@ func (successThenBodyReadErrorTransport) RoundTrip(*http.Request) (*http.Respons
 func TestAppPlatformCreateClient_SuccessBodyReadErrorIsNotRetryable(t *testing.T) {
 	client := &appPlatformListClient{
 		appURL:     "http://example.invalid",
-		minter:     stubMinter{token: "at-xyz"},
+		minter:     &stubMinter{token: "at-xyz"},
 		idToken:    "id-token-abc",
 		httpClient: &http.Client{Transport: successThenBodyReadErrorTransport{}},
 		logger:     log.DefaultLogger,
@@ -412,7 +457,7 @@ func TestAppPlatformCreateClient_RedirectNeverFollowed(t *testing.T) {
 			}))
 			defer redirector.Close()
 
-			client := newAppPlatformListClient(redirector.URL, stubMinter{token: "at-secret"}, "id-token-secret", log.DefaultLogger)
+			client := newAppPlatformListClient(redirector.URL, &stubMinter{token: "at-secret"}, "id-token-secret", log.DefaultLogger)
 			err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{"secret":"payload"}`), 1024)
 			if err == nil {
 				t.Fatalf("a %d redirect must not be acknowledged as a durable create", code)
@@ -460,7 +505,7 @@ func TestAppPlatformListClient_RedirectNeverFollowed(t *testing.T) {
 	}))
 	defer redirector.Close()
 
-	client := newCompletionHTTPClient(redirector.URL, stubMinter{token: "at-secret"}, "id-token-secret", log.DefaultLogger)
+	client := newCompletionHTTPClient(redirector.URL, &stubMinter{token: "at-secret"}, "id-token-secret", log.DefaultLogger)
 	_, err := client.ListPage(context.Background(), "stacks-1", "")
 	if err == nil {
 		t.Fatal("an unfollowed redirect must surface as an error, not an empty page")
@@ -508,7 +553,7 @@ func TestAppPlatformCreateClient_ResponseContract(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client := newAppPlatformListClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+			client := newAppPlatformListClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 			err := client.create(context.Background(), "g/v1", "stacks-1", "things", []byte(`{}`), tc.maxBytes)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)

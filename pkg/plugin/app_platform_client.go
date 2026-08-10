@@ -74,7 +74,7 @@ type appPlatformListPage struct {
 // token scoped to that user. Satisfied by auth.Exchanger; an interface here so
 // tests can stub the exchange without an auth-api.
 type accessTokenMinter interface {
-	Mint(ctx context.Context, idToken string) (string, error)
+	Mint(ctx context.Context, namespace, idToken string) (string, error)
 }
 
 // tokenExchangeError marks a failure to MINT the outbound on-behalf-of
@@ -99,12 +99,12 @@ func isTokenExchangeError(err error) bool {
 	return errors.As(err, &te)
 }
 
-// mintAccessToken exchanges the caller's ID token for the outbound credential.
-// Minting per request rather than per client is deliberate: authlib caches by
-// subject for most of the token's 10-minute life, so this is a cache hit on all
-// but the first call for a given user.
-func mintAccessToken(ctx context.Context, minter accessTokenMinter, idToken string) (string, error) {
-	token, err := minter.Mint(ctx, idToken)
+// mintAccessToken exchanges the caller's ID token for the outbound credential
+// scoped to namespace. Minting per request rather than per client is deliberate:
+// authlib caches by subject for most of the token's 10-minute life, so this is a
+// cache hit on all but the first call for a given user.
+func mintAccessToken(ctx context.Context, minter accessTokenMinter, namespace, idToken string) (string, error) {
+	token, err := minter.Mint(ctx, namespace, idToken)
 	if err != nil {
 		return "", &tokenExchangeError{err: err}
 	}
@@ -171,7 +171,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
-	accessToken, err := mintAccessToken(reqCtx, c.minter, c.idToken)
+	accessToken, err := mintAccessToken(reqCtx, c.minter, namespace, c.idToken)
 	if err != nil {
 		return nil, fmt.Errorf("app platform list: %w", err)
 	}
@@ -248,7 +248,7 @@ func (c *appPlatformListClient) create(ctx context.Context, groupVersion, namesp
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
-	accessToken, err := mintAccessToken(reqCtx, c.minter, c.idToken)
+	accessToken, err := mintAccessToken(reqCtx, c.minter, namespace, c.idToken)
 	if err != nil {
 		return fmt.Errorf("app platform create: %w", err)
 	}

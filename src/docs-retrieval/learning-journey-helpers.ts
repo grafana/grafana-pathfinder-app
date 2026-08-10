@@ -140,10 +140,26 @@ export function isLastMilestone(content: RawContent): boolean {
     return false;
   }
 
-  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
+  const { currentMilestone, milestones } = content.metadata.learningJourney;
 
-  // Since milestones are now sequentially numbered from 1, this is simple
-  return currentMilestone === totalMilestones;
+  // "Last" = the highest-numbered UNLOCKED milestone. Locked (unpublished)
+  // trailing members must not block a partially-published path from reaching its
+  // final reachable step (which is what drives last-milestone auto-complete).
+  const unlockedNumbers = milestones.filter((m) => !m.isLocked).map((m) => m.number);
+  if (unlockedNumbers.length === 0) {
+    return false;
+  }
+  return currentMilestone === Math.max(...unlockedNumbers);
+}
+
+/**
+ * Number of navigable (unlocked) milestones — the threshold a journey must reach
+ * to count as complete. Locked members are placeholders for unpublished content
+ * (RFC §6.5) and are unreachable, so they must not inflate the completion
+ * denominator. `totalMilestones` stays the locked-inclusive display count.
+ */
+export function countUnlockedMilestones(milestones: Milestone[]): number {
+  return milestones.filter((m) => !m.isLocked).length;
 }
 
 export function isFirstMilestone(content: RawContent): boolean {
@@ -194,7 +210,8 @@ export function generateJourneyContentWithExtras(
   enhancedContent = appendBottomNavigationToContent(
     enhancedContent,
     metadata.currentMilestone,
-    metadata.totalMilestones
+    metadata.totalMilestones,
+    metadata.milestones
   );
 
   return enhancedContent;
@@ -209,9 +226,10 @@ function getCurrentMilestoneFromMetadata(metadata: LearningJourneyMetadata): Mil
  * These generate HTML strings to append to content
  */
 function addReadyToBeginButton(content: string, metadata: LearningJourneyMetadata): string {
-  // Since milestones are now sequentially numbered from 1,
-  // the first milestone is always the one with number === 1
-  const firstMilestone = metadata.milestones.find((m) => m.number === 1);
+  // The entry point is the first UNLOCKED milestone — a locked (unpublished)
+  // milestone 1 has url:'' and would render the primary CTA as a dead button.
+  // If nothing is published yet, emit no button.
+  const firstMilestone = metadata.milestones.find((m) => !m.isLocked);
 
   if (!firstMilestone) {
     return content;
@@ -311,8 +329,16 @@ function addConclusionImageToContent(content: string, conclusionImage: Conclusio
   return content + conclusionImageHtml;
 }
 
-function appendBottomNavigationToContent(content: string, currentMilestone: number, totalMilestones: number): string {
-  const isLastMilestone = currentMilestone === totalMilestones;
+function appendBottomNavigationToContent(
+  content: string,
+  currentMilestone: number,
+  totalMilestones: number,
+  milestones: Milestone[]
+): string {
+  // "Last" for the Next control = no UNLOCKED milestone after the current one.
+  // A locked trailing member isn't navigable, so rendering Next there would be a
+  // dead control (the click handler's canNavigateNext already returns null).
+  const isLastMilestone = !milestones.some((m) => m.number > currentMilestone && !m.isLocked);
   const isCoverPage = currentMilestone === 0;
 
   // Conditionally render Previous button (hide on cover page)
