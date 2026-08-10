@@ -101,6 +101,11 @@ export function LearningPathCard({
             return;
           }
           e.preventDefault();
+          // Held keys auto-repeat, which would flap the card against its
+          // max-height transition.
+          if (e.repeat) {
+            return;
+          }
           handleToggleExpand();
         }}
         aria-expanded={isExpanded}

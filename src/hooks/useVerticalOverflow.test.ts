@@ -12,9 +12,11 @@ import { useVerticalOverflow } from './useVerticalOverflow';
 
 let scrollHeight = 0;
 let clientHeight = 0;
+let scrollTop = 0;
 
 const originalScrollHeight = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollHeight');
 const originalClientHeight = Object.getOwnPropertyDescriptor(Element.prototype, 'clientHeight');
+const originalScrollTop = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
 
 /** Captures the observer callbacks so tests can drive a resize. */
 function installResizeObserver() {
@@ -49,6 +51,7 @@ function overflowState() {
 beforeAll(() => {
   Object.defineProperty(Element.prototype, 'scrollHeight', { get: () => scrollHeight, configurable: true });
   Object.defineProperty(Element.prototype, 'clientHeight', { get: () => clientHeight, configurable: true });
+  Object.defineProperty(Element.prototype, 'scrollTop', { get: () => scrollTop, configurable: true });
 });
 
 afterAll(() => {
@@ -58,6 +61,13 @@ afterAll(() => {
   if (originalClientHeight) {
     Object.defineProperty(Element.prototype, 'clientHeight', originalClientHeight);
   }
+  if (originalScrollTop) {
+    Object.defineProperty(Element.prototype, 'scrollTop', originalScrollTop);
+  }
+});
+
+beforeEach(() => {
+  scrollTop = 0;
 });
 
 afterEach(() => {
@@ -142,6 +152,41 @@ describe('useVerticalOverflow', () => {
     act(() => fire());
 
     expect(overflowState()).toBe('false');
+  });
+
+  it('reports nothing below once scrolled to the end', () => {
+    installResizeObserver();
+    scrollHeight = 482;
+    clientHeight = 400;
+
+    render(React.createElement(Probe));
+    expect(overflowState()).toBe('true');
+
+    // A fade means "more below", so it must clear at the end — otherwise it dims
+    // the last row with nothing left to reveal.
+    scrollTop = 82;
+    act(() => {
+      screen.getByTestId('region').dispatchEvent(new Event('scroll'));
+    });
+
+    expect(overflowState()).toBe('false');
+  });
+
+  it('reports content below again after scrolling back up', () => {
+    installResizeObserver();
+    scrollHeight = 482;
+    clientHeight = 400;
+    scrollTop = 82;
+
+    render(React.createElement(Probe));
+    expect(overflowState()).toBe('false');
+
+    scrollTop = 0;
+    act(() => {
+      screen.getByTestId('region').dispatchEvent(new Event('scroll'));
+    });
+
+    expect(overflowState()).toBe('true');
   });
 
   it('treats a sub-pixel height difference as fitting', () => {

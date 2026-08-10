@@ -1,11 +1,12 @@
 /**
- * useVerticalOverflow hook — reports whether an element's content overflows its
- * own height.
+ * useVerticalOverflow hook — reports whether an element has content below its
+ * visible area, i.e. it overflows *and* is not scrolled to the end.
  *
- * Scroll-fade affordances need this: a bottom fade mask must only be applied
- * when there is actually more content below, otherwise it dims the last item of
- * a list that already fits. CSS cannot express "am I overflowing", so the
- * measurement happens here.
+ * Scroll-fade affordances need exactly this. A bottom fade means "there is more
+ * below", so applying it whenever the content merely overflows dims the last
+ * item once the user reaches the end — and applying it when the content fits
+ * dims the last item of a list that never scrolled at all. CSS cannot express
+ * either condition, so the measurement happens here.
  *
  * Returns a *callback* ref rather than a ref object: the measured element often
  * mounts after its owner (a list rendered behind a loading skeleton, or after an
@@ -38,13 +39,15 @@ export function useVerticalOverflow<T extends HTMLElement>(): [(node: T | null) 
       return;
     }
 
-    const measure = () => setHasOverflow(element.scrollHeight > element.clientHeight + OVERFLOW_EPSILON);
+    const measure = () =>
+      setHasOverflow(element.scrollHeight - element.scrollTop - element.clientHeight > OVERFLOW_EPSILON);
     measure();
+    element.addEventListener('scroll', measure, { passive: true });
 
     // Environments without ResizeObserver (jsdom by default) still get the
     // mount-time measurement above rather than a crash.
     if (typeof ResizeObserver === 'undefined') {
-      return;
+      return () => element.removeEventListener('scroll', measure);
     }
 
     const resizeObserver = new ResizeObserver(measure);
@@ -65,6 +68,7 @@ export function useVerticalOverflow<T extends HTMLElement>(): [(node: T | null) 
     mutationObserver?.observe(element, { childList: true });
 
     return () => {
+      element.removeEventListener('scroll', measure);
       resizeObserver.disconnect();
       mutationObserver?.disconnect();
     };

@@ -7,7 +7,7 @@
  * and the disclosure reveals the description instead of milestones.
  */
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
@@ -28,6 +28,7 @@ interface DiscoverMoreCardProps {
 export function DiscoverMoreCard({ item, onStart, isStarting, startDisabled }: DiscoverMoreCardProps) {
   const styles = useStyles2(getLearningPathCardStyles);
   const [isExpanded, setIsExpanded] = useState(false);
+  const descriptionId = useId();
 
   const canExpand = Boolean(item.description);
   const meta =
@@ -43,22 +44,16 @@ export function DiscoverMoreCard({ item, onStart, isStarting, startDisabled }: D
 
   return (
     <div className={styles.card} data-testid={testIds.learningPaths.discoverMoreCard(item.id)}>
+      {/*
+       * Deliberately not `role="button"`: that role is Children Presentational,
+       * so it would hide the nested Start and chevron from assistive tech and
+       * leave the card expandable but never launchable. The disclosure
+       * semantics live on the chevron, which is already a real button; this
+       * click handler is only a mouse convenience.
+       */}
       <div
-        className={styles.header}
-        onClick={handleToggleExpand}
-        role={canExpand ? 'button' : undefined}
-        tabIndex={canExpand ? 0 : undefined}
-        // Only the header's own keystrokes: a keydown bubbling up from Start or
-        // the chevron would toggle here *and* fire that button's activation
-        // click, cancelling out so the keyboard could never open the card.
-        onKeyDown={(e) => {
-          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) {
-            return;
-          }
-          e.preventDefault();
-          handleToggleExpand();
-        }}
-        aria-expanded={canExpand ? isExpanded : undefined}
+        className={cx(styles.header, !canExpand && styles.headerStatic)}
+        onClick={canExpand ? handleToggleExpand : undefined}
       >
         <ProgressRing progress={0} size={40} strokeWidth={3} showPercentage={true} />
 
@@ -92,6 +87,8 @@ export function DiscoverMoreCard({ item, onStart, isStarting, startDisabled }: D
                 handleToggleExpand();
               }}
               aria-label={isExpanded ? t('myLearning.collapse', 'Collapse') : t('myLearning.expand', 'Expand')}
+              aria-expanded={isExpanded}
+              aria-controls={descriptionId}
               data-testid={testIds.learningPaths.discoverMoreExpand(item.id)}
             >
               <Icon name="angle-down" size="lg" />
@@ -100,7 +97,16 @@ export function DiscoverMoreCard({ item, onStart, isStarting, startDisabled }: D
         </div>
       </div>
 
-      <div className={cx(styles.expandable, isExpanded && styles.expandableOpen)}>
+      {/*
+       * The collapsed region is only visually hidden (max-height/opacity), so
+       * without aria-hidden a screen reader would read the description straight
+       * after hearing the toggle report itself collapsed.
+       */}
+      <div
+        id={descriptionId}
+        className={cx(styles.expandable, isExpanded && styles.expandableOpen)}
+        aria-hidden={!isExpanded}
+      >
         {item.description && <p className={styles.description}>{item.description}</p>}
       </div>
     </div>

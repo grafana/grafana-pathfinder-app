@@ -355,12 +355,38 @@ describe('MyLearningTab launch flow', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
     const expand = screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-1'));
 
-    // Enter on the chevron used to toggle twice — once from the keydown bubbling
-    // to the header, once from the button's activation click — cancelling out.
+    // The chevron is a real button, so Enter reaches it as an activation click.
     fireEvent.keyDown(expand, { key: 'Enter' });
     fireEvent.click(expand);
 
     expect(expand).toHaveAttribute('aria-label', 'Collapse');
+    expect(expand).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('exposes the Discover more Start button to assistive tech', () => {
+    mockDiscoverItems = [
+      {
+        id: 'pkg-1',
+        title: 'Package one',
+        contentUrl: 'https://cdn.example/pkg-1/content.json',
+        description: 'Ship your first dashboard',
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const card = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
+
+    // `role="button"` on the header would be Children Presentational, hiding the
+    // nested Start and chevron and leaving the card expandable but unlaunchable.
+    expect(card.querySelector('[role="button"]')).toBeNull();
+
+    // The disclosure state belongs to the chevron, and the collapsed region is
+    // hidden from the accessibility tree to match it.
+    const expand = screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-1'));
+    expect(expand).toHaveAttribute('aria-expanded', 'false');
+    const region = card.querySelector(`#${CSS.escape(expand.getAttribute('aria-controls')!)}`);
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+    expect(region).toHaveTextContent('Ship your first dashboard');
   });
 
   it('expanding a Discover more card does not launch it', () => {

@@ -167,6 +167,11 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       cursor: 'pointer',
       userSelect: 'none',
     }),
+    // For a header with nothing to disclose: no click affordance to imply one.
+    headerStatic: css({
+      cursor: 'default',
+      userSelect: 'auto',
+    }),
     content: css({
       flex: 1,
       minWidth: 0,
