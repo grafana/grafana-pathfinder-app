@@ -41,24 +41,19 @@ const (
 // long-lived CAP token. It is safe for concurrent use and is built once per
 // plugin instance so authlib's internal token cache is shared across requests.
 type Exchanger struct {
-	client  authn.TokenExchanger
-	stackID string
+	client authn.TokenExchanger
 }
 
-// New builds an Exchanger from the plugin's provisioned credentials: the raw
-// CAP token (from decrypted secure settings) and the stack ID (from jsonData),
-// both written by stack-state-service.
+// New builds an Exchanger from the plugin's provisioned CAP token (from
+// decrypted secure settings, written by stack-state-service).
 //
 // It returns (nil, nil) when no token is provisioned — local development, or a
 // stack that predates provisioning — so the caller can degrade instead of
-// failing to load. It returns an error when a token is present but the stack ID
-// is missing.
-func New(token, stackID, tokenExchangeURL string) (*Exchanger, error) {
+// failing to load. The exchange namespace is supplied per-call by Mint (from
+// the request plugin-context), not baked in here.
+func New(token, tokenExchangeURL string) (*Exchanger, error) {
 	if token == "" {
 		return nil, nil
-	}
-	if stackID == "" {
-		return nil, errors.New("on-behalf-of token provisioned without a stack ID")
 	}
 
 	client, err := authn.NewTokenExchangeClient(authn.TokenExchangeConfig{
@@ -69,19 +64,22 @@ func New(token, stackID, tokenExchangeURL string) (*Exchanger, error) {
 		return nil, fmt.Errorf("building token exchange client: %w", err)
 	}
 
-	return &Exchanger{client: client, stackID: stackID}, nil
+	return &Exchanger{client: client}, nil
 }
 
 // Mint exchanges the CAP token for a short-lived access token scoped to the
-// user identified by idToken. The audience is the stack's own front door, which
-// is where the proxy routes send it; the aggregator re-signs from there.
-func (e *Exchanger) Mint(ctx context.Context, idToken string) (string, error) {
+// user identified by idToken, for the given stack namespace. The namespace is
+// server-derived from the request plugin-context — the same value the LIST
+// targets — so the minted token and the LIST can never diverge. The audience is
+// the stack's own front door, where the proxy routes send it; the aggregator
+// re-signs the onward hop from there.
+func (e *Exchanger) Mint(ctx context.Context, namespace, idToken string) (string, error) {
 	if idToken == "" {
 		return "", errors.New("cannot mint an access token without a caller id token")
 	}
 	ttl := tokenTTLSeconds
 	resp, err := e.client.Exchange(ctx, authn.TokenExchangeRequest{
-		Namespace:    "stacks-" + e.stackID,
+		Namespace:    namespace,
 		Audiences:    []string{"grafana"},
 		SubjectToken: idToken,
 		ExpiresIn:    &ttl,

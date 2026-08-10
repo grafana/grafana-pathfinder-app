@@ -422,7 +422,7 @@ func TestCustomGuideHTTPClient_StripsBlocksPreservesManifest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newCustomGuideHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	page, err := c.ListPage(context.Background(), testNamespace, "")
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)

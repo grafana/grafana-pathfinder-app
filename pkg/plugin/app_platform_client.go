@@ -23,9 +23,12 @@ import (
 // callers supply the group/version + resource and decode each `items[].spec`
 // through a per-kind callback.
 
-// pathfinderBackendAggregationToggle mirrors the front-end availability check
-// in src/utils/fetchBackendGuides.ts: the boot-time toggle the aggregation
-// layer sets when the pathfinderbackend API is served on this instance.
+// pathfinderBackendAggregationToggle gates the completion-records proxy on the
+// LEGACY CAP group (pathfinderbackend.ext.grafana.com). The custom-guide proxy
+// moved to the GAP `.app` toggle (customGuideAggregationToggle); the two are
+// intentionally distinct until completion-records also migrates to GAP. The
+// name derives from the group, dots→dashes — the Go mirror of the `.app`
+// derivation in src/utils/interactive-guides-api.ts.
 const pathfinderBackendAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-com.enabled"
 
 // appPlatformUpstreamTimeout caps a single LIST page fetch. The aggregate
@@ -57,7 +60,7 @@ type appPlatformListPage struct {
 // token scoped to that user. Satisfied by auth.Exchanger; an interface here so
 // tests can stub the exchange without an auth-api.
 type accessTokenMinter interface {
-	Mint(ctx context.Context, idToken string) (string, error)
+	Mint(ctx context.Context, namespace, idToken string) (string, error)
 }
 
 // appPlatformListClient fetches pages of a namespace LIST from the stack's
@@ -109,7 +112,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 	// most of the token's 10-minute life, so this is a cache hit on all but the
 	// first call for a given user, and a mint failure surfaces as an upstream
 	// error the caller already classifies.
-	accessToken, err := c.minter.Mint(reqCtx, c.idToken)
+	accessToken, err := c.minter.Mint(reqCtx, namespace, c.idToken)
 	if err != nil {
 		return nil, fmt.Errorf("app platform list: mint access token: %w", err)
 	}

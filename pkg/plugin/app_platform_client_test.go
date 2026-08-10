@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -15,13 +16,18 @@ import (
 )
 
 // stubMinter stands in for auth.Exchanger so client tests never need an
-// auth-api: it echoes a fixed token, or fails when err is set.
+// auth-api: it echoes a fixed token, or fails when err is set, and records the
+// namespace + id token it was called with so tests can pin subject forwarding.
 type stubMinter struct {
-	token string
-	err   error
+	token        string
+	err          error
+	gotNamespace string
+	gotIDToken   string
 }
 
-func (s stubMinter) Mint(context.Context, string) (string, error) {
+func (s *stubMinter) Mint(_ context.Context, namespace, idToken string) (string, error) {
+	s.gotNamespace = namespace
+	s.gotIDToken = idToken
 	if s.err != nil {
 		return "", s.err
 	}
@@ -61,7 +67,8 @@ func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newCompletionHTTPClient(srv.URL, stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	minter := &stubMinter{token: "at-xyz"}
+	c := newCompletionHTTPClient(srv.URL, minter, "id-token-abc", log.DefaultLogger)
 
 	page1, err := c.ListPage(context.Background(), "stacks-1", "")
 	if err != nil {
@@ -90,6 +97,15 @@ func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 			t.Errorf("request %d: Cookie must never be forwarded, got %q", i, got)
 		}
 	}
+	// Subject forwarding: the caller's ID token and the server-derived namespace
+	// must reach the minter, or the OBO token would be minted for the wrong
+	// user/stack.
+	if minter.gotIDToken != "id-token-abc" {
+		t.Errorf("minter received idToken %q, want id-token-abc", minter.gotIDToken)
+	}
+	if minter.gotNamespace != "stacks-1" {
+		t.Errorf("minter received namespace %q, want stacks-1", minter.gotNamespace)
+	}
 	if gotQueries[0] != "limit=500" {
 		t.Errorf("first query = %q, want limit=500", gotQueries[0])
 	}
@@ -109,7 +125,7 @@ func TestAppPlatformListClient_MintFailureAbortsRequest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newCompletionHTTPClient(srv.URL, stubMinter{err: errors.New("exchange refused")}, "id-token-abc", log.DefaultLogger)
+	c := newCompletionHTTPClient(srv.URL, &stubMinter{err: errors.New("exchange refused")}, "id-token-abc", log.DefaultLogger)
 
 	_, err := c.ListPage(context.Background(), "stacks-1", "")
 	if err == nil {
@@ -142,5 +158,36 @@ func TestAppPlatformListClient_UpstreamErrorClassification(t *testing.T) {
 		if got := isIdentityScopedUpstreamStatus(tt.status); got != tt.identityScoped {
 			t.Errorf("isIdentityScopedUpstreamStatus(%d) = %v, want %v", tt.status, got, tt.identityScoped)
 		}
+	}
+}
+
+// Each proxy must gate on the aggregation toggle for ITS OWN API group — the Go
+// mirror of the toggle derivation in src/utils/interactive-guides-api.ts (group,
+// dots→dashes). Regression-guards the shared test fixture that enables both
+// toggles: without this, the suite couldn't notice if the two routes silently
+// drifted onto the same toggle (moxious review, finding #8).
+func TestAggregationToggleMatchesGroup(t *testing.T) {
+	toggleForGroupVersion := func(gv string) string {
+		group := strings.SplitN(gv, "/", 2)[0]
+		return "aggregation." + strings.ReplaceAll(group, ".", "-") + ".enabled"
+	}
+
+	cases := []struct {
+		name         string
+		groupVersion string
+		toggle       string
+	}{
+		{"custom-guide (GAP .app)", customGuideGroupVersion, customGuideAggregationToggle},
+		{"completion-records (legacy .com)", completionRecordsGroupVersion, pathfinderBackendAggregationToggle},
+	}
+	for _, tt := range cases {
+		if got := toggleForGroupVersion(tt.groupVersion); got != tt.toggle {
+			t.Errorf("%s: derived toggle %q, but the proxy uses %q", tt.name, got, tt.toggle)
+		}
+	}
+
+	// The two routes are on different groups and must not collapse to one toggle.
+	if customGuideAggregationToggle == pathfinderBackendAggregationToggle {
+		t.Error("custom-guide and completion-records must gate on distinct aggregation toggles")
 	}
 }

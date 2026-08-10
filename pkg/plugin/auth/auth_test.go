@@ -26,7 +26,7 @@ func (f *fakeExchanger) Exchange(_ context.Context, r authn.TokenExchangeRequest
 
 func TestNew(t *testing.T) {
 	t.Run("no token provisioned returns nil exchanger, no error", func(t *testing.T) {
-		ex, err := New("", "42", DefaultTokenExchangeURL)
+		ex, err := New("", DefaultTokenExchangeURL)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -35,37 +35,30 @@ func TestNew(t *testing.T) {
 		}
 	})
 
-	t.Run("token and stack id build an exchanger", func(t *testing.T) {
-		ex, err := New("cap-token", "42", DefaultTokenExchangeURL)
+	t.Run("a provisioned token builds an exchanger", func(t *testing.T) {
+		ex, err := New("cap-token", DefaultTokenExchangeURL)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if ex == nil {
 			t.Fatal("expected non-nil exchanger")
 		}
-		if ex.stackID != "42" {
-			t.Errorf("stackID = %q, want %q", ex.stackID, "42")
-		}
-	})
-
-	t.Run("token without a stack id returns error", func(t *testing.T) {
-		if _, err := New("cap-token", "", DefaultTokenExchangeURL); err == nil {
-			t.Error("expected an error when a token is present but the stack id is missing")
-		}
 	})
 }
 
 func TestExchangerMint(t *testing.T) {
 	fake := &fakeExchanger{token: "minted-token"}
-	ex := &Exchanger{client: fake, stackID: "42"}
+	ex := &Exchanger{client: fake}
 
-	got, err := ex.Mint(context.Background(), "id-token")
+	got, err := ex.Mint(context.Background(), "stacks-42", "id-token")
 	if err != nil {
 		t.Fatalf("Mint: %v", err)
 	}
 	if got != "minted-token" {
 		t.Errorf("token = %q, want %q", got, "minted-token")
 	}
+	// Namespace is forwarded verbatim from the caller (the request
+	// plugin-context), not built from a provisioned stack id.
 	if fake.got.Namespace != "stacks-42" {
 		t.Errorf("namespace = %q, want %q", fake.got.Namespace, "stacks-42")
 	}
@@ -82,15 +75,15 @@ func TestExchangerMint(t *testing.T) {
 
 func TestExchangerMintErrors(t *testing.T) {
 	t.Run("no caller id token", func(t *testing.T) {
-		ex := &Exchanger{client: &fakeExchanger{token: "minted-token"}, stackID: "42"}
-		if _, err := ex.Mint(context.Background(), ""); err == nil {
+		ex := &Exchanger{client: &fakeExchanger{token: "minted-token"}}
+		if _, err := ex.Mint(context.Background(), "stacks-42", ""); err == nil {
 			t.Error("expected an error when the caller has no id token")
 		}
 	})
 
 	t.Run("exchange failure propagates", func(t *testing.T) {
-		ex := &Exchanger{client: &fakeExchanger{err: errors.New("refused")}, stackID: "42"}
-		if _, err := ex.Mint(context.Background(), "id-token"); err == nil {
+		ex := &Exchanger{client: &fakeExchanger{err: errors.New("refused")}}
+		if _, err := ex.Mint(context.Background(), "stacks-42", "id-token"); err == nil {
 			t.Error("expected the exchange error to propagate")
 		}
 	})
