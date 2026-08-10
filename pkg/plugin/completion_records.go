@@ -36,8 +36,8 @@ const (
 	// separate constant from the success TTL: after an upstream refresh fails,
 	// TTL-expired re-attempts are suppressed for this long so a sustained
 	// outage doesn't re-trigger a full-namespace LIST on every sequential
-	// request. Identity-scoped (401/403) failures never enter this shared
-	// negative cache — see getCompletionIndex.
+	// request. Only failures positively classified as namespace-global enter this
+	// shared negative cache — see getCompletionIndex.
 	completionFailureCooldown = 30 * time.Second
 
 	// completionRetryAfterSeconds is the Retry-After hint on a cold 503.

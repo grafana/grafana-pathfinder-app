@@ -91,8 +91,8 @@ func newAppPlatformListClient(appURL string, minter accessTokenMinter, idToken s
 var credentialDiagOnce sync.Once
 
 // listPage fetches one page of a namespace LIST. The body is bounded by
-// maxBytes; errors carry the upstream status for transient/terminal/
-// identity-scoped classification.
+// maxBytes; upstream HTTP failures carry the status for retryability and scope
+// classification, and a mint failure carries errAccessTokenMintFailed instead.
 func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (*appPlatformListPage, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("app platform list: empty namespace")
@@ -111,8 +111,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 
 	// Mint per request rather than per client: authlib caches by subject for
 	// most of the token's 10-minute life, so this is a cache hit on all but the
-	// first call for a given user, and a mint failure surfaces as an upstream
-	// error the caller already classifies.
+	// first call for a given user.
 	accessToken, err := c.minter.Mint(reqCtx, namespace, c.idToken)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errAccessTokenMintFailed, err)
