@@ -27,7 +27,6 @@ import type {
   PackageResolver,
   ResolveOptions,
 } from '../types/package.types';
-import { nonEmptyCoverBlocksError } from './cover-validation';
 
 function failure(
   id: string,
@@ -134,11 +133,6 @@ export class OnlineCdnPackageResolver implements PackageResolver {
         } catch {
           // Manifest loading is optional — continue without it
         }
-      }
-
-      const coverError = nonEmptyCoverBlocksError(packageId, manifest, content);
-      if (coverError) {
-        return coverError;
       }
 
       return { ok: true, content, manifest };
