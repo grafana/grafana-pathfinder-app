@@ -257,6 +257,8 @@ interface RecommendationsSectionProps {
   recommendations: Recommendation[];
   featuredRecommendations: Recommendation[];
   customGuides: PublishedGuide[];
+  customGuidePaths: PublishedGuide[];
+  customGuideOrphans: PublishedGuide[];
   isLoadingCustomGuides: boolean;
   customGuidesExpanded: boolean;
   suggestedGuidesExpanded: boolean;
@@ -277,6 +279,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   recommendations,
   featuredRecommendations,
   customGuides,
+  customGuidePaths,
+  customGuideOrphans,
   isLoadingCustomGuides,
   customGuidesExpanded,
   suggestedGuidesExpanded,
@@ -378,6 +382,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         {hasCustomGuidesContent && (
           <CustomGuidesSection
             guides={customGuides}
+            paths={customGuidePaths}
+            orphanGuides={customGuideOrphans}
             isLoading={isLoadingCustomGuides}
             expanded={customGuidesExpanded}
             onToggleExpanded={toggleCustomGuidesExpansion}
@@ -558,6 +564,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                         <button
                                           key={stepIndex}
                                           onClick={() => {
+                                            // Locked (unpublished) member — placeholder only, not navigable.
+                                            if (milestone.isLocked) {
+                                              return;
+                                            }
                                             reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
                                               content_title: recommendation.title,
                                               milestone_title: milestone.title,
@@ -575,12 +585,21 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               );
                                             }
                                           }}
-                                          className={styles.milestoneItem}
+                                          disabled={milestone.isLocked}
+                                          className={`${styles.milestoneItem} ${milestone.isLocked ? styles.milestoneItemLocked : ''}`}
                                         >
                                           <div className={styles.milestoneNumber}>{milestone.number}</div>
                                           <div className={styles.milestoneContent}>
-                                            <div className={styles.milestoneTitle}>{milestone.title}</div>
+                                            <div className={styles.milestoneTitle}>
+                                              {milestone.title}
+                                              {milestone.isLocked && (
+                                                <span className={styles.milestoneDuration}>
+                                                  {t('contextPanel.notYetAvailable', '(not yet available)')}
+                                                </span>
+                                              )}
+                                            </div>
                                           </div>
+                                          {milestone.isLocked && <Icon name="lock" size="sm" />}
                                         </button>
                                       ))}
                                     </div>
@@ -840,6 +859,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                       <button
                                         key={stepIndex}
                                         onClick={() => {
+                                          // Locked (unpublished) member — placeholder only, not navigable.
+                                          if (milestone.isLocked) {
+                                            return;
+                                          }
                                           reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
                                             content_title: recommendation.title,
                                             milestone_title: milestone.title,
@@ -857,16 +880,24 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             );
                                           }
                                         }}
-                                        className={styles.milestoneItem}
+                                        disabled={milestone.isLocked}
+                                        className={`${styles.milestoneItem} ${milestone.isLocked ? styles.milestoneItemLocked : ''}`}
                                         data-testid={testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)}
                                       >
                                         <div className={styles.milestoneNumber}>{milestone.number}</div>
                                         <div className={styles.milestoneContent}>
                                           <div className={styles.milestoneTitle}>
                                             {milestone.title}
-                                            <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                            {milestone.isLocked ? (
+                                              <span className={styles.milestoneDuration}>
+                                                {t('contextPanel.notYetAvailable', '(not yet available)')}
+                                              </span>
+                                            ) : (
+                                              <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                            )}
                                           </div>
                                         </div>
+                                        {milestone.isLocked && <Icon name="lock" size="sm" />}
                                       </button>
                                     ))}
                                   </div>
@@ -1073,6 +1104,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   });
   const {
     guides: customGuides,
+    paths: customGuidePaths,
+    orphanGuides: customGuideOrphans,
     isLoading: isLoadingCustomGuides,
     hasLoaded: hasLoadedCustomGuides,
   } = usePublishedGuides();
@@ -1120,6 +1153,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             recommendations={recommendations}
             featuredRecommendations={contextData.featuredRecommendations}
             customGuides={customGuides}
+            customGuidePaths={customGuidePaths}
+            customGuideOrphans={customGuideOrphans}
             isLoadingCustomGuides={isLoadingCustomGuides}
             customGuidesExpanded={customGuidesExpanded}
             suggestedGuidesExpanded={suggestedGuidesExpanded}

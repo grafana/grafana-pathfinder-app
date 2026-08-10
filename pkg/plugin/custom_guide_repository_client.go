@@ -11,10 +11,18 @@ import (
 // customGuideGroupVersion is the App Platform API group/version that serves the
 // InteractiveGuide kind; the plural resource is "interactiveguides". Tracks
 // grafana-pathfinder-backend kinds/interactiveguide.cue (groupOverride
-// pathfinderbackend.ext.grafana.com).
+// pathfinderbackend.ext.grafana.app) — the Grafana App Platform (GAP) group.
 const (
-	customGuideGroupVersion = "pathfinderbackend.ext.grafana.com/v1alpha1"
+	customGuideGroupVersion = "pathfinderbackend.ext.grafana.app/v1alpha1"
 	customGuideResource     = "interactiveguides"
+
+	// customGuideAggregationToggle is the boot-time toggle the aggregation layer
+	// sets when the pathfinderbackend GAP API (group above) is served on this
+	// instance; mirrors the front-end check in src/utils/interactive-guides-api.ts.
+	// Distinct from the shared pathfinderBackendAggregationToggle (the legacy
+	// `.com` group), which still gates the completion-records proxy until that
+	// path migrates to GAP.
+	customGuideAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-app.enabled"
 
 	// customGuideListPageSize bounds each upstream LIST page. The proxy drains
 	// all pages, so this only trades round-trips against per-response size.
@@ -78,15 +86,15 @@ type customGuideHTTPClient struct {
 	inner *appPlatformListClient
 }
 
-// newCustomGuideHTTPClient builds a lister that calls appURL with identity
-// derived from the caller's ID token (forwardIdentityHeaders). A
+// newCustomGuideHTTPClient builds a lister that calls appURL as the user the
+// caller's ID token identifies, using an access token minted from that token. A
 // namespace-scoped LIST returns every InteractiveGuide in the namespace
 // (Kubernetes RBAC is namespace-, not object-, scoped), which is what lets one
 // refresh serve every caller (see the identity-invariance note in
 // custom_guide_repository.go). A caller lacking list permission gets a 401/403,
 // surfaced as an identity-scoped terminal error.
-func newCustomGuideHTTPClient(appURL, idToken string, logger log.Logger) *customGuideHTTPClient {
-	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, idToken, logger)}
+func newCustomGuideHTTPClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *customGuideHTTPClient {
+	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, minter, idToken, logger)}
 }
 
 // ListPage fetches one page of InteractiveGuides for the namespace and shapes

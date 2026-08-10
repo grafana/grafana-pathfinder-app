@@ -3,13 +3,36 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
+	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
+
+// stubMinter stands in for auth.Exchanger so client tests never need an
+// auth-api: it echoes a fixed token, or fails when err is set, and records the
+// namespace + id token it was called with so tests can pin subject forwarding.
+type stubMinter struct {
+	token        string
+	err          error
+	gotNamespace string
+	gotIDToken   string
+}
+
+func (s *stubMinter) Mint(_ context.Context, namespace, idToken string) (string, error) {
+	s.gotNamespace = namespace
+	s.gotIDToken = idToken
+	if s.err != nil {
+		return "", s.err
+	}
+	return s.token, nil
+}
 
 func TestBuildAppPlatformURL(t *testing.T) {
 	got := buildAppPlatformURL("http://grafana.example/", "pathfinderbackend.ext.grafana.com/v1alpha1", "stacks-1", "completionrecords")
@@ -24,9 +47,9 @@ func TestBuildAppPlatformURL(t *testing.T) {
 	}
 }
 
-// The on-the-wire outbound identity contract: Authorization Bearer + ID-token
-// header derived from the caller's ID token, and never a Cookie or a replayed
-// inbound Authorization value.
+// The on-the-wire outbound credential contract: the minted access token on
+// X-Access-Token, and nothing else — no ID token in either header slot, no
+// Cookie, no replayed inbound Authorization value.
 func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 	var gotHeaders []http.Header
 	var gotQueries []string
@@ -44,7 +67,8 @@ func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := newCompletionHTTPClient(srv.URL, "id-token-abc", log.DefaultLogger)
+	minter := &stubMinter{token: "at-xyz"}
+	c := newCompletionHTTPClient(srv.URL, minter, "id-token-abc", log.DefaultLogger)
 
 	page1, err := c.ListPage(context.Background(), "stacks-1", "")
 	if err != nil {
@@ -58,21 +82,60 @@ func TestAppPlatformListClient_OutboundIdentityAndPagination(t *testing.T) {
 	}
 
 	for i, h := range gotHeaders {
-		if got := h.Get("Authorization"); got != "Bearer id-token-abc" {
-			t.Errorf("request %d: Authorization = %q, want Bearer id-token-abc", i, got)
+		if got := h.Get(auth.AccessTokenHeader); got != "at-xyz" {
+			t.Errorf("request %d: %s = %q, want the minted token at-xyz", i, auth.AccessTokenHeader, got)
 		}
-		if got := h.Get(backend.GrafanaUserSignInTokenHeaderName); got != "id-token-abc" {
-			t.Errorf("request %d: %s = %q, want id-token-abc", i, backend.GrafanaUserSignInTokenHeaderName, got)
+		// The ID token is an attestation, not a credential: it must not leave the
+		// plugin, in either header slot.
+		if got := h.Get("Authorization"); got != "" {
+			t.Errorf("request %d: Authorization must not be sent, got %q", i, got)
+		}
+		if got := h.Get(backend.GrafanaUserSignInTokenHeaderName); got != "" {
+			t.Errorf("request %d: %s must not be sent, got %q", i, backend.GrafanaUserSignInTokenHeaderName, got)
 		}
 		if got := h.Get("Cookie"); got != "" {
 			t.Errorf("request %d: Cookie must never be forwarded, got %q", i, got)
 		}
+	}
+	// Subject forwarding: the caller's ID token and the server-derived namespace
+	// must reach the minter, or the OBO token would be minted for the wrong
+	// user/stack.
+	if minter.gotIDToken != "id-token-abc" {
+		t.Errorf("minter received idToken %q, want id-token-abc", minter.gotIDToken)
+	}
+	if minter.gotNamespace != "stacks-1" {
+		t.Errorf("minter received namespace %q, want stacks-1", minter.gotNamespace)
 	}
 	if gotQueries[0] != "limit=500" {
 		t.Errorf("first query = %q, want limit=500", gotQueries[0])
 	}
 	if gotQueries[1] != "continue=tok-2&limit=500" {
 		t.Errorf("second query = %q, want continue token + limit", gotQueries[1])
+	}
+}
+
+// A failed exchange must abort the request rather than fall back to an
+// unauthenticated call, and must stay transient (no HTTP status) so the caller
+// retries instead of caching a terminal failure.
+func TestAppPlatformListClient_MintFailureAbortsRequest(t *testing.T) {
+	var upstreamCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{}})
+	}))
+	defer srv.Close()
+
+	c := newCompletionHTTPClient(srv.URL, &stubMinter{err: errors.New("exchange refused")}, "id-token-abc", log.DefaultLogger)
+
+	_, err := c.ListPage(context.Background(), "stacks-1", "")
+	if err == nil {
+		t.Fatal("expected an error when the exchange fails")
+	}
+	if upstreamCalls != 0 {
+		t.Errorf("upstream was called %d times, want 0", upstreamCalls)
+	}
+	if isTerminalUpstreamError(err) {
+		t.Errorf("mint failure should be transient, got terminal: %v", err)
 	}
 }
 
@@ -95,5 +158,36 @@ func TestAppPlatformListClient_UpstreamErrorClassification(t *testing.T) {
 		if got := isIdentityScopedUpstreamStatus(tt.status); got != tt.identityScoped {
 			t.Errorf("isIdentityScopedUpstreamStatus(%d) = %v, want %v", tt.status, got, tt.identityScoped)
 		}
+	}
+}
+
+// Each proxy must gate on the aggregation toggle for ITS OWN API group — the Go
+// mirror of the toggle derivation in src/utils/interactive-guides-api.ts (group,
+// dots→dashes). Regression-guards the shared test fixture that enables both
+// toggles: without this, the suite couldn't notice if the two routes silently
+// drifted onto the same toggle (moxious review, finding #8).
+func TestAggregationToggleMatchesGroup(t *testing.T) {
+	toggleForGroupVersion := func(gv string) string {
+		group := strings.SplitN(gv, "/", 2)[0]
+		return "aggregation." + strings.ReplaceAll(group, ".", "-") + ".enabled"
+	}
+
+	cases := []struct {
+		name         string
+		groupVersion string
+		toggle       string
+	}{
+		{"custom-guide (GAP .app)", customGuideGroupVersion, customGuideAggregationToggle},
+		{"completion-records (legacy .com)", completionRecordsGroupVersion, pathfinderBackendAggregationToggle},
+	}
+	for _, tt := range cases {
+		if got := toggleForGroupVersion(tt.groupVersion); got != tt.toggle {
+			t.Errorf("%s: derived toggle %q, but the proxy uses %q", tt.name, got, tt.toggle)
+		}
+	}
+
+	// The two routes are on different groups and must not collapse to one toggle.
+	if customGuideAggregationToggle == pathfinderBackendAggregationToggle {
+		t.Error("custom-guide and completion-records must gate on distinct aggregation toggles")
 	}
 }

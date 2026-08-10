@@ -575,8 +575,12 @@ func (a *App) resolveCompletionBackend(r *http.Request) (lister completionRecord
 		return completionListerOverride, namespace, true, ""
 	}
 
+	if a.oboExchanger == nil {
+		return nil, namespace, false, reasonOBOUnavailable
+	}
+
 	idToken := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName)
-	return newCompletionHTTPClient(appURL, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+	return newCompletionHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
 }
 
 // isTerminalCompletionError reports whether an upstream failure is terminal

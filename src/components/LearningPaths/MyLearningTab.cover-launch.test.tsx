@@ -34,6 +34,10 @@ let pathProgress = 0;
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
   getPathsData: () => ({ guideMetadata: {} }),
+  useDiscoverMore: () => ({
+    items: [{ id: 'discover-path-1', title: 'First path', contentUrl: pathBaseUrl, milestoneCount: 1 }],
+    isLoading: false,
+  }),
   useLearningPaths: () => ({
     paths: [{ id: 'path-1', title: 'First path', guides: ['guide-1'], url: pathBaseUrl }],
     badgesWithStatus: [],
@@ -87,20 +91,20 @@ const okResult: PrepareGuideLaunchResult = {
 describe('MyLearningTab cover-page launch routing', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('lands a fresh path on the cover page (base URL) with the path title', async () => {
+  it('lands a fresh path on the cover page (base URL) via Discover more', async () => {
     pathProgress = 0;
     prepareMock.mockResolvedValue(okResult);
 
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
     await act(async () => {
-      fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+      fireEvent.click(screen.getByTestId(testIds.learningPaths.discoverMoreStart('discover-path-1')));
     });
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
     expect(prepareMock).toHaveBeenCalledWith(pathBaseUrl, expect.objectContaining({ title: 'First path' }));
     expect(reportMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ launch_target: 'cover_page' })
+      expect.objectContaining({ interaction_location: 'my_learning_discover_more', content_url: pathBaseUrl })
     );
   });
 

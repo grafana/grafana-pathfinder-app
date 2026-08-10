@@ -42,7 +42,12 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
+import {
+  countUnlockedMilestones,
+  getMilestoneSlug,
+  markMilestoneDone,
+  setJourneyCompletionPercentage,
+} from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -439,7 +444,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                             markMilestoneDone(
                               journeyBase,
                               slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones,
+                              countUnlockedMilestones(stableContent.metadata?.learningJourney?.milestones ?? []),
                               completionContext
                             );
                           }
