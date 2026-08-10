@@ -13,6 +13,13 @@ function asDataFrame(frame: unknown) {
   };
 }
 
+function withDataFramePayload(payload: unknown) {
+  return {
+    schema: { fields: [{ name: 'data', type: 'string' }] },
+    data: { values: [[payload]] },
+  };
+}
+
 describe('parseTerminalFrame — DataFrame path', () => {
   it('accepts each frame variant the backend emits', () => {
     const frames = [
@@ -59,6 +66,15 @@ describe('parseTerminalFrame — DataFrame path', () => {
 
     expect(parsed).toEqual({ status: 'invalid', detail: 'payload is not valid JSON' });
   });
+
+  it.each([
+    ['null', null, 'data.values.0.0: expected string'],
+    ['empty', '', 'data.values.0.0: expected non-empty JSON string'],
+    ['numeric', 42, 'data.values.0.0: expected string'],
+    ['object', { type: 'connected' }, 'data.values.0.0: expected string'],
+  ])('reports a %s payload cell as invalid', (_name, payload, detail) => {
+    expect(parseTerminalFrame(withDataFramePayload(payload))).toEqual({ status: 'invalid', detail });
+  });
 });
 
 describe('parseTerminalFrame — VM state stays open', () => {
@@ -102,6 +118,7 @@ describe('parseTerminalFrame — fallback shapes', () => {
   it('treats a message that never claimed to be a frame as unrecognized', () => {
     expect(parseTerminalFrame({ schema: { fields: [] } })).toEqual({ status: 'unrecognized' });
     expect(parseTerminalFrame({ data: { values: [] } })).toEqual({ status: 'unrecognized' });
+    expect(parseTerminalFrame({ data: { values: [[]] } })).toEqual({ status: 'unrecognized' });
     expect(parseTerminalFrame(null)).toEqual({ status: 'unrecognized' });
     expect(parseTerminalFrame(undefined)).toEqual({ status: 'unrecognized' });
     expect(parseTerminalFrame(7)).toEqual({ status: 'unrecognized' });

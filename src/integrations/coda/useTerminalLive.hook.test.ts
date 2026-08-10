@@ -30,6 +30,13 @@ function asDataFrame(frame: unknown) {
   };
 }
 
+function withDataFramePayload(payload: unknown) {
+  return {
+    schema: { fields: [{ name: 'data', type: 'string' }] },
+    data: { values: [[payload]] },
+  };
+}
+
 function createTerminal() {
   return {
     rows: 24,
@@ -121,6 +128,22 @@ describe('useTerminalLive — handshake timer', () => {
 
     expect(writtenLines(terminal)).toContain('timed out');
   });
+
+  it.each([
+    ['an invalid frame', asDataFrame({ type: 'sshConnected' })],
+    ['an unrecognized message', { schema: { fields: [] } }],
+    ['an output frame', asDataFrame({ type: 'output', data: 'early output' })],
+    ['a heartbeat frame', asDataFrame({ type: 'heartbeat' })],
+  ])('keeps the original deadline after %s', (_name, message) => {
+    const { terminal, hook } = setup();
+
+    advance(20_000);
+    emitMessage(message);
+    advance(SSH_HANDSHAKE_TIMEOUT_MS - 20_000);
+
+    expect(hook.result.current.status).toBe('error');
+    expect(writtenLines(terminal)).toContain('SSH handshake timed out');
+  });
 });
 
 describe('useTerminalLive — protocol mismatch is diagnosable', () => {
@@ -150,6 +173,25 @@ describe('useTerminalLive — protocol mismatch is diagnosable', () => {
 
     expect(writtenLines(terminal)).toContain('Unreadable message from the sandbox backend');
     expect(writtenLines(terminal)).toContain('expected string');
+    expect(hook.result.current.status).toBe('connecting');
+  });
+
+  it.each([
+    ['null', null],
+    ['empty', ''],
+    ['numeric', 42],
+    ['object', { type: 'connected' }],
+  ])('surfaces a %s DataFrame payload cell', (_name, payload) => {
+    const { terminal, hook } = setup();
+
+    emitMessage(withDataFramePayload(payload));
+
+    expect(writtenLines(terminal)).toContain('Unreadable message from the sandbox backend');
+    expect(writtenLines(terminal)).toContain('data.values.0.0');
+    expect(logger.warn).toHaveBeenCalledWith(
+      '[Terminal] Rejected terminal frame from backend',
+      expect.objectContaining({ detail: expect.stringContaining('data.values.0.0') })
+    );
     expect(hook.result.current.status).toBe('connecting');
   });
 

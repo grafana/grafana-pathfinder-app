@@ -130,8 +130,15 @@ export function parseTerminalFrame(message: unknown): TerminalFrameParse {
       return validateFrame(record);
     }
 
-    const payload = (record as { data?: { values?: unknown[][] } }).data?.values?.[0]?.[0];
-    if (typeof payload === 'string' && payload.length > 0) {
+    const fieldValues = (record as { data?: { values?: unknown[][] } }).data?.values?.[0];
+    if (Array.isArray(fieldValues) && fieldValues.length > 0) {
+      const payload = fieldValues[0];
+      if (typeof payload !== 'string') {
+        return { status: 'invalid', detail: 'data.values.0.0: expected string' };
+      }
+      if (payload.length === 0) {
+        return { status: 'invalid', detail: 'data.values.0.0: expected non-empty JSON string' };
+      }
       return parseJsonFrame(payload);
     }
   }
