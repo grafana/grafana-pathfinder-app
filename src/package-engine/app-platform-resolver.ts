@@ -23,6 +23,7 @@ import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
 import { isBackendApiAvailable, itemUrl } from '../utils/interactive-guides-api';
+import { logger } from '../lib/logging';
 
 import { ManifestJsonObjectSchema } from '../types/package.schema';
 import type {
@@ -52,14 +53,28 @@ interface InteractiveGuideResource {
   };
 }
 
-function failure(
+// A cheap decline that never issued an upstream request (no namespace, GAP
+// toggle off). Untagged, so the composite resolver may negative-cache it —
+// re-evaluating a structural decline gains nothing.
+function decline(
   id: string,
   code: PackageResolutionFailure['error']['code'],
   message: string
 ): PackageResolutionFailure {
-  // Tag failures with the repository so the composite resolver can skip
-  // negative-caching them (app-platform is mutable — a later publish must
-  // re-resolve rather than stay cached-missing).
+  return { ok: false, id, error: { code, message } };
+}
+
+// A failure from an ACTUAL upstream attempt (not-found, not-published,
+// validation, network). Tagged with the repository so the composite resolver
+// evicts it — app-platform is mutable, so a member published after a not-found
+// must re-resolve rather than stay cached-missing. (Tagging the cheap declines
+// above would repeal negative caching for every tier, since app-platform is the
+// composite's last resolver and thus its `lastFailure` on any all-miss.)
+function attemptedFailure(
+  id: string,
+  code: PackageResolutionFailure['error']['code'],
+  message: string
+): PackageResolutionFailure {
   return { ok: false, id, error: { code, message }, repository: APP_PLATFORM_REPOSITORY };
 }
 
@@ -75,12 +90,28 @@ function failure(
  */
 function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']): ManifestJson {
   if (spec?.manifest) {
-    // Spread the persisted manifest first, then force the resolved id last so a
-    // stray spec.manifest.id can never override the package being resolved.
-    const parsed = ManifestJsonObjectSchema.loose().safeParse({ ...spec.manifest, id: packageId });
+    // Spread the persisted manifest first, then force BOTH id and repository
+    // last. id: a stray spec.manifest.id must not override the package being
+    // resolved. repository: the CR shape leaves it optional and the schema
+    // defaults it to the public CDN ('interactive-tutorials'); an App Platform
+    // guide is always app-platform-sourced, and `repository` is the sole input
+    // to the durable completion key (guideSource, completion-identity.ts), so a
+    // missing value would mislabel a private guide's provenance.
+    const parsed = ManifestJsonObjectSchema.loose().safeParse({
+      ...spec.manifest,
+      id: packageId,
+      repository: APP_PLATFORM_REPOSITORY,
+    });
     if (parsed.success) {
       return parsed.data as ManifestJson;
     }
+    // A malformed persisted manifest silently falls through to the inferred guide
+    // shape below — so a path would render as a plain guide with no milestone
+    // chrome and no trace. Log it.
+    logger.warn('[app-platform-resolver] spec.manifest failed schema validation; inferring a guide manifest', {
+      packageId,
+      issues: parsed.error.issues.map((i) => i.message).join('; '),
+    });
   }
 
   return {
@@ -95,14 +126,14 @@ export class AppPlatformPackageResolver implements PackageResolver {
   async resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
     const namespace = config.namespace;
     if (!namespace) {
-      return failure(packageId, 'not-found', 'No namespace available to resolve app-platform package');
+      return decline(packageId, 'not-found', 'No namespace available to resolve app-platform package');
     }
 
     // GAP gate: when the aggregation toggle is off the interactiveguides API
     // isn't served here, so decline (composite resolver falls through) rather
     // than issue a doomed request.
     if (!isBackendApiAvailable()) {
-      return failure(packageId, 'not-found', 'App Platform backend is not available on this instance');
+      return decline(packageId, 'not-found', 'App Platform backend is not available on this instance');
     }
 
     // Scheme is internal to the package-engine/docs-retrieval loader pipeline,
@@ -137,7 +168,7 @@ export class AppPlatformPackageResolver implements PackageResolver {
       const resource = response.data;
 
       if (!resource?.spec) {
-        return failure(packageId, 'not-found', `App platform guide "${packageId}" has no spec`);
+        return attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" has no spec`);
       }
 
       // Published-only, matching every other catalogue surface (usePublishedGuides,
@@ -145,14 +176,18 @@ export class AppPlatformPackageResolver implements PackageResolver {
       // path renders unlocked and opens for every namespace viewer. A draft
       // therefore resolves not-found → renders locked, like an unpublished member.
       if (resource.spec.status !== 'published') {
-        return failure(packageId, 'not-found', `App platform guide "${packageId}" is not published`);
+        return attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" is not published`);
       }
 
       resolution.manifest = buildManifest(packageId, resource.spec);
 
       if (!metadataOnly) {
         if (!resource.spec.blocks || !resource.spec.title) {
-          return failure(packageId, 'validation-error', `App platform guide "${packageId}" is missing required fields`);
+          return attemptedFailure(
+            packageId,
+            'validation-error',
+            `App platform guide "${packageId}" is missing required fields`
+          );
         }
         const content: ContentJson = {
           id: resource.spec.id || resource.metadata?.name || packageId,
@@ -167,10 +202,10 @@ export class AppPlatformPackageResolver implements PackageResolver {
     } catch (err) {
       const status = (err as { status?: number })?.status;
       if (status === 404) {
-        return failure(packageId, 'not-found', `App platform guide "${packageId}" not found`);
+        return attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" not found`);
       }
       const message = err instanceof Error ? err.message : 'app platform fetch failed';
-      return failure(packageId, 'network-error', message);
+      return attemptedFailure(packageId, 'network-error', message);
     }
   }
 }
