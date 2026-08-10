@@ -16,7 +16,7 @@ import type { BlockType } from '../types';
 import type { JsonBlock } from '../../../types/json-guide.types';
 
 const ALL_BLOCK_TYPES = [...VALID_BLOCK_TYPES] as BlockType[];
-const BOTH_WAYS_EXCLUDED: readonly BlockType[] = ['collapsible', 'assistant', 'snippet-ref'];
+const SOURCE_ONLY_BLOCK_TYPES: readonly BlockType[] = ['collapsible', 'assistant', 'snippet-ref'];
 
 /**
  * The compile-time checks in `block-conversion.ts` prove that every block type
@@ -51,9 +51,9 @@ describe('conversion eligibility registries', () => {
     expect(offered).toEqual([]);
   });
 
-  it('excludes collapsible, assistant and snippet-ref in both directions', () => {
-    expect(BOTH_WAYS_EXCLUDED.filter((type) => !SOURCE_EXCLUDED_BLOCK_TYPES.includes(type))).toEqual([]);
-    expect(BOTH_WAYS_EXCLUDED.filter((type) => !TARGET_EXCLUDED_BLOCK_TYPES.includes(type))).toEqual([]);
+  it('keeps legacy source-only block types eligible without offering them as targets', () => {
+    expect(SOURCE_ONLY_BLOCK_TYPES.filter((type) => SOURCE_EXCLUDED_BLOCK_TYPES.includes(type))).toEqual([]);
+    expect(SOURCE_ONLY_BLOCK_TYPES.filter((type) => !TARGET_EXCLUDED_BLOCK_TYPES.includes(type))).toEqual([]);
   });
 
   it('keeps html a valid target even though the palette excludes it', () => {
@@ -260,9 +260,6 @@ describe('convertBlockType', () => {
           screens: [{ type: 'result', id: 'r', title: 'T', body: 'B' }],
         },
       ],
-      ['collapsible', { type: 'collapsible', title: 'T', blocks: [] }],
-      ['assistant', { type: 'assistant', blocks: [] }],
-      ['snippet-ref', { type: 'snippet-ref', snippetId: 'some-snippet' }],
     ];
 
     it.each(excludedSources)('should throw when converting from %s, naming the reason', (sourceType, source) => {
@@ -476,6 +473,9 @@ describe('convertBlockType', () => {
       'terminal-connect': { type: 'terminal-connect', content: 'Sample content' },
       challenge: { type: 'challenge', title: 'T', brief: 'Sample content', successCriteria: 'coda-exit-zero:true' },
       'code-block': { type: 'code-block', reftarget: "div[data-testid='x']", code: 'x', content: 'Sample content' },
+      collapsible: { type: 'collapsible', title: 'T', blocks: [] },
+      assistant: { type: 'assistant', blocks: [] },
+      'snippet-ref': { type: 'snippet-ref', snippetId: 'some-snippet' },
     } satisfies Partial<Record<BlockType, JsonBlock>>;
 
     const sampleEntries = Object.entries(SAMPLE_BLOCKS) as Array<[BlockType, JsonBlock]>;
@@ -489,6 +489,9 @@ describe('convertBlockType', () => {
     const CONTENTLESS_SOURCE_FAILURES: Partial<Record<BlockType, readonly BlockType[]>> = {
       image: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
       video: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
+      collapsible: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
+      assistant: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
+      'snippet-ref': ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
     };
 
     it('samples every convertible source type', () => {

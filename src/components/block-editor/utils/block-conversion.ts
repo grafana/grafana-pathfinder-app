@@ -18,12 +18,8 @@ import { logger } from '../../../lib/logging';
 /**
  * Why a block type cannot be a conversion *source*; `null` means it can be one.
  *
- * Source and target eligibility stay separate registries even though they
- * happen to exclude the same six types today: they answer different questions,
- * and block-editor eligibility already diverges elsewhere — `html` is excluded
- * from the palette yet is a valid conversion target, and `snippet-ref` is
- * palette-visible yet is not a target. One symmetric set would make a future
- * divergence unrepresentable, turning a UI refactor into silent data loss.
+ * Source and target eligibility stay separate because legacy source-only types
+ * remain callable even though current forms do not expose those conversions.
  */
 const SOURCE_EXCLUSION_REASONS = {
   markdown: null,
@@ -42,9 +38,9 @@ const SOURCE_EXCLUSION_REASONS = {
   section: 'its nested blocks would be silently dropped',
   conditional: 'its branch blocks would be silently dropped',
   'grot-guide': 'its screens would be silently dropped',
-  collapsible: 'its nested blocks would be silently dropped',
-  assistant: 'its nested blocks would be silently dropped',
-  'snippet-ref': 'its snippetId would be silently dropped',
+  collapsible: null,
+  assistant: null,
+  'snippet-ref': null,
 } satisfies Record<BlockType, string | null>;
 
 /**
