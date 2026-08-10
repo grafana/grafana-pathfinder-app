@@ -128,6 +128,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   const pluginContext = usePluginContext();
   const twoTabControllerEnabled = getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableTwoTabController;
 
+  const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
+
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
       {(() => {
@@ -167,7 +169,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           return (
             <div className={styles.devToolsContent} data-testid="editor-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                <BlockEditor />
+                <BlockEditor onGuideTitleChange={handleGuideTitleChange} />
               </Suspense>
             </div>
           );

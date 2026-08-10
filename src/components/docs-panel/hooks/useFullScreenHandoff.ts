@@ -35,6 +35,7 @@
  *
  * Contract surfaces preserved (Pattern J):
  *   - CustomEvent name: `pathfinder-request-full-screen`
+ *   - `model.saveTabsToStorage()` awaited before the mode flip
  *   - `panelModeManager.setModePersisted('fullscreen')`
  *   - `panelModeManager.setPendingGuide(...)` payload shapes (editor vs guide)
  *   - `panelModeManager.capturePriorPath(...)`
@@ -57,11 +58,12 @@ import type { CombinedPanelState } from '../../../types/content-panel.types';
 
 interface FullScreenModel {
   state: CombinedPanelState;
+  saveTabsToStorage(): Promise<void>;
 }
 
 export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: boolean): void {
   React.useEffect(() => {
-    const handleFullScreenRequest = () => {
+    const handleFullScreenRequest = async () => {
       if (isSessionActive) {
         getAppEvents().publish({
           type: 'alert-info',
@@ -84,10 +86,14 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
           guide_title: activeTab.title,
           content_type: AnalyticsContentType.Editor,
         });
+        // The full-screen page rebuilds its tabs from storage, so the write has
+        // to land before the mode flip or it restores the pre-handoff state.
+        const saveTabs = model.saveTabsToStorage();
         // Remember where we came from so explicit Exit can land back on the
         // user's prior Grafana page instead of the plugin home.
         panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
         panelModeManager.setPendingGuide({ title: activeTab.title, type: 'editor' });
+        await saveTabs;
         panelModeManager.setModePersisted('fullscreen');
         locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
         return;
@@ -111,9 +117,13 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
         return;
       }
 
+      const saveTabs = model.saveTabsToStorage();
       panelModeManager.setPendingGuide({
         url: guideUrl,
         title: activeTab.title,
+        // The full-screen page restores this same tab from storage, so hand
+        // over its identity and let it focus rather than open a second copy.
+        tabId: activeTab.id,
         type: activeTab.type === 'learning-journey' ? 'learning-journey' : 'docs',
         // Forward synthetic packageInfo (e.g. PR-tester journeys whose URL
         // is a raw GitHub URL, not a recognised package URL) so the
@@ -121,6 +131,7 @@ export function useFullScreenHandoff(model: FullScreenModel, isSessionActive: bo
         packageInfo: activeTab.packageInfo,
       });
 
+      await saveTabs;
       reportAppInteraction(UserInteraction.FullScreenEnter, {
         guide_url: guideUrl,
         guide_title: activeTab.title,

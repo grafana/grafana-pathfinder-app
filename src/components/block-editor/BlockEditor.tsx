@@ -24,6 +24,7 @@ import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
 import { getBlockEditorStyles } from './block-editor.styles';
+import { publishEditorChromeStatus, readStoredEditorGuide, resetEditorChromeStatus } from './editor-chrome-status';
 import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { GuideLibraryModal } from './GuideLibraryModal';
@@ -94,6 +95,8 @@ export interface BlockEditorProps {
   onCopy?: (json: string) => void;
   /** Called when download is requested */
   onDownload?: (guide: JsonGuide) => void;
+  /** Called when the working guide title changes (tab chrome). */
+  onGuideTitleChange?: (title: string) => void;
 }
 
 /**
@@ -234,11 +237,15 @@ function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
   return false;
 }
 
-function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
+function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideTitleChange }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
   const { state } = editor;
   const hasLoadedFromStorage = useRef(false);
+  // Tab chrome (title + status badge) renders outside this component, so it must
+  // not publish this render's default guide over a stored draft. Flipped by the
+  // restore below, or already open when there is nothing to restore.
+  const [isChromeReady, setIsChromeReady] = useState(() => Boolean(initialGuide) || !readStoredEditorGuide());
 
   // Block editor context - replaces window globals for section/conditional editing
   const { sectionContext, conditionalContext, setGuideLintResult } = useBlockEditorContext();
@@ -252,6 +259,14 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   useEffect(() => {
     setGuideLintResult(guideLint);
   }, [guideLint, setGuideLintResult]);
+
+  // Keep the owning editor tab's title in sync with the working guide.
+  useEffect(() => {
+    if (!isChromeReady) {
+      return;
+    }
+    onGuideTitleChange?.(state.guide.title);
+  }, [state.guide.title, onGuideTitleChange, isChromeReady]);
 
   // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
   const modals = useModalManager();
@@ -569,13 +584,20 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     autoSave: true,
     autoSavePaused: isBlockFormOpen,
     onLoad: (savedGuide, savedBlockIds, savedViewMode, savedJsonModeState) => {
-      if (!hasLoadedFromStorage.current && !initialGuide) {
-        hasLoadedFromStorage.current = true;
-        editor.loadGuide(savedGuide, savedBlockIds, savedViewMode);
-        if (savedViewMode === 'json') {
-          jsonMode.restoreJsonMode(savedGuide, savedBlockIds, savedJsonModeState);
+      try {
+        if (!hasLoadedFromStorage.current && !initialGuide) {
+          hasLoadedFromStorage.current = true;
+          editor.loadGuide(savedGuide, savedBlockIds, savedViewMode);
+          if (savedViewMode === 'json') {
+            jsonMode.restoreJsonMode(savedGuide, savedBlockIds, savedJsonModeState);
+          }
+          editor.markSaved();
         }
-        editor.markSaved();
+      } finally {
+        // A stored guide missing its `blocks` array throws in `loadGuide`, and
+        // persistence swallows that. Unlock chrome regardless, or the tab title
+        // and badge stay frozen for the rest of the session.
+        setIsChromeReady(true);
       }
     },
     onSave: handlePersistenceSave,
@@ -635,6 +657,26 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   // stable pieces (trackLoadedGuide is a []-stable useCallback; the others are
   // primitives) and depend on those instead.
   const { trackLoadedGuide, publishedStatus, hasUnsyncedChanges } = backendSaveFlow;
+
+  // Publish status to the tab strip, which renders outside this component and
+  // has no other view of the save/publish lifecycle.
+  useEffect(() => {
+    if (!isChromeReady) {
+      return;
+    }
+    publishEditorChromeStatus({ publishedStatus, hasUnsyncedChanges });
+  }, [publishedStatus, hasUnsyncedChanges, isChromeReady]);
+
+  // The strip outlives this component, so hand it back to the persisted
+  // fallback on unmount — otherwise it keeps a frozen badge until a remount.
+  // Declared after `useBlockPersistence` so React runs that hook's draft flush
+  // first and subscribers wake to the newest draft, not the pre-edit one.
+  useEffect(() => {
+    return () => {
+      resetEditorChromeStatus();
+    };
+  }, []);
+
   const handleLoadGuideFromBackend = useCallback(
     (guide: JsonGuide, resourceName: string) => {
       editor.loadGuide(guide);
