@@ -184,9 +184,10 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
 
 One definition each, package-wide:
 
-- the aggregation feature-toggle name — no Go constant exists on main today; the string
-  `aggregation.pathfinderbackend-ext-grafana-com.enabled` lives only as scattered literals. Two
-  constants with the same string is a rename bug waiting;
+- the aggregation feature-toggle names — one Go constant per group, already extracted:
+  `pathfinderBackendAggregationToggle` (`pkg/plugin/app_platform_client.go`) for the legacy `.com`
+  group, and `customGuideAggregationToggle` (`pkg/plugin/custom_guide_repository_client.go`) for
+  the GAP `.app` group. Two constants with the same string is a rename bug waiting;
 - the identity helpers (§3): `validIDToken`, `subjectFromIDToken`, and the `pkg/plugin/auth`
   token exchanger every proxy authenticates with;
 - the paginated LIST client + `buildAppPlatformURL` (§1);
