@@ -13,6 +13,14 @@
  * `RawContent`, so the renderer takes its synchronous parse path and issues no
  * post-mount snippet requests. It is one-shot memory state — carried through a
  * launch handoff and consumed once, never persisted to tab storage.
+ *
+ * Fetched content is guide-SHAPED but not guaranteed valid: `wrapContentAsJsonGuide`
+ * admits already-JSON content on a shallow `id && title && Array.isArray(blocks)`
+ * check, so nesting can be malformed. Both the expansion and the classification
+ * walk nested `blocks`/`steps` and throw on a missing one, so the guide is
+ * validated first — through the same `validateGuide` gate `parseJsonGuide`
+ * applies, so nothing that renders today is rejected here. Both failure branches
+ * log because the fetch ladder's telemetry already recorded a success.
  */
 
 import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retrieval';
@@ -22,6 +30,7 @@ import type { LaunchSource } from '../../../recovery';
 import type { PackageOpenInfo } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
 import type { JsonGuide } from '../../../types/json-guide.types';
+import { formatErrorsAsStrings, validateGuide } from '../../../validation';
 
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import { requiresGrafanaUi } from './requires-grafana-ui';
@@ -81,14 +90,21 @@ export async function prepareGuideLaunch(
   try {
     guide = JSON.parse(rawContent.content) as JsonGuide;
   } catch {
-    // fetchContent validates native JSON guides, so this is not expected;
-    // fail safe rather than commit a surface for uninspectable content. The
-    // log is the only aggregate signal for this branch — the fetch ladder's
-    // own telemetry saw a successful fetch.
     logger.error('[PrepareGuideLaunch] Guide content could not be parsed', { url });
     return { ok: false, error: 'Guide content could not be parsed' };
   }
 
+  const validation = validateGuide(guide);
+  if (!validation.isValid) {
+    logger.error('[PrepareGuideLaunch] Guide content failed schema validation', {
+      url,
+      errors: formatErrorsAsStrings(validation.errors).join('; '),
+    });
+    return { ok: false, error: 'Guide content failed schema validation' };
+  }
+
+  // Expand the parsed guide, never `validation.guide`: only the root schema is
+  // loose, so the validated copy has dropped unknown fields nested in blocks.
   const { guide: expandedGuide, unresolvedSnippetIds } = await inlineSnippetRefsInGuideWithStatus(guide);
   const needsGrafanaUi = requiresGrafanaUi(expandedGuide) || unresolvedSnippetIds.length > 0;
 

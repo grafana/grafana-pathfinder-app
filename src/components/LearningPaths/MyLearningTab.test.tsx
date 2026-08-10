@@ -189,11 +189,16 @@ describe('MyLearningTab launch flow', () => {
     const onOpenGuide = jest.fn();
 
     render(<MyLearningTab onOpenGuide={onOpenGuide} />);
-    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+    const continueButton = screen.getByTestId(testIds.learningPaths.continueButton('path-1'));
+    fireEvent.click(continueButton);
 
     await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
     expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' }));
     expect(onOpenGuide).not.toHaveBeenCalled();
+    // The alert replaces the pending pill: a dead click that only cleared the
+    // pending state is the failure this path exists to rule out.
+    expect(continueButton).not.toBeDisabled();
+    expect(continueButton).not.toHaveTextContent('Opening…');
   });
 
   it('keeps every not-yet-complete path in My Courses and only 100% in Completed', () => {
