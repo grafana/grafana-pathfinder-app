@@ -98,6 +98,24 @@ describe('getAvailableConversions', () => {
       expect(result).toContain('input');
     });
 
+    // This order is user-visible in the switch-type menu and emerges from TARGET_EXCLUSION_REASONS key order.
+    it('should offer targets in the switch-type menu order', () => {
+      expect(getAvailableConversions('markdown')).toEqual([
+        'html',
+        'image',
+        'video',
+        'interactive',
+        'multistep',
+        'guided',
+        'quiz',
+        'input',
+        'terminal',
+        'terminal-connect',
+        'challenge',
+        'code-block',
+      ]);
+    });
+
     it('should offer every non-excluded target except the source, for every eligible source', () => {
       const eligibleSources = ALL_BLOCK_TYPES.filter((type) => !SOURCE_EXCLUDED_BLOCK_TYPES.includes(type));
 

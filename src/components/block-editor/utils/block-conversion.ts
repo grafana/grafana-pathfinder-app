@@ -18,9 +18,12 @@ import { logger } from '../../../lib/logging';
 /**
  * Why a block type cannot be a conversion *source*; `null` means it can be one.
  *
- * Source and target eligibility are separate registries because the policies
- * genuinely differ — `html` is excluded from the palette yet is a valid target —
- * so a single symmetric set would bury the asymmetry behind a misleading name.
+ * Source and target eligibility stay separate registries even though they
+ * happen to exclude the same six types today: they answer different questions,
+ * and block-editor eligibility already diverges elsewhere — `html` is excluded
+ * from the palette yet is a valid conversion target, and `snippet-ref` is
+ * palette-visible yet is not a target. One symmetric set would make a future
+ * divergence unrepresentable, turning a UI refactor into silent data loss.
  */
 const SOURCE_EXCLUSION_REASONS = {
   markdown: null,
@@ -46,6 +49,9 @@ const SOURCE_EXCLUSION_REASONS = {
 
 /**
  * Why a block type cannot be a conversion *target*; `null` means it can be one.
+ *
+ * The insertion order of the eligible (`null`) keys is the user-visible order
+ * of the switch-type menu, so reordering them here reorders that menu.
  */
 const TARGET_EXCLUSION_REASONS = {
   markdown: null,
@@ -79,10 +85,7 @@ export const SOURCE_EXCLUDED_BLOCK_TYPES = excludedTypes(SOURCE_EXCLUSION_REASON
 
 export const TARGET_EXCLUDED_BLOCK_TYPES = excludedTypes(TARGET_EXCLUSION_REASONS);
 
-/**
- * All block types that support conversion, in the order the switch-type menu
- * offers them.
- */
+/** All block types that support conversion, in `TARGET_EXCLUSION_REASONS` key order. */
 const CONVERTIBLE_TYPES = eligibleTypes(TARGET_EXCLUSION_REASONS);
 
 // ============ Configuration Maps ============
