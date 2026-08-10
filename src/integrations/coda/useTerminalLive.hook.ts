@@ -19,6 +19,7 @@ import {
 import { Subscription } from 'rxjs';
 import type { Terminal } from '@xterm/xterm';
 import { logger } from '../../lib/logging';
+import { parseTerminalFrame, type TerminalInputMessage } from './terminal-protocol.schema';
 
 interface ConnectionLog {
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
@@ -75,14 +76,16 @@ interface UseTerminalLiveReturn {
   error: string | null;
 }
 
-/** Terminal stream output message (sent from backend via SendJSON) */
-interface TerminalStreamOutput {
-  type: 'output' | 'error' | 'connected' | 'disconnected' | 'status' | 'heartbeat';
-  data?: string;
-  error?: string;
-  state?: string; // VM state for 'status' type: 'pending', 'provisioning', 'active'
-  message?: string; // Human-readable status message
-  vmId?: string; // Actual VM ID being used (sent by backend with 'connected' and 'status')
+/**
+ * Names the frame variant the switch below failed to handle.
+ *
+ * The `never` parameter makes an unhandled variant a compile error, but this
+ * deliberately does not throw: an exception inside a Live subscription callback
+ * kills the stream, which is worse than the frame being unhandled.
+ */
+function unhandledFrameType(frame: never): string {
+  const type = (frame as { type?: unknown }).type;
+  return typeof type === 'string' ? type : String(type);
 }
 
 // ─── Provision progress bar ──────────────────────────────────────────────────
@@ -144,6 +147,17 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   } | null>(null);
   // Dedup guard for non-progress-bar status lines
   const lastStatusLineRef = useRef('');
+  // Keys already reported this session; keeps a broken protocol or a dead
+  // socket from flooding the terminal and telemetry once per keystroke.
+  const reportedKeysRef = useRef<Set<string>>(new Set());
+
+  const reportOnce = useCallback((key: string, report: () => void) => {
+    if (reportedKeysRef.current.has(key)) {
+      return;
+    }
+    reportedKeysRef.current.add(key);
+    report();
+  }, []);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -164,6 +178,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       provisionProgressRef.current = null;
     }
     lastStatusLineRef.current = '';
+    reportedKeysRef.current.clear();
     liveSrvRef.current = undefined;
     addressRef.current = null;
   }, []);
@@ -176,7 +191,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   /**
    * Publish over the WebSocket rather than HTTP POST.
    *
-   * GrafanaLiveService.publish() accepts an undeclared third `options` arg.
    * Passing `{ useSocket: true }` routes the message through the existing
    * Centrifuge WebSocket instead of `POST /api/live/publish`. This is
    * critical in multi-node deployments (e.g. Grafana Cloud) where HTTP
@@ -184,8 +198,8 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
    * stream, causing a 404.
    */
   const publishOverSocket = useCallback(
-    (address: LiveChannelAddress, data: unknown) =>
-      (liveSrvRef.current as any)?.publish(address, data, { useSocket: true }),
+    (address: LiveChannelAddress, message: TerminalInputMessage) =>
+      liveSrvRef.current?.publish(address, message, { useSocket: true }),
     []
   );
 
@@ -202,11 +216,15 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
       try {
         await publishOverSocket(address, { type: 'input', data: inputData });
-      } catch {
-        // Input publish failures are transient; ignore silently
+      } catch (err) {
+        reportOnce('publish-input-failed', () =>
+          connectionLogRef.current.error('Failed to publish terminal input', err, {
+            category: 'terminal_publish_failed',
+          })
+        );
       }
     },
-    [publishOverSocket]
+    [publishOverSocket, reportOnce]
   );
 
   /**
@@ -221,44 +239,16 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
 
       try {
         await publishOverSocket(address, { type: 'resize', rows, cols });
-      } catch {
-        // Resize publish failures are transient; ignore silently
+      } catch (err) {
+        reportOnce('publish-resize-failed', () =>
+          connectionLogRef.current.error('Failed to publish terminal resize', err, {
+            category: 'terminal_publish_failed',
+          })
+        );
       }
     },
-    [publishOverSocket]
+    [publishOverSocket, reportOnce]
   );
-
-  /**
-   * Parse terminal output from a Grafana Live message.
-   * With SendJSON, messages arrive as raw JSON objects (not wrapped in DataFrame).
-   */
-  const parseTerminalOutput = useCallback((message: unknown): TerminalStreamOutput | null => {
-    try {
-      // Direct JSON object (from SendJSON)
-      if (message && typeof message === 'object') {
-        const msg = message as Record<string, unknown>;
-        if (typeof msg.type === 'string') {
-          return message as TerminalStreamOutput;
-        }
-
-        // DataFrame format (from SendFrame): extract JSON string from data.values[0][0]
-        const df = msg as { data?: { values?: unknown[][] }; schema?: unknown };
-        if (df.data?.values?.[0]?.[0]) {
-          const raw = df.data.values[0][0];
-          if (typeof raw === 'string') {
-            return JSON.parse(raw) as TerminalStreamOutput;
-          }
-        }
-      }
-
-      if (typeof message === 'string') {
-        return JSON.parse(message) as TerminalStreamOutput;
-      }
-    } catch {
-      // Parse failures are non-fatal; the stream will deliver subsequent messages
-    }
-    return null;
-  }, []);
 
   /**
    * Connect to Grafana Live stream for terminal I/O
@@ -324,8 +314,30 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       subscriptionRef.current = stream.subscribe({
         next: (event: LiveChannelEvent<unknown>) => {
           if (isLiveChannelMessageEvent(event)) {
-            const msg = parseTerminalOutput(event.message);
-            if (msg) {
+            const parsed = parseTerminalFrame(event.message);
+
+            if (parsed.status === 'invalid') {
+              reportOnce('invalid-frame', () => {
+                connectionLogRef.current.warn('Rejected terminal frame from backend', {
+                  vmId: id,
+                  detail: parsed.detail,
+                  category: 'terminal_protocol_mismatch',
+                });
+                terminal.writeln(
+                  '\r\n\x1b[33m⚠ Unreadable message from the sandbox backend — the plugin and backend may be out of sync.\x1b[0m'
+                );
+                terminal.writeln(`\x1b[90m  ${parsed.detail}\x1b[0m`);
+              });
+            }
+
+            if (parsed.status === 'unrecognized') {
+              reportOnce('unrecognized-message', () =>
+                logger.debug('[Terminal] Ignored a Live message that is not a terminal frame', { vmId: id })
+              );
+            }
+
+            if (parsed.status === 'ok') {
+              const msg = parsed.frame;
               switch (msg.type) {
                 case 'status':
                   // Backend is alive and making progress -- reset the safety-net
@@ -377,7 +389,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                     } else if (msg.state === 'retrying') {
                       terminal.writeln(`\x1b[33m   │  ⚠ ${msg.message || 'Retrying...'}\x1b[0m`);
                     } else {
-                      const line = `\x1b[90m   │  ${msg.message || `Status: ${msg.state}`}\x1b[0m`;
+                      const line = `\x1b[90m   │  ${msg.message || (msg.state ? `Status: ${msg.state}` : 'Status update')}\x1b[0m`;
                       if (line !== lastStatusLineRef.current) {
                         lastStatusLineRef.current = line;
                         terminal.writeln(line);
@@ -387,9 +399,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   break;
 
                 case 'output':
-                  if (msg.data) {
-                    terminal.write(msg.data);
-                  }
+                  terminal.write(msg.data);
                   break;
 
                 case 'error':
@@ -406,7 +416,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   terminal.writeln('\r\n');
                   terminal.writeln(`\x1b[31m✖ Error: ${msg.error}\x1b[0m`);
 
-                  setError(msg.error || 'Unknown error');
+                  setError(msg.error);
                   setStatus('error');
                   break;
 
@@ -469,6 +479,21 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                 case 'heartbeat':
                   // Silently ignore - backend sends these every 3s to keep stream alive
                   break;
+
+                default: {
+                  const frameType = unhandledFrameType(msg);
+                  reportOnce(`unhandled-frame:${frameType}`, () => {
+                    connectionLogRef.current.warn('Unhandled terminal frame type', {
+                      vmId: id,
+                      frameType,
+                      category: 'terminal_protocol_mismatch',
+                    });
+                    terminal.writeln(
+                      `\r\n\x1b[33m⚠ Unhandled message type "${frameType}" from the sandbox backend — the plugin and backend may be out of sync.\x1b[0m`
+                    );
+                  });
+                  break;
+                }
               }
             }
           }
@@ -531,7 +556,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
         },
       });
     },
-    [cleanup, parseTerminalOutput, sendInput, sendResize]
+    [cleanup, reportOnce, sendInput, sendResize]
   );
 
   /**
