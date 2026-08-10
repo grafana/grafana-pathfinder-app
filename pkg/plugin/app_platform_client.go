@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -114,7 +115,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 	// error the caller already classifies.
 	accessToken, err := c.minter.Mint(reqCtx, namespace, c.idToken)
 	if err != nil {
-		return nil, fmt.Errorf("app platform list: mint access token: %w", err)
+		return nil, fmt.Errorf("%w: %w", errAccessTokenMintFailed, err)
 	}
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
@@ -183,6 +184,11 @@ type appPlatformUpstreamError struct {
 
 func (e *appPlatformUpstreamError) Error() string { return e.msg }
 
+// errAccessTokenMintFailed marks a failure to mint the caller's on-behalf-of
+// access token. It is caller-scoped (auth-api can reject one subject token
+// while serving others) and carries no HTTP status, so it stays transient.
+var errAccessTokenMintFailed = errors.New("app platform list: mint access token")
+
 // isTransientUpstreamStatus reports whether an HTTP status should be treated
 // as transient (retryable): 429 and any 5xx. All other non-2xx are terminal.
 func isTransientUpstreamStatus(status int) bool {
@@ -208,13 +214,25 @@ func isTerminalUpstreamError(err error) bool {
 	return false
 }
 
-// isIdentityScopedUpstreamError reports whether an upstream failure means the
-// aggregator rejected this caller's forwarded identity (401/403). Error-level
-// companion to isIdentityScopedUpstreamStatus, shared by every proxy route.
-func isIdentityScopedUpstreamError(err error) bool {
+// isNamespaceGlobalUpstreamError reports whether an upstream failure is a
+// property of the namespace rather than of one caller's identity, and may
+// therefore be shared across callers through a negative cache (§4, §5).
+//
+// This is an allow-list, not a deny-list on the identity-scoped statuses: any
+// failure shape we cannot positively place — including future statusless ones —
+// stays unshared, which costs re-probes but never replays one caller's error to
+// another. Scope is orthogonal to transient/terminal: a mint failure is
+// caller-scoped AND transient.
+func isNamespaceGlobalUpstreamError(err error) bool {
+	// Ordering matters: the mint hop is itself an HTTP call to auth-api, so its
+	// failures also satisfy the net.Error check below.
+	if errors.Is(err, errAccessTokenMintFailed) {
+		return false
+	}
 	var ue *appPlatformUpstreamError
 	if errors.As(err, &ue) {
-		return isIdentityScopedUpstreamStatus(ue.status)
+		return !isIdentityScopedUpstreamStatus(ue.status)
 	}
-	return false
+	var netErr net.Error
+	return errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded)
 }

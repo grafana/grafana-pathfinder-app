@@ -565,6 +565,36 @@ func TestErrors_IdentityScopedFailureNotCachedShared(t *testing.T) {
 	}
 }
 
+// A failed on-behalf-of token mint is caller-scoped too — auth-api can reject
+// one caller's subject token while serving others — so it must not enter the
+// shared negative cache either, even though it carries no HTTP status.
+func TestErrors_MintFailureNotCachedShared(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		return nil, fmt.Errorf("%w: exchange refused", errAccessTokenMintFailed)
+	}}
+	withLister(t, l)
+
+	// A mint failure is transient (no upstream status), so caller A gets a 503
+	// hiccup rather than capability=false.
+	rr, _ := doMyCompletions(t, "/completion-records/my", "user:a")
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("caller A: expected 503 for a transient mint failure, got %d", rr.Code)
+	}
+	if l.callCount() != 1 {
+		t.Fatalf("expected 1 upstream LIST, got %d", l.callCount())
+	}
+
+	advance(time.Second)
+	rr, _ = doMyCompletions(t, "/completion-records/my", "user:b")
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("caller B: expected 503, got %d", rr.Code)
+	}
+	if l.callCount() != 2 {
+		t.Fatalf("mint failure must not be cached shared: expected a fresh probe for caller B, got %d LIST calls", l.callCount())
+	}
+}
+
 func TestErrors_WarmStaleOutageThrottledByCooldown(t *testing.T) {
 	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	var fail atomic.Bool

@@ -36,9 +36,15 @@ flat byte fetches). It must:
   deadline, an N-page drain under `context.WithoutCancel` is bounded only by N × per-page-timeout
   — detached must not mean unkillable. Derive the detach as
   `context.WithTimeout(context.WithoutCancel(ctx), aggregateDeadline)`;
-- classify errors once — **transient** (429 / 5xx / network / timeout) vs **terminal** (other
-  4xx) — and flag whether the failure was **identity-scoped** (upstream 401/403 for _this_
-  caller's forwarded identity). Every downstream decision keys off this classification;
+- classify errors once, on two **orthogonal** axes. **Retryability**: transient (429 / 5xx /
+  network / timeout) vs terminal (other 4xx). **Scope**: namespace-global (a property of the
+  namespace, so shareable across callers) vs caller-scoped (upstream 401/403 for _this_ caller's
+  forwarded identity, or a failure to mint _this_ caller's on-behalf-of token). The combinations
+  are all reachable — a mint failure is caller-scoped **and** transient — so neither axis may be
+  derived from the other. Classify scope as an **allow-list**: only positively recognized
+  namespace-global shapes are shareable, so a statusless failure nobody has classified yet costs
+  re-probes rather than replaying one caller's error to another. Every downstream decision keys
+  off this classification;
 - take a per-kind decode callback (`items[].spec` → typed record) so one client serves every kind.
 
 URL construction: `url.PathEscape` every path segment via one shared
@@ -96,6 +102,8 @@ the fixed internal aggregator.
 - **A stack with no provisioned CAP token is structurally unavailable** (`reason:
 "obo-unavailable"`), not a transient failure. A failed exchange, by contrast, is transient: it
   carries no HTTP status, so the shared classifier retries rather than caching a terminal result.
+  It is also **caller-scoped** — auth-api can reject one subject token while serving others — so
+  it needs its own sentinel error and must never reach a shared negative cache (§1 scope axis).
 - **Never forward `Cookie`.** No branch in this repo's history has ever needed it against the
   aggregator; the caller's full session is the broadest possible ambient grant and the classic
   confused-deputy shape.
@@ -212,9 +220,10 @@ One definition each, package-wide:
 - Mocked-client unit tests cover: pagination draining (multi-page continue tokens), TTL expiry
   (deterministic via `timeNow`), single-flight, refresh rate limit, identity fail-closed
   **including `exp == 0` rejection**, cross-user isolation where data is per-user, the failure
-  matrix (cold-transient, cold-terminal, warm-stale, cooldown, identity-scoped-not-shared), and
-  the config-resolution branch (toggle off / no app URL) — don't let a test-only override
-  short-circuit the structural-unavailability path out of existence.
+  matrix (cold-transient, cold-terminal, warm-stale, cooldown, and caller-scoped-not-shared for
+  both 401/403 and a failed token mint), and the config-resolution branch (toggle off / no app
+  URL) — don't let a test-only override short-circuit the structural-unavailability path out of
+  existence.
 - Mocked tests cannot prove the live credential path. Every PR of this shape carries a **runtime
   smoke procedure** in its body (create a resource upstream, hit the route, see it shaped) and
   treats that smoke as a **gate before dependent work binds to the route** — doubly so where the
@@ -232,7 +241,7 @@ One definition each, package-wide:
 - [ ] Outbound: shared identity-forwarding helper; ID-token-derived headers only; never `Cookie`;
       never replay inbound `Authorization`
 - [ ] Per-user data ⇒ identity-partitioned cache; shared blob ⇒ identity-invariance proven &
-      documented; identity-scoped failures never cached shared
+      documented; caller-scoped failures never cached shared
 - [ ] "Auth enforced at cache-fill, shared for TTL" comment present; no-eviction invariant
       commented
 - [ ] Stale-serve on warm failure; 503+`Retry-After` cold-transient; capability envelope
@@ -267,7 +276,7 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 - Transient/terminal taxonomy + `Retry-After` — the fetcher already distinguishes 401/403 from
   other non-200s internally but discards the distinction into a flat 503 (§5)
 - Separate failure cooldown + stale-serve; stop unconditionally overwriting last-good data with
-  error entries; identity-scoped failures never cached shared (§4, §5)
+  error entries; caller-scoped failures never cached shared (§4, §5)
 - `timeNow` seam + TTL-expiry test (§8, §10)
 - Stable machine error token; add `asOf` (§6)
 - Document the shared-blob identity-invariance claim at the cache (§4)
