@@ -237,6 +237,7 @@ export const testIds = {
     // Form controls
     submitButton: 'block-editor-submit-button',
     blockTypeButton: (type: string) => `block-editor-type-${type}`,
+    paletteGroup: (id: string) => `block-editor-palette-group-${id}`,
     // Markdown form
     rawMarkdownTab: 'block-editor-raw-markdown-tab',
     richMarkdownTab: 'block-editor-rich-markdown-tab',
