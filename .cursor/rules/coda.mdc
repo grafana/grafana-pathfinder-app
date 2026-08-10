@@ -98,7 +98,8 @@ Terminal states: `destroyed`, `destroying`, `error`.
 | File | Purpose |
 |------|---------|
 | `src/integrations/coda/TerminalContext.tsx` | Shared React context: `connect(vmOpts?)`, `openTerminal(vmOpts?)`, `sendCommand`, module-level status |
-| `src/integrations/coda/useTerminalLive.hook.ts` | Grafana Live subscription, `connect(vmOpts?)` with `TerminalVMOptions` (`template`/`app`/`scenario`), animated provision progress bar, handshake timeout |
+| `src/integrations/coda/useTerminalLive.hook.ts` | Grafana Live subscription, `connect(vmOpts?)` with `TerminalVMOptions` (`template`/`app`/`scenario`), animated provision progress bar, handshake timeout, once-per-session reporting of rejected frames and publish failures |
+| `src/integrations/coda/terminal-protocol.schema.ts` | Consumer half of the Live terminal contract: Zod discriminated union of `TerminalStreamOutput` frames plus `parseTerminalFrame` (`ok` / `invalid` / `unrecognized`). `status.state` is deliberately an open string — the backend forwards Coda's raw VM state verbatim |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |
 | `src/integrations/coda/terminal-storage.ts` | localStorage/sessionStorage keys for panel state, scrollback, and last VM opts (template/app/scenario for auto-reconnect) |
 | `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button in guides, accepts `vmTemplate`/`vmApp`/`vmScenario` props |
