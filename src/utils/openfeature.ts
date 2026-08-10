@@ -556,7 +556,7 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
   if (
     typeof record.variant !== 'string' ||
     !Array.isArray(record.pages) ||
-    !record.pages.every((p) => typeof p === 'string') ||
+    !record.pages.every((p): p is string => typeof p === 'string') ||
     typeof record.guideId !== 'string'
   ) {
     return null;
@@ -573,7 +573,7 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
 
   return {
     variant: record.variant as HighlightedGuideConfig['variant'],
-    pages: record.pages as string[],
+    pages: record.pages,
     guideId: record.guideId,
     autoOpen: typeof record.autoOpen === 'boolean' ? record.autoOpen : true,
     resetCache: typeof record.resetCache === 'boolean' ? record.resetCache : false,

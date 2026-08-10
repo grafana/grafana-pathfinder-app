@@ -682,26 +682,27 @@ describe('openfeature', () => {
       jest.isolateModules(() => {
         const mockOF = createMockOpenFeature();
         const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'excluded',
-          pages: [],
-          guideId: '',
-        });
+        const remoteConfig = {
+          variant: 'control',
+          pages: ['/connections/datasources*'],
+          guideId: 'bundled:remote-guide',
+        };
+        mockOF.mockClient.getObjectValue.mockReturnValue(remoteConfig);
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const {
-          setFlagOverride,
-          getHighlightedGuideConfig,
-          DEFAULT_HIGHLIGHTED_GUIDE_CONFIG,
-        } = require('./openfeature');
+        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
         setFlagOverride('pathfinder.highlighted-guide-experiment', {
           variant: 'treatment',
           pages: [1, 2],
           guideId: 'bundled:my-guide',
         });
 
-        expect(getHighlightedGuideConfig()).toEqual(DEFAULT_HIGHLIGHTED_GUIDE_CONFIG);
+        expect(getHighlightedGuideConfig()).toEqual({
+          ...remoteConfig,
+          autoOpen: true,
+          resetCache: false,
+        });
         expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
         expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
       });
@@ -711,26 +712,27 @@ describe('openfeature', () => {
       jest.isolateModules(() => {
         const mockOF = createMockOpenFeature();
         const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant: 'excluded',
-          pages: [],
-          guideId: '',
-        });
+        const remoteConfig = {
+          variant: 'control',
+          pages: ['/connections/datasources*'],
+          guideId: 'bundled:remote-guide',
+        };
+        mockOF.mockClient.getObjectValue.mockReturnValue(remoteConfig);
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const {
-          setFlagOverride,
-          getHighlightedGuideConfig,
-          DEFAULT_HIGHLIGHTED_GUIDE_CONFIG,
-        } = require('./openfeature');
+        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
         setFlagOverride('pathfinder.highlighted-guide-experiment', {
           variant: 'treatment',
           pages: ['/explore', 1],
           guideId: 'bundled:my-guide',
         });
 
-        expect(getHighlightedGuideConfig()).toEqual(DEFAULT_HIGHLIGHTED_GUIDE_CONFIG);
+        expect(getHighlightedGuideConfig()).toEqual({
+          ...remoteConfig,
+          autoOpen: true,
+          resetCache: false,
+        });
         expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
         expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
       });
