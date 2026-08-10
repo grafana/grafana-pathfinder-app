@@ -56,6 +56,7 @@ interface CustomGuideRepositoryResponse {
 }
 
 const CUSTOM_GUIDE_REPOSITORY_URL = `${PLUGIN_BACKEND_URL}/custom-guide-repository`;
+const APP_PLATFORM_REPOSITORY = 'app-platform';
 
 // Short TTL + in-flight de-duplication. Several callers fetch the catalogue on
 // panel open (the Custom Guides surface, My Learning ingestion, and the
@@ -85,7 +86,16 @@ async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
     recordCustomGuideCatalogueUnavailable(reason);
     return [];
   }
-  return Array.isArray(response.guides) ? response.guides : [];
+  const guides = Array.isArray(response.guides) ? response.guides : [];
+  // Every entry from this proxy is an App Platform package, but the CR manifest
+  // leaves `repository` omitempty (and authoring tooling may stamp the CDN
+  // default). Force it here — the launch surfaces thread this manifest into
+  // packageInfo, and a missing/wrong value fails the `app-platform` gate in
+  // package-content.ts (fabricated public websiteUrl) and mislabels the durable
+  // completion source (completion-identity.ts guideSource).
+  return guides.map((entry) =>
+    entry.manifest ? { ...entry, manifest: { ...entry.manifest, repository: APP_PLATFORM_REPOSITORY } } : entry
+  );
 }
 
 /**

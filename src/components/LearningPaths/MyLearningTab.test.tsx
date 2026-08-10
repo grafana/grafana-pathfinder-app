@@ -270,7 +270,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
         id: 'ap-path',
         title: 'Alerting enablement',
         guides: ['fe-alerting-01'],
-        manifest: { type: 'path', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
+        manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
       },
     ];
     mockGetPathGuides.mockReturnValue([
@@ -290,7 +290,12 @@ describe('MyLearningTab — App Platform guide launch', () => {
       source: 'home_page',
       packageInfo: {
         packageId: 'ap-path',
-        packageManifest: { type: 'path', milestones: ['fe-alerting-01', 'fe-alerting-02'], id: 'ap-path' },
+        packageManifest: {
+          type: 'path',
+          repository: 'app-platform',
+          milestones: ['fe-alerting-01', 'fe-alerting-02'],
+          id: 'ap-path',
+        },
       },
     });
   });

@@ -164,9 +164,9 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		// Transient: a retry might fix it, so signal a hiccup rather than
 		// darkening the feature.
 		// Info (not Debug) so a wrong CAP token or unreachable auth-api — which 503s
-			// this route indefinitely — is diagnosable without raising the log level
-			// (matches getCompletionIndex on the completions route).
-			logger.Info("custom guide catalogue unavailable (transient)", "namespace", namespace, "error", err)
+		// this route indefinitely — is diagnosable without raising the log level
+		// (matches getCompletionIndex on the completions route).
+		logger.Info("custom guide catalogue unavailable (transient)", "namespace", namespace, "error", err)
 		w.Header().Set("Retry-After", strconv.Itoa(customGuideRetryAfterSeconds))
 		a.writeError(w, "custom-guide-repository-unavailable", http.StatusServiceUnavailable)
 		return
