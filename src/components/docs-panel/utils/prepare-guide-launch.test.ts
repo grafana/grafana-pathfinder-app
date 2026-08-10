@@ -158,6 +158,40 @@ describe('prepareGuideLaunch', () => {
     }
   });
 
+  it('keeps URL secrets out of logger and Faro context when the content is not parseable', async () => {
+    const contentUrl = 'https://grafana.com/docs/x?token=url-secret#fragment-secret';
+    mockLoad.mockResolvedValue({
+      content: {
+        content: 'not json',
+        metadata: { title: 'x' },
+        type: 'interactive',
+        url: contentUrl,
+        lastFetched: 't',
+      },
+    });
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+
+    try {
+      const result = await prepareGuideLaunch(contentUrl, { title: 'X', source: 'home_page' });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errorCode).toBe('unparseable');
+      }
+      expect(consoleError).toHaveBeenCalledWith('[PrepareGuideLaunch] Guide content could not be parsed', {
+        content_url: 'grafana.com/docs/x',
+      });
+      expect(mockPushFaroLog).toHaveBeenCalledWith('error', '[PrepareGuideLaunch] Guide content could not be parsed', {
+        content_url: 'grafana.com/docs/x',
+      });
+      const emittedContext = JSON.stringify({ console: consoleError.mock.calls, faro: mockPushFaroLog.mock.calls });
+      expect(emittedContext).not.toContain('url-secret');
+      expect(emittedContext).not.toContain('fragment-secret');
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   describe('schema validation before the walks', () => {
     it('returns a failure result when the guide has no blocks at all', async () => {
       fetchResolves({ id: 'g', title: 'g' });

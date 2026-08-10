@@ -100,7 +100,9 @@ export async function prepareGuideLaunch(
   try {
     guide = JSON.parse(rawContent.content) as JsonGuide;
   } catch {
-    logger.error('[PrepareGuideLaunch] Guide content could not be parsed', { url });
+    logger.error('[PrepareGuideLaunch] Guide content could not be parsed', {
+      content_url: normalizeTelemetryUrl(url),
+    });
     return { ok: false, error: 'Guide content could not be parsed', errorCode: 'unparseable' };
   }
 
