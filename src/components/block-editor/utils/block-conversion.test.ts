@@ -274,6 +274,23 @@ describe('convertBlockType', () => {
     it.each([...TARGET_EXCLUDED_BLOCK_TYPES])('should throw when converting to %s, naming the reason', (targetType) => {
       expect(() => convertBlockType(markdown, targetType)).toThrow(new RegExp(`Cannot convert to a ${targetType}`));
     });
+
+    /**
+     * The only conversions this registry rejects that the pre-#1577 guard allowed:
+     * that guard rejected container targets only, so both directions used to
+     * succeed by copying `blocks`. Direct-API-only — `getAvailableConversions`
+     * never offered `collapsible` or `assistant` as a target, and no form exposes
+     * the switch for those sources.
+     */
+    const directApiOnlyPairs: Array<[BlockType, BlockType, JsonBlock]> = [
+      ['assistant', 'collapsible', { type: 'assistant', blocks: [] }],
+      ['collapsible', 'assistant', { type: 'collapsible', title: 'T', blocks: [] }],
+    ];
+
+    it.each(directApiOnlyPairs)('should throw on the %s to %s direct-API conversion', (_source, targetType, source) => {
+      expect(getAvailableConversions(source.type as BlockType)).not.toContain(targetType);
+      expect(() => convertBlockType(source, targetType)).toThrow(new RegExp(`Cannot convert to a ${targetType}`));
+    });
   });
 
   describe('content field mapping', () => {
@@ -481,10 +498,12 @@ describe('convertBlockType', () => {
     const sampleEntries = Object.entries(SAMPLE_BLOCKS) as Array<[BlockType, JsonBlock]>;
 
     /**
-     * `image` and `video` have no content field, so a target whose required text
-     * field has no default gets nothing to satisfy it and the conversion throws.
-     * That is https://github.com/grafana/grafana-pathfinder-app/issues/1575, pinned
-     * here rather than fixed, so the fix has to move this list deliberately.
+     * Sources with no `CONTENT_FIELDS` entry — `image`, `video`, `collapsible`,
+     * `assistant` and `snippet-ref` — carry no text into a target whose required
+     * text field has no `REQUIRED_DEFAULTS` fallback, so the conversion throws.
+     * Pinned here rather than fixed, so a fix has to move this list deliberately;
+     * the `image`/`video` symptom is tracked as
+     * https://github.com/grafana/grafana-pathfinder-app/issues/1575.
      */
     const CONTENTLESS_SOURCE_FAILURES: Partial<Record<BlockType, readonly BlockType[]>> = {
       image: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],

@@ -48,6 +48,12 @@ const SOURCE_EXCLUSION_REASONS = {
  *
  * The insertion order of the eligible (`null`) keys is the user-visible order
  * of the switch-type menu, so reordering them here reorders that menu.
+ *
+ * Excluding `collapsible` and `assistant` narrows the direct API: the previous
+ * guard rejected only the three container targets, so `assistant` -> `collapsible`
+ * and `collapsible` -> `assistant` used to succeed by copying `blocks`. Neither
+ * pair is reachable — `getAvailableConversions` never offered either as a target
+ * and no form exposes the switch for those sources.
  */
 const TARGET_EXCLUSION_REASONS = {
   markdown: null,
