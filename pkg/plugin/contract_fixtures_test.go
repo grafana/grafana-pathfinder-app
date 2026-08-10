@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -129,7 +130,7 @@ func TestContractGoldensHaveNoOrphans(t *testing.T) {
 
 	found := 0
 	for _, e := range entries {
-		if e.IsDir() {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
 		found++
@@ -212,16 +213,34 @@ func collectContractTags(t *testing.T, typ reflect.Type, key string, out map[str
 		return
 	}
 	out[key] = nil
+	out[key] = collectContractFields(t, typ, key, out)
+}
+
+// collectContractFields returns the fields of one JSON object, flattening
+// embedded structs the way encoding/json promotes them so the inventory
+// describes the object that reaches the wire rather than the Go nesting.
+func collectContractFields(t *testing.T, typ reflect.Type, key string, out map[string][]contractFieldTag) []contractFieldTag {
+	t.Helper()
+	if implementsContractMarshaler(typ, jsonMarshalerType) {
+		t.Fatalf("%s (%s) implements json.Marshaler, so it does not marshal as a JSON object; add an explicit normalized wire descriptor", key, typ)
+	}
+	if implementsContractMarshaler(typ, textMarshalerType) {
+		t.Fatalf("%s (%s) implements encoding.TextMarshaler, so it marshals as a JSON string, not an object", key, typ)
+	}
 
 	fields := []contractFieldTag{}
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
-		if f.PkgPath != "" {
-			continue // unexported fields never reach the wire
-		}
-		name, omitEmpty, skip := parseContractJSONTag(f)
+		name, omitEmpty, named, skip := parseContractJSONTag(f)
 		if skip {
 			continue
+		}
+		if promoted, ok := contractPromotedStruct(t, key, f, named); ok {
+			fields = append(fields, collectContractFields(t, promoted, key, out)...)
+			continue
+		}
+		if f.PkgPath != "" {
+			continue // unexported fields never reach the wire
 		}
 		wire, err := renderContractWireType(f.Type, omitEmpty)
 		if err != nil {
@@ -234,25 +253,64 @@ func collectContractTags(t *testing.T, typ reflect.Type, key string, out map[str
 			Wire:      wire,
 			OmitEmpty: omitEmpty,
 		})
-		if nested, ok := contractNestedStruct(f.Type); ok {
-			nestedKey := nested.Name()
-			if nestedKey == "" {
-				nestedKey = key + "." + name
-			}
-			collectContractTags(t, nested, nestedKey, out)
+		if contractWireBottom(wire) != "object" {
+			continue
 		}
+		nested, ok := contractNestedStruct(f.Type)
+		if !ok {
+			t.Fatalf("%s.%s: wire type %s promises a JSON object but %s has no struct to inventory", key, name, wire, f.Type)
+		}
+		nestedKey := nested.Name()
+		if nestedKey == "" {
+			nestedKey = key + "." + name
+		}
+		collectContractTags(t, nested, nestedKey, out)
 	}
-	out[key] = fields
+	assertContractJSONNamesAreUnique(t, key, fields)
+	return fields
 }
 
-func parseContractJSONTag(f reflect.StructField) (name string, omitEmpty, skip bool) {
+// encoding/json promotes an embedded struct's exported fields into the parent
+// object unless the embedded field carries a json name of its own, and it does
+// that for embedded types whose own name is unexported too — so f.PkgPath cannot
+// stand in for "never reaches the wire" on an anonymous field.
+func contractPromotedStruct(t *testing.T, key string, f reflect.StructField, named bool) (reflect.Type, bool) {
+	t.Helper()
+	if !f.Anonymous || named {
+		return nil, false
+	}
+	if f.Type.Kind() == reflect.Pointer && f.Type.Elem().Kind() == reflect.Struct {
+		t.Fatalf("%s embeds %s: a nil embedded pointer drops its promoted fields from the wire, which this flat inventory cannot express", key, f.Type)
+	}
+	if f.Type.Kind() != reflect.Struct {
+		return nil, false // json names an embedded non-struct after its type
+	}
+	return f.Type, true
+}
+
+// encoding/json resolves same-name fields by embedding depth, dropping both when
+// they tie. Neither outcome is expressible here, so refuse the shape instead of
+// inventorying a field the wire may not carry.
+func assertContractJSONNamesAreUnique(t *testing.T, key string, fields []contractFieldTag) {
+	t.Helper()
+	seen := map[string]string{}
+	for _, f := range fields {
+		if prior, dup := seen[f.JSON]; dup {
+			t.Fatalf("%s: fields %s and %s both marshal to json name %q; encoding/json resolves that by embedding depth and this inventory cannot model it", key, prior, f.Field, f.JSON)
+		}
+		seen[f.JSON] = f.Field
+	}
+}
+
+func parseContractJSONTag(f reflect.StructField) (name string, omitEmpty, named, skip bool) {
 	tag := f.Tag.Get("json")
 	if tag == "-" {
-		return "", false, true
+		return "", false, false, true
 	}
 	parts := strings.Split(tag, ",")
 	name = parts[0]
-	if name == "" {
+	named = name != ""
+	if !named {
 		name = f.Name
 	}
 	for _, opt := range parts[1:] {
@@ -260,7 +318,21 @@ func parseContractJSONTag(f reflect.StructField) (name string, omitEmpty, skip b
 			omitEmpty = true
 		}
 	}
-	return name, omitEmpty, false
+	return name, omitEmpty, named, false
+}
+
+// contractWireBottom peels the array/record/nullable wrappers off a normalized
+// wire descriptor to reach the scalar or object it bottoms out in. Only "object"
+// warrants a nested struct entry: time.Time and encoding.TextMarshaler structs
+// bottom out in "string", and json.RawMessage in "json".
+func contractWireBottom(wire string) string {
+	for {
+		open := strings.IndexByte(wire, '<')
+		if open < 0 || !strings.HasSuffix(wire, ">") {
+			return wire
+		}
+		wire = wire[open+1 : len(wire)-1]
+	}
 }
 
 // contractNestedStruct unwraps pointers, slices, arrays and map values to find
@@ -431,6 +503,89 @@ func TestContractWireTypeDescriptors(t *testing.T) {
 
 	if _, err := renderContractWireType(reflect.TypeOf(contractJSONValue{}), false); err == nil {
 		t.Error("custom json.Marshaler must require an explicit normalized wire descriptor")
+	}
+}
+
+func TestContractWireBottom(t *testing.T) {
+	cases := map[string]string{
+		"string":                  "string",
+		"object":                  "object",
+		"json":                    "json",
+		"array<object>":           "object",
+		"nullable<string>":        "string",
+		"record<array<object>>":   "object",
+		"record<nullable<json>>":  "json",
+		"array<array<integer>>":   "integer",
+		"nullable<array<string>>": "string",
+	}
+	for wire, want := range cases {
+		if got := contractWireBottom(wire); got != want {
+			t.Errorf("contractWireBottom(%q) = %q, want %q", wire, got, want)
+		}
+	}
+}
+
+type contractPromotedFields struct {
+	Base string `json:"base"`
+}
+
+// A host for the shapes the inventory walk has to model but no live envelope
+// exercises yet: an embedded struct of unexported type (promoted by
+// encoding/json despite its non-empty PkgPath), and two fields whose structs
+// marshal as strings rather than objects.
+type contractEmbeddedHost struct {
+	contractPromotedFields
+	Own  string                 `json:"own"`
+	When time.Time              `json:"when"`
+	Text contractTextValue      `json:"text"`
+	Deep contractPromotedFields `json:"deep"`
+}
+
+func TestContractTagsMirrorEncodingJSON(t *testing.T) {
+	inventory := map[string][]contractFieldTag{}
+	collectContractTags(t, reflect.TypeOf(contractEmbeddedHost{}), "contractEmbeddedHost", inventory)
+
+	structs := make([]string, 0, len(inventory))
+	for key := range inventory {
+		structs = append(structs, key)
+	}
+	sort.Strings(structs)
+	// No "Time" and no "contractTextValue": both are strings on the wire.
+	if want := []string{"contractEmbeddedHost", "contractPromotedFields"}; !reflect.DeepEqual(structs, want) {
+		t.Errorf("inventoried structs = %v, want %v", structs, want)
+	}
+
+	got := []string{}
+	for _, f := range inventory["contractEmbeddedHost"] {
+		got = append(got, f.JSON)
+	}
+	if want := []string{"base", "own", "when", "text", "deep"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("inventoried json names = %v, want %v", got, want)
+	}
+
+	body, err := json.Marshal(contractEmbeddedHost{})
+	if err != nil {
+		t.Fatalf("marshal host: %v", err)
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(body, &object); err != nil {
+		t.Fatalf("unmarshal host: %v", err)
+	}
+	marshalled := make([]string, 0, len(object))
+	for name := range object {
+		marshalled = append(marshalled, name)
+	}
+	sort.Strings(marshalled)
+	inventoried := append([]string{}, got...)
+	sort.Strings(inventoried)
+	if !reflect.DeepEqual(marshalled, inventoried) {
+		t.Errorf("encoding/json emits %v but the inventory records %v", marshalled, inventoried)
+	}
+
+	for _, f := range inventory["contractEmbeddedHost"] {
+		if (f.JSON == "when" || f.JSON == "text") && f.Wire != "string" {
+			t.Errorf("%s wire = %q, want string", f.JSON, f.Wire)
+		}
 	}
 }
 
