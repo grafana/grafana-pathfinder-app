@@ -131,9 +131,10 @@ the fixed internal aggregator.
   LIST returns the same result for every authorized caller in the namespace; otherwise one
   caller's richer RBAC view leaks to everyone for a TTL window. The invariance claim must be
   written down, not assumed.
-- **Identity-scoped failures never enter the shared cache.** An upstream 401/403 for caller A's
-  token must not become a cached error served to caller B. Terminal identity failures are
-  per-request responses.
+- **Caller-scoped failures never enter the shared cache.** An upstream 401/403 for caller A's
+  token — or a failure to mint caller A's on-behalf-of token — must not become a cached error
+  served to caller B. Only failures positively classified as namespace-global on the §1 scope axis
+  are shareable; every other failure, transient or terminal, is a per-request response.
 - Cache the **shaped/collated result, not raw records**, so steady-state memory is bounded by the
   meaningful entity count; the §1 aggregate budget bounds the transient build footprint.
 - TTL by data volatility (5 min for slowly-changing per-user records; 30 s for an
