@@ -264,8 +264,15 @@ describe('MyLearningTab launch flow', () => {
 });
 
 describe('MyLearningTab — App Platform guide launch', () => {
-  it('launches an App Platform path member via its resolved backend-guide: URL', async () => {
-    mockPaths = [{ id: 'ap-path', title: 'Alerting enablement', guides: ['fe-alerting-01'] }];
+  it('launches an App Platform path member with the path manifest as packageInfo (milestone chrome)', async () => {
+    mockPaths = [
+      {
+        id: 'ap-path',
+        title: 'Alerting enablement',
+        guides: ['fe-alerting-01'],
+        manifest: { type: 'path', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
+      },
+    ];
     mockGetPathGuides.mockReturnValue([
       { id: 'fe-alerting-01', title: 'Alerting module 1', completed: false, isCurrent: true },
     ]);
@@ -276,13 +283,19 @@ describe('MyLearningTab — App Platform guide launch', () => {
     fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
-    expect(prepareMock).toHaveBeenCalledWith(
-      'backend-guide:fe-alerting-01',
-      expect.objectContaining({ source: 'home_page' })
-    );
+    // Without packageInfo the loader falls through to a standalone guide with no
+    // milestone toolbar; the PATH manifest (with id merged) is what renders chrome.
+    expect(prepareMock).toHaveBeenCalledWith('backend-guide:fe-alerting-01', {
+      title: expect.any(String),
+      source: 'home_page',
+      packageInfo: {
+        packageId: 'ap-path',
+        packageManifest: { type: 'path', milestones: ['fe-alerting-01', 'fe-alerting-02'], id: 'ap-path' },
+      },
+    });
   });
 
-  it('falls back to bundled:<id> when no App Platform or static URL resolves', async () => {
+  it('falls back to bundled:<id> with no packageInfo when no manifest/URL resolves', async () => {
     mockPaths = [{ id: 'bundled-path', title: 'Bundled path', guides: ['bundled-guide'] }];
     mockGetPathGuides.mockReturnValue([
       { id: 'bundled-guide', title: 'Bundled guide', completed: false, isCurrent: true },
@@ -294,6 +307,10 @@ describe('MyLearningTab — App Platform guide launch', () => {
     fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('bundled-path')));
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
-    expect(prepareMock).toHaveBeenCalledWith('bundled:bundled-guide', expect.objectContaining({ source: 'home_page' }));
+    expect(prepareMock).toHaveBeenCalledWith('bundled:bundled-guide', {
+      title: expect.any(String),
+      source: 'home_page',
+      packageInfo: undefined,
+    });
   });
 });
