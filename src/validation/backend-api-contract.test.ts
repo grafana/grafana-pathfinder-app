@@ -140,6 +140,9 @@ function normalizedZodWireType(schema: z.core.$ZodType): string {
   if (schema instanceof z.ZodOptional) {
     return normalizedZodWireType(schema.unwrap());
   }
+  if (schema instanceof z.ZodNullable) {
+    return `nullable<${normalizedZodWireType(schema.unwrap())}>`;
+  }
   if (schema instanceof z.ZodString) {
     return 'string';
   }
@@ -147,7 +150,9 @@ function normalizedZodWireType(schema: z.core.$ZodType): string {
     return 'boolean';
   }
   if (schema instanceof z.ZodNumber) {
-    return 'number';
+    return schema.format === 'safeint' || schema.format === 'int32' || schema.format === 'uint32'
+      ? 'integer'
+      : 'number';
   }
   if (schema instanceof z.ZodArray) {
     return `array<${normalizedZodWireType(schema.element)}>`;
@@ -157,6 +162,9 @@ function normalizedZodWireType(schema: z.core.$ZodType): string {
   }
   if (schema instanceof z.ZodRecord) {
     return `record<${normalizedZodWireType(schema.valueType)}>`;
+  }
+  if (schema instanceof z.ZodLazy) {
+    throw new Error('Use the shared JsonValueSchema for arbitrary JSON fields so their wire type is explicit.');
   }
   throw new Error(`No normalized JSON wire descriptor for Zod type ${schema.constructor.name}.`);
 }
@@ -284,6 +292,35 @@ describe('backend API contract: struct tags match the schemas', () => {
     expect(() => assertStructTagsMatchSchema('customGuideManifest', fields)).toThrow(
       'customGuideManifest.milestones is array<json> on the Go wire ([]json.RawMessage), ' +
         'but its Zod schema accepts array<string>.'
+    );
+  });
+
+  it('rejects pointer and numeric widenings that preserve fixture values', () => {
+    const responseFields = STRUCT_TAGS.myCompletionsResponse;
+    const completionFields = STRUCT_TAGS.collatedCompletion;
+    if (!responseFields || !completionFields) {
+      throw new Error('struct-tags.json does not inventory the completion response structs.');
+    }
+
+    const pointerFields = responseFields.map((field) =>
+      field.json === 'capability' ? { ...field, type: '*completionCapability', wire: 'nullable<object>' } : field
+    );
+    const numberFields = completionFields.map((field) =>
+      field.json === 'count' ? { ...field, type: 'float64', wire: 'number' } : field
+    );
+
+    expect(() => assertStructTagsMatchSchema('myCompletionsResponse', pointerFields)).toThrow(
+      'myCompletionsResponse.capability is nullable<object> on the Go wire (*completionCapability), ' +
+        'but its Zod schema accepts object.'
+    );
+    expect(() => assertStructTagsMatchSchema('collatedCompletion', numberFields)).toThrow(
+      'collatedCompletion.count is number on the Go wire (float64), but its Zod schema accepts integer.'
+    );
+  });
+
+  it('requires the shared arbitrary-JSON schema identity', () => {
+    expect(() => normalizedZodWireType(z.json())).toThrow(
+      'Use the shared JsonValueSchema for arbitrary JSON fields so their wire type is explicit.'
     );
   });
 });

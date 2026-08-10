@@ -115,7 +115,7 @@
       "field": "Count",
       "json": "count",
       "type": "int",
-      "wire": "number",
+      "wire": "integer",
       "omitempty": false
     },
     {
@@ -136,7 +136,7 @@
       "field": "MaxCompletionPercent",
       "json": "maxCompletionPercent",
       "type": "int64",
-      "wire": "number",
+      "wire": "integer",
       "omitempty": false
     }
   ],

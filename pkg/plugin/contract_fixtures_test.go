@@ -3,6 +3,7 @@ package plugin
 import (
 	"bytes"
 	"context"
+	"encoding"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -222,7 +223,7 @@ func collectContractTags(t *testing.T, typ reflect.Type, key string, out map[str
 		if skip {
 			continue
 		}
-		wire, err := renderContractWireType(f.Type)
+		wire, err := renderContractWireType(f.Type, omitEmpty)
 		if err != nil {
 			t.Fatalf("%s.%s: %v", key, name, err)
 		}
@@ -298,14 +299,33 @@ func renderContractType(typ reflect.Type) string {
 	}
 }
 
-func renderContractWireType(typ reflect.Type) (string, error) {
+var (
+	jsonMarshalerType = reflect.TypeOf((*json.Marshaler)(nil)).Elem()
+	textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
+	timeType          = reflect.TypeOf(time.Time{})
+)
+
+func renderContractWireType(typ reflect.Type, omitEmpty bool) (string, error) {
 	if typ == reflect.TypeOf(json.RawMessage{}) {
 		return "json", nil
+	}
+	if typ == timeType || typ == reflect.PointerTo(timeType) {
+		return nullableWireType("string", typ, omitEmpty), nil
+	}
+	if implementsContractMarshaler(typ, jsonMarshalerType) {
+		return "", fmt.Errorf("Go type %s implements json.Marshaler; add an explicit normalized wire descriptor", typ)
+	}
+	if implementsContractMarshaler(typ, textMarshalerType) {
+		return nullableWireType("string", typ, omitEmpty), nil
 	}
 
 	switch typ.Kind() {
 	case reflect.Pointer:
-		return renderContractWireType(typ.Elem())
+		inner, err := renderContractWireType(typ.Elem(), false)
+		if err != nil {
+			return "", err
+		}
+		return nullableWireType(inner, typ, omitEmpty), nil
 	case reflect.Interface:
 		return "json", nil
 	case reflect.String:
@@ -313,20 +333,21 @@ func renderContractWireType(typ reflect.Type) (string, error) {
 	case reflect.Bool:
 		return "boolean", nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-		reflect.Float32, reflect.Float64:
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return "integer", nil
+	case reflect.Float32, reflect.Float64:
 		return "number", nil
 	case reflect.Slice:
 		if typ.Elem().Kind() == reflect.Uint8 {
 			return "string", nil
 		}
-		elem, err := renderContractWireType(typ.Elem())
+		elem, err := renderContractWireType(typ.Elem(), false)
 		if err != nil {
 			return "", err
 		}
 		return "array<" + elem + ">", nil
 	case reflect.Array:
-		elem, err := renderContractWireType(typ.Elem())
+		elem, err := renderContractWireType(typ.Elem(), false)
 		if err != nil {
 			return "", err
 		}
@@ -335,7 +356,7 @@ func renderContractWireType(typ reflect.Type) (string, error) {
 		if typ.Key().Kind() != reflect.String {
 			return "", fmt.Errorf("map key %s is not a JSON object key", typ.Key())
 		}
-		value, err := renderContractWireType(typ.Elem())
+		value, err := renderContractWireType(typ.Elem(), false)
 		if err != nil {
 			return "", err
 		}
@@ -347,26 +368,58 @@ func renderContractWireType(typ reflect.Type) (string, error) {
 	}
 }
 
+func implementsContractMarshaler(typ, marshaler reflect.Type) bool {
+	if typ.Implements(marshaler) {
+		return true
+	}
+	return typ.Kind() != reflect.Pointer && reflect.PointerTo(typ).Implements(marshaler)
+}
+
+func nullableWireType(inner string, typ reflect.Type, omitEmpty bool) string {
+	if typ.Kind() == reflect.Pointer && !omitEmpty {
+		return "nullable<" + inner + ">"
+	}
+	return inner
+}
+
+type contractTextValue string
+
+func (contractTextValue) MarshalText() ([]byte, error) {
+	return []byte("value"), nil
+}
+
+type contractJSONValue struct{}
+
+func (contractJSONValue) MarshalJSON() ([]byte, error) {
+	return []byte(`"value"`), nil
+}
+
 func TestContractWireTypeDescriptors(t *testing.T) {
 	cases := []struct {
-		name  string
-		value any
-		want  string
+		name      string
+		value     any
+		omitEmpty bool
+		want      string
 	}{
-		{"string", "", "string"},
-		{"boolean", false, "boolean"},
-		{"number", int64(0), "number"},
-		{"bytes", []byte{}, "string"},
-		{"array", []string{}, "array<string>"},
-		{"opaque array", []json.RawMessage{}, "array<json>"},
-		{"record", map[string]any{}, "record<json>"},
-		{"object", struct{ Value string }{}, "object"},
-		{"pointer", &struct{ Value string }{}, "object"},
+		{"string", "", false, "string"},
+		{"boolean", false, false, "boolean"},
+		{"integer", int64(0), false, "integer"},
+		{"number", float64(0), false, "number"},
+		{"bytes", []byte{}, false, "string"},
+		{"array", []string{}, false, "array<string>"},
+		{"opaque array", []json.RawMessage{}, false, "array<json>"},
+		{"record", map[string]any{}, false, "record<json>"},
+		{"object", struct{ Value string }{}, false, "object"},
+		{"pointer", &struct{ Value string }{}, false, "nullable<object>"},
+		{"omitempty pointer", &struct{ Value string }{}, true, "object"},
+		{"time", time.Time{}, false, "string"},
+		{"time pointer", &time.Time{}, false, "nullable<string>"},
+		{"text marshaler", contractTextValue(""), false, "string"},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := renderContractWireType(reflect.TypeOf(c.value))
+			got, err := renderContractWireType(reflect.TypeOf(c.value), c.omitEmpty)
 			if err != nil {
 				t.Fatalf("render wire type: %v", err)
 			}
@@ -374,6 +427,10 @@ func TestContractWireTypeDescriptors(t *testing.T) {
 				t.Errorf("wire type = %q, want %q", got, c.want)
 			}
 		})
+	}
+
+	if _, err := renderContractWireType(reflect.TypeOf(contractJSONValue{}), false); err == nil {
+		t.Error("custom json.Marshaler must require an explicit normalized wire descriptor")
 	}
 }
 
