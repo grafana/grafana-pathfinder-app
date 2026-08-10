@@ -762,6 +762,91 @@ describe('openfeature', () => {
         consoleSpy.mockRestore();
       });
     });
+
+    it('getHighlightedGuideConfig should fall through when pages contain only non-string elements', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        const remoteConfig = {
+          variant: 'control',
+          pages: ['/connections/datasources*'],
+          guideId: 'bundled:remote-guide',
+        };
+        mockOF.mockClient.getObjectValue.mockReturnValue(remoteConfig);
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
+        setFlagOverride('pathfinder.highlighted-guide-experiment', {
+          variant: 'treatment',
+          pages: [1, 2],
+          guideId: 'bundled:my-guide',
+        });
+
+        expect(getHighlightedGuideConfig()).toEqual({
+          ...remoteConfig,
+          autoOpen: true,
+          resetCache: false,
+        });
+        expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
+        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
+      });
+    });
+
+    it('getHighlightedGuideConfig should fall through when pages mix valid and non-string elements', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        const remoteConfig = {
+          variant: 'control',
+          pages: ['/connections/datasources*'],
+          guideId: 'bundled:remote-guide',
+        };
+        mockOF.mockClient.getObjectValue.mockReturnValue(remoteConfig);
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
+        setFlagOverride('pathfinder.highlighted-guide-experiment', {
+          variant: 'treatment',
+          pages: ['/explore', 1],
+          guideId: 'bundled:my-guide',
+        });
+
+        expect(getHighlightedGuideConfig()).toEqual({
+          ...remoteConfig,
+          autoOpen: true,
+          resetCache: false,
+        });
+        expect(mockReportFeatureFlagExposure).not.toHaveBeenCalled();
+        expect(mockOF.mockClient.getObjectValue).toHaveBeenCalled();
+      });
+    });
+
+    it('getHighlightedGuideConfig should accept pages with all string elements', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { setFlagOverride, getHighlightedGuideConfig } = require('./openfeature');
+        setFlagOverride('pathfinder.highlighted-guide-experiment', {
+          variant: 'treatment',
+          pages: ['/explore', '/other'],
+          guideId: 'bundled:my-guide',
+        });
+
+        expect(getHighlightedGuideConfig()).toEqual({
+          variant: 'treatment',
+          pages: ['/explore', '/other'],
+          guideId: 'bundled:my-guide',
+          autoOpen: true,
+          resetCache: false,
+        });
+        expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('highlighted-guide variant validation', () => {

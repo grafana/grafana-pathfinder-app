@@ -34,6 +34,13 @@ jest.mock('../../lib/analytics', () => ({
   },
 }));
 
+// Spy only markMilestoneDone; every other docs-retrieval export (getMilestoneSlug,
+// countUnlockedMilestones, getJourneyProgress) stays real.
+jest.mock('../../docs-retrieval', () => ({
+  ...jest.requireActual('../../docs-retrieval'),
+  markMilestoneDone: jest.fn(),
+}));
+
 describe('useLinkClickHandler', () => {
   // Mock theme object (minimal required properties)
   const mockTheme = {
@@ -196,6 +203,52 @@ describe('useLinkClickHandler', () => {
       // Test previous navigation
       fireEvent.click(prevButton);
       expect(mockModel.navigateToPreviousMilestone).toHaveBeenCalled();
+    });
+
+    it('completes a step-free milestone against the UNLOCKED count, not the locked-inclusive total', () => {
+      const { markMilestoneDone } = jest.requireMock('../../docs-retrieval');
+      mockModel.getActiveTab.mockReturnValue({
+        id: 'tab1',
+        title: 'Alerting',
+        baseUrl: 'backend-guide:fe-alerting-path',
+        currentUrl: 'backend-guide:fe-alerting-01',
+        content: {
+          url: 'backend-guide:fe-alerting-01',
+          type: 'learning-journey',
+          metadata: {
+            learningJourney: {
+              baseUrl: 'backend-guide:fe-alerting-path',
+              // 3 declared, 1 locked → 2 reachable.
+              totalMilestones: 3,
+              milestones: [
+                { number: 1, title: 'm1', url: 'backend-guide:fe-alerting-01', isActive: false },
+                { number: 2, title: 'm2', url: 'backend-guide:fe-alerting-02', isActive: false },
+                { number: 3, title: 'm3', url: '', isActive: false, isLocked: true },
+              ],
+            },
+          },
+        },
+        isLoading: false,
+        error: null,
+      });
+
+      renderHook(() =>
+        useLinkClickHandler({ contentRef, activeTab: mockModel.getActiveTab(), theme: mockTheme, model: mockModel })
+      );
+
+      // No `[data-step-id]` in contentDiv → the milestone is completed on Next.
+      const nextButton = document.createElement('button');
+      nextButton.setAttribute('data-journey-nav', 'next');
+      contentDiv.appendChild(nextButton);
+      fireEvent.click(nextButton);
+
+      // 2 (unlocked), not 3 — a locked trailing member must not block completion.
+      expect(markMilestoneDone).toHaveBeenCalledWith(
+        'backend-guide:fe-alerting-path',
+        'fe-alerting-01',
+        2,
+        expect.any(Object)
+      );
     });
 
     // -------------------------------------------------------------------------

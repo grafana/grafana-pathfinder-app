@@ -11,7 +11,7 @@ import {
   AnalyticsLinkType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
+import { countUnlockedMilestones, getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -531,15 +531,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             if (!hasInteractiveSteps) {
               const slug = getMilestoneSlug(activeTab.currentUrl);
               if (slug) {
-                markMilestoneDone(
-                  journey.baseUrl,
-                  slug,
-                  activeTab.content?.metadata?.learningJourney?.totalMilestones,
-                  {
-                    packageManifest: activeTab.content?.metadata?.packageManifest,
-                    guideTitle: activeTab.title,
-                  }
-                );
+                markMilestoneDone(journey.baseUrl, slug, countUnlockedMilestones(journey.milestones ?? []), {
+                  packageManifest: activeTab.content?.metadata?.packageManifest,
+                  guideTitle: activeTab.title,
+                });
               }
             }
           }

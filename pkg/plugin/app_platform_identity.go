@@ -17,7 +17,9 @@ import (
 // Trust boundary: structural (non-signature) validation is defensible only
 // because requests reach the plugin exclusively via Grafana's trusted
 // server→plugin forwarding — see "App Platform proxies — identity trust
-// boundary" in docs/developer/CODA.md.
+// boundary" in docs/developer/CODA.md. The ID token is an identity
+// attestation, never an outbound credential: proxy routes exchange it for an
+// access token (pkg/plugin/auth) and send that instead.
 
 // validIDToken reports whether the request carries a structurally valid
 // Grafana ID token: well-formed JWT with `exp` present and unexpired.
@@ -35,17 +37,6 @@ func subjectFromIDToken(r *http.Request) (string, bool) {
 		return "", false
 	}
 	return sub, true
-}
-
-// forwardIdentityHeaders stamps the outbound identity for plugin→aggregator
-// calls: `Authorization: Bearer <id-token>` plus the ID-token header, both
-// synthesized from the caller's inbound ID token. This is the runtime-verified
-// shape (dev-stack smoke, commit 89d6bd5e on feat/external-import-api).
-// Never forward Cookie, and never replay the inbound Authorization header —
-// Grafana strips it before plugin resource handlers.
-func forwardIdentityHeaders(dst http.Header, idToken string) {
-	dst.Set("Authorization", "Bearer "+idToken)
-	dst.Set(backend.GrafanaUserSignInTokenHeaderName, idToken)
 }
 
 // parseIDToken structurally validates a JWT and returns its `sub` claim.

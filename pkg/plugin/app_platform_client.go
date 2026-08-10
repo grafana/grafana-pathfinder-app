@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
+	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
 
 // Shared paginated LIST client for App Platform proxy routes
@@ -21,9 +23,12 @@ import (
 // callers supply the group/version + resource and decode each `items[].spec`
 // through a per-kind callback.
 
-// pathfinderBackendAggregationToggle mirrors the front-end availability check
-// in src/utils/fetchBackendGuides.ts: the boot-time toggle the aggregation
-// layer sets when the pathfinderbackend API is served on this instance.
+// pathfinderBackendAggregationToggle gates the completion-records proxy on the
+// LEGACY CAP group (pathfinderbackend.ext.grafana.com). The custom-guide proxy
+// moved to the GAP `.app` toggle (customGuideAggregationToggle); the two are
+// intentionally distinct until completion-records also migrates to GAP. The
+// name derives from the group, dots→dashes — the Go mirror of the `.app`
+// derivation in src/utils/interactive-guides-api.ts.
 const pathfinderBackendAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-com.enabled"
 
 // appPlatformUpstreamTimeout caps a single LIST page fetch. The aggregate
@@ -51,18 +56,27 @@ type appPlatformListPage struct {
 	Continue string
 }
 
+// accessTokenMinter exchanges a caller's ID token for a short-lived access
+// token scoped to that user. Satisfied by auth.Exchanger; an interface here so
+// tests can stub the exchange without an auth-api.
+type accessTokenMinter interface {
+	Mint(ctx context.Context, namespace, idToken string) (string, error)
+}
+
 // appPlatformListClient fetches pages of a namespace LIST from the stack's
-// own aggregated App Platform API, riding the caller's identity (§3).
+// own aggregated App Platform API, as the calling user (§3).
 type appPlatformListClient struct {
 	appURL     string
+	minter     accessTokenMinter
 	idToken    string
 	httpClient *http.Client
 	logger     log.Logger
 }
 
-func newAppPlatformListClient(appURL, idToken string, logger log.Logger) *appPlatformListClient {
+func newAppPlatformListClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *appPlatformListClient {
 	return &appPlatformListClient{
 		appURL:     appURL,
+		minter:     minter,
 		idToken:    idToken,
 		httpClient: &http.Client{Timeout: appPlatformUpstreamTimeout},
 		logger:     logger,
@@ -94,11 +108,20 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
+	// Mint per request rather than per client: authlib caches by subject for
+	// most of the token's 10-minute life, so this is a cache hit on all but the
+	// first call for a given user, and a mint failure surfaces as an upstream
+	// error the caller already classifies.
+	accessToken, err := c.minter.Mint(reqCtx, namespace, c.idToken)
+	if err != nil {
+		return nil, fmt.Errorf("app platform list: mint access token: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("app platform list: build request: %w", err)
 	}
-	forwardIdentityHeaders(req.Header, c.idToken)
+	req.Header.Set(auth.AccessTokenHeader, accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -112,7 +135,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 			"resource", resource,
 			"status", resp.StatusCode,
 			"idTokenPresent", c.idToken != "",
-			"identityHeaders", "Authorization=Bearer<id-token>,X-Grafana-Id")
+			"identityHeaders", auth.AccessTokenHeader+"=<obo-access-token>")
 	})
 
 	if resp.StatusCode != http.StatusOK {

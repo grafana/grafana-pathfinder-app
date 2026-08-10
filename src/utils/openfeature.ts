@@ -607,7 +607,12 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
     return null;
   }
   const record = value as Record<string, unknown>;
-  if (typeof record.variant !== 'string' || !Array.isArray(record.pages) || typeof record.guideId !== 'string') {
+  if (
+    typeof record.variant !== 'string' ||
+    !Array.isArray(record.pages) ||
+    !record.pages.every((p): p is string => typeof p === 'string') ||
+    typeof record.guideId !== 'string'
+  ) {
     return null;
   }
   if (!VALID_VARIANTS.has(record.variant as HighlightedGuideConfig['variant'])) {
@@ -620,7 +625,7 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
 
   return {
     variant: record.variant as HighlightedGuideConfig['variant'],
-    pages: record.pages as string[],
+    pages: record.pages,
     guideId: record.guideId,
     autoOpen: typeof record.autoOpen === 'boolean' ? record.autoOpen : true,
     resetCache: typeof record.resetCache === 'boolean' ? record.resetCache : false,
