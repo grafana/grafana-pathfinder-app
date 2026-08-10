@@ -184,10 +184,9 @@ function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
  * nothing and the guide parses to zero elements — a broken cover instead of
  * a milestone list (RFC CUSTOM-GUIDE-PACKAGES.md Appendix A F15).
  *
- * Bundled/CDN packages are additionally guarded at load time (see
- * nonEmptyCoverBlocksError in package-engine) — this is the only gate for
- * App Platform content, which has no equivalent schema-level enforcement
- * (the intended CUE constraint didn't survive codegen).
+ * This runtime repair is the only empty-cover protection that actually runs:
+ * it applies to every repository (bundled, CDN, App Platform), repairing the
+ * cover rather than rejecting the package.
  */
 export function ensureNonEmptyCoverContent(jsonContent: string): string {
   try {
