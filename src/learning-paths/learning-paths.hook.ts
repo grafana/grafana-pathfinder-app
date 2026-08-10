@@ -443,20 +443,27 @@ export function useLearningPaths(): UseLearningPathsReturn {
         // still surface its prior completion snapshot via the store.
         milestoneKeys.forEach((key) => evictContentCache(key));
       } else {
-        // Static bundled path: clear each guide's progress (batched for performance)
+        // No base URL: either a static bundled path (`bundled:<id>`) or an App
+        // Platform path whose members are `backend-guide:<id>`. We can't tell
+        // them apart from `path.guides` alone, so clear both content schemes.
         await Promise.all(
-          path.guides.map((guideId) => {
-            const contentKey = `bundled:${guideId}`;
-            return Promise.all([
-              interactiveStepStorage.clearAllForContent(contentKey),
-              interactiveCompletionStorage.clear(contentKey),
-              journeyCompletionStorage.clear(contentKey),
-            ]);
-          })
+          path.guides.flatMap((guideId) =>
+            [`bundled:${guideId}`, `backend-guide:${guideId}`].map((contentKey) =>
+              Promise.all([
+                interactiveStepStorage.clearAllForContent(contentKey),
+                interactiveCompletionStorage.clear(contentKey),
+                journeyCompletionStorage.clear(contentKey),
+              ])
+            )
+          )
         );
-        path.guides.forEach((guideId) => evictContentCache(`bundled:${guideId}`));
+        path.guides.forEach((guideId) => {
+          evictContentCache(`bundled:${guideId}`);
+          evictContentCache(`backend-guide:${guideId}`);
+        });
 
-        // Remove guide IDs from completedGuides
+        // Remove guide IDs from completedGuides (bare ids, matching how App
+        // Platform + bundled completions are keyed).
         await learningProgressStorage.removeCompletedGuides(path.guides);
       }
 

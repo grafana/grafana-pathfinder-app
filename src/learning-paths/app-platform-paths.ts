@@ -11,9 +11,11 @@
  * L3-ready alternative, deferred until nested journeys are in scope.
  *
  * Member guide IDs are used as-is for `LearningPath.guides` — these are bare
- * package IDs (e.g. `fe-alerting-01`), the same identifier the completion-keying
- * fix (Appendix A F13) now records completions under, so progress calculation
- * (`completedGuides.includes(guideId)`) works with no extra glue.
+ * package IDs (e.g. `fe-alerting-01`). Completions are keyed under the same bare
+ * id because `getMilestoneSlug` strips the `backend-guide:` scheme off the
+ * member's launch URL before recording (learning-journey-helpers.ts), so
+ * progress calculation (`completedGuides.includes(guideId)`) matches with no
+ * extra glue.
  *
  * @coupling Client: fetchCustomGuideRepository in lib/custom-guide-repository-client.ts
  */
@@ -63,7 +65,11 @@ export async function fetchAppPlatformLearningPaths(namespace: string): Promise<
       // description sentence as the card heading (and repeat it below).
       title: entry.title || entry.manifest?.description || entry.id,
       description: entry.manifest?.description || '',
-      guides: entry.manifest?.milestones ?? [],
+      // Only members that resolved to published metadata — a draft member listed
+      // in a published path's manifest must not leak into My Learning (it has no
+      // guideMetadata entry, so it would render titled by its raw id and inflate
+      // the denominator). Matches the resolver's published-only gate.
+      guides: (entry.manifest?.milestones ?? []).filter((id) => id in guideMetadata),
       badgeId: '',
     }));
 

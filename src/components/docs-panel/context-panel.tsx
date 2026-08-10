@@ -564,6 +564,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                         <button
                                           key={stepIndex}
                                           onClick={() => {
+                                            // Locked (unpublished) member — placeholder only, not navigable.
+                                            if (milestone.isLocked) {
+                                              return;
+                                            }
                                             reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
                                               content_title: recommendation.title,
                                               milestone_title: milestone.title,
@@ -581,12 +585,21 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               );
                                             }
                                           }}
-                                          className={styles.milestoneItem}
+                                          disabled={milestone.isLocked}
+                                          className={`${styles.milestoneItem} ${milestone.isLocked ? styles.milestoneItemLocked : ''}`}
                                         >
                                           <div className={styles.milestoneNumber}>{milestone.number}</div>
                                           <div className={styles.milestoneContent}>
-                                            <div className={styles.milestoneTitle}>{milestone.title}</div>
+                                            <div className={styles.milestoneTitle}>
+                                              {milestone.title}
+                                              {milestone.isLocked && (
+                                                <span className={styles.milestoneDuration}>
+                                                  {t('contextPanel.notYetAvailable', '(not yet available)')}
+                                                </span>
+                                              )}
+                                            </div>
                                           </div>
+                                          {milestone.isLocked && <Icon name="lock" size="sm" />}
                                         </button>
                                       ))}
                                     </div>
@@ -846,6 +859,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                       <button
                                         key={stepIndex}
                                         onClick={() => {
+                                          // Locked (unpublished) member — placeholder only, not navigable.
+                                          if (milestone.isLocked) {
+                                            return;
+                                          }
                                           reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
                                             content_title: recommendation.title,
                                             milestone_title: milestone.title,
@@ -863,16 +880,24 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             );
                                           }
                                         }}
-                                        className={styles.milestoneItem}
+                                        disabled={milestone.isLocked}
+                                        className={`${styles.milestoneItem} ${milestone.isLocked ? styles.milestoneItemLocked : ''}`}
                                         data-testid={testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)}
                                       >
                                         <div className={styles.milestoneNumber}>{milestone.number}</div>
                                         <div className={styles.milestoneContent}>
                                           <div className={styles.milestoneTitle}>
                                             {milestone.title}
-                                            <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                            {milestone.isLocked ? (
+                                              <span className={styles.milestoneDuration}>
+                                                {t('contextPanel.notYetAvailable', '(not yet available)')}
+                                              </span>
+                                            ) : (
+                                              <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                            )}
                                           </div>
                                         </div>
+                                        {milestone.isLocked && <Icon name="lock" size="sm" />}
                                       </button>
                                     ))}
                                   </div>
