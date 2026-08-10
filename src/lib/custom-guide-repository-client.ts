@@ -15,6 +15,7 @@ import { getBackendSrv } from '@grafana/runtime';
 import { PLUGIN_BACKEND_URL } from '../constants';
 import { isBackendApiAvailable } from '../utils/fetchBackendGuides';
 import { logger } from './logging';
+import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
 import type { Author, DependencyList, PackageType } from '../types/package.types';
 
 export interface CustomGuideManifest {
@@ -77,8 +78,11 @@ async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
   if (!response?.capability?.available) {
     // Surface WHY the catalogue is empty — otherwise a degraded capability (e.g.
     // obo-unavailable) presents as "no guides" with nothing in the console, which
-    // is exactly how the stackId-wipe incident stayed invisible.
-    logger.warn('[custom-guides] catalogue unavailable', { reason: response?.capability?.reason ?? 'unknown' });
+    // is exactly how the stackId-wipe incident stayed invisible. The log is for a
+    // developer at a console; the Faro event is the countable, alertable signal.
+    const reason = response?.capability?.reason ?? 'unknown';
+    logger.warn('[custom-guides] catalogue unavailable', { reason });
+    recordCustomGuideCatalogueUnavailable(reason);
     return [];
   }
   return Array.isArray(response.guides) ? response.guides : [];
