@@ -4,8 +4,62 @@
  * Tests focus on generic behavior rather than every conversion pair.
  */
 
-import { getAvailableConversions, getConversionWarning, convertBlockType } from './block-conversion';
+import {
+  getAvailableConversions,
+  getConversionWarning,
+  convertBlockType,
+  SOURCE_EXCLUDED_BLOCK_TYPES,
+  TARGET_EXCLUDED_BLOCK_TYPES,
+} from './block-conversion';
+import { VALID_BLOCK_TYPES } from '../../../types/json-guide.schema';
+import type { BlockType } from '../types';
 import type { JsonBlock } from '../../../types/json-guide.types';
+
+const ALL_BLOCK_TYPES = [...VALID_BLOCK_TYPES] as BlockType[];
+const BOTH_WAYS_EXCLUDED: readonly BlockType[] = ['collapsible', 'assistant', 'snippet-ref'];
+
+/**
+ * The compile-time checks in `block-conversion.ts` prove that every block type
+ * has a source and a target verdict; these assertions add the properties types
+ * can't express and give a readable failure. Anchored on `VALID_BLOCK_TYPES` so
+ * they track the block union rather than a restated count.
+ */
+describe('conversion eligibility registries', () => {
+  it('excludes only real block types', () => {
+    const unknown = [...SOURCE_EXCLUDED_BLOCK_TYPES, ...TARGET_EXCLUDED_BLOCK_TYPES].filter(
+      (type) => !VALID_BLOCK_TYPES.has(type)
+    );
+    expect(unknown).toEqual([]);
+  });
+
+  it('offers no conversion at all from a source-excluded type', () => {
+    const offered = SOURCE_EXCLUDED_BLOCK_TYPES.filter((type) => getAvailableConversions(type).length > 0);
+    expect(offered).toEqual([]);
+  });
+
+  it('offers conversions from every type that is not source-excluded', () => {
+    const silent = ALL_BLOCK_TYPES.filter(
+      (type) => !SOURCE_EXCLUDED_BLOCK_TYPES.includes(type) && getAvailableConversions(type).length === 0
+    );
+    expect(silent).toEqual([]);
+  });
+
+  it('never offers a target-excluded type as a target', () => {
+    const offered = ALL_BLOCK_TYPES.flatMap((source) =>
+      getAvailableConversions(source).filter((target) => TARGET_EXCLUDED_BLOCK_TYPES.includes(target))
+    );
+    expect(offered).toEqual([]);
+  });
+
+  it('excludes collapsible, assistant and snippet-ref in both directions', () => {
+    expect(BOTH_WAYS_EXCLUDED.filter((type) => !SOURCE_EXCLUDED_BLOCK_TYPES.includes(type))).toEqual([]);
+    expect(BOTH_WAYS_EXCLUDED.filter((type) => !TARGET_EXCLUDED_BLOCK_TYPES.includes(type))).toEqual([]);
+  });
+
+  it('keeps html a valid target even though the palette excludes it', () => {
+    expect(TARGET_EXCLUDED_BLOCK_TYPES).not.toContain('html');
+  });
+});
 
 describe('getAvailableConversions', () => {
   describe('container types', () => {
@@ -15,6 +69,10 @@ describe('getAvailableConversions', () => {
 
     it('should return empty array for conditional type', () => {
       expect(getAvailableConversions('conditional')).toEqual([]);
+    });
+
+    it('should return empty array for grot-guide type', () => {
+      expect(getAvailableConversions('grot-guide')).toEqual([]);
     });
   });
 
@@ -40,12 +98,15 @@ describe('getAvailableConversions', () => {
       expect(result).toContain('input');
     });
 
-    it('should return 12 options for any non-container type', () => {
-      // 13 non-container types minus 1 (the source type) = 12
-      expect(getAvailableConversions('markdown')).toHaveLength(12);
-      expect(getAvailableConversions('html')).toHaveLength(12);
-      expect(getAvailableConversions('quiz')).toHaveLength(12);
-      expect(getAvailableConversions('interactive')).toHaveLength(12);
+    it('should offer every non-excluded target except the source, for every eligible source', () => {
+      const eligibleSources = ALL_BLOCK_TYPES.filter((type) => !SOURCE_EXCLUDED_BLOCK_TYPES.includes(type));
+
+      for (const source of eligibleSources) {
+        const expected = ALL_BLOCK_TYPES.filter(
+          (target) => target !== source && !TARGET_EXCLUDED_BLOCK_TYPES.includes(target)
+        );
+        expect([...getAvailableConversions(source)].sort()).toEqual([...expected].sort());
+      }
     });
   });
 });
@@ -167,25 +228,36 @@ describe('convertBlockType', () => {
     });
   });
 
-  describe('container block restrictions', () => {
-    it('should throw when trying to convert from section', () => {
-      const source: JsonBlock = { type: 'section', blocks: [] };
-      expect(() => convertBlockType(source, 'markdown')).toThrow(/container blocks/i);
+  describe('excluded type restrictions', () => {
+    const markdown: JsonBlock = { type: 'markdown', content: 'hello' };
+
+    const excludedSources: Array<[BlockType, JsonBlock]> = [
+      ['section', { type: 'section', blocks: [] }],
+      ['conditional', { type: 'conditional', conditions: ['test'], whenTrue: [], whenFalse: [] }],
+      [
+        'grot-guide',
+        {
+          type: 'grot-guide',
+          welcome: { title: 'W', body: 'B', ctas: [{ text: 'Start', screenId: 'r' }] },
+          screens: [{ type: 'result', id: 'r', title: 'T', body: 'B' }],
+        },
+      ],
+      ['collapsible', { type: 'collapsible', title: 'T', blocks: [] }],
+      ['assistant', { type: 'assistant', blocks: [] }],
+      ['snippet-ref', { type: 'snippet-ref', snippetId: 'some-snippet' }],
+    ];
+
+    it.each(excludedSources)('should throw when converting from %s, naming the reason', (sourceType, source) => {
+      expect(() => convertBlockType(source, 'markdown')).toThrow(new RegExp(`Cannot convert from a ${sourceType}`));
     });
 
-    it('should throw when trying to convert from conditional', () => {
-      const source: JsonBlock = { type: 'conditional', conditions: ['test'], whenTrue: [], whenFalse: [] };
-      expect(() => convertBlockType(source, 'markdown')).toThrow(/container blocks/i);
+    it('covers every source-excluded type', () => {
+      const covered = excludedSources.map(([type]) => type);
+      expect([...SOURCE_EXCLUDED_BLOCK_TYPES].sort()).toEqual([...covered].sort());
     });
 
-    it('should throw when trying to convert to section', () => {
-      const source: JsonBlock = { type: 'markdown', content: 'hello' };
-      expect(() => convertBlockType(source, 'section')).toThrow(/container blocks/i);
-    });
-
-    it('should throw when trying to convert to conditional', () => {
-      const source: JsonBlock = { type: 'markdown', content: 'hello' };
-      expect(() => convertBlockType(source, 'conditional')).toThrow(/container blocks/i);
+    it.each([...TARGET_EXCLUDED_BLOCK_TYPES])('should throw when converting to %s, naming the reason', (targetType) => {
+      expect(() => convertBlockType(markdown, targetType)).toThrow(new RegExp(`Cannot convert to a ${targetType}`));
     });
   });
 
@@ -362,21 +434,64 @@ describe('convertBlockType', () => {
   });
 
   describe('schema validation', () => {
-    it('should produce valid blocks that pass schema validation for all types', () => {
-      const source: JsonBlock = { type: 'markdown', content: 'Test content' };
+    let consoleErrorSpy: jest.SpyInstance;
 
-      // All conversions should produce valid blocks (image/video use placeholder URLs)
-      expect(() => convertBlockType(source, 'html')).not.toThrow();
-      expect(() => convertBlockType(source, 'interactive')).not.toThrow();
-      expect(() => convertBlockType(source, 'multistep')).not.toThrow();
-      expect(() => convertBlockType(source, 'guided')).not.toThrow();
-      expect(() => convertBlockType(source, 'quiz')).not.toThrow();
-      expect(() => convertBlockType(source, 'input')).not.toThrow();
-      expect(() => convertBlockType(source, 'image')).not.toThrow();
-      expect(() => convertBlockType(source, 'video')).not.toThrow();
-      expect(() => convertBlockType(source, 'terminal')).not.toThrow();
-      expect(() => convertBlockType(source, 'terminal-connect')).not.toThrow();
-      expect(() => convertBlockType(source, 'code-block')).not.toThrow();
+    beforeEach(() => {
+      consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleErrorSpy.mockRestore();
+    });
+
+    const SAMPLE_BLOCKS = {
+      markdown: { type: 'markdown', content: 'Sample content' },
+      html: { type: 'html', content: '<p>Sample content</p>' },
+      image: { type: 'image', src: 'https://example.com/i.png', alt: 'a' },
+      video: { type: 'video', src: 'https://example.com/v.mp4' },
+      interactive: { type: 'interactive', action: 'noop', content: 'Sample content' },
+      multistep: { type: 'multistep', content: 'Sample content', steps: [{ action: 'noop' }] },
+      guided: { type: 'guided', content: 'Sample content', steps: [{ action: 'noop' }] },
+      quiz: { type: 'quiz', question: 'Sample content', choices: [{ id: 'a', text: 'A', correct: true }] },
+      input: { type: 'input', prompt: 'Sample content', inputType: 'text', variableName: 'v' },
+      terminal: { type: 'terminal', content: 'Sample content', command: 'echo hi' },
+      'terminal-connect': { type: 'terminal-connect', content: 'Sample content' },
+      challenge: { type: 'challenge', title: 'T', brief: 'Sample content', successCriteria: 'coda-exit-zero:true' },
+      'code-block': { type: 'code-block', reftarget: "div[data-testid='x']", code: 'x', content: 'Sample content' },
+    } satisfies Partial<Record<BlockType, JsonBlock>>;
+
+    const sampleEntries = Object.entries(SAMPLE_BLOCKS) as Array<[BlockType, JsonBlock]>;
+
+    /**
+     * `image` and `video` have no content field, so a target whose required text
+     * field has no default gets nothing to satisfy it and the conversion throws.
+     * That is https://github.com/grafana/grafana-pathfinder-app/issues/1575, pinned
+     * here rather than fixed, so the fix has to move this list deliberately.
+     */
+    const CONTENTLESS_SOURCE_FAILURES: Partial<Record<BlockType, readonly BlockType[]>> = {
+      image: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
+      video: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
+    };
+
+    it('samples every convertible source type', () => {
+      const missing = ALL_BLOCK_TYPES.filter(
+        (type) => !SOURCE_EXCLUDED_BLOCK_TYPES.includes(type) && !sampleEntries.some(([sampled]) => sampled === type)
+      );
+      expect(missing).toEqual([]);
+    });
+
+    it.each(sampleEntries)('should convert %s to every available target', (sourceType, source) => {
+      const expectedFailures = CONTENTLESS_SOURCE_FAILURES[sourceType] ?? [];
+      const targets = getAvailableConversions(sourceType);
+      expect(targets.length).toBeGreaterThan(0);
+
+      for (const target of targets) {
+        if (expectedFailures.includes(target)) {
+          expect(() => convertBlockType(source, target)).toThrow(/failed validation/);
+        } else {
+          expect(convertBlockType(source, target).type).toBe(target);
+        }
+      }
     });
 
     it('should convert image to terminal-connect without throwing (regression #619)', () => {
