@@ -838,7 +838,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         {(uiState === STEP_STATES.REQUIREMENTS_UNMET || (uiState === 'checking' && checker.explanation)) &&
           checker.explanation && (
             <div className={`interactive-guided-requirements${checker.isChecking ? ' rechecking' : ''}`}>
-              <div className="interactive-guided-requirement-box">
+              <div className="interactive-feedback-box interactive-feedback-box--neutral interactive-requirement-box interactive-guided-requirement-box">
                 <span className="interactive-guided-requirement-icon">👣</span>
                 <span id={`requirement-explanation-${renderedStepId}`} className="interactive-guided-requirement-text">
                   {checker.explanation}
@@ -946,7 +946,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         ═══════════════════════════════════════════════════════════════════ */}
         {uiState === 'error' && (
           <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
-            <div className="interactive-guided-error-box">
+            <div className="interactive-feedback-box interactive-feedback-box--warning interactive-guided-error-box">
               <span className="interactive-guided-error-icon">✕</span>
               <div className="interactive-guided-error-content">
                 <span className="interactive-guided-error-title">Step {failedStepIndex + 1} didn&apos;t complete</span>
@@ -1003,7 +1003,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         ═══════════════════════════════════════════════════════════════════ */}
         {uiState === 'cancelled' && (
           <div className="interactive-guided-cancelled" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
-            <div className="interactive-guided-cancelled-box">
+            <div className="interactive-feedback-box interactive-feedback-box--muted interactive-guided-cancelled-box">
               <span className="interactive-guided-cancelled-text">Tour cancelled</span>
             </div>
             <div className="interactive-guided-cancelled-actions">

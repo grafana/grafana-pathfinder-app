@@ -1143,7 +1143,7 @@ export const InteractiveStep = forwardRef<
         {/* Post-verify failure message */}
         {!isCompletedWithObjectives && !checker.isChecking && postVerifyError && (
           <div
-            className="interactive-step-execution-error"
+            className="interactive-feedback-box interactive-feedback-box--warning interactive-step-execution-error"
             data-testid={testIds.interactive.errorMessage(renderedStepId)}
           >
             {postVerifyError}
@@ -1152,7 +1152,10 @@ export const InteractiveStep = forwardRef<
 
         {/* Lazy scroll failure message with retry */}
         {!isCompletedWithObjectives && lazyScrollError && (
-          <div className="interactive-step-lazy-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
+          <div
+            className="interactive-feedback-box interactive-feedback-box--neutral interactive-step-lazy-error"
+            data-testid={testIds.interactive.errorMessage(renderedStepId)}
+          >
             <span className="interactive-lazy-error-text">{lazyScrollError}</span>
             <button
               className="interactive-lazy-retry-btn"
@@ -1184,7 +1187,7 @@ export const InteractiveStep = forwardRef<
             {/* Checking indicator - shown while debouncing/validating */}
             {formValidation.isChecking && (
               <div
-                className="interactive-step-form-checking"
+                className="interactive-feedback-box interactive-feedback-box--neutral interactive-step-form-checking"
                 data-testid={testIds.interactive.formChecking(renderedStepId)}
               >
                 <span className="interactive-form-spinner">⟳</span>
@@ -1195,7 +1198,7 @@ export const InteractiveStep = forwardRef<
             {/* Validation warning - shown when regex pattern doesn't match */}
             {formValidation.isInvalid && formValidation.hint && (
               <div
-                className="interactive-step-form-hint-warning"
+                className="interactive-feedback-box interactive-feedback-box--warning interactive-step-form-hint-warning"
                 data-testid={testIds.interactive.formHintWarning(renderedStepId)}
               >
                 <span className="interactive-form-warning-icon">⚠</span>
@@ -1212,7 +1215,7 @@ export const InteractiveStep = forwardRef<
           !isCompletedWithObjectives &&
           explanationText && (
             <div
-              className={`interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
+              className={`interactive-feedback-box interactive-feedback-box--neutral interactive-requirement-box interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
               data-testid={testIds.interactive.requirementCheck(renderedStepId)}
             >
               <span id={`requirement-explanation-${renderedStepId}`}>{explanationText}</span>

@@ -74,6 +74,7 @@ describe('StorageKeys — stable string contract', () => {
       DEVTOOLS_URL_TESTER_URL: 'pathfinder-url-tester-url',
       DEVTOOLS_PR_TESTER_EXPANDED: 'pathfinder-devtools-pr-tester-expanded',
       DEVTOOLS_URL_TESTER_EXPANDED: 'pathfinder-devtools-url-tester-expanded',
+      DEVTOOLS_STYLE_VALIDATION_EXPANDED: 'pathfinder-devtools-style-validation-expanded',
     });
   });
 

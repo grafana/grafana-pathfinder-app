@@ -1309,7 +1309,7 @@ export function InteractiveSection({
       {/* Section requirements status banner */}
       {!isCollapsed && requirements && !sectionRequirementsStatus.passed && (
         <div
-          className="interactive-section-requirements-banner"
+          className="interactive-feedback-box interactive-feedback-box--neutral interactive-requirement-box interactive-section-requirements-banner"
           data-testid={testIds.interactive.sectionRequirementsBanner(sectionId)}
         >
           <div className="interactive-section-requirements-content">
@@ -1337,7 +1337,10 @@ export function InteractiveSection({
           prompt is up, so users who scroll past the top banner still see why
           steps are inactive. */}
       {!isCollapsed && isAlignmentPaused && alignmentStartingLocation && (
-        <div className="interactive-section-alignment-banner" data-testid={testIds.alignmentPrompt.sectionHint}>
+        <div
+          className="interactive-feedback-box interactive-feedback-box--info interactive-section-alignment-banner"
+          data-testid={testIds.alignmentPrompt.sectionHint}
+        >
           <span className="interactive-section-alignment-message">
             Steps are paused.{' '}
             <button
