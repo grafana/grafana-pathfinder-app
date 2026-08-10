@@ -603,6 +603,16 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     onSave: handlePersistenceSave,
   });
 
+  // The strip outlives this component, so hand it back to the persisted
+  // fallback on unmount — otherwise it keeps a frozen badge until a remount.
+  // Flush the draft first
+  useEffect(() => {
+    return () => {
+      persistence.flush();
+      resetEditorChromeStatus();
+    };
+  }, [persistence.flush]);
+
   // Guide operations - extracted hook for copy/download/new/import/template
   const guideOps = useGuideOperations({
     editor,
@@ -666,16 +676,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     }
     publishEditorChromeStatus({ publishedStatus, hasUnsyncedChanges });
   }, [publishedStatus, hasUnsyncedChanges, isChromeReady]);
-
-  // The strip outlives this component, so hand it back to the persisted
-  // fallback on unmount — otherwise it keeps a frozen badge until a remount.
-  // Declared after `useBlockPersistence` so React runs that hook's draft flush
-  // first and subscribers wake to the newest draft, not the pre-edit one.
-  useEffect(() => {
-    return () => {
-      resetEditorChromeStatus();
-    };
-  }, []);
 
   const handleLoadGuideFromBackend = useCallback(
     (guide: JsonGuide, resourceName: string) => {

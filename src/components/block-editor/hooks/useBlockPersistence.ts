@@ -45,6 +45,8 @@ export interface UseBlockPersistenceOptions {
 export interface UseBlockPersistenceReturn {
   /** Clear saved guide from localStorage */
   clear: () => void;
+  /** Write any pending debounced draft immediately (e.g. before chrome reset on unmount) */
+  flush: () => void;
 }
 
 /**
@@ -237,5 +239,6 @@ export function useBlockPersistence({
 
   return {
     clear,
+    flush,
   };
 }
