@@ -34,13 +34,19 @@ function installResizeObserver() {
 }
 
 /** `mounted: false` models a list still hidden behind a loading skeleton. */
-function Probe({ mounted = true }: { mounted?: boolean }) {
+function Probe({ mounted = true, items = 0 }: { mounted?: boolean; items?: number }) {
   const [ref, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
   return React.createElement(
     'div',
     { 'data-testid': 'probe' },
     String(hasOverflow),
-    mounted ? React.createElement('div', { ref, 'data-testid': 'region' }) : null
+    mounted
+      ? React.createElement(
+          'div',
+          { ref, 'data-testid': 'region' },
+          Array.from({ length: items }, (_, i) => React.createElement('div', { key: i }, `item ${i}`))
+        )
+      : null
   );
 }
 
@@ -185,6 +191,24 @@ describe('useVerticalOverflow', () => {
     act(() => {
       screen.getByTestId('region').dispatchEvent(new Event('scroll'));
     });
+
+    expect(overflowState()).toBe('true');
+  });
+
+  it('re-measures when children are added while the container stays mounted', async () => {
+    installResizeObserver();
+    scrollHeight = 100;
+    clientHeight = 400;
+
+    // A badge earned (or Discover more items arriving) appends children without
+    // resizing the container, so only the MutationObserver notices.
+    const { rerender } = render(React.createElement(Probe, { items: 1 }));
+    expect(overflowState()).toBe('false');
+
+    scrollHeight = 620;
+    rerender(React.createElement(Probe, { items: 2 }));
+    // MutationObserver callbacks are delivered as a microtask.
+    await act(async () => {});
 
     expect(overflowState()).toBe('true');
   });

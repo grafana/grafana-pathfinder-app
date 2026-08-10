@@ -45,6 +45,7 @@ jest.mock('@grafana/ui', () => ({
 let mockPaths: any[] = [];
 let mockGuideMetadata: Record<string, any> = {};
 let mockCompletedGuides: string[] = [];
+let mockBadges: any[] = [];
 const mockGetPathGuides = jest.fn();
 const mockGetPathProgress = jest.fn();
 const mockIsPathCompleted = jest.fn();
@@ -67,7 +68,7 @@ jest.mock('../../learning-paths', () => ({
   },
   useLearningPaths: () => ({
     paths: mockPaths,
-    badgesWithStatus: [],
+    badgesWithStatus: mockBadges,
     progress: { completedGuides: mockCompletedGuides, earnedBadges: [], streakDays: 0 },
     getPathGuides: mockGetPathGuides,
     getPathProgress: mockGetPathProgress,
@@ -140,6 +141,7 @@ beforeEach(() => {
   ];
   mockGuideMetadata = {};
   mockCompletedGuides = ['guide-2'];
+  mockBadges = [];
   mockDiscoverItems = [];
   mockDiscoverExcludeTitles = undefined;
   mockGetPathGuides.mockImplementation((id: string) =>
@@ -299,47 +301,65 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it('keeps the badge overlay outside the container-query context', () => {
-    const { container } = render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    mockBadges = [
+      {
+        id: 'first-steps',
+        title: 'First steps',
+        description: 'Complete a guide',
+        earnedAt: 1,
+        trigger: { type: 'guide-completed' },
+      },
+    ];
 
-    // `container-type` implies layout containment, which makes the element a
-    // containing block for `position: fixed` descendants. The badge detail
-    // overlay must not sit inside it, or it is trapped in the panel instead of
-    // covering the viewport.
+    const { container } = render(<MyLearningTab onOpenGuide={jest.fn()} />);
     const queryContext = container.querySelector('.columnsContainer');
     expect(queryContext).not.toBeNull();
     expect(queryContext).toContainElement(screen.getByTestId(testIds.learningPaths.badgesSection));
-    expect(queryContext).not.toContainElement(screen.getByTestId(testIds.learningPaths.discoverMoreSection));
+
+    // Open the real overlay rather than asserting on layout alone: `container-type`
+    // implies layout containment, which makes the element a containing block for
+    // `position: fixed` descendants, so an overlay nested inside would be trapped
+    // in the panel instead of covering the viewport.
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.badgeItem('first-steps')));
+
+    const overlay = container.querySelector('.overlay');
+    expect(overlay).not.toBeNull();
+    expect(overlay).toHaveTextContent('First steps');
+    expect(queryContext).not.toContainElement(overlay as HTMLElement);
   });
 
   it('toggles a My paths card from the keyboard without firing its actions', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
 
     // 'path-new' is collapsed by default (only the first in-progress path auto-expands).
-    const header = screen.getByTestId(testIds.learningPaths.card('path-new')).firstElementChild!;
     const chevron = screen.getByTestId(testIds.learningPaths.expandButton('path-new'));
-    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(chevron).toHaveAttribute('aria-expanded', 'false');
 
     // Enter on the chevron used to toggle twice — once from the keydown bubbling
     // to the header, once from the button's activation click — cancelling out.
     fireEvent.keyDown(chevron, { key: 'Enter' });
     fireEvent.click(chevron);
-    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(chevron).toHaveAttribute('aria-expanded', 'true');
 
     // Enter on Continue must launch only, never also collapse the card.
     fireEvent.keyDown(screen.getByTestId(testIds.learningPaths.continueButton('path-new')), { key: 'Enter' });
-    expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(chevron).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('expands a My paths card on Enter and Space from the header itself', () => {
+  it('exposes the My paths card actions to assistive tech', () => {
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
 
-    const header = screen.getByTestId(testIds.learningPaths.card('path-new')).firstElementChild!;
+    // `role="button"` on the header would be Children Presentational, hiding the
+    // nested Continue and chevron controls.
+    expect(card.querySelector('[role="button"]')).toBeNull();
 
-    fireEvent.keyDown(header, { key: 'Enter' });
-    expect(header).toHaveAttribute('aria-expanded', 'true');
+    const chevron = screen.getByTestId(testIds.learningPaths.expandButton('path-new'));
+    const region = card.querySelector(`#${CSS.escape(chevron.getAttribute('aria-controls')!)}`);
+    expect(region).toHaveAttribute('aria-hidden', 'true');
 
-    fireEvent.keyDown(header, { key: ' ' });
-    expect(header).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(chevron);
+    expect(region).toHaveAttribute('aria-hidden', 'false');
   });
 
   it('toggles a Discover more card from the keyboard', () => {
