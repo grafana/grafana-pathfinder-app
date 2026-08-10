@@ -242,10 +242,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
   const editor = useBlockEditor({ initialGuide, onChange });
   const { state } = editor;
   const hasLoadedFromStorage = useRef(false);
-  // Tab chrome (title + status badge) renders outside this component, so it must
-  // not publish this render's default guide over a stored draft. Flipped by the
-  // restore below, or already open when there is nothing to restore.
-  const [isChromeReady, setIsChromeReady] = useState(() => Boolean(initialGuide) || !readStoredEditorGuide());
+  // Working content must not publish (tab chrome) or auto-save until any stored
+  // draft has been restored — otherwise the default guide can overwrite it.
+  // Flipped by the restore below, or already open when there is nothing to restore.
+  const [isContentReady, setIsContentReady] = useState(() => Boolean(initialGuide) || !readStoredEditorGuide());
 
   // Block editor context - replaces window globals for section/conditional editing
   const { sectionContext, conditionalContext, setGuideLintResult } = useBlockEditorContext();
@@ -262,11 +262,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
 
   // Keep the owning editor tab's title in sync with the working guide.
   useEffect(() => {
-    if (!isChromeReady) {
+    if (!isContentReady) {
       return;
     }
     onGuideTitleChange?.(state.guide.title);
-  }, [state.guide.title, onGuideTitleChange, isChromeReady]);
+  }, [state.guide.title, onGuideTitleChange, isContentReady]);
 
   // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
   const modals = useModalManager();
@@ -582,7 +582,8 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     viewMode: state.viewMode,
     jsonModeState: jsonMode.jsonModeState,
     autoSave: true,
-    autoSavePaused: isBlockFormOpen,
+    // Pause until restore as to not auto-save blank or default guide
+    autoSavePaused: isBlockFormOpen || !isContentReady,
     onLoad: (savedGuide, savedBlockIds, savedViewMode, savedJsonModeState) => {
       try {
         if (!hasLoadedFromStorage.current && !initialGuide) {
@@ -595,9 +596,9 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         }
       } finally {
         // A stored guide missing its `blocks` array throws in `loadGuide`, and
-        // persistence swallows that. Unlock chrome regardless, or the tab title
+        // persistence swallows that. Unlock content regardless, or the tab title
         // and badge stay frozen for the rest of the session.
-        setIsChromeReady(true);
+        setIsContentReady(true);
       }
     },
     onSave: handlePersistenceSave,
@@ -611,7 +612,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
       persistence.flush();
       resetEditorChromeStatus();
     };
-  }, [persistence.flush]);
+  }, [persistence]);
 
   // Guide operations - extracted hook for copy/download/new/import/template
   const guideOps = useGuideOperations({
@@ -671,11 +672,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
   // Publish status to the tab strip, which renders outside this component and
   // has no other view of the save/publish lifecycle.
   useEffect(() => {
-    if (!isChromeReady) {
+    if (!isContentReady) {
       return;
     }
     publishEditorChromeStatus({ publishedStatus, hasUnsyncedChanges });
-  }, [publishedStatus, hasUnsyncedChanges, isChromeReady]);
+  }, [publishedStatus, hasUnsyncedChanges, isContentReady]);
 
   const handleLoadGuideFromBackend = useCallback(
     (guide: JsonGuide, resourceName: string) => {

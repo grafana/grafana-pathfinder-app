@@ -5,7 +5,7 @@
  * Guide content writes are debounced; unmount flushes anything still pending.
  */
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { BLOCK_EDITOR_STORAGE_KEY } from '../constants';
 import type { JsonGuide, JsonModeState, ViewMode } from '../types';
 import { logger } from '../../../lib/logging';
@@ -237,8 +237,11 @@ export function useBlockPersistence({
     save();
   }, [viewMode, jsonModeState, autoSave, autoSavePaused, save]);
 
-  return {
-    clear,
-    flush,
-  };
+  return useMemo(
+    () => ({
+      clear,
+      flush,
+    }),
+    [clear, flush]
+  );
 }
