@@ -281,6 +281,14 @@ describe('CombinedLearningJourneyPanel.closeTab — focus adjacency', () => {
     expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools', 'editor'], activeTabId: 'devtools' });
   });
 
+  it('inherits the previous strip tab when the last guide closes and Dev Tools remains', () => {
+    const panel = panelWith([RECOMMENDATIONS, DEVTOOLS, tab('guide-1', 'learning-journey')], 'guide-1');
+
+    panel.closeTab('guide-1');
+
+    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools'], activeTabId: 'devtools' });
+  });
+
   it('falls back to recommendations when the last strip tab closes', () => {
     const panel = panelWith([RECOMMENDATIONS, tab('guide-1', 'learning-journey')], 'guide-1');
 

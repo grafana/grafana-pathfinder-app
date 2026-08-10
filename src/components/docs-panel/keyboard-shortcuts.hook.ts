@@ -15,9 +15,6 @@ interface UseKeyboardShortcutsProps {
   };
 }
 
-/**
- * Panel keyboard shortcuts. Ctrl/Cmd+Tab cycles every entry in `tabs`.
- */
 export function useKeyboardShortcuts({
   tabs,
   activeTabId,
@@ -44,7 +41,7 @@ export function useKeyboardShortcuts({
         const currentIndex = tabs.findIndex((tab) => tab.id === activeTabId);
         const nextIndex = event.shiftKey
           ? ((currentIndex === -1 ? 0 : currentIndex) - 1 + tabs.length) % tabs.length
-          : ((currentIndex === -1 ? -1 : currentIndex) + 1) % tabs.length;
+          : (currentIndex + 1) % tabs.length;
         model.setActiveTab(tabs[nextIndex]!.id);
       }
 

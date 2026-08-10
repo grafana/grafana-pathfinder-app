@@ -129,6 +129,43 @@ describe('useKeyboardShortcuts', () => {
     expect(mockModel.setActiveTab).toHaveBeenCalledWith('tab1');
   });
 
+  it('should leave Dev Tools via Ctrl+Tab onto a focusable tab', () => {
+    const tabsWithDevTools = [
+      {
+        id: 'recommendations',
+        type: 'recommendations',
+        title: 'Recommendations',
+        baseUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+      {
+        id: 'devtools',
+        type: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+      },
+      { id: 'tab1', type: 'docs', title: 'Tab 1', baseUrl: '', content: null, isLoading: false, error: null },
+    ] as LearningJourneyTab[];
+
+    renderHook(() =>
+      useKeyboardShortcuts({
+        tabs: tabsWithDevTools,
+        activeTabId: 'devtools',
+        activeTab: tabsWithDevTools[1]!,
+        isRecommendationsTab: false,
+        model: mockModel,
+      })
+    );
+
+    fireEvent.keyDown(document, { key: 'Tab', ctrlKey: true });
+    expect(mockModel.setActiveTab).toHaveBeenCalledWith('tab1');
+  });
+
   it('should navigate milestones with Alt+Arrow keys when not in recommendations', () => {
     renderHook(() =>
       useKeyboardShortcuts({
