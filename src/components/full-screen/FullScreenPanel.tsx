@@ -8,7 +8,7 @@ import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { consumePendingGuideOnMount, initializePanelTabsOnMount } from '../docs-panel/pendingGuideRouter';
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
-import { isNonContentTab } from '../docs-panel/utils';
+import { getGuideStripTabs, isNonContentTab } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
@@ -243,7 +243,12 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     });
     // Flush before the mode flip: the sidebar force-restores from tabStorage
     // when it takes the workspace back, so anything unsaved here is lost.
-    await panel.saveTabsToStorage();
+    // Skip when this model holds no strip tabs — a failed restore looks
+    // identical to a deliberate empty strip, and flushing would overwrite the
+    // real workspace. Deliberate empties are already persisted by `closeTab`.
+    if (getGuideStripTabs(panel.state.tabs).length > 0) {
+      await panel.saveTabsToStorage();
+    }
     panelModeManager.setMode('sidebar');
     sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
     sidebarState.openSidebar('Interactive learning');
