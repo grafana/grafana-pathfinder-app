@@ -1,6 +1,7 @@
 import { prepareGuideLaunch } from './prepare-guide-launch';
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retrieval';
+import { pushFaroLog } from '../../../lib/telemetry/bridge';
 import { inlineSnippetRefsInGuideWithStatus } from '../../../snippet-engine';
 // The real inliner, reached past the barrel mock: it walks nested `blocks`, so
 // structurally malformed guides fail here exactly as they do in production.
@@ -22,10 +23,18 @@ jest.mock('../../../snippet-engine', () => ({
   inlineSnippetRefsInGuideWithStatus: jest.fn(),
 }));
 
+jest.mock('../../../lib/telemetry/bridge', () => ({
+  pushFaroError: jest.fn(),
+  pushFaroLog: jest.fn(),
+  pushFaroUserAction: jest.fn(),
+  registerTelemetryBridge: jest.fn(),
+}));
+
 const mockLoad = loadDocsTabContentResult as jest.Mock;
 const mockIsPackage = isPackageContentUrl as jest.Mock;
 const mockFetchPackageInfo = fetchPackageInfoFromUrl as jest.Mock;
 const mockInline = inlineSnippetRefsInGuideWithStatus as jest.Mock;
+const mockPushFaroLog = pushFaroLog as jest.Mock;
 
 const neverResolvingResolver: SnippetResolver = {
   resolve: jest.fn(async (id: string) => ({
@@ -148,6 +157,54 @@ describe('prepareGuideLaunch', () => {
 
       expect(result.ok).toBe(false);
       expect(mockInline).not.toHaveBeenCalled();
+    });
+
+    it('keeps URL secrets and guide-authored values out of logger and Faro context', async () => {
+      const contentUrl = 'https://grafana.com/docs/x?token=url-secret#fragment-secret';
+      const invalidRequirement = 'not-a-requirement-authored-secret';
+      fetchResolves(
+        {
+          id: 'g',
+          title: 'g',
+          blocks: [
+            {
+              type: 'interactive',
+              action: 'button',
+              reftarget: 'button[type="submit"]',
+              content: 'go',
+              requirements: [invalidRequirement],
+            },
+          ],
+        },
+        contentUrl
+      );
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+
+      try {
+        const result = await prepareGuideLaunch(contentUrl, { title: 'X', source: 'home_page' });
+
+        expect(result.ok).toBe(false);
+        expect(consoleError).toHaveBeenCalledWith('[PrepareGuideLaunch] Guide content failed schema validation', {
+          content_url: 'grafana.com/docs/x',
+          validation_error_count: 1,
+          validation_error_codes: ['custom'],
+        });
+        expect(mockPushFaroLog).toHaveBeenCalledWith(
+          'error',
+          '[PrepareGuideLaunch] Guide content failed schema validation',
+          {
+            content_url: 'grafana.com/docs/x',
+            validation_error_count: '1',
+            validation_error_codes: '["custom"]',
+          }
+        );
+        const emittedContext = JSON.stringify({ console: consoleError.mock.calls, faro: mockPushFaroLog.mock.calls });
+        expect(emittedContext).not.toContain('url-secret');
+        expect(emittedContext).not.toContain('fragment-secret');
+        expect(emittedContext).not.toContain(invalidRequirement);
+      } finally {
+        consoleError.mockRestore();
+      }
     });
 
     it('launches an alias-carrying guide, so camelCase authoring still normalizes', async () => {

@@ -25,12 +25,13 @@
 
 import { fetchPackageInfoFromUrl, isPackageContentUrl } from '../../../docs-retrieval';
 import { logger } from '../../../lib/logging';
+import { normalizeTelemetryUrl } from '../../../lib/telemetry';
 import { inlineSnippetRefsInGuideWithStatus } from '../../../snippet-engine';
 import type { LaunchSource } from '../../../recovery';
 import type { PackageOpenInfo } from '../../../types/content-panel.types';
 import type { RawContent } from '../../../types/content.types';
 import type { JsonGuide } from '../../../types/json-guide.types';
-import { formatErrorsAsStrings, validateGuide } from '../../../validation';
+import { validateGuide } from '../../../validation';
 
 import { loadDocsTabContentResult } from './docs-tab-loader';
 import { requiresGrafanaUi } from './requires-grafana-ui';
@@ -97,8 +98,9 @@ export async function prepareGuideLaunch(
   const validation = validateGuide(guide);
   if (!validation.isValid) {
     logger.error('[PrepareGuideLaunch] Guide content failed schema validation', {
-      url,
-      errors: formatErrorsAsStrings(validation.errors).join('; '),
+      content_url: normalizeTelemetryUrl(url),
+      validation_error_count: validation.errors.length,
+      validation_error_codes: [...new Set(validation.errors.map((error) => error.code))].sort(),
     });
     return { ok: false, error: 'Guide content failed schema validation' };
   }
