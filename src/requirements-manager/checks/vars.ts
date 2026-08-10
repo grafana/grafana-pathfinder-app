@@ -1,29 +1,15 @@
 /**
  * Guide-response variable checks: `var-<name>:<value>`.
  *
- * Stored responses live in `guideResponseStorage` (cross-device synced).
+ * Stored responses live in `guideResponseStorage` (cross-device synced) and are
+ * scoped to the guide identity owned by `global-state/guide-identity`, so one
+ * guide's answers cannot satisfy another guide's requirements.
  * Supports wildcard `*`, boolean `true`/`false`, and exact string match.
  */
 
+import { getCurrentGuideId } from '../../global-state/guide-identity';
 import { guideResponseStorage } from '../../lib/user-storage';
 import type { CheckResultError } from '../../types/requirements.types';
-
-/**
- * Get the current guide ID from the global context set by ContentRenderer.
- * Falls back to 'default' if not available.
- */
-function getCurrentGuideId(): string {
-  try {
-    // Use the guide ID set by ContentRenderer
-    const guideId = (window as any).__DocsPluginGuideId;
-    if (guideId && typeof guideId === 'string') {
-      return guideId;
-    }
-    return 'default';
-  } catch {
-    return 'default';
-  }
-}
 
 export async function guideVariableCheck(check: string): Promise<CheckResultError> {
   try {
@@ -41,8 +27,6 @@ export async function guideVariableCheck(check: string): Promise<CheckResultErro
     const variableName = match[1]!;
     const expectedValue = match[2]!;
 
-    // Get current guide ID from URL or use default
-    // TODO: In a full implementation, pass guideId through context
     const guideId = getCurrentGuideId();
     const actualValue = await guideResponseStorage.getResponse(guideId, variableName);
 

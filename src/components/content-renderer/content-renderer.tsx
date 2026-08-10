@@ -56,6 +56,7 @@ import {
 } from '../../integrations/assistant-integration';
 import { substituteVariables } from '../../utils/variable-substitution';
 import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
+import { registerGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 
@@ -389,14 +390,11 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     }
   }, [content.url]);
 
-  // Expose guide ID globally for requirements checker to access
-  useEffect(() => {
-    try {
-      (window as any).__DocsPluginGuideId = guideId;
-    } catch {
-      // no-op
-    }
-  }, [guideId]);
+  // Publish the guide identity that `var-*` requirement checks resolve against.
+  // MUST be useLayoutEffect: a child step's mount-time check runs from its own
+  // useEffect, which fires before the parent's — a passive effect here lets the
+  // previous guide's identity satisfy this guide's requirements.
+  useLayoutEffect(() => registerGuideId(guideId), [guideId]);
 
   const journey = content.metadata.learningJourney;
   const beforeContent =
