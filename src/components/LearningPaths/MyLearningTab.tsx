@@ -19,6 +19,7 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { StorageEvents } from '../../lib/event-names';
 import {
   learningProgressStorage,
@@ -118,8 +119,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         } else {
           // The raw error is internal-shaped — keep it for the logs (Faro
           // bridge makes launch failures countable) and show a translated
-          // generic message.
-          logger.error('[MyLearning] Guide launch preparation failed', { url, error: result.error });
+          // generic message. Log context reaches Faro attributes verbatim, so
+          // the URL is normalized here: query and fragment can carry secrets.
+          logger.error('[MyLearning] Guide launch preparation failed', {
+            content_url: normalizeTelemetryUrl(url),
+            error: result.error,
+          });
           getAppEvents().publish({
             type: 'alert-error',
             payload: [

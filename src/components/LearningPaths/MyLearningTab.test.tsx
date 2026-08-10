@@ -15,10 +15,20 @@ import React from 'react';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
+import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { testIds } from '../../constants/testIds';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
+}));
+
+// Not mocking `lib/logging`: the assertion below is about what the real
+// logger-to-Faro bridge emits, so only the bridge sink is replaced.
+jest.mock('../../lib/telemetry/bridge', () => ({
+  pushFaroError: jest.fn(),
+  pushFaroLog: jest.fn(),
+  pushFaroUserAction: jest.fn(),
+  registerTelemetryBridge: jest.fn(),
 }));
 
 const publishMock = jest.fn();
@@ -88,6 +98,7 @@ jest.mock('../../lib/user-storage', () => ({
 jest.mock('../../global-state/completion-store', () => ({ evictAllContentCaches: jest.fn() }));
 
 const prepareMock = prepareGuideLaunch as jest.MockedFunction<typeof prepareGuideLaunch>;
+const pushFaroLogMock = pushFaroLog as jest.Mock;
 
 function deferred() {
   let resolve!: (r: PrepareGuideLaunchResult) => void;
@@ -199,6 +210,36 @@ describe('MyLearningTab launch flow', () => {
     // pending state is the failure this path exists to rule out.
     expect(continueButton).not.toBeDisabled();
     expect(continueButton).not.toHaveTextContent('Opening…');
+  });
+
+  it('keeps launch-URL secrets out of logger and Faro context on a failed prepare', async () => {
+    mockGetGuideUrlForPath.mockReturnValue(
+      'https://grafana.com/docs/learning-paths/path-1/guide-1/?token=url-secret#fragment-secret'
+    );
+    prepareMock.mockResolvedValue({ ok: false, error: 'Guide content failed schema validation' });
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+
+    try {
+      render(<MyLearningTab onOpenGuide={jest.fn()} />);
+      fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+
+      await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
+      const expectedContext = {
+        content_url: 'grafana.com/docs/learning-paths/path-1/guide-1/',
+        error: 'Guide content failed schema validation',
+      };
+      expect(consoleError).toHaveBeenCalledWith('[MyLearning] Guide launch preparation failed', expectedContext);
+      expect(pushFaroLogMock).toHaveBeenCalledWith(
+        'error',
+        '[MyLearning] Guide launch preparation failed',
+        expectedContext
+      );
+      const emittedContext = JSON.stringify({ console: consoleError.mock.calls, faro: pushFaroLogMock.mock.calls });
+      expect(emittedContext).not.toContain('url-secret');
+      expect(emittedContext).not.toContain('fragment-secret');
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it('keeps every not-yet-complete path in My Courses and only 100% in Completed', () => {
