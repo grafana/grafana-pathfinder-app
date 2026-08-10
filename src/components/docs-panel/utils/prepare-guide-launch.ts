@@ -63,8 +63,7 @@ export interface PreparedGuideLaunch {
 export type PrepareGuideLaunchErrorCode = 'fetch-failed' | 'unparseable' | 'schema-invalid';
 
 export type PrepareGuideLaunchResult =
-  | { ok: true; launch: PreparedGuideLaunch }
-  | { ok: false; error: string; errorCode: PrepareGuideLaunchErrorCode };
+  { ok: true; launch: PreparedGuideLaunch } | { ok: false; error: string; errorCode: PrepareGuideLaunchErrorCode };
 
 interface PrepareGuideLaunchContext {
   title: string;
