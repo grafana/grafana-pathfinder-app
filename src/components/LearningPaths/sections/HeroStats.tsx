@@ -14,12 +14,11 @@ import type { getMyLearningStyles } from '../MyLearningTab.styles';
 interface HeroStatsProps {
   guidesCompleted: number;
   badgesEarned: number;
-  totalBadges: number;
   streakDays: number;
   styles: ReturnType<typeof getMyLearningStyles>;
 }
 
-export function HeroStats({ guidesCompleted, badgesEarned, totalBadges, streakDays, styles }: HeroStatsProps) {
+export function HeroStats({ guidesCompleted, badgesEarned, streakDays, styles }: HeroStatsProps) {
   return (
     <div className={styles.heroSection}>
       <div className={styles.heroContent}>
@@ -35,9 +34,7 @@ export function HeroStats({ guidesCompleted, badgesEarned, totalBadges, streakDa
         </div>
         <div className={styles.statDivider} />
         <div className={styles.statItem}>
-          <div className={styles.statValue}>
-            {badgesEarned}/{totalBadges}
-          </div>
+          <div className={styles.statValueBadges}>{badgesEarned}</div>
           <div className={styles.statLabel}>{t('myLearning.badgesEarned', 'Badges earned')}</div>
         </div>
         <div className={styles.statDivider} />

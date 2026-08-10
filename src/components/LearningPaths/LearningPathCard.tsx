@@ -92,7 +92,17 @@ export function LearningPathCard({
         onClick={handleToggleExpand}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && handleToggleExpand()}
+        // Only the header's own keystrokes: a keydown bubbling up from Continue,
+        // Restart or the chevron would toggle here *and* fire that button's
+        // activation click, so Enter on the chevron cancelled itself out and the
+        // keyboard could never expand the card.
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) {
+            return;
+          }
+          e.preventDefault();
+          handleToggleExpand();
+        }}
         aria-expanded={isExpanded}
       >
         <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
