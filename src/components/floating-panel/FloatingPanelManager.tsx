@@ -2,10 +2,10 @@ import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRe
 import { ThemeContext } from '@grafana/data';
 import { config, locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
-import { consumePendingGuideOnMount } from '../docs-panel/pendingGuideRouter';
+import { consumePendingGuideOnMount, initializePanelTabsOnMount } from '../docs-panel/pendingGuideRouter';
 import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { hasOnlyNonContentTabs, isNonContentTab } from '../docs-panel/utils';
+import { isNonContentTab } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
@@ -119,6 +119,7 @@ function FloatingPanelInner() {
   // Track whether a guide open is in-flight (pending guide consumed or auto-launch received).
   // Prevents the fallback from firing before the guide has loaded.
   const guideOpenInFlightRef = useRef(false);
+  const initializationRef = useRef<Promise<boolean> | null>(null);
 
   // Fire panel-mounted event so auto-launch and MCP flows work
   useEffect(() => {
@@ -132,14 +133,6 @@ function FloatingPanelInner() {
 
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
     sidebarState.setIsSidebarMounted(true);
-
-    // Handoff from HomePanel's occupied-sidebar launch path (and any other
-    // setPendingGuide caller targeting the floating surface): consume the
-    // pending guide and mark the open in-flight BEFORE the restoration and
-    // empty-state-fallback effects below can run. Mirrors FullScreenPanel.
-    consumePendingGuideOnMount(panel, 'floating_panel_dock', () => {
-      guideOpenInFlightRef.current = true;
-    });
 
     return () => {
       document.removeEventListener('pathfinder-auto-launch-pending', handlePending);
@@ -175,15 +168,12 @@ function FloatingPanelInner() {
   const [restorationDone, setRestorationDone] = useState(false);
 
   useEffect(() => {
-    // Read live model state instead of closure'd `tabs`: the pending-guide
-    // consumption in the mount effect above mutates `panel.state.tabs`
-    // synchronously in the same commit, before this render's snapshot
-    // updates — restoring on top of the just-opened guide would await
-    // tabStorage and clobber it. Mirrors FullScreenPanel's gate.
-    // Only restore when no content tabs are open (editor chrome alone is OK).
-    const liveTabs = panel.state.tabs;
-    const restore = hasOnlyNonContentTabs(liveTabs) ? panel.restoreTabsAsync() : Promise.resolve();
-    restore.then(() => setRestorationDone(true));
+    // Restore the complete strip before applying the pending handoff — see
+    // `initializePanelTabsOnMount`. Mirrors FullScreenPanel.
+    initializationRef.current ??= initializePanelTabsOnMount(panel, 'floating_panel_dock', () => {
+      guideOpenInFlightRef.current = true;
+    });
+    initializationRef.current.then(() => setRestorationDone(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
 
@@ -242,11 +232,14 @@ function FloatingPanelInner() {
   // docs/design/PANEL-MODE-PERSISTENCE.md (decisions 2 and 3); mechanics in
   // global-state/panel-mode.ts.
   const dockToSidebar = useCallback(
-    (persist: boolean) => {
+    async (persist: boolean) => {
       reportAppInteraction(UserInteraction.FloatingPanelDock, {
         guide_url: guideUrl || '',
         guide_title: title,
       });
+      // Flush before the mode flip: the sidebar force-restores from tabStorage
+      // when it takes the workspace back.
+      await panel.saveTabsToStorage();
       if (persist) {
         panelModeManager.setModePersisted('sidebar');
       } else {
@@ -255,11 +248,11 @@ function FloatingPanelInner() {
       sidebarState.setPendingOpenSource('floating_panel_dock', 'open');
       sidebarState.openSidebar('Interactive learning');
     },
-    [guideUrl, title]
+    [guideUrl, title, panel]
   );
 
-  const handleSwitchToSidebar = useCallback(() => {
-    dockToSidebar(true);
+  const handleSwitchToSidebar = useCallback(async () => {
+    await dockToSidebar(true);
   }, [dockToSidebar]);
 
   // Symmetric counterpart to `pathfinder-request-pop-out` (see docs-panel.tsx).
@@ -267,7 +260,7 @@ function FloatingPanelInner() {
   // dock the floating panel back into the sidebar.
   useEffect(() => {
     const handleDockRequest = () => {
-      dockToSidebar(false);
+      void dockToSidebar(false);
     };
     document.addEventListener('pathfinder-request-dock', handleDockRequest);
     return () => {
@@ -275,11 +268,12 @@ function FloatingPanelInner() {
     };
   }, [dockToSidebar]);
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
+    await panel.saveTabsToStorage();
     panelModeManager.setMode('sidebar');
-  }, []);
+  }, [panel]);
 
-  const handleSwitchToFullScreen = useCallback(() => {
+  const handleSwitchToFullScreen = useCallback(async () => {
     // Editor: no guide URL — set a pending editor handoff so the receiving
     // panel switches its active tab to the editor even when fullscreen is
     // already mounted (e.g. journey was in fullscreen and the user wants
@@ -292,8 +286,10 @@ function FloatingPanelInner() {
         content_type: AnalyticsContentType.Editor,
       });
       // Remember where the user was so explicit Exit can land back there.
+      const saveTabs = panel.saveTabsToStorage();
       panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
       panelModeManager.setPendingGuide({ title, type: 'editor' });
+      await saveTabs;
       panelModeManager.setModePersisted('fullscreen');
       locationService.push(`${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`);
       return;
@@ -309,9 +305,13 @@ function FloatingPanelInner() {
     // Preserve the journey type through the handoff so the milestone
     // toolbar renders on the full screen page.
     const tabType = activeTab?.type === 'learning-journey' ? 'learning-journey' : 'docs';
+    const saveTabs = panel.saveTabsToStorage();
     panelModeManager.setPendingGuide({
       url: guideUrl,
       title,
+      // Full screen restores this tab from storage; identify it so the
+      // handoff focuses the restored tab instead of duplicating it.
+      tabId: activeTab?.id,
       type: tabType,
       // Forward synthetic packageInfo (e.g. PR-tester journeys backed by
       // raw GitHub URLs) so the full-screen page rebuilds the milestone
@@ -320,6 +320,7 @@ function FloatingPanelInner() {
     });
     // Remember where the user was so explicit Exit can land back there.
     panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
+    await saveTabs;
     panelModeManager.setModePersisted('fullscreen');
     // Include type in the URL so refresh/share rehydrates as a journey
     // even if findDocPage's URL-based classification can't tell.
@@ -331,7 +332,7 @@ function FloatingPanelInner() {
         guideType: tabType,
       })
     );
-  }, [isEditorTab, guideUrl, title, activeTab?.type, activeTab?.packageInfo]);
+  }, [isEditorTab, guideUrl, title, activeTab?.id, activeTab?.type, activeTab?.packageInfo, panel]);
 
   // Symmetric counterpart to the sidebar's `pathfinder-request-full-screen`
   // listener — lets surface-aware components (notably the BlockEditor toolbar)
@@ -339,7 +340,7 @@ function FloatingPanelInner() {
   // internals.
   useEffect(() => {
     const handleFullScreenRequest = () => {
-      handleSwitchToFullScreen();
+      void handleSwitchToFullScreen();
     };
     document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
     return () => {

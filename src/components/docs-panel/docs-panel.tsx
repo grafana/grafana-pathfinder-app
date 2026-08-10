@@ -81,6 +81,7 @@ import {
   shouldUseDocsLoader,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
+  mergeRestoredTabsWithExisting,
   loadDocsTabContentResult,
   RECOMMENDATIONS_TAB_ID,
   DEVTOOLS_TAB_ID,
@@ -122,6 +123,17 @@ import {
 import { getPackageRenderType } from '../../types/package.types';
 import type { RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
+
+/**
+ * Newest in-flight `saveTabsToStorage`, shared across panel models.
+ *
+ * Explicit handoffs await their own save before flipping mode. This barrier
+ * only covers the fire-and-forget return paths that cannot (sidebar
+ * "Return to sidebar" notice; auto-dock on navigation): restore waits for
+ * the newest write already pending when the await starts — not for a save
+ * issued after that.
+ */
+let pendingTabStorageWrite: Promise<void> | null = null;
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
@@ -223,14 +235,20 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // to avoid race condition with useUserStorage hook
   }
 
-  public async restoreTabsAsync(): Promise<void> {
+  public async restoreTabsAsync(options?: { force?: boolean }): Promise<void> {
     // Guard: only restore once per model lifetime to prevent double-restore race condition
     // where a second restore (triggered by component remount or React Strict Mode) replaces
-    // tabs that already had content loaded, leaving them in {content: null} blank state
-    if (this._hasRestoredTabs) {
+    // tabs that already had content loaded, leaving them in {content: null} blank state.
+    // `force` is reserved for a surface ownership handover: floating/fullscreen own
+    // separate models, so a returning sidebar must re-read the shared workspace.
+    if (this._hasRestoredTabs && !options?.force) {
       return;
     }
     this._hasRestoredTabs = true;
+
+    // Newest write pending when this await starts (see pendingTabStorageWrite).
+    // Saves begun after that are not waited on.
+    await pendingTabStorageWrite;
 
     // `isDevMode` here only widens URL validation (localhost / GitHub raw).
     // Tab-level gating is applied below, after the storage awaits.
@@ -245,13 +263,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     const pruned = this.pruneUnauthorizedGatedTabs(restoredTabs, activeTabId);
     restoredTabs = pruned.tabs;
     activeTabId = pruned.activeTabId;
+    // Keep loaded snapshots for tabs storage still lists at the same id +
+    // currentUrl so a force restore does not refetch every guide.
+    restoredTabs = mergeRestoredTabsWithExisting(restoredTabs, this.state.tabs);
 
     this.setState({
       tabs: restoredTabs,
       activeTabId,
     });
 
-    // Initialize the active tab if needed
+    // Initialize the active tab if needed (no-op when merge kept content)
     this.initializeRestoredActiveTab();
   }
 
@@ -358,7 +379,20 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  public async saveTabsToStorage(): Promise<void> {
+  public saveTabsToStorage(): Promise<void> {
+    const write = this.writeTabsToStorage();
+    pendingTabStorageWrite = write;
+    // Only the newest write clears the barrier; an older one settling late must
+    // not retire a save that is still in flight.
+    void write.finally(() => {
+      if (pendingTabStorageWrite === write) {
+        pendingTabStorageWrite = null;
+      }
+    });
+    return write;
+  }
+
+  private async writeTabsToStorage(): Promise<void> {
     try {
       // Save user-opened tabs (recommendations home is always present and not persisted)
       const tabsToSave: PersistedTabData[] = this.state.tabs
