@@ -15,7 +15,12 @@ export {
 } from './tab-kinds';
 export { isCurrentUserEditor, resolveTabGates, didGateClose } from './tab-gates';
 export type { TabGates } from './tab-gates';
-export { restoreTabsFromStorage, restoreActiveTabFromStorage, createUrlValidator } from './tab-storage-restore';
+export {
+  restoreTabsFromStorage,
+  restoreActiveTabFromStorage,
+  mergeRestoredTabsWithExisting,
+  createUrlValidator,
+} from './tab-storage-restore';
 export type { UrlValidator, TabRestoreOptions } from './tab-storage-restore';
 export { isGrafanaDocsUrl, cleanDocsUrl, isLearningJourneyUrl } from './url-validation';
 export { loadDocsTabContentResult, UNRESOLVED_PACKAGE_ERROR } from './docs-tab-loader';

@@ -81,6 +81,7 @@ import {
   shouldUseDocsLoader,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
+  mergeRestoredTabsWithExisting,
   loadDocsTabContentResult,
   RECOMMENDATIONS_TAB_ID,
   DEVTOOLS_TAB_ID,
@@ -124,13 +125,13 @@ import type { RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 /**
- * Newest in-flight `saveTabsToStorage`, shared by every panel model.
+ * Newest in-flight `saveTabsToStorage`, shared across panel models.
  *
- * Surfaces own separate models but one `tabStorage`. Tab mutations save
- * fire-and-forget, and not every return path can await that write first: the
- * sidebar's "Return to sidebar" notice has no handle on the full-screen model,
- * and auto-dock on navigation flips mode from a history listener. Readers wait
- * on this instead, so a handover can never restore the pre-handoff strip.
+ * Explicit handoffs await their own save before flipping mode. This barrier
+ * only covers the fire-and-forget return paths that cannot (sidebar
+ * "Return to sidebar" notice; auto-dock on navigation): restore waits for
+ * the newest write already pending when the await starts — not for a save
+ * issued after that.
  */
 let pendingTabStorageWrite: Promise<void> | null = null;
 
@@ -245,9 +246,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
     this._hasRestoredTabs = true;
 
-    // The surface handing the workspace back may still have a write in flight,
-    // so read after it lands — otherwise we restore its pre-handoff strip and
-    // its opens, closes, renames, and milestone position look discarded.
+    // Newest write pending when this await starts (see pendingTabStorageWrite).
+    // Saves begun after that are not waited on.
     await pendingTabStorageWrite;
 
     // `isDevMode` here only widens URL validation (localhost / GitHub raw).
@@ -263,13 +263,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     const pruned = this.pruneUnauthorizedGatedTabs(restoredTabs, activeTabId);
     restoredTabs = pruned.tabs;
     activeTabId = pruned.activeTabId;
+    // Keep loaded snapshots for tabs storage still lists at the same id +
+    // currentUrl so a force restore does not refetch every guide.
+    restoredTabs = mergeRestoredTabsWithExisting(restoredTabs, this.state.tabs);
 
     this.setState({
       tabs: restoredTabs,
       activeTabId,
     });
 
-    // Initialize the active tab if needed
+    // Initialize the active tab if needed (no-op when merge kept content)
     this.initializeRestoredActiveTab();
   }
 
