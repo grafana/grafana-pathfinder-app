@@ -223,8 +223,14 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       transition: 'all 0.2s ease',
       whiteSpace: 'nowrap',
 
-      '&:hover': {
+      '&:hover:not(:disabled)': {
         backgroundColor: theme.colors.primary.shade,
+      },
+      // Launch is single-flight, so every card's action is disabled while one is
+      // preparing — without this they stay fully lit and look clickable.
+      '&:disabled': {
+        opacity: 0.6,
+        cursor: 'not-allowed',
       },
     }),
     resetButton: css({
