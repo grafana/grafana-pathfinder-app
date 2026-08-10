@@ -25,7 +25,19 @@ function makeContent(overrides: Record<string, unknown> = {}): any {
   return {
     type: 'learning-journey',
     url: 'https://example.com/journey/final',
-    metadata: { learningJourney: { baseUrl: 'https://example.com/journey-canonical', totalMilestones: 5 } },
+    metadata: {
+      learningJourney: {
+        baseUrl: 'https://example.com/journey-canonical',
+        totalMilestones: 5,
+        milestones: Array.from({ length: 5 }, (_, i) => ({
+          number: i + 1,
+          title: `m${i + 1}`,
+          duration: '5 min',
+          url: `u${i + 1}`,
+          isActive: false,
+        })),
+      },
+    },
     ...overrides,
   };
 }

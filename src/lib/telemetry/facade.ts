@@ -106,3 +106,13 @@ export function recordPanelReady(durationMs: number, surface: string): void {
 export function recordCompletionWriteDegradation(reason: CompletionWriteDegradation): void {
   pushFaroEvent(TELEMETRY_EVENTS.completionWriteDegraded, { reason });
 }
+
+// The custom-guide catalogue reported itself unavailable (a soft-200 with a
+// machine `reason`), so the surface renders empty. This is the countable,
+// alertable signal the capability-degradation ladder needs — a log alone can't
+// distinguish "no guides authored" from "OBO unavailable on this stack", which
+// is exactly how a recent incident stayed invisible. `reason` is Faro-only
+// (never RudderStack): it includes open-ended `upstream-<status>` values.
+export function recordCustomGuideCatalogueUnavailable(reason: string): void {
+  pushFaroEvent(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason });
+}

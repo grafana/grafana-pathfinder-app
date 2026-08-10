@@ -41,6 +41,7 @@ import {
   markMilestoneDone,
   resolveExpectedMilestoneIds,
   recordGuideCompletionForSurface,
+  getMilestoneSlug,
 } from './learning-journey-helpers';
 import type { LearningJourneyMetadata, Milestone } from '../types/content.types';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
@@ -184,6 +185,15 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
     await markMilestoneDone('base', 'm1');
     expect(milestoneMarkCompletedMock).toHaveBeenCalledWith('base', 'm1');
     expect(markGuideCompletedMock).toHaveBeenCalledWith('m1');
+  });
+
+  it('records a private App Platform member under its bare id, not the backend-guide: scheme (finding #1)', async () => {
+    // The member launch URL is `backend-guide:<id>`; getMilestoneSlug must strip
+    // the scheme so completion is keyed the way LearningPath.guides reads it back
+    // — otherwise My Learning path progress is stuck at 0%.
+    await markMilestoneDone('base', getMilestoneSlug('backend-guide:fe-alerting-01'));
+    expect(markGuideCompletedMock).toHaveBeenCalledWith('fe-alerting-01');
+    expect(milestoneMarkCompletedMock).toHaveBeenCalledWith('base', 'fe-alerting-01');
   });
 
   it('the same milestone marked done from multiple surfaces emits one guide completion', async () => {
@@ -560,5 +570,18 @@ describe('resolveExpectedMilestoneIds', () => {
   it('returns an empty set when milestones are absent', () => {
     expect(resolveExpectedMilestoneIds(undefined)).toEqual([]);
     expect(resolveExpectedMilestoneIds({ milestones: [] } as unknown as LearningJourneyMetadata)).toEqual([]);
+  });
+
+  // A locked (unpublished) member carries `url: ''`, so it yields no slug and
+  // drops out of the expected set — a partially-published path still completes.
+  it('excludes locked milestones, so an unpublished member cannot block completion', () => {
+    const lj = {
+      milestones: [
+        milestone('backend-guide:fe-alerting-01', 1),
+        milestone('backend-guide:fe-alerting-02', 2),
+        { number: 3, title: 'm3', duration: '5 min', url: '', isActive: false, isLocked: true },
+      ],
+    } as unknown as LearningJourneyMetadata;
+    expect(resolveExpectedMilestoneIds(lj)).toEqual(['fe-alerting-01', 'fe-alerting-02']);
   });
 });

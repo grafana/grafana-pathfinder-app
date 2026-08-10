@@ -17,12 +17,12 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
   const successGreenGlow = isDark ? 'rgba(34, 197, 94, 0.5)' : 'rgba(34, 197, 94, 0.4)';
 
   const badgeFadeIn = keyframes`
-    from { 
-      opacity: 0; 
+    from {
+      opacity: 0;
       transform: translateY(8px);
     }
-    to { 
-      opacity: 1; 
+    to {
+      opacity: 1;
       transform: translateY(0);
     }
   `;
@@ -40,6 +40,14 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       padding: theme.spacing(1), // Match recommendations tab horizontal padding
       height: '100%',
       overflowY: 'auto',
+    }),
+
+    // auto-fit + minmax sizes off the row's own width, not the viewport, so the row stacks in the docked sidebar and splits when floating.
+    columnsRow: css({
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
+      gap: theme.spacing(2),
+      alignItems: 'stretch',
     }),
 
     // Hero Section
@@ -112,6 +120,16 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       justifyContent: 'center',
       gap: theme.spacing(0.5),
     }),
+    // The static "learning altitude" value — a gradient accent word, matching
+    // the hero title treatment so it reads as a status rather than a metric.
+    statValueAltitude: css({
+      fontSize: theme.typography.h5.fontSize,
+      fontWeight: theme.typography.fontWeightBold,
+      background: `linear-gradient(90deg, ${accentColor}, ${theme.colors.primary.main})`,
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+    }),
     fireEmoji: css({
       fontSize: '1.1em',
     }),
@@ -154,37 +172,6 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
-    hideCompletedToggle: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(0.75),
-      cursor: 'pointer',
-      marginLeft: 'auto',
-      userSelect: 'none',
-    }),
-    hideCompletedCheckbox: css({
-      width: 14,
-      height: 14,
-      cursor: 'pointer',
-      accentColor: successGreen,
-    }),
-    hideCompletedLabel: css({
-      fontSize: theme.typography.bodySmall.fontSize,
-      color: theme.colors.text.secondary,
-    }),
-    emptyPathsMessage: css({
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: theme.spacing(4),
-      textAlign: 'center',
-      color: theme.colors.text.secondary,
-      gap: theme.spacing(1),
-    }),
-    emptyPathsIcon: css({
-      color: successGreen,
-    }),
     expandButton: css({
       display: 'flex',
       alignItems: 'center',
@@ -202,6 +189,22 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       },
     }),
 
+    // Empty-state message shared by sections with no items yet
+    emptyMessage: css({
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: theme.spacing(3),
+      textAlign: 'center',
+      color: theme.colors.text.secondary,
+      gap: theme.spacing(1),
+      fontSize: theme.typography.bodySmall.fontSize,
+    }),
+    emptyIcon: css({
+      color: theme.colors.text.disabled,
+    }),
+
     // Paths Grid
     pathsGrid: css({
       display: 'flex',
@@ -209,24 +212,27 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(1.5),
     }),
 
-    // Badges Grid - responsive
+    // Badges Grid - centered-icon tiles
     badgesGrid: css({
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))',
       gap: theme.spacing(1),
-      maxHeight: '180px',
+      maxHeight: '260px',
       overflow: 'hidden',
       transition: 'max-height 0.3s ease-out',
     }),
     badgesGridExpanded: css({
-      maxHeight: '1000px',
+      maxHeight: '1200px',
       overflow: 'visible',
     }),
-    badgeItem: css({
+    badgeTile: css({
       display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
-      gap: theme.spacing(1),
+      justifyContent: 'flex-start',
+      gap: theme.spacing(0.75),
       padding: theme.spacing(1),
+      minHeight: 104,
       borderRadius: theme.shape.radius.default,
       backgroundColor: theme.colors.background.primary,
       border: `1px solid ${theme.colors.border.weak}`,
@@ -234,20 +240,19 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       transition: 'all 0.2s ease',
       animation: `${badgeFadeIn} 0.3s ease-out forwards`,
       opacity: 0,
-      textAlign: 'left',
+      textAlign: 'center',
       '&:hover': {
         transform: 'translateY(-2px)',
         boxShadow: `0 4px 12px rgba(0, 0, 0, 0.15)`,
+        borderColor: accentColor,
       },
     }),
-    badgeItemEarned: css({
+    badgeTileEarned: css({
       borderColor: successGreen,
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.08)' : 'rgba(34, 197, 94, 0.06)',
       animation: `${badgeFadeIn} 0.3s ease-out forwards, ${successGlow} 3s ease-in-out infinite`,
-      '& svg': {
-        color: successGreen,
-      },
     }),
-    badgeItemLocked: css({
+    badgeTileLocked: css({
       borderStyle: 'dashed',
       backgroundColor: isDark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.03)',
       '& svg': {
@@ -256,30 +261,29 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
         opacity: 0.5,
       },
     }),
-    badgeItemLegacy: css({
-      // Muted/sepia style for badges earned in previous versions
+    badgeTileLegacy: css({
       borderColor: isDark ? 'rgba(161, 136, 107, 0.5)' : 'rgba(139, 119, 101, 0.5)',
       backgroundColor: isDark ? 'rgba(161, 136, 107, 0.15)' : 'rgba(139, 119, 101, 0.1)',
       filter: 'sepia(20%)',
       '& svg': {
         color: isDark ? '#A1886B' : '#8B7765',
       },
-      '&:hover': {
-        borderColor: isDark ? 'rgba(161, 136, 107, 0.7)' : 'rgba(139, 119, 101, 0.7)',
-        boxShadow: `0 0 8px ${isDark ? 'rgba(161, 136, 107, 0.3)' : 'rgba(139, 119, 101, 0.3)'}`,
-      },
+    }),
+    badgeTileIconWrapper: css({
+      position: 'relative',
+      flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: 40,
     }),
     badgeEmoji: css({
       fontSize: 40,
       lineHeight: 1,
     }),
-    badgeEmojiSmall: css({
-      fontSize: 24,
+    badgeTileEmoji: css({
+      fontSize: 34,
       lineHeight: 1,
-    }),
-    badgeIconWrapper: css({
-      position: 'relative',
-      flexShrink: 0,
     }),
     badgeCheckmark: css({
       position: 'absolute',
@@ -294,6 +298,11 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       alignItems: 'center',
       justifyContent: 'center',
       border: `2px solid ${theme.colors.background.primary}`,
+      '& svg': {
+        color: 'white !important',
+        filter: 'none !important',
+        opacity: '1 !important',
+      },
     }),
     badgeLegacyIndicator: css({
       position: 'absolute',
@@ -314,80 +323,172 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
         opacity: '1 !important',
       },
     }),
-    badgeInfo: css({
-      flex: 1,
-      minWidth: 0,
-    }),
-    badgeTitle: css({
-      display: 'block',
+    badgeTileLabel: css({
       fontSize: theme.typography.bodySmall.fontSize,
       fontWeight: theme.typography.fontWeightMedium,
       color: theme.colors.text.primary,
-      whiteSpace: 'nowrap',
+      lineHeight: 1.2,
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
       overflow: 'hidden',
-      textOverflow: 'ellipsis',
     }),
-    badgeTitleLocked: css({
+    badgeTileLabelLocked: css({
       color: theme.colors.text.secondary,
     }),
-    badgeTitleLegacy: css({
+    badgeTileLabelLegacy: css({
       color: isDark ? '#A1886B' : '#8B7765',
       fontStyle: 'italic',
     }),
-    badgeMiniProgress: css({
+    badgeTileProgress: css({
       display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
-      gap: theme.spacing(0.5),
-      marginTop: theme.spacing(0.5),
+      gap: theme.spacing(0.25),
+      width: '100%',
+      marginTop: 'auto',
     }),
-    badgeMiniProgressTrack: css({
-      flex: 1,
+    badgeTileProgressTrack: css({
+      width: '100%',
       height: 4,
       borderRadius: 2,
       backgroundColor: theme.colors.border.weak,
       overflow: 'hidden',
     }),
-    badgeMiniProgressBar: css({
+    badgeTileProgressBar: css({
       height: '100%',
       borderRadius: 2,
       background: `linear-gradient(90deg, ${accentColor}, ${theme.colors.primary.main})`,
       transition: 'width 0.3s ease',
       minWidth: 0,
     }),
-    badgeMiniProgressText: css({
+    badgeTileProgressText: css({
       fontSize: 9,
       color: theme.colors.text.secondary,
       fontVariantNumeric: 'tabular-nums',
-      minWidth: 24,
-      textAlign: 'right',
     }),
 
-    // Streak Section
-    streakSection: css({
-      background: `linear-gradient(135deg, rgba(255, 107, 53, 0.1) 0%, ${theme.colors.background.secondary} 100%)`,
-      borderRadius: theme.shape.radius.default,
-      padding: theme.spacing(2),
-      border: `1px solid ${isDark ? 'rgba(255, 140, 90, 0.3)' : 'rgba(255, 107, 53, 0.3)'}`,
+    // Discover More list
+    discoverList: css({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(1.5),
     }),
-    streakContent: css({
+    discoverCard: css({
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(1.5),
+      padding: theme.spacing(1.5),
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: theme.colors.background.primary,
+      border: `1px solid ${theme.colors.border.weak}`,
+      transition: 'all 0.2s ease',
+      '&:hover': {
+        borderColor: accentColor,
+      },
     }),
-    streakFire: css({
-      fontSize: 32,
+    discoverIcon: css({
+      flexShrink: 0,
+      width: 36,
+      height: 36,
+      borderRadius: '50%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: accentLight,
+      color: accentColor,
     }),
-    streakInfo: css({
+    discoverBody: css({
       flex: 1,
+      minWidth: 0,
     }),
-    streakDays: css({
-      fontSize: theme.typography.h5.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      color: isDark ? '#FF8C5A' : '#FF6B35',
+    discoverTitle: css({
+      margin: 0,
+      fontSize: theme.typography.body.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
     }),
-    streakMessage: css({
+    discoverMeta: css({
+      margin: 0,
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    }),
+    discoverStartButton: css({
+      flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      padding: `${theme.spacing(0.5)} ${theme.spacing(1.5)}`,
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: theme.colors.primary.main,
+      color: theme.colors.primary.contrastText,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      border: 'none',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      '&:hover:not(:disabled)': {
+        backgroundColor: theme.colors.primary.shade,
+      },
+      '&:disabled': {
+        opacity: 0.6,
+        cursor: 'not-allowed',
+      },
+    }),
+
+    // Completed list
+    completedList: css({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: theme.spacing(1),
+    }),
+    completedItem: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1.5),
+      padding: theme.spacing(1.5),
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: theme.colors.background.primary,
+      border: `1px solid ${theme.colors.border.weak}`,
+    }),
+    completedIcon: css({
+      flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 28,
+      height: 28,
+      borderRadius: '50%',
+      border: `2px solid ${successGreen}`,
+      color: successGreen,
+    }),
+    completedTitle: css({
+      flex: 1,
+      minWidth: 0,
+      fontSize: theme.typography.body.fontSize,
+      color: theme.colors.text.primary,
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    }),
+    completedDoneBadge: css({
+      flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      padding: `${theme.spacing(0.25)} ${theme.spacing(1)}`,
+      borderRadius: theme.shape.radius.pill,
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: successGreen,
+      border: `1px solid ${successGreen}`,
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.1)' : 'rgba(34, 197, 94, 0.08)',
     }),
 
     // Footer

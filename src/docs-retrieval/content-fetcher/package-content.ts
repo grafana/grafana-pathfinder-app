@@ -58,8 +58,14 @@ export function derivePathSlug(manifestId: string): string {
 /**
  * Resolve manifest milestone IDs into rich Milestone objects via the injected
  * PackageResolver. Each milestone ID is resolved to obtain its contentUrl (used
- * as the navigation URL) and its manifest title. Unresolvable milestones are
- * silently skipped so partial data still renders.
+ * as the navigation URL) and its manifest title.
+ *
+ * Unresolvable milestones (not yet published, or a transient resolver
+ * failure) are kept in the list as locked placeholders rather than dropped —
+ * a path's members can land at different times (RFC CUSTOM-GUIDE-PACKAGES.md
+ * §6.5), so silently vanishing entries would misrepresent the path's real
+ * size and break "N of totalMilestones" counters. Traversal (getNextMilestoneUrl
+ * / getPreviousMilestoneUrl) skips locked entries.
  *
  * @param milestoneIds - Bare package IDs from a path manifest's `milestones` array
  * @param pathSlug - Optional path slug for building website URLs
@@ -75,27 +81,29 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
   );
 
   const milestones: Milestone[] = [];
-  let sequenceNumber = 1;
 
   for (let i = 0; i < milestoneIds.length; i++) {
     const result = settled[i]!;
     const id = milestoneIds[i]!;
+    const number = i + 1;
 
     if (result.status === 'rejected') {
-      logger.warn(`[resolvePackageMilestones] Error resolving milestone ${id}`, { reason: result.reason });
+      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone ${id}`, { reason: result.reason });
+      milestones.push({ number, title: id, duration: '5-10 min', url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
-      logger.warn(`[resolvePackageMilestones] Skipping unresolvable milestone: ${id}`);
+      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone: ${id}`);
+      milestones.push({ number, title: id, duration: '5-10 min', url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
 
     milestones.push({
-      number: sequenceNumber++,
+      number,
       title,
       duration: '5-10 min',
       url: resolution.contentUrl,
@@ -172,6 +180,40 @@ function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
 }
 
 /**
+ * Substitutes a friendly placeholder when a path/journey's own cover content
+ * has empty blocks. Without this, the journey chrome gets injected onto
+ * nothing and the guide parses to zero elements — a broken cover instead of
+ * a milestone list (RFC CUSTOM-GUIDE-PACKAGES.md Appendix A F15).
+ *
+ * This runtime repair is the only empty-cover protection that actually runs:
+ * it applies to every repository (bundled, CDN, App Platform), repairing the
+ * cover rather than rejecting the package.
+ */
+export function ensureNonEmptyCoverContent(jsonContent: string): string {
+  try {
+    const parsed = JSON.parse(jsonContent) as { blocks?: unknown[]; [key: string]: unknown };
+    if (Array.isArray(parsed.blocks) && parsed.blocks.length === 0) {
+      return JSON.stringify({
+        ...parsed,
+        blocks: [
+          {
+            type: 'markdown',
+            // Deliberately untranslated: only reachable on an empty-cover path (a
+            // publishing error), and docs-retrieval is a content-transform tier
+            // with no i18n wiring. If this stops being an edge case, thread a
+            // localized string down from the component layer instead.
+            content: 'Cover content is missing for this path. Check back soon, or contact whoever published it.',
+          },
+        ],
+      });
+    }
+  } catch {
+    // Malformed JSON — leave it to the existing downstream error handling.
+  }
+  return jsonContent;
+}
+
+/**
  * Fetch package content from a pre-resolved contentUrl (CDN or bundled).
  *
  * This is the primary fetch path for package-backed recommendations.
@@ -197,7 +239,12 @@ export async function fetchPackageContent(
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
 
   const manifestId = needsMilestones && typeof packageManifest?.id === 'string' ? packageManifest.id : '';
-  const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
+  // Only public packages have a grafana.com docs page. Suppressing the slug for
+  // private App Platform paths here keeps every downstream websiteUrl synthesis
+  // (path cover + per-milestone) from fabricating a public URL the toolbar would
+  // `window.open` to a 404 and report to analytics (unretractable).
+  const pathSlug =
+    manifestId && packageManifest?.repository !== 'app-platform' ? derivePathSlug(manifestId) : undefined;
   const milestoneIds = needsMilestones ? getManifestMilestoneIds(packageManifest) : [];
   const shouldResolveMilestones =
     needsMilestones && (!preResolvedMilestones || preResolvedMilestones.length === 0) && milestoneIds.length > 0;
@@ -238,13 +285,15 @@ export async function fetchPackageContent(
         milestones,
         baseUrl,
         summary: result.content.metadata.singleDoc?.summary,
+        // pathSlug is already suppressed for private packages at derivation, so a
+        // non-null slug means this is a public path with a grafana.com docs page.
         ...(pathSlug != null && {
           websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
         }),
       };
 
       if (currentMilestone === 0) {
-        contentString = injectJourneyExtrasIntoJsonGuide(contentString, learningJourney);
+        contentString = injectJourneyExtrasIntoJsonGuide(ensureNonEmptyCoverContent(contentString), learningJourney);
       }
     }
   }

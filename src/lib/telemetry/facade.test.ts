@@ -1,6 +1,7 @@
 import {
   recordContentFetch,
   recordContentFetchFallback,
+  recordCustomGuideCatalogueUnavailable,
   recordPanelReady,
   recordRecommenderFallback,
   recordRecommenderRequest,
@@ -127,5 +128,12 @@ describe('measurement and event domain operations', () => {
       { panel_lcp_ms: 88 },
       { surface: 'sidebar' }
     );
+  });
+
+  it('recordCustomGuideCatalogueUnavailable emits the capability event with the reason', () => {
+    recordCustomGuideCatalogueUnavailable('obo-unavailable');
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_custom_guide_catalogue_unavailable', {
+      reason: 'obo-unavailable',
+    });
   });
 });

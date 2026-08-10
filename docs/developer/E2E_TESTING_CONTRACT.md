@@ -52,6 +52,21 @@ A header refactor that renames or removes these rows must update `tests/block-ed
 
 ---
 
+## My learning page contract
+
+The My learning page exposes stable section and action testids so E2E tests can assert progress partitioning and launch specific Discover more paths without depending on text or DOM structure:
+
+- **`my-learning-courses-section`** (`testIds.learningPaths.myCoursesSection`): the My courses section boundary.
+- **`my-learning-badges-section`** (`testIds.learningPaths.badgesSection`): the badges section boundary.
+- **`my-learning-discover-section`** (`testIds.learningPaths.discoverMoreSection`): the Discover more section boundary.
+- **`my-learning-completed-section`** (`testIds.learningPaths.completedSection`): the completed-paths section boundary.
+- **`discover-more-card-${id}`** (`testIds.learningPaths.discoverMoreCard(id)`): a Discover more card keyed by its upstream package ID.
+- **`discover-more-start-${id}`** (`testIds.learningPaths.discoverMoreStart(id)`): the start action for that upstream package ID.
+
+A My learning layout or selector refactor must preserve these values or update the E2E selectors and this document in the same change.
+
+---
+
 ## Design Principles
 
 ### 1. Semantic Over Syntactic

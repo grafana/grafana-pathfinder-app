@@ -99,6 +99,7 @@ import {
   useTabOverflow,
   useScrollPositionPreservation,
   useContentReset,
+  useCustomGuideCatalogueOnOpen,
   useDevModeLogger,
   usePanelMode,
   useSessionJoinUrlCheck,
@@ -921,6 +922,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Initialize user storage (sets up global storage for standalone helpers)
   // This MUST be called before any storage operations to ensure Grafana user storage is used
   useUserStorage();
+
+  useCustomGuideCatalogueOnOpen();
 
   // Get plugin configuration for dev mode check. `meta` present means the
   // context resolved; without it `getConfigWithDefaults({})` would read as an

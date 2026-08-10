@@ -33,6 +33,7 @@ export const TELEMETRY_EVENTS = {
   completionWriteDegraded: 'pathfinder_completion_write_degraded',
   sessionReplayActivationFailed: 'pathfinder_session_replay_activation_failed',
   sessionReplaySamplingFallback: 'pathfinder_session_replay_sampling_fallback',
+  customGuideCatalogueUnavailable: 'pathfinder_custom_guide_catalogue_unavailable',
 } as const;
 
 export const TELEMETRY_MEASUREMENTS = {
