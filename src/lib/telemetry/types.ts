@@ -27,6 +27,7 @@ export const TELEMETRY_EVENTS = {
   sequenceActionError: 'pathfinder_sequence_action_error',
   sessionReplayActivationFailed: 'pathfinder_session_replay_activation_failed',
   sessionReplaySamplingFallback: 'pathfinder_session_replay_sampling_fallback',
+  customGuideCatalogueUnavailable: 'pathfinder_custom_guide_catalogue_unavailable',
 } as const;
 
 export const TELEMETRY_MEASUREMENTS = {

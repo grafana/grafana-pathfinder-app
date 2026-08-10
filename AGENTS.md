@@ -68,7 +68,7 @@ For the annotated tier definitions, the per-subsystem reference, and the key dep
 
 ### Backend (`pkg/`)
 
-The Go backend is a thin bridge between the React frontend and the **Coda VM provisioning service**. No database — all state is ephemeral or delegated to Coda. Three primary request paths: HTTP resource API (`resources.go`), streaming terminal over Grafana Live (`stream.go` + `terminal.go` + `wsconn.go`), and the Coda JWT client (`coda.go`).
+The Go backend is a thin bridge between the React frontend and the **Coda VM provisioning service**. No database — all state is ephemeral or delegated to Coda. Four primary request paths: HTTP resource API (`resources.go`), streaming terminal over Grafana Live (`stream.go` + `terminal.go` + `wsconn.go`), the Coda JWT client (`coda.go`), and the **App Platform proxies** (`custom_guide_repository.go`, `completion_records.go` over the shared client in `app_platform_client.go`) that LIST namespace-scoped resources from the stack's aggregated App Platform API. Those proxies authenticate with an **on-behalf-of (OBO) access token** minted from the caller's `X-Grafana-Id` in the `pkg/plugin/auth` seam — see `docs/design/BACKEND_PROXY_PATTERN.md`.
 
 When touching `pkg/`, load `.cursor/rules/coda.mdc` (agent-facing constraints) and `docs/developer/CODA.md` (full SSH / relay / credential-refresh reference). Plugin entrypoint is `pkg/main.go`.
 
