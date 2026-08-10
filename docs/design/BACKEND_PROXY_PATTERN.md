@@ -231,7 +231,10 @@ it — in two processes, so no compiler couples them. Two committed golden famil
   `pkg/plugin/testdata/contract/<envelope-key>.<variant>.json`. Never marshalled from a hand-built
   struct value: that cannot catch a handler that stops emitting a field its struct still declares.
 - **A reflected tag golden**, `struct-tags.json`, inventorying every reachable struct's json names,
-  types and `omitempty` flags. Load-bearing, not belt-and-braces: no fixture populates a
+  types, normalized JSON wire types, and `omitempty` flags. The TypeScript test derives the same
+  normalized descriptors from Zod and compares every field, so regenerating cannot bless a type
+  widening whose existing fixture values still fit the old schema. Load-bearing, not
+  belt-and-braces: no fixture populates a
   brand-new `omitempty` field, so a struct that _gains_ one leaves every value golden byte-identical
   and both sides green while the frontend never learns the field exists.
 

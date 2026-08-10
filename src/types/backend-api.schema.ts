@@ -18,7 +18,7 @@
 import { z } from 'zod';
 
 /** Any JSON value. Mirrors Go `json.RawMessage` / `interface{}` passthrough. */
-const JsonValueSchema = z.json();
+export const JsonValueSchema = z.json();
 
 // ============ /completion-records/capability ============
 

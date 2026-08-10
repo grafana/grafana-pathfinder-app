@@ -31,10 +31,10 @@ import (
 //
 //   - Value goldens, captured from the real handlers over httptest, catch a
 //     handler that stops emitting a field its struct still declares.
-//   - The tag golden (struct-tags.json) inventories json names, types and
-//     omitempty flags by reflection, and catches a struct that GAINS an
-//     omitempty field. No fixture populates a brand-new field, so every value
-//     golden stays byte-identical and both sides stay green while TypeScript
+//   - The tag golden (struct-tags.json) inventories json names, Go types,
+//     normalized wire types and omitempty flags, and catches a struct that
+//     GAINS an omitempty field. No fixture populates a brand-new field, so
+//     every value golden stays byte-identical and both sides stay green while TypeScript
 //     never learns the field exists.
 //
 // Regenerate both after an intentional envelope change:
@@ -179,6 +179,7 @@ type contractFieldTag struct {
 	Field     string `json:"field"`
 	JSON      string `json:"json"`
 	Type      string `json:"type"`
+	Wire      string `json:"wire"`
 	OmitEmpty bool   `json:"omitempty"`
 }
 
@@ -188,11 +189,14 @@ func TestContractStructTagGolden(t *testing.T) {
 		collectContractTags(t, root.typ, root.typ.Name(), inventory)
 	}
 
-	got, err := json.MarshalIndent(inventory, "", "  ")
-	if err != nil {
+	var got bytes.Buffer
+	encoder := json.NewEncoder(&got)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(inventory); err != nil {
 		t.Fatalf("marshal tag inventory: %v", err)
 	}
-	assertContractGolden(t, contractTagGolden, append(got, '\n'))
+	assertContractGolden(t, contractTagGolden, got.Bytes())
 }
 
 // collectContractTags records one entry per struct reachable from a root
@@ -218,10 +222,15 @@ func collectContractTags(t *testing.T, typ reflect.Type, key string, out map[str
 		if skip {
 			continue
 		}
+		wire, err := renderContractWireType(f.Type)
+		if err != nil {
+			t.Fatalf("%s.%s: %v", key, name, err)
+		}
 		fields = append(fields, contractFieldTag{
 			Field:     f.Name,
 			JSON:      name,
 			Type:      renderContractType(f.Type),
+			Wire:      wire,
 			OmitEmpty: omitEmpty,
 		})
 		if nested, ok := contractNestedStruct(f.Type); ok {
@@ -286,6 +295,85 @@ func renderContractType(typ reflect.Type) string {
 		return "struct"
 	default:
 		return typ.String()
+	}
+}
+
+func renderContractWireType(typ reflect.Type) (string, error) {
+	if typ == reflect.TypeOf(json.RawMessage{}) {
+		return "json", nil
+	}
+
+	switch typ.Kind() {
+	case reflect.Pointer:
+		return renderContractWireType(typ.Elem())
+	case reflect.Interface:
+		return "json", nil
+	case reflect.String:
+		return "string", nil
+	case reflect.Bool:
+		return "boolean", nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64:
+		return "number", nil
+	case reflect.Slice:
+		if typ.Elem().Kind() == reflect.Uint8 {
+			return "string", nil
+		}
+		elem, err := renderContractWireType(typ.Elem())
+		if err != nil {
+			return "", err
+		}
+		return "array<" + elem + ">", nil
+	case reflect.Array:
+		elem, err := renderContractWireType(typ.Elem())
+		if err != nil {
+			return "", err
+		}
+		return "array<" + elem + ">", nil
+	case reflect.Map:
+		if typ.Key().Kind() != reflect.String {
+			return "", fmt.Errorf("map key %s is not a JSON object key", typ.Key())
+		}
+		value, err := renderContractWireType(typ.Elem())
+		if err != nil {
+			return "", err
+		}
+		return "record<" + value + ">", nil
+	case reflect.Struct:
+		return "object", nil
+	default:
+		return "", fmt.Errorf("Go type %s has no normalized JSON wire descriptor", typ)
+	}
+}
+
+func TestContractWireTypeDescriptors(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{"string", "", "string"},
+		{"boolean", false, "boolean"},
+		{"number", int64(0), "number"},
+		{"bytes", []byte{}, "string"},
+		{"array", []string{}, "array<string>"},
+		{"opaque array", []json.RawMessage{}, "array<json>"},
+		{"record", map[string]any{}, "record<json>"},
+		{"object", struct{ Value string }{}, "object"},
+		{"pointer", &struct{ Value string }{}, "object"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := renderContractWireType(reflect.TypeOf(c.value))
+			if err != nil {
+				t.Fatalf("render wire type: %v", err)
+			}
+			if got != c.want {
+				t.Errorf("wire type = %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 

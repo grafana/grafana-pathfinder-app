@@ -24,6 +24,7 @@ import { z } from 'zod';
 import {
   BACKEND_RESPONSE_ENVELOPES,
   GO_STRUCT_SCHEMAS,
+  JsonValueSchema,
   type BackendResponseEnvelopeKey,
   type GoStructName,
 } from '../types/backend-api.schema';
@@ -38,6 +39,7 @@ const GoFieldTagSchema = z.strictObject({
   field: z.string(),
   json: z.string(),
   type: z.string(),
+  wire: z.string(),
   omitempty: z.boolean(),
 });
 const GoStructTagsSchema = z.record(z.string(), z.array(GoFieldTagSchema));
@@ -131,6 +133,85 @@ function acceptsUndefined(schema: z.ZodType): boolean {
   return schema.safeParse(undefined).success;
 }
 
+function normalizedZodWireType(schema: z.core.$ZodType): string {
+  if (schema === JsonValueSchema) {
+    return 'json';
+  }
+  if (schema instanceof z.ZodOptional) {
+    return normalizedZodWireType(schema.unwrap());
+  }
+  if (schema instanceof z.ZodString) {
+    return 'string';
+  }
+  if (schema instanceof z.ZodBoolean) {
+    return 'boolean';
+  }
+  if (schema instanceof z.ZodNumber) {
+    return 'number';
+  }
+  if (schema instanceof z.ZodArray) {
+    return `array<${normalizedZodWireType(schema.element)}>`;
+  }
+  if (schema instanceof z.ZodObject) {
+    return 'object';
+  }
+  if (schema instanceof z.ZodRecord) {
+    return `record<${normalizedZodWireType(schema.valueType)}>`;
+  }
+  throw new Error(`No normalized JSON wire descriptor for Zod type ${schema.constructor.name}.`);
+}
+
+function assertStructTagsMatchSchema(goStruct: string, fields: GoFieldTag[]): void {
+  const schema: z.ZodObject | undefined = GO_STRUCT_SCHEMAS[goStruct as GoStructName];
+  if (!schema) {
+    throw new Error(
+      `Go struct ${goStruct} is on the wire but has no schema. Add one to src/types/backend-api.schema.ts ` +
+        `and register it in GO_STRUCT_SCHEMAS.`
+    );
+  }
+
+  const shape = schema.shape as Record<string, z.ZodType | undefined>;
+  expect(fields.length).toBeGreaterThan(0);
+
+  const undeclared = fields.filter((field) => !shape[field.json]);
+  if (undeclared.length > 0) {
+    throw new Error(
+      `Go emits ${goStruct} fields that no schema declares: ` +
+        `${undeclared.map((field) => `${field.json} (${field.type})`).join(', ')}. Add them to ` +
+        `src/types/backend-api.schema.ts — until then the frontend cannot see them.`
+    );
+  }
+
+  const unemitted = Object.keys(shape).filter((key) => !fields.some((field) => field.json === key));
+  if (unemitted.length > 0) {
+    throw new Error(
+      `src/types/backend-api.schema.ts declares ${goStruct} fields Go no longer emits: ` +
+        `${unemitted.join(', ')}. Remove them, or restore them in pkg/plugin.`
+    );
+  }
+
+  for (const field of fields) {
+    const sub = shape[field.json]!;
+    const expectedWire = normalizedZodWireType(sub);
+    if (field.wire !== expectedWire) {
+      throw new Error(
+        `${goStruct}.${field.json} is ${field.wire} on the Go wire (${field.type}), but its Zod schema ` +
+          `accepts ${expectedWire}. Update src/types/backend-api.schema.ts to match.`
+      );
+    }
+
+    const optional = acceptsUndefined(sub);
+    if (optional !== field.omitempty) {
+      throw new Error(
+        field.omitempty
+          ? `${goStruct}.${field.json} is omitempty in Go, so its schema must accept undefined (.optional()).`
+          : `${goStruct}.${field.json} has no omitempty in Go, so it is always on the wire and its schema ` +
+              `must not accept undefined.`
+      );
+    }
+  }
+}
+
 describe('backend API contract: enumeration', () => {
   it('finds committed value goldens', () => {
     expect(VALUE_GOLDENS.length).toBeGreaterThan(0);
@@ -167,7 +248,7 @@ describe('backend API contract: required arrays reject null', () => {
   const cases = VALUE_GOLDENS.flatMap((golden) => {
     const goStruct = BACKEND_RESPONSE_ENVELOPES[golden.envelope];
     return (STRUCT_TAGS[goStruct] ?? [])
-      .filter((field) => field.type.startsWith('[]') && !field.omitempty)
+      .filter((field) => field.wire.startsWith('array<') && !field.omitempty)
       .map((field) => [`${golden.file} -> ${field.json}`, golden, field.json] as const);
   });
 
@@ -188,47 +269,22 @@ describe('backend API contract: struct tags match the schemas', () => {
   });
 
   it.each(Object.keys(STRUCT_TAGS).sort())('%s', (goStruct) => {
-    const schema: z.ZodObject | undefined = GO_STRUCT_SCHEMAS[goStruct as GoStructName];
-    if (!schema) {
-      throw new Error(
-        `Go struct ${goStruct} is on the wire but has no schema. Add one to src/types/backend-api.schema.ts ` +
-          `and register it in GO_STRUCT_SCHEMAS.`
-      );
-    }
+    assertStructTagsMatchSchema(goStruct, STRUCT_TAGS[goStruct] ?? []);
+  });
 
-    const fields = STRUCT_TAGS[goStruct] ?? [];
-    const shape = schema.shape as Record<string, z.ZodType | undefined>;
-    expect(fields.length).toBeGreaterThan(0);
-
-    const undeclared = fields.filter((f) => !shape[f.json]);
-    if (undeclared.length > 0) {
-      throw new Error(
-        `Go emits ${goStruct} fields that no schema declares: ` +
-          `${undeclared.map((f) => `${f.json} (${f.type})`).join(', ')}. Add them to ` +
-          `src/types/backend-api.schema.ts — until then the frontend cannot see them.`
-      );
+  it('rejects a regenerated same-value Go type widening', () => {
+    const manifestFields = STRUCT_TAGS.customGuideManifest;
+    if (!manifestFields) {
+      throw new Error('struct-tags.json does not inventory customGuideManifest.');
     }
+    const fields = manifestFields.map((field) =>
+      field.json === 'milestones' ? { ...field, type: '[]json.RawMessage', wire: 'array<json>' } : field
+    );
 
-    const unemitted = Object.keys(shape).filter((key) => !fields.some((f) => f.json === key));
-    if (unemitted.length > 0) {
-      throw new Error(
-        `src/types/backend-api.schema.ts declares ${goStruct} fields Go no longer emits: ` +
-          `${unemitted.join(', ')}. Remove them, or restore them in pkg/plugin.`
-      );
-    }
-
-    for (const field of fields) {
-      const sub = shape[field.json];
-      const optional = acceptsUndefined(sub!);
-      if (optional !== field.omitempty) {
-        throw new Error(
-          field.omitempty
-            ? `${goStruct}.${field.json} is omitempty in Go, so its schema must accept undefined (.optional()).`
-            : `${goStruct}.${field.json} has no omitempty in Go, so it is always on the wire and its schema ` +
-                `must not accept undefined.`
-        );
-      }
-    }
+    expect(() => assertStructTagsMatchSchema('customGuideManifest', fields)).toThrow(
+      'customGuideManifest.milestones is array<json> on the Go wire ([]json.RawMessage), ' +
+        'but its Zod schema accepts array<string>.'
+    );
   });
 });
 
