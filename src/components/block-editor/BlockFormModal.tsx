@@ -109,8 +109,9 @@ export interface BlockFormModalProps {
   onSwitchBlockType?: (newType: BlockType) => void;
 }
 
-// Map block types to form components - defined outside render
-const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = {
+// `null` means the block has no authoring form here, and the guard below
+// suppresses the whole modal rather than rendering an empty one.
+const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps> | null> = {
   markdown: MarkdownBlockForm,
   html: HtmlBlockForm,
   image: ImageBlockForm,
@@ -129,6 +130,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   'code-block': CodeBlockForm,
   'grot-guide': GrotGuideBlockForm,
   'snippet-ref': SnippetRefBlockForm,
+  assistant: null,
 };
 
 /**
