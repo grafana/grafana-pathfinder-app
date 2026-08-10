@@ -123,6 +123,25 @@ describe('prepareGuideLaunch', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toBe('not found');
+      expect(result.errorCode).toBe('fetch-failed');
+    }
+  });
+
+  it('classifies a forwarded fetch-tier error without echoing its message', async () => {
+    // The fetch tier builds this from the authored token (content-fetcher's
+    // `Invalid guide: ${validationResult.errors[0].message}`), so the message
+    // stays available to the caller but only the code is telemetry-safe.
+    mockLoad.mockResolvedValue({
+      content: null,
+      error: 'Invalid guide: Unknown requirement "authored-token-secret".',
+    });
+
+    const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errorCode).toBe('fetch-failed');
+      expect(result.error).toContain('authored-token-secret');
     }
   });
 
@@ -134,6 +153,9 @@ describe('prepareGuideLaunch', () => {
     const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
 
     expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errorCode).toBe('unparseable');
+    }
   });
 
   describe('schema validation before the walks', () => {
@@ -184,6 +206,9 @@ describe('prepareGuideLaunch', () => {
         const result = await prepareGuideLaunch(contentUrl, { title: 'X', source: 'home_page' });
 
         expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.errorCode).toBe('schema-invalid');
+        }
         expect(consoleError).toHaveBeenCalledWith('[PrepareGuideLaunch] Guide content failed schema validation', {
           content_url: 'grafana.com/docs/x',
           validation_error_count: 1,

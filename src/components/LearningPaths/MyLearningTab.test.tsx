@@ -196,7 +196,7 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it('surfaces a failed prepare as an error alert without opening a guide', async () => {
-    prepareMock.mockResolvedValue({ ok: false, error: 'Failed to load content' });
+    prepareMock.mockResolvedValue({ ok: false, error: 'Failed to load content', errorCode: 'fetch-failed' });
     const onOpenGuide = jest.fn();
 
     render(<MyLearningTab onOpenGuide={onOpenGuide} />);
@@ -212,11 +212,18 @@ describe('MyLearningTab launch flow', () => {
     expect(continueButton).not.toHaveTextContent('Opening…');
   });
 
-  it('keeps launch-URL secrets out of logger and Faro context on a failed prepare', async () => {
+  it('keeps launch-URL secrets and forwarded error text out of logger and Faro context', async () => {
     mockGetGuideUrlForPath.mockReturnValue(
       'https://grafana.com/docs/learning-paths/path-1/guide-1/?token=url-secret#fragment-secret'
     );
-    prepareMock.mockResolvedValue({ ok: false, error: 'Guide content failed schema validation' });
+    // Shaped like the fetch tier's forwarded Zod message (content-fetcher's
+    // `Invalid guide: ${message}`), which interpolates the authored token.
+    prepareMock.mockResolvedValue({
+      ok: false,
+      error:
+        'Invalid guide: Unknown requirement "authored-token-secret". See https://grafana.com/docs/x?leak=free-text-secret',
+      errorCode: 'fetch-failed',
+    });
     const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
     try {
@@ -226,7 +233,7 @@ describe('MyLearningTab launch flow', () => {
       await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
       const expectedContext = {
         content_url: 'grafana.com/docs/learning-paths/path-1/guide-1/',
-        error: 'Guide content failed schema validation',
+        error_code: 'fetch-failed',
       };
       expect(consoleError).toHaveBeenCalledWith('[MyLearning] Guide launch preparation failed', expectedContext);
       expect(pushFaroLogMock).toHaveBeenCalledWith(
@@ -237,6 +244,8 @@ describe('MyLearningTab launch flow', () => {
       const emittedContext = JSON.stringify({ console: consoleError.mock.calls, faro: pushFaroLogMock.mock.calls });
       expect(emittedContext).not.toContain('url-secret');
       expect(emittedContext).not.toContain('fragment-secret');
+      expect(emittedContext).not.toContain('authored-token-secret');
+      expect(emittedContext).not.toContain('free-text-secret');
     } finally {
       consoleError.mockRestore();
     }

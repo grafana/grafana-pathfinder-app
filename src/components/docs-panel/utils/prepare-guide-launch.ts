@@ -55,7 +55,16 @@ export interface PreparedGuideLaunch {
   packageInfo?: PackageOpenInfo;
 }
 
-export type PrepareGuideLaunchResult = { ok: true; launch: PreparedGuideLaunch } | { ok: false; error: string };
+/**
+ * Stable, low-cardinality failure classification. `error` is free text that can
+ * carry fetched-guide values (the fetch tier forwards Zod messages), so
+ * telemetry reports this code and never the message.
+ */
+export type PrepareGuideLaunchErrorCode = 'fetch-failed' | 'unparseable' | 'schema-invalid';
+
+export type PrepareGuideLaunchResult =
+  | { ok: true; launch: PreparedGuideLaunch }
+  | { ok: false; error: string; errorCode: PrepareGuideLaunchErrorCode };
 
 interface PrepareGuideLaunchContext {
   title: string;
@@ -82,7 +91,7 @@ export async function prepareGuideLaunch(
 
   const result = await loadDocsTabContentResult(url, { packageInfo });
   if (!result.content) {
-    return { ok: false, error: result.error || 'Failed to load content' };
+    return { ok: false, error: result.error || 'Failed to load content', errorCode: 'fetch-failed' };
   }
 
   const rawContent = result.content;
@@ -92,7 +101,7 @@ export async function prepareGuideLaunch(
     guide = JSON.parse(rawContent.content) as JsonGuide;
   } catch {
     logger.error('[PrepareGuideLaunch] Guide content could not be parsed', { url });
-    return { ok: false, error: 'Guide content could not be parsed' };
+    return { ok: false, error: 'Guide content could not be parsed', errorCode: 'unparseable' };
   }
 
   const validation = validateGuide(guide);
@@ -102,7 +111,7 @@ export async function prepareGuideLaunch(
       validation_error_count: validation.errors.length,
       validation_error_codes: [...new Set(validation.errors.map((error) => error.code))].sort(),
     });
-    return { ok: false, error: 'Guide content failed schema validation' };
+    return { ok: false, error: 'Guide content failed schema validation', errorCode: 'schema-invalid' };
   }
 
   // Expand the parsed guide, never `validation.guide`: only the root schema is
