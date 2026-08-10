@@ -12,6 +12,7 @@ import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
 import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
+import type { PackageOpenInfo } from '../../types/content-panel.types';
 import { useLearningPaths, useDiscoverMore, BADGES, getPathsData, type DiscoverMoreItem } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -95,14 +96,14 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   // fetch happens while My Learning stays mounted; on failure My Learning stays
   // visible and the error is surfaced rather than committing a surface.
   const launch = useCallback(
-    async (url: string, title: string, launchId: string) => {
+    async (url: string, title: string, launchId: string, packageInfo?: PackageOpenInfo) => {
       if (launchInFlightRef.current) {
         return;
       }
       launchInFlightRef.current = true;
       setLaunchingId(launchId);
       try {
-        const result = await prepareGuideLaunch(url, { title, source: 'home_page' });
+        const result = await prepareGuideLaunch(url, { title, source: 'home_page', packageInfo });
         // The prepare step can outlive this page (the fetches are bounded but
         // slow-CDN cases run tens of seconds). If the user navigated away,
         // drop the result — launching now would yank them to /fullscreen from
@@ -163,10 +164,16 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         return;
       }
 
-      // Static guide — open the individual guide content
-      const guideMetadata = getPathsData().guideMetadata[guideId];
-      const title = guideMetadata?.title || guideId;
-      const guideUrl = guideMetadata?.url ?? `bundled:${guideId}`;
+      // Static or App Platform guide — resolve via the path-scoped metadata
+      // hook exposes (covers App Platform member guides too, RFC §6.11),
+      // falling back to the static bundled catalogue as before.
+      const resolvedGuideUrl = parentPath ? getGuideUrlForPath(guideId, parentPath.id) : undefined;
+      const staticGuideMetadata = getPathsData().guideMetadata[guideId];
+      const title =
+        (parentPath && getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title) ||
+        staticGuideMetadata?.title ||
+        guideId;
+      const guideUrl = resolvedGuideUrl ?? staticGuideMetadata?.url ?? `bundled:${guideId}`;
 
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
@@ -190,7 +197,16 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         });
       }
 
-      void launch(guideUrl, title, pathId);
+      // App Platform paths carry a manifest but no cover `url`, so the member
+      // launches as `backend-guide:<id>`. Thread the PATH manifest through as
+      // packageInfo (mirroring CustomGuidesSection) — without it the loader
+      // falls through to plain fetchContent and the member renders as a
+      // standalone guide with no milestone toolbar, next/prev, or cover.
+      const packageInfo: PackageOpenInfo | undefined = parentPath?.manifest
+        ? { packageId: parentPath.id, packageManifest: { ...parentPath.manifest, id: parentPath.id } }
+        : undefined;
+
+      void launch(guideUrl, title, pathId, packageInfo);
     },
     [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
   );

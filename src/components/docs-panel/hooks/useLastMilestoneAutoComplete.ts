@@ -16,7 +16,7 @@
  * The setTimeout is cleared on dep change / unmount.
  */
 import * as React from 'react';
-import { getMilestoneSlug, isLastMilestone, markMilestoneDone } from '../../../docs-retrieval';
+import { countUnlockedMilestones, getMilestoneSlug, isLastMilestone, markMilestoneDone } from '../../../docs-retrieval';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 
 export interface UseLastMilestoneAutoCompleteParams {
@@ -53,7 +53,7 @@ export function useLastMilestoneAutoComplete({
       if (!hasInteractiveSteps) {
         const slug = getMilestoneSlug(activeTab.currentUrl!);
         if (slug) {
-          void markMilestoneDone(journey.baseUrl, slug, journey.totalMilestones, {
+          void markMilestoneDone(journey.baseUrl, slug, countUnlockedMilestones(journey.milestones ?? []), {
             packageManifest: stableContent.metadata.packageManifest,
             guideTitle: activeTab.title,
           });

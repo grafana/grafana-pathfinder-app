@@ -1,8 +1,13 @@
 /**
- * Tests for the MyLearningTab launch flow: the pending affordance while
- * `prepareGuideLaunch` runs, and the unmount guard that stops a resolved
- * launch from navigating the user after they've left the page. Also covers
- * the My Courses / Completed repartition and Discover More launching.
+ * Tests for MyLearningTab:
+ *  - the launch flow: the pending affordance while `prepareGuideLaunch` runs,
+ *    and the unmount guard that stops a resolved launch from navigating the
+ *    user after they've left the page;
+ *  - the My Courses / Completed repartition and Discover More launching;
+ *  - guide-open URL resolution — App Platform path members (RFC
+ *    CUSTOM-GUIDE-PACKAGES.md §6.11) launch via their `backend-guide:` URL
+ *    (resolved through getGuideUrlForPath), falling through to `bundled:<id>`
+ *    only when nothing else resolves.
  * Badge/path presentation is covered by badge-utils tests.
  */
 
@@ -35,6 +40,15 @@ jest.mock('@grafana/ui', () => ({
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
 }));
 
+// Mutable so individual tests can shape the paths and URL resolution the
+// component reads through the learning-paths hook.
+let mockPaths: any[] = [];
+let mockGuideMetadata: Record<string, any> = {};
+let mockCompletedGuides: string[] = [];
+const mockGetPathGuides = jest.fn();
+const mockGetPathProgress = jest.fn();
+const mockIsPathCompleted = jest.fn();
+const mockGetGuideUrlForPath = jest.fn();
 let mockDiscoverItems: Array<{
   id: string;
   title: string;
@@ -46,52 +60,19 @@ let mockDiscoverExcludeTitles: Set<string> | undefined;
 
 jest.mock('../../learning-paths', () => ({
   BADGES: [],
-  getPathsData: () => ({ guideMetadata: {} }),
+  getPathsData: () => ({ guideMetadata: mockGuideMetadata }),
   useDiscoverMore: ({ excludeTitles }: { excludeTitles?: Set<string> }) => {
     mockDiscoverExcludeTitles = excludeTitles;
     return { items: mockDiscoverItems, isLoading: false };
   },
   useLearningPaths: () => ({
-    paths: [
-      {
-        id: 'path-1',
-        title: 'Started path',
-        guides: ['guide-1'],
-        url: 'https://grafana.com/docs/learning-paths/path-1/',
-      },
-      {
-        id: 'path-new',
-        title: 'New path',
-        guides: ['guide-new'],
-      },
-      {
-        id: 'edge-low',
-        title: 'Barely started',
-        guides: ['guide-1'],
-      },
-      {
-        id: 'edge-high',
-        title: 'Almost done',
-        guides: ['guide-1'],
-      },
-      {
-        id: 'path-done',
-        title: 'Done path',
-        guides: ['guide-2'],
-      },
-    ],
+    paths: mockPaths,
     badgesWithStatus: [],
-    progress: { completedGuides: ['guide-2'], earnedBadges: [], streakDays: 0 },
-    getPathGuides: (id: string) =>
-      id === 'path-done'
-        ? [{ id: 'guide-2', title: 'Guide two', completed: true, isCurrent: false }]
-        : id === 'path-new'
-          ? [{ id: 'guide-new', title: 'New guide', completed: false, isCurrent: true }]
-          : [{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }],
-    getPathProgress: (id: string) =>
-      id === 'path-done' ? 100 : id === 'path-1' ? 50 : id === 'edge-low' ? 1 : id === 'edge-high' ? 99 : 0,
-    isPathCompleted: (id: string) => id === 'path-done',
-    getGuideUrlForPath: () => 'https://grafana.com/docs/learning-paths/path-1/guide-1/',
+    progress: { completedGuides: mockCompletedGuides, earnedBadges: [], streakDays: 0 },
+    getPathGuides: mockGetPathGuides,
+    getPathProgress: mockGetPathProgress,
+    isPathCompleted: mockIsPathCompleted,
+    getGuideUrlForPath: mockGetGuideUrlForPath,
     resetPath: jest.fn(),
     streakInfo: { days: 0 },
     isLoading: false,
@@ -141,13 +122,41 @@ const okResult: PrepareGuideLaunchResult = {
   },
 } as PrepareGuideLaunchResult;
 
-describe('MyLearningTab launch flow', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockDiscoverItems = [];
-    mockDiscoverExcludeTitles = undefined;
-  });
+beforeEach(() => {
+  jest.clearAllMocks();
+  // Default: the repartition fixture — one URL-based path in progress, two at
+  // the 1%/99% boundaries, one untouched, one complete.
+  mockPaths = [
+    {
+      id: 'path-1',
+      title: 'Started path',
+      guides: ['guide-1'],
+      url: 'https://grafana.com/docs/learning-paths/path-1/',
+    },
+    { id: 'path-new', title: 'New path', guides: ['guide-new'] },
+    { id: 'edge-low', title: 'Barely started', guides: ['guide-1'] },
+    { id: 'edge-high', title: 'Almost done', guides: ['guide-1'] },
+    { id: 'path-done', title: 'Done path', guides: ['guide-2'] },
+  ];
+  mockGuideMetadata = {};
+  mockCompletedGuides = ['guide-2'];
+  mockDiscoverItems = [];
+  mockDiscoverExcludeTitles = undefined;
+  mockGetPathGuides.mockImplementation((id: string) =>
+    id === 'path-done'
+      ? [{ id: 'guide-2', title: 'Guide two', completed: true, isCurrent: false }]
+      : id === 'path-new'
+        ? [{ id: 'guide-new', title: 'New guide', completed: false, isCurrent: true }]
+        : [{ id: 'guide-1', title: 'Guide one', completed: false, isCurrent: true }]
+  );
+  mockGetPathProgress.mockImplementation((id: string) =>
+    id === 'path-done' ? 100 : id === 'path-1' ? 50 : id === 'edge-low' ? 1 : id === 'edge-high' ? 99 : 0
+  );
+  mockIsPathCompleted.mockImplementation((id: string) => id === 'path-done');
+  mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/learning-paths/path-1/guide-1/');
+});
 
+describe('MyLearningTab launch flow', () => {
   it('shows a pending affordance on the launching card and re-enables after resolve', async () => {
     const { promise, resolve } = deferred();
     prepareMock.mockReturnValue(promise);
@@ -383,5 +392,62 @@ describe('MyLearningTab launch flow', () => {
       'https://cdn.example/pkg-1/content.json',
       expect.objectContaining({ title: 'Package one' })
     );
+  });
+});
+
+describe('MyLearningTab — App Platform guide launch', () => {
+  it('launches an App Platform path member with the path manifest as packageInfo (milestone chrome)', async () => {
+    mockPaths = [
+      {
+        id: 'ap-path',
+        title: 'Alerting enablement',
+        guides: ['fe-alerting-01'],
+        manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
+      },
+    ];
+    mockGetPathGuides.mockReturnValue([
+      { id: 'fe-alerting-01', title: 'Alerting module 1', completed: false, isCurrent: true },
+    ]);
+    mockGetGuideUrlForPath.mockReturnValue('backend-guide:fe-alerting-01');
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    // Without packageInfo the loader falls through to a standalone guide with no
+    // milestone toolbar; the PATH manifest (with id merged) is what renders chrome.
+    expect(prepareMock).toHaveBeenCalledWith('backend-guide:fe-alerting-01', {
+      title: expect.any(String),
+      source: 'home_page',
+      packageInfo: {
+        packageId: 'ap-path',
+        packageManifest: {
+          type: 'path',
+          repository: 'app-platform',
+          milestones: ['fe-alerting-01', 'fe-alerting-02'],
+          id: 'ap-path',
+        },
+      },
+    });
+  });
+
+  it('falls back to bundled:<id> with no packageInfo when no manifest/URL resolves', async () => {
+    mockPaths = [{ id: 'bundled-path', title: 'Bundled path', guides: ['bundled-guide'] }];
+    mockGetPathGuides.mockReturnValue([
+      { id: 'bundled-guide', title: 'Bundled guide', completed: false, isCurrent: true },
+    ]);
+    mockGetGuideUrlForPath.mockReturnValue(undefined);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('bundled-path')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(prepareMock).toHaveBeenCalledWith('bundled:bundled-guide', {
+      title: expect.any(String),
+      source: 'home_page',
+      packageInfo: undefined,
+    });
   });
 });

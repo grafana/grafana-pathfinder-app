@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 
+import type { JsonBlock } from './json-guide.types';
 import { isValidRequirement, unknownRequirementMessage } from './requirements.types';
 
 // ============ COMPLETENESS MESSAGES ============
@@ -1045,13 +1046,26 @@ export type InferredJsonQuizChoice = z.infer<typeof JsonQuizChoiceSchema>;
 // ============ KNOWN FIELDS FOR UNKNOWN FIELD DETECTION ============
 
 /**
+ * Non-block registry keys — nested shapes that are validated positionally
+ * (`steps[]`, `choices[]`) or are not blocks at all (the guide root, the
+ * package manifest).
+ */
+type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_manifest' | '_conditionalSectionConfig';
+
+/**
  * Known fields for each block type.
  * Used by unknown-fields.ts to detect unknown fields for forward compatibility warnings.
- * Keep in sync with the schemas above.
+ *
+ * The `satisfies` clause is the ratchet: this registry must be **total** over
+ * `JsonBlock['type']`. A block type with no entry here is invisible to
+ * `detectUnknownFields`, which silently returns no warnings for it — so a
+ * typo'd optional field would pass `validate --strict`. The public type stays
+ * `Record<string, …>` so callers can index with an unvalidated `block.type`.
  */
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   _guide: new Set(['schemaVersion', 'id', 'title', 'blocks']),
   _step: new Set([
+    'id',
     'action',
     'reftarget',
 
@@ -1197,6 +1211,25 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'hint',
     'authorNote',
   ]),
+  challenge: new Set([
+    'type',
+    'id',
+    'mode',
+    'title',
+    'brief',
+    'vmTemplate',
+    'vmScenario',
+    'vmApp',
+    'setupCommands',
+    'setupScript',
+    'successCriteria',
+    'hintLevels',
+    'failureMessage',
+    'requirements',
+    'objectives',
+    'skippable',
+    'authorNote',
+  ]),
   'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),
   'snippet-ref': new Set(['type', 'id', 'snippetId', 'authorNote']),
   _manifest: new Set([
@@ -1219,29 +1252,12 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'targeting',
     'testEnvironment',
   ]),
-};
+} satisfies Record<JsonBlock['type'] | KnownFieldsMetaKey, ReadonlySet<string>>;
 
 /**
- * All valid block type names.
- * Useful for validation and error messages.
+ * All valid block type names. Derived from `KNOWN_FIELDS` so the two cannot
+ * disagree; the CLI registry-completeness test anchors here.
  */
-export const VALID_BLOCK_TYPES = new Set([
-  'markdown',
-  'html',
-  'image',
-  'video',
-  'interactive',
-  'multistep',
-  'guided',
-  'section',
-  'collapsible',
-  'conditional',
-  'quiz',
-  'input',
-  'assistant',
-  'terminal',
-  'terminal-connect',
-  'code-block',
-  'grot-guide',
-  'snippet-ref',
-]);
+export const VALID_BLOCK_TYPES: ReadonlySet<string> = new Set(
+  Object.keys(KNOWN_FIELDS).filter((key) => !key.startsWith('_'))
+);

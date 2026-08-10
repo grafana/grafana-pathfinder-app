@@ -165,10 +165,13 @@ unexpired, with the `sub` claim extracted verbatim only on routes that serve per
 plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend is not
 independently reachable with a client-set `X-Grafana-Id`.
 
-Outbound, proxies forward identity derived from the ID token only — `Authorization: Bearer
-<id-token>` plus `X-Grafana-Id`, both synthesized from the inbound token via
-`forwardIdentityHeaders` — never the caller's `Cookie`, and never a replay of the inbound
-`Authorization` header (Grafana strips it before plugin resource handlers reach the plugin).
+Outbound, the ID token is never used as a credential. Proxies exchange it for a short-lived
+on-behalf-of access token (`pkg/plugin/auth`, using the CAP token stack-state-service provisions
+into `secureJsonData`) and send that on `X-Access-Token` — never the caller's `Cookie`, never a
+replay of the inbound `Authorization` header (Grafana strips it before plugin resource handlers
+reach the plugin), and never the ID token itself, which no hop on the outbound path accepts as
+authentication. A stack with no provisioned CAP token reports `capability.reason:
+"obo-unavailable"`.
 
 The single future-hardening item is cryptographic verification of the ID token against
 Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime
