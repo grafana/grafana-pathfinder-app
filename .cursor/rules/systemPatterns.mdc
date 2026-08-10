@@ -220,8 +220,6 @@ The Go backend is a **thin bridge** between the React frontend and the **Coda VM
 - `disconnected` — stream ended cleanly
 - `heartbeat` — keep-alive (no payload)
 
-The frontend validates this union against `src/integrations/coda/terminal-protocol.schema.ts`; a type added here but not there is rejected as an unreadable frame. See `docs/developer/CODA.md`.
-
 **Security boundaries:**
 
 - `isAllowedCodaURL` — `https` only, host in `.lg.grafana-dev.com` / `.grafana.com`

@@ -291,11 +291,10 @@ Core hook that manages the Grafana Live stream subscription.
 
 - `connect(vmOpts?)` subscribes to `plugin/grafana-pathfinder-app/terminal/new/{nonce}/{template?}/{app?|scenario?}`.
 - `TerminalVMOptions` carries `template`, `app` (for `vm-aws-sample-app`), and `scenario` (for `vm-aws-alloy-scenario`).
-- Publishes input and resize events with `{ useSocket: true }` for multi-node Grafana compatibility. A publish rejection is logged once per session under `terminal_publish_failed` rather than swallowed, so a dead socket is diagnosable without one log line per keystroke.
-- Validates every inbound frame against the consumer half of the protocol contract in `src/integrations/coda/terminal-protocol.schema.ts` (Zod). `parseTerminalFrame` unwraps the DataFrame, direct-object, and raw-string framings and returns one of three outcomes: `ok` (a validated frame), `invalid` (something claimed to be a terminal frame but failed validation — reported to the user in the terminal with a path-aware detail and logged under `terminal_protocol_mismatch`), or `unrecognized` (a Live message that never claimed to be a terminal frame, such as a schema-only DataFrame — debug-logged only). Each outcome is reported at most once per session so a mismatch cannot flood the terminal.
+- Publishes input and resize events with `{ useSocket: true }` for multi-node Grafana compatibility.
 - Handles stream output types: `output` → `terminal.write()`, `connected` → attach input listener, `status` → terminal status messages, `error` → display error.
 - **Animated provision progress bar**: during `pending` and `provisioning` states, renders an asymptotic ease-out progress bar inline in xterm (overwrites the current line every 500 ms). Bar reaches ≈38 % at 10 s, ≈82 % at 45 s, and caps at 95 % until `active` arrives.
-- Handshake timeout: 35 seconds. Only a `status` frame re-arms the deadline and `connected` clears it; `output`, `heartbeat`, invalid, and unrecognized messages leave the original deadline running, so a backend that only emits unreadable frames still fails at 35 s instead of hanging.
+- Handshake timeout: 35 seconds, reset on each `status` update from backend.
 
 ### TerminalPanel (`src/integrations/coda/TerminalPanel.tsx`)
 
@@ -426,10 +425,6 @@ After 3 SSH retries (with up to 2 credential refreshes), the backend destroys th
 ### Terminal not appearing
 
 Verify `enableCodaTerminal` is `true` in plugin jsonData and dev mode is enabled. The terminal panel requires both flags. Check `codaRegistered` is `true` in the health endpoint response.
-
-### Terminal prints "Unreadable message from the sandbox backend"
-
-The frontend received a Live message that claimed to be a terminal frame but failed schema validation; the grey line under the warning is the failing path (for example `data.values.0.0: expected string` or `unknown message type "..."`). This almost always means the plugin frontend and backend are out of sync — a frame type or field added on one side only. Compare the backend's `TerminalStreamOutput` against the Zod union in `src/integrations/coda/terminal-protocol.schema.ts`, and check the backend logs for the frame that was sent.
 
 ### Sample app not installing
 
