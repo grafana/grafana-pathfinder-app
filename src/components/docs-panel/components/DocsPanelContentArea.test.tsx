@@ -32,11 +32,22 @@ jest.mock('../../../docs-retrieval', () => ({
   getMilestoneSlug: jest.fn(),
   markMilestoneDone: jest.fn(),
   setJourneyCompletionPercentage: jest.fn(),
+  countUnlockedMilestones: (ms: Array<{ isLocked?: boolean }> | undefined) =>
+    (ms ?? []).filter((m) => !m.isLocked).length,
 }));
 
 // Heavy leaf children are irrelevant to the footer button — stub them out so
-// the branch renders without their dependency trees.
-jest.mock('../../content-renderer/content-renderer', () => ({ ContentRenderer: () => null }));
+// the branch renders without their dependency trees. ContentRenderer exposes a
+// button that fires `onGuideComplete` so the completion path can be triggered.
+jest.mock('../../content-renderer/content-renderer', () => ({
+  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => {
+    const react = require('react');
+    return react.createElement('button', {
+      'data-testid': 'fire-guide-complete',
+      onClick: () => onGuideComplete?.(),
+    });
+  },
+}));
 jest.mock('../../SelectorDebugPanel', () => ({ SelectorDebugPanel: () => null }));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
@@ -204,6 +215,41 @@ describe('DocsPanelContentArea', () => {
 
       expect(screen.getByTestId('home-content')).toBeInTheDocument();
       expect(screen.queryByTestId('editor-tab-content')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('milestone completion threshold', () => {
+    it('marks completion against the UNLOCKED milestone count, not the locked-inclusive total', () => {
+      const { getMilestoneSlug, markMilestoneDone } = jest.requireMock('../../../docs-retrieval');
+      getMilestoneSlug.mockReturnValue('m1');
+
+      const content = {
+        url: 'backend-guide:fe-alerting-01',
+        type: 'learning-journey',
+        content: '',
+        metadata: {
+          learningJourney: {
+            baseUrl: 'backend-guide:fe-alerting-path',
+            // 3 declared, 1 locked (unpublished) → only 2 are reachable.
+            totalMilestones: 3,
+            milestones: [
+              { number: 1, title: 'm1', url: 'backend-guide:fe-alerting-01', isActive: false },
+              { number: 2, title: 'm2', url: 'backend-guide:fe-alerting-02', isActive: false },
+              { number: 3, title: 'm3', url: '', isActive: false, isLocked: true },
+            ],
+          },
+        },
+      };
+      const props = makeProps({
+        activeTab: { ...makeProps().activeTab, currentUrl: 'backend-guide:fe-alerting-01', content } as any,
+        stableContent: content as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+      fireEvent.click(screen.getByTestId('fire-guide-complete'));
+
+      // 2 (unlocked), not 3 — otherwise a partially-published path never completes.
+      expect(markMilestoneDone).toHaveBeenCalledWith('backend-guide:fe-alerting-path', 'm1', 2, expect.any(Object));
     });
   });
 });
