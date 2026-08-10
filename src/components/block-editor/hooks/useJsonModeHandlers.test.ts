@@ -26,7 +26,10 @@ const newGuide: JsonGuide = {
   blocks: [{ type: 'markdown', content: 'brand new block content' }],
 };
 
-function useEditorAndJsonMode(initialGuide: JsonGuide) {
+function useEditorAndJsonMode(
+  initialGuide: JsonGuide,
+  idChangeHandlers: Pick<Parameters<typeof useJsonModeHandlers>[0], 'onBeforeGuideIdChange' | 'onGuideIdChanged'> = {}
+) {
   const editor = useBlockEditor({ initialGuide });
   const jsonMode = useJsonModeHandlers({
     editor,
@@ -35,6 +38,7 @@ function useEditorAndJsonMode(initialGuide: JsonGuide) {
     onStopRecording: () => {},
     onClearSelection: () => {},
     isSelectionMode: false,
+    ...idChangeHandlers,
   });
   return { editor, jsonMode };
 }
@@ -69,6 +73,56 @@ describe('useJsonModeHandlers — JSON paste then preview', () => {
     });
     // `handleExitJsonMode` marks the editor dirty after a JSON edit.
     expect(result.current.editor.state.isDirty).toBe(true);
+  });
+
+  it('keeps JSON mode open when a guide ID change is rejected', () => {
+    const onGuideIdChanged = jest.fn();
+    const { result } = renderHook(() =>
+      useEditorAndJsonMode(oldGuide, {
+        onBeforeGuideIdChange: () => false,
+        onGuideIdChanged,
+      })
+    );
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('json');
+    });
+    act(() => {
+      result.current.jsonMode.handleJsonChange(JSON.stringify(newGuide));
+    });
+    act(() => result.current.jsonMode.handleViewModeChange('preview'));
+
+    expect(result.current.editor.state.viewMode).toBe('json');
+    expect(result.current.editor.state.guide.id).toBe('old-guide');
+    expect(onGuideIdChanged).not.toHaveBeenCalled();
+  });
+
+  it('waits for approval before applying and reporting a guide ID change', async () => {
+    let approve!: (approved: boolean) => void;
+    const onGuideIdChanged = jest.fn();
+    const { result } = renderHook(() =>
+      useEditorAndJsonMode(oldGuide, {
+        onBeforeGuideIdChange: () => new Promise<boolean>((resolve) => (approve = resolve)),
+        onGuideIdChanged,
+      })
+    );
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('json');
+    });
+    act(() => {
+      result.current.jsonMode.handleJsonChange(JSON.stringify(newGuide));
+    });
+    act(() => result.current.jsonMode.handleViewModeChange('preview'));
+
+    expect(result.current.editor.state.viewMode).toBe('json');
+    expect(result.current.editor.state.guide.id).toBe('old-guide');
+
+    await act(async () => approve(true));
+
+    expect(result.current.editor.state.viewMode).toBe('preview');
+    expect(result.current.editor.state.guide.id).toBe('new-guide');
+    expect(onGuideIdChanged).toHaveBeenCalledWith('old-guide', 'new-guide');
   });
 });
 

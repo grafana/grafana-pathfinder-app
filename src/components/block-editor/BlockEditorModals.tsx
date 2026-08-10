@@ -3,7 +3,6 @@
  *
  * Container for modal dialogs in the block editor:
  * - GuideMetadataForm
- * - ConfirmModal (new guide)
  * - ImportGuideModal
  * - GitHubPRModal
  * - BlockEditorTour
@@ -13,7 +12,6 @@
  */
 
 import React from 'react';
-import { ConfirmModal } from '@grafana/ui';
 import { GuideMetadataForm } from './GuideMetadataForm';
 import { ImportGuideModal } from './ImportGuideModal';
 import { GitHubPRModal } from './GitHubPRModal';
@@ -37,9 +35,6 @@ export interface BlockEditorModalsProps {
   /** Guide metadata handlers */
   onUpdateGuideMetadata: (metadata: Partial<JsonGuide>) => void;
 
-  /** New guide handlers */
-  onNewGuideConfirm: () => void;
-
   /** Import handlers */
   onImportGuide: (guide: JsonGuide) => void;
 }
@@ -51,7 +46,6 @@ export function BlockEditorModals({
   isDirty,
   hasBlocks,
   onUpdateGuideMetadata,
-  onNewGuideConfirm,
   onImportGuide,
 }: BlockEditorModalsProps) {
   return (
@@ -61,16 +55,6 @@ export function BlockEditorModals({
         guide={guide}
         onUpdate={onUpdateGuideMetadata}
         onClose={() => closeModal('metadata')}
-      />
-
-      <ConfirmModal
-        isOpen={isModalOpen('newGuideConfirm')}
-        title="Start new guide"
-        body="Are you sure you want to start a new guide? Your current work will be deleted and cannot be recovered."
-        confirmText="Start new"
-        dismissText="Cancel"
-        onConfirm={onNewGuideConfirm}
-        onDismiss={() => closeModal('newGuideConfirm')}
       />
 
       <ImportGuideModal

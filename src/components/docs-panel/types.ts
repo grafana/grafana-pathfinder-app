@@ -72,8 +72,14 @@ export interface DocsPanelModelOperations {
     options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo; prefetched?: RawContent }
   ): Promise<void>;
 
-  /** Close a tab by ID */
+  /** Close a tab by ID. May defer into pendingCloseTabId when confirmation is required. */
   closeTab(tabId: string): void;
+
+  /** Finish a deferred close after the user confirms discard. */
+  confirmPendingClose(): void;
+
+  /** Cancel a deferred close confirmation. */
+  dismissPendingClose(): void;
 
   /** Set the active tab by ID */
   setActiveTab(tabId: string): void;
@@ -93,8 +99,33 @@ export interface DocsPanelModelOperations {
   /** Open the dev tools tab (or switch to it if already open) */
   openDevToolsTab(): void;
 
-  /** Open the editor tab (or switch to it if already open) */
-  openEditorTab(): void;
+  /**
+   * Create a guide editor tab and focus it via `setActiveTab`.
+   * Pass `tabId` to reuse a handoff id (idempotent if that tab already exists).
+   * Returns the tab id.
+   */
+  createEditorTab(options?: { tabId?: string }): string;
+
+  /** Recover and open singleton-era editor work after a surface mounts. */
+  recoverLegacyEditorTab(): void;
+
+  /**
+   * Focus an editor tab already bound to this backend resource.
+   * Returns true when a tab was found and focused (skips loading into another tab).
+   */
+  focusEditorTabForResource(resourceName: string, options?: { excludeTabId?: string }): boolean;
+
+  /** Find another open editor tab whose local draft uses this guide ID. */
+  findEditorTabForGuideId(
+    guideId: string,
+    options?: { excludeTabId?: string }
+  ): { tabId: string; title: string } | null;
+
+  /** Destructively close an editor tab after explicit confirmation. */
+  discardEditorTab(tabId: string): void;
+
+  /** Update an editor tab's display title from its in-progress guide */
+  updateEditorTabTitle(tabId: string, title: string): void;
 
   /** Get the currently active tab */
   getActiveTab(): LearningJourneyTab | null;

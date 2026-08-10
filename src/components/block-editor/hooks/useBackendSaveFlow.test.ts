@@ -6,8 +6,8 @@
 import { act, renderHook } from '@testing-library/react';
 import { getAppEvents } from '@grafana/runtime';
 
-import { StorageKeys } from '../../../lib/storage-keys';
 import type { JsonGuide } from '../types';
+import { editorTabStorageKey } from '../editor-tab-storage';
 
 import {
   useBackendSaveFlow,
@@ -17,7 +17,7 @@ import {
 
 jest.mock('@grafana/runtime', () => ({ getAppEvents: jest.fn() }));
 
-const STORAGE_KEY = StorageKeys.BLOCK_EDITOR_BACKEND_TRACKING;
+const STORAGE_KEY = editorTabStorageKey('test-tab');
 const publish = jest.fn();
 
 beforeEach(() => {
@@ -56,7 +56,9 @@ function makeBackendGuides(overrides: Partial<BackendSaveFlowGuidesInterface> = 
 describe('useBackendSaveFlow — initial state', () => {
   it('starts as not-saved with no persisted tracking', () => {
     const editor = { getGuide: () => guide() };
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides: makeBackendGuides() }));
+    const { result } = renderHook(() =>
+      useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides: makeBackendGuides() })
+    );
 
     expect(result.current.currentGuideResourceName).toBeNull();
     expect(result.current.publishedStatus).toBe('not-saved');
@@ -66,12 +68,14 @@ describe('useBackendSaveFlow — initial state', () => {
   it('restores resourceName and lastPublishedJson from localStorage on mount', () => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'draft', lastPublishedJson: '{"a":1}' })
+      JSON.stringify({
+        remote: { resourceName: 'g1', status: 'draft', lastSyncedJson: '{"a":1}' },
+      })
     );
     const editor = { getGuide: () => guide() };
     const backendGuides = makeBackendGuides({ guides: [makeGuideEntry('g1', 'Guide one', 'draft')] });
 
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     expect(result.current.currentGuideResourceName).toBe('g1');
     expect(result.current.publishedStatus).toBe('draft');
@@ -87,7 +91,7 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
       refreshGuides: jest.fn().mockResolvedValue([makeGuideEntry('g1', 'Guide one', 'draft')]),
     });
 
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     await act(async () => {
       await result.current.performSaveDraft();
@@ -96,6 +100,12 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
     expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'draft');
     expect(result.current.currentGuideResourceName).toBe('g1');
     expect(result.current.lastPublishedJson).toBe(JSON.stringify(g));
+    // Binding is in storage before paint — survives an immediate tab switch/unmount.
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).remote).toEqual({
+      resourceName: 'g1',
+      lastSyncedJson: JSON.stringify(g),
+      status: 'draft',
+    });
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'alert-success', payload: ['Guide saved as draft.'] })
     );
@@ -104,7 +114,7 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
   it('rejects an empty guide without calling saveGuide', async () => {
     const editor = { getGuide: () => guide({ blocks: [] }) };
     const backendGuides = makeBackendGuides();
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     await act(async () => {
       await result.current.performSaveDraft();
@@ -123,7 +133,7 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
     const errSpy = jest.spyOn(console, 'error').mockImplementation();
     const editor = { getGuide: () => guide() };
     const backendGuides = makeBackendGuides({ saveGuide: jest.fn().mockRejectedValue(new Error('network down')) });
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     await act(async () => {
       await result.current.performSaveDraft();
@@ -148,7 +158,7 @@ describe('useBackendSaveFlow — handlePostToBackend', () => {
       backendGuides.guides = [makeGuideEntry('g1', 'Guide one', 'published')];
       return backendGuides.guides;
     });
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     await act(async () => {
       await result.current.handlePostToBackend();
@@ -168,7 +178,7 @@ describe('useBackendSaveFlow — overwrite conflict', () => {
       guides: [makeGuideEntry('existing-guide', 'Existing guide (old)', 'draft')],
       refreshGuides: jest.fn().mockResolvedValue([makeGuideEntry('existing-guide', 'Existing guide', 'draft')]),
     });
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     let savePromise!: Promise<void>;
     act(() => {
@@ -196,7 +206,7 @@ describe('useBackendSaveFlow — overwrite conflict', () => {
     const backendGuides = makeBackendGuides({
       guides: [makeGuideEntry('existing-guide', 'Existing guide (old)', 'draft')],
     });
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     let savePromise!: Promise<void>;
     act(() => {
@@ -221,14 +231,16 @@ describe('useBackendSaveFlow — performUnpublish', () => {
     const g = guide();
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'published', lastPublishedJson: JSON.stringify(g) })
+      JSON.stringify({
+        remote: { resourceName: 'g1', status: 'published', lastSyncedJson: JSON.stringify(g) },
+      })
     );
     const editor = { getGuide: () => g };
     const backendGuides = makeBackendGuides({
       guides: [makeGuideEntry('g1', 'Guide one', 'published')],
       refreshGuides: jest.fn().mockResolvedValue([makeGuideEntry('g1', 'Guide one', 'draft')]),
     });
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     await act(async () => {
       await result.current.performUnpublish();
@@ -242,7 +254,7 @@ describe('useBackendSaveFlow — performUnpublish', () => {
   it('is a no-op when there is no tracked guide', async () => {
     const editor = { getGuide: () => guide() };
     const backendGuides = makeBackendGuides();
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     await act(async () => {
       await result.current.performUnpublish();
@@ -255,14 +267,16 @@ describe('useBackendSaveFlow — performUnpublish', () => {
     const errSpy = jest.spyOn(console, 'error').mockImplementation();
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'published', lastPublishedJson: null })
+      JSON.stringify({
+        remote: { resourceName: 'g1', status: 'published', lastSyncedJson: null },
+      })
     );
     const editor = { getGuide: () => guide() };
     const backendGuides = makeBackendGuides({
       guides: [makeGuideEntry('g1', 'Guide one', 'published')],
       unpublishGuide: jest.fn().mockRejectedValue(new Error('boom')),
     });
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     await act(async () => {
       await result.current.performUnpublish();
@@ -275,40 +289,56 @@ describe('useBackendSaveFlow — performUnpublish', () => {
   });
 });
 
-describe('useBackendSaveFlow — trackLoadedGuide / handleClearBackendTracking', () => {
-  it('trackLoadedGuide sets resourceName and a normalized lastPublishedJson', () => {
+describe('useBackendSaveFlow — setRemoteBinding', () => {
+  it('binds resourceName + lastSyncedJson into React state and localStorage together', () => {
     const editor = { getGuide: () => guide() };
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides: makeBackendGuides() }));
+    const backendGuides = makeBackendGuides({
+      guides: [makeGuideEntry('loaded-guide', 'Loaded', 'published')],
+    });
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
-    const loaded = guide({ id: 'loaded-guide', title: 'Loaded' });
+    const syncedJson = JSON.stringify({ id: 'loaded-guide', title: 'Loaded', blocks: [] });
     act(() => {
-      result.current.trackLoadedGuide(loaded, 'loaded-guide');
+      result.current.setRemoteBinding({
+        resourceName: 'loaded-guide',
+        lastSyncedJson: syncedJson,
+        status: 'published',
+      });
     });
 
     expect(result.current.currentGuideResourceName).toBe('loaded-guide');
-    expect(result.current.lastPublishedJson).toBe(
-      JSON.stringify({ id: loaded.id, title: loaded.title, blocks: loaded.blocks })
-    );
+    expect(result.current.lastPublishedJson).toBe(syncedJson);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).remote).toEqual({
+      resourceName: 'loaded-guide',
+      lastSyncedJson: syncedJson,
+      status: 'published',
+    });
   });
 
-  it('handleClearBackendTracking resets tracking to not-saved and clears localStorage', () => {
+  it('clearing the binding resets to not-saved and drops remote from storage', () => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'draft', lastPublishedJson: '{}' })
+      JSON.stringify({
+        guide: { id: 'g1', title: 'Guide one', blocks: [] },
+        remote: { resourceName: 'g1', status: 'draft', lastSyncedJson: '{}' },
+      })
     );
     const editor = { getGuide: () => guide() };
     const backendGuides = makeBackendGuides({ guides: [makeGuideEntry('g1', 'Guide one', 'draft')] });
-    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
 
     expect(result.current.publishedStatus).toBe('draft');
 
     act(() => {
-      result.current.handleClearBackendTracking();
+      result.current.setRemoteBinding(null);
     });
 
     expect(result.current.publishedStatus).toBe('not-saved');
     expect(result.current.currentGuideResourceName).toBeNull();
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    // Draft half of the unified document is preserved.
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({
+      guide: { id: 'g1', title: 'Guide one', blocks: [] },
+    });
   });
 });
 
@@ -317,13 +347,17 @@ describe('useBackendSaveFlow — hasUnsyncedChanges', () => {
     const savedGuide = guide();
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ resourceName: 'g1', backendStatus: 'draft', lastPublishedJson: JSON.stringify(savedGuide) })
+      JSON.stringify({
+        remote: { resourceName: 'g1', status: 'draft', lastSyncedJson: JSON.stringify(savedGuide) },
+      })
     );
     const backendGuides = makeBackendGuides({ guides: [makeGuideEntry('g1', 'Guide one', 'draft')] });
 
     let currentGuide = savedGuide;
     const editor = { getGuide: () => currentGuide };
-    const { result, rerender } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    const { result, rerender } = renderHook(() =>
+      useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides })
+    );
 
     expect(result.current.hasUnsyncedChanges).toBe(false);
 
@@ -331,5 +365,57 @@ describe('useBackendSaveFlow — hasUnsyncedChanges', () => {
     rerender();
 
     expect(result.current.hasUnsyncedChanges).toBe(true);
+  });
+});
+
+describe('useBackendSaveFlow — placeholder id mint on save', () => {
+  it('mints a unique id before first save when still on new-guide', async () => {
+    const updateGuideMetadata = jest.fn();
+    const g = guide({ id: 'new-guide', title: 'New guide' });
+    const editor = { getGuide: () => g, updateGuideMetadata };
+    const backendGuides = makeBackendGuides({
+      refreshGuides: jest.fn().mockImplementation(async () => {
+        const name = (backendGuides.saveGuide as jest.Mock).mock.calls[0][0].id;
+        backendGuides.guides = [makeGuideEntry(name, 'New guide', 'draft')];
+        return backendGuides.guides;
+      }),
+    });
+
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    expect(updateGuideMetadata).toHaveBeenCalledWith(expect.objectContaining({ id: expect.any(String) }));
+    const mintedId = updateGuideMetadata.mock.calls[0][0].id as string;
+    expect(mintedId).not.toBe('new-guide');
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(
+      expect.objectContaining({ id: mintedId }),
+      undefined,
+      undefined,
+      'draft'
+    );
+    expect(result.current.currentGuideResourceName).toBe(mintedId);
+  });
+});
+
+describe('useBackendSaveFlow — sync snapshot', () => {
+  it('stores id/title/blocks only so schemaVersion does not keep the guide dirty after save', async () => {
+    const g = guide({ schemaVersion: '1.0.0' });
+    const editor = { getGuide: () => g };
+    const backendGuides = makeBackendGuides({
+      refreshGuides: jest.fn().mockResolvedValue([makeGuideEntry('g1', 'Guide one', 'draft')]),
+    });
+    const { result } = renderHook(() => useBackendSaveFlow({ storageKey: STORAGE_KEY, editor, backendGuides }));
+
+    await act(async () => {
+      await result.current.performSaveDraft();
+    });
+
+    const expected = JSON.stringify({ id: g.id, title: g.title, blocks: g.blocks });
+    expect(result.current.lastPublishedJson).toBe(expected);
+    expect(result.current.hasUnsyncedChanges).toBe(false);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).remote.lastSyncedJson).toBe(expected);
   });
 });

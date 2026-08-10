@@ -26,7 +26,8 @@ import type { LaunchSource } from '../../recovery';
  * Apply a consumed pending guide to the receiving panel model.
  *
  * The branch order is load-bearing:
- * 1. `editor` handoffs carry no URL — switch the active tab to the editor.
+ * 1. `editor` handoffs carry no URL — focus via `setActiveTab`, or
+ *    `createEditorTab` when the destination has not restored that tab yet.
  * 2. URL + `packageInfo` → `openDocsPage` with the manifest, so synthetic
  *    journeys (PR-tester) get a journey tab with the milestone toolbar even
  *    when the URL isn't a recognised package URL.
@@ -40,8 +41,24 @@ export function openPendingGuide(
   pending: PendingGuide,
   source: LaunchSource
 ): void {
+  if (pending.tabId && panel.state.tabs.some((tab) => tab.id === pending.tabId)) {
+    panel.setActiveTab(pending.tabId);
+    return;
+  }
+
   if (pending.type === 'editor') {
-    panel.openEditorTab();
+    if (pending.tabId) {
+      // Idempotent: focuses if restored, otherwise creates with the handoff id.
+      panel.createEditorTab({ tabId: pending.tabId });
+      return;
+    }
+    // Legacy undirected handoff (no tabId): focus most recent editor, or create.
+    const recent = [...panel.state.tabs].reverse().find((t) => t.type === 'editor');
+    if (recent) {
+      panel.setActiveTab(recent.id);
+    } else {
+      panel.createEditorTab();
+    }
     return;
   }
   if (!pending.url) {
@@ -84,4 +101,27 @@ export function consumePendingGuideOnMount(
   markInFlight();
   openPendingGuide(panel, pending, pending.source ?? fallbackSource);
   return true;
+}
+
+/**
+ * Restore the complete workspace before applying a one-tab launch intent.
+ * Applying first would persist a partial model and erase sibling tabs.
+ */
+export async function initializePanelTabsOnMount(
+  panel: CombinedLearningJourneyPanel,
+  fallbackSource: LaunchSource,
+  markInFlight: () => void
+): Promise<boolean> {
+  const pending = panelModeManager.consumePendingGuide();
+  if (pending) {
+    markInFlight();
+  }
+
+  await panel.restoreTabsAsync();
+  panel.recoverLegacyEditorTab();
+
+  if (pending) {
+    openPendingGuide(panel, pending, pending.source ?? fallbackSource);
+  }
+  return pending !== null;
 }

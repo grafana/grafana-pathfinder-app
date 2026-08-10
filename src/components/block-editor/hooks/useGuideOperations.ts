@@ -4,7 +4,6 @@
  * Handles guide-level operations including:
  * - Copy guide to clipboard
  * - Download guide as JSON file
- * - Create new guide (reset)
  * - Import guide from JSON
  * - Load template guide
  *
@@ -15,6 +14,31 @@ import { useCallback } from 'react';
 import type { JsonGuide } from '../types';
 import type { ModalName } from './useModalManager';
 import blockEditorTutorial from '../../../bundled-interactives/block-editor-tutorial/content.json';
+import { editorGuideIdExists } from '../editor-tab-storage';
+
+/** Converts a guide title to a URL-safe kebab-case slug */
+export function slugifyTitle(title: string): string {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40) || 'guide'
+  );
+}
+
+/** Generates a guide ID that avoids backend resources and sibling local drafts. */
+export function generateUniqueId(title: string, existingNames: string[] = []): string {
+  const base = slugifyTitle(title);
+  for (let i = 0; i < 20; i++) {
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const candidate = `${base}-${suffix}`;
+    if (!existingNames.includes(candidate) && !editorGuideIdExists(candidate)) {
+      return candidate;
+    }
+  }
+  return `${base}-${Date.now().toString(36).slice(-6)}`;
+}
 
 /**
  * Minimal interface for editor functionality needed by this hook.
@@ -24,16 +48,6 @@ export interface GuideOpsEditorInterface {
   getGuide: () => JsonGuide;
   /** Load a guide into the editor */
   loadGuide: (guide: JsonGuide, savedBlockIds?: string[]) => void;
-  /** Reset to an empty guide */
-  resetGuide: () => void;
-}
-
-/**
- * Minimal interface for persistence functionality needed by this hook.
- */
-export interface GuideOpsPersistenceInterface {
-  /** Clear persisted guide data */
-  clear: () => void;
 }
 
 /**
@@ -50,22 +64,14 @@ export interface GuideOpsModalInterface {
 export interface UseGuideOperationsOptions {
   /** Editor instance for guide operations */
   editor: GuideOpsEditorInterface;
-  /** Guide persistence hook */
-  persistence: GuideOpsPersistenceInterface;
-  /** Recording persistence hook */
-  recordingPersistence: GuideOpsPersistenceInterface;
-  /** Action recorder with clearRecording method */
-  actionRecorder: { clearRecording: () => void };
-  /** Recording state with reset method */
-  recordingState: { reset: () => void };
   /** Modal manager for controlling modals */
   modals: GuideOpsModalInterface;
   /** Optional custom copy handler */
   onCopy?: (json: string) => void;
   /** Optional custom download handler */
   onDownload?: (guide: JsonGuide) => void;
-  /** Called when creating a new guide to clear backend tracking */
-  onNewGuide?: () => void;
+  /** Clear backend resource binding */
+  onClearBackendTracking?: () => void;
 }
 
 /**
@@ -76,8 +82,6 @@ export interface UseGuideOperationsReturn {
   handleCopy: () => void;
   /** Download guide as JSON file */
   handleDownload: () => void;
-  /** Reset to a new empty guide */
-  handleNewGuide: () => void;
   /** Import a guide from JSON */
   handleImportGuide: (guide: JsonGuide) => void;
   /** Load the example template guide */
@@ -89,17 +93,7 @@ export interface UseGuideOperationsReturn {
  * Encapsulates all guide operations extracted from BlockEditor.
  */
 export function useGuideOperations(options: UseGuideOperationsOptions): UseGuideOperationsReturn {
-  const {
-    editor,
-    persistence,
-    recordingPersistence,
-    actionRecorder,
-    recordingState,
-    modals,
-    onCopy,
-    onDownload,
-    onNewGuide,
-  } = options;
+  const { editor, modals, onCopy, onDownload, onClearBackendTracking } = options;
 
   // Copy guide JSON to clipboard
   const handleCopy = useCallback(() => {
@@ -142,37 +136,25 @@ export function useGuideOperations(options: UseGuideOperationsOptions): UseGuide
     }
   }, [editor, onDownload]);
 
-  // Reset to a new empty guide
-  const handleNewGuide = useCallback(() => {
-    persistence.clear(); // Clear localStorage
-    recordingPersistence.clear(); // Clear any persisted recording state
-    actionRecorder.clearRecording(); // Stop any active recording
-    recordingState.reset(); // Clear recording state
-    editor.resetGuide(); // Reset editor state
-    onNewGuide?.(); // Clear backend tracking state
-    modals.close('newGuideConfirm');
-  }, [editor, persistence, recordingPersistence, actionRecorder, recordingState, modals, onNewGuide]);
-
   // Import a guide from JSON
   const handleImportGuide = useCallback(
     (guide: JsonGuide) => {
       editor.loadGuide(guide);
-      onNewGuide?.();
+      onClearBackendTracking?.();
       modals.close('import');
     },
-    [editor, modals, onNewGuide]
+    [editor, modals, onClearBackendTracking]
   );
 
   // Load the example template guide
   const handleLoadTemplate = useCallback(() => {
     editor.loadGuide(blockEditorTutorial as JsonGuide);
-    onNewGuide?.();
-  }, [editor, onNewGuide]);
+    onClearBackendTracking?.();
+  }, [editor, onClearBackendTracking]);
 
   return {
     handleCopy,
     handleDownload,
-    handleNewGuide,
     handleImportGuide,
     handleLoadTemplate,
   };

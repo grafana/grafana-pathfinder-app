@@ -225,8 +225,18 @@ jest.mock('../../hooks', () => ({}));
 // Import under test
 // ---------------------------------------------------------------------------
 
+import { config } from '@grafana/runtime';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
+import {
+  editorDraftFlushers,
+  editorTabStorageKey,
+  readEditorStoredState,
+  writeEditorDraftState,
+  writeEditorRemoteState,
+} from '../block-editor/editor-tab-storage';
+import { StorageKeys } from '../../lib/storage-keys';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -255,6 +265,19 @@ const RESTORED_TABS = [
   },
 ];
 
+function makeTab(id: string, type: LearningJourneyTab['type'] = 'recommendations'): LearningJourneyTab {
+  return {
+    id,
+    type,
+    title: id,
+    baseUrl: '',
+    currentUrl: '',
+    content: null,
+    isLoading: false,
+    error: null,
+  };
+}
+
 function setupRestoreMocks() {
   mockRestoreTabsFromStorage.mockResolvedValue(RESTORED_TABS);
   mockRestoreActiveTabFromStorage.mockResolvedValue('tab-guide-1');
@@ -267,7 +290,10 @@ function setupRestoreMocks() {
 describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    delete user.orgRole;
     setupRestoreMocks();
   });
 
@@ -289,6 +315,19 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     await panel.restoreTabsAsync();
 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it('force-refreshes an existing model after another surface updates storage', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([makeTab('recommendations'), makeTab('tab-guide-2', 'docs')]);
+    mockRestoreActiveTabFromStorage.mockResolvedValueOnce('tab-guide-2');
+
+    await panel.restoreTabsAsync({ force: true });
+
+    expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
+    expect((panel as any).state.activeTabId).toBe('tab-guide-2');
+    expect((panel as any).state.tabs.map((tab: LearningJourneyTab) => tab.id)).toContain('tab-guide-2');
   });
 
   it('should allow a NEW instance to restore tabs after the first instance already restored', async () => {
@@ -399,6 +438,29 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect((panel as any).state.activeTabId).toBe('devtools');
     expect(tabStorage.setTabs).not.toHaveBeenCalled();
   });
+
+  it('opens a recovered legacy editor independently of tab restoration', () => {
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    user.orgRole = 'Editor';
+
+    localStorage.setItem(
+      StorageKeys.BLOCK_EDITOR_STATE,
+      JSON.stringify({
+        guide: { id: 'g1', title: 'Recovered draft', blocks: [{ type: 'markdown', content: 'hi' }] },
+      })
+    );
+
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: RESTORED_TABS, activeTabId: 'tab-guide-1' });
+    panel.recoverLegacyEditorTab();
+
+    expect((panel as any).state.activeTabId).toBe('editor');
+    expect(
+      (panel as any).state.tabs.some((t: { id: string; type?: string }) => t.id === 'editor' && t.type === 'editor')
+    ).toBe(true);
+    // Body lives at editorTabStorageKey('editor'); strip title syncs when BlockEditor mounts.
+    expect(localStorage.getItem(editorTabStorageKey('editor'))).toContain('Recovered draft');
+  });
 });
 
 describe('CombinedLearningJourneyPanel — tab gate sync', () => {
@@ -415,7 +477,10 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    delete user.orgRole;
     setupRestoreMocks();
   });
 
@@ -454,5 +519,154 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
     expect(tabs.some((t) => t.type === 'devtools')).toBe(false);
     expect((panel as any).state.activeTabId).toBe('recommendations');
     expect(tabStorage.setTabs).toHaveBeenCalled();
+  });
+
+  it('clears per-tab editor storage when the editor gate closes after being open', async () => {
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    user.orgRole = 'Editor';
+
+    const editorTab = {
+      id: 'editor-a',
+      title: 'My draft',
+      baseUrl: '',
+      currentUrl: '',
+      content: null,
+      isLoading: false,
+      error: null,
+      type: 'editor' as const,
+    };
+    mockRestoreTabsFromStorage.mockResolvedValue([...RESTORED_TABS, editorTab]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('editor-a');
+
+    const storageKey = editorTabStorageKey('editor-a');
+    writeEditorDraftState(storageKey, {
+      guide: { id: 'g1', title: 'My draft', blocks: [{ id: 'b1', type: 'markdown', content: 'x' }] },
+    });
+    writeEditorRemoteState(storageKey, {
+      resourceName: 'g1',
+      lastSyncedJson: '{}',
+      status: 'draft',
+    });
+    const flush = jest.fn(() => {
+      writeEditorDraftState(storageKey, {
+        guide: { id: 'g1', title: 'Latest pending draft', blocks: [{ id: 'b2', type: 'markdown', content: 'y' }] },
+      });
+    });
+    editorDraftFlushers.set(storageKey, flush);
+    expect(readEditorStoredState(storageKey)).not.toBeNull();
+
+    const { tabStorage } = require('../../lib/user-storage');
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    expect((panel as any).state.tabs.some((t: { id: string }) => t.id === 'editor-a')).toBe(true);
+
+    user.orgRole = 'Viewer';
+    panel.syncPluginConfig({});
+    editorDraftFlushers.delete(storageKey);
+
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect((panel as any).state.tabs.some((t: { type?: string }) => t.type === 'editor')).toBe(false);
+    expect(readEditorStoredState(storageKey)).toBeNull();
+    expect(tabStorage.setTabs).toHaveBeenCalled();
+  });
+});
+
+describe('CombinedLearningJourneyPanel — createEditorTab', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    const user = (config as { bootData: { user: { id: number; orgRole?: string } } }).bootData.user;
+    delete user.orgRole;
+    setupRestoreMocks();
+  });
+
+  it('creates a distinct tab per call and focuses the newest', () => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [makeTab('recommendations')], activeTabId: 'recommendations' });
+
+    panel.createEditorTab();
+    panel.createEditorTab();
+
+    const editorTabs = (panel as any).state.tabs.filter((t: LearningJourneyTab) => t.type === 'editor');
+    expect(editorTabs).toHaveLength(2);
+    expect(editorTabs[0].id).not.toBe(editorTabs[1].id);
+    expect((panel as any).state.activeTabId).toBe(editorTabs[1].id);
+  });
+
+  it('focuses an existing editor when createEditorTab is given that tabId', () => {
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [makeTab('recommendations'), makeTab('editor-older', 'editor'), makeTab('editor-newer', 'editor')],
+      activeTabId: 'recommendations',
+    });
+
+    panel.createEditorTab({ tabId: 'editor-older' });
+
+    expect((panel as any).state.tabs).toHaveLength(3);
+    expect((panel as any).state.activeTabId).toBe('editor-older');
+  });
+});
+
+describe('CombinedLearningJourneyPanel — focusEditorTabForResource', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupRestoreMocks();
+    localStorage.clear();
+  });
+
+  it('focuses the editor tab already bound to the resource and skips the active tab when excluded', () => {
+    writeEditorRemoteState(editorTabStorageKey('editor-a'), {
+      resourceName: 'shared-guide',
+      lastSyncedJson: '{}',
+    });
+    writeEditorRemoteState(editorTabStorageKey('editor-b'), {
+      resourceName: 'other-guide',
+      lastSyncedJson: '{}',
+    });
+
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [makeTab('recommendations'), makeTab('editor-a', 'editor'), makeTab('editor-b', 'editor')],
+      activeTabId: 'editor-b',
+    });
+
+    expect(panel.focusEditorTabForResource('shared-guide', { excludeTabId: 'editor-b' })).toBe(true);
+    expect((panel as any).state.activeTabId).toBe('editor-a');
+
+    expect(panel.focusEditorTabForResource('shared-guide', { excludeTabId: 'editor-a' })).toBe(false);
+    expect((panel as any).state.activeTabId).toBe('editor-a');
+  });
+});
+
+describe('CombinedLearningJourneyPanel — local guide ID collisions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupRestoreMocks();
+    localStorage.clear();
+  });
+
+  it('finds and destructively discards a sibling draft using the same guide ID', () => {
+    writeEditorDraftState(editorTabStorageKey('editor-a'), {
+      guide: { id: 'shared-guide', title: 'First guide', blocks: [{ type: 'markdown', content: 'unsaved' }] },
+    });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [
+        makeTab('recommendations'),
+        { ...makeTab('editor-a', 'editor'), title: 'First guide' },
+        makeTab('editor-b', 'editor'),
+      ],
+      activeTabId: 'editor-b',
+    });
+
+    expect(panel.findEditorTabForGuideId('shared-guide', { excludeTabId: 'editor-b' })).toEqual({
+      tabId: 'editor-a',
+      title: 'First guide',
+    });
+
+    panel.discardEditorTab('editor-a');
+
+    expect((panel as any).state.tabs.map((tab: { id: string }) => tab.id)).toEqual(['recommendations', 'editor-b']);
+    expect(localStorage.getItem(editorTabStorageKey('editor-a'))).toBeNull();
   });
 });

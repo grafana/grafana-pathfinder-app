@@ -12,7 +12,7 @@
  * extraction moves the relevant references from docs-panel.tsx to this
  * file's entry in SOURCE_CONTRACT (updated in the same commit).
  */
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { Icon, IconButton, Badge } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
@@ -29,6 +29,13 @@ import {
   tabTypeToContentType,
 } from '../../../lib/analytics';
 import { getJourneyProgress } from '../../../docs-retrieval';
+import {
+  getEditorTabChromeStatus,
+  getEditorTabChromeVersion,
+  subscribeEditorTabChrome,
+  editorTabStatusBadge,
+  type EditorTabChromeStatus,
+} from '../../block-editor/editor-tab-storage';
 
 export interface DocsPanelTabBarProps {
   styles: DocsPanelStyles;
@@ -49,8 +56,13 @@ export interface DocsPanelTabBarProps {
   onSetActiveTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   reloadActiveTab: (tab: LearningJourneyTab) => void;
-  onOpenEditorTab: () => void;
+  onCreateEditorTab: () => void;
   onOpenDevToolsTab: () => void;
+}
+
+/** Italics alone can't carry meaning, so the native tooltip spells it out. */
+function editorTabTooltip(title: string, status: EditorTabChromeStatus): string {
+  return status.hasUnsyncedChanges ? t('docsPanel.editorTabModified', '{{title}} — modified', { title }) : title;
 }
 
 export function DocsPanelTabBar({
@@ -71,12 +83,16 @@ export function DocsPanelTabBar({
   onSetActiveTab,
   onCloseTab,
   reloadActiveTab,
-  onOpenEditorTab,
+  onCreateEditorTab,
   onOpenDevToolsTab,
 }: DocsPanelTabBarProps): React.ReactElement {
-  // visibleTabs may still include strip-excluded chrome (recs, Dev Tools) on
-  // computeTabVisibility early returns; keep those out of the guide list.
+  // visibleTabs may still include recommendations on computeTabVisibility early
+  // returns; keep that rail-only chrome out of the guide list.
   const guideTabs = getGuideStripTabs(visibleTabs);
+
+  // One subscription for the whole strip: per-tab status is then a plain read,
+  // so inactive and overflowed editor tabs re-render on draft/remote writes.
+  useSyncExternalStore(subscribeEditorTabChrome, getEditorTabChromeVersion);
 
   return (
     <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
@@ -99,23 +115,28 @@ export function DocsPanelTabBar({
 
       <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
         {guideTabs.map((tab) => {
+          const editorStatus = tab.type === 'editor' ? getEditorTabChromeStatus(tab.id) : null;
+          const editorBadge = editorStatus ? editorTabStatusBadge(editorStatus) : null;
+          const modified = editorStatus?.hasUnsyncedChanges ? ` ${styles.editorTabTitleModified}` : '';
           return (
             <button
               key={tab.id}
               className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
               onClick={() => onSetActiveTab(tab.id)}
-              title={getTranslatedTitle(tab.title)}
+              title={
+                editorStatus
+                  ? editorTabTooltip(getTranslatedTitle(tab.title), editorStatus)
+                  : getTranslatedTitle(tab.title)
+              }
               data-testid={testIds.docsPanel.tab(tab.id)}
             >
               <div className={styles.tabContent}>
-                {tab.type === 'editor' && !tab.isLoading && (
-                  <Badge
-                    text={t('docsPanel.editorDraftBadge', 'Draft')}
-                    color="orange"
-                    className={styles.editorTabDraftBadge}
-                  />
+                {editorBadge && !tab.isLoading && (
+                  <Badge text={editorBadge.text} color={editorBadge.color} className={styles.editorTabStatusBadge} />
                 )}
-                <span className={`${styles.tabTitle}${tab.type === 'editor' ? ` ${styles.editorTabTitle}` : ''}`}>
+                <span
+                  className={`${styles.tabTitle}${tab.type === 'editor' ? ` ${styles.editorTabTitle}` : ''}${modified}`}
+                >
                   {tab.isLoading ? (
                     <>
                       <Icon name="sync" size="xs" />
@@ -192,6 +213,9 @@ export function DocsPanelTabBar({
           data-testid={testIds.docsPanel.tabDropdown}
         >
           {overflowGuideTabs.map((tab) => {
+            const editorStatus = tab.type === 'editor' ? getEditorTabChromeStatus(tab.id) : null;
+            const editorBadge = editorStatus ? editorTabStatusBadge(editorStatus) : null;
+            const modified = editorStatus?.hasUnsyncedChanges ? ` ${styles.editorTabTitleModified}` : '';
             return (
               <button
                 key={tab.id}
@@ -201,23 +225,20 @@ export function DocsPanelTabBar({
                   setIsDropdownOpen(false);
                 }}
                 role="menuitem"
+                title={editorStatus ? editorTabTooltip(getTranslatedTitle(tab.title), editorStatus) : undefined}
                 aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
                   title: getTranslatedTitle(tab.title),
                 })}
                 data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
               >
                 <div className={styles.dropdownItemContent}>
-                  {tab.type === 'editor' && !tab.isLoading && (
-                    <Badge
-                      text={t('docsPanel.editorDraftBadge', 'Draft')}
-                      color="orange"
-                      className={styles.editorTabDraftBadge}
-                    />
+                  {editorBadge && !tab.isLoading && (
+                    <Badge text={editorBadge.text} color={editorBadge.color} className={styles.editorTabStatusBadge} />
                   )}
                   <span
                     className={`${styles.dropdownItemTitle}${
                       tab.type === 'editor' ? ` ${styles.editorDropdownItemTitle}` : ''
-                    }`}
+                    }${modified}`}
                   >
                     {tab.isLoading ? (
                       <>
@@ -269,7 +290,7 @@ export function DocsPanelTabBar({
         isDevMode={isDevMode}
         isEditorUser={isEditorUser}
         onReloadActiveTab={reloadActiveTab}
-        onOpenEditorTab={onOpenEditorTab}
+        onCreateEditorTab={onCreateEditorTab}
         onOpenDevToolsTab={onOpenDevToolsTab}
       />
     </div>

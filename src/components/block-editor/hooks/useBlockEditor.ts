@@ -20,6 +20,8 @@ import { mergeBlocks } from './useBlockEditor.merge';
 export interface UseBlockEditorOptions {
   /** Initial guide data to load */
   initialGuide?: JsonGuide;
+  /** Unique local ID used for a new, unsaved guide. */
+  newGuideId?: string;
   /** Called when guide data changes */
   onChange?: (guide: JsonGuide) => void;
 }
@@ -82,8 +84,6 @@ export interface UseBlockEditorReturn {
   getGuide: () => JsonGuide;
   /** Load a guide from JsonGuide data. `viewMode` defaults to `'edit'` when omitted. */
   loadGuide: (guide: JsonGuide, blockIds?: string[], viewMode?: ViewMode) => void;
-  /** Reset to a new empty guide */
-  resetGuide: () => void;
 
   // State flags
   /** Whether there are unsaved changes */
@@ -171,7 +171,7 @@ export interface UseBlockEditorReturn {
  * Block editor state management hook
  */
 export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEditorReturn {
-  const { initialGuide, onChange } = options;
+  const { initialGuide, newGuideId = DEFAULT_GUIDE_METADATA.id, onChange } = options;
 
   // Convert initial guide to editor state
   const initialBlocks: EditorBlock[] =
@@ -182,7 +182,7 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
 
   const { state, setState, undo, redo, canUndo, canRedo, undoLabel, redoLabel, resetHistory } = useGuideHistory({
     guide: {
-      id: initialGuide?.id ?? DEFAULT_GUIDE_METADATA.id,
+      id: initialGuide?.id ?? newGuideId,
       title: initialGuide?.title ?? DEFAULT_GUIDE_METADATA.title,
     },
     blocks: initialBlocks,
@@ -1178,20 +1178,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
     [setState, resetHistory]
   );
 
-  // Reset to new guide — full reset, undo across this point doesn't make sense.
-  const resetGuide = useCallback(() => {
-    setState(
-      {
-        guide: { ...DEFAULT_GUIDE_METADATA },
-        blocks: [],
-        viewMode: 'edit',
-        isDirty: false,
-      },
-      { skipHistory: true }
-    );
-    resetHistory();
-  }, [setState, resetHistory]);
-
   // Mark as saved — clears the dirty flag without recording history.
   const markSaved = useCallback(() => {
     setState(
@@ -1256,7 +1242,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       setViewMode,
       getGuide,
       loadGuide,
-      resetGuide,
       isDirty: state.isDirty,
       markSaved,
       undo,
@@ -1295,7 +1280,6 @@ export function useBlockEditor(options: UseBlockEditorOptions = {}): UseBlockEdi
       setViewMode,
       getGuide,
       loadGuide,
-      resetGuide,
       markSaved,
       undo,
       redo,

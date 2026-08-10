@@ -54,10 +54,13 @@ export const StorageKeys = {
   // ==========================================================================
   // Block editor (centralized here from block-editor/constants.ts and the
   // block-editor UI components, which re-export / reference these values).
+  // Per-tab drafts live at `${BLOCK_EDITOR_STATE}:${tabId}`. The bare
+  // BLOCK_EDITOR_STATE key is the singleton-era draft (migrated on read).
   // ==========================================================================
   BLOCK_EDITOR_STATE: 'pathfinder-block-editor-state',
   BLOCK_EDITOR_RECORDING_STATE: 'pathfinder-block-editor-recording-state',
-  BLOCK_EDITOR_BACKEND_TRACKING: 'pathfinder-block-editor-backend-tracking',
+  /** @deprecated Singleton-era remote binding; migrated into per-tab `remote`. */
+  LEGACY_BLOCK_EDITOR_BACKEND_TRACKING: 'pathfinder-block-editor-backend-tracking',
   BLOCK_EDITOR_HEALTH_PANEL_OPEN: 'pathfinder.blockEditor.healthPanel.open',
   BLOCK_EDITOR_CONDITION_RAW_MODE: 'pathfinder.blockEditor.conditionField.rawMode',
 

@@ -1,10 +1,8 @@
 /**
  * Tests for CombinedLearningJourneyPanel.closeTab focus adjacency.
  *
- * The panel's `tabs` array is wider than the rendered strip: Dev Tools lives in
- * tab state for routing but claims no strip slot. Adjacency must therefore walk
- * strip-visible tabs, otherwise closing a guide can hand focus to Dev Tools and
- * leave no visible tab marked active.
+ * Recommendations uses the left-rail icon (not a strip slot). Adjacency walks
+ * strip-visible tabs via getGuideStripTabs.
  */
 
 // ---------------------------------------------------------------------------
@@ -255,12 +253,15 @@ function panelWith(tabs: LearningJourneyTab[], activeTabId: string) {
 }
 
 function stateOf(panel: CombinedLearningJourneyPanel) {
-  const { tabs, activeTabId } = (panel as any).state as { tabs: LearningJourneyTab[]; activeTabId: string };
-  return { tabIds: tabs.map((t) => t.id), activeTabId };
+  const { tabs, activeTabId, pendingCloseTabId } = (panel as any).state as {
+    tabs: LearningJourneyTab[];
+    activeTabId: string;
+    pendingCloseTabId: string | null;
+  };
+  return { tabIds: tabs.map((t) => t.id), activeTabId, pendingCloseTabId };
 }
 
 const RECOMMENDATIONS = tab('recommendations', 'recommendations');
-const DEVTOOLS = tab('devtools', 'devtools');
 const EDITOR = tab('editor', 'editor');
 
 // ---------------------------------------------------------------------------
@@ -272,44 +273,127 @@ describe('CombinedLearningJourneyPanel.closeTab — focus adjacency', () => {
     jest.clearAllMocks();
   });
 
-  it('skips Dev Tools when inheriting focus from the tab on the right', () => {
-    // Open order: guide, Dev Tools, editor.
-    const panel = panelWith([RECOMMENDATIONS, tab('guide-1', 'learning-journey'), DEVTOOLS, EDITOR], 'guide-1');
+  it('inherits the next strip tab when closing to the right', () => {
+    const panel = panelWith(
+      [RECOMMENDATIONS, tab('guide-1', 'learning-journey'), tab('guide-2', 'learning-journey'), EDITOR],
+      'guide-1'
+    );
 
     panel.closeTab('guide-1');
 
-    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools', 'editor'], activeTabId: 'editor' });
+    expect(stateOf(panel)).toEqual({
+      tabIds: ['recommendations', 'guide-2', 'editor'],
+      activeTabId: 'guide-2',
+      pendingCloseTabId: null,
+    });
   });
 
-  it('falls back to recommendations when the last strip tab closes while Dev Tools remains', () => {
-    const panel = panelWith([RECOMMENDATIONS, DEVTOOLS, tab('guide-1', 'learning-journey')], 'guide-1');
+  it('falls back to recommendations when the last strip tab closes', () => {
+    const panel = panelWith([RECOMMENDATIONS, tab('guide-1', 'learning-journey')], 'guide-1');
 
     panel.closeTab('guide-1');
 
-    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools'], activeTabId: 'recommendations' });
+    expect(stateOf(panel)).toEqual({
+      tabIds: ['recommendations'],
+      activeTabId: 'recommendations',
+      pendingCloseTabId: null,
+    });
   });
 
   it('leaves focus alone when a background tab closes', () => {
-    // Closing a guide from the overflow menu while Dev Tools is open must not
-    // yank the user out of the view they are actually looking at.
-    const panel = panelWith([RECOMMENDATIONS, DEVTOOLS, tab('guide-1', 'learning-journey')], 'devtools');
-
-    panel.closeTab('guide-1');
-
-    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools'], activeTabId: 'devtools' });
-  });
-
-  it('inherits the last strip tab when the active strip-excluded tab is closed via Ctrl+W', () => {
     const panel = panelWith(
-      [RECOMMENDATIONS, tab('guide-1', 'learning-journey'), tab('guide-2', 'learning-journey'), DEVTOOLS],
-      'devtools'
+      [RECOMMENDATIONS, tab('guide-1', 'learning-journey'), tab('guide-2', 'learning-journey')],
+      'guide-1'
     );
 
-    panel.closeTab('devtools');
+    panel.closeTab('guide-2');
 
     expect(stateOf(panel)).toEqual({
-      tabIds: ['recommendations', 'guide-1', 'guide-2'],
-      activeTabId: 'guide-2',
+      tabIds: ['recommendations', 'guide-1'],
+      activeTabId: 'guide-1',
+      pendingCloseTabId: null,
     });
+  });
+
+  it('inherits the previous strip tab when closing the active last strip tab', () => {
+    const panel = panelWith(
+      [RECOMMENDATIONS, tab('guide-1', 'learning-journey'), tab('guide-2', 'learning-journey')],
+      'guide-2'
+    );
+
+    panel.closeTab('guide-2');
+
+    expect(stateOf(panel)).toEqual({
+      tabIds: ['recommendations', 'guide-1'],
+      activeTabId: 'guide-1',
+      pendingCloseTabId: null,
+    });
+  });
+});
+
+describe('CombinedLearningJourneyPanel.closeTab — editor discard confirmation', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    jest.clearAllMocks();
+  });
+
+  it('closes an empty editor tab immediately', () => {
+    const panel = panelWith([RECOMMENDATIONS, EDITOR], 'editor');
+
+    panel.closeTab('editor');
+
+    expect(stateOf(panel)).toEqual({
+      tabIds: ['recommendations'],
+      activeTabId: 'recommendations',
+      pendingCloseTabId: null,
+    });
+  });
+
+  it('holds an editor tab with unsaved work until confirmed', () => {
+    localStorage.setItem(
+      'pathfinder-block-editor-state:editor',
+      JSON.stringify({
+        guide: { id: 'g', title: 'Draft', blocks: [{ type: 'markdown', content: 'hi' }] },
+      })
+    );
+    const panel = panelWith([RECOMMENDATIONS, EDITOR], 'editor');
+
+    panel.closeTab('editor');
+
+    expect(stateOf(panel)).toEqual({
+      tabIds: ['recommendations', 'editor'],
+      activeTabId: 'editor',
+      pendingCloseTabId: 'editor',
+    });
+    expect(localStorage.getItem('pathfinder-block-editor-state:editor')).not.toBeNull();
+
+    panel.confirmPendingClose();
+
+    expect(stateOf(panel)).toEqual({
+      tabIds: ['recommendations'],
+      activeTabId: 'recommendations',
+      pendingCloseTabId: null,
+    });
+    expect(localStorage.getItem('pathfinder-block-editor-state:editor')).toBeNull();
+  });
+
+  it('dismisses without closing or clearing draft storage', () => {
+    localStorage.setItem(
+      'pathfinder-block-editor-state:editor',
+      JSON.stringify({
+        guide: { id: 'g', title: 'Draft', blocks: [{ type: 'markdown', content: 'hi' }] },
+      })
+    );
+    const panel = panelWith([RECOMMENDATIONS, EDITOR], 'editor');
+
+    panel.closeTab('editor');
+    panel.dismissPendingClose();
+
+    expect(stateOf(panel)).toEqual({
+      tabIds: ['recommendations', 'editor'],
+      activeTabId: 'editor',
+      pendingCloseTabId: null,
+    });
+    expect(localStorage.getItem('pathfinder-block-editor-state:editor')).not.toBeNull();
   });
 });

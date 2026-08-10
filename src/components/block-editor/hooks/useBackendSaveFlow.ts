@@ -8,11 +8,18 @@
  * Extracted from BlockEditor to reduce component complexity.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { JsonGuide } from '../types';
-import { BACKEND_TRACKING_STORAGE_KEY } from '../constants';
+import { DEFAULT_GUIDE_METADATA } from '../constants';
 import { logger } from '../../../lib/logging';
 import { notify } from '../notify';
+import {
+  guideSyncSnapshot,
+  readEditorStoredState,
+  writeEditorRemoteState,
+  type EditorTabRemoteState,
+} from '../editor-tab-storage';
+import { generateUniqueId } from './useGuideOperations';
 
 /**
  * Normalize a guide id or title into a Kubernetes-style resource name:
@@ -27,25 +34,21 @@ function toResourceName(input: string): string {
     .replace(/^-|-$/g, '');
 }
 
-/** Reads persisted backend tracking state from localStorage. Returns null values when nothing is stored. */
-function readBackendTracking(): { resourceName: string | null; lastPublishedJson: string | null } {
-  try {
-    const stored = localStorage.getItem(BACKEND_TRACKING_STORAGE_KEY);
-    if (stored) {
-      const { resourceName, lastPublishedJson } = JSON.parse(stored);
-      if (resourceName) {
-        return { resourceName, lastPublishedJson: lastPublishedJson ?? null };
-      }
-    }
-  } catch {
-    // ignore malformed data
+function readRemoteBinding(storageKey: string): {
+  resourceName: string | null;
+  lastSyncedJson: string | null;
+} {
+  const remote = readEditorStoredState(storageKey)?.remote;
+  if (!remote?.resourceName) {
+    return { resourceName: null, lastSyncedJson: null };
   }
-  return { resourceName: null, lastPublishedJson: null };
+  return { resourceName: remote.resourceName, lastSyncedJson: remote.lastSyncedJson ?? null };
 }
 
 /** Minimal interface for editor functionality needed by this hook. */
 export interface BackendSaveFlowEditorInterface {
   getGuide: () => JsonGuide;
+  updateGuideMetadata?: (updates: Partial<{ id: string; title: string }>) => void;
 }
 
 /** A backend-tracked guide entry, as returned by useBackendGuides. */
@@ -72,6 +75,8 @@ export interface UseBackendSaveFlowOptions {
   editor: BackendSaveFlowEditorInterface;
   /** Backend guide list/save/refresh/unpublish operations */
   backendGuides: BackendSaveFlowGuidesInterface;
+  /** Per-tab localStorage key (draft + remote). Required — no shared default. */
+  storageKey: string;
 }
 
 /**
@@ -95,6 +100,13 @@ const CLOSED_CONFIRM_MODAL: BackendSaveFlowConfirmModal = {
   onCancel: () => {},
 };
 
+/** Server binding for this editor tab (React state + per-tab localStorage `remote`). */
+export type EditorRemoteBinding = {
+  resourceName: string;
+  lastSyncedJson: string;
+  status: 'draft' | 'published';
+};
+
 export interface UseBackendSaveFlowReturn {
   /** Resource name of the guide currently tracked against the backend (null if never saved) */
   currentGuideResourceName: string | null;
@@ -116,21 +128,23 @@ export interface UseBackendSaveFlowReturn {
   handlePostToBackend: () => Promise<void>;
   /** Unpublish a published guide back to draft */
   performUnpublish: () => Promise<void>;
-  /** Reset backend tracking state (e.g. when starting a new guide) */
-  handleClearBackendTracking: () => void;
-  /** Track a guide freshly loaded from the backend library */
-  trackLoadedGuide: (guide: JsonGuide, resourceName: string) => void;
+  /** Set or clear this tab's server binding (React + localStorage). */
+  setRemoteBinding: (binding: EditorRemoteBinding | null) => void;
 }
 
 /**
  * Backend draft/publish/unpublish orchestration for the block editor.
  */
-export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlowOptions): UseBackendSaveFlowReturn {
+export function useBackendSaveFlow({
+  editor,
+  backendGuides,
+  storageKey,
+}: UseBackendSaveFlowOptions): UseBackendSaveFlowReturn {
   const [currentGuideResourceName, setCurrentGuideResourceName] = useState<string | null>(
-    () => readBackendTracking().resourceName
+    () => readRemoteBinding(storageKey).resourceName
   );
   const [lastPublishedJson, setLastPublishedJson] = useState<string | null>(
-    () => readBackendTracking().lastPublishedJson
+    () => readRemoteBinding(storageKey).lastSyncedJson
   );
   const [confirmModal, setConfirmModal] = useState<BackendSaveFlowConfirmModal>(CLOSED_CONFIRM_MODAL);
 
@@ -141,35 +155,39 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
     ? (backendGuides.guides.find((g) => g.metadata.name === currentGuideResourceName)?.spec.status ?? null)
     : null;
 
+  // Library list when present; else remote.status (same source as tab chrome).
   const publishedStatus: 'not-saved' | 'draft' | 'published' = !currentGuideResourceName
     ? 'not-saved'
-    : currentGuideBackendStatus === 'published'
+    : (currentGuideBackendStatus ?? readEditorStoredState(storageKey)?.remote?.status) === 'published'
       ? 'published'
       : 'draft';
 
-  const currentJson = JSON.stringify(editor.getGuide());
+  const currentGuide = editor.getGuide();
+  const currentJson = guideSyncSnapshot(currentGuide);
   const hasUnsyncedChanges =
-    publishedStatus !== 'not-saved' && lastPublishedJson !== null && currentJson !== lastPublishedJson;
+    publishedStatus !== 'not-saved' &&
+    (lastPublishedJson === null ? currentGuide.blocks.length > 0 : currentJson !== lastPublishedJson);
 
-  // Persist backend tracking state to localStorage whenever it changes.
-  useEffect(() => {
-    if (currentGuideResourceName) {
-      try {
-        localStorage.setItem(
-          BACKEND_TRACKING_STORAGE_KEY,
-          JSON.stringify({
-            resourceName: currentGuideResourceName,
-            backendStatus: currentGuideBackendStatus,
-            lastPublishedJson,
-          })
-        );
-      } catch {
-        // ignore
+  /** Update React + localStorage remote binding together (inactive tabs only see storage). */
+  const setRemoteBinding = useCallback(
+    (binding: EditorRemoteBinding | null) => {
+      if (binding === null) {
+        writeEditorRemoteState(storageKey, null);
+        setCurrentGuideResourceName(null);
+        setLastPublishedJson(null);
+        return;
       }
-    } else {
-      localStorage.removeItem(BACKEND_TRACKING_STORAGE_KEY);
-    }
-  }, [currentGuideResourceName, currentGuideBackendStatus, lastPublishedJson]);
+      const remote: EditorTabRemoteState = {
+        resourceName: binding.resourceName,
+        lastSyncedJson: binding.lastSyncedJson,
+        status: binding.status,
+      };
+      writeEditorRemoteState(storageKey, remote);
+      setCurrentGuideResourceName(binding.resourceName);
+      setLastPublishedJson(binding.lastSyncedJson);
+    },
+    [storageKey]
+  );
 
   const closeConfirmModal = useCallback(() => {
     setConfirmModal((prev) => {
@@ -201,14 +219,19 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
 
       await backendGuides.saveGuide(guide, resourceName, metadata, status);
 
-      // Track the content that was last synced to the backend
-      setLastPublishedJson(JSON.stringify(guide));
+      const syncedJson = guideSyncSnapshot(guide);
 
       // Refresh to get the latest metadata (including updated resourceVersion)
       const updatedGuides = await backendGuides.refreshGuides();
 
       const savedGuide = updatedGuides.find((g) => g.metadata.name === generatedResourceName);
-      setCurrentGuideResourceName(savedGuide ? savedGuide.metadata.name : generatedResourceName);
+      const boundName = savedGuide ? savedGuide.metadata.name : generatedResourceName;
+
+      setRemoteBinding({
+        resourceName: boundName,
+        lastSyncedJson: syncedJson,
+        status,
+      });
 
       if (status === 'published') {
         notify('success', previousStatus === 'published' ? 'Guide updated.' : 'Guide published.');
@@ -216,7 +239,7 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
         notify('success', isUpdate ? 'Draft updated.' : 'Guide saved as draft.');
       }
     },
-    [backendGuides]
+    [backendGuides, setRemoteBinding]
   );
 
   /**
@@ -226,11 +249,19 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
   const orchestrateSave = useCallback(
     async (status: 'draft' | 'published') => {
       try {
-        const guide = editor.getGuide();
+        let guide = editor.getGuide();
 
         if (!guide.blocks || guide.blocks.length === 0) {
           notify('error', 'Cannot save guide', 'Add at least one block before saving.');
           return;
+        }
+
+        // Mint placeholder id so two "New guide" drafts don't collide on `new-guide`.
+        if (guide.id === DEFAULT_GUIDE_METADATA.id) {
+          const existingNames = backendGuides.guides.map((g) => g.metadata.name);
+          const id = generateUniqueId(guide.title || guide.id, existingNames);
+          guide = { ...guide, id };
+          editor.updateGuideMetadata?.({ id });
         }
 
         const isUpdate = !!currentGuideResourceName;
@@ -252,7 +283,6 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
                 existingTitle: existingGuide.spec.title,
                 onConfirm: async () => {
                   setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-                  setCurrentGuideResourceName(existingGuide.metadata.name);
                   await performBackendSave(
                     guide,
                     existingGuide.metadata.name,
@@ -306,33 +336,22 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
       await backendGuides.unpublishGuide(currentGuideResourceName, currentGuideMetadata);
 
       await backendGuides.refreshGuides();
-      // Keep lastPublishedJson set — guide content is unchanged, only status changed.
-      // This allows change detection to work correctly for the guide now in draft state.
-      setLastPublishedJson(JSON.stringify(editor.getGuide()));
+      setRemoteBinding({
+        resourceName: currentGuideResourceName,
+        lastSyncedJson: guideSyncSnapshot(editor.getGuide()),
+        status: 'draft',
+      });
       notify('success', 'Guide unpublished.');
     } catch (error) {
       logger.error('[BlockEditor] Failed to unpublish guide', { error });
       notify('error', 'Unpublish failed', error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [backendGuides, currentGuideResourceName, currentGuideMetadata, editor]);
+  }, [backendGuides, currentGuideResourceName, currentGuideMetadata, editor, setRemoteBinding]);
 
   // Publish/update guide to backend handler
   const handlePostToBackend = useCallback(async () => {
     await orchestrateSave('published');
   }, [orchestrateSave]);
-
-  // Clear backend tracking when starting a new guide
-  const handleClearBackendTracking = useCallback(() => {
-    setCurrentGuideResourceName(null);
-    setLastPublishedJson(null);
-  }, []);
-
-  // Track a guide freshly loaded from the backend library
-  const trackLoadedGuide = useCallback((guide: JsonGuide, resourceName: string) => {
-    setCurrentGuideResourceName(resourceName);
-    // Normalize to match getGuide() output (id, title, blocks — no schemaVersion or extra fields)
-    setLastPublishedJson(JSON.stringify({ id: guide.id, title: guide.title, blocks: guide.blocks }));
-  }, []);
 
   return {
     currentGuideResourceName,
@@ -345,7 +364,6 @@ export function useBackendSaveFlow({ editor, backendGuides }: UseBackendSaveFlow
     performSaveDraft,
     handlePostToBackend,
     performUnpublish,
-    handleClearBackendTracking,
-    trackLoadedGuide,
+    setRemoteBinding,
   };
 }

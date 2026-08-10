@@ -28,6 +28,11 @@ export interface PendingGuide {
    */
   type?: 'learning-journey' | 'docs' | 'interactive' | 'editor';
   /**
+   * Identity of an existing tab moving between surfaces. After restoration,
+   * the receiving surface focuses this tab instead of creating a duplicate.
+   */
+  tabId?: string;
+  /**
    * Carry the manifest + pre-resolved milestones across surface handoffs.
    *
    * Required for synthetic packages whose URL is not a recognised package

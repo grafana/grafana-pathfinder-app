@@ -6,15 +6,7 @@ export { isDocsLikeTab, shouldUseDocsLoader } from './tab-validation';
 export { getTranslatedTitle } from './tab-translations';
 export { computeTabVisibility } from './tab-visibility';
 export type { TabVisibilityResult } from './tab-visibility';
-export {
-  RECOMMENDATIONS_TAB_ID,
-  DEVTOOLS_TAB_ID,
-  EDITOR_TAB_ID,
-  GUIDE_STRIP_EXCLUDED_TAB_TYPES,
-  getGuideStripTabs,
-  isNonContentTab,
-  hasOnlyNonContentTabs,
-} from './tab-kinds';
+export { RECOMMENDATIONS_TAB_ID, DEVTOOLS_TAB_ID, getGuideStripTabs, isNonContentTab } from './tab-kinds';
 export { isCurrentUserEditor, resolveTabGates, didGateClose } from './tab-gates';
 export type { TabGates } from './tab-gates';
 export { restoreTabsFromStorage, restoreActiveTabFromStorage, createUrlValidator } from './tab-storage-restore';

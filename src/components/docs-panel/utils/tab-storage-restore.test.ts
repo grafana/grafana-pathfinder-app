@@ -112,7 +112,7 @@ describe('tab-storage-restore', () => {
       expect(tabs[1]!.type).toBe('devtools');
     });
 
-    it('rejects noncanonical reserved IDs and unknown persisted types', async () => {
+    it('rejects noncanonical singleton IDs and unknown persisted types', async () => {
       const persistedTabs: PersistedTabData[] = [
         {
           id: 'devtools',
@@ -125,18 +125,6 @@ describe('tab-storage-restore', () => {
           title: 'Disguised docs tab',
           baseUrl: '',
           type: 'devtools',
-        },
-        {
-          id: 'editor',
-          title: 'Disguised editor',
-          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
-          type: 'docs',
-        },
-        {
-          id: 'tab-1',
-          title: 'Content claiming editor privileges',
-          baseUrl: '',
-          type: 'editor',
         },
         {
           id: 'tab-2',
@@ -171,12 +159,27 @@ describe('tab-storage-restore', () => {
       expect(tabs).toEqual([expect.objectContaining({ id: 'recommendations', type: 'recommendations' })]);
     });
 
+    it('restores multiple editor tabs by kind while preserving their unique IDs', async () => {
+      const storage = createMockTabStorage([
+        { id: 'editor-a', title: 'First draft', baseUrl: '', currentUrl: '', type: 'editor' },
+        { id: 'editor-b', title: 'Second draft', baseUrl: '', currentUrl: '', type: 'editor' },
+      ]);
+
+      const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
+
+      expect(tabs.map(({ id, type, title }) => ({ id, type, title }))).toEqual([
+        { id: 'recommendations', type: 'recommendations', title: 'Recommendations' },
+        { id: 'editor-a', type: 'editor', title: 'First draft' },
+        { id: 'editor-b', type: 'editor', title: 'Second draft' },
+      ]);
+    });
+
     it('keeps the first record when persisted tab IDs are duplicated', async () => {
       const persistedTabs: PersistedTabData[] = [
         { id: 'devtools', title: 'Dev Tools', baseUrl: '', currentUrl: '', type: 'devtools' },
         { id: 'devtools', title: 'Dev Tools again', baseUrl: '', currentUrl: '', type: 'devtools' },
-        { id: 'editor', title: 'First guide', baseUrl: '', currentUrl: '', type: 'editor' },
-        { id: 'editor', title: 'Second guide', baseUrl: '', currentUrl: '', type: 'editor' },
+        { id: 'editor-a', title: 'First guide', baseUrl: '', currentUrl: '', type: 'editor' },
+        { id: 'editor-a', title: 'Second guide', baseUrl: '', currentUrl: '', type: 'editor' },
         {
           id: 'tab-1',
           title: 'First',
@@ -196,7 +199,7 @@ describe('tab-storage-restore', () => {
       const storage = createMockTabStorage(persistedTabs);
       const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
 
-      expect(tabs.map((t) => t.id)).toEqual(['recommendations', 'devtools', 'editor', 'tab-1']);
+      expect(tabs.map((t) => t.id)).toEqual(['recommendations', 'devtools', 'editor-a', 'tab-1']);
       expect(tabs.map((t) => t.title)).toEqual(['Recommendations', 'Dev Tools', 'First guide', 'First']);
     });
 

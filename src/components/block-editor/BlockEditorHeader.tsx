@@ -16,6 +16,7 @@ import { HeaderTitleRow } from './header/HeaderTitleRow';
 import { ViewModeRocker } from './header/ViewModeRocker';
 import { SaveActions } from './header/SaveActions';
 import { HeaderKebab } from './header/HeaderKebab';
+import { editorStatusBadge } from './editor-tab-storage';
 
 export interface BlockEditorHeaderProps {
   /** Guide title to display */
@@ -57,8 +58,6 @@ export interface BlockEditorHeaderProps {
   onUnpublish: () => void;
   /** Whether a backend operation is in progress */
   isPostingToBackend?: boolean;
-  /** Callback to start new guide */
-  onNewGuide: () => void;
   /** Whether the Pathfinder backend API is available; hides Library and Publish controls when false */
   isBackendAvailable: boolean;
   /** Whether the guide Library entry should be offered (stays hidden until the user has a saved guide) */
@@ -108,7 +107,6 @@ export function BlockEditorHeader({
   onPostToBackend,
   onUnpublish,
   isPostingToBackend = false,
-  onNewGuide,
   isBackendAvailable,
   hasBackendGuides,
   hasBlocks,
@@ -126,31 +124,16 @@ export function BlockEditorHeader({
   const styles = useStyles2(getHeaderStyles);
 
   const backendBadge = () => {
+    const badge = editorStatusBadge({ publishedStatus, hasUnsyncedChanges });
+
     // The label sits in a [data-badge-label] span so `previewStatusWrap` can hide
     // it at narrow preview widths — the badge collapses to its colored icon while
     // the Tooltip keeps the full text, so status never disappears at 320px.
-    const badge = (
-      text: string,
-      color: 'blue' | 'orange' | 'green',
-      icon: 'circle' | 'exclamation-triangle' | 'cloud-upload',
-      tip: string
-    ) => (
-      <Tooltip content={tip}>
-        <Badge text={<span data-badge-label>{text}</span>} color={color} icon={icon} />
+    return (
+      <Tooltip content={badge.tooltip}>
+        <Badge text={<span data-badge-label>{badge.text}</span>} color={badge.color} icon={badge.icon} />
       </Tooltip>
     );
-
-    if (publishedStatus === 'not-saved') {
-      return badge('Draft', 'blue', 'circle', 'Not yet saved to library');
-    }
-    if (publishedStatus === 'draft') {
-      return hasUnsyncedChanges
-        ? badge('Draft (modified)', 'orange', 'exclamation-triangle', 'Draft has unsaved changes')
-        : badge('Draft', 'blue', 'circle', 'Saved to library but not published to users');
-    }
-    return hasUnsyncedChanges
-      ? badge('Published (modified)', 'orange', 'exclamation-triangle', 'Published guide has unsaved changes')
-      : badge('Published', 'green', 'cloud-upload', 'Published and visible to users');
   };
 
   const localSaveIndicator = !isBackendAvailable && (
@@ -264,7 +247,6 @@ export function BlockEditorHeader({
             hasBlocks={hasBlocks}
             isSelectionMode={isSelectionMode}
             onToggleSelectionMode={onToggleSelectionMode}
-            onNewGuide={onNewGuide}
             onOpenGuideLibrary={onOpenGuideLibrary}
             onOpenImport={onOpenImport}
             onCopy={onCopy}
