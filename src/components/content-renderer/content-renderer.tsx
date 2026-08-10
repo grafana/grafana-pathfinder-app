@@ -44,7 +44,7 @@ import {
   DEFAULT_INTERACTIVE_SECTION_TITLE,
 } from '../interactive-tutorial';
 import { STEP_TYPE_PARSE_KEYS } from '../interactive-tutorial/step-type-registry';
-import { SequentialRequirementsManager } from '../../requirements-manager';
+import { GuideRequirementsProvider, SequentialRequirementsManager } from '../../requirements-manager';
 import { isInteractiveLearningUrl } from '../../security';
 import {
   useTextSelection,
@@ -56,7 +56,7 @@ import {
 } from '../../integrations/assistant-integration';
 import { substituteVariables } from '../../utils/variable-substitution';
 import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
-import { registerGuideId } from '../../global-state/guide-identity';
+import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 
@@ -390,11 +390,8 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     }
   }, [content.url]);
 
-  // Publish the guide identity that `var-*` requirement checks resolve against.
-  // MUST be useLayoutEffect: a child step's mount-time check runs from its own
-  // useEffect, which fires before the parent's — a passive effect here lets the
-  // previous guide's identity satisfy this guide's requirements.
-  useLayoutEffect(() => registerGuideId(guideId), [guideId]);
+  // Mirror this guide for compatibility callers outside the scoped provider.
+  useLayoutEffect(() => registerCompatibilityGuideId(guideId), [guideId]);
 
   const journey = content.metadata.learningJourney;
   const beforeContent =
@@ -404,19 +401,21 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
   return (
     <GuideResponseProvider guideId={guideId}>
-      <ContentWithVariables
-        processedContent={processedContent}
-        contentType={content.type}
-        baseUrl={content.url}
-        title={content.metadata.title}
-        isNativeJson={content.isNativeJson ?? false}
-        onContentReady={onContentReady}
-        activeRef={activeRef}
-        className={className}
-        selectionState={selectionState}
-        documentContext={documentContext}
-        beforeContent={beforeContent}
-      />
+      <GuideRequirementsProvider guideId={guideId}>
+        <ContentWithVariables
+          processedContent={processedContent}
+          contentType={content.type}
+          baseUrl={content.url}
+          title={content.metadata.title}
+          isNativeJson={content.isNativeJson ?? false}
+          onContentReady={onContentReady}
+          activeRef={activeRef}
+          className={className}
+          selectionState={selectionState}
+          documentContext={documentContext}
+          beforeContent={beforeContent}
+        />
+      </GuideRequirementsProvider>
     </GuideResponseProvider>
   );
 });

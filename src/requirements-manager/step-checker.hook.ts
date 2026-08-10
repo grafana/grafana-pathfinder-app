@@ -35,7 +35,8 @@ import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config
 import { logger } from '../lib/logging';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
-import { checkRequirements, type RequirementsCheckResult } from './requirements-checker.utils';
+import { type RequirementsCheckResult } from './requirements-checker.utils';
+import { useGuideRequirements } from './guide-requirements-context';
 import { stripTabLocalRequirements } from './controller-requirements';
 import { useInteractiveMode } from '../global-state/interactive-mode-context';
 import { useControllerChannel } from '../global-state/controller-channel';
@@ -111,6 +112,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
   const mode = useInteractiveMode();
   const controllerChannel = useControllerChannel();
+  const { checkRequirements } = useGuideRequirements();
   // Keep the full requirements string in controller mode; tab-local ones are
   // evaluated on the live tab via the round-trip in `attemptCheck`.
   const requirements = rawRequirements;
@@ -364,7 +366,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         }
       });
     },
-    [lazyRender, scrollContainer, mode, controllerChannel, stepId] // checkRequirements is imported; the rest gate the controller round-trip
+    [checkRequirements, lazyRender, scrollContainer, mode, controllerChannel, stepId]
   );
 
   // Manager integration for state propagation

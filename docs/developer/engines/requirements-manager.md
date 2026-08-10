@@ -147,9 +147,9 @@ The hook returns a comprehensive state object including:
 
 ### Guide identity for `var-*` checks
 
-`var-<name>:<value>` resolves the stored response for the **current guide**, and that identity is owned by `src/global-state/guide-identity.ts` (tier 1) — `checks/vars.ts` calls `getCurrentGuideId()` rather than reading a `window` global. `ContentRenderer` registers its guide id from a **layout** effect, so the identity is published before any child step's effect-driven mount check runs; a passive effect would let the previously rendered guide's identity answer this guide's checks. Registration is a stack, so concurrently mounted renderers (docked panel, floating panel, overlay, block preview) hand ownership back to the previous owner on unmount.
+`var-<name>:<value>` resolves the stored response for the guide that owns the check. Each `ContentRenderer` binds its derived guide id in `GuideRequirementsProvider`, and the requirements and postconditions APIs carry that identity through mount-time, retry, reactive, and action-verification checks. Concurrent renderers therefore never infer identity from mount order.
 
-When nothing has registered an identity the resolved value is the empty string, which no writer ever stores under, so `var-*` checks find no response and fail. There is deliberately no shared fallback bucket: a common id is exactly how one guide's answer would unlock a step in another. Controller-mode live tabs have no `ContentRenderer` and therefore no identity — tracked in [#1574](https://github.com/grafana/grafana-pathfinder-app/issues/1574), behind the default-off two-tab controller setting.
+`src/global-state/guide-identity.ts` retains a compatibility fallback for external or controller callers that cannot provide identity. When that fallback has no registered identity it resolves to the empty string, which no writer ever stores under, so `var-*` checks fail instead of sharing a sentinel bucket. Controller-mode live tabs have no `ContentRenderer` and therefore use this fallback — tracked in [#1574](https://github.com/grafana/grafana-pathfinder-app/issues/1574), behind the default-off two-tab controller setting.
 
 ## Objectives vs Requirements
 
@@ -373,7 +373,7 @@ The Requirements Manager integrates with:
 
 - `TimeoutManager` - Manages debouncing and delayed checks
 - `guideResponseStorage` - Variable storage for var-based requirements
-- `global-state/guide-identity.ts` - Owns the guide id those variables are scoped by (see [Guide identity for `var-*` checks](#guide-identity-for-var-checks))
+- `global-state/guide-identity.ts` - Compatibility guide identity for callers outside a renderer tree (see [Guide identity for `var-*` checks](#guide-identity-for-var-checks))
 - DOM utilities in `src/lib/dom/` - DOM state checking functions
 
 ## Configuration

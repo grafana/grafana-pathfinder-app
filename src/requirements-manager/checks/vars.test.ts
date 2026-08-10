@@ -1,5 +1,5 @@
 import { guideVariableCheck } from './vars';
-import { registerGuideId, resetGuideIdentityForTests } from '../../global-state/guide-identity';
+import { registerCompatibilityGuideId, resetGuideIdentityForTests } from '../../global-state/guide-identity';
 import { guideResponseStorage } from '../../lib/user-storage';
 
 jest.mock('../../lib/user-storage', () => ({
@@ -35,7 +35,7 @@ describe('guideVariableCheck', () => {
 
   describe('matching', () => {
     beforeEach(() => {
-      registerGuideId('guide-a');
+      registerCompatibilityGuideId('guide-a');
     });
 
     it('passes a wildcard when any value is stored', async () => {
@@ -67,9 +67,17 @@ describe('guideVariableCheck', () => {
   });
 
   describe('guide scoping', () => {
+    it('prefers an explicit guide id over the compatibility fallback', async () => {
+      storeResponses({ 'guide-a': { accepted: true }, 'guide-b': { accepted: false } });
+      registerCompatibilityGuideId('guide-b');
+
+      await expect(guideVariableCheck('var-accepted:true', 'guide-a')).resolves.toMatchObject({ pass: true });
+      expect(mockGetResponse).toHaveBeenCalledWith('guide-a', 'accepted');
+    });
+
     it('reads the responses of the registered guide', async () => {
       storeResponses({ 'guide-a': { accepted: true } });
-      registerGuideId('guide-a');
+      registerCompatibilityGuideId('guide-a');
 
       await expect(guideVariableCheck('var-accepted:true')).resolves.toMatchObject({ pass: true });
       expect(mockGetResponse).toHaveBeenCalledWith('guide-a', 'accepted');
@@ -80,7 +88,7 @@ describe('guideVariableCheck', () => {
     it('does not let a stale window global unlock the registered guide', async () => {
       storeResponses({ 'guide-a': { accepted: true } });
       (window as any).__DocsPluginGuideId = 'guide-a';
-      registerGuideId('guide-b');
+      registerCompatibilityGuideId('guide-b');
 
       await expect(guideVariableCheck('var-accepted:true')).resolves.toMatchObject({ pass: false });
       expect(mockGetResponse).toHaveBeenCalledWith('guide-b', 'accepted');
@@ -90,10 +98,10 @@ describe('guideVariableCheck', () => {
     it('does not share answers between guides', async () => {
       storeResponses({ 'guide-a': { accepted: true } });
 
-      const releaseA = registerGuideId('guide-a');
+      const releaseA = registerCompatibilityGuideId('guide-a');
       await expect(guideVariableCheck('var-accepted:true')).resolves.toMatchObject({ pass: true });
 
-      const releaseB = registerGuideId('guide-b');
+      const releaseB = registerCompatibilityGuideId('guide-b');
       await expect(guideVariableCheck('var-accepted:true')).resolves.toMatchObject({ pass: false });
 
       releaseB();
@@ -101,7 +109,7 @@ describe('guideVariableCheck', () => {
     });
 
     it('reports the resolved guide id in the failure context', async () => {
-      registerGuideId('guide-b');
+      registerCompatibilityGuideId('guide-b');
       const result = await guideVariableCheck('var-accepted:true');
       expect(result.context).toMatchObject({ guideId: 'guide-b' });
     });
@@ -118,7 +126,7 @@ describe('guideVariableCheck', () => {
 
   describe('failures', () => {
     it('fails closed when the storage read throws', async () => {
-      registerGuideId('guide-a');
+      registerCompatibilityGuideId('guide-a');
       mockGetResponse.mockRejectedValue(new Error('storage unavailable'));
 
       const result = await guideVariableCheck('var-accepted:true');

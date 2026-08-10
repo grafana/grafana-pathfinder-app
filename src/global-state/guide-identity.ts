@@ -1,16 +1,9 @@
 /**
- * Guide identity — the id of the guide currently being rendered, used to
- * scope `var-*` requirement checks to that guide's stored responses.
+ * Compatibility guide identity for callers outside a ContentRenderer tree.
  *
- * This module owns the canonical value as typed module-scope state.
- * `ContentRenderer` registers its derived guide id from a layout effect, so
- * the identity is published before any child's effect-driven requirement
- * check runs.
- *
- * Registration is a stack, not a single slot: several `ContentRenderer`s can
- * be mounted at once (docked panel, floating panel, guide overlay, block
- * preview). The most recent registration wins, and releasing it restores the
- * previous owner rather than leaving a dangling id behind.
+ * Renderer-owned checks receive identity explicitly through their scoped
+ * provider. This stack remains only for external/controller callers that
+ * genuinely cannot provide a guide id.
  *
  * The `window.__DocsPluginGuideId` global is kept as a mirror of the top of
  * that stack and as a read fallback: the controller-mode live tab and the
@@ -55,10 +48,10 @@ function readGlobal(): string | undefined {
 }
 
 /**
- * Publish `guideId` as the current guide identity and return a release
- * function that restores whichever identity was current before.
+ * Publish `guideId` for compatibility callers and return a release function
+ * that restores whichever fallback identity was current before.
  */
-export function registerGuideId(guideId: string): () => void {
+export function registerCompatibilityGuideId(guideId: string): () => void {
   const registration: GuideIdRegistration = { id: guideId };
   registrations = [...registrations, registration];
   mirrorToGlobal();
@@ -70,10 +63,10 @@ export function registerGuideId(guideId: string): () => void {
 }
 
 /**
- * Resolve the current guide identity, falling back to the
- * `window.__DocsPluginGuideId` global and then to the empty string.
+ * Resolve the compatibility identity, falling back to the window mirror and
+ * then to the empty string. Renderer-owned checks must supply identity directly.
  */
-export function getCurrentGuideId(): string {
+export function getCompatibilityGuideId(): string {
   return topRegistration()?.id || readGlobal() || '';
 }
 

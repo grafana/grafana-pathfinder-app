@@ -2,16 +2,16 @@
  * Guide-response variable checks: `var-<name>:<value>`.
  *
  * Stored responses live in `guideResponseStorage` (cross-device synced) and are
- * scoped to the guide identity owned by `global-state/guide-identity`, so one
- * guide's answers cannot satisfy another guide's requirements.
+ * scoped to the guide identity supplied by the caller, so one guide's answers
+ * cannot satisfy another guide's requirements.
  * Supports wildcard `*`, boolean `true`/`false`, and exact string match.
  */
 
-import { getCurrentGuideId } from '../../global-state/guide-identity';
+import { getCompatibilityGuideId } from '../../global-state/guide-identity';
 import { guideResponseStorage } from '../../lib/user-storage';
 import type { CheckResultError } from '../../types/requirements.types';
 
-export async function guideVariableCheck(check: string): Promise<CheckResultError> {
+export async function guideVariableCheck(check: string, explicitGuideId?: string): Promise<CheckResultError> {
   try {
     // Parse the requirement format: var-{variableName}:{expectedValue}
     const match = check.match(/^var-([^:]+):(.+)$/);
@@ -27,7 +27,7 @@ export async function guideVariableCheck(check: string): Promise<CheckResultErro
     const variableName = match[1]!;
     const expectedValue = match[2]!;
 
-    const guideId = getCurrentGuideId();
+    const guideId = explicitGuideId ?? getCompatibilityGuideId();
     const actualValue = await guideResponseStorage.getResponse(guideId, variableName);
 
     // Check for wildcard (any non-empty value)

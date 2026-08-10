@@ -1,4 +1,4 @@
-import { getCurrentGuideId, registerGuideId, resetGuideIdentityForTests } from './guide-identity';
+import { getCompatibilityGuideId, registerCompatibilityGuideId, resetGuideIdentityForTests } from './guide-identity';
 
 describe('guide-identity', () => {
   beforeEach(() => {
@@ -7,75 +7,75 @@ describe('guide-identity', () => {
   });
 
   it('resolves the registered guide id', () => {
-    registerGuideId('learning-journeys-alerting');
-    expect(getCurrentGuideId()).toBe('learning-journeys-alerting');
+    registerCompatibilityGuideId('learning-journeys-alerting');
+    expect(getCompatibilityGuideId()).toBe('learning-journeys-alerting');
   });
 
   it('resolves the empty string when nothing has registered', () => {
-    expect(getCurrentGuideId()).toBe('');
+    expect(getCompatibilityGuideId()).toBe('');
   });
 
   it('never resolves to a shared sentinel bucket', () => {
-    expect(getCurrentGuideId()).not.toBe('default');
+    expect(getCompatibilityGuideId()).not.toBe('default');
   });
 
   it('falls back to the window global when no registration exists', () => {
     (window as any).__DocsPluginGuideId = 'guide-from-outside-the-tree';
-    expect(getCurrentGuideId()).toBe('guide-from-outside-the-tree');
+    expect(getCompatibilityGuideId()).toBe('guide-from-outside-the-tree');
   });
 
   it('prefers a registration over the window global', () => {
     (window as any).__DocsPluginGuideId = 'stale-guide';
-    registerGuideId('current-guide');
-    expect(getCurrentGuideId()).toBe('current-guide');
+    registerCompatibilityGuideId('current-guide');
+    expect(getCompatibilityGuideId()).toBe('current-guide');
   });
 
   it('mirrors the registered id to the window global', () => {
-    registerGuideId('guide-a');
+    registerCompatibilityGuideId('guide-a');
     expect((window as any).__DocsPluginGuideId).toBe('guide-a');
   });
 
   it('lets the most recent registration win', () => {
-    registerGuideId('guide-a');
-    registerGuideId('guide-b');
-    expect(getCurrentGuideId()).toBe('guide-b');
+    registerCompatibilityGuideId('guide-a');
+    registerCompatibilityGuideId('guide-b');
+    expect(getCompatibilityGuideId()).toBe('guide-b');
   });
 
   it('restores the previous registration on release', () => {
-    registerGuideId('guide-a');
-    const releaseB = registerGuideId('guide-b');
+    registerCompatibilityGuideId('guide-a');
+    const releaseB = registerCompatibilityGuideId('guide-b');
     releaseB();
-    expect(getCurrentGuideId()).toBe('guide-a');
+    expect(getCompatibilityGuideId()).toBe('guide-a');
     expect((window as any).__DocsPluginGuideId).toBe('guide-a');
   });
 
   it('keeps the top registration when an older one is released first', () => {
-    const releaseA = registerGuideId('guide-a');
-    registerGuideId('guide-b');
+    const releaseA = registerCompatibilityGuideId('guide-a');
+    registerCompatibilityGuideId('guide-b');
     releaseA();
-    expect(getCurrentGuideId()).toBe('guide-b');
+    expect(getCompatibilityGuideId()).toBe('guide-b');
   });
 
   it('clears the mirrored global when the last registration is released', () => {
-    const release = registerGuideId('guide-a');
+    const release = registerCompatibilityGuideId('guide-a');
     release();
-    expect(getCurrentGuideId()).toBe('');
+    expect(getCompatibilityGuideId()).toBe('');
     expect((window as any).__DocsPluginGuideId).toBe('');
   });
 
   it('tolerates a release being called twice', () => {
-    registerGuideId('guide-a');
-    const releaseB = registerGuideId('guide-b');
+    registerCompatibilityGuideId('guide-a');
+    const releaseB = registerCompatibilityGuideId('guide-b');
     releaseB();
     releaseB();
-    expect(getCurrentGuideId()).toBe('guide-a');
+    expect(getCompatibilityGuideId()).toBe('guide-a');
   });
 
   it('resetGuideIdentityForTests drops every registration', () => {
-    registerGuideId('guide-a');
-    registerGuideId('guide-b');
+    registerCompatibilityGuideId('guide-a');
+    registerCompatibilityGuideId('guide-b');
     resetGuideIdentityForTests();
     delete (window as any).__DocsPluginGuideId;
-    expect(getCurrentGuideId()).toBe('');
+    expect(getCompatibilityGuideId()).toBe('');
   });
 });
