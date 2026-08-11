@@ -154,7 +154,7 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `docs-retrieval` (`fetchUnifiedContent`) | `context-engine`, `components/docs-panel` | Multi-strategy fetch returns parsed guide                    |
 | `context-engine` (`getRecommendations`) | `components/docs-panel`, `Home`          | Returns scored `Recommendation[]` from recommender or bundled  |
 | `package-engine` (`createCompositeResolver`) | `docs-retrieval`, `context-engine`  | Bundled-first fallback chain                                   |
-| `requirements-manager` (`checkRequirements`) | `interactive-engine`, `components/interactive-tutorial` | Synchronous prereq verification          |
+| `requirements-manager` (`useGuideRequirements`) | `interactive-engine`, `components/interactive-tutorial` | Prereq verification scoped to the renderer's guide id |
 | `interactive-engine` (`useInteractiveElements`) | `components/interactive-tutorial`     | Action execution + auto-completion detection                |
 | `lib/dom` (`resolveSelector`)          | `interactive-engine`                     | Selector pipeline: detect → generate → validate → retry        |
 | `global-state/sidebar`, `panel-mode`   | `components/docs-panel`, `App`           | Sidebar visibility + content/editor mode                       |

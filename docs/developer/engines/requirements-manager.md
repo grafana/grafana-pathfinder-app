@@ -153,6 +153,8 @@ In two-tab controller mode the step is still owned by the controller's renderer,
 
 `src/global-state/guide-identity.ts` retains a compatibility fallback for callers outside a renderer tree. When that fallback has no registered identity it resolves to the empty string, which no writer ever stores under, so `var-*` checks fail instead of sharing a sentinel bucket.
 
+Renderer-owned code must therefore reach the checkers through `useGuideRequirements()`, never through the module-level `checkRequirements` / `checkPostconditions`. `unscoped-checkers.ratchet.test.ts` pins the allowlist of direct importers — today only the barrel, the provider itself, and `live-tab-executor.ts`, which has no renderer of its own and only ever receives the non-guide-scoped tokens.
+
 Scoping is only as precise as the derived id. `ContentRenderer` derives it by flattening the content URL's pathname, so distinct guides whose pathnames flatten to the same string still share a bucket — this separates identities, it does not make them unique. Hardening the derivation would orphan already-stored responses and needs a storage migration, so it is deliberately out of scope here.
 
 ## Objectives vs Requirements

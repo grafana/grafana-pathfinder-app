@@ -17,10 +17,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 const UNSCOPED_EXPORTS = ['checkRequirements', 'checkPostconditions'];
 
-const CHECKER_MODULES = [
-  'src/requirements-manager/requirements-checker.utils.ts',
-  'src/requirements-manager/index.ts',
-];
+const CHECKER_MODULES = ['src/requirements-manager/requirements-checker.utils.ts', 'src/requirements-manager/index.ts'];
 
 const ALLOWED_UNSCOPED_CONSUMERS = [
   // The barrel re-export itself, and the scoped provider that wraps it.
@@ -64,7 +61,12 @@ function importsUnscopedChecker(file: string): boolean {
     if (!resolved || !CHECKER_MODULES.includes(resolved)) {
       continue;
     }
-    const imported = bindings!.split(',').map((binding) => binding.trim().split(/\s+as\s+/)[0]!.trim());
+    const imported = bindings!.split(',').map((binding) =>
+      binding
+        .trim()
+        .split(/\s+as\s+/)[0]!
+        .trim()
+    );
     if (imported.some((name) => UNSCOPED_EXPORTS.includes(name))) {
       return true;
     }
