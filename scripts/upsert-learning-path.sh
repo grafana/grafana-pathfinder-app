@@ -20,7 +20,7 @@
 #     --package <path-to-package-dir> \
 #     [--namespace <stacks-XXXX>] [--status draft|published] \
 #     [--repository <name>] [--dry-run] [--verbose] \
-#     [--continue-on-error] [--strict-blocks]
+#     [--continue-on-error] [--strict-blocks] [--overwrite]
 #
 # Example:
 #   scripts/upsert-learning-path.sh \
@@ -43,7 +43,8 @@
 #
 # Exit codes:
 #   0  success
-#   1  argument / package / aggregator error
+#   1  argument / package / aggregator error, a refused overwrite, or a
+#      --dry-run in which any resource failed to validate
 #   64 usage error
 #   66 package directory or file not readable
 #   127 missing curl/jq
@@ -83,10 +84,15 @@ Optional:
       --no-manifest     Upload content only, omitting spec.manifest. Escape
                         hatch for stacks whose CRD predates the field; the
                         path's milestone list is not published.
+      --overwrite       Allow replacing guides in the namespace that this
+                        tool did not upload. Refused by default, because a
+                        write replaces spec wholesale and the API keeps no
+                        revisions.
   -h, --help            Show this message.
 
-Uploads milestones first and the path cover last. Re-running is idempotent:
-existing resources are updated in place.
+Uploads milestones first and the path cover last. Re-running updates the
+resources this tool already uploaded in place; it never deletes, so a
+milestone dropped from the manifest is left behind on the stack.
 EOF
 }
 
@@ -101,6 +107,13 @@ VERBOSE=false
 CONTINUE_ON_ERROR=false
 STRICT_BLOCKS=false
 NO_MANIFEST=false
+OVERWRITE=false
+
+# Provenance written to every resource this tool uploads, so a later run can
+# tell its own resources from guides authored elsewhere in the namespace.
+MANAGED_BY_KEY="pathfinderbackend.ext.grafana.app/managed-by"
+MANAGED_BY_VALUE="upsert-learning-path.sh"
+SOURCE_PACKAGE_KEY="pathfinderbackend.ext.grafana.app/source-package"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -115,6 +128,7 @@ while [[ $# -gt 0 ]]; do
     --continue-on-error) CONTINUE_ON_ERROR=true; shift ;;
     --strict-blocks) STRICT_BLOCKS=true; shift ;;
     --no-manifest) NO_MANIFEST=true; shift ;;
+    --overwrite) OVERWRITE=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 64 ;;
   esac
@@ -172,8 +186,14 @@ build_manifest() {
   jq --arg repo "$REPOSITORY" '
     ["id","type","repository","description","milestones","author","category","depends"] as $typed
     | . as $m
-    | ($m | with_entries(. as $e | select(($typed | index($e.key)) == null and $e.value != null))) as $extra
-    | (($m.author // {}) | {name, team} | with_entries(select(.value != null))) as $author
+    | ($m | with_entries(. as $e | select(($typed | index($e.key)) == null and $e.value != null))) as $rest
+    | (($m.author // {}) | with_entries(select(.value != null))) as $allAuthor
+    | ($allAuthor | {name, team} | with_entries(select(.value != null))) as $author
+    # The CRD declares only name and team on #Author, so anything else an
+    # author block carries (email, github, ...) would fall between the typed
+    # field and additionalFields. Sweep it in rather than drop it.
+    | ($allAuthor | del(.name, .team)) as $authorExtra
+    | ($rest + (if ($authorExtra | length) > 0 then {author: $authorExtra} else {} end)) as $extra
     | (($m.depends // []) | map(if type == "array" then . else [.] end)) as $depends
     | (($m.type // "") | . == "path" or . == "journey") as $isMeta
     | (if $repo != "" then $repo else ($m.repository // "") end) as $repository
@@ -190,6 +210,7 @@ build_manifest() {
 
 CREATED=0
 UPDATED=0
+OVERWROTE=0
 FAILED=0
 FAILED_NAMES=
 
@@ -224,6 +245,21 @@ upsert_package() {
     return 1
   fi
 
+  local owner=-
+  if [[ "$COLLISION_CHECK" == true ]]; then
+    owner=$(existing_owner "$id")
+    if [[ "$owner" != "-" && "$owner" != "$MANAGED_BY_VALUE" ]]; then
+      if [[ "$OVERWRITE" == false ]]; then
+        echo "  refusing to overwrite \"${id}\" in ${NAMESPACE}: this tool did not upload it." >&2
+        echo "  A write replaces spec wholesale and the API keeps no revisions, so the" >&2
+        echo "  existing guide could not be restored. Rename the package, or pass" >&2
+        echo "  --overwrite to replace it deliberately." >&2
+        return 1
+      fi
+      echo "  warning: replacing \"${id}\", which this tool did not upload" >&2
+    fi
+  fi
+
   local unknown
   unknown=$(jq -r "$UNKNOWN_BLOCK_FIELDS_JQ" "$content")
   if [[ -n "$unknown" ]]; then
@@ -247,7 +283,13 @@ upsert_package() {
   fi
 
   if [[ "$DRY_RUN" == true ]]; then
-    printf '  %-7s %s  (%s blocks)\n' "$label" "$id" "$blocks"
+    local note=
+    if [[ "$owner" == "$MANAGED_BY_VALUE" ]]; then
+      note="  (updates existing)"
+    elif [[ "$owner" != "-" ]]; then
+      note="  << replaces a guide this tool did not upload"
+    fi
+    printf '  %-7s %s  (%s blocks)%s\n' "$label" "$id" "$blocks" "$note"
     if [[ "$VERBOSE" == true ]]; then
       sed 's/^/    /' "$spec_file"
     elif [[ -n "$manifest_obj" ]]; then
@@ -258,10 +300,14 @@ upsert_package() {
 
   local output
   if ! output=$("$UPSERT_GUIDE" --stack "$STACK" --token "$TOKEN" \
-      --namespace "$NAMESPACE" --spec "$spec_file" 2>&1); then
+      --namespace "$NAMESPACE" --spec "$spec_file" \
+      --annotation "${MANAGED_BY_KEY}=${MANAGED_BY_VALUE}" \
+      --annotation "${SOURCE_PACKAGE_KEY}=${PKG_ID}" 2>&1); then
     printf '  %-7s %s  FAILED\n' "$label" "$id"
     echo "$output" | sed 's/^/      /' >&2
-    if echo "$output" | grep -q '422'; then
+    # Anchored to the status line write_resource emits; a bare "422" also
+    # matches namespace digits like stacks-4220.
+    if echo "$output" | grep -q 'HTTP 422'; then
       echo "      hint: a 422 means the CRD rejected a field. If it names \"manifest\"," >&2
       echo "      this stack's InteractiveGuide CRD predates spec.manifest support." >&2
     fi
@@ -271,6 +317,9 @@ upsert_package() {
   if echo "$output" | grep -q '^Creating '; then
     CREATED=$((CREATED + 1))
     printf '  %-7s %s  created\n' "$label" "$id"
+  elif [[ "$owner" != "-" && "$owner" != "$MANAGED_BY_VALUE" ]]; then
+    OVERWROTE=$((OVERWROTE + 1))
+    printf '  %-7s %s  replaced (was not uploaded by this tool)\n' "$label" "$id"
   else
     UPDATED=$((UPDATED + 1))
     printf '  %-7s %s  updated\n' "$label" "$id"
@@ -311,7 +360,14 @@ fi
 INDEX=
 for dir in "$PACKAGE"/*/; do
   [[ -d "$dir" && -r "${dir}manifest.json" ]] || continue
-  sub_id=$(jq -r '.id // empty' "${dir}manifest.json")
+  # Not every subdirectory is a milestone, so a manifest that isn't parseable
+  # JSON — or isn't an object — must not abort the run. Without the fallback
+  # this is a bare assignment under `set -e` and a malformed prelude page
+  # (`business-value-*`) kills the upload with an undocumented exit code.
+  sub_id=$(jq -r '.id // empty' "${dir}manifest.json" 2>/dev/null) || {
+    echo "warning: skipping ${dir%/} (manifest.json is not readable as a JSON object)" >&2
+    continue
+  }
   [[ -n "$sub_id" ]] || continue
   INDEX="${INDEX}${sub_id}	${dir%/}
 "
@@ -328,16 +384,65 @@ if [[ -n "$DUPES" ]]; then
   exit 1
 fi
 
-if [[ "$DRY_RUN" == false ]]; then
-  if [[ -z "$NAMESPACE" ]]; then
-    NAMESPACE=$(curl -sSf -H "Authorization: Bearer ${TOKEN}" "https://${STACK}/api/frontend/settings" \
-      | jq -r '.namespace // empty') || true
-    if [[ -z "$NAMESPACE" ]]; then
-      echo "could not auto-detect namespace from /api/frontend/settings; pass --namespace explicitly" >&2
-      exit 1
-    fi
+# The check above only compares subdirectories with each other, so it misses a
+# milestone that shares the root package's id. Both would resolve to the same
+# resource name and the cover page, uploaded last, would silently replace the
+# milestone it points at.
+for milestone in ${MILESTONES[@]+"${MILESTONES[@]}"}; do
+  if [[ "$milestone" == "$PKG_ID" ]]; then
+    echo "milestone \"${milestone}\" has the same id as the package itself" >&2
+    echo "both map to resource name \"$(slugify "$PKG_ID")\", so the cover page would" >&2
+    echo "overwrite the milestone. Rename one of them." >&2
+    exit 1
+  fi
+done
+
+# Resolved in dry-run too: without a namespace there is no collection to
+# list, and the collision check below is the part of the preview that
+# actually needs the stack. A dry run must still work offline, so failure
+# there degrades to a warning instead of aborting.
+if [[ -z "$NAMESPACE" ]]; then
+  NAMESPACE=$(curl -sSf -H "Authorization: Bearer ${TOKEN}" "https://${STACK}/api/frontend/settings" \
+    | jq -r '.namespace // empty') || true
+  if [[ -z "$NAMESPACE" && "$DRY_RUN" == false ]]; then
+    echo "could not auto-detect namespace from /api/frontend/settings; pass --namespace explicitly" >&2
+    exit 1
   fi
 fi
+
+# Resource names are slugified package ids from a third-party content repo,
+# and a write replaces spec wholesale. A milestone id like `getting-started`
+# can therefore land on a hand-authored guide of that name — with no
+# revision verb in the API and no copy in the source repo, that overwrite is
+# unrecoverable. LIST the collection once and compare provenance so an
+# in-place update of our own resource stays silent while a collision with
+# anyone else's stops the run.
+EXISTING=
+COLLISION_CHECK=false
+if [[ -n "$NAMESPACE" ]]; then
+  LIST_URL="https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NAMESPACE}/interactiveguides"
+  if LIST_JSON=$(curl -sSf -H "Authorization: Bearer ${TOKEN}" "$LIST_URL" 2>/dev/null); then
+    EXISTING=$(echo "$LIST_JSON" | jq -r --arg key "$MANAGED_BY_KEY" '
+      .items[]? | [.metadata.name, (.metadata.annotations[$key] // "")] | @tsv')
+    COLLISION_CHECK=true
+  elif [[ "$DRY_RUN" == false && "$OVERWRITE" == false ]]; then
+    echo "could not list existing guides at ${LIST_URL}" >&2
+    echo "listing is how this tool avoids clobbering guides it did not upload." >&2
+    echo "Grant the token list access, or pass --overwrite to write without the check." >&2
+    exit 1
+  else
+    echo "warning: could not list existing guides; not checking for collisions" >&2
+  fi
+fi
+
+# Prints the managed-by annotation of an existing resource, "unmanaged" when
+# it exists without one, or "-" when the name is free. Tab-delimited string
+# plus awk keeps this working on bash 3.2, which has no associative arrays.
+existing_owner() {
+  printf '%s\n' "$EXISTING" | awk -F'\t' -v n="$1" '
+    $1 == n { print ($2 == "" ? "unmanaged" : $2); found = 1; exit }
+    END { if (!found) print "-" }'
+}
 
 TOTAL=$(( ${#MILESTONES[@]} + 1 ))
 RESOURCES="resources"
@@ -347,6 +452,27 @@ echo "Package:   ${PKG_ID} (${PKG_TYPE}, ${TOTAL} ${RESOURCES})"
 echo "Status:    ${STATUS}"
 [[ "$DRY_RUN" == false ]] || echo "Mode:      dry run, no writes"
 echo
+
+# Vet every name the run would write before writing any of them. The
+# per-resource check inside upsert_package would also refuse, but only after
+# the earlier milestones had been replaced — and milestones upload first, so
+# by the time a colliding cover page is reached the damage is done.
+if [[ "$COLLISION_CHECK" == true && "$OVERWRITE" == false ]]; then
+  CLASHES=
+  for name in ${MILESTONES[@]+"${MILESTONES[@]}"} "$PKG_ID"; do
+    clash_owner=$(existing_owner "$name")
+    if [[ "$clash_owner" != "-" && "$clash_owner" != "$MANAGED_BY_VALUE" ]]; then
+      CLASHES="${CLASHES} ${name}"
+    fi
+  done
+  if [[ -n "$CLASHES" ]]; then
+    echo "refusing to write: these guides already exist in ${NAMESPACE} and were not" >&2
+    echo "uploaded by this tool:${CLASHES}" >&2
+    echo "A write replaces spec wholesale and the API keeps no revisions, so they could" >&2
+    echo "not be restored. Rename the colliding packages, or pass --overwrite." >&2
+    exit 1
+  fi
+fi
 
 STEP=0
 for milestone in ${MILESTONES[@]+"${MILESTONES[@]}"}; do
@@ -375,11 +501,21 @@ fi
 
 echo
 if [[ "$DRY_RUN" == true ]]; then
-  echo "Dry run complete: ${TOTAL} ${RESOURCES} would be uploaded."
-  exit 0
+  VALID=$((TOTAL - FAILED))
+  if [[ "$FAILED" -gt 0 ]]; then
+    echo "Dry run failed: ${FAILED} of ${TOTAL} ${RESOURCES} did not validate."
+  else
+    echo "Dry run complete: ${VALID} ${RESOURCES} would be uploaded."
+  fi
+else
+  SUMMARY="Done. ${CREATED} created, ${UPDATED} updated"
+  [[ "$OVERWROTE" -eq 0 ]] || SUMMARY="${SUMMARY}, ${OVERWROTE} replaced"
+  echo "${SUMMARY}, ${FAILED} failed."
 fi
 
-echo "Done. ${CREATED} created, ${UPDATED} updated, ${FAILED} failed."
+# One gate for both modes. A dry run that exits 0 on a fault the real run
+# treats as fatal is worse than no preview at all: wired up as a CI check it
+# greenlights an upload that then half-publishes the path.
 if [[ "$FAILED" -gt 0 ]]; then
   echo "Failed:${FAILED_NAMES}" >&2
   exit 1

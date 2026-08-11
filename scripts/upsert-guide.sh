@@ -14,7 +14,7 @@
 #     --stack <hostname> \
 #     --token <service-account-token> \
 #     --spec <path-to-spec.json> \
-#     [--namespace <stacks-XXXX>]
+#     [--namespace <stacks-XXXX>] [--annotation key=value]...
 #
 # Example:
 #   scripts/upsert-guide.sh \
@@ -60,6 +60,9 @@ Required:
 Optional:
   -n, --namespace   Override stack namespace (e.g. stacks-12345). Auto-
                     detected from /api/frontend/settings if omitted.
+  -a, --annotation  key=value to record in metadata.annotations. Repeatable.
+                    On update, merged into the resource's existing
+                    annotations rather than replacing them.
   -h, --help        Show this message.
 
 Defaults applied to the spec when missing:
@@ -78,6 +81,7 @@ STACK=
 TOKEN=
 SPEC=
 NAMESPACE=
+ANNOTATIONS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -85,6 +89,7 @@ while [[ $# -gt 0 ]]; do
     -t|--token) TOKEN="$2"; shift 2 ;;
     -f|--spec) SPEC="$2"; shift 2 ;;
     -n|--namespace) NAMESPACE="$2"; shift 2 ;;
+    -a|--annotation) ANNOTATIONS+=("$2"); shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 64 ;;
   esac
@@ -95,6 +100,21 @@ done
 
 command -v curl >/dev/null || { echo "curl is required but not installed" >&2; exit 127; }
 command -v jq >/dev/null || { echo "jq is required but not installed" >&2; exit 127; }
+
+# Fold --annotation key=value pairs into an object. Validated here so a
+# malformed pair fails before any network call. Splits on the first "=" so
+# values may contain further "=".
+ANNOTATIONS_JSON=$(printf '%s\n' ${ANNOTATIONS[@]+"${ANNOTATIONS[@]}"} | jq -Rs '
+  split("\n") | map(select(length > 0))
+  | map(
+      (index("=")) as $i
+      | if $i == null or $i == 0
+        then error("--annotation must be key=value, got: " + .)
+        else {key: .[0:$i], value: .[$i+1:]}
+        end
+    )
+  | from_entries
+') || exit 64
 
 # Strip scheme if the caller accidentally included one.
 STACK="${STACK#https://}"
@@ -195,13 +215,19 @@ case "$HTTP_CODE" in
       echo "GET ${BASE}/${NAME} returned 200 but no metadata.resourceVersion" >&2
       exit 1
     fi
+    # Merge our annotations over the resource's existing ones so a PUT
+    # doesn't drop annotations set by the editor or another tool.
+    EXISTING_ANN=$(echo "$BODY" | jq '.metadata.annotations // {}')
     ENVELOPE=$(jq -n \
       --arg name "$NAME" --arg ns "$NAMESPACE" --arg rv "$RESOURCE_VERSION" \
       --argjson spec "$SPEC_JSON" \
-      '{
+      --argjson existingAnn "$EXISTING_ANN" --argjson ann "$ANNOTATIONS_JSON" \
+      '($existingAnn + $ann) as $merged
+      | {
         apiVersion: "pathfinderbackend.ext.grafana.app/v1alpha1",
         kind: "InteractiveGuide",
-        metadata: { name: $name, namespace: $ns, resourceVersion: $rv },
+        metadata: ({ name: $name, namespace: $ns, resourceVersion: $rv }
+          + (if ($merged | length) > 0 then { annotations: $merged } else {} end)),
         spec: $spec
       }')
     echo "Updating ${NAME} (resourceVersion=${RESOURCE_VERSION})..." >&2
@@ -210,18 +236,16 @@ case "$HTTP_CODE" in
   404)
     ENVELOPE=$(jq -n \
       --arg name "$NAME" --arg ns "$NAMESPACE" \
-      --argjson spec "$SPEC_JSON" \
+      --argjson spec "$SPEC_JSON" --argjson ann "$ANNOTATIONS_JSON" \
       '{
         apiVersion: "pathfinderbackend.ext.grafana.app/v1alpha1",
         kind: "InteractiveGuide",
-        metadata: { name: $name, namespace: $ns },
+        metadata: ({ name: $name, namespace: $ns }
+          + (if ($ann | length) > 0 then { annotations: $ann } else {} end)),
         spec: $spec
       }')
     echo "Creating ${NAME}..." >&2
-    curl -sSf -X POST \
-      -H "Authorization: Bearer ${TOKEN}" \
-      -H 'Content-Type: application/json' \
-      "${BASE}" -d "$ENVELOPE"
+    write_resource POST "${BASE}" "$ENVELOPE"
     ;;
   401)
     echo "Authentication failed (HTTP 401). Check the service-account token." >&2

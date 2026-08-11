@@ -104,12 +104,15 @@ It resolves each id in `milestones` to the subdirectory whose
 milestones first and the path's own cover page last, so the path never
 references a guide that doesn't exist yet. Subdirectories absent from
 `milestones` are ignored, which keeps website-only prelude pages
-(`business-value-*`) out of the upload. Re-running is idempotent.
+(`business-value-*`) out of the upload.
 
 Per-resource create/update is delegated to `upsert-guide.sh`, so the
 slug rule, namespace detection, and RBAC are identical. Pass
 `--dry-run` to see every payload without writing, and `--help` for the
-full flag list.
+full flag list. Re-running updates the resources it already uploaded —
+see [Not overwriting someone else's
+guide](#not-overwriting-someone-elses-guide) for what happens when a
+name is already taken by something it didn't upload.
 
 ### `spec.id` must be a valid resource name
 
@@ -127,17 +130,81 @@ upload in that case; rename the package instead.
 ### Block fields the CRD doesn't declare
 
 The CRD's block schema is generated from `#Block` / `#NestedBlock` /
-`#Step` in `kinds/interactiveguide.cue` and currently lags the app's
-block schema — `autoCollapse`, `start`, `end`, `code`, `language`, and
-`command` have no home in it. Blocks nested three or more levels deep
-fall under `x-kubernetes-preserve-unknown-fields` and survive; anything
+`#Step` in `kinds/interactiveguide.cue` and lags the app's block schema
+by roughly twenty fields. Blocks nested three or more levels deep fall
+under `x-kubernetes-preserve-unknown-fields` and survive; anything
 shallower is **silently pruned**. There is no 422 and no warning from
 the API: the write returns 200 and the field is simply gone on the next
-GET. `upsert-learning-path.sh` warns per resource, and
-`--strict-blocks` turns the warning into a failure.
+GET.
 
-The fix is to add the missing fields to `#Block`/`#NestedBlock` in the
-backend's CUE and regenerate.
+**`targetstate` is the one to know about.** Every other field on the
+list costs you rendering or authoring metadata. `targetstate` is the
+desired end state of a toggle, so losing it downgrades a step from
+drive-to-state to a blind click — a behaviour change, not a cosmetic
+one, and `src/bundled-interactives/loki-grafana-101/content.json` uses
+it.
+
+Do not treat any list in this document as authoritative — the set moves
+whenever either schema changes, and it has grown twice while this page
+was being written. The live check is the script itself:
+`upsert-learning-path.sh` warns per resource with the exact fields your
+content would lose, and `--strict-blocks` turns that warning into a
+failure. Run it with `--dry-run` before an upload.
+
+As of backend `kinds/interactiveguide.cue` on `main`, the undeclared
+set is:
+
+> `authorNote`, `autoCollapse`, `brief`, `collapsed`, `command`,
+> `datasourceFilter`, `defaultValue`, `end`, `failureMessage`,
+> `hintLevels`, `id` (on steps), `mode`, `openGuide`, `setupCommands`,
+> `setupScript`, `shuffle`, `start`, `successCriteria`, `targetstate`,
+> `vmApp`, `vmScenario`, `vmTemplate`
+
+To regenerate it, diff `KNOWN_FIELDS` in
+`src/types/json-guide.schema.ts` against `_blockFields` / `#Block` /
+`#NestedBlock` / `#Step` in the backend's
+`kinds/interactiveguide.cue`. The `BLOCK` and `STEP` allowlists inside
+`upsert-learning-path.sh` are a direct transcription of those CUE
+definitions, so they are the thing to update when the CRD gains a
+field.
+
+The real fix is to add the missing fields to `#Block`/`#NestedBlock` in
+the backend's CUE and regenerate.
+
+### Not overwriting someone else's guide
+
+Resource names are slugified package ids, and a write replaces `spec`
+wholesale. A milestone id like `getting-started` will therefore land on
+a hand-authored guide of that name — and because the API has no
+revision verb and the source repo holds no copy, that overwrite cannot
+be undone.
+
+`upsert-learning-path.sh` LISTs the collection once before writing and
+compares provenance. Every resource it uploads carries:
+
+| Annotation                                         | Value                     |
+| -------------------------------------------------- | ------------------------- |
+| `pathfinderbackend.ext.grafana.app/managed-by`     | `upsert-learning-path.sh` |
+| `pathfinderbackend.ext.grafana.app/source-package` | the root package id       |
+
+A name carrying that `managed-by` value is one of ours and is updated
+in place. A name without it belongs to someone else, and the run is
+**refused before anything is written** — the check covers every name in
+the package up front, so a collision on the cover page cannot leave the
+milestones already replaced. Pass `--overwrite` to replace them
+deliberately; the summary then reports them as `replaced` rather than
+`updated`. Annotations set by other tools are preserved across an
+update.
+
+`--dry-run` performs the same LIST, so the preview marks each resource
+as new, an update, or a collision. It exits non-zero on any validation
+failure, which makes it usable as a CI gate; if the stack is
+unreachable the collision check is skipped with a warning and the rest
+of the validation still runs.
+
+Re-running is additive. Existing resources are updated in place, but
+nothing is ever deleted, so a milestone dropped from `manifest.json`
+stays on the stack until removed by hand.
 
 ## Authentication
 
@@ -205,7 +272,7 @@ and what makes a path a path.
 | `repository`       | yes      | Provenance label. Defaults to `"app-platform"` when omitted, so in practice you can leave it out.                                                                              |
 | `description`      | no       | Short summary shown in listings and used as the milestone label when the member guide's content isn't loaded.                                                                  |
 | `milestones`       | no       | Ordered list of member package ids, for `path`/`journey`. Each id must be the `spec.id` of another `InteractiveGuide` in the namespace.                                        |
-| `author`           | no       | `{ name?, team? }`. No other keys — the CRD rejects them.                                                                                                                      |
+| `author`           | no       | `{ name?, team? }`. The CRD declares no other keys; `upsert-learning-path.sh` moves any it finds (`email`, `github`, …) to `additionalFields.author` instead of dropping them. |
 | `category`         | no       | Free-form grouping label.                                                                                                                                                      |
 | `depends`          | no       | CNF (AND of ORs): an **array of arrays**. A single dependency is a singleton clause — `[["a"], ["b"]]` is "a AND b", `[["a","b"]]` is "a OR b". A bare string is not accepted. |
 | `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. Anything not typed above goes here.                                                                            |
@@ -213,7 +280,8 @@ and what makes a path a path.
 `recommends`, `suggests`, `provides`, `targeting`, `testEnvironment`,
 and `startingLocation` have no typed home yet, so
 `upsert-learning-path.sh` writes them under `additionalFields` rather
-than dropping them. Note that the frontend reads `recommends` and
+than dropping them — as it does for any manifest key the CRD doesn't
+declare, including surplus `author` subkeys. Note that the frontend reads `recommends` and
 `suggests` from the top level of the manifest, so they have no effect
 while they live in `additionalFields` — promoting a key out of
 `additionalFields` into a real CUE field is additive and safe.
