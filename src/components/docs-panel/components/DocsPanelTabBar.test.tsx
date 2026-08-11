@@ -2,9 +2,15 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DocsPanelTabBar, type DocsPanelTabBarProps } from './DocsPanelTabBar';
 import { testIds } from '../../../constants/testIds';
+import { publishEditorChromeStatus, resetEditorChromeStatus } from '../../block-editor/editor-chrome-status';
 
 jest.mock('@grafana/i18n', () => ({
-  t: (_key: string, fallback: string) => fallback,
+  t: (_key: string, fallback: string, values?: Record<string, string>) => {
+    if (!values) {
+      return fallback;
+    }
+    return fallback.replace(/\{\{(\w+)\}\}/g, (_, name: string) => values[name] ?? '');
+  },
 }));
 
 jest.mock('@grafana/runtime', () => {
@@ -76,6 +82,8 @@ function makeProps(overrides: Partial<DocsPanelTabBarProps> = {}): DocsPanelTabB
 describe('DocsPanelTabBar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
+    resetEditorChromeStatus();
   });
 
   it('navigates to the My Learning page when the "My learning" button is clicked', () => {
@@ -93,6 +101,63 @@ describe('DocsPanelTabBar', () => {
   it('renders the "Interactive Learning" wordmark', () => {
     render(<DocsPanelTabBar {...makeProps()} />);
     expect(screen.getByText('Interactive Learning')).toBeInTheDocument();
+  });
+
+  describe('editor tab status badge', () => {
+    const editorTab: any = {
+      id: 'editor',
+      type: 'editor',
+      title: 'My Guide',
+      baseUrl: '',
+      currentUrl: '',
+      isLoading: false,
+    };
+
+    function renderWithEditor() {
+      const recommendationsTab: any = {
+        id: 'recommendations',
+        type: 'recommendations',
+        title: 'Recommendations',
+        baseUrl: '',
+        currentUrl: '',
+      };
+      render(
+        <DocsPanelTabBar
+          {...makeProps({
+            visibleTabs: [recommendationsTab, editorTab],
+            activeTabId: 'editor',
+            activeTab: editorTab,
+          })}
+        />
+      );
+    }
+
+    it('keeps the Draft badge and italicizes the title when a draft has diverged', () => {
+      publishEditorChromeStatus({ publishedStatus: 'draft', hasUnsyncedChanges: true });
+      renderWithEditor();
+
+      expect(screen.getByText('Draft')).toBeInTheDocument();
+      expect(screen.queryByText('Draft (modified)')).not.toBeInTheDocument();
+      expect(screen.getByText('My Guide').className).toContain('editorTabTitleModified');
+    });
+
+    it('derives status from persisted state before the editor has mounted', () => {
+      const guide = { id: 'g', title: 'My Guide', blocks: [{ type: 'markdown', content: 'hi' }] };
+      localStorage.setItem('pathfinder-block-editor-state', JSON.stringify({ guide }));
+      localStorage.setItem(
+        'pathfinder-block-editor-backend-tracking',
+        JSON.stringify({
+          resourceName: 'g',
+          backendStatus: 'published',
+          lastPublishedJson: JSON.stringify(guide),
+        })
+      );
+
+      renderWithEditor();
+
+      expect(screen.getByText('Published')).toBeInTheDocument();
+      expect(screen.getByText('My Guide').className).not.toContain('editorTabTitleModified');
+    });
   });
 
   describe('overflow chevron', () => {
