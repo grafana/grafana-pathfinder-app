@@ -712,6 +712,27 @@ func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
 	}
 }
 
+// An unprovisioned stack has no way to authenticate as the caller upstream, so
+// the read route reports itself unavailable rather than attempting a call that
+// can only 401. No lister override here: that override short-circuits ahead of
+// the exchanger gate, so this is the real resolve path.
+func TestMyCompletions_NoOBOCredentialsStructurallyUnavailable(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	resetCompletionRecordsCache()
+	t.Cleanup(resetCompletionRecordsCache)
+
+	rr, body := doMyCompletionsReq(t, completionRequest(t, "/completion-records/my", "user:1"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if body.Capability.Available || body.Capability.Reason != reasonOBOUnavailable {
+		t.Fatalf("expected capability=false %q without provisioned credentials, got %+v", reasonOBOUnavailable, body.Capability)
+	}
+	if len(body.Completions) != 0 {
+		t.Errorf("expected no completions, got %d", len(body.Completions))
+	}
+}
+
 // --- Capability probe --------------------------------------------------------
 
 func doCapability(t *testing.T, sub string) (*httptest.ResponseRecorder, completionCapability) {

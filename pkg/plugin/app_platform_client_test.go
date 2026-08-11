@@ -230,4 +230,12 @@ func TestAggregationToggleMatchesGroup(t *testing.T) {
 	if customGuideAggregationToggle == pathfinderBackendAggregationToggle {
 		t.Error("custom-guide and completion-records must gate on distinct aggregation toggles")
 	}
+
+	// The cases above derive the expected toggle FROM the Go group constants, so
+	// editing a group would move both sides together and stay green while the TS
+	// literal (APP_PLATFORM_API_VERSION, src/utils/interactive-guides-api.ts)
+	// kept pinning the old group. Pin the Go side to the same literal.
+	if customGuideGroupVersion != "pathfinderbackend.ext.grafana.app/v1alpha1" {
+		t.Errorf("customGuideGroupVersion = %q, but src/utils/interactive-guides-api.ts pins pathfinderbackend.ext.grafana.app/v1alpha1", customGuideGroupVersion)
+	}
 }
