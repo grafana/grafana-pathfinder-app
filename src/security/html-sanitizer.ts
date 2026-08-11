@@ -217,6 +217,7 @@ export function sanitizeDocumentationHTML(html: string): string {
       'data-targetaction',
       'data-reftarget',
       'data-targetvalue',
+      'data-targetstate',
       'data-targetcomment',
       'data-showme',
       'data-doit',

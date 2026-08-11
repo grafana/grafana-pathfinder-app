@@ -85,6 +85,13 @@ export const testIds = {
     customGuidesList: 'context-panel-custom-guides-list',
     customGuideItem: (index: number) => `context-panel-custom-guide-item-${index}`,
     customGuideStartButton: (index: number) => `context-panel-custom-guide-start-${index}`,
+    customGuidePathCard: (index: number) => `context-panel-custom-guide-path-card-${index}`,
+    customGuidePathStartButton: (index: number) => `context-panel-custom-guide-path-start-${index}`,
+    customGuidePathDrillInButton: (index: number) => `context-panel-custom-guide-path-drillin-${index}`,
+    customGuidePathMembers: (index: number) => `context-panel-custom-guide-path-members-${index}`,
+    customGuidePathMemberItem: (index: number, memberIndex: number) =>
+      `context-panel-custom-guide-path-member-${index}-${memberIndex}`,
+    customGuideOrphanSection: 'context-panel-custom-guide-orphan-section',
     suggestedGuidesToggle: 'context-panel-suggested-guides-toggle',
     otherDocsSection: 'context-panel-other-docs-section',
     otherDocsToggle: 'context-panel-other-docs-toggle',
@@ -230,6 +237,7 @@ export const testIds = {
     // Form controls
     submitButton: 'block-editor-submit-button',
     blockTypeButton: (type: string) => `block-editor-type-${type}`,
+    paletteGroup: (id: string) => `block-editor-palette-group-${id}`,
     // Markdown form
     rawMarkdownTab: 'block-editor-raw-markdown-tab',
     richMarkdownTab: 'block-editor-rich-markdown-tab',
@@ -290,11 +298,17 @@ export const testIds = {
     badgesModal: 'learning-paths-badges-modal',
     badgesModalClose: 'learning-paths-badges-modal-close',
     badgeItem: (badgeId: string) => `learning-paths-badge-${badgeId}`,
-    showAllPathsButton: 'learning-paths-show-all',
-    showAllBadgesButton: 'learning-paths-show-all-badges',
     resetProgressButton: 'learning-paths-reset-progress',
     badgeToast: 'learning-paths-badge-toast',
     badgeToastDismiss: 'learning-paths-badge-toast-dismiss',
+    myCoursesSection: 'my-learning-courses-section',
+    badgesSection: 'my-learning-badges-section',
+    discoverMoreSection: 'my-learning-discover-section',
+    completedSection: 'my-learning-completed-section',
+    discoverMoreCard: (id: string) => `discover-more-card-${id}`,
+    discoverMoreStart: (id: string) => `discover-more-start-${id}`,
+    discoverMoreExpand: (id: string) => `discover-more-expand-${id}`,
+    tableOfContents: 'learning-paths-toc',
   },
 
   // Live Session

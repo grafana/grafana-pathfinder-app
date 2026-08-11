@@ -26,6 +26,8 @@ import {
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
+export { getMilestoneSlug } from '../lib/learning-journey-url';
+
 /**
  * Optional manifest/display context threaded from the completion call sites so
  * the recorder can key on `(guideSource, guideId) = (manifest.repository,
@@ -61,8 +63,11 @@ export function getNextMilestoneUrl(content: RawContent): string | null {
 
   const { currentMilestone, milestones } = content.metadata.learningJourney;
 
-  // Since milestones are now sequentially numbered from 1, we can use simple logic
-  const nextMilestone = milestones.find((m) => m.number === currentMilestone + 1);
+  // Milestones are sequentially numbered from 1. Locked (unresolved) entries
+  // aren't navigable, so skip forward past any run of them to the next
+  // resolved milestone — a path whose next member hasn't published yet
+  // shouldn't dead-end the toolbar (RFC CUSTOM-GUIDE-PACKAGES.md §6.5).
+  const nextMilestone = milestones.find((m) => m.number > currentMilestone && !m.isLocked);
   return nextMilestone ? nextMilestone.url : null;
 }
 
@@ -73,16 +78,19 @@ export function getPreviousMilestoneUrl(content: RawContent): string | null {
 
   const { currentMilestone, milestones, baseUrl } = content.metadata.learningJourney;
 
-  // Since milestones are now sequentially numbered from 1, we can use simple logic
-  if (currentMilestone > 1) {
-    const prevMilestone = milestones.find((m) => m.number === currentMilestone - 1);
-    return prevMilestone ? prevMilestone.url : null;
-  } else if (currentMilestone === 1) {
-    // Go back to cover page (milestone 0)
-    return baseUrl;
+  if (currentMilestone < 1) {
+    return null;
   }
 
-  return null;
+  // Skip backward past any locked entries to the nearest resolved milestone.
+  const candidates = milestones.filter((m) => m.number < currentMilestone && !m.isLocked);
+  if (candidates.length > 0) {
+    const prevMilestone = candidates.reduce((latest, m) => (m.number > latest.number ? m : latest));
+    return prevMilestone.url;
+  }
+
+  // Nothing resolved before this one — go back to the cover page (milestone 0).
+  return baseUrl;
 }
 
 export function getCurrentMilestone(content: RawContent): Milestone | null {
@@ -132,10 +140,26 @@ export function isLastMilestone(content: RawContent): boolean {
     return false;
   }
 
-  const { currentMilestone, totalMilestones } = content.metadata.learningJourney;
+  const { currentMilestone, milestones } = content.metadata.learningJourney;
 
-  // Since milestones are now sequentially numbered from 1, this is simple
-  return currentMilestone === totalMilestones;
+  // "Last" = the highest-numbered UNLOCKED milestone. Locked (unpublished)
+  // trailing members must not block a partially-published path from reaching its
+  // final reachable step (which is what drives last-milestone auto-complete).
+  const unlockedNumbers = milestones.filter((m) => !m.isLocked).map((m) => m.number);
+  if (unlockedNumbers.length === 0) {
+    return false;
+  }
+  return currentMilestone === Math.max(...unlockedNumbers);
+}
+
+/**
+ * Number of navigable (unlocked) milestones — the threshold a journey must reach
+ * to count as complete. Locked members are placeholders for unpublished content
+ * (RFC §6.5) and are unreachable, so they must not inflate the completion
+ * denominator. `totalMilestones` stays the locked-inclusive display count.
+ */
+export function countUnlockedMilestones(milestones: Milestone[]): number {
+  return milestones.filter((m) => !m.isLocked).length;
 }
 
 export function isFirstMilestone(content: RawContent): boolean {
@@ -186,7 +210,8 @@ export function generateJourneyContentWithExtras(
   enhancedContent = appendBottomNavigationToContent(
     enhancedContent,
     metadata.currentMilestone,
-    metadata.totalMilestones
+    metadata.totalMilestones,
+    metadata.milestones
   );
 
   return enhancedContent;
@@ -201,9 +226,10 @@ function getCurrentMilestoneFromMetadata(metadata: LearningJourneyMetadata): Mil
  * These generate HTML strings to append to content
  */
 function addReadyToBeginButton(content: string, metadata: LearningJourneyMetadata): string {
-  // Since milestones are now sequentially numbered from 1,
-  // the first milestone is always the one with number === 1
-  const firstMilestone = metadata.milestones.find((m) => m.number === 1);
+  // The entry point is the first UNLOCKED milestone — a locked (unpublished)
+  // milestone 1 has url:'' and would render the primary CTA as a dead button.
+  // If nothing is published yet, emit no button.
+  const firstMilestone = metadata.milestones.find((m) => !m.isLocked);
 
   if (!firstMilestone) {
     return content;
@@ -303,8 +329,16 @@ function addConclusionImageToContent(content: string, conclusionImage: Conclusio
   return content + conclusionImageHtml;
 }
 
-function appendBottomNavigationToContent(content: string, currentMilestone: number, totalMilestones: number): string {
-  const isLastMilestone = currentMilestone === totalMilestones;
+function appendBottomNavigationToContent(
+  content: string,
+  currentMilestone: number,
+  totalMilestones: number,
+  milestones: Milestone[]
+): string {
+  // "Last" for the Next control = no UNLOCKED milestone after the current one.
+  // A locked trailing member isn't navigable, so rendering Next there would be a
+  // dead control (the click handler's canNavigateNext already returns null).
+  const isLastMilestone = !milestones.some((m) => m.number > currentMilestone && !m.isLocked);
   const isCoverPage = currentMilestone === 0;
 
   // Conditionally render Previous button (hide on cover page)
@@ -452,18 +486,6 @@ export async function getAllJourneyCompletionsAsync(): Promise<Record<string, nu
 // ============================================================================
 // MILESTONE COMPLETION HELPERS
 // ============================================================================
-
-/**
- * Extracts the milestone slug (guide ID) from a milestone URL.
- * e.g. "https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/" -> "select-platform"
- * e.g. "https://grafana.com/docs/.../select-platform/content.json" -> "select-platform"
- */
-export function getMilestoneSlug(milestoneUrl: string): string {
-  // Strip content.json or unstyled.html suffixes added during content fetching
-  const cleanUrl = milestoneUrl.replace(/\/(content\.json|unstyled\.html)$/, '');
-  const segments = cleanUrl.replace(/\/+$/, '').split('/');
-  return segments[segments.length - 1] || '';
-}
 
 /**
  * Marks a learning journey milestone as completed.

@@ -68,10 +68,13 @@ func rec(userID, guideSource, guideID, title, category, pathID, source, complete
 	}
 }
 
-// testGrafanaConfig is the healthy config: aggregation toggle on, app URL set.
+// testGrafanaConfig is the healthy config: aggregation toggles on, app URL set.
+// Enables both the legacy `.com` toggle (completion-records proxy) and the GAP
+// `.app` toggle (custom-guide catalogue proxy) so this shared helper models a
+// transition-state stack aggregating both groups.
 func testGrafanaConfig() map[string]string {
 	return map[string]string{
-		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle,
+		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
 		sdkconfig.AppURL:               "http://grafana.example",
 	}
 }
@@ -559,6 +562,36 @@ func TestErrors_IdentityScopedFailureNotCachedShared(t *testing.T) {
 	}
 	if l.callCount() != 2 {
 		t.Fatalf("identity-scoped failure must not be cached shared: expected a fresh probe for caller B, got %d LIST calls", l.callCount())
+	}
+}
+
+// A failed on-behalf-of token mint is caller-scoped too — auth-api can reject
+// one caller's subject token while serving others — so it must not enter the
+// shared negative cache either, even though it carries no HTTP status.
+func TestErrors_MintFailureNotCachedShared(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		return nil, fmt.Errorf("%w: exchange refused", errAccessTokenMintFailed)
+	}}
+	withLister(t, l)
+
+	// A mint failure is transient (no upstream status), so caller A gets a 503
+	// hiccup rather than capability=false.
+	rr, _ := doMyCompletions(t, "/completion-records/my", "user:a")
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("caller A: expected 503 for a transient mint failure, got %d", rr.Code)
+	}
+	if l.callCount() != 1 {
+		t.Fatalf("expected 1 upstream LIST, got %d", l.callCount())
+	}
+
+	advance(time.Second)
+	rr, _ = doMyCompletions(t, "/completion-records/my", "user:b")
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("caller B: expected 503, got %d", rr.Code)
+	}
+	if l.callCount() != 2 {
+		t.Fatalf("mint failure must not be cached shared: expected a fresh probe for caller B, got %d LIST calls", l.callCount())
 	}
 }
 

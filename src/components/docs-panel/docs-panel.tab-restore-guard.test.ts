@@ -189,6 +189,7 @@ jest.mock('./utils', () => ({
   getTranslatedTitle: jest.fn((t: string) => t),
   restoreTabsFromStorage: (...args: unknown[]) => mockRestoreTabsFromStorage(...args),
   restoreActiveTabFromStorage: (...args: unknown[]) => mockRestoreActiveTabFromStorage(...args),
+  mergeRestoredTabsWithExisting: jest.requireActual('./utils/tab-storage-restore').mergeRestoredTabsWithExisting,
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: jest.fn(),
@@ -226,6 +227,7 @@ jest.mock('../../hooks', () => ({}));
 // ---------------------------------------------------------------------------
 
 import { isDevModeEnabled } from '../../utils/dev-mode';
+import { tabStorage } from '../../lib/user-storage';
 import { CombinedLearningJourneyPanel } from './docs-panel';
 
 // ---------------------------------------------------------------------------
@@ -289,6 +291,118 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     await panel.restoreTabsAsync();
 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it('force-refreshes an existing model after another surface updates storage', async () => {
+    // Fullscreen/floating own separate models. Without the force escape hatch
+    // the returning sidebar keeps its pre-handoff snapshot and their tab work
+    // looks discarded.
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([
+      RESTORED_TABS[0],
+      { ...RESTORED_TABS[1], id: 'tab-guide-2', title: 'Opened in full screen' },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValueOnce('tab-guide-2');
+
+    await panel.restoreTabsAsync({ force: true });
+
+    expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
+    expect((panel as any).state.activeTabId).toBe('tab-guide-2');
+    expect((panel as any).state.tabs.map((tab: { id: string }) => tab.id)).toContain('tab-guide-2');
+  });
+
+  it('keeps loaded content on force restore when id and currentUrl still match', async () => {
+    // Storage never persists content. Without a merge, every fullscreen/floating
+    // round trip would blank the strip and refetch — same cost as a reload.
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+
+    const loadedContent = { content: '# still here', meta: {}, type: 'html' as const };
+    (panel as any).setState({
+      tabs: (panel as any).state.tabs.map((tab: { id: string }) =>
+        tab.id === 'tab-guide-1'
+          ? {
+              ...tab,
+              content: loadedContent,
+              pathContext: { learningJourney: { milestones: [] } },
+            }
+          : tab
+      ),
+    });
+
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([
+      RESTORED_TABS[0],
+      { ...RESTORED_TABS[1], title: 'Renamed in full screen' },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValueOnce('tab-guide-1');
+
+    await panel.restoreTabsAsync({ force: true });
+
+    const guide = (panel as any).state.tabs.find((tab: { id: string }) => tab.id === 'tab-guide-1');
+    expect(guide.title).toBe('Renamed in full screen');
+    expect(guide.content).toBe(loadedContent);
+    expect(guide.pathContext).toEqual({ learningJourney: { milestones: [] } });
+  });
+
+  it('drops in-memory content on force restore when currentUrl changed in storage', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+
+    (panel as any).setState({
+      tabs: (panel as any).state.tabs.map((tab: { id: string }) =>
+        tab.id === 'tab-guide-1' ? { ...tab, content: { content: '# stale page', meta: {}, type: 'html' } } : tab
+      ),
+    });
+
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([
+      RESTORED_TABS[0],
+      {
+        ...RESTORED_TABS[1],
+        currentUrl: 'https://grafana.com/docs/grafana/latest/test/other-page/',
+      },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValueOnce('tab-guide-1');
+
+    await panel.restoreTabsAsync({ force: true });
+
+    const guide = (panel as any).state.tabs.find((tab: { id: string }) => tab.id === 'tab-guide-1');
+    expect(guide.content).toBeNull();
+    expect(guide.currentUrl).toBe('https://grafana.com/docs/grafana/latest/test/other-page/');
+  });
+
+  it('waits for an in-flight save before restoring, so return paths that cannot flush still see the latest strip', async () => {
+    // Covers fire-and-forget returns (Return to sidebar notice; auto-dock):
+    // restore waits for the newest write already pending when the await
+    // starts, not for a save issued after that.
+    let writeLanded = false;
+    let resolveWrite!: () => void;
+    (tabStorage.setTabs as jest.Mock).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveWrite = () => {
+          writeLanded = true;
+          resolve();
+        };
+      })
+    );
+    mockRestoreTabsFromStorage.mockImplementation(async () =>
+      writeLanded ? [RESTORED_TABS[0], { ...RESTORED_TABS[1], id: 'tab-from-fullscreen' }] : [RESTORED_TABS[0]]
+    );
+    mockRestoreActiveTabFromStorage.mockImplementation(async () =>
+      writeLanded ? 'tab-from-fullscreen' : 'recommendations'
+    );
+
+    const outgoing = new CombinedLearningJourneyPanel();
+    void outgoing.saveTabsToStorage();
+
+    const sidebar = new CombinedLearningJourneyPanel();
+    // Land the write a macrotask later so restore's own microtask-resolved
+    // storage reads would win the race if the barrier were removed.
+    const restore = sidebar.restoreTabsAsync({ force: true });
+    setTimeout(resolveWrite, 0);
+    await restore;
+
+    expect((sidebar as any).state.tabs.map((tab: { id: string }) => tab.id)).toContain('tab-from-fullscreen');
   });
 
   it('should allow a NEW instance to restore tabs after the first instance already restored', async () => {

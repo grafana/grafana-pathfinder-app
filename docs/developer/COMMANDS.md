@@ -97,6 +97,10 @@ mage test
 
 # Lint Go code
 mage lint
+
+# Regenerate the Go/TypeScript contract goldens under pkg/plugin/testdata/contract
+# (see docs/design/BACKEND_PROXY_PATTERN.md §10)
+go test ./pkg/plugin -run TestContract -update
 ```
 
 ## Additional per-platform backend builds

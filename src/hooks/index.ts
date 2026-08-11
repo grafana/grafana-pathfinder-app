@@ -8,3 +8,4 @@ export { useStepProgressFromEvents } from './useStepProgressFromEvents';
 export { usePersistedBoolean, usePersistedLocalState, usePersistedString } from './usePersistedLocalState';
 export { useDocumentOutline, type OutlineItem } from './useDocumentOutline';
 export { useActiveOutlineItem, type ActiveOutlineItem } from './useActiveOutlineItem';
+export { useVerticalOverflow } from './useVerticalOverflow';

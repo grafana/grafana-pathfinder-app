@@ -118,6 +118,22 @@ describe('getConversionWarning', () => {
       expect(warning!.lostFields).toContain('width');
       expect(warning!.lostFields).toContain('height');
     });
+
+    // `challenge` had no KNOWN_FIELDS entry, so this returned null and the
+    // switch happened with no confirmation, silently dropping the quiz.
+    it('should warn about lost fields when converting quiz to challenge', () => {
+      const source: JsonBlock = {
+        type: 'quiz',
+        question: 'What is 2+2?',
+        choices: [{ id: 'b', text: '4', correct: true }],
+        multiSelect: true,
+        id: 'q1',
+      };
+      const warning = getConversionWarning(source, 'challenge');
+
+      expect(warning).not.toBeNull();
+      expect(warning!.lostFields.sort()).toEqual(['choices', 'multiSelect']);
+    });
   });
 
   describe('common fields handling', () => {
@@ -326,6 +342,22 @@ describe('convertBlockType', () => {
       const result = convertBlockType(source, 'html');
       expect((result as unknown as Record<string, unknown>).showMe).toBeUndefined();
       expect((result as unknown as Record<string, unknown>).doIt).toBeUndefined();
+    });
+
+    // Without a KNOWN_FIELDS entry for the target, the shared-field copy was
+    // skipped entirely — dropping `id`, which drives completion tracking.
+    it('should copy shared fields when converting markdown to challenge', () => {
+      const source: JsonBlock = {
+        type: 'markdown',
+        content: 'Solve it',
+        id: 'm1',
+        authorNote: 'n',
+      };
+      const result = convertBlockType(source, 'challenge') as unknown as Record<string, unknown>;
+
+      expect(result.id).toBe('m1');
+      expect(result.authorNote).toBe('n');
+      expect(result.brief).toBe('Solve it');
     });
   });
 

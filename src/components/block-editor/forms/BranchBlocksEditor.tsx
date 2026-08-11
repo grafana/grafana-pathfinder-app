@@ -46,8 +46,30 @@ import {
   isImageBlock,
   isVideoBlock,
   isInputBlock,
+  type JsonInteractiveBlock,
 } from '../../../types/json-guide.types';
 import { getBlockPreview } from '../utils';
+
+/** Fields this form rebuilds on save; everything else is carried over. */
+const FORM_OWNED_INTERACTIVE_FIELDS = [
+  'type',
+  'action',
+  'targetAction',
+  'reftarget',
+  'refTarget',
+  'content',
+  'targetvalue',
+  'targetValue',
+  'requirements',
+] as const satisfies ReadonlyArray<keyof JsonInteractiveBlock>;
+
+function carriedOverInteractiveFields(block: JsonInteractiveBlock): Partial<JsonInteractiveBlock> {
+  const carried: Record<string, unknown> = { ...block };
+  for (const field of FORM_OWNED_INTERACTIVE_FIELDS) {
+    delete carried[field];
+  }
+  return carried as Partial<JsonInteractiveBlock>;
+}
 
 // ============================================================================
 // Styles
@@ -425,7 +447,7 @@ export function BranchBlocksEditor({
 
   // Build block from form fields
   const buildBlockFromForm = useCallback(
-    (type: BlockType): JsonBlock => {
+    (type: BlockType, existing?: JsonBlock): JsonBlock => {
       switch (type) {
         case 'markdown':
           return { type: 'markdown', content: formContent };
@@ -435,6 +457,10 @@ export function BranchBlocksEditor({
             .map((r) => r.trim())
             .filter((r) => r.length > 0);
           return {
+            // This reduced form edits five fields of an interactive block; the
+            // rest (targetstate, tooltip, objectives, …) are authored
+            // elsewhere and must survive a save here.
+            ...(existing && isInteractiveBlock(existing) ? carriedOverInteractiveFields(existing) : {}),
             type: 'interactive',
             action: formAction,
             reftarget: formReftarget,
@@ -537,7 +563,7 @@ export function BranchBlocksEditor({
       return;
     }
 
-    const updatedBlock = buildBlockFromForm(blockType);
+    const updatedBlock = buildBlockFromForm(blockType, editingBlock);
     const newBlocks = [...blocks];
     newBlocks[editingIndex] = updatedBlock;
     onChange(newBlocks);

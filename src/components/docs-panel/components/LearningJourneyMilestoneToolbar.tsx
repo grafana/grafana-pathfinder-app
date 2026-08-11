@@ -32,7 +32,12 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../../docs-retrieval';
+import {
+  countUnlockedMilestones,
+  getJourneyProgress,
+  getMilestoneSlug,
+  markMilestoneDone,
+} from '../../../docs-retrieval';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
@@ -150,14 +155,14 @@ export function LearningJourneyMilestoneToolbar({
     // advances even though there's nothing to "complete". The DOM scope
     // comes from `contentRoot` (sidebar) or the global content attribute
     // (fullscreen) — both restrict the search to the active panel.
-    if (activeTab.currentUrl && activeTab.baseUrl) {
+    if (activeTab.currentUrl) {
       const root: ParentNode =
         contentRoot?.current ?? document.querySelector('[data-pathfinder-content="true"]') ?? document;
       const hasInteractiveSteps = root.querySelectorAll('[data-step-id]').length > 0;
       if (!hasInteractiveSteps) {
         const slug = getMilestoneSlug(activeTab.currentUrl);
         if (slug) {
-          void markMilestoneDone(activeTab.baseUrl, slug, lj.totalMilestones, {
+          void markMilestoneDone(lj.baseUrl, slug, countUnlockedMilestones(lj.milestones), {
             packageManifest: activeTab.content?.metadata?.packageManifest,
             guideTitle: activeTab.title,
           });

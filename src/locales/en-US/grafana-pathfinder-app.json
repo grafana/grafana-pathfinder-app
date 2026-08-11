@@ -19,6 +19,9 @@
     "view": "View",
     "viewDocumentation": "View documentation"
   },
+  "coverPage": {
+    "tableOfContents": "In this path"
+  },
   "docsPanel": {
     "closeTab": "Close {{title}}",
     "closeSidebar": "Close sidebar",
@@ -55,18 +58,34 @@
   },
   "myLearning": {
     "badges": "Badges",
-    "badgesDescription": "Earn badges by completing guides and maintaining streaks",
+    "badgesDescription": "Earn badges by completing paths and maintaining streaks",
     "badgesEarned": "Badges earned",
+    "collapse": "Collapse",
+    "completed": "Completed",
+    "completedDescription": "Courses and paths you've finished",
+    "completedDone": "Done",
+    "completedEmpty": "Finish a course to see it here",
     "dayStreak": "Day streak",
+    "discoverMore": "Discover more",
+    "discoverMoreDescription": "Structured paths to help you master Grafana step by step",
+    "discoverMoreEmpty": "Nothing new to show right now — check back later",
+    "discoverMoreMilestones_one": "{{count}} milestone",
+    "discoverMoreMilestones_other": "{{count}} milestones",
+    "discoverMoreOpening": "Opening…",
+    "discoverMoreStart": "Start",
+    "expand": "Expand",
+    "fundamentals": "Fundamentals",
     "guidesCompleted": "Guides completed",
     "launchErrorMessage": "Something went wrong while loading the guide. Please try again.",
     "launchErrorTitle": "Could not open the guide",
+    "learningAltitude": "Learning altitude",
     "learningPaths": "Learning paths",
+    "loadingGuides": "Loading guides...",
+    "myCourses": "My paths",
+    "myCoursesDescription": "Paths to explore and continue",
+    "myCoursesEmpty": "No learning paths available yet",
     "pathsDescription": "Structured guides to help you master Grafana step by step",
-    "showLess": "Show less",
-    "subtitle": "Track your progress, earn badges, and master Grafana",
-    "viewAll_one": "View all ({{count}})",
-    "viewAll_other": "View all ({{count}})"
+    "subtitle": "Track your progress, earn badges, and master Grafana"
   },
   "userProfileBar": {
     "allComplete": "All paths complete!",

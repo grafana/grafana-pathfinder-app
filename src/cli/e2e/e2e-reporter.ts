@@ -27,6 +27,7 @@ import {
   type ReportConfig,
   type E2ETestReport,
   type GuideResult,
+  type ExecutionSelection,
   type MultiGuideSummary,
   type MultiGuideReport,
 } from './schemas/e2e-report.schema';
@@ -442,7 +443,11 @@ export function toGuideResult(report: E2ETestReport): GuideResult {
  * @param grafanaVersion - Optional Grafana version
  * @returns Complete multi-guide report
  */
-export function generateMultiGuideReport(resultsArray: TestResultsData[], grafanaVersion?: string): MultiGuideReport {
+export function generateMultiGuideReport(
+  resultsArray: TestResultsData[],
+  grafanaVersion?: string,
+  selection?: ExecutionSelection
+): MultiGuideReport {
   // Generate individual reports
   const reports = resultsArray.map((data) => generateReport(data, grafanaVersion));
 
@@ -488,6 +493,7 @@ export function generateMultiGuideReport(resultsArray: TestResultsData[], grafan
     startedAt,
     endedAt,
     type: 'multi-guide',
+    ...(selection ? { selection } : {}),
     config,
     summary,
     guides,

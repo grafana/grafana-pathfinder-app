@@ -96,7 +96,11 @@ export class FormFillHandler {
     // For non-combobox elements, set value and dispatch events
     // Always dispatch events even if remainingValue is empty to maintain backward compatibility
     await this.setElementValue(refinedElement, remainingValue, tagName, inputType, isMonacoEditor);
-    await this.dispatchEvents(refinedElement, tagName, isMonacoEditor);
+    // Checkboxes and radios are driven by a real click, which already fired
+    // onChange; re-dispatching would toggle twice on toggle-style handlers.
+    if (inputType !== 'checkbox' && inputType !== 'radio') {
+      await this.dispatchEvents(refinedElement, tagName, isMonacoEditor);
+    }
     await this.markAsCompleted(data);
   }
 
@@ -397,10 +401,26 @@ export class FormFillHandler {
 
   private async setInputValue(element: HTMLElement, value: string, inputType: string): Promise<void> {
     if (inputType === 'checkbox' || inputType === 'radio') {
-      (element as HTMLInputElement).checked = value !== 'false' && value !== '0' && value !== '';
-    } else {
-      this.setNativeInputValue(element, value);
+      const input = element as HTMLInputElement;
+      const desired = value !== 'false' && value !== '0' && value !== '';
+
+      if (inputType === 'radio' && !desired) {
+        logger.warn('Cannot uncheck a radio button; select a sibling option instead', {
+          element: describeElement(element),
+        });
+        return;
+      }
+
+      // Assigning `.checked` updates React's own value tracker, so the change
+      // event we would dispatch afterwards reads as a no-op and onChange never
+      // fires. React wires onChange for checkbox/radio to `click`.
+      if (input.checked !== desired) {
+        input.click();
+      }
+      return;
     }
+
+    this.setNativeInputValue(element, value);
   }
 
   private async setTextareaValue(element: HTMLElement, value: string, isMonacoEditor: boolean): Promise<void> {
