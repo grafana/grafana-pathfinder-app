@@ -155,6 +155,27 @@ describe('fetchCustomGuideRepository', () => {
     });
   });
 
+  // A malformed error shape must not mint an unbounded Faro attribute value.
+  it('keeps the reason bounded when the status is out of range or not an integer', async () => {
+    mockGet.mockRejectedValueOnce({ status: 99999 });
+    await fetchCustomGuideRepository('stacks-123');
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenLastCalledWith('transport-error');
+
+    mockGet.mockRejectedValueOnce({ data: { statusCode: 503.0000001 } });
+    await fetchCustomGuideRepository('stacks-123');
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenLastCalledWith('transport-error');
+  });
+
+  // Both callers document that this never rejects — a throwing sink must not break that.
+  it('still resolves to an empty array when the observability calls throw', async () => {
+    mockGet.mockRejectedValue(new Error('network error'));
+    (logger.warn as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('logger blew up');
+    });
+
+    await expect(fetchCustomGuideRepository('stacks-123')).resolves.toEqual([]);
+  });
+
   it('caches a successful result within the TTL and de-duplicates concurrent calls', async () => {
     mockGet.mockResolvedValue({ capability: { available: true }, guides: [{ id: 'g1', status: 'published' }] });
 

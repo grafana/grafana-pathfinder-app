@@ -70,18 +70,30 @@ const cache = new Map<string, { entries: CustomGuideRepositoryEntry[]; at: numbe
 const inflight = new Map<string, Promise<CustomGuideRepositoryEntry[]>>();
 
 // Bounded token, never the error text — it lands on a Faro event attribute,
-// which must stay low-cardinality (docs/developer/TELEMETRY.md).
+// which must stay low-cardinality (docs/developer/TELEMETRY.md). `data.statusCode`
+// is body-derived, so the integer bound is what keeps the vocabulary finite.
 function classifyRequestFailure(err: unknown): string {
   const status =
     (err as { status?: number })?.status ??
     (err as { statusCode?: number })?.statusCode ??
     (err as { data?: { statusCode?: number } })?.data?.statusCode;
-  return typeof status === 'number' && status >= 100 && status <= 599 ? `http-${status}` : 'transport-error';
+  const bounded = typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599;
+  return bounded ? `http-${status}` : 'transport-error';
 }
 
 function requestFailureMessage(err: unknown): string {
   const message = (err as { message?: unknown })?.message;
   return typeof message === 'string' ? message : 'unknown';
+}
+
+function reportCatalogueFetchFailure(err: unknown): void {
+  try {
+    const reason = classifyRequestFailure(err);
+    logger.warn('[custom-guides] catalogue fetch failed', { reason, message: requestFailureMessage(err) });
+    recordCustomGuideCatalogueUnavailable(reason);
+  } catch {
+    // Observability must not turn a swallowed listing failure into a rejection.
+  }
 }
 
 async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
@@ -147,9 +159,7 @@ export async function fetchCustomGuideRepository(namespace: string): Promise<Cus
     // it so a transient error doesn't stick for the whole TTL. Still counted —
     // `showErrorAlert: false` makes this otherwise invisible from the browser.
     .catch((err: unknown) => {
-      const reason = classifyRequestFailure(err);
-      logger.warn('[custom-guides] catalogue fetch failed', { reason, message: requestFailureMessage(err) });
-      recordCustomGuideCatalogueUnavailable(reason);
+      reportCatalogueFetchFailure(err);
       return [] as CustomGuideRepositoryEntry[];
     })
     .finally(() => {
