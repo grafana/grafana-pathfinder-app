@@ -1,5 +1,50 @@
 # Changelog
 
+## 2.16.0
+
+### Added
+
+- **Custom guide packages — a private catalogue on the Grafana App Platform**: A stack's own guide packages and journeys now appear as a Custom Guides section in the context panel and feed into My Learning, with milestone resolution and `backend-guide:` launch. The plugin's App Platform reads and writes target `pathfinderbackend.ext.grafana.app/v1alpha1`, gated on the `aggregation.pathfinderbackend-ext-grafana-app.enabled` toggle, and a new on-behalf-of token exchanger lets the plugin backend call its stack's aggregated API as the calling user — which unblocks every App Platform proxy route, not just the catalogue. (#1408)
+- **Guides choose their own launch surface**: Content-only guides — prose, images, video — open full screen where they can use the whole viewport, while interactive guides open in the sidebar so their "show me" and "do it" steps can drive Grafana beside them. The decision is made per guide at launch and does not override a surface the user set themselves. (#1446)
+- **My Learning rebuilt as a two-column layout**: My Courses holds paths in progress, Completed holds finished ones, and untouched paths stay eligible for Discover more, which is now restricted to paths. The follow-up pass split the columns 7:5, put badges in a fixed grid behind a bottom fade instead of a "view all" toggle that dragged the sibling column down, gave Discover more a description and disclosure chevron, showed a disabled state on launch buttons during the multi-second prepare step, and made the path cards keyboard-operable. (#1464, #1581)
+- **Cloud learning paths land on a cover page with a table of contents**: Launching a not-started URL-based path from My Learning now opens milestone 0 with an "in this path" table of contents showing per-milestone completion, instead of jumping straight to module 1. Milestone-completion storage keys were aligned in the same change so those checkmarks are accurate. (#1473)
+- **Masked Faro session replay**: A guide that goes wrong can now be watched back rather than reconstructed from events. Recording masks every text node and input type, with canvas, fonts, inline images, inline stylesheets, and cross-origin iframes all off, and a dedicated scrubber strips the content rrweb leaves exposed in attributes and URLs — panel titles in `data-testid`, `aria-label`, `title`, `alt`, `placeholder`, and `var-*` template variables. (#1482)
+- **`targetState` for interactive steps that toggle**: Steps used to click unconditionally, so any target with toggle semantics landed wherever the user happened to leave the UI. `highlight` and `button` steps can now declare the desired end state, read the control, click only when it differs, and confirm afterwards — so re-running is a no-op and the step converges from either starting state. When the state is unreadable the step clicks anyway and warns, so no existing guide regresses. (#1493)
+- **Kiosk, guide editor, and Dev tools moved into the overflow menu**: Recommendations is now the only rail tab; the rest live in the docs-panel overflow menu, with their existing gates relocated rather than loosened. (#1445)
+- **Dev tools opens as a normal closable tab**: Leaving Dev tools no longer feels like leaving the panel or flipping Dev mode off, and the tab bar stacks above panel chrome so the overflow menu stays usable while the editor header is open. (#1509)
+- **Block editor header redesign**: A two-row header with a labeled Edit/Preview/JSON rocker on its own line, a labeled Save, and a measured responsive collapse. Preview hides the whole title row — the rendered guide supplies its own heading — and relocates the save or publish status to the toolbar row, with recoloured draft and published badges and a gradient underline under the title input. (#1429, #1435)
+- **Pathfinder wordmark in the docs panel tab bar**: Adds the "Interactive Learning" wordmark and a divider, which hide below a 360px container width so branding yields first when the bar is narrow. (#1447)
+- **E2E CLI runs path and journey packages**: `pathfinder-cli e2e --package` expands path packages recursively into ordered leaf-guide chains, and repository-wide runs keep independent guides runnable when another root has an unavailable or structurally invalid prerequisite. (#1474)
+
+### Fixed
+
+- **Token-mint failures are no longer shared between callers**: On the completion-records proxy, a failure to mint an on-behalf-of token was written into the namespace-global negative cache and replayed to other callers on the same namespace, breaking the per-caller isolation the handler documents. The failure now carries its own sentinel error and is never cached across callers. (#1570)
+- **E2E runner artifacts and reporting hardened**: Concurrent runs shared Playwright output paths, bearer-authenticated traces persisted credentials to disk, broad timeout matching misclassified guide failures as infrastructure failures, and skip-only or zero-pass runs could report a misleading summary. Output is now isolated per invocation, tracing is disabled when bearer authentication is active, and report outcomes reflect verified execution. (#1443)
+- **Unrecognized experiment variants no longer enroll users**: A remote `pathfinder.highlighted-guide-experiment` payload with a typo'd or renamed `variant` was cast straight through and enrolled the user into an arm that does not exist, auto-opening the sidebar and writing a once-per-browser marker for the bogus arm. The variant is now membership-checked like the rest of the payload. (#1529)
+- **Malformed `pages` arrays no longer crash the auto-open orchestrator**: `HighlightedGuideConfig` checked that `pages` was an array but not that its elements were strings, so a payload like `{ pages: [1, 2] }` validated and then threw downstream on `pattern.trim()`. (#1551)
+- **Plugin settings save preserves provisioned fields**: Saving from any configuration tab dropped provisioned `jsonData` fields such as `stackId`, because Grafana's settings API fully overwrites `jsonData` and the frontend only sent the fields it knew about. (#1514)
+- **Grafana overlays render above the popped-out panel**: With the guide editor popped out, opening the header kebab — or any Grafana dropdown, menu, tooltip, or modal — drew it behind the floating panel. The panel now sits below Grafana's overlay band while staying above app chrome. (#1481)
+- **Highlights no longer auto-open the navigation sidebar**: A `highlight` step whose target sat anywhere under a `<nav>` element opened and docked the Grafana mega menu, even when the target had nothing to do with navigation. (#1466)
+- **Browser Back from a content-only guide exits quietly**: Going back from a transient full-screen prose launch no longer reopens a closed sidebar with the prose squeezed into it. Only history pops take the quiet path; every push path keeps today's dock behavior. (#1471)
+- **Docs links work from every launch surface**: The auto-open docs listener was mounted only on the sidebar renderer, so an intercepted docs-link click did nothing at all while the floating panel or full-screen page owned the surface. (#1461)
+- **Floating dock-to-sidebar persists consistently across sessions**: The dock-to-sidebar pill saved the sidebar preference in a fresh session but silently skipped the save if a guide had been auto-launched earlier in the same session. (#1458)
+- **The challenge block is reachable from the block palette**: It had a schema, metadata, and a working form but was missing from the palette's block-type list. The block-type registries are now exhaustive, so a future block type cannot go missing the same way. (#1531)
+- **Two source files hidden from grep**: Each carried a literal NUL byte as a string delimiter, which made `grep -r` and `rg` skip them silently. Both are now written as `\x00` escapes, and a guard fails CI and pre-commit if any tracked file grows a raw control byte again. (#1537)
+- **Backend CI resolves its Go version from `go.mod`**: The build failed intermittently when a runner's cached Go was older than the version `go.mod` requires and `GOTOOLCHAIN=local` blocked a self-upgrade. (#1507)
+- **E2E runner reliability**: Markdown-only guides — 53% of the interactive-tutorials population — now pass with zero steps instead of timing out and cascading skipped prerequisites through the rest of a path. The runner also executes whichever control is actually rendered rather than assuming "do it", fails unmet mandatory requirements instead of skipping them, carries the manifest's `startingLocation` into Playwright so guides do not run from `/`, keeps guided execution observable until subactions settle, and retries panel bootstrap when Grafana's Help menu wins the race. (#1477, #1441, #1440, #1442, #1426)
+
+### Security
+
+- **npm vulnerabilities patched**: Bumps `dompurify` and `js-yaml` as direct dependencies and overrides, plus safe transitive fixes across `websocket-driver`, `brace-expansion`, `postcss`, `immutable`, `fast-uri`, `tar`, `body-parser`, and `golang.org/x/crypto`. The `react-router` 8.3.0 bump is deliberately deferred — it would downgrade `@grafana/ui`, and the advisory only affects unstable APIs this plugin never uses. (#1476)
+
+### Chore
+
+- **App Platform contract pinned by tests**: Golden fixtures couple the four App Platform envelopes to their Zod schemas, and catalogue-manifest normalization is now pinned by its own tests. (#1580, #1571)
+- **German translations reworked for natural UI copy**. (#1550)
+- **Docs**: Documented the challenge and snippet-ref guide block types (#1538) and fixed the stale references left behind by #1408 (#1569).
+- **Agent context refreshed**: Split the react-antipatterns rules into themed files, deduped `interactiveRequirements` guidance, aligned the context files with current context-engineering practice, and refreshed the assistant and utils guidance. (#1454, #1452, #1457)
+- **Dependencies**: Grafana bumped to 13.1.3, `grafana-plugin-sdk-go` to v0.296.1, Node.js to 24.19, and npm to 12.0.2, alongside routine CI action and base-image digest updates.
+
 ## 2.15.0
 
 ### Added
