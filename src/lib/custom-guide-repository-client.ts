@@ -69,6 +69,30 @@ const CACHE_TTL_MS = 30_000;
 const cache = new Map<string, { entries: CustomGuideRepositoryEntry[]; at: number }>();
 const inflight = new Map<string, Promise<CustomGuideRepositoryEntry[]>>();
 
+// Bounded token, never the error text — it lands on a Faro event attribute,
+// which must stay low-cardinality (docs/developer/TELEMETRY.md). `data.statusCode`
+// is body-derived, so the integer bound is what keeps the vocabulary finite.
+function classifyRequestFailure(err: unknown): string {
+  const status =
+    (err as { status?: number })?.status ??
+    (err as { statusCode?: number })?.statusCode ??
+    (err as { data?: { statusCode?: number } })?.data?.statusCode;
+  const bounded = typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599;
+  return bounded ? `http-${status}` : 'transport-error';
+}
+
+function reportCatalogueFetchFailure(err: unknown): void {
+  try {
+    const reason = classifyRequestFailure(err);
+    // The log context bridges to Faro too (logging.ts sanitizes it, it does not
+    // strip it), so it carries the same bounded token — never `err.message`.
+    logger.warn('[custom-guides] catalogue fetch failed', { reason });
+    recordCustomGuideCatalogueUnavailable(reason);
+  } catch {
+    // Observability must not turn a swallowed listing failure into a rejection.
+  }
+}
+
 async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
   const response = await getBackendSrv().get<CustomGuideRepositoryResponse>(
     CUSTOM_GUIDE_REPOSITORY_URL,
@@ -128,9 +152,13 @@ export async function fetchCustomGuideRepository(namespace: string): Promise<Cus
       cache.set(namespace, { entries, at: Date.now() });
       return entries;
     })
-    // Best-effort: never surface a listing failure, and don't cache it so a
-    // transient error doesn't stick for the whole TTL.
-    .catch(() => [] as CustomGuideRepositoryEntry[])
+    // Best-effort: never surface a listing failure to callers, and don't cache
+    // it so a transient error doesn't stick for the whole TTL. Still counted —
+    // `showErrorAlert: false` makes this otherwise invisible from the browser.
+    .catch((err: unknown) => {
+      reportCatalogueFetchFailure(err);
+      return [] as CustomGuideRepositoryEntry[];
+    })
     .finally(() => {
       inflight.delete(namespace);
     });
