@@ -169,6 +169,8 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   `http.Error` only for 405.
 - Additive evolution only; agree any envelope change with every consumer. These envelopes are
   forward contracts — downstream PRs bind to them and they ossify immediately.
+- Every envelope is described twice, in two languages, across a process boundary, so it carries
+  **contract goldens** — see §10.
 
 ## 7. Availability signaling
 
@@ -231,6 +233,35 @@ One definition each, package-wide:
   treats that smoke as a **gate before dependent work binds to the route** — doubly so where the
   outbound header set itself (§3) is smoke-dependent.
 
+### Contract goldens (Go ⇄ TypeScript)
+
+A new route's envelope is described twice — once in `pkg/plugin`, once in the client that consumes
+it — in two processes, so no compiler couples them. Two committed golden families do:
+
+- **Value goldens** captured from the real handler over `httptest`, in
+  `pkg/plugin/testdata/contract/<envelope-key>.<variant>.json`. Never marshalled from a hand-built
+  struct value: that cannot catch a handler that stops emitting a field its struct still declares.
+- **A reflected tag golden**, `struct-tags.json`, inventorying every reachable struct's json names,
+  types, normalized JSON wire types, and `omitempty` flags. The TypeScript test derives the same
+  normalized descriptors from Zod and compares every field, so regenerating cannot bless a type
+  widening whose existing fixture values still fit the old schema. Load-bearing, not
+  belt-and-braces: no fixture populates a
+  brand-new `omitempty` field, so a struct that _gains_ one leaves every value golden byte-identical
+  and both sides green while the frontend never learns the field exists.
+
+`pkg/plugin/contract_fixtures_test.go` writes both; `src/validation/backend-api-contract.test.ts`
+reads both and holds them against the Zod schemas in `src/types/backend-api.schema.ts`, so a Go
+change surfaces as a TypeScript failure that names the field. Those schemas track **wire truth**,
+not what the client interface wishes were on the wire.
+
+Adding a route means adding an envelope to `contractRoots()` plus at least one capture case, and a
+schema registered in `GO_STRUCT_SCHEMAS` / `BACKEND_RESPONSE_ENVELOPES`; the tests fail if either
+half is missing. Regenerate after an intentional change:
+
+```bash
+go test ./pkg/plugin -run TestContract -update
+```
+
 ---
 
 ## Author's checklist
@@ -250,6 +281,8 @@ One definition each, package-wide:
       cold-terminal; negative-cache cooldown as a separate constant
 - [ ] Envelope: `[]` never `null`; `asOf`; in-band capability; stable machine error tokens;
       "empty ≠ unavailable"
+- [ ] Contract goldens: envelope in `contractRoots()`, ≥1 `httptest` capture case, Zod schema
+      registered — value goldens _and_ the reflected tag golden
 - [ ] One toggle const; SDK header constant; `timeNow` seam everywhere
 - [ ] Debug-level upstream logs; cache metrics; first-request credential diagnostics
 - [ ] Tests: pagination, TTL expiry, `exp == 0` rejection, isolation, failure matrix, config
