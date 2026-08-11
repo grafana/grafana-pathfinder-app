@@ -42,7 +42,12 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
+import {
+  countUnlockedMilestones,
+  getMilestoneSlug,
+  markMilestoneDone,
+  setJourneyCompletionPercentage,
+} from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -128,6 +133,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   const pluginContext = usePluginContext();
   const twoTabControllerEnabled = getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableTwoTabController;
 
+  const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
+
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
       {(() => {
@@ -167,7 +174,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           return (
             <div className={styles.devToolsContent} data-testid="editor-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                <BlockEditor />
+                <BlockEditor onGuideTitleChange={handleGuideTitleChange} />
               </Suspense>
             </div>
           );
@@ -437,7 +444,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                             markMilestoneDone(
                               journeyBase,
                               slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones,
+                              countUnlockedMilestones(stableContent.metadata?.learningJourney?.milestones ?? []),
                               completionContext
                             );
                           }

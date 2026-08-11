@@ -96,6 +96,9 @@ export interface DocsPanelModelOperations {
   /** Open the editor tab (or switch to it if already open) */
   openEditorTab(): void;
 
+  /** Update the editor tab's strip title from the working guide */
+  updateEditorTabTitle(title: string): void;
+
   /** Get the currently active tab */
   getActiveTab(): LearningJourneyTab | null;
 
