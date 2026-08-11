@@ -73,75 +73,79 @@ Notes:
 
 Some contributors test their local `dist/` build against a live Grafana Cloud stack instead of (or alongside) the Docker Grafana above, using [Graft](https://github.com/grafana/plugin-graft) — an internal, Grafanista-only browser-extension + local-server tool that intercepts Cloud requests and serves your local build with hot reload. See [`GRAFT_TESTING.md`](GRAFT_TESTING.md) for what this means when debugging or reviewing changes.
 
-## Testing private CDN with local builds
+## Testing private CDN URL signing locally
 
-This flow tests a local Pathfinder app build against the dev private CDN domain (`interactive-learning-private.grafana-dev.net`).
-The CDN and bucket stay in cloud.
-The app UI and signer run locally.
+Use this flow to validate private interactive-learning content from a local Pathfinder app build.
+This uses the app plugin backend route `/cdn/sign`.
+You do not need a local `grafana-pathfinder-backend` stack.
 
 ### Prerequisites
 
-- `docs-plugin` local Grafana is running on `http://localhost:3000`.
-- `grafana-pathfinder-backend` local Grafana is running on `http://grafana.k3d.localhost:9999`.
-- You have a valid dev signing key ID and secret that match the deployed dev Fastly verifier.
+- Local Grafana from `npm run server` is up on `http://localhost:3000`.
+- `gcloud` is authenticated for `gs://interactive-learning-dev-private`.
+- You can read Terraform state in `deployment_tools` for `cells/interactive-learning/grafanalabs-dev`.
 
-### Prepare the backend plugin in k3d
+### Get the dev signing secret
 
-The local k3d Grafana for `grafana-pathfinder-backend` will fail startup if the app plugin artifact is missing.
-Build and deploy the plugin artifact before testing signer endpoints.
-
-```bash
-cd ~/ext/grafana/grafana-pathfinder-backend
-make build/plugin
-make local/deploy_plugin
-```
-
-Verify backend Grafana is healthy:
+Read the active `key1` signing secret from Terraform state.
+Do this in `deployment_tools`.
 
 ```bash
-curl -s http://grafana.k3d.localhost:9999/api/health
+cd ~/ext/grafana/deployment_tools
+SECRET=$(TERRAFORM_INITIALIZE=false ./scripts/terraform/tf-state \
+  terraform/cells/interactive-learning/grafanalabs-dev pull \
+  | sed -n '/^{/,$p' \
+  | jq -r '.resources[]
+    | select(.module=="module.interactive-learning-dev")
+    | select(.type=="random_password")
+    | select(.name=="token-signing")
+    | .instances[]
+    | select(.index_key=="key1")
+    | .attributes.result')
 ```
 
-### Upload a test guide package to the private bucket
-
-Use a known-valid bundled guide as fixture content.
+### Upload a fixture package
 
 ```bash
 GUIDE_ID="qa-first-dashboard-$(date +%s)"
 BASE_PREFIX="internal/e2e/${GUIDE_ID}"
-SRC_BASE=~/ext/grafana/docs-plugin/src/bundled-interactives/first-dashboard
+SRC_BASE=~/ext/grafana/grafana-pathfinder-app/src/bundled-interactives/first-dashboard
 
 gcloud storage cp "${SRC_BASE}/content.json" "gs://interactive-learning-dev-private/${BASE_PREFIX}/content.json"
 gcloud storage cp "${SRC_BASE}/manifest.json" "gs://interactive-learning-dev-private/${BASE_PREFIX}/manifest.json"
 ```
 
-### Configure local signer settings
+### Login to local Grafana and configure signer settings
 
-The local `grafana-pathfinder-backend` branch includes `POST /v1/cdn/sign`.
-Configure the secure settings once.
-Use plugin ID `pathfinderbackend-app`.
+This local image has basic auth disabled.
+Login once and reuse the session cookie for API calls.
 
 ```bash
-curl -u admin:admin \
+curl -s -c /tmp/grafana-cookie.txt \
   -H 'Content-Type: application/json' \
-  -X POST http://grafana.k3d.localhost:9999/api/plugins/pathfinderbackend-app/settings \
-  -d '{
-    "enabled": true,
-    "secureJsonData": {
-      "cdn_private_base_url": "https://interactive-learning-private.grafana-dev.net",
-      "cdn_signing_key_id": "key1",
-      "cdn_signing_secret": "<DEV_SIGNING_SECRET>"
+  -X POST http://localhost:3000/login \
+  -d '{"user":"admin","password":"admin"}'
+
+curl -s -b /tmp/grafana-cookie.txt \
+  -H 'Content-Type: application/json' \
+  -X POST http://localhost:3000/api/plugins/grafana-pathfinder-app/settings \
+  -d "{
+    \"enabled\": true,
+    \"secureJsonData\": {
+      \"cdn_private_base_url\": \"https://interactive-learning-private.grafana-dev.net\",
+      \"cdn_signing_key_id\": \"key1\",
+      \"cdn_signing_secret\": \"${SECRET}\"
     }
-  }'
+  }"
 ```
 
 ### Mint a signed URL and verify edge behavior
 
 ```bash
 PATH_ONLY="/${BASE_PREFIX}/content.json"
-SIGNED_URL=$(curl -s -u admin:admin \
+SIGNED_URL=$(curl -s -b /tmp/grafana-cookie.txt \
   -H 'Content-Type: application/json' \
-  -X POST http://grafana.k3d.localhost:9999/api/plugins/pathfinderbackend-app/resources/v1/cdn/sign \
+  -X POST http://localhost:3000/api/plugins/grafana-pathfinder-app/resources/cdn/sign \
   -d "{\"path\":\"${PATH_ONLY}\",\"expiresInSeconds\":300}" | jq -r '.url')
 
 curl -i "${SIGNED_URL}"
@@ -153,24 +157,45 @@ Expected status codes:
 - signed URL: `200`
 - unsigned URL: `403`
 
-### Open the guide in the local UI
+You can also check signature failure modes.
+Tampered or expired tokens must return `403`.
 
-Deep-link the signed URL into the local plugin.
+Tampered signature example:
+
+```bash
+TAMPERED_URL=$(echo "${SIGNED_URL}" | perl -pe 's/(\bs=)[0-9a-f]{8}/$1deadbeef/' )
+curl -i "${TAMPERED_URL}"
+```
+
+Expired token example:
+
+```bash
+EXPIRY=$(( $(date +%s) - 60 ))
+SIG=$(printf '%s\n%s\n%s' "${PATH_ONLY}" "${EXPIRY}" "key1" \
+  | openssl dgst -sha256 -hmac "${SECRET}" | awk '{print $NF}')
+EXPIRED_URL="https://interactive-learning-private.grafana-dev.net${PATH_ONLY}?e=${EXPIRY}&k=key1&s=${SIG}"
+curl -i "${EXPIRED_URL}"
+```
+
+### Open the guide in local Pathfinder
 
 ```bash
 DOC_PARAM=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "${SIGNED_URL}")
 open "http://localhost:3000/a/grafana-pathfinder-app?doc=${DOC_PARAM}"
 ```
 
-Expected result: the guide renders in the local docs panel while content is served from the private CDN.
+Expected result: the guide loads in the docs panel.
 
 ### Troubleshooting
 
-If you get `Unable to load documentation`, check these first:
-
-- The signed URL has expired. Mint a fresh URL and retry.
-- The docs-plugin branch includes private interactive domain support.
-- The backend plugin settings were saved on `pathfinderbackend-app`, not `pathfinder-backend`.
+- Signed URL returns `403`.
+  Check that `cdn_signing_secret` matches the current `key1` in Terraform state.
+- Signed URL returns `403` and unsigned URL also returns `403`.
+  This usually means a bad key or secret pair.
+- Plugin settings saved on the wrong plugin id.
+  Use `grafana-pathfinder-app`.
+- URL rejected in UI validation.
+  Confirm you are on the branch with private interactive-learning hostname allowlist updates.
 
 ## Testing a public learning journey
 
