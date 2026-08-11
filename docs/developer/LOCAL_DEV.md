@@ -197,20 +197,6 @@ Expected result: the guide loads in the docs panel.
 - URL rejected in UI validation.
   Confirm you are on the branch with private interactive-learning hostname allowlist updates.
 
-## Testing a public learning journey
-
-Use this to verify that normal public Grafana docs journeys still render in the local app.
-This does not use the private CDN signer flow.
-
-```bash
-PUBLIC_JOURNEY_URL="https://grafana.com/docs/learning-journeys/"
-DOC_PARAM=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "${PUBLIC_JOURNEY_URL}")
-open "http://localhost:3000/a/grafana-pathfinder-app?doc=${DOC_PARAM}"
-```
-
-Expected result: the journey page opens in the docs panel.
-If you want a specific journey, replace `PUBLIC_JOURNEY_URL` with that full `https://grafana.com/docs/...` link.
-
 ## Pre-merge check
 
 Run before pushing or opening a pull request. CI runs the same set:
