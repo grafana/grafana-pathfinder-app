@@ -1,12 +1,3 @@
-/**
- * `resetPath` against the REAL storage modules (#1560).
- *
- * `learning-paths.hook.test.ts` mocks `../lib/user-storage` wholesale, so it
- * cannot see which storage keys a reset actually touches — and the bug was
- * exactly that: an App Platform path (no `url`, so it takes the second branch)
- * had its members cleared but never its own cover key, leaving the
- * "all milestones done" checklist behind for the next completion to re-cross.
- */
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 jest.mock('@grafana/runtime', () => ({
@@ -24,9 +15,22 @@ jest.mock('./fetch-path-guides', () => ({
   fetchPathGuides: jest.fn().mockResolvedValue(null),
 }));
 
+const mockBundledPaths: { current: unknown[] } = { current: [] };
 jest.mock('./paths-data', () => ({
-  getPathsData: () => ({ paths: [], guideMetadata: {} }),
+  getPathsData: () => ({ paths: mockBundledPaths.current, guideMetadata: {} }),
 }));
+
+const mockEvictContentCache = jest.fn();
+jest.mock('../global-state/completion-store', () => {
+  const actual = jest.requireActual('../global-state/completion-store');
+  return {
+    ...actual,
+    evictContentCache: (contentKey: string) => {
+      mockEvictContentCache(contentKey);
+      return actual.evictContentCache(contentKey);
+    },
+  };
+});
 
 jest.mock('../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
@@ -35,12 +39,20 @@ jest.mock('../lib/analytics', () => ({
 
 import { __resetRecorderForTests, onCompletionRecorded, type CompletionFact } from '../completion-records';
 import { markMilestoneDone } from '../docs-retrieval';
-import { journeyCompletionStorage, milestoneCompletionStorage } from '../lib/user-storage';
+import {
+  interactiveCompletionStorage,
+  interactiveStepStorage,
+  journeyCompletionStorage,
+  milestoneCompletionStorage,
+} from '../lib/user-storage';
 import { useLearningPaths } from './learning-paths.hook';
 
 const PATH_ID = 'fe-alerting-path';
 const PATH_KEY = `backend-guide:${PATH_ID}`;
+const BUNDLED_PATH_KEY = `bundled:${PATH_ID}`;
 const GUIDES = ['fe-alerting-01', 'fe-alerting-02', 'fe-alerting-03'];
+const MEMBER_KEYS = GUIDES.flatMap((id) => [`bundled:${id}`, `backend-guide:${id}`]);
+const SENTINEL_KEY = 'backend-guide:unrelated-guide';
 
 async function seedCompletedCourse(): Promise<void> {
   for (const guideId of GUIDES) {
@@ -49,11 +61,11 @@ async function seedCompletedCourse(): Promise<void> {
   await journeyCompletionStorage.set(PATH_KEY, 100);
 }
 
-async function renderAndResetPath(): Promise<void> {
+async function renderAndResetPath(pathId: string = PATH_ID): Promise<void> {
   const { result, unmount } = renderHook(() => useLearningPaths());
-  await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain(PATH_ID));
+  await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain(pathId));
   await act(async () => {
-    await result.current.resetPath(PATH_ID);
+    await result.current.resetPath(pathId);
   });
   unmount();
 }
@@ -62,6 +74,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   localStorage.clear();
   __resetRecorderForTests();
+  mockBundledPaths.current = [];
   mockFetchAppPlatformLearningPaths.mockResolvedValue({
     paths: [
       {
@@ -123,5 +136,80 @@ describe('resetPath — App Platform path (no url)', () => {
 
     await expect(milestoneCompletionStorage.getCompleted(PATH_KEY)).resolves.toEqual(new Set([GUIDES[0]]));
     expect(facts.filter((fact) => fact.kind === 'journey')).toEqual([]);
+  });
+
+  it('clears every member key in one pass, without restoring siblings, and spares unrelated content', async () => {
+    for (const key of [...MEMBER_KEYS, SENTINEL_KEY]) {
+      await journeyCompletionStorage.set(key, 100);
+      await interactiveCompletionStorage.set(key, 100);
+    }
+
+    await renderAndResetPath();
+
+    const [journeys, interactives] = await Promise.all([
+      journeyCompletionStorage.getAll(),
+      interactiveCompletionStorage.getAll(),
+    ]);
+    expect(MEMBER_KEYS.filter((key) => key in journeys)).toEqual([]);
+    expect(MEMBER_KEYS.filter((key) => key in interactives)).toEqual([]);
+    expect(journeys[SENTINEL_KEY]).toBe(100);
+    expect(interactives[SENTINEL_KEY]).toBe(100);
+  });
+
+  it('clears interactive progress recorded against the path cover itself', async () => {
+    for (const pathKey of [PATH_KEY, BUNDLED_PATH_KEY]) {
+      await interactiveStepStorage.setCompleted(pathKey, 'cover-section', new Set(['step-1', 'step-2']));
+      await interactiveCompletionStorage.set(pathKey, 100);
+      interactiveStepStorage.countAllCompleted(pathKey);
+    }
+
+    await renderAndResetPath();
+
+    for (const pathKey of [PATH_KEY, BUNDLED_PATH_KEY]) {
+      await expect(interactiveStepStorage.getCompleted(pathKey, 'cover-section')).resolves.toEqual(new Set());
+      await expect(interactiveCompletionStorage.get(pathKey)).resolves.toBe(0);
+      expect(interactiveStepStorage.countAllCompleted(pathKey)).toBe(0);
+      expect(mockEvictContentCache).toHaveBeenCalledWith(pathKey);
+    }
+  });
+});
+
+describe('resetPath — URL-based journey path', () => {
+  const URL_PATH_ID = 'alerting-journey';
+  const PATH_URL = 'https://grafana.com/docs/learning-journeys/alerting/';
+  const MILESTONE_SLUGS = ['collect-logs', 'define-rules', 'route-alerts'];
+  const MILESTONE_URLS = MILESTONE_SLUGS.map((slug) => `${PATH_URL}${slug}/`);
+  const OTHER_JOURNEY_KEY = 'https://grafana.com/docs/learning-journeys/dashboards/';
+
+  beforeEach(() => {
+    mockBundledPaths.current = [
+      {
+        id: URL_PATH_ID,
+        title: 'Alerting journey',
+        description: '',
+        guides: MILESTONE_SLUGS,
+        badgeId: '',
+        url: PATH_URL,
+      },
+    ];
+  });
+
+  it('clears every milestone key in one pass, without restoring siblings, and spares other journeys', async () => {
+    for (const url of [...MILESTONE_URLS, OTHER_JOURNEY_KEY]) {
+      await interactiveCompletionStorage.set(url, 100);
+      await journeyCompletionStorage.set(url, 100);
+    }
+    await journeyCompletionStorage.set(PATH_URL, 100);
+
+    await renderAndResetPath(URL_PATH_ID);
+
+    const [journeys, interactives] = await Promise.all([
+      journeyCompletionStorage.getAll(),
+      interactiveCompletionStorage.getAll(),
+    ]);
+    expect([PATH_URL, ...MILESTONE_URLS].filter((url) => url in journeys)).toEqual([]);
+    expect(MILESTONE_URLS.filter((url) => url in interactives)).toEqual([]);
+    expect(journeys[OTHER_JOURNEY_KEY]).toBe(100);
+    expect(interactives[OTHER_JOURNEY_KEY]).toBe(100);
   });
 });

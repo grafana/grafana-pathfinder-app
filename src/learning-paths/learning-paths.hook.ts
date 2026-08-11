@@ -409,81 +409,57 @@ export function useLearningPaths(): UseLearningPathsReturn {
       }
 
       if (path.url) {
-        // URL-based path: clear milestone tracking and journey completion
         await milestoneCompletionStorage.clear(path.url);
-        await journeyCompletionStorage.clear(path.url);
 
-        // Remove milestone slugs from completedGuides (path.guides contains fetched slugs)
         if (path.guides.length > 0) {
           await learningProgressStorage.removeCompletedGuides(path.guides);
         }
 
-        // Clear interactive steps for milestone URLs (iterate over completed milestones)
-        // Since we don't have the full milestone URLs stored, clear by prefix pattern
-        // The content keys for milestones start with the path URL
         const [completions, journeyCompletions] = await Promise.all([
           interactiveCompletionStorage.getAll(),
           journeyCompletionStorage.getAll(),
         ]);
 
+        // Milestone content keys aren't stored anywhere, so recover them by prefix.
         const normalizedUrl = path.url.replace(/\/+$/, '');
-
-        // Batch clear operations for better performance with many milestones
         const milestoneKeys = Object.keys(completions).filter((key) => key.startsWith(normalizedUrl));
-        await Promise.all([
-          ...milestoneKeys.map((key) =>
-            Promise.all([interactiveCompletionStorage.clear(key), interactiveStepStorage.clearAllForContent(key)])
-          ),
-          ...Object.keys(journeyCompletions)
-            .filter((key) => key.startsWith(normalizedUrl))
-            .map((key) => journeyCompletionStorage.clear(key)),
-        ]);
-        // Drop the completion store's in-memory cache for each milestone
-        // we cleared. Without this, any open guide in the path would
-        // still surface its prior completion snapshot via the store.
+        const journeyKeys = [path.url, ...Object.keys(journeyCompletions).filter((k) => k.startsWith(normalizedUrl))];
+
+        await Promise.all(milestoneKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        await interactiveCompletionStorage.clearMany(milestoneKeys);
+        await journeyCompletionStorage.clearMany(journeyKeys);
+
         milestoneKeys.forEach((key) => evictContentCache(key));
       } else {
         // No base URL: either a static bundled path (`bundled:<id>`) or an App
         // Platform path whose members are `backend-guide:<id>`. We can't tell
         // them apart from `path.guides` alone, so clear both content schemes.
+        const pathKeys = [`bundled:${path.id}`, `backend-guide:${path.id}`];
+        const contentKeys = [
+          ...pathKeys,
+          ...path.guides.flatMap((guideId) => [`bundled:${guideId}`, `backend-guide:${guideId}`]),
+        ];
 
-        // The path's OWN key, not just its members: milestone checklists and the
-        // journey percentage are stored under the cover key. Sequential because
-        // both helpers read-modify-write one shared record.
-        for (const pathKey of [`bundled:${path.id}`, `backend-guide:${path.id}`]) {
+        for (const pathKey of pathKeys) {
           await milestoneCompletionStorage.clear(pathKey);
-          await journeyCompletionStorage.clear(pathKey);
         }
 
-        await Promise.all(
-          path.guides.flatMap((guideId) =>
-            [`bundled:${guideId}`, `backend-guide:${guideId}`].map((contentKey) =>
-              Promise.all([
-                interactiveStepStorage.clearAllForContent(contentKey),
-                interactiveCompletionStorage.clear(contentKey),
-                journeyCompletionStorage.clear(contentKey),
-              ])
-            )
-          )
-        );
-        path.guides.forEach((guideId) => {
-          evictContentCache(`bundled:${guideId}`);
-          evictContentCache(`backend-guide:${guideId}`);
-        });
+        await Promise.all(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        // Batched, not one clear per key: each helper read-modify-writes a single shared record.
+        await interactiveCompletionStorage.clearMany(contentKeys);
+        await journeyCompletionStorage.clearMany(contentKeys);
 
-        // Remove guide IDs from completedGuides (bare ids, matching how App
-        // Platform + bundled completions are keyed).
+        contentKeys.forEach((key) => evictContentCache(key));
+
         await learningProgressStorage.removeCompletedGuides(path.guides);
       }
 
-      // Dispatch event to notify UI components to refresh
       window.dispatchEvent(
         new CustomEvent(StorageEvents.InteractiveProgressCleared, {
           detail: { contentKey: '*', pathId },
         })
       );
 
-      // Reload progress to update UI
       await loadProgress({ current: true });
     },
     [paths, loadProgress]
