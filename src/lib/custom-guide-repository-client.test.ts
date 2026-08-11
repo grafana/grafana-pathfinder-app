@@ -67,6 +67,19 @@ describe('fetchCustomGuideRepository', () => {
     expect(result[1]!.manifest?.repository).toBe('app-platform');
   });
 
+  it('normalizes before caching, so a cached read is stamped too', async () => {
+    mockGet.mockResolvedValue({
+      capability: { available: true },
+      guides: [{ id: 'fe-alerting-path', status: 'published', manifest: { type: 'path' } }],
+    });
+
+    await fetchCustomGuideRepository('stacks-123');
+    const cached = await fetchCustomGuideRepository('stacks-123');
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(cached[0]!.manifest?.repository).toBe('app-platform');
+  });
+
   it('returns an empty array when the proxy reports itself unavailable', async () => {
     mockGet.mockResolvedValue({
       capability: { available: false, reason: 'backend-unavailable' },
