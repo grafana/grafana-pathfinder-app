@@ -9,7 +9,7 @@
  * - Manifest metadata passthrough via fetchPackageContent
  * - setPackageResolver injection and resolver-not-configured error
  */
-import { config, setBackendSrv, type BackendSrv } from '@grafana/runtime';
+import { config, getBackendSrv, setBackendSrv, type BackendSrv } from '@grafana/runtime';
 import {
   fetchPackageContent,
   fetchPackageById,
@@ -624,6 +624,9 @@ describe('fetchPackageContent path-type enrichment', () => {
 describe('fetchPackageContent — no public websiteUrl for catalogue-launched private paths', () => {
   const GAP_TOGGLE = 'aggregation.pathfinderbackend-ext-grafana-app.enabled';
   const featureToggles = config.featureToggles as Record<string, boolean>;
+  // setBackendSrv writes a module-level singleton, so the fake below outlives
+  // this block and reaches every later describe unless afterEach puts it back.
+  const originalBackendSrv = getBackendSrv();
 
   async function launchManifestFromCatalogue(manifest: Record<string, unknown>): Promise<Record<string, unknown>> {
     featureToggles[GAP_TOGGLE] = true;
@@ -653,6 +656,7 @@ describe('fetchPackageContent — no public websiteUrl for catalogue-launched pr
   });
 
   afterEach(() => {
+    setBackendSrv(originalBackendSrv);
     delete featureToggles[GAP_TOGGLE];
     invalidateCustomGuideRepositoryCache();
     setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
