@@ -441,6 +441,45 @@ describe('MyLearningTab launch flow', () => {
   });
 });
 
+describe('MyLearningTab — private paths split', () => {
+  const privatePath = { id: 'ap-path', title: 'Alerting enablement', guides: ['fe-alerting-01'], isPrivate: true };
+
+  it('omits the Private paths section entirely when the namespace has none', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.queryByTestId(testIds.learningPaths.privatePathsSection)).not.toBeInTheDocument();
+  });
+
+  it('routes an in-progress private path to Private paths and out of My paths', () => {
+    mockPaths = [...mockPaths, privatePath];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const privateSection = screen.getByTestId(testIds.learningPaths.privatePathsSection);
+    expect(privateSection).toHaveTextContent('Alerting enablement');
+    expect(privateSection).toHaveTextContent('Paths published for your organization');
+
+    const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
+    expect(myCourses).not.toHaveTextContent('Alerting enablement');
+    expect(myCourses).toHaveTextContent('Started path');
+
+    // Still suppressed from Discover more — the split must not reopen the
+    // double-listing the exclude set exists to prevent.
+    expect(mockDiscoverExcludeTitles).toContain('Alerting enablement');
+  });
+
+  it('moves a completed private path to Completed rather than keeping it in Private paths', () => {
+    mockPaths = [...mockPaths, privatePath];
+    mockGetPathProgress.mockImplementation((id: string) => (id === 'ap-path' || id === 'path-done' ? 100 : 0));
+    mockIsPathCompleted.mockImplementation((id: string) => id === 'ap-path' || id === 'path-done');
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.queryByTestId(testIds.learningPaths.privatePathsSection)).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.learningPaths.completedSection)).toHaveTextContent('Alerting enablement');
+  });
+});
+
 describe('MyLearningTab — App Platform guide launch', () => {
   it('launches an App Platform path member with the path manifest as packageInfo (milestone chrome)', async () => {
     mockPaths = [

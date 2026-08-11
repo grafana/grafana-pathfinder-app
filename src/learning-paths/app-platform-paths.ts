@@ -71,6 +71,7 @@ export async function fetchAppPlatformLearningPaths(namespace: string): Promise<
       // the denominator). Matches the resolver's published-only gate.
       guides: (entry.manifest?.milestones ?? []).filter((id) => id in guideMetadata),
       badgeId: '',
+      isPrivate: true,
       // Carried so the My Learning launch can render members with milestone
       // chrome (packageInfo) rather than as standalone guides.
       manifest: entry.manifest as unknown as Record<string, unknown> | undefined,

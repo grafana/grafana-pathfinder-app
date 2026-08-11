@@ -53,6 +53,7 @@ describe('fetchAppPlatformLearningPaths', () => {
         description: 'Learn to build alert rules, contact points, and notification policies.',
         guides: ['fe-alerting-01', 'fe-alerting-02'],
         badgeId: '',
+        isPrivate: true,
         // Carried so the My Learning launch renders members with milestone chrome.
         manifest: {
           type: 'path',
