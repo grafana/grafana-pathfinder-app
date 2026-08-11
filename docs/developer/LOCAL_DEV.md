@@ -186,17 +186,6 @@ open "http://localhost:3000/a/grafana-pathfinder-app?doc=${DOC_PARAM}"
 
 Expected result: the guide loads in the docs panel.
 
-### Troubleshooting
-
-- Signed URL returns `403`.
-  Check that `cdn_signing_secret` matches the current `key1` in Terraform state.
-- Signed URL returns `403` and unsigned URL also returns `403`.
-  This usually means a bad key or secret pair.
-- Plugin settings saved on the wrong plugin id.
-  Use `grafana-pathfinder-app`.
-- URL rejected in UI validation.
-  Confirm you are on the branch with private interactive-learning hostname allowlist updates.
-
 ## Pre-merge check
 
 Run before pushing or opening a pull request. CI runs the same set:
