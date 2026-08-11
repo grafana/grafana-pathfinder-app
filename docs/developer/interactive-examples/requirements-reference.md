@@ -349,7 +349,7 @@ This requirement is evaluated differently by different rendering tools, allowing
 
 ### `var-<variableName>:<expectedValue>`
 
-Checks if a guide response variable has a specific value. Variables are set by [input blocks](./json-guide-format.md#input-block) and are scoped to the guide that collected them -- an answer given in one guide never satisfies a `var-` requirement in another.
+Checks if a guide response variable has a specific value. Variables are set by [input blocks](./json-guide-format.md#input-block) and are scoped to the guide that collected them -- an answer given in one guide does not satisfy a `var-` requirement in another.
 
 ```json
 {

@@ -149,7 +149,11 @@ The hook returns a comprehensive state object including:
 
 `var-<name>:<value>` resolves the stored response for the guide that owns the check. Each `ContentRenderer` binds its derived guide id in `GuideRequirementsProvider`, and the requirements and postconditions APIs carry that identity through mount-time, retry, reactive, and action-verification checks. Concurrent renderers therefore never infer identity from mount order.
 
-`src/global-state/guide-identity.ts` retains a compatibility fallback for external or controller callers that cannot provide identity. When that fallback has no registered identity it resolves to the empty string, which no writer ever stores under, so `var-*` checks fail instead of sharing a sentinel bucket. Controller-mode live tabs have no `ContentRenderer` and therefore use this fallback — tracked in [#1574](https://github.com/grafana/grafana-pathfinder-app/issues/1574), behind the default-off two-tab controller setting.
+In two-tab controller mode the step is still owned by the controller's renderer, so `splitGuideScopedRequirements` (`controller-requirements.ts`) keeps `var-*` tokens on the controller side, evaluates them through the scoped checker, round-trips only the remaining tokens to the live tab, and ANDs the two verdicts. Nothing storage-backed crosses the wire, so the live tab's own guide can never satisfy a controller step ([#1574](https://github.com/grafana/grafana-pathfinder-app/issues/1574)).
+
+`src/global-state/guide-identity.ts` retains a compatibility fallback for callers outside a renderer tree. When that fallback has no registered identity it resolves to the empty string, which no writer ever stores under, so `var-*` checks fail instead of sharing a sentinel bucket.
+
+Scoping is only as precise as the derived id. `ContentRenderer` derives it by flattening the content URL's pathname, so distinct guides whose pathnames flatten to the same string still share a bucket — this separates identities, it does not make them unique. Hardening the derivation would orphan already-stored responses and needs a storage migration, so it is deliberately out of scope here.
 
 ## Objectives vs Requirements
 

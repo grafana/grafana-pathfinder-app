@@ -24,3 +24,29 @@ export function stripTabLocalRequirements(requirements: string | undefined): str
     .filter((token) => !isTabLocal(token))
     .join(',');
 }
+
+// Requirements whose answer is stored per guide in `guideResponseStorage` and
+// is therefore only meaningful under the guide identity of the renderer that
+// owns the step. Round-tripping them to the live tab would resolve them against
+// whichever guide that tab happens to have open, so the controller evaluates
+// them itself and ANDs the verdict with the live tab's (#1574).
+export const GUIDE_SCOPED_REQUIREMENT_PREFIXES = ['var-'];
+
+function isGuideScoped(token: string): boolean {
+  return GUIDE_SCOPED_REQUIREMENT_PREFIXES.some((prefix) => token.startsWith(prefix));
+}
+
+export function splitGuideScopedRequirements(requirements: string | undefined): {
+  guideScoped: string;
+  remaining: string;
+} {
+  const tokens = (requirements ?? '')
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  return {
+    guideScoped: tokens.filter(isGuideScoped).join(','),
+    remaining: tokens.filter((token) => !isGuideScoped(token)).join(','),
+  };
+}

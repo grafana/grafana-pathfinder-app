@@ -3,7 +3,6 @@ import { getCompatibilityGuideId, registerCompatibilityGuideId, resetGuideIdenti
 describe('guide-identity', () => {
   beforeEach(() => {
     resetGuideIdentityForTests();
-    delete (window as any).__DocsPluginGuideId;
   });
 
   it('resolves the registered guide id', () => {
@@ -19,20 +18,9 @@ describe('guide-identity', () => {
     expect(getCompatibilityGuideId()).not.toBe('default');
   });
 
-  it('falls back to the window global when no registration exists', () => {
-    (window as any).__DocsPluginGuideId = 'guide-from-outside-the-tree';
-    expect(getCompatibilityGuideId()).toBe('guide-from-outside-the-tree');
-  });
-
-  it('prefers a registration over the window global', () => {
-    (window as any).__DocsPluginGuideId = 'stale-guide';
-    registerCompatibilityGuideId('current-guide');
-    expect(getCompatibilityGuideId()).toBe('current-guide');
-  });
-
-  it('mirrors the registered id to the window global', () => {
+  it('publishes no window global', () => {
     registerCompatibilityGuideId('guide-a');
-    expect((window as any).__DocsPluginGuideId).toBe('guide-a');
+    expect((window as any).__DocsPluginGuideId).toBeUndefined();
   });
 
   it('lets the most recent registration win', () => {
@@ -46,7 +34,6 @@ describe('guide-identity', () => {
     const releaseB = registerCompatibilityGuideId('guide-b');
     releaseB();
     expect(getCompatibilityGuideId()).toBe('guide-a');
-    expect((window as any).__DocsPluginGuideId).toBe('guide-a');
   });
 
   it('keeps the top registration when an older one is released first', () => {
@@ -56,11 +43,10 @@ describe('guide-identity', () => {
     expect(getCompatibilityGuideId()).toBe('guide-b');
   });
 
-  it('clears the mirrored global when the last registration is released', () => {
+  it('resolves the empty string when the last registration is released', () => {
     const release = registerCompatibilityGuideId('guide-a');
     release();
     expect(getCompatibilityGuideId()).toBe('');
-    expect((window as any).__DocsPluginGuideId).toBe('');
   });
 
   it('tolerates a release being called twice', () => {
@@ -75,7 +61,6 @@ describe('guide-identity', () => {
     registerCompatibilityGuideId('guide-a');
     registerCompatibilityGuideId('guide-b');
     resetGuideIdentityForTests();
-    delete (window as any).__DocsPluginGuideId;
     expect(getCompatibilityGuideId()).toBe('');
   });
 });

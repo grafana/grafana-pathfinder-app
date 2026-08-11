@@ -271,7 +271,6 @@ const WINDOW_GLOBAL_OWNERS: Array<{ global: string; ownerFile: string }> = [
   { global: '__pathfinderPluginConfig', ownerFile: 'docs-panel.tsx' },
   { global: '__DocsPluginActiveTabId', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
   { global: '__DocsPluginActiveTabUrl', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
-  { global: '__DocsPluginGuideId', ownerFile: '../../global-state/guide-identity.ts' },
 ];
 
 describe('E2E Contract: Window globals assigned in docs-panel surface', () => {

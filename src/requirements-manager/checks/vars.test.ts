@@ -21,7 +21,6 @@ describe('guideVariableCheck', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetGuideIdentityForTests();
-    delete (window as any).__DocsPluginGuideId;
     mockGetResponse.mockResolvedValue(undefined);
   });
 
@@ -83,11 +82,12 @@ describe('guideVariableCheck', () => {
       expect(mockGetResponse).toHaveBeenCalledWith('guide-a', 'accepted');
     });
 
-    // Regression (#1519): the window global outlives the guide that set it, so a
-    // stale value must never satisfy the guide that is actually registered.
-    it('does not let a stale window global unlock the registered guide', async () => {
+    // Regression (#1519): a released guide must not outlive itself and satisfy
+    // the guide that is actually registered.
+    it('does not let a released registration unlock the registered guide', async () => {
       storeResponses({ 'guide-a': { accepted: true } });
-      (window as any).__DocsPluginGuideId = 'guide-a';
+      const releaseA = registerCompatibilityGuideId('guide-a');
+      releaseA();
       registerCompatibilityGuideId('guide-b');
 
       await expect(guideVariableCheck('var-accepted:true')).resolves.toMatchObject({ pass: false });

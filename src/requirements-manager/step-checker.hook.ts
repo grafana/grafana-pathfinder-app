@@ -37,7 +37,7 @@ import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
 import { type RequirementsCheckResult } from './requirements-checker.utils';
 import { useGuideRequirements } from './guide-requirements-context';
-import { stripTabLocalRequirements } from './controller-requirements';
+import { splitGuideScopedRequirements, stripTabLocalRequirements } from './controller-requirements';
 import { useInteractiveMode } from '../global-state/interactive-mode-context';
 import { useControllerChannel } from '../global-state/controller-channel';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
@@ -84,6 +84,19 @@ function actionFromBaseStepState(s: LegacyStateShape): StepAction {
     fixType: s.fixType,
     targetHref: s.targetHref,
     scrollContainer: s.scrollContainer,
+  };
+}
+
+/** Conjunction of partial verdicts, reported against the original requirements string. */
+function mergeRequirementResults(
+  requirements: string,
+  parts: Array<RequirementsCheckResult | undefined>
+): RequirementsCheckResult {
+  const present = parts.filter((part): part is RequirementsCheckResult => part !== undefined);
+  return {
+    requirements,
+    pass: present.every((part) => part.pass),
+    error: present.flatMap((part) => part.error ?? []),
   };
 }
 
@@ -262,39 +275,43 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         // Update state with current retry info
         onStateUpdate(retryCount, maxRetries, retryCount > 0);
 
+        const checkHere = (localRequirements: string) =>
+          checkRequirements({
+            requirements: localRequirements,
+            targetAction,
+            refTarget,
+            stepId: optionsStepId,
+            retryCount: 0, // Disable internal retry since we're handling it here
+            maxRetries: 0,
+            lazyRender,
+            scrollContainer,
+          });
+
         try {
           // In controller mode the live tab is the source of truth for DOM/URL
-          // requirements; round-trip the check there. When no live tab answers
-          // within the timeout we deliberately fail OPEN, not closed: strip the
-          // tab-local DOM/URL tokens and evaluate the rest locally (§6.5). A
-          // fail-closed block would strand the two-monitor driver whenever the
-          // live tab briefly disconnects; session/permission/role requirements
-          // are NOT stripped, so genuine authorization failures still gate.
-          const result = isRemote
-            ? ((await controllerChannel?.requestRequirementCheck(optionsStepId ?? stepId, requirements, {
-                targetAction,
-                refTarget,
-              })) ??
-              (await checkRequirements({
-                requirements: stripTabLocalRequirements(requirements) ?? '',
-                targetAction,
-                refTarget,
-                stepId: optionsStepId,
-                retryCount: 0,
-                maxRetries: 0,
-                lazyRender,
-                scrollContainer,
-              })))
-            : await checkRequirements({
-                requirements,
-                targetAction,
-                refTarget,
-                stepId: optionsStepId,
-                retryCount: 0, // Disable internal retry since we're handling it here
-                maxRetries: 0,
-                lazyRender,
-                scrollContainer,
-              });
+          // requirements; round-trip the check there. `var-*` answers are stored
+          // per guide, so they stay on this side — where the renderer's identity
+          // is known — and their verdict is ANDed with the live tab's (#1574).
+          // When no live tab answers within the timeout we deliberately fail
+          // OPEN, not closed: strip the tab-local DOM/URL tokens and evaluate
+          // the rest locally (§6.5). A fail-closed block would strand the
+          // two-monitor driver whenever the live tab briefly disconnects;
+          // session/permission/role requirements are NOT stripped, so genuine
+          // authorization failures still gate.
+          let result: RequirementsCheckResult;
+          if (isRemote) {
+            const { guideScoped, remaining } = splitGuideScopedRequirements(requirements);
+            const guideScopedResult = guideScoped ? await checkHere(guideScoped) : undefined;
+            const remainingResult = remaining
+              ? ((await controllerChannel?.requestRequirementCheck(optionsStepId ?? stepId, remaining, {
+                  targetAction,
+                  refTarget,
+                })) ?? (await checkHere(stripTabLocalRequirements(remaining) ?? '')))
+              : undefined;
+            result = mergeRequirementResults(requirements, [guideScopedResult, remainingResult]);
+          } else {
+            result = await checkHere(requirements);
+          }
 
           // REACT: Check mounted before continuing recursive calls (R4)
           if (!isMountedRef.current) {
@@ -368,6 +385,14 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     },
     [checkRequirements, lazyRender, scrollContainer, mode, controllerChannel, stepId]
   );
+
+  // `checkStep` intentionally omits this callback from its deps (see the
+  // eslint-disable on its dep array). The callback now closes over the
+  // renderer-scoped checker, so a stale closure would evaluate `var-*` against
+  // the guide that was mounted at the time — read the latest through a ref.
+  const checkRequirementsWithStateUpdatesRef = useRef(checkRequirementsWithStateUpdates);
+  // eslint-disable-next-line react-hooks/refs -- latest-callback ref read by checkStep so guide identity can never stale out
+  checkRequirementsWithStateUpdatesRef.current = checkRequirementsWithStateUpdates;
 
   // Manager integration for state propagation
   // Use context-based hook with fallback to singleton for backward compatibility
@@ -480,7 +505,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       if (objectives && objectives.trim() !== '') {
         let objectivesPassed = false;
         try {
-          const objectivesResult = await checkRequirementsWithStateUpdates(
+          const objectivesResult = await checkRequirementsWithStateUpdatesRef.current(
             {
               requirements: objectives,
               targetAction: targetAction || 'button',
@@ -526,7 +551,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
       // PHASE 3: Check requirements (only if objectives not met and eligible)
       if (requirements && requirements.trim() !== '') {
-        const requirementsResult = await checkRequirementsWithStateUpdates(
+        const requirementsResult = await checkRequirementsWithStateUpdatesRef.current(
           {
             requirements,
             targetAction: targetAction || 'button',

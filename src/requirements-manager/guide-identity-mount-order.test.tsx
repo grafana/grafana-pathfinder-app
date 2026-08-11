@@ -1,6 +1,7 @@
 /**
  * Regression (#1519): a step's mount-time requirement check must resolve the
- * guide it is mounted under, not whichever guide last touched the window global.
+ * guide it is mounted under, not whichever guide last registered a
+ * compatibility identity.
  *
  * `useStepChecker` fires its first check from a child `useEffect`, and child
  * passive effects run before the parent's. A step with `requirements` and no
@@ -98,17 +99,16 @@ describe('guide identity at step mount', () => {
     );
   });
 
-  afterEach(() => {
-    delete (window as any).__DocsPluginGuideId;
-  });
-
+  // Guide A mounts second, so it owns the top compatibility registration by the
+  // time guide B's step fires its passive mount check.
   it('does not unlock a step in guide B with an answer stored for guide A', async () => {
-    (window as any).__DocsPluginGuideId = 'guide-a';
-
     render(
-      <GuideHost guideId="guide-b">
-        <Step stepId="mount-order-step-b" requirements="var-accepted:true" />
-      </GuideHost>
+      <>
+        <GuideHost guideId="guide-b">
+          <Step stepId="mount-order-step-b" requirements="var-accepted:true" />
+        </GuideHost>
+        <GuideHost guideId="guide-a">{null}</GuideHost>
+      </>
     );
 
     await waitFor(() => expect(mockGetResponse).toHaveBeenCalled());

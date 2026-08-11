@@ -1,4 +1,9 @@
-import { stripTabLocalRequirements, TAB_LOCAL_REQUIREMENTS } from './controller-requirements';
+import {
+  GUIDE_SCOPED_REQUIREMENT_PREFIXES,
+  splitGuideScopedRequirements,
+  stripTabLocalRequirements,
+  TAB_LOCAL_REQUIREMENTS,
+} from './controller-requirements';
 
 describe('TAB_LOCAL_REQUIREMENTS drift guard (F-1063-2)', () => {
   // Pins the allowlist of tab-local (DOM/URL/nav-probing) requirement kinds.
@@ -44,5 +49,37 @@ describe('stripTabLocalRequirements', () => {
   it('passes empty / undefined through unchanged', () => {
     expect(stripTabLocalRequirements(undefined)).toBeUndefined();
     expect(stripTabLocalRequirements('')).toBe('');
+  });
+});
+
+describe('splitGuideScopedRequirements (#1574)', () => {
+  // Pins the set of storage-backed requirement kinds. A new requirement that
+  // reads per-guide storage must be listed here, or the controller would ship
+  // it to the live tab and resolve it against that tab's guide identity.
+  it('lists exactly the storage-backed requirement prefixes', () => {
+    expect([...GUIDE_SCOPED_REQUIREMENT_PREFIXES]).toEqual(['var-']);
+  });
+
+  it('keeps var-* on the controller side and round-trips the rest', () => {
+    expect(splitGuideScopedRequirements('var-accepted:true, is-admin, exists-reftarget')).toEqual({
+      guideScoped: 'var-accepted:true',
+      remaining: 'is-admin,exists-reftarget',
+    });
+  });
+
+  it('leaves remaining empty when every token is storage-backed', () => {
+    expect(splitGuideScopedRequirements('var-a:1,var-b:2')).toEqual({
+      guideScoped: 'var-a:1,var-b:2',
+      remaining: '',
+    });
+  });
+
+  it('leaves guideScoped empty when no token is storage-backed', () => {
+    expect(splitGuideScopedRequirements('is-admin')).toEqual({ guideScoped: '', remaining: 'is-admin' });
+  });
+
+  it('treats empty / undefined as no requirements at all', () => {
+    expect(splitGuideScopedRequirements(undefined)).toEqual({ guideScoped: '', remaining: '' });
+    expect(splitGuideScopedRequirements('')).toEqual({ guideScoped: '', remaining: '' });
   });
 });
