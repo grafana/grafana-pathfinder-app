@@ -298,8 +298,6 @@ export const testIds = {
     badgesModal: 'learning-paths-badges-modal',
     badgesModalClose: 'learning-paths-badges-modal-close',
     badgeItem: (badgeId: string) => `learning-paths-badge-${badgeId}`,
-    showAllPathsButton: 'learning-paths-show-all',
-    showAllBadgesButton: 'learning-paths-show-all-badges',
     resetProgressButton: 'learning-paths-reset-progress',
     badgeToast: 'learning-paths-badge-toast',
     badgeToastDismiss: 'learning-paths-badge-toast-dismiss',
@@ -309,6 +307,7 @@ export const testIds = {
     completedSection: 'my-learning-completed-section',
     discoverMoreCard: (id: string) => `discover-more-card-${id}`,
     discoverMoreStart: (id: string) => `discover-more-start-${id}`,
+    discoverMoreExpand: (id: string) => `discover-more-expand-${id}`,
     tableOfContents: 'learning-paths-toc',
   },
 

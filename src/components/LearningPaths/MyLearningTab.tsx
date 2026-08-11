@@ -62,8 +62,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       mountedRef.current = false;
     };
   }, []);
-  const [showAllBadges, setShowAllBadges] = useState(false);
-  const [showAllCourses, setShowAllCourses] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
 
   const {
@@ -256,7 +254,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const totalGuidesCompleted = progress.completedGuides.length;
   const totalBadgesEarned = progress.earnedBadges.length;
-  const totalBadges = badgesWithStatus.length;
 
   const pathsForProgress = useMemo(() => paths.map((p) => ({ id: p.id, guides: p.guides })), [paths]);
 
@@ -312,37 +309,33 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       <HeroStats
         guidesCompleted={totalGuidesCompleted}
         badgesEarned={totalBadgesEarned}
-        totalBadges={totalBadges}
         streakDays={streakInfo.days}
         styles={styles}
       />
 
       {/* My Courses ∥ Badges — collapses to stacked on narrow panels */}
-      <div className={styles.columnsRow}>
-        <MyCoursesSection
-          courses={courses}
-          showAll={showAllCourses}
-          onToggleShowAll={() => setShowAllCourses((v) => !v)}
-          getPathGuides={getPathGuides}
-          getPathProgress={getPathProgress}
-          onContinue={handleOpenGuide}
-          onReset={resetPath}
-          launchingPathId={launchingId}
-          launchDisabled={launchingId !== null}
-          styles={styles}
-        />
+      <div className={styles.columnsContainer}>
+        <div className={styles.columnsRow}>
+          <MyCoursesSection
+            courses={courses}
+            getPathGuides={getPathGuides}
+            getPathProgress={getPathProgress}
+            onContinue={handleOpenGuide}
+            onReset={resetPath}
+            launchingPathId={launchingId}
+            launchDisabled={launchingId !== null}
+            styles={styles}
+          />
 
-        <BadgesSection
-          badges={sortedBadges}
-          totalBadges={totalBadges}
-          showAll={showAllBadges}
-          onToggleShowAll={() => setShowAllBadges((v) => !v)}
-          completedGuides={progress.completedGuides}
-          streakDays={progress.streakDays}
-          paths={pathsForProgress}
-          onSelect={setSelectedBadge}
-          styles={styles}
-        />
+          <BadgesSection
+            badges={sortedBadges}
+            completedGuides={progress.completedGuides}
+            streakDays={progress.streakDays}
+            paths={pathsForProgress}
+            onSelect={setSelectedBadge}
+            styles={styles}
+          />
+        </div>
       </div>
 
       <DiscoverMoreSection

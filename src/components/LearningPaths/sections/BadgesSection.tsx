@@ -1,23 +1,23 @@
 /**
  * Badges Section
  *
- * A tile grid of badges, expandable to show the full set.
+ * A three-column tile grid of every badge, scrolled in place so the column
+ * never grows and drags its sibling column down.
  */
 
 import React from 'react';
 import { Icon } from '@grafana/ui';
+import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
 import { testIds } from '../../../constants/testIds';
 import type { EarnedBadge } from '../../../types';
+import { useVerticalOverflow } from '../../../hooks';
 import { BadgeGridItem } from '../BadgeGridItem';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
 
 interface BadgesSectionProps {
   badges: EarnedBadge[];
-  totalBadges: number;
-  showAll: boolean;
-  onToggleShowAll: () => void;
   completedGuides: string[];
   streakDays: number;
   paths: Array<{ id: string; guides: string[] }>;
@@ -25,41 +25,24 @@ interface BadgesSectionProps {
   styles: ReturnType<typeof getMyLearningStyles>;
 }
 
-export function BadgesSection({
-  badges,
-  totalBadges,
-  showAll,
-  onToggleShowAll,
-  completedGuides,
-  streakDays,
-  paths,
-  onSelect,
-  styles,
-}: BadgesSectionProps) {
-  const displayed = showAll ? badges : badges.slice(0, 6);
+export function BadgesSection({ badges, completedGuides, streakDays, paths, onSelect, styles }: BadgesSectionProps) {
+  const [gridRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
 
   return (
-    <div className={styles.section} data-testid={testIds.learningPaths.badgesSection}>
+    <div className={cx(styles.section, styles.columnSection)} data-testid={testIds.learningPaths.badgesSection}>
       <div className={styles.sectionHeader}>
         <Icon name="star" size="md" className={styles.sectionIcon} />
         <h2 className={styles.sectionTitle}>{t('myLearning.badges', 'Badges')}</h2>
-        <button
-          className={styles.expandButton}
-          onClick={onToggleShowAll}
-          data-testid={testIds.learningPaths.showAllBadgesButton}
-        >
-          {showAll
-            ? t('myLearning.showLess', 'Show less')
-            : t('myLearning.viewAll', 'View all ({{count}})', { count: totalBadges })}
-          <Icon name={showAll ? 'angle-up' : 'angle-down'} size="sm" />
-        </button>
       </div>
       <p className={styles.sectionDescription}>
         {t('myLearning.badgesDescription', 'Earn badges by completing paths and maintaining streaks')}
       </p>
 
-      <div className={`${styles.badgesGrid} ${showAll ? styles.badgesGridExpanded : ''}`}>
-        {displayed.map((badge, index) => (
+      <div
+        ref={gridRef}
+        className={cx(styles.badgesGrid, styles.scrollRegion, hasOverflow && styles.scrollRegionFaded)}
+      >
+        {badges.map((badge, index) => (
           <BadgeGridItem
             key={badge.id}
             badge={badge}

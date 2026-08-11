@@ -34,8 +34,9 @@ jest.mock('@grafana/i18n', () => ({
   },
 }));
 
+// Style keys come back as their own names so tests can assert on composition.
 jest.mock('@grafana/ui', () => ({
-  useStyles2: () => new Proxy({}, { get: () => 'style' }),
+  useStyles2: () => new Proxy({}, { get: (_target, prop) => String(prop) }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
 }));
 
@@ -44,11 +45,18 @@ jest.mock('@grafana/ui', () => ({
 let mockPaths: any[] = [];
 let mockGuideMetadata: Record<string, any> = {};
 let mockCompletedGuides: string[] = [];
+let mockBadges: any[] = [];
 const mockGetPathGuides = jest.fn();
 const mockGetPathProgress = jest.fn();
 const mockIsPathCompleted = jest.fn();
 const mockGetGuideUrlForPath = jest.fn();
-let mockDiscoverItems: Array<{ id: string; title: string; contentUrl: string; milestoneCount?: number }> = [];
+let mockDiscoverItems: Array<{
+  id: string;
+  title: string;
+  contentUrl: string;
+  milestoneCount?: number;
+  description?: string;
+}> = [];
 let mockDiscoverExcludeTitles: Set<string> | undefined;
 
 jest.mock('../../learning-paths', () => ({
@@ -60,7 +68,7 @@ jest.mock('../../learning-paths', () => ({
   },
   useLearningPaths: () => ({
     paths: mockPaths,
-    badgesWithStatus: [],
+    badgesWithStatus: mockBadges,
     progress: { completedGuides: mockCompletedGuides, earnedBadges: [], streakDays: 0 },
     getPathGuides: mockGetPathGuides,
     getPathProgress: mockGetPathProgress,
@@ -133,6 +141,7 @@ beforeEach(() => {
   ];
   mockGuideMetadata = {};
   mockCompletedGuides = ['guide-2'];
+  mockBadges = [];
   mockDiscoverItems = [];
   mockDiscoverExcludeTitles = undefined;
   mockGetPathGuides.mockImplementation((id: string) =>
@@ -245,6 +254,175 @@ describe('MyLearningTab launch flow', () => {
     expect(secondCard).toHaveTextContent('2 milestones');
     expect(firstCard).not.toHaveTextContent('guide');
     expect(secondCard).not.toHaveTextContent('guide');
+  });
+
+  it('lists every course and badge inline instead of behind a view-all toggle', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    // Four in-progress paths, all rendered: the sections scroll rather than
+    // truncate, so a fifth path can never hide behind an expand affordance.
+    const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
+    expect(myCourses.querySelectorAll('[data-testid^="learning-path-card-"]')).toHaveLength(4);
+    expect(screen.queryByText('View all (4)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Show less')).not.toBeInTheDocument();
+  });
+
+  it('describes what Discover more offers under its title', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.getByTestId(testIds.learningPaths.discoverMoreSection)).toHaveTextContent(
+      'Structured paths to help you master Grafana step by step'
+    );
+  });
+
+  it('discloses a Discover more description behind an expand toggle', () => {
+    mockDiscoverItems = [
+      {
+        id: 'pkg-described',
+        title: 'Package one',
+        contentUrl: 'https://cdn.example/pkg-1/content.json',
+        description: 'Ship your first dashboard',
+      },
+      { id: 'pkg-bare', title: 'Package two', contentUrl: 'https://cdn.example/pkg-2/content.json' },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const expand = screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-described'));
+    expect(expand).toHaveAttribute('aria-label', 'Expand');
+    fireEvent.click(expand);
+    expect(expand).toHaveAttribute('aria-label', 'Collapse');
+    expect(screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-described'))).toHaveTextContent(
+      'Ship your first dashboard'
+    );
+
+    // Nothing to reveal without a description, so no dead disclosure control.
+    expect(screen.queryByTestId(testIds.learningPaths.discoverMoreExpand('pkg-bare'))).not.toBeInTheDocument();
+  });
+
+  it('keeps the badge overlay outside the container-query context', () => {
+    mockBadges = [
+      {
+        id: 'first-steps',
+        title: 'First steps',
+        description: 'Complete a guide',
+        earnedAt: 1,
+        trigger: { type: 'guide-completed' },
+      },
+    ];
+
+    const { container } = render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const queryContext = container.querySelector('.columnsContainer');
+    expect(queryContext).not.toBeNull();
+    expect(queryContext).toContainElement(screen.getByTestId(testIds.learningPaths.badgesSection));
+
+    // Open the real overlay rather than asserting on layout alone: `container-type`
+    // implies layout containment, which makes the element a containing block for
+    // `position: fixed` descendants, so an overlay nested inside would be trapped
+    // in the panel instead of covering the viewport.
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.badgeItem('first-steps')));
+
+    const overlay = container.querySelector('.overlay');
+    expect(overlay).not.toBeNull();
+    expect(overlay).toHaveTextContent('First steps');
+    expect(queryContext).not.toContainElement(overlay as HTMLElement);
+  });
+
+  it('toggles a My paths card from the keyboard without firing its actions', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    // 'path-new' is collapsed by default (only the first in-progress path auto-expands).
+    const chevron = screen.getByTestId(testIds.learningPaths.expandButton('path-new'));
+    expect(chevron).toHaveAttribute('aria-expanded', 'false');
+
+    // Enter on the chevron used to toggle twice — once from the keydown bubbling
+    // to the header, once from the button's activation click — cancelling out.
+    fireEvent.keyDown(chevron, { key: 'Enter' });
+    fireEvent.click(chevron);
+    expect(chevron).toHaveAttribute('aria-expanded', 'true');
+
+    // Enter on Continue must launch only, never also collapse the card.
+    fireEvent.keyDown(screen.getByTestId(testIds.learningPaths.continueButton('path-new')), { key: 'Enter' });
+    expect(chevron).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('exposes the My paths card actions to assistive tech', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const card = screen.getByTestId(testIds.learningPaths.card('path-new'));
+
+    // `role="button"` on the header would be Children Presentational, hiding the
+    // nested Continue and chevron controls.
+    expect(card.querySelector('[role="button"]')).toBeNull();
+
+    const chevron = screen.getByTestId(testIds.learningPaths.expandButton('path-new'));
+    const region = card.querySelector(`#${CSS.escape(chevron.getAttribute('aria-controls')!)}`);
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.click(chevron);
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+  });
+
+  it('toggles a Discover more card from the keyboard', () => {
+    mockDiscoverItems = [
+      {
+        id: 'pkg-1',
+        title: 'Package one',
+        contentUrl: 'https://cdn.example/pkg-1/content.json',
+        description: 'Ship your first dashboard',
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const expand = screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-1'));
+
+    // The chevron is a real button, so Enter reaches it as an activation click.
+    fireEvent.keyDown(expand, { key: 'Enter' });
+    fireEvent.click(expand);
+
+    expect(expand).toHaveAttribute('aria-label', 'Collapse');
+    expect(expand).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('exposes the Discover more Start button to assistive tech', () => {
+    mockDiscoverItems = [
+      {
+        id: 'pkg-1',
+        title: 'Package one',
+        contentUrl: 'https://cdn.example/pkg-1/content.json',
+        description: 'Ship your first dashboard',
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const card = screen.getByTestId(testIds.learningPaths.discoverMoreCard('pkg-1'));
+
+    // `role="button"` on the header would be Children Presentational, hiding the
+    // nested Start and chevron and leaving the card expandable but unlaunchable.
+    expect(card.querySelector('[role="button"]')).toBeNull();
+
+    // The disclosure state belongs to the chevron, and the collapsed region is
+    // hidden from the accessibility tree to match it.
+    const expand = screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-1'));
+    expect(expand).toHaveAttribute('aria-expanded', 'false');
+    const region = card.querySelector(`#${CSS.escape(expand.getAttribute('aria-controls')!)}`);
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+    expect(region).toHaveTextContent('Ship your first dashboard');
+  });
+
+  it('expanding a Discover more card does not launch it', () => {
+    mockDiscoverItems = [
+      {
+        id: 'pkg-1',
+        title: 'Package one',
+        contentUrl: 'https://cdn.example/pkg-1/content.json',
+        description: 'Ship your first dashboard',
+      },
+    ];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.discoverMoreExpand('pkg-1')));
+
+    expect(prepareMock).not.toHaveBeenCalled();
   });
 
   it('launches a Discover More item through prepareGuideLaunch', async () => {
