@@ -69,6 +69,21 @@ const CACHE_TTL_MS = 30_000;
 const cache = new Map<string, { entries: CustomGuideRepositoryEntry[]; at: number }>();
 const inflight = new Map<string, Promise<CustomGuideRepositoryEntry[]>>();
 
+// Bounded token, never the error text — it lands on a Faro event attribute,
+// which must stay low-cardinality (docs/developer/TELEMETRY.md).
+function classifyRequestFailure(err: unknown): string {
+  const status =
+    (err as { status?: number })?.status ??
+    (err as { statusCode?: number })?.statusCode ??
+    (err as { data?: { statusCode?: number } })?.data?.statusCode;
+  return typeof status === 'number' && status >= 100 && status <= 599 ? `http-${status}` : 'transport-error';
+}
+
+function requestFailureMessage(err: unknown): string {
+  const message = (err as { message?: unknown })?.message;
+  return typeof message === 'string' ? message : 'unknown';
+}
+
 async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
   const response = await getBackendSrv().get<CustomGuideRepositoryResponse>(
     CUSTOM_GUIDE_REPOSITORY_URL,
@@ -128,9 +143,15 @@ export async function fetchCustomGuideRepository(namespace: string): Promise<Cus
       cache.set(namespace, { entries, at: Date.now() });
       return entries;
     })
-    // Best-effort: never surface a listing failure, and don't cache it so a
-    // transient error doesn't stick for the whole TTL.
-    .catch(() => [] as CustomGuideRepositoryEntry[])
+    // Best-effort: never surface a listing failure to callers, and don't cache
+    // it so a transient error doesn't stick for the whole TTL. Still counted —
+    // `showErrorAlert: false` makes this otherwise invisible from the browser.
+    .catch((err: unknown) => {
+      const reason = classifyRequestFailure(err);
+      logger.warn('[custom-guides] catalogue fetch failed', { reason, message: requestFailureMessage(err) });
+      recordCustomGuideCatalogueUnavailable(reason);
+      return [] as CustomGuideRepositoryEntry[];
+    })
     .finally(() => {
       inflight.delete(namespace);
     });

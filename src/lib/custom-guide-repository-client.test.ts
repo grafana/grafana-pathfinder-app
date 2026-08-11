@@ -11,8 +11,13 @@ jest.mock('./telemetry/facade', () => ({
   recordCustomGuideCatalogueUnavailable: jest.fn(),
 }));
 
+jest.mock('./logging', () => ({
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
+}));
+
 import { getBackendSrv } from '@grafana/runtime';
 import { fetchCustomGuideRepository, invalidateCustomGuideRepositoryCache } from './custom-guide-repository-client';
+import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
 
 const mockGet = jest.fn();
@@ -116,12 +121,38 @@ describe('fetchCustomGuideRepository', () => {
     expect(result).toEqual([]);
   });
 
-  it('returns an empty array and swallows errors on fetch failure', async () => {
+  it('records an http-<status> reason when the request rejects with a status', async () => {
+    mockGet.mockRejectedValue({ status: 503, statusText: 'Service Unavailable', message: 'upstream drain failed' });
+
+    const result = await fetchCustomGuideRepository('stacks-123');
+
+    expect(result).toEqual([]);
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('http-503');
+    expect(logger.warn).toHaveBeenCalledWith('[custom-guides] catalogue fetch failed', {
+      reason: 'http-503',
+      message: 'upstream drain failed',
+    });
+  });
+
+  it('reads the status off the nested statusCode shapes too', async () => {
+    mockGet.mockRejectedValue({ data: { statusCode: 502 } });
+
+    await fetchCustomGuideRepository('stacks-123');
+
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('http-502');
+  });
+
+  it('records transport-error when the rejection carries no status', async () => {
     mockGet.mockRejectedValue(new Error('network error'));
 
     const result = await fetchCustomGuideRepository('stacks-123');
 
     expect(result).toEqual([]);
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('transport-error');
+    expect(logger.warn).toHaveBeenCalledWith('[custom-guides] catalogue fetch failed', {
+      reason: 'transport-error',
+      message: 'network error',
+    });
   });
 
   it('caches a successful result within the TTL and de-duplicates concurrent calls', async () => {
@@ -151,5 +182,7 @@ describe('fetchCustomGuideRepository', () => {
 
     expect(retry.map((g) => g.id)).toEqual(['g1']);
     expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledTimes(1);
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('transport-error');
   });
 });
