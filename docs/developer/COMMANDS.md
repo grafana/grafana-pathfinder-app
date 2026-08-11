@@ -24,6 +24,9 @@ npm run server
 # Run all tests, no coverage (CI mode - agents should use this for focused runs)
 npm run test:ci
 
+# Validate the contract-evolution review gate and disposition policy
+npm run test:review-contract
+
 # Run tests in watch mode (for local development)
 npm test
 
