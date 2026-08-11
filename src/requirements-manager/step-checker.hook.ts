@@ -289,25 +289,30 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
 
         try {
           // In controller mode the live tab is the source of truth for DOM/URL
-          // requirements; round-trip the check there. `var-*` answers are stored
-          // per guide, so they stay on this side — where the renderer's identity
-          // is known — and their verdict is ANDed with the live tab's (#1574).
-          // When no live tab answers within the timeout we deliberately fail
-          // OPEN, not closed: strip the tab-local DOM/URL tokens and evaluate
-          // the rest locally (§6.5). A fail-closed block would strand the
-          // two-monitor driver whenever the live tab briefly disconnects;
-          // session/permission/role requirements are NOT stripped, so genuine
-          // authorization failures still gate.
+          // requirements; round-trip the check there. Guide-scoped answers stay
+          // on this side — where the renderer's identity is known — and their
+          // verdict is ANDed with the live tab's (#1574). When no live tab
+          // answers within the timeout we deliberately fail OPEN, not closed:
+          // strip the tab-local DOM/URL tokens and evaluate the rest locally
+          // (§6.5). A fail-closed block would strand the two-monitor driver
+          // whenever the live tab briefly disconnects; session/permission/role
+          // requirements are NOT stripped, so genuine authorization failures
+          // still gate.
           let result: RequirementsCheckResult;
           if (isRemote) {
             const { guideScoped, remaining } = splitGuideScopedRequirements(requirements);
-            const guideScopedResult = guideScoped ? await checkHere(guideScoped) : undefined;
-            const remainingResult = remaining
-              ? ((await controllerChannel?.requestRequirementCheck(optionsStepId ?? stepId, remaining, {
-                  targetAction,
-                  refTarget,
-                })) ?? (await checkHere(stripTabLocalRequirements(remaining) ?? '')))
-              : undefined;
+            const checkOnLiveTab = async (): Promise<RequirementsCheckResult> => {
+              const remote = await controllerChannel?.requestRequirementCheck(optionsStepId ?? stepId, remaining, {
+                targetAction,
+                refTarget,
+              });
+              return remote ?? checkHere(stripTabLocalRequirements(remaining) ?? '');
+            };
+
+            const [guideScopedResult, remainingResult] = await Promise.all([
+              guideScoped ? checkHere(guideScoped) : undefined,
+              remaining ? checkOnLiveTab() : undefined,
+            ]);
             result = mergeRequirementResults(requirements, [guideScopedResult, remainingResult]);
           } else {
             result = await checkHere(requirements);

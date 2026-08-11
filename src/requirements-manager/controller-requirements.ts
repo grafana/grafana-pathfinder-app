@@ -25,12 +25,14 @@ export function stripTabLocalRequirements(requirements: string | undefined): str
     .join(',');
 }
 
-// Requirements whose answer is stored per guide in `guideResponseStorage` and
-// is therefore only meaningful under the guide identity of the renderer that
-// owns the step. Round-tripping them to the live tab would resolve them against
-// whichever guide that tab happens to have open, so the controller evaluates
-// them itself and ANDs the verdict with the live tab's (#1574).
-export const GUIDE_SCOPED_REQUIREMENT_PREFIXES = ['var-'];
+// Requirements answered from per-guide state that only the renderer owning the
+// step can resolve: `var-` reads `guideResponseStorage` under that renderer's
+// guide id, and `section-completed:` reads `sectionDoneStorage` under the
+// content key — plus a DOM fallback over sections that are rendered on the
+// controller, not on the live tab. Round-tripping either would resolve it
+// against whichever guide the live tab happens to have open, so the controller
+// evaluates them itself and ANDs the verdict with the live tab's (#1574).
+export const GUIDE_SCOPED_REQUIREMENT_PREFIXES = ['var-', 'section-completed:'];
 
 function isGuideScoped(token: string): boolean {
   return GUIDE_SCOPED_REQUIREMENT_PREFIXES.some((prefix) => token.startsWith(prefix));

@@ -53,16 +53,18 @@ describe('stripTabLocalRequirements', () => {
 });
 
 describe('splitGuideScopedRequirements (#1574)', () => {
-  // Pins the set of storage-backed requirement kinds. A new requirement that
-  // reads per-guide storage must be listed here, or the controller would ship
-  // it to the live tab and resolve it against that tab's guide identity.
-  it('lists exactly the storage-backed requirement prefixes', () => {
-    expect([...GUIDE_SCOPED_REQUIREMENT_PREFIXES]).toEqual(['var-']);
+  // Pins the set of per-guide requirement kinds. A new requirement that reads
+  // per-guide state must be listed here, or the controller would ship it to the
+  // live tab and resolve it against that tab's guide identity.
+  it('lists exactly the per-guide requirement prefixes', () => {
+    expect([...GUIDE_SCOPED_REQUIREMENT_PREFIXES].sort()).toEqual(['section-completed:', 'var-'].sort());
   });
 
-  it('keeps var-* on the controller side and round-trips the rest', () => {
-    expect(splitGuideScopedRequirements('var-accepted:true, is-admin, exists-reftarget')).toEqual({
-      guideScoped: 'var-accepted:true',
+  it('keeps per-guide requirements on the controller side and round-trips the rest', () => {
+    expect(
+      splitGuideScopedRequirements('var-accepted:true, is-admin, section-completed:setup, exists-reftarget')
+    ).toEqual({
+      guideScoped: 'var-accepted:true,section-completed:setup',
       remaining: 'is-admin,exists-reftarget',
     });
   });
@@ -74,7 +76,7 @@ describe('splitGuideScopedRequirements (#1574)', () => {
     });
   });
 
-  it('leaves guideScoped empty when no token is storage-backed', () => {
+  it('leaves guideScoped empty when no token is per-guide', () => {
     expect(splitGuideScopedRequirements('is-admin')).toEqual({ guideScoped: '', remaining: 'is-admin' });
   });
 
