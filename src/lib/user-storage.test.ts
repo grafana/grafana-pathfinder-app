@@ -174,6 +174,17 @@ describe('milestoneCompletionStorage', () => {
     await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set());
     expect(JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}')).toEqual({});
   });
+
+  it('clearAll drops every journey', async () => {
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'install-alloy');
+    await milestoneCompletionStorage.markCompleted('backend-guide:fe-alerting-path', 'fe-alerting-01');
+
+    await milestoneCompletionStorage.clearAll();
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set());
+    await expect(milestoneCompletionStorage.getCompleted('backend-guide:fe-alerting-path')).resolves.toEqual(new Set());
+    expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
+  });
 });
 
 // ============================================================================
