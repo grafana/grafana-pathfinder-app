@@ -121,56 +121,62 @@ describe('fetchCustomGuideRepository', () => {
     expect(result).toEqual([]);
   });
 
-  it('records an http-<status> reason when the request rejects with a status', async () => {
-    mockGet.mockRejectedValue({ status: 503, statusText: 'Service Unavailable', message: 'upstream drain failed' });
-
-    const result = await fetchCustomGuideRepository('stacks-123');
-
-    expect(result).toEqual([]);
-    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('http-503');
-    expect(logger.warn).toHaveBeenCalledWith('[custom-guides] catalogue fetch failed', {
+  // The reason lands on a Faro event attribute and in the bridged log context,
+  // so every rejection shape must collapse to a token from the closed set.
+  it.each([
+    { shape: 'a top-level status', err: { status: 503, statusText: 'Service Unavailable' }, reason: 'http-503' },
+    { shape: 'a top-level statusCode', err: { statusCode: 418 }, reason: 'http-418' },
+    { shape: 'a nested data.statusCode', err: { data: { statusCode: 502 } }, reason: 'http-502' },
+    {
+      shape: 'status ahead of both statusCode shapes',
+      err: { status: 503, statusCode: 404, data: { statusCode: 500 } },
       reason: 'http-503',
-      message: 'upstream drain failed',
-    });
-  });
-
-  it('reads the status off the nested statusCode shapes too', async () => {
-    mockGet.mockRejectedValue({ data: { statusCode: 502 } });
-
-    await fetchCustomGuideRepository('stacks-123');
-
-    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('http-502');
-  });
-
-  it('records transport-error when the rejection carries no status', async () => {
-    mockGet.mockRejectedValue(new Error('network error'));
+    },
+    {
+      shape: 'statusCode ahead of data.statusCode',
+      err: { statusCode: 404, data: { statusCode: 500 } },
+      reason: 'http-404',
+    },
+    { shape: 'one below the low bound', err: { status: 99 }, reason: 'transport-error' },
+    { shape: 'the low bound', err: { status: 100 }, reason: 'http-100' },
+    { shape: 'the high bound', err: { status: 599 }, reason: 'http-599' },
+    { shape: 'one above the high bound', err: { status: 600 }, reason: 'transport-error' },
+    { shape: 'a wildly out-of-range status', err: { status: 99999 }, reason: 'transport-error' },
+    { shape: 'a negative status', err: { status: -503 }, reason: 'transport-error' },
+    { shape: 'a string status', err: { status: '503' }, reason: 'transport-error' },
+    { shape: 'a non-integer status', err: { data: { statusCode: 503.0000001 } }, reason: 'transport-error' },
+    { shape: 'no status at all', err: new Error('network error'), reason: 'transport-error' },
+  ])('records $reason for $shape', async ({ err, reason }) => {
+    mockGet.mockRejectedValue(err);
 
     const result = await fetchCustomGuideRepository('stacks-123');
 
     expect(result).toEqual([]);
-    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('transport-error');
-    expect(logger.warn).toHaveBeenCalledWith('[custom-guides] catalogue fetch failed', {
-      reason: 'transport-error',
-      message: 'network error',
-    });
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith(reason);
+    expect(logger.warn).toHaveBeenCalledWith('[custom-guides] catalogue fetch failed', { reason });
   });
 
-  // A malformed error shape must not mint an unbounded Faro attribute value.
-  it('keeps the reason bounded when the status is out of range or not an integer', async () => {
-    mockGet.mockRejectedValueOnce({ status: 99999 });
-    await fetchCustomGuideRepository('stacks-123');
-    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenLastCalledWith('transport-error');
+  // logging.ts sanitizes the log context but does not strip it, so anything put
+  // there reaches Faro — an error message would be a user-derived free-text
+  // attribute, which docs/developer/TELEMETRY.md forbids.
+  it('never forwards the error message into the bridged log context', async () => {
+    const sentinel = 'c0ffee-user-derived-detail';
+    mockGet.mockRejectedValue({ status: 503, message: `upstream drain failed for ${sentinel}` });
 
-    mockGet.mockRejectedValueOnce({ data: { statusCode: 503.0000001 } });
     await fetchCustomGuideRepository('stacks-123');
-    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenLastCalledWith('transport-error');
+
+    expect(logger.warn).toHaveBeenCalledWith('[custom-guides] catalogue fetch failed', { reason: 'http-503' });
+    expect(JSON.stringify((logger.warn as jest.Mock).mock.calls)).not.toContain(sentinel);
   });
 
   // Both callers document that this never rejects — a throwing sink must not break that.
-  it('still resolves to an empty array when the observability calls throw', async () => {
+  it.each([
+    { sink: 'the logger', mock: () => logger.warn as jest.Mock },
+    { sink: 'the telemetry facade', mock: () => recordCustomGuideCatalogueUnavailable as jest.Mock },
+  ])('still resolves to an empty array when $sink throws', async ({ mock }) => {
     mockGet.mockRejectedValue(new Error('network error'));
-    (logger.warn as jest.Mock).mockImplementationOnce(() => {
-      throw new Error('logger blew up');
+    mock().mockImplementationOnce(() => {
+      throw new Error('observability blew up');
     });
 
     await expect(fetchCustomGuideRepository('stacks-123')).resolves.toEqual([]);

@@ -81,15 +81,12 @@ function classifyRequestFailure(err: unknown): string {
   return bounded ? `http-${status}` : 'transport-error';
 }
 
-function requestFailureMessage(err: unknown): string {
-  const message = (err as { message?: unknown })?.message;
-  return typeof message === 'string' ? message : 'unknown';
-}
-
 function reportCatalogueFetchFailure(err: unknown): void {
   try {
     const reason = classifyRequestFailure(err);
-    logger.warn('[custom-guides] catalogue fetch failed', { reason, message: requestFailureMessage(err) });
+    // The log context bridges to Faro too (logging.ts sanitizes it, it does not
+    // strip it), so it carries the same bounded token — never `err.message`.
+    logger.warn('[custom-guides] catalogue fetch failed', { reason });
     recordCustomGuideCatalogueUnavailable(reason);
   } catch {
     // Observability must not turn a swallowed listing failure into a rejection.
