@@ -273,6 +273,22 @@ describe('CompositePackageResolver degradation', () => {
     await expect(composite.resolve('test-guide')).rejects.toThrow('Unexpected resolver crash');
   });
 
+  // Eviction has to land on the first-hop reaction, not on a derived promise:
+  // a caller retrying inside its own rejection handler would otherwise be
+  // handed the still-cached rejected promise and never reach the resolver.
+  it('evicts a rejected resolution before the caller can retry synchronously', async () => {
+    (mockBundledResolver.resolve as jest.Mock)
+      .mockRejectedValueOnce(new Error('Unexpected resolver crash'))
+      .mockResolvedValueOnce(SUCCESS_BUNDLED);
+
+    const composite = new CompositePackageResolver([mockBundledResolver]);
+
+    const retried = await composite.resolve('test-guide').catch(() => composite.resolve('test-guide'));
+
+    expect(retried).toEqual(SUCCESS_BUNDLED);
+    expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
+  });
+
   it('should return network-error code when both resolvers fail with network-error', async () => {
     const bundledNetworkError: PackageResolution = {
       ok: false,
