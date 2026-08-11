@@ -832,6 +832,15 @@ export const milestoneCompletionStorage = {
       logger.warn('Failed to clear milestone completion', { error });
     }
   },
+
+  async clearAll(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(StorageKeys.MILESTONE_COMPLETION);
+    } catch (error) {
+      logger.warn('Failed to clear all milestone completion', { error });
+    }
+  },
 };
 
 /**

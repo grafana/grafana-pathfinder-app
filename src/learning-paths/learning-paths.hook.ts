@@ -446,6 +446,15 @@ export function useLearningPaths(): UseLearningPathsReturn {
         // No base URL: either a static bundled path (`bundled:<id>`) or an App
         // Platform path whose members are `backend-guide:<id>`. We can't tell
         // them apart from `path.guides` alone, so clear both content schemes.
+
+        // The path's OWN key, not just its members: milestone checklists and the
+        // journey percentage are stored under the cover key. Sequential because
+        // both helpers read-modify-write one shared record.
+        for (const pathKey of [`bundled:${path.id}`, `backend-guide:${path.id}`]) {
+          await milestoneCompletionStorage.clear(pathKey);
+          await journeyCompletionStorage.clear(pathKey);
+        }
+
         await Promise.all(
           path.guides.flatMap((guideId) =>
             [`bundled:${guideId}`, `backend-guide:${guideId}`].map((contentKey) =>
