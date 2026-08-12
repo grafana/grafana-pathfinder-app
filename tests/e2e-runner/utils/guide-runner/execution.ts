@@ -20,6 +20,7 @@ import {
   BUTTON_ENABLE_TIMEOUT_MS,
   BUTTON_APPEAR_TIMEOUT_MS,
   SCROLL_SETTLE_DELAY_MS,
+  SCROLL_INTO_VIEW_TIMEOUT_MS,
   POST_CLICK_SETTLE_DELAY_MS,
   COMPLETION_POLL_INTERVAL_MS,
   DEFAULT_SESSION_CHECK_INTERVAL,
@@ -33,6 +34,8 @@ import {
   GUIDED_FORMFILL_INVALID_PERSIST_MS,
   GUIDED_HOVER_DWELL_MS,
   GUIDED_SKIP_AFTER_TIMEOUT_FRACTION,
+  GUIDED_RELOAD_LOAD_TIMEOUT_MS,
+  SKIP_SYNC_TIMEOUT_MS,
 } from './constants';
 import { classifyError } from './classification';
 import {
@@ -72,12 +75,14 @@ import type { Locator } from '@playwright/test';
 export async function scrollStepIntoView(
   page: Page,
   stepId: string,
-  scrollDelay = SCROLL_SETTLE_DELAY_MS
+  scrollDelay = SCROLL_SETTLE_DELAY_MS,
+  scrollTimeout = SCROLL_INTO_VIEW_TIMEOUT_MS
 ): Promise<void> {
   const stepElement = page.getByTestId(testIds.interactive.step(stepId));
 
-  // Scroll within the docs panel container
-  await stepElement.scrollIntoViewIfNeeded();
+  // Scroll within the docs panel container. Bounded: a step that is completing
+  // or detaching around this point should not block on an unbounded wait.
+  await stepElement.scrollIntoViewIfNeeded({ timeout: scrollTimeout });
 
   // Wait for scroll animation to complete
   if (scrollDelay > 0) {
@@ -505,6 +510,35 @@ export async function waitForFormfillSettle(
 }
 
 /**
+ * Wait for the guided comment box to become visible, bounded by the step's own
+ * timeout budget rather than a fixed short constant. Polls step state alongside
+ * the comment box so a step that has already entered `error`/`cancelled` fails
+ * fast instead of waiting out the full timeout.
+ */
+export async function waitForGuidedCommentBoxReady(
+  page: Page,
+  stepLocator: Locator,
+  commentBox: Locator,
+  timeoutMs = GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((await commentBox.count()) > 0 && (await commentBox.isVisible())) {
+      return;
+    }
+    const state = await stepLocator.getAttribute('data-test-step-state').catch(() => null);
+    if (state === 'error') {
+      throw new Error('Guided step entered error state while waiting for comment box');
+    }
+    if (state === 'cancelled') {
+      throw new Error('Guided step was cancelled while waiting for comment box');
+    }
+    await page.waitForTimeout(GUIDED_SUBSTEP_ADVANCE_POLL_MS);
+  }
+  throw new Error('Guided step: comment box not visible');
+}
+
+/**
  * Run the guided substep loop: read comment box contract, perform action, wait for advance.
  * Phase 4: formfill validation, hover dwell, skippable substeps, navigation re-query, error diagnostics.
  */
@@ -514,6 +548,8 @@ export async function runGuidedSubstepLoop(
   options: {
     stepLocator: Locator;
     perSubstepTimeoutMs: number;
+    /** Bounds the comment-box visibility wait; defaults to GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS. */
+    commentBoxTimeoutMs?: number;
     verbose?: boolean;
     artifactsDir?: string;
   }
@@ -528,10 +564,16 @@ export async function runGuidedSubstepLoop(
     }
   };
 
-  // Step unmount mid-loop is a completion signal
+  // Step unmount mid-loop is a completion signal. Re-resolving the locator
+  // handles reload/navigation (e.g. a completeEarly action reloading the page);
+  // a query error against a mid-navigation document is treated the same way.
   const stepDetached = async (): Promise<boolean> => {
     stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-    return (await stepLocator.count()) === 0;
+    try {
+      return (await stepLocator.count()) === 0;
+    } catch {
+      return true;
+    }
   };
 
   while (true) {
@@ -564,10 +606,12 @@ export async function runGuidedSubstepLoop(
     }
 
     const commentBox = page.locator('.interactive-comment-box').first();
-    await commentBox.waitFor({ state: 'visible', timeout: GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS }).catch(async () => {
+    try {
+      await waitForGuidedCommentBoxReady(page, stepLocator, commentBox, options.commentBoxTimeoutMs);
+    } catch (err) {
       await captureLoopArtifacts('comment-box-not-visible');
-      throw new Error('Guided step: comment box not visible');
-    });
+      throw err;
+    }
 
     const action = await commentBox.getAttribute('data-test-action');
     const reftarget = await commentBox.getAttribute('data-test-reftarget');
@@ -587,13 +631,23 @@ export async function runGuidedSubstepLoop(
           throw new Error('Guided step: button/highlight substep missing data-test-reftarget');
         }
         const urlBefore = page.url();
-        const target = await resolveGuidedTarget(page, reftarget, action);
-        await target.scrollIntoViewIfNeeded();
-        await dismissBadgeCelebrations(page);
-        await target.click();
-        await page.waitForTimeout(100);
-        if (urlBefore !== page.url()) {
-          await page.waitForLoadState('domcontentloaded');
+        let navigated = false;
+        const onFrameNavigated = () => {
+          navigated = true;
+        };
+        page.on('framenavigated', onFrameNavigated);
+        try {
+          const target = await resolveGuidedTarget(page, reftarget, action);
+          await target.scrollIntoViewIfNeeded();
+          await dismissBadgeCelebrations(page);
+          await target.click();
+          await page.waitForTimeout(100);
+        } finally {
+          page.off('framenavigated', onFrameNavigated);
+        }
+        if (navigated || urlBefore !== page.url()) {
+          await page.waitForLoadState('domcontentloaded', { timeout: GUIDED_RELOAD_LOAD_TIMEOUT_MS });
+          stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
         }
       } else if (action === 'hover') {
         if (!reftarget) {
@@ -660,6 +714,32 @@ function createSkippedResult(
     skipReason,
     skippable: step.skippable,
   };
+}
+
+/**
+ * Click a skippable step's Skip control and wait for the plugin to leave the
+ * `requirements-unmet` state, so the next step in a sequential section isn't
+ * gated on "Complete previous step". Best-effort: swallows failures so a step
+ * that can't sync still returns the skipped result instead of throwing.
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier
+ * @param timeout - Maximum time to wait for the state change (ms)
+ */
+export async function clickSkipButtonAndSync(
+  page: Page,
+  stepId: string,
+  timeout = SKIP_SYNC_TIMEOUT_MS
+): Promise<void> {
+  const skipButton = page.getByTestId(testIds.interactive.skipButton(stepId));
+  if ((await skipButton.count().catch(() => 0)) === 0) {
+    return;
+  }
+  await skipButton.click({ timeout }).catch(() => {});
+  const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
+  await expect(stepLocator)
+    .not.toHaveAttribute('data-test-step-state', 'requirements-unmet', { timeout })
+    .catch(() => {});
 }
 
 /**
@@ -731,7 +811,20 @@ export async function executeStep(
       return createSkippedResult(step, page, startTime, consoleErrors, 'pre_completed');
     }
 
-    // Scroll step into view before interaction
+    // Some no-op/objective-based steps complete (or their element detaches)
+    // between discovery and execution; recheck immediately before scrolling so
+    // a step that's already done doesn't block on the scroll below.
+    const stepLocatorForPrecheck = page.getByTestId(testIds.interactive.step(step.stepId));
+    const detachedBeforeScroll = (await stepLocatorForPrecheck.count().catch(() => 0)) === 0;
+    if (detachedBeforeScroll || (await checkObjectiveCompletion(page, step.stepId))) {
+      if (verbose) {
+        console.log(`   ⊘ Step ${step.stepId} completed or detached before scroll (late completion)`);
+      }
+      return createSkippedResult(step, page, startTime, consoleErrors, 'pre_completed');
+    }
+
+    // Scroll step into view before interaction. Bounded so a step that's
+    // completing/detaching right around this point doesn't hang the run.
     await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
 
     // Capture PRE screenshot if alwaysScreenshot is enabled
@@ -759,6 +852,9 @@ export async function executeStep(
         if (verbose) {
           console.log(`   ⊘ Step ${step.stepId} skipped due to unmet requirements (skippable)`);
         }
+        // Click the Skip control and wait for the plugin to leave requirements-unmet
+        // so the next sequential step isn't gated on "Complete previous step".
+        await clickSkipButtonAndSync(page, step.stepId);
         return createSkippedResult(step, page, startTime, consoleErrors, 'requirements_unmet');
       }
       const errorMsg = fixResult
@@ -880,6 +976,9 @@ export async function executeStep(
       const { completed } = await runGuidedSubstepLoop(page, step, {
         stepLocator,
         perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+        // Bound the comment-box readiness wait by the step's own timeout budget
+        // (which already accounts for guidedStepCount) instead of a fixed 5s.
+        commentBoxTimeoutMs: timeout,
         verbose,
         artifactsDir,
       });
