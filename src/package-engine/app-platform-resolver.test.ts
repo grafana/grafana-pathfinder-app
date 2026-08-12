@@ -59,6 +59,9 @@ describe('AppPlatformPackageResolver — no loadContent', () => {
 
     expect(result.ok).toBe(false);
     expect(mockFetch).not.toHaveBeenCalled();
+    // Untagged: composite-resolver.ts keys cache eviction on `repository`, so a
+    // tag here would repeal negative caching for every tier.
+    expect(result.repository).toBeUndefined();
   });
 
   it('declines (not-found) when the GAP aggregation toggle is off', async () => {
@@ -72,6 +75,7 @@ describe('AppPlatformPackageResolver — no loadContent', () => {
     }
     expect(result.error.code).toBe('not-found');
     expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.repository).toBeUndefined();
   });
 });
 
@@ -202,6 +206,21 @@ describe('AppPlatformPackageResolver — full content', () => {
       return;
     }
     expect(result.manifest?.id).toBe('fe-alerting-01');
+  });
+
+  it('overwrites a persisted spec.manifest.repository pointing at the public CDN', async () => {
+    mockFetch.mockReturnValue(of(okResource({ manifest: { type: 'guide', repository: 'interactive-tutorials' } })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    // `repository` is the sole input to the durable completion key (guideSource),
+    // so a stale CDN value would mislabel a private guide's provenance.
+    expect(result.manifest?.repository).toBe('app-platform');
   });
 
   it('tags failures with the app-platform repository so the composite resolver can skip caching them', async () => {

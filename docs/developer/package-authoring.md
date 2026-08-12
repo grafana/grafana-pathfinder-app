@@ -2,7 +2,7 @@
 
 This guide covers the two-file package model used by Grafana Pathfinder. It is intended for content authors in the `interactive-tutorials` repository and enablement teams creating packages in any repository.
 
-For the block-level guide format (actions, requirements, sequences, quizzes), see the [JSON guide format](./interactive-examples/json-guide-format.md). For CLI commands that validate, build, and graph packages, see [CLI tools](./CLI_TOOLS.md).
+For the block-level guide format (actions, requirements, sequences, quizzes), see the [JSON guide format](./interactive-examples/json-guide-format.md). For CLI commands that validate, build, and graph packages, see [CLI tools](./CLI_TOOLS.md). For the prescriptive type/schema synchronization checklist, see [schema-type coupling rules](../../.cursor/rules/schema-coupling.mdc).
 
 ---
 
@@ -46,7 +46,7 @@ The content file is what the block editor produces. It contains only the fields 
 
 | Field           | Type          | Required | Description                                                                                    |
 | --------------- | ------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `schemaVersion` | `string`      | No       | Schema version (default: `"1.1.0"` for packages)                                               |
+| `schemaVersion` | `string`      | No       | Schema version                                                                                 |
 | `id`            | `string`      | Yes      | Bare package identifier — must match `manifest.json`                                           |
 | `title`         | `string`      | Yes      | Display title for the guide                                                                    |
 | `blocks`        | `JsonBlock[]` | Yes      | Array of content blocks (see [JSON guide format](./interactive-examples/json-guide-format.md)) |
@@ -63,7 +63,7 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `id`               | `string`                             | **Yes**                       | —                         | Bare package identifier — must match `content.json`                        |
 | `type`             | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                               |
 | `repository`       | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                      |
-| `steps`            | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages                                         |
+| `milestones`       | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages                                         |
 | `description`      | `string`                             | Recommended                   | —                         | Full description for display and search                                    |
 | `language`         | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                              |
 | `category`         | `string`                             | Recommended                   | —                         | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`)     |
@@ -271,8 +271,8 @@ The simplest possible package — just content, no manifest:
   "title": "My guide",
   "blocks": [
     {
-      "type": "text",
-      "body": "Welcome to this guide."
+      "type": "markdown",
+      "content": "Welcome to this guide."
     }
   ]
 }
@@ -329,8 +329,8 @@ A path composes multiple guides into an ordered sequence:
   "title": "Getting started with Grafana",
   "blocks": [
     {
-      "type": "text",
-      "body": "This learning path walks you through the basics of Grafana, from your first dashboard to monitoring with Prometheus."
+      "type": "markdown",
+      "content": "This learning path walks you through the basics of Grafana, from your first dashboard to monitoring with Prometheus."
     }
   ]
 }
@@ -344,7 +344,7 @@ A path composes multiple guides into an ordered sequence:
   "type": "path",
   "description": "A guided learning path through the fundamentals of Grafana.",
   "category": "getting-started",
-  "steps": ["welcome-to-grafana", "first-dashboard", "prometheus-grafana-101"]
+  "milestones": ["welcome-to-grafana", "first-dashboard", "prometheus-grafana-101"]
 }
 ```
 
@@ -359,7 +359,7 @@ Suppose you have a single-file guide `prometheus-grafana-101.json`:
   "schemaVersion": "1.0.0",
   "id": "prometheus-grafana-101",
   "title": "Prometheus and Grafana",
-  "blocks": [{ "type": "text", "body": "..." }]
+  "blocks": [{ "type": "markdown", "content": "..." }]
 }
 ```
 
@@ -380,7 +380,7 @@ Rename the file to `content.json` inside the directory. Remove any metadata fiel
   "schemaVersion": "1.1.0",
   "id": "prometheus-grafana-101",
   "title": "Prometheus and Grafana",
-  "blocks": [{ "type": "text", "body": "..." }]
+  "blocks": [{ "type": "markdown", "content": "..." }]
 }
 ```
 

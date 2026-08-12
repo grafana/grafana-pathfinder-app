@@ -16,6 +16,7 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { testIds } from '../../constants/testIds';
+import { milestoneCompletionStorage } from '../../lib/user-storage';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
@@ -92,6 +93,7 @@ jest.mock('../../lib/user-storage', () => ({
   journeyCompletionStorage: { getAll: jest.fn(async () => ({})), clear: jest.fn() },
   interactiveStepStorage: { clearAll: jest.fn() },
   interactiveCompletionStorage: { clearAll: jest.fn() },
+  milestoneCompletionStorage: { clearAll: jest.fn() },
 }));
 jest.mock('../../global-state/completion-store', () => ({ evictAllContentCaches: jest.fn() }));
 
@@ -495,5 +497,28 @@ describe('MyLearningTab — App Platform guide launch', () => {
       source: 'home_page',
       packageInfo: undefined,
     });
+  });
+});
+
+describe('MyLearningTab — reset all learning progress', () => {
+  it('drops milestone checklists so a single later completion cannot re-complete a course', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(milestoneCompletionStorage.clearAll).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  it('leaves milestone checklists alone when the confirmation is declined', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect(milestoneCompletionStorage.clearAll).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

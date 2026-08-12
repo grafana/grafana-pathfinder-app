@@ -6,6 +6,8 @@ export interface BoundedRecordStorage {
   /** Clamps `percentage` to `[0, 100]`, trims down to `limit` entries on overflow, and retries once after `cleanup()` on quota errors. */
   set(key: string, percentage: number): Promise<void>;
   clear(key: string): Promise<void>;
+  /** Deletes every key in one read-modify-write. Concurrent `clear` calls share one record, so each write restores the keys its siblings deleted. */
+  clearMany(keys: string[]): Promise<void>;
   getAll(): Promise<Record<string, number>>;
   /** Trims the record down to `limit` entries (most recent kept). No-op when already within budget. */
   cleanup(): Promise<void>;
@@ -83,6 +85,19 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
         const storage = createStorage();
         const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
         delete data[key];
+        await storage.setItem(storageKey, data);
+      } catch (error) {
+        logger.warn(`Failed to clear ${label}`, { error });
+      }
+    },
+
+    async clearMany(keys: string[]): Promise<void> {
+      try {
+        const storage = createStorage();
+        const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
+        for (const key of keys) {
+          delete data[key];
+        }
         await storage.setItem(storageKey, data);
       } catch (error) {
         logger.warn(`Failed to clear ${label}`, { error });

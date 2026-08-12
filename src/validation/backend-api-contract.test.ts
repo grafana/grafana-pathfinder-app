@@ -326,9 +326,10 @@ describe('backend API contract: struct tags match the schemas', () => {
 });
 
 // The third hand-mirror (#1408): pkg/plugin/custom_guide_repository_client.go
-// -> src/lib/custom-guide-repository-client.ts. Field names line up, but two
-// Go types are wider than the TypeScript ones they were mirrored as, and Go
-// cannot express the difference. These assertions are the record of that.
+// -> src/lib/custom-guide-repository-client.ts. Field names line up, but two Go
+// types are wider than anything the TypeScript client admits, and Go cannot
+// express the difference. These assertions are the record of that; the client
+// closes the gap at its own boundary, not by narrowing the wire.
 describe('backend API contract: custom-guide manifest is wider than its mirror', () => {
   const golden = VALUE_GOLDENS.find((g) => g.file === 'custom-guide-repository.wire-widened-manifest.json');
 
@@ -346,13 +347,15 @@ describe('backend API contract: custom-guide manifest is wider than its mirror',
   }
 
   // Go: `Type string \`json:"type"\`` with no omitempty, so an untyped manifest
-  // emits "" — which CustomGuideManifest.type: PackageType does not admit.
+  // emits "" — which CustomGuideManifest.type does not admit, so the client
+  // maps it to undefined instead.
   it('emits type "" where PackageType admits only guide | path | journey', () => {
     expect(wireManifest().type).toBe('');
     expect(PackageTypeSchema.safeParse('').success).toBe(false);
   });
 
-  // Go: `Depends []json.RawMessage`, mirrored as the fully-typed DependencyList.
+  // Go: `Depends []json.RawMessage`, forwarding clauses the fully-typed
+  // DependencyList rejects. The client declares no `depends` field at all.
   it('emits depends clauses DependencyList rejects', () => {
     const depends = wireManifest().depends;
     expect(Array.isArray(depends)).toBe(true);

@@ -832,6 +832,15 @@ export const milestoneCompletionStorage = {
       logger.warn('Failed to clear milestone completion', { error });
     }
   },
+
+  async clearAll(): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(StorageKeys.MILESTONE_COMPLETION);
+    } catch (error) {
+      logger.warn('Failed to clear all milestone completion', { error });
+    }
+  },
 };
 
 /**
@@ -1695,7 +1704,10 @@ export const guideResponseStorage = {
    */
   async getForGuide(guideId: string): Promise<Record<string, GuideResponseValue>> {
     const all = await guideResponseStorage.getAll();
-    return all[guideId] || {};
+    if (!Object.hasOwn(all, guideId)) {
+      return {};
+    }
+    return all[guideId] ?? {};
   },
 
   /**
@@ -1703,7 +1715,7 @@ export const guideResponseStorage = {
    */
   async getResponse(guideId: string, variableName: string): Promise<GuideResponseValue | undefined> {
     const guideResponses = await guideResponseStorage.getForGuide(guideId);
-    return guideResponses[variableName];
+    return Object.hasOwn(guideResponses, variableName) ? guideResponses[variableName] : undefined;
   },
 
   /**
@@ -1722,11 +1734,9 @@ export const guideResponseStorage = {
       const storage = createUserStorage();
       const all = await guideResponseStorage.getAll();
 
-      // Update the nested structure
-      if (!all[guideId]) {
-        all[guideId] = {};
-      }
-      all[guideId][variableName] = value;
+      const guideRecord = Object.hasOwn(all, guideId) ? (all[guideId] ?? {}) : {};
+      guideRecord[variableName] = value;
+      all[guideId] = guideRecord;
 
       await storage.setItem(StorageKeys.GUIDE_RESPONSES, all);
 
@@ -1749,11 +1759,12 @@ export const guideResponseStorage = {
       const storage = createUserStorage();
       const all = await guideResponseStorage.getAll();
 
-      if (all[guideId]) {
-        delete all[guideId][variableName];
+      const guideRecord = Object.hasOwn(all, guideId) ? all[guideId] : undefined;
+      if (guideRecord) {
+        delete guideRecord[variableName];
 
         // Clean up empty guide entries
-        if (Object.keys(all[guideId]).length === 0) {
+        if (Object.keys(guideRecord).length === 0) {
           delete all[guideId];
         }
 

@@ -51,6 +51,17 @@ describe('createBoundedRecordStorage', () => {
     expect(await store.get('b')).toBe(75);
   });
 
+  it('clearMany() removes every listed entry in one write, leaving the rest', async () => {
+    const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
+    await store.set('a', 25);
+    await store.set('b', 75);
+    await store.set('keep', 50);
+
+    await store.clearMany(['a', 'b', 'never-stored']);
+
+    expect(await store.getAll()).toEqual({ keep: 50 });
+  });
+
   it('getAll() returns the full record', async () => {
     const store = makeStore({ storageKey: TEST_KEY, limit: 100, label: 'test' });
     await store.set('a', 10);
