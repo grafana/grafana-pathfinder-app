@@ -20,8 +20,8 @@ import (
 //
 // Both CRYPTOGRAPHICALLY verify the forwarded Grafana ID token (X-Grafana-Id)
 // against the stack's published JWKS, so neither relies on Grafana's
-// server→plugin forwarding to keep the header honest — see "App Platform
-// proxies — identity trust boundary" in docs/developer/CODA.md. The ID token
+// server→plugin forwarding to keep the header honest — see "The identity trust
+// boundary" in docs/design/BACKEND_PROXY_PATTERN.md §3. The ID token
 // stays an identity attestation, never an outbound credential: proxy routes
 // exchange it for an access token (pkg/plugin/auth) and send that instead.
 //

@@ -48,10 +48,10 @@ export const CollatedCompletionWireSchema = z.strictObject({
 
 /**
  * `completions` is a required array, never nullable and never `.catch([])`:
- * the handler builds a non-nil slice unconditionally
- * (completion_records.go:389, :501) and `completion_records_test.go:231`
- * asserts it serializes as `[]`. A `null` here is a Go bug that should fail
- * loudly rather than be absorbed.
+ * the handler builds a non-nil slice unconditionally (`collateByUser` and
+ * `handleMyCompletions` in completion_records.go) and
+ * `TestMyCompletions_UnknownUserEmptyList` asserts it serializes as `[]`.
+ * A `null` here is a Go bug that should fail loudly rather than be absorbed.
  *
  * @coupling Go struct: myCompletionsResponse
  */

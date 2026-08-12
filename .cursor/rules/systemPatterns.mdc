@@ -194,7 +194,7 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. |
 | `plugin/settings.go`                | Parses `JSONData` and decrypts `SecureJSONData`. Reads only `secureJsonData.accessToken` into `OBOToken`; the exchange namespace comes from plugin-context, not settings. |
 | `plugin/app_platform_client.go`     | Shared paginated LIST client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, per-page byte cap + timeout, two-axis error classification (transient/terminal, namespace-global/caller-scoped), first-request credential diagnostics. |
-| `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken` — fail-closed structural JWT validation (outbound credentials come from `pkg/plugin/auth`); `deriveCompletionUserID` (the epic's canonical identity contract) delegates here. Trust boundary documented in `docs/design/BACKEND_PROXY_PATTERN.md`. |
+| `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `identityStatus` — fail-closed JWKS signature verification via `pkg/plugin/auth/id_token.go` (outbound credentials come from `pkg/plugin/auth` too); `deriveCompletionUserID` (the epic's canonical identity contract) delegates here. Trust boundary documented in `docs/design/BACKEND_PROXY_PATTERN.md`. |
 
 **Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
 
@@ -204,7 +204,7 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 **Security boundaries:**
 
 - Package-recommendations URL — `https` + explicit hostname allowlist
-- Forwarded ID token — structural validation, fail closed; never `Cookie`, never a replayed
+- Forwarded ID token — JWKS signature verification, fail closed; never `Cookie`, never a replayed
   `Authorization` header
 
 ### What is deliberately NOT here

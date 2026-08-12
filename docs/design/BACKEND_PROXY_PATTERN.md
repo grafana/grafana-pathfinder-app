@@ -325,8 +325,9 @@ go test ./pkg/plugin -run TestContract -update
 - [ ] Shared paginated LIST client; drains `continue`; per-page + aggregate deadlines; per-page
       byte cap + aggregate budget with logged truncation
 - [ ] Namespace from `PluginConfigFromContext().Namespace` — never a query param
-- [ ] Inbound: structural JWT validation everywhere (`exp` present + unexpired); `sub` extraction
-      only where data is per-user; fail closed
+- [ ] Inbound: JWKS signature verification everywhere via the shared verifier (plus `exp` present);
+      `sub` extraction only where data is per-user; fail closed, with the three §3 outcomes routed
+      from the one shared `identityStatus`
 - [ ] Outbound: shared identity-forwarding helper; ID-token-derived headers only; never `Cookie`;
       never replay inbound `Authorization`
 - [ ] Per-user data ⇒ identity-partitioned cache; shared blob ⇒ identity-invariance proven &
@@ -391,8 +392,8 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 
 - Extract shared plumbing: identity helpers, toggle constant, paginated LIST client, URL builder,
   single-flight/cache scaffolding (§8)
-- Document the unsigned-JWT trust boundary once, identically — it now lives in §3 of this document;
-  name authlib/JWKS as the future-hardening item (§3)
+- Document the ID-token trust boundary once, identically — it lives in §3 of this document; since
+  #1568 that boundary is authlib/JWKS signature verification, not a structural check (§3)
 - First-request credential diagnostics log (§9)
 - Runtime smoke procedure in the PR body, gating dependent work and the final outbound header set
   (§3, §10)
