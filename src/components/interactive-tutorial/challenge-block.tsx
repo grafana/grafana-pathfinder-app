@@ -20,7 +20,7 @@ import { lastValueFrom } from 'rxjs';
 import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
-import { checkPostconditions } from '../../requirements-manager';
+import { useGuideRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { useStepRedo, useStepResetSignal } from './hooks/use-step-reset';
 import { StepRedoButton } from './step-redo-button';
@@ -198,6 +198,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 }) => {
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
+  const { checkPostconditions } = useGuideRequirements();
 
   const [generatedStepId] = useState(() => {
     challengeCounter += 1;
@@ -446,7 +447,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setErrorDetail(`Could not run the check: ${message}`);
       setState('failed-check');
     }
-  }, [successCriteria, stepId, markComplete]);
+  }, [checkPostconditions, successCriteria, stepId, markComplete]);
 
   const handleRevealNextHint = useCallback(() => {
     setHintsRevealed((n) => Math.min(n + 1, hintLevels.length));

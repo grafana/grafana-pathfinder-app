@@ -15,11 +15,16 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 // Mock requirements checker
-jest.mock('../requirements-manager', () => ({
-  checkRequirements: jest.fn(),
-  checkPostconditions: jest.fn(),
-  RequirementsCheckOptions: jest.fn(),
-}));
+jest.mock('../requirements-manager', () => {
+  const checkRequirements = jest.fn();
+  const checkPostconditions = jest.fn();
+  return {
+    checkRequirements,
+    checkPostconditions,
+    useGuideRequirements: () => ({ checkRequirements, checkPostconditions }),
+    RequirementsCheckOptions: jest.fn(),
+  };
+});
 
 // Mock action handlers
 jest.mock('./action-handlers', () => ({
