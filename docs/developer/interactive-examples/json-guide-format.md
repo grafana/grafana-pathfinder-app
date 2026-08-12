@@ -396,6 +396,8 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 | `requirements` | string[]    | ❌       | Section-level requirements          |
 | `objectives`   | string[]    | ❌       | Objectives for the entire section   |
 
+"Do section" runs what it can and hands back control for the rest. It performs `interactive` steps itself; `multistep`, `code-block`, `terminal`, and `terminal-connect` blocks run themselves through their own executor; and `guided`, `quiz`, `challenge`, and `data-check` blocks stop the run, because only the learner can answer them. After a stop the button reads "Resume". A section whose remaining blocks are all in that last group has nothing for "Do section" to run, so the learner works through it block by block — worth keeping in mind when a section opens with a quiz or a data check.
+
 #### Collapsible Block
 
 Hides its nested blocks behind a toggle. Use it to gate solutions or example outputs so learners attempt an exercise before revealing the answer. Unlike a section, it is purely presentational and tracks no completion state.

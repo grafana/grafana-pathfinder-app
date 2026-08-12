@@ -97,6 +97,9 @@ jest.mock('./code-block-step', () => {
 jest.mock('./data-check-step', () => {
   return require('../../test-utils/interactive-section-harness').createDataCheckStepMock();
 });
+jest.mock('./challenge-block', () => {
+  return require('../../test-utils/interactive-section-harness').createChallengeBlockMock();
+});
 jest.mock('./interactive-conditional', () => {
   return require('../../test-utils/interactive-section-harness').createInteractiveConditionalMock();
 });
@@ -104,19 +107,27 @@ jest.mock('./interactive-conditional', () => {
 import { testIds } from '../../constants/testIds';
 import { InteractiveStep } from './interactive-step';
 import { DataCheckStep as DataCheckStepReal } from './data-check-step';
+import { ChallengeBlock as ChallengeBlockReal } from './challenge-block';
+import { InteractiveQuiz as InteractiveQuizReal } from './interactive-quiz';
+import { TerminalStep as TerminalStepReal } from './terminal-step';
+import { TerminalConnectStep as TerminalConnectStepReal } from './terminal-connect-step';
 import { InteractiveGuided as InteractiveGuidedReal } from './interactive-guided';
 import { InteractiveSection, resetInteractiveCounters } from './interactive-section';
 
-// The real `InteractiveGuided` has a required `internalActions` prop;
-// the harness mock ignores it. Cast through `React.FC<any>` so the
-// tripwire's `<InteractiveGuided />` JSX usage is clean.
+// These components have required props the harness mocks ignore. Cast through
+// `React.FC<any>` so the tripwire's JSX usage stays clean.
 const InteractiveGuided = InteractiveGuidedReal as unknown as React.FC<any>;
-// Same treatment for DataCheckStep — the mock ignores its required props.
 const DataCheckStep = DataCheckStepReal as unknown as React.FC<any>;
+const ChallengeBlock = ChallengeBlockReal as unknown as React.FC<any>;
+const InteractiveQuiz = InteractiveQuizReal as unknown as React.FC<any>;
+const TerminalStep = TerminalStepReal as unknown as React.FC<any>;
+const TerminalConnectStep = TerminalConnectStepReal as unknown as React.FC<any>;
 import {
   memoryStore,
+  refDrivenExecuteCalls,
   resetSectionHarness,
   setExecuteInteractiveActionOutcome,
+  setRefDrivenExecuteResult,
   silenceSectionWarnings,
 } from '../../test-utils/interactive-section-harness';
 
@@ -333,16 +344,24 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
     });
   });
 
-  describe('data-check pause', () => {
-    it('stops the loop at a data check instead of completing it for the user', async () => {
+  // A step type whose `targetAction` no action handler knows (or that has
+  // none at all) used to fall through `executeInteractiveAction`'s `default:`
+  // branch, which warns and reports success — so the runner marked the user's
+  // quiz answer, challenge, or data check done without any of them happening.
+  describe('steps only the user can perform', () => {
+    it.each([
+      ['a data check', <DataCheckStep datasourceType="prometheus" mode="query" query="up" key="dc" />],
+      ['a quiz', <InteractiveQuiz key="quiz" />],
+      ['a challenge', <ChallengeBlock key="challenge" />],
+    ])('stops the loop at %s instead of completing it for them', async (_label, child) => {
       const { events, unsubscribe } = recordEvents(['interactive-section-completed']);
       try {
         render(
-          <InteractiveSection id="runner" title="Data check pause" autoCollapse={false}>
+          <InteractiveSection id="runner" title="User-run pause" autoCollapse={false}>
             <InteractiveStep targetAction="highlight" refTarget=".a">
               Step 1 (plain)
             </InteractiveStep>
-            <DataCheckStep datasourceType="prometheus" mode="query" query="up" />
+            {child}
             <InteractiveStep targetAction="highlight" refTarget=".c">
               Step 3 (plain)
             </InteractiveStep>
@@ -365,6 +384,53 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
       } finally {
         unsubscribe();
       }
+    });
+  });
+
+  // Terminal steps DO carry their own executor — they send the command over
+  // the live terminal — so the runner must reach for the component's handle
+  // rather than the unknown-action fall-through.
+  describe('steps that own their execution', () => {
+    it.each([
+      ['a terminal step', <TerminalStep command="ls" key="t" />, 'terminal'],
+      ['a terminal connect step', <TerminalConnectStep key="tc" />, 'terminal-connect'],
+    ])('runs %s through its own executeStep', async (_label, child, kind) => {
+      render(
+        <InteractiveSection id="runner" title="Ref-driven" autoCollapse={false}>
+          <InteractiveStep targetAction="highlight" refTarget=".a">
+            Step 1 (plain)
+          </InteractiveStep>
+          {child}
+        </InteractiveSection>
+      );
+
+      await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+      act(() => {
+        screen.getByTestId(doSectionBtn(SECTION_ID)).click();
+      });
+
+      await waitFor(() => expect(refDrivenExecuteCalls).toEqual([kind]));
+    });
+
+    it('stops the loop when the terminal step reports it could not run', async () => {
+      setRefDrivenExecuteResult(false);
+      render(
+        <InteractiveSection id="runner" title="Ref-driven failure" autoCollapse={false}>
+          <TerminalStep command="ls" />
+          <InteractiveStep targetAction="highlight" refTarget=".c">
+            Step 2 (plain)
+          </InteractiveStep>
+        </InteractiveSection>
+      );
+
+      await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+      act(() => {
+        screen.getByTestId(doSectionBtn(SECTION_ID)).click();
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(memoryStore.get(`section-steps::${NON_PREVIEW_KEY}::${SECTION_ID}`)).toBeUndefined();
     });
   });
 

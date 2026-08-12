@@ -233,11 +233,39 @@ export function createInteractiveGuidedMock() {
 export function createInteractiveQuizMock() {
   return { InteractiveQuiz: () => null, resetQuizCounter: jest.fn() };
 }
+/** Which step kinds the runner asked to execute themselves, in order.
+ *  Only the ref-driven kinds record here — a kind the runner drives through
+ *  `executeInteractiveAction` never touches its component's handle. */
+export const refDrivenExecuteCalls: string[] = [];
+let _refDrivenExecuteResult = true;
+export function setRefDrivenExecuteResult(result: boolean) {
+  _refDrivenExecuteResult = result;
+}
+
+/** Stand-in for a step that owns its own execution: forwards the same
+ *  `executeStep` handle the real component does. */
+function makeRefDrivenStub(kind: string) {
+  const Stub = React.forwardRef<{ executeStep: () => Promise<boolean> }, any>((_props, ref) => {
+    React.useImperativeHandle(ref, () => ({
+      executeStep: async () => {
+        refDrivenExecuteCalls.push(kind);
+        return _refDrivenExecuteResult;
+      },
+    }));
+    return null;
+  });
+  Stub.displayName = `${kind}Stub`;
+  return Stub;
+}
+
 export function createTerminalStepMock() {
-  return { TerminalStep: () => null, resetTerminalStepCounter: jest.fn() };
+  return { TerminalStep: makeRefDrivenStub('terminal'), resetTerminalStepCounter: jest.fn() };
 }
 export function createTerminalConnectStepMock() {
-  return { TerminalConnectStep: () => null, resetTerminalConnectStepCounter: jest.fn() };
+  return { TerminalConnectStep: makeRefDrivenStub('terminal-connect'), resetTerminalConnectStepCounter: jest.fn() };
+}
+export function createChallengeBlockMock() {
+  return { ChallengeBlock: () => null, resetChallengeCounter: jest.fn() };
 }
 export function createCodeBlockStepMock() {
   return { CodeBlockStep: () => null, resetCodeBlockStepCounter: jest.fn() };
@@ -419,6 +447,8 @@ export function resetSectionHarness() {
   _checkRequirementsResult = { pass: true, error: [] };
   _executeInteractiveActionOutcome = 'ok';
   _stableCheckRequirementsFromData?.mockClear();
+  refDrivenExecuteCalls.length = 0;
+  _refDrivenExecuteResult = true;
   // The completion store keeps its own module-scope cache + hydration
   // tracking. Clear both so tests don't bleed state across runs.
   const store = require('../global-state/completion-store');

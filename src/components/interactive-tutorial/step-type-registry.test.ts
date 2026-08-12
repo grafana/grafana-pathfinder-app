@@ -293,10 +293,30 @@ describe('step-type-registry', () => {
     });
   });
 
-  describe('pausesSectionRun', () => {
-    it('is set only on the step types the user must perform themselves', () => {
+  describe('Do Section handling per kind', () => {
+    // Three-way split, and every kind must land in exactly one bucket: the
+    // runner can drive it (a known action, or the component's own handle), or
+    // it stops for the user. A kind in none of them falls through
+    // `executeInteractiveAction`'s `default:` branch, which warns and reports
+    // success — silently completing a step nothing performed.
+    it('pauses on the kinds only the user can perform', () => {
       const paused = STEP_TYPE_SCHEMAS.filter((s) => s.toStepInfoExtension({}).pausesSectionRun).map((s) => s.kind);
-      expect(paused).toEqual(['guided', 'data-check']);
+      expect(paused).toEqual(['guided', 'quiz', 'challenge', 'data-check']);
+    });
+
+    it('routes the kinds that own their execution through their own handle', () => {
+      const refDriven = STEP_TYPE_SCHEMAS.filter(
+        (s) => s.refTarget === 'multiStepRefs' && s.toStepInfoExtension({}).isMultiStep
+      ).map((s) => s.kind);
+      expect(refDriven).toEqual(['multistep', 'terminal', 'terminal-connect', 'codeblock']);
+    });
+
+    it('leaves only real interactive actions to executeInteractiveAction', () => {
+      const runnerDriven = STEP_TYPE_SCHEMAS.filter((s) => {
+        const ext = s.toStepInfoExtension({ targetAction: 'highlight' });
+        return !ext.pausesSectionRun && !ext.isMultiStep;
+      }).map((s) => s.kind);
+      expect(runnerDriven).toEqual(['plain']);
     });
   });
 

@@ -197,6 +197,9 @@ export const INTERACTIVE_QUIZ_SCHEMA: StepTypeSchema = {
     isMultiStep: false,
     isGuided: false,
     isQuiz: true,
+    // Only the user can answer it, and there is no handler for a quiz
+    // action — without this the runner would credit the answer for them.
+    pausesSectionRun: true,
   }),
   // Quiz omits isCurrentlyExecuting + onStepReset and uses the simple
   // `disabled` formula.
@@ -217,14 +220,18 @@ export const TERMINAL_STEP_SCHEMA: StepTypeSchema = {
   kind: 'terminal',
   parseTypeKey: 'terminal-step',
   idPrefix: 'terminal',
-  refTarget: 'none',
+  // The step sends the command over the live terminal itself, so the runner
+  // must call its `executeStep` — `'terminal'` is not an action any handler
+  // knows, and driving it through `executeInteractiveAction` would complete
+  // the step without sending anything.
+  refTarget: 'multiStepRefs',
   toStepInfoExtension: (props) => ({
     targetAction: 'terminal',
     refTarget: undefined,
     targetValue: undefined,
     requirements: props.requirements,
     skippable: props.skippable,
-    isMultiStep: false,
+    isMultiStep: true,
     isGuided: false,
   }),
   // Terminal mirrors Quiz's enhanced surface.
@@ -235,14 +242,16 @@ export const TERMINAL_CONNECT_STEP_SCHEMA: StepTypeSchema = {
   kind: 'terminal-connect',
   parseTypeKey: 'terminal-connect-step',
   idPrefix: 'terminal-connect',
-  refTarget: 'none',
+  // Owns its execution like TerminalStep: the handle completes the step when
+  // a terminal is already connected and otherwise starts provisioning.
+  refTarget: 'multiStepRefs',
   toStepInfoExtension: (props) => ({
     targetAction: 'terminal-connect',
     refTarget: undefined,
     targetValue: undefined,
     requirements: props.requirements,
     skippable: props.skippable,
-    isMultiStep: false,
+    isMultiStep: true,
     isGuided: false,
   }),
   toEnhancedProps: INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps,
@@ -293,6 +302,8 @@ export const CHALLENGE_BLOCK_SCHEMA: StepTypeSchema = {
     skippable: props.skippable,
     isMultiStep: false,
     isGuided: false,
+    // The task is the user's to do and to check; the runner can neither.
+    pausesSectionRun: true,
   }),
   // Mirrors Quiz: challenges don't need isCurrentlyExecuting or
   // onStepReset — the block manages its own internal state machine.
