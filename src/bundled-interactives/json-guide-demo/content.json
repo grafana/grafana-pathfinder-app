@@ -246,7 +246,23 @@
     },
     {
       "type": "markdown",
-      "content": "## 🎉 That's All the Block Types!\n\nYou've now seen every block type supported by JSON guides:\n\n| Block Type | Description |\n|------------|-------------|\n| `markdown` | Formatted text with headings, lists, code |\n| `html` | Raw HTML for migration/custom content |\n| `image` | Embedded images |\n| `video` | YouTube or native video embeds |\n| `section` | Container for grouped interactive steps |\n| `interactive` | Single-action step (highlight, button, formfill, hover) |\n| `multistep` | Automated sequence of actions |\n| `guided` | User-performed sequence with detection |\n| `quiz` | Knowledge assessment with single/multi choice |\n\n**Pro tip:** Start with `markdown` blocks for content, use `section` blocks to group related interactive steps, add `quiz` blocks to test understanding, and choose between `multistep` (automated) and `guided` (user-performed) based on your learning objectives."
+      "content": "## Data check\n\nA data check confirms your Grafana actually holds the data a guide teaches against, before you spend the tutorial building a panel that ends up empty.\n\nUnlike a requirement, it runs once — when you press the button — so it never sits querying your data source on a timer."
+    },
+    {
+      "type": "data-check",
+      "id": "demo-data-check",
+      "datasourceType": "prometheus",
+      "mode": "either",
+      "title": "Check you have Prometheus data",
+      "content": "Select a Prometheus data source, then run the check. `up` is the metric every scrape target reports, so any working instance should pass.",
+      "query": "up",
+      "aiPrompt": "the data source is reporting scrape target health",
+      "failureMessage": "No data came back. Check that this data source has at least one scrape target reporting.",
+      "skippable": true
+    },
+    {
+      "type": "markdown",
+      "content": "## 🎉 That's All the Block Types!\n\nYou've now seen every block type supported by JSON guides:\n\n| Block Type | Description |\n|------------|-------------|\n| `markdown` | Formatted text with headings, lists, code |\n| `html` | Raw HTML for migration/custom content |\n| `image` | Embedded images |\n| `video` | YouTube or native video embeds |\n| `section` | Container for grouped interactive steps |\n| `interactive` | Single-action step (highlight, button, formfill, hover) |\n| `multistep` | Automated sequence of actions |\n| `guided` | User-performed sequence with detection |\n| `quiz` | Knowledge assessment with single/multi choice |\n| `data-check` | Confirms the data source holds the data the guide needs |\n\n**Pro tip:** Start with `markdown` blocks for content, use `section` blocks to group related interactive steps, add `quiz` blocks to test understanding, and choose between `multistep` (automated) and `guided` (user-performed) based on your learning objectives."
     }
   ]
 }

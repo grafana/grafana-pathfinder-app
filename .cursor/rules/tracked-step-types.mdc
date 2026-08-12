@@ -35,13 +35,23 @@ Assume you're adding a `FooStep` component:
 
 4. **Renderer case** — in `src/components/content-renderer/content-renderer.tsx` `renderParsedElement`, add a `case 'foo-step':` that produces `<FooStep ... />`. Forward `stepId={element.props.stepId}` so the parser-derived stable ID survives through to the component (required for completion persistence across guide edits).
 
-5. **Registry site 1** — in `step-type-registry.ts`, add `FOO_STEP_SCHEMA` with the right `kind`, `parseTypeKey: 'foo-step'`, `idPrefix`, `refTarget`, `toStepInfoExtension`, `toEnhancedProps`. Append to `STEP_TYPE_SCHEMAS` and `STEP_TYPE_KIND_KEYS`. Add the `ParseTypeKey` literal. Wire `FooStep` into the `getStepTypeLookup()` map in `interactive-section.tsx`.
+5. **Registry site 1** — in `step-type-registry.ts`, add `FOO_STEP_SCHEMA` with the right `kind`, `parseTypeKey: 'foo-step'`, `idPrefix`, `refTarget`, `toStepInfoExtension`, `toEnhancedProps`. Append to `STEP_TYPE_SCHEMAS` and `STEP_TYPE_KIND_KEYS`. Add the `ParseTypeKey` and `idPrefix` literals. Then add the `[FooStep, FOO_STEP_SCHEMA]` pair to the exported `STEP_TYPE_LOOKUP` map in `interactive-section.tsx`, and call `resetFooStepCounter()` from `resetInteractiveCounters()` in the same file.
 
 6. **Registry site 2** — add `FooStep` to `INTERACTIVE_STEP_COMPONENT_TYPES` in `section-child-classifier.ts`. Add a test case in `section-child-classifier.test.tsx`.
 
-7. **Block editor** (optional) — if authors should create this block via the WYSIWYG editor, add a form in `src/components/block-editor/forms/`.
+7. **Barrel** — export `FooStep` from `src/components/interactive-tutorial/index.ts`.
 
-8. **CLI validation** (optional) — if the block needs CLI authoring support, register it in `src/cli/`.
+8. **Block classification** — add the block type to `INTERACTIVE_BLOCK_TYPES` in `src/constants/json-guide-classification.ts` (its `.test.ts` pins the array), and classify it in `src/components/docs-panel/utils/requires-grafana-ui.ts` — that file's `const unhandled: never` makes this a compile error.
+
+9. **Side-effect classification** — classify the block in `classifyBlock` in `src/cli/e2e/side-effects.ts`. An unregistered type falls through to `unknown`, which `isUnsafeSideEffectLevel` treats as unsafe and gates cloud e2e runs.
+
+10. **Docs** — add a `####` section and a "Block Types Summary" row to `docs/developer/interactive-examples/json-guide-format.md`, then bump `EXPECTED_BLOCK_TYPE_COUNT` in `src/validation/json-guide-format-docs.test.ts`. Add a `should match <type> schema fields` case to `src/validation/type-coupling.test.ts`.
+
+11. **Block editor** (optional) — if authors should create this block via the WYSIWYG editor, add a form in `src/components/block-editor/forms/` plus `forms/index.ts`, and fill `BLOCK_TYPE_METADATA`, `BLOCK_TYPE_GROUPS`, and `FORM_COMPONENTS` (all three are compile errors until done). Also consider `block-conversion.ts`, `block-preview.ts`, and `BranchBlocksEditor`'s `createDefaultBlock` — those fail silently.
+
+12. **CLI validation** — register the block in `BLOCK_SCHEMA_MAP` or `CLI_EXCLUDED_BLOCK_TYPES` in `src/cli/utils/block-registry.ts`; `block-registry.test.ts` forces the choice. Keep fields flat scalars to stay CLI-projectable — `schema-options.ts` reports "array of object" as unsupported and silently drops it. If the schema gains a cross-field `refine`/`superRefine`, add matching prose to the `refinements` arrays in `src/cli/commands/schema.ts`.
+
+**E2E discovery caveat.** `tests/e2e-runner/utils/guide-runner/constants.ts` sets `STEP_SELECTOR = '[data-testid^="interactive-step-"]'`, so the Playwright runner only discovers steps whose testid carries that prefix. `TerminalStep` (`interactive-terminal-*`) and `DataCheckStep` (`data-check-step-*`) sit outside it deliberately. Decide explicitly which side of that line a new type belongs on.
 
 ## What counts as "interactive" vs "passive"
 
@@ -50,6 +60,6 @@ A step type is **interactive** (and therefore belongs in this registry) when it 
 - `InteractiveStep` for **every** `targetAction`, including `'noop'`. Per issue #842 (the acknowledgement-gate design), no-op blocks "still count as interactive" — they don't trigger the Mark Section Complete gate.
 - `InteractiveMultiStep`, `InteractiveGuided`, `InteractiveQuiz`
 - `TerminalStep`, `TerminalConnectStep`, `CodeBlockStep`
-- `ChallengeBlock`
+- `ChallengeBlock`, `DataCheckStep`
 
 A block type is **passive** (and therefore does NOT belong here) when the user only reads it: markdown HTML, image, video, html blocks, and arbitrary non-tracked renderable children. Passive content is handled implicitly by `classifySectionChild` — anything not in the registry is treated as passive for the issue-#842 acknowledgement gate.

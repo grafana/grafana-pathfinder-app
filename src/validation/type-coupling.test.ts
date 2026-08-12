@@ -16,6 +16,7 @@ import {
   JsonInputBlockSchema,
   JsonGrotGuideBlockSchema,
   JsonChallengeBlockSchema,
+  JsonDataCheckBlockSchema,
   JsonStepSchema,
   KNOWN_FIELDS,
   type InferredJsonGuide,
@@ -198,6 +199,10 @@ describe('KNOWN_FIELDS sync', () => {
 
   it('should match challenge schema fields', () => {
     verifyFields(JsonChallengeBlockSchema, 'challenge');
+  });
+
+  it('should match data-check schema fields', () => {
+    verifyFieldsFromEffects(JsonDataCheckBlockSchema, 'data-check');
   });
 
   it('should match step schema fields', () => {

@@ -126,6 +126,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Code block',
     description: 'Code snippet with copy and insert into editor',
   },
+  'data-check': {
+    type: 'data-check',
+    icon: '🔎',
+    grafanaIcon: 'database',
+    name: 'Data check',
+    description: "Verify the user's data source holds the data the guide needs",
+  },
   'grot-guide': {
     type: 'grot-guide',
     icon: '🗺️',
@@ -166,7 +173,17 @@ export const BLOCK_TYPE_GROUPS = [
   {
     id: 'interactive',
     label: 'Interactive',
-    types: ['interactive', 'multistep', 'guided', 'input', 'quiz', 'terminal', 'terminal-connect', 'challenge'],
+    types: [
+      'interactive',
+      'multistep',
+      'guided',
+      'input',
+      'quiz',
+      'terminal',
+      'terminal-connect',
+      'challenge',
+      'data-check',
+    ],
   },
   {
     id: 'structure',

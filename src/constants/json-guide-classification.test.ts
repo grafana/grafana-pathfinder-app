@@ -12,6 +12,7 @@ describe('JSON guide classification', () => {
       'terminal-connect',
       'code-block',
       'challenge',
+      'data-check',
       'grot-guide',
     ]);
   });

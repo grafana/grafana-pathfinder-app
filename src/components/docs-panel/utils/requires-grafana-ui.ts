@@ -68,6 +68,7 @@ function interactiveBlockRequiresGrafanaUi(block: InteractiveBlock): boolean {
     case 'terminal':
     case 'terminal-connect':
     case 'challenge':
+    case 'data-check':
     case 'grot-guide':
       return false;
   }

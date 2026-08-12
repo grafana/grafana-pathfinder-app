@@ -16,6 +16,7 @@ import type { z } from 'zod';
 import {
   JsonAssistantBlockSchema,
   JsonCodeBlockBlockSchema,
+  JsonDataCheckBlockSchema,
   JsonConditionalBlockSchema,
   JsonGuidedBlockSchema,
   JsonHtmlBlockSchema,
@@ -60,6 +61,7 @@ export const BLOCK_SCHEMA_MAP = {
   terminal: JsonTerminalBlockSchema,
   'terminal-connect': JsonTerminalConnectBlockSchema,
   'code-block': JsonCodeBlockBlockSchema,
+  'data-check': JsonDataCheckBlockSchema,
 } as const satisfies Record<string, z.ZodObject>;
 
 /**

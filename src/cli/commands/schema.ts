@@ -46,12 +46,19 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
     refinements: [
       "Non-noop actions require 'reftarget' (step and interactive blocks)",
       "formfill with validateInput requires 'targetvalue' (step and interactive blocks)",
+      "data-check requires 'query' when mode is 'query' or 'either'",
+      "data-check requires 'aiPrompt' when mode is 'ai' or 'either'",
     ],
   },
   block: {
     schema: JsonBlockSchema,
     description: 'Union of all block types with depth-limited nesting',
-    refinements: ["Non-noop actions require 'reftarget'", "formfill with validateInput requires 'targetvalue'"],
+    refinements: [
+      "Non-noop actions require 'reftarget'",
+      "formfill with validateInput requires 'targetvalue'",
+      "data-check requires 'query' when mode is 'query' or 'either'",
+      "data-check requires 'aiPrompt' when mode is 'ai' or 'either'",
+    ],
   },
   content: {
     schema: ContentJsonSchema,
@@ -59,6 +66,8 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
     refinements: [
       "Non-noop actions require 'reftarget' (in nested blocks)",
       "formfill with validateInput requires 'targetvalue' (in nested blocks)",
+      "data-check requires 'query' when mode is 'query' or 'either' (in nested blocks)",
+      "data-check requires 'aiPrompt' when mode is 'ai' or 'either' (in nested blocks)",
     ],
   },
   manifest: {

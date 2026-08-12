@@ -289,6 +289,8 @@ function createDefaultBlock(type: BlockType): JsonBlock {
       return { type: 'multistep', content: '', steps: [] };
     case 'guided':
       return { type: 'guided', content: '', steps: [] };
+    case 'data-check':
+      return { type: 'data-check', datasourceType: 'prometheus', mode: 'query', query: '' };
     default:
       return { type: 'markdown', content: '' };
   }

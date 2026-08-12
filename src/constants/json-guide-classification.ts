@@ -10,6 +10,7 @@ export const INTERACTIVE_BLOCK_TYPES = [
   'terminal-connect',
   'code-block',
   'challenge',
+  'data-check',
   'grot-guide',
 ] as const satisfies ReadonlyArray<JsonBlock['type']>;
 

@@ -128,6 +128,7 @@ The primary button in the header reflects your guide's lifecycle. Start with **S
 | **Input**       | A prompt that collects a value from the user (text, checkbox, or data source picker) and stores it as a variable for later steps to reference.                                                   |
 | **Code block**  | A code snippet with copy-to-clipboard and, in supported contexts, an Insert button that types the code into a Grafana Monaco editor.                                                             |
 | **Challenge**   | A hands-on task the user has to solve, with progressive hints and a **Check my work** button that evaluates a success condition. Runs against the user's own Grafana or in a sandbox VM.         |
+| **Data check**  | Confirms the user's data source holds the data the guide needs. The user picks a data source and runs the check; the step completes only when the data is there.                                 |
 | **Grot guide**  | A choose-your-own-adventure decision tree where each screen offers options that branch to other screens.                                                                                         |
 | **Snippet**     | A reference to a published snippet — the guide always renders the latest version of the snippet's content.                                                                                       |
 

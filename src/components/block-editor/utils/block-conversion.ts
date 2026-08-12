@@ -37,6 +37,7 @@ const CONVERTIBLE_TYPES: readonly BlockType[] = [
   'terminal-connect',
   'challenge',
   'code-block',
+  'data-check',
 ];
 
 /**
@@ -60,6 +61,7 @@ const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
   'terminal-connect': 'content',
   challenge: 'brief',
   'code-block': 'content',
+  'data-check': 'content',
 };
 
 /**
@@ -88,6 +90,7 @@ const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
     successCriteria: 'coda-exit-zero:true',
   },
   'code-block': { reftarget: "div[data-testid='data-testid Code editor container']", code: '// Your code here' },
+  'data-check': { datasourceType: 'prometheus', mode: 'query', query: 'up' },
 };
 
 // ============ Public API ============

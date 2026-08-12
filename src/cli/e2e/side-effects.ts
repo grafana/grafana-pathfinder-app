@@ -4,6 +4,7 @@ import {
   isCodeBlockBlock,
   isConditionalBlock,
   isGrotGuideBlock,
+  isDataCheckBlock,
   isGuidedBlock,
   isHtmlBlock,
   isImageBlock,
@@ -163,7 +164,10 @@ function classifyBlock(block: JsonBlock, path: string): SideEffectClassification
     isVideoBlock(block) ||
     isQuizBlock(block) ||
     isInputBlock(block) ||
-    isGrotGuideBlock(block)
+    isGrotGuideBlock(block) ||
+    // Data checks only read: they run a query and report whether it returned
+    // rows. Nothing is written to the data source or to Grafana.
+    isDataCheckBlock(block)
   ) {
     return readonly();
   }

@@ -257,6 +257,29 @@ If you specify `"requirements": ["exists-reftarget"]` on a multistep, also set `
 
 See [guided-interactions.md](./guided-interactions.md) for detailed documentation.
 
+### data-check
+
+- **Purpose**: confirm the user's data source holds the data the guide teaches against.
+- **Behavior**: the user picks a data source of the authored type and presses a button; the step completes only if the check passes, and shows a warning underneath when it doesn't.
+- **Use when**: the guide is worthless against an instance without the data — building a panel from container CPU, querying a specific label, and so on.
+- **Not a requirement**: requirement tokens are re-evaluated on several timers, so a query behind one would run repeatedly. A data check runs once, on the button press.
+
+```json
+{
+  "type": "data-check",
+  "id": "check-container-metrics",
+  "datasourceType": "prometheus",
+  "mode": "either",
+  "title": "Check you have container metrics",
+  "query": "container_cpu_usage_seconds_total",
+  "aiPrompt": "the user has container CPU metrics",
+  "failureMessage": "No container CPU data found — install cAdvisor first.",
+  "skippable": true
+}
+```
+
+`mode` is `"query"` (run the authored query, pass on a non-empty result), `"ai"` (the assistant investigates and returns a verdict), or `"either"` (offer both and let the user pick). See [json-guide-format.md](./json-guide-format.md#data-check-block) for the full field reference.
+
 ## Choosing the right type
 
 | Need                                    | Action/block type |

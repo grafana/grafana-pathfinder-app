@@ -115,6 +115,12 @@ export enum UserInteraction {
   AiFixAccepted = 'ai_fix_accepted',
   AiFixApplied = 'ai_fix_applied',
   AiFixFailed = 'ai_fix_failed',
+
+  // Data check step. Never carries query text, aiPrompt, or data values.
+  DataCheckRun = 'data_check_run',
+  DataCheckPassed = 'data_check_passed',
+  DataCheckFailed = 'data_check_failed',
+  DataCheckSkipped = 'data_check_skipped',
 }
 
 // ============================================================================

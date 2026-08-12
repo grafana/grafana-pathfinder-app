@@ -46,6 +46,7 @@ export type JsonBlock =
   | JsonTerminalConnectBlock
   | JsonChallengeBlock
   | JsonCodeBlockBlock
+  | JsonDataCheckBlock
   | JsonGrotGuideBlock
   | JsonSnippetRefBlock;
 
@@ -720,6 +721,66 @@ export interface JsonCodeBlockBlock extends AuthorAnnotated {
   hint?: string;
 }
 
+// ============ DATA CHECK BLOCK ============
+
+/** Data source types a data check can run against. */
+export type DataCheckDatasourceType = 'prometheus' | 'loki' | 'tempo' | 'pyroscope';
+
+/**
+ * Which check the author offers the user.
+ *
+ * - `'query'` — the author's `query` runs against the selected data source and
+ *   passes when it returns data.
+ * - `'ai'` — the assistant investigates the selected data source and returns a
+ *   pass/fail verdict on the author's `aiPrompt`.
+ * - `'either'` — both are offered and the user picks; a pass on either completes
+ *   the step. Degrades to the query check alone when the assistant is absent.
+ */
+export type DataCheckMode = 'query' | 'ai' | 'either';
+
+/**
+ * Data check block: verifies the user's data source actually holds the data the
+ * guide is about to teach against.
+ *
+ * Runs only when the user presses the button — never on a polling cadence — which
+ * is why this is a step rather than a `requirements` token.
+ *
+ * @coupling Zod schema: JsonDataCheckBlockSchema in json-guide.schema.ts
+ */
+export interface JsonDataCheckBlock extends AuthorAnnotated {
+  type: 'data-check';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
+  /** Data source type the user picks from */
+  datasourceType: DataCheckDatasourceType;
+  /** Which check to offer */
+  mode: DataCheckMode;
+  /** Short title shown above the description */
+  title?: string;
+  /** Markdown description shown to the user */
+  content?: string;
+  /** Query to run. Required when mode is 'query' or 'either'. */
+  query?: string;
+  /** What the assistant should verify. Required when mode is 'ai' or 'either'. */
+  aiPrompt?: string;
+  /** Query range start (defaults to "now-1h") */
+  timeFrom?: string;
+  /** Query range end (defaults to "now") */
+  timeTo?: string;
+  /** Message shown when the check fails */
+  failureMessage?: string;
+  /** Guide variable the selected data source uid is stored under */
+  variableName?: string;
+  /** Requirements that must be met for this step */
+  requirements?: string[];
+  /** Objectives tracked for this step */
+  objectives?: string[];
+  /** Whether this step can be skipped if the check fails */
+  skippable?: boolean;
+  /** Hint shown when step cannot be completed */
+  hint?: string;
+}
+
 // ============ GROT GUIDE BLOCK ============
 
 /**
@@ -958,6 +1019,13 @@ export function isChallengeBlock(block: JsonBlock): block is JsonChallengeBlock 
  */
 export function isCodeBlockBlock(block: JsonBlock): block is JsonCodeBlockBlock {
   return block.type === 'code-block';
+}
+
+/**
+ * Type guard for JsonDataCheckBlock
+ */
+export function isDataCheckBlock(block: JsonBlock): block is JsonDataCheckBlock {
+  return block.type === 'data-check';
 }
 
 /**

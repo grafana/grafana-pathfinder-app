@@ -21,9 +21,11 @@ import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import { DataCheckStep, resetDataCheckStepCounter } from './data-check-step';
 import {
   CHALLENGE_BLOCK_SCHEMA,
   CODE_BLOCK_STEP_SCHEMA,
+  DATA_CHECK_STEP_SCHEMA,
   type EnhanceContext,
   INTERACTIVE_GUIDED_SCHEMA,
   INTERACTIVE_MULTISTEP_SCHEMA,
@@ -56,6 +58,7 @@ export const STEP_TYPE_LOOKUP: ReadonlyMap<React.ComponentType<any>, StepTypeSch
   [TerminalConnectStep, TERMINAL_CONNECT_STEP_SCHEMA],
   [CodeBlockStep, CODE_BLOCK_STEP_SCHEMA],
   [ChallengeBlock, CHALLENGE_BLOCK_SCHEMA],
+  [DataCheckStep, DATA_CHECK_STEP_SCHEMA],
 ]);
 
 /** Resolve the schema for a child element, or `undefined` if the child
@@ -135,6 +138,7 @@ export function resetInteractiveCounters() {
   resetTerminalConnectStepCounter();
   resetCodeBlockStepCounter();
   resetChallengeCounter();
+  resetDataCheckStepCounter();
 }
 
 export function InteractiveSection({

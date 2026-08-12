@@ -42,6 +42,8 @@ export {
 // Tools (will be added as they are implemented)
 export { createDatasourceMetadataTool, datasourceMetadataTool } from './datasource-metadata.tool';
 export { createGrafanaContextTool, grafanaContextTool } from './grafana-context.tool';
+export { createDataCheckQueryTool, DATA_CHECK_QUERY_BUDGET } from './datasource-query.tool';
+export type { DataCheckQueryToolOptions } from './datasource-query.tool';
 
 // Datasource utils (for advanced use cases)
 export { fetchPrometheusMetadata } from './utils/prometheus.utils';

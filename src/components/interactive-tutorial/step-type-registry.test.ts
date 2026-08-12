@@ -66,6 +66,7 @@ describe('step-type-registry', () => {
         'terminal-connect',
         'codeblock',
         'challenge',
+        'data-check',
       ]);
     });
 

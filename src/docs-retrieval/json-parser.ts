@@ -32,6 +32,7 @@ import {
   type JsonTerminalBlock,
   type JsonTerminalConnectBlock,
   type JsonChallengeBlock,
+  type JsonDataCheckBlock,
   type JsonCodeBlockBlock,
   type JsonGrotGuideBlock,
   type JsonStep,
@@ -305,6 +306,8 @@ function convertBlockByType(
       return convertTerminalConnectBlock(block, path, stepContext);
     case 'challenge':
       return convertChallengeBlock(block, path, stepContext);
+    case 'data-check':
+      return convertDataCheckBlock(block, path, stepContext);
     case 'code-block':
       return convertCodeBlockBlock(block, path, stepContext);
     case 'grot-guide':
@@ -970,6 +973,37 @@ function convertTerminalConnectBlock(
         vmTemplate: block.vmTemplate,
         vmApp: block.vmApp,
         vmScenario: block.vmScenario,
+      },
+      children,
+    },
+    hasInteractive: true,
+  };
+}
+
+function convertDataCheckBlock(block: JsonDataCheckBlock, _path: string, stepContext?: StepContext): ConversionResult {
+  const children = block.content ? parseMarkdownToElements(block.content) : [];
+  const requirements = block.requirements?.join(',') || undefined;
+  const objectives = block.objectives?.join(',') || undefined;
+  const stepId = resolveStepId(block.id, stepContext, 'data-check', block.query ?? block.aiPrompt);
+
+  return {
+    element: {
+      type: 'data-check-step',
+      props: {
+        datasourceType: block.datasourceType,
+        mode: block.mode,
+        title: block.title,
+        ...(stepId ? { stepId } : {}),
+        query: block.query,
+        aiPrompt: block.aiPrompt,
+        timeFrom: block.timeFrom,
+        timeTo: block.timeTo,
+        failureMessage: block.failureMessage,
+        variableName: block.variableName,
+        requirements,
+        objectives,
+        skippable: block.skippable ?? false,
+        hints: block.hint,
       },
       children,
     },

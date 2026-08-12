@@ -603,6 +603,66 @@ export const JsonCodeBlockBlockSchema = z.object({
   ...AuthorAnnotatedSchema.shape,
 });
 
+// ============ DATA CHECK BLOCK SCHEMA ============
+
+/**
+ * Schema for the data check block.
+ *
+ * `datasourceType` is an enum rather than a free string because both check
+ * mechanisms are built on the same four-type support set — a `mysql` filter
+ * would render a picker whose selection no check could evaluate.
+ *
+ * @coupling Type: JsonDataCheckBlock
+ */
+export const JsonDataCheckBlockSchema = z
+  .object({
+    ...AuthorAnnotatedSchema.shape,
+    type: z.literal('data-check'),
+    id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+    datasourceType: z
+      .enum(['prometheus', 'loki', 'tempo', 'pyroscope'])
+      .describe('Data source type the user picks from'),
+    mode: z
+      .enum(['query', 'ai', 'either'])
+      .describe(
+        "Which check to offer. 'query' runs the author's query and passes on a non-empty result. 'ai' asks the assistant to investigate the data source and return a verdict. 'either' offers both and lets the user pick."
+      ),
+    title: z.string().optional().describe('Short title shown above the description'),
+    content: z.string().optional().describe('Markdown description shown to the user'),
+    query: z.string().optional().describe("Query to run. Required when mode is 'query' or 'either'."),
+    aiPrompt: z
+      .string()
+      .optional()
+      .describe("What the assistant should verify. Required when mode is 'ai' or 'either'."),
+    timeFrom: z.string().optional().describe('Query range start (defaults to now-1h)'),
+    timeTo: z.string().optional().describe('Query range end (defaults to now)'),
+    failureMessage: z.string().optional().describe('Message shown when the check fails'),
+    variableName: z
+      .string()
+      .optional()
+      .describe('Guide variable the selected data source uid is stored under, for reuse by later blocks'),
+    requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+    objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+    skippable: z.boolean().optional().describe('Allow user to skip this block when the check fails'),
+    hint: z.string().optional().describe('Hint text shown if user is stuck'),
+  })
+  .superRefine((block, ctx) => {
+    if (block.mode !== 'ai' && !block.query?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['query'],
+        message: `A query is required when mode is "${block.mode}".`,
+      });
+    }
+    if (block.mode !== 'query' && !block.aiPrompt?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['aiPrompt'],
+        message: `An aiPrompt is required when mode is "${block.mode}".`,
+      });
+    }
+  });
+
 // ============ GROT GUIDE BLOCK SCHEMA ============
 
 /**
@@ -758,6 +818,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonTerminalConnectBlockSchema,
   JsonChallengeBlockSchema,
   JsonCodeBlockBlockSchema,
+  JsonDataCheckBlockSchema,
   JsonGrotGuideBlockSchema,
   JsonSnippetRefBlockSchema,
 ]);
@@ -781,6 +842,7 @@ const NonRecursiveBlockSchemaNoRef = z.union([
   JsonTerminalConnectBlockSchema,
   JsonChallengeBlockSchema,
   JsonCodeBlockBlockSchema,
+  JsonDataCheckBlockSchema,
   JsonGrotGuideBlockSchema,
 ]);
 
@@ -1228,6 +1290,25 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'requirements',
     'objectives',
     'skippable',
+    'authorNote',
+  ]),
+  'data-check': new Set([
+    'type',
+    'id',
+    'datasourceType',
+    'mode',
+    'title',
+    'content',
+    'query',
+    'aiPrompt',
+    'timeFrom',
+    'timeTo',
+    'failureMessage',
+    'variableName',
+    'requirements',
+    'objectives',
+    'skippable',
+    'hint',
     'authorNote',
   ]),
   'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),

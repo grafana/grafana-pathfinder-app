@@ -21,6 +21,7 @@ const TerminalProviderLazy = lazy(() =>
 );
 // Lazy so @grafana/assistant stays out of the docs-panel init chain (see AiFixOrchestrator).
 const AiFixOrchestrator = lazy(() => import('./AiFixOrchestrator'));
+const DataCheckOrchestrator = lazy(() => import('./DataCheckOrchestrator'));
 import { usePluginContext } from '@grafana/data';
 import { DocsPluginConfig, getConfigWithDefaults } from '../../constants';
 
@@ -1400,6 +1401,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     >
       <Suspense fallback={null}>
         <AiFixOrchestrator activeTab={activeTab} onPatchApplied={handleAiFixPatchApplied} />
+        <DataCheckOrchestrator contentKey={activeTab?.id ?? 'pathfinder-data-check'} />
       </Suspense>
       {/* Live session controls - only render when there's session content.
           The component returns null when both flags are off, preserving the

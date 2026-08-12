@@ -1091,6 +1091,64 @@ Switching a challenge from `"coda"` to `"standard"` in the block editor discards
 
 Coda mode is gated on two settings at once: the plugin's Coda-terminal setting, and per-user dev mode for the user viewing the guide. Both must be on, so coda mode is currently a development-only path rather than something an administrator turns on for everyone. When the gate is closed the block neither errors nor hides — it sits on "Provisioning challenge VM…" indefinitely, offering only a Cancel button ([#1541](https://github.com/grafana/grafana-pathfinder-app/issues/1541)). Because a challenge with no `mode` resolves to `"coda"`, an omitted `mode` is the most common way to reach that state. `"standard"` mode has no such dependency and works on every stack.
 
+#### Data check block
+
+Verifies that the learner's data source actually holds the data the guide is about to teach against, so a tutorial about container CPU does not run to completion against an instance that has none.
+
+The learner picks a data source of the type you name, then runs the check. The step completes only when the check passes; when it fails the step stays incomplete and shows a warning underneath.
+
+This is a step, not a `requirements` token, and deliberately so. Requirement tokens are re-evaluated by several timers — a 2-second per-step subscription, a 3-second heartbeat, a 5-second section recheck, plus a retry harness — so a query behind one would run over and over. A data check runs once, when the learner presses the button.
+
+`mode` picks which check you offer:
+
+| Mode       | Behavior                                                                                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `"query"`  | Runs your `query` against the selected data source. Passes when it returns at least one row. Deterministic, and the only mode that works without the Grafana Assistant.                    |
+| `"ai"`     | The assistant investigates the data source — reading its metadata and running up to three queries of its own — and returns a pass/fail verdict on your `aiPrompt`.                         |
+| `"either"` | Offers both and lets the learner pick; passing either completes the step. When the assistant is unavailable the AI button simply does not render, so the step degrades to a working check. |
+
+```json
+{
+  "type": "data-check",
+  "id": "check-container-metrics",
+  "datasourceType": "prometheus",
+  "mode": "either",
+  "title": "Check you have container metrics",
+  "content": "This guide builds a panel from container CPU data. Pick your Prometheus data source and confirm the data is there.",
+  "query": "container_cpu_usage_seconds_total",
+  "aiPrompt": "the user has container CPU metrics",
+  "failureMessage": "No container CPU data found — install cAdvisor first.",
+  "skippable": true
+}
+```
+
+| Field            | Type                                                     | Required  | Default  | Description                                                         |
+| ---------------- | -------------------------------------------------------- | --------- | -------- | ------------------------------------------------------------------- |
+| `datasourceType` | `"prometheus"` \| `"loki"` \| `"tempo"` \| `"pyroscope"` | ✅        | —        | Type the learner picks from                                         |
+| `mode`           | `"query"` \| `"ai"` \| `"either"`                        | ✅        | —        | Which check to offer                                                |
+| `query`          | string                                                   | see above | —        | Required when `mode` is `"query"` or `"either"`                     |
+| `aiPrompt`       | string                                                   | see above | —        | Required when `mode` is `"ai"` or `"either"`                        |
+| `id`             | string                                                   | ❌        | —        | Block ID                                                            |
+| `title`          | string                                                   | ❌        | —        | Short heading shown above the check                                 |
+| `content`        | string                                                   | ❌        | —        | Markdown shown above the data source picker                         |
+| `timeFrom`       | string                                                   | ❌        | `now-1h` | Query range start                                                   |
+| `timeTo`         | string                                                   | ❌        | `now`    | Query range end                                                     |
+| `failureMessage` | string                                                   | ❌        | —        | Shown under the step when the check fails                           |
+| `variableName`   | string                                                   | ❌        | —        | Guide variable the chosen data source uid is stored under           |
+| `requirements`   | string[]                                                 | ❌        | —        | Prerequisite conditions                                             |
+| `objectives`     | string[]                                                 | ❌        | —        | Objectives marked complete after this block                         |
+| `skippable`      | boolean                                                  | ❌        | `false`  | Show a Skip button so a learner without the data can still continue |
+
+Write the query in the language of the data source type: PromQL for `prometheus`, LogQL for `loki`, TraceQL for `tempo`, and `<profileTypeId>|<labelSelector>` for `pyroscope`. Queries are capped at 100 data points with a 15-second timeout, and the pass rule is simply "returned at least one row" — write a more specific query when you need a stricter bar.
+
+Set `skippable` unless the data is genuinely essential. A learner on an empty development instance otherwise has no way past the step.
+
+Give every data check an explicit `id`. Completion state is keyed off a hash that does not include the block type, so converting an existing block into a data check at the same position can otherwise inherit the old block's completed state.
+
+`variableName` stores the chosen data source **uid**, not its name, and makes it available to later blocks as `{{yourVariableName}}`. Without it the pick is still remembered for the guide; it just is not addressable from other blocks.
+
+The `"ai"` and `"either"` modes need the Grafana Assistant to be available in the instance. There is no separate admin flag. The assistant cannot pick the data source — it is fixed to the learner's selection — and it can run at most three queries per check.
+
 #### Snippet reference block
 
 A pointer to a published snippet. The renderer never sees this block — the guide schema accepts `snippet-ref`, and every ref is expanded after validation and before render, splicing the referenced snippet's blocks in at the ref's position. A guide therefore picks up the snippet's published content on every load, subject to a short cache: successful resolutions are held for five minutes, so a republished snippet can take that long to appear. Failed resolutions are not cached, so a broken ref is retried on every load.
@@ -1134,6 +1192,7 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 | `terminal`         | Interactive | A shell command with copy and execute (requires Coda terminal)                  |
 | `terminal-connect` | Interactive | Button that provisions a sandbox VM and opens a terminal panel                  |
 | `challenge`        | Interactive | Task with hints and a "Check my work" success check                             |
+| `data-check`       | Interactive | Confirms the learner's data source holds the data the guide needs               |
 | `grot-guide`       | Interactive | Choose-your-own-adventure decision tree                                         |
 | `quiz`             | Assessment  | Knowledge check with single/multiple choice                                     |
 | `input`            | Assessment  | Collects user responses as variables                                            |

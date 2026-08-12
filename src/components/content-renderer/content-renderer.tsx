@@ -37,6 +37,7 @@ import {
   TerminalConnectStep,
   CodeBlockStep,
   ChallengeBlock,
+  DataCheckStep,
   GrotGuideBlock,
   resetInteractiveCounters,
   registerSectionSteps,
@@ -1202,6 +1203,30 @@ function renderParsedElement(
         >
           {renderChildren(element.children)}
         </TerminalConnectStep>
+      );
+    case 'data-check-step':
+      return (
+        <DataCheckStep
+          key={key}
+          stepId={element.props.stepId}
+          datasourceType={element.props.datasourceType}
+          mode={element.props.mode}
+          title={sub(element.props.title) ?? element.props.title}
+          query={sub(element.props.query) ?? element.props.query}
+          aiPrompt={sub(element.props.aiPrompt) ?? element.props.aiPrompt}
+          timeFrom={element.props.timeFrom}
+          timeTo={element.props.timeTo}
+          failureMessage={element.props.failureMessage}
+          variableName={element.props.variableName}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          skippable={element.props.skippable}
+          hints={element.props.hints}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </DataCheckStep>
       );
     case 'challenge-block':
       return (

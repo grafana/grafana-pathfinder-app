@@ -20,6 +20,7 @@ import {
   isInputBlock,
   isTerminalBlock,
   isCodeBlockBlock,
+  isDataCheckBlock,
   isSnippetRefBlock,
   type JsonBlock,
 } from '../../../types/json-guide.types';
@@ -121,6 +122,10 @@ export function getBlockPreview(block: JsonBlock, options: BlockPreviewOptions =
   if (isCodeBlockBlock(block)) {
     const firstLine = block.code.split('\n')[0] ?? '';
     return truncate(firstLine, maxLength);
+  }
+
+  if (isDataCheckBlock(block)) {
+    return truncate(block.title || block.query || block.aiPrompt || block.datasourceType, maxLength);
   }
 
   if (isSnippetRefBlock(block)) {

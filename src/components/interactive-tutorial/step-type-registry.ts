@@ -20,7 +20,15 @@ import type { StepInfo } from '../../types/component-props.types';
 
 /** Discriminant for the tracked step component types. */
 export type StepTypeKind =
-  'plain' | 'multistep' | 'guided' | 'quiz' | 'terminal' | 'terminal-connect' | 'codeblock' | 'challenge';
+  | 'plain'
+  | 'multistep'
+  | 'guided'
+  | 'quiz'
+  | 'terminal'
+  | 'terminal-connect'
+  | 'codeblock'
+  | 'challenge'
+  | 'data-check';
 
 /** Where the cloneElement `ref` callback for this type should be
  *  stored on the section. `'none'` means no ref is attached. */
@@ -61,7 +69,8 @@ export type ParseTypeKey =
   | 'terminal-step'
   | 'terminal-connect-step'
   | 'code-block-step'
-  | 'challenge-block';
+  | 'challenge-block'
+  | 'data-check-step';
 
 /** Schema for one tracked step component type. */
 export interface StepTypeSchema {
@@ -71,7 +80,16 @@ export interface StepTypeSchema {
    *  SECTION_TRACKED_STEP_TYPES into a read of this field. */
   parseTypeKey: ParseTypeKey;
   /** Used to build per-type stepIds (`${sectionId}-${idPrefix}-${n}`). */
-  idPrefix: 'step' | 'multistep' | 'guided' | 'quiz' | 'terminal' | 'terminal-connect' | 'codeblock' | 'challenge';
+  idPrefix:
+    | 'step'
+    | 'multistep'
+    | 'guided'
+    | 'quiz'
+    | 'terminal'
+    | 'terminal-connect'
+    | 'codeblock'
+    | 'challenge'
+    | 'data-check';
   /** Where the section stores ref callbacks for this type. */
   refTarget: RefTargetMap;
   /** Build the StepInfo's type-specific fields from the child's props. */
@@ -280,6 +298,26 @@ export const CHALLENGE_BLOCK_SCHEMA: StepTypeSchema = {
   toEnhancedProps: INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps,
 };
 
+export const DATA_CHECK_STEP_SCHEMA: StepTypeSchema = {
+  kind: 'data-check',
+  parseTypeKey: 'data-check-step',
+  idPrefix: 'data-check',
+  // The check is the user's to run; the section's Do Section runner can't
+  // answer it for them, so no ref is stored.
+  refTarget: 'none',
+  toStepInfoExtension: (props) => ({
+    targetAction: 'data-check',
+    refTarget: undefined,
+    targetValue: undefined,
+    requirements: props.requirements,
+    skippable: props.skippable,
+    isMultiStep: false,
+    isGuided: false,
+  }),
+  // Mirrors Quiz: the block owns its own state machine.
+  toEnhancedProps: INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps,
+};
+
 /** Ordered array of every tracked step-type schema. The consumer in
  *  `interactive-section.tsx` builds a `Map<ComponentType, StepTypeSchema>`
  *  at module init by zipping this with the corresponding component
@@ -293,6 +331,7 @@ export const STEP_TYPE_SCHEMAS: readonly StepTypeSchema[] = [
   TERMINAL_CONNECT_STEP_SCHEMA,
   CODE_BLOCK_STEP_SCHEMA,
   CHALLENGE_BLOCK_SCHEMA,
+  DATA_CHECK_STEP_SCHEMA,
 ];
 
 /**
@@ -309,6 +348,7 @@ export const STEP_TYPE_KIND_KEYS = [
   'terminal-connect',
   'codeblock',
   'challenge',
+  'data-check',
 ] as const;
 
 /** Parse-time keys derived from the registry. Phase 1 substitutes this

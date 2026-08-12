@@ -172,6 +172,16 @@ export const testIds = {
     lazyScrollRetryButton: (stepId: string) => `interactive-lazy-retry-${stepId}`,
   },
 
+  // Data Check Step - verifies the user's data source holds the expected data
+  dataCheck: {
+    step: (stepId: string) => `data-check-step-${stepId}`,
+    datasourcePicker: (stepId: string) => `data-check-datasource-${stepId}`,
+    runQueryButton: (stepId: string) => `data-check-run-query-${stepId}`,
+    askAiButton: (stepId: string) => `data-check-ask-ai-${stepId}`,
+    skipButton: (stepId: string) => `data-check-skip-${stepId}`,
+    failure: (stepId: string) => `data-check-failure-${stepId}`,
+  },
+
   // Code Block Step - for inserting code into Monaco editors
   codeBlock: {
     step: (stepId: string) => `code-block-step-${stepId}`,
