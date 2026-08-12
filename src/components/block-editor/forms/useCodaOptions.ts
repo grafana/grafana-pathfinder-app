@@ -49,7 +49,14 @@ export function useCodaOptions(
     }
 
     const sub = getBackendSrv()
-      .fetch<Record<string, CodaListItem[]>>({ url })
+      .fetch<Record<string, CodaListItem[]>>({
+        url,
+        // A Coda token expiry answers 401. Grafana's global handler treats any
+        // first-attempt 401 on a relative URL as a session problem, pings
+        // /api/login/ping and replays the request; `retry: 1` opts out, since
+        // the caller's own session is fine.
+        retry: 1,
+      })
       .subscribe({
         next(resp) {
           const items = resp?.data?.[key];

@@ -237,6 +237,11 @@ async function request<T>(method: string, path: string, data?: unknown): Promise
       // Callers surface failures in place; a global toast on top of an
       // in-context message is noise.
       showErrorAlert: false,
+      // The plugin answers 401 `coda_auth_failed` when its own Coda credential
+      // has expired. Grafana's global handler reads any first-attempt 401 on a
+      // relative URL as the *caller's* session expiring, so it pings
+      // /api/login/ping and replays the request. `retry: 1` opts out.
+      retry: 1,
     });
     return (await lastValueFrom(response)).data;
   } catch (err) {
