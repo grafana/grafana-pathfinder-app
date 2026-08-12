@@ -500,6 +500,55 @@ func TestVerifyIDToken_KeySetRefreshBoundsRetiredKeyTrust(t *testing.T) {
 	}
 }
 
+// The five-minute bound caps how long a retired key stays trusted; it must not
+// also delay a newly published one, or a rotation would reject live tokens for
+// up to that long. Authlib re-fetches on an unknown `kid`, so the new key is
+// accepted mid-window — and the retired one still verifies, because that
+// re-fetch adds to the cached set rather than replacing it.
+func TestVerifyIDToken_NewKeyAcceptedMidWindow(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	firstKey := testSigningKey()
+	secondKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate second key: %v", err)
+	}
+
+	var currentJWKS atomic.Value
+	currentJWKS.Store(jwksBody("first-key", firstKey))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != auth.SigningKeysPath {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(currentJWKS.Load().([]byte))
+	}))
+	t.Cleanup(server.Close)
+
+	validExp := time.Now().Add(time.Hour).Unix()
+	firstToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "first-key", typ: "jwt", key: firstKey})
+	secondToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "second-key", typ: "jwt", key: secondKey})
+	cfg := map[string]string{sdkconfig.AppURL: server.URL}
+	app := newTestApp(t)
+	verify := func(token string) identityStatus {
+		t.Helper()
+		_, status := app.deriveCompletionUserID(identityRequestWithConfig(t, token, cfg))
+		return status
+	}
+
+	if status := verify(firstToken); status != identityVerified {
+		t.Fatalf("first token: status = %v, want verified", status)
+	}
+	currentJWKS.Store(jwksBody("second-key", secondKey))
+	advance(idTokenVerifierMaxAge / 2)
+	if status := verify(secondToken); status != identityVerified {
+		t.Fatalf("newly published key mid-window: status = %v, want verified", status)
+	}
+	if status := verify(firstToken); status != identityVerified {
+		t.Fatalf("previous key mid-window: status = %v, want verified", status)
+	}
+}
+
 // A verifier built for one stack must not be reused after the app URL changes.
 func TestVerifyIDToken_RebuiltWhenAppURLChanges(t *testing.T) {
 	first, firstFetches := startJWKSServer(t)
