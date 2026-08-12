@@ -171,8 +171,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   // Dedup guard for non-progress-bar status lines
   const lastStatusLineRef = useRef('');
 
-  // Cleanup function
+  // Tearing the stream down invalidates the session: exec is session-scoped, so
+  // a retained id would be spent on a session the backend has forgotten. Every
+  // terminating path must either call this or clear the id itself.
   const cleanup = useCallback(() => {
+    setSessionId(null);
     if (subscriptionRef.current) {
       subscriptionRef.current.unsubscribe();
       subscriptionRef.current = null;
@@ -476,6 +479,9 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                 inputDisposerRef.current.dispose();
                 inputDisposerRef.current = null;
               }
+              // The channel is gone, so the backend's terminal is detached from
+              // this session whatever the visible status says.
+              setSessionId(null);
               setStatus((prev) => {
                 if (prev === 'connected') {
                   terminal.writeln('\r\n\x1b[33m⚠ Connection lost\x1b[0m');
@@ -499,6 +505,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             sessionId: session.sessionId,
             category: 'live_stream_error',
           });
+          setSessionId(null);
           setError('Stream connection failed');
           setStatus('error');
           terminal.writeln(`\r\n\x1b[31mStream error: ${err?.message || 'Unknown error'}\x1b[0m`);
@@ -512,6 +519,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
             inputDisposerRef.current.dispose();
             inputDisposerRef.current = null;
           }
+          setSessionId(null);
           setStatus((prev) => {
             if (prev === 'connected') {
               terminal.writeln('\r\n\x1b[33mStream ended\x1b[0m');
@@ -551,7 +559,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       cleanup();
 
       currentVmIdRef.current = null;
-      setSessionId(null);
 
       terminal.clear();
       terminal.writeln('\x1b[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
@@ -594,7 +601,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   const disconnect = useCallback(() => {
     cleanup();
     currentVmIdRef.current = null;
-    setSessionId(null);
     setStatus('disconnected');
     setError(null);
 
