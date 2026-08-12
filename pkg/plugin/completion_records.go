@@ -52,10 +52,11 @@ const (
 	reasonIdentityUnavailable = "identity-unavailable"
 	reasonBackendUnavailable  = "backend-unavailable"
 
-	// reasonIdentityUnverifiable separates "we could not check the caller's ID
-	// token" (no app URL to resolve signing keys from, or the JWKS endpoint is
-	// unreachable) from "the caller has no valid one". Both fail closed; only
-	// this one is an operational fault.
+	// reasonIdentityUnverifiable separates "this stack can never check a
+	// caller's ID token" — no app URL to resolve signing keys from — from "the
+	// caller has no valid one". Both fail closed and both are standing
+	// conditions; a JWKS endpoint that is merely unreachable is retryable and
+	// takes the transient 503 path instead (identitySigningKeysDown).
 	reasonIdentityUnverifiable = "identity-unverifiable"
 )
 
@@ -69,10 +70,10 @@ var completionListMaxTotalRecords = 50_000
 // Completion Records epic: the caller's VERIFIED ID-token `sub` claim VERBATIM,
 // typed prefix included (e.g. "user:abc123"). Reads and writes must join on the
 // same key — epic PR 4's write hook MUST stamp `spec.userId` with this exact
-// helper. Returns the capability reason on failure ("" on success), fail closed
-// with no login/numeric fallback; see app_platform_identity.go and the trust
-// boundary in docs/developer/CODA.md.
-func (a *App) deriveCompletionUserID(r *http.Request) (string, string) {
+// helper. Returns the identity-gate status alongside it, fail closed with no
+// login/numeric fallback; see app_platform_identity.go and the trust boundary
+// in docs/developer/CODA.md.
+func (a *App) deriveCompletionUserID(r *http.Request) (string, identityStatus) {
 	return a.subjectFromIDToken(r)
 }
 
@@ -466,11 +467,17 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	// an unauthenticated caller. Missing identity on a GET read is a soft-200
 	// capability envelope (not 401): these routes gate whether a feature
 	// renders at all, and a bare error status conflates "never works here"
-	// with a transient blip.
-	userID, reason := a.deriveCompletionUserID(r)
-	if reason != "" {
+	// with a transient blip. An unreachable JWKS is that blip, so it takes the
+	// transient path instead.
+	userID, status := a.deriveCompletionUserID(r)
+	switch status {
+	case identityVerified:
+	case identitySigningKeysDown:
+		a.writeCompletionUnavailable(w)
+		return
+	default:
 		a.writeMyCompletions(w, myCompletionsResponse{
-			Capability:  completionCapability{Available: false, Reason: reason},
+			Capability:  completionCapability{Available: false, Reason: status.capabilityReason()},
 			Completions: []collatedCompletion{},
 		})
 		return
@@ -498,8 +505,7 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.ctxLogger(r.Context()).Debug("completion records unavailable (cold)", "error", err)
-		w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
-		a.writeError(w, "completion-records-unavailable", http.StatusServiceUnavailable)
+		a.writeCompletionUnavailable(w)
 		return
 	}
 
@@ -526,8 +532,13 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if _, reason := a.deriveCompletionUserID(r); reason != "" {
-		a.writeJSON(w, completionCapability{Available: false, Reason: reason}, http.StatusOK)
+	switch _, status := a.deriveCompletionUserID(r); status {
+	case identityVerified:
+	case identitySigningKeysDown:
+		a.writeCompletionUnavailable(w)
+		return
+	default:
+		a.writeJSON(w, completionCapability{Available: false, Reason: status.capabilityReason()}, http.StatusOK)
 		return
 	}
 
@@ -545,8 +556,7 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 			a.writeJSON(w, completionCapability{Available: false, Reason: reasonBackendUnavailable}, http.StatusOK)
 			return
 		}
-		w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
-		a.writeError(w, "completion-records-unavailable", http.StatusServiceUnavailable)
+		a.writeCompletionUnavailable(w)
 		return
 	}
 	a.writeJSON(w, completionCapability{Available: true}, http.StatusOK)
@@ -554,6 +564,14 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 
 func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsResponse) {
 	a.writeJSON(w, resp, http.StatusOK)
+}
+
+// writeCompletionUnavailable serves BACKEND_PROXY_PATTERN.md §7's transient
+// hiccup — 503 plus a Retry-After hint, never a capability envelope — so both
+// completion routes answer every retryable failure in one shape.
+func (a *App) writeCompletionUnavailable(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
+	a.writeError(w, "completion-records-unavailable", http.StatusServiceUnavailable)
 }
 
 // resolveCompletionBackend determines whether the aggregated CRUD API is

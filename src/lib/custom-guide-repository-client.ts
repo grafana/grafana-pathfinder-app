@@ -44,8 +44,9 @@ export interface CustomGuideRepositoryEntry {
  * Availability signal the catalogue surfaces gate on. `available` is false with
  * a machine `reason` when the proxy can't serve (the response is still a
  * soft-200 in that case). Reasons: `identity-unavailable`,
- * `identity-unverifiable` (the backend couldn't reach the stack's ID-token
- * signing keys), `grafana-config-unavailable`, `feature-toggle-disabled`,
+ * `identity-unverifiable` (the stack exposes no ID-token signing keys to verify
+ * against; an unreachable one is a transient 503 instead),
+ * `grafana-config-unavailable`, `feature-toggle-disabled`,
  * `namespace-unavailable`, `app-url-unavailable`, `obo-unavailable` (no
  * provisioned on-behalf-of token — check this first when the surface is
  * unexpectedly empty), `backend-unavailable`, or `upstream-<status>` for an

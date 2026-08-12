@@ -65,14 +65,18 @@ the fixed internal aggregator.
 
 ### Inbound (browser → plugin)
 
-- Fail closed: absent or structurally invalid identity → serve no data. Never guess, never fall
+- Fail closed: absent or unverifiable identity → serve no data. Never guess, never fall
   back to `X-Grafana-User` or a numeric id, never use a service account. On GET reads the refusal
   is expressed as the §7 capability envelope (soft-200), not a 401 — "fail closed" constrains
   _what_ is served (nothing), not the status code.
-- **Every proxy structurally validates the ID token** before spending an upstream call:
-  well-formed JWT, `exp` **present and** unexpired. **Reject `exp == 0`** — a forwarded Grafana
-  ID token always carries `exp`, and accepting its absence weakens the one structural check we
-  have.
+- **Every proxy cryptographically verifies the ID token** before spending an upstream call:
+  ES256 signature against the issuing stack's published JWKS, `typ: "jwt"`, and `exp`/`nbf`.
+  Structural parsing is **not** sufficient — `X-Grafana-Id` is client-settable in the shapes
+  described in the canonical statement below, so an unsigned check accepts a forged `sub` (#1568).
+  One shared verifier does this (`pkg/plugin/auth/id_token.go`, over `authlib`); layered on top of
+  it, **reject `exp == 0`** — a forwarded Grafana ID token always carries `exp`, and go-jose
+  validates expiry only when the claim is present, so an `exp`-less token would otherwise verify
+  as non-expiring.
 - **Only per-user-data proxies extract `sub`** (verbatim, typed prefix included). A
   namespace-global catalogue proxy needs a verified caller and nothing more; it has no per-user
   need and must not grow one by accident. Ship this as one shared helper with two layers:
@@ -82,6 +86,16 @@ the fixed internal aggregator.
   `"X-Grafana-Id"` string.
 - Missing/invalid identity on a GET read → **soft-200 capability envelope**
   (`reason: "identity-unavailable"`), not 401 (see §7 for why).
+- The gate has **three** outcomes, not two, and the transient/structural split of §7 cuts across
+  them. Route them from one shared decision (`identityStatus` in
+  `pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way:
+  - no token, or one the stack will not accept → soft-200 `identity-unavailable`;
+  - **no signing-keys URL resolvable at all** (no Grafana config, no app URL) → soft-200
+    `identity-unverifiable`, because verification can never succeed on this stack;
+  - **the URL resolved but the JWKS fetch failed** (5xx, timeout, refused) → §7's transient
+    **503 + `Retry-After`**. This one is retryable, and the front-end caches an empty
+    capability=false result without retrying, so an envelope would darken the surface past the
+    end of the outage.
 
 ### Outbound (plugin → aggregator)
 
@@ -135,11 +149,16 @@ keep the header honest — which matters, since `X-Grafana-Id` is **not** on
 deletes, so a client-set value can survive to the plugin whenever the authenticated requester has
 no ID token of its own (#1568).
 
-Verification failures always fail **closed**, under two distinguishable capability reasons:
-`identity-unavailable` when the token is absent or unacceptable, and `identity-unverifiable` when
-the signing keys could not be resolved (no app URL in the plugin's Grafana config, or the JWKS
-endpoint is unreachable). The key set is cached per plugin instance for 10 minutes by authlib,
-with a single re-fetch on an unknown `kid`, so steady-state verification costs no network calls.
+Verification failures always fail **closed**, under the three outcomes listed in the inbound
+bullets above, all decided by one shared `identityStatus`
+(`pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way.
+
+A fetched key set is cached by authlib for the **plugin-instance lifetime** (`cache.NoExpiration`;
+authlib's 10-minute TTL applies only to negative entries for unknown `kid`s, which are re-fetched
+once), so steady-state verification costs no network calls — and a key Grafana rotates out of its
+JWKS stays accepted until the instance restarts. The fetch itself is detached from the caller's
+cancellation and separately deadlined, because authlib dedupes it across concurrent callers with
+singleflight: one canceled request would otherwise fail every waiter with a spurious outage.
 
 Outbound, the ID token is **not** forwarded as a credential. It is exchanged for a short-lived
 on-behalf-of access token sent on `X-Access-Token`, per the outbound bullets above — never the
@@ -210,8 +229,8 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
 ## 7. Availability signaling
 
 - Three states the front-end genuinely needs to distinguish: **available**, **structurally
-  unavailable on this stack** (toggle off / identity not forwarded / terminal upstream), and
-  **transient hiccup**.
+  unavailable on this stack** (toggle off / identity not forwarded / no signing keys resolvable /
+  terminal upstream), and **transient hiccup** (including an unreachable JWKS — see §3).
 - Structural unavailability is signaled **in-band**: HTTP 200 with
   `capability: { available: false, reason: "identity-unavailable" | "identity-unverifiable" |
 "backend-unavailable" }`.
@@ -235,7 +254,8 @@ One definition each, package-wide:
   `pathfinderBackendAggregationToggle` (`pkg/plugin/app_platform_client.go`) for the legacy `.com`
   group, and `customGuideAggregationToggle` (`pkg/plugin/custom_guide_repository_client.go`) for
   the GAP `.app` group. Two constants with the same string is a rename bug waiting;
-- the identity helpers (§3): `validIDToken`, `subjectFromIDToken`, and the `pkg/plugin/auth`
+- the identity helpers (§3): `validIDToken`, `subjectFromIDToken`, the `identityStatus` that
+  decides how each failure is served, the shared `IDTokenVerifier`, and the `pkg/plugin/auth`
   token exchanger every proxy authenticates with;
 - the paginated LIST client + `buildAppPlatformURL` (§1);
 - the single-flight + cache scaffolding (done-channel, `WithoutCancel`, per-namespace map);
@@ -336,13 +356,14 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 ### PR #1400 (custom guide catalogue) — larger delta
 
 - Namespace from trusted context; delete `?namespace=` + `isValidNamespace` (§2)
-- Structurally validate the ID token via the shared helper; fail closed before the upstream call
+- Verify the ID token via the shared helper; fail closed before the upstream call
   (§3) — today the token is forwarded verbatim with only a presence check
 - Outbound: mint an on-behalf-of access token from the inbound ID token and send it on
   `X-Access-Token` via the shared `pkg/plugin/auth` exchanger (§3). Forwarding the ID token in any
   header slot does not authenticate against the aggregator on a real stack. Both PRs must
   terminate at the same exchanger
-- Missing/invalid identity → soft-200 `identity-unavailable` capability envelope, not 401 (§7)
+- Missing/invalid identity → soft-200 `identity-unavailable` capability envelope, not 401 (§7);
+  a failed signing-keys fetch takes the transient 503 path instead (§3)
 - Paginate (`limit` + `continue`) + aggregate budget + aggregate deadline (§1) — today a single
   request ignores `metadata.continue` entirely
 - Transient/terminal taxonomy + `Retry-After` — the fetcher already distinguishes 401/403 from

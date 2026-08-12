@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
+	"github.com/grafana/grafana-plugin-sdk-go/experimental/featuretoggles"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
@@ -181,7 +183,7 @@ func TestDeriveCompletionUserID(t *testing.T) {
 		name       string
 		token      string
 		wantID     string
-		wantReason string
+		wantStatus identityStatus
 	}{
 		{
 			name:   "verified token yields verbatim typed subject",
@@ -196,59 +198,59 @@ func TestDeriveCompletionUserID(t *testing.T) {
 		{
 			name:       "absent header fails closed",
 			token:      "",
-			wantReason: reasonIdentityUnavailable,
+			wantStatus: identityRejected,
 		},
 		{
 			name:       "malformed (not three segments) fails closed",
 			token:      "not-a-jwt",
-			wantReason: reasonIdentityUnavailable,
+			wantStatus: identityRejected,
 		},
 		{
 			name:       "empty subject fails closed",
 			token:      makeValidIDToken(t, ""),
-			wantReason: reasonIdentityUnavailable,
+			wantStatus: identityRejected,
 		},
 		{
 			name:       "expired token fails closed",
 			token:      makeIDToken(t, "user:abc123", time.Now().Add(-time.Hour).Unix()),
-			wantReason: reasonIdentityUnavailable,
+			wantStatus: identityRejected,
 		},
 		{
 			name:       "missing exp claim fails closed",
 			token:      makeIDToken(t, "user:abc123", 0),
-			wantReason: reasonIdentityUnavailable,
+			wantStatus: identityRejected,
 		},
 		{
 			// The whole point of #1568: a client-forged header naming any subject
 			// is worthless without the stack's signing key.
 			name:       "signature from a foreign key fails closed",
 			token:      signIDToken(t, idToken{sub: "user:victim", exp: validExp, kid: testSigningKeyID, typ: "jwt", key: foreignKey}),
-			wantReason: reasonIdentityUnavailable,
+			wantStatus: identityRejected,
 		},
 		{
 			name:       "unrecognized kid fails closed",
 			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: "not-a-real-key", typ: "jwt", key: testSigningKey()}),
-			wantReason: reasonIdentityUnavailable,
+			wantStatus: identityRejected,
 		},
 		{
 			name:       "missing kid fails closed",
 			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, typ: "jwt", key: testSigningKey()}),
-			wantReason: reasonIdentityUnavailable,
+			wantStatus: identityRejected,
 		},
 		{
 			// An access token is signed by the same keys but is not an identity
 			// attestation; type confusion must not authenticate a caller.
 			name:       "access-token type fails closed",
 			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: testSigningKeyID, typ: "at+jwt", key: testSigningKey()}),
-			wantReason: reasonIdentityUnavailable,
+			wantStatus: identityRejected,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			id, reason := newTestApp(t).deriveCompletionUserID(identityRequest(t, tt.token))
-			if reason != tt.wantReason {
-				t.Fatalf("reason = %q, want %q", reason, tt.wantReason)
+			id, status := newTestApp(t).deriveCompletionUserID(identityRequest(t, tt.token))
+			if status != tt.wantStatus {
+				t.Fatalf("status = %v, want %v", status, tt.wantStatus)
 			}
 			if id != tt.wantID {
 				t.Fatalf("id = %q, want %q", id, tt.wantID)
@@ -262,8 +264,8 @@ func TestDeriveCompletionUserID(t *testing.T) {
 func TestDeriveCompletionUserID_NoLoginFallback(t *testing.T) {
 	r := identityRequest(t, "garbage")
 	r.Header.Set("X-Grafana-User", "admin")
-	if id, reason := newTestApp(t).deriveCompletionUserID(r); reason == "" {
-		t.Fatalf("expected fail-closed, got id=%q reason=%q", id, reason)
+	if id, status := newTestApp(t).deriveCompletionUserID(r); status == identityVerified {
+		t.Fatalf("expected fail-closed, got id=%q", id)
 	}
 }
 
@@ -273,25 +275,37 @@ func TestValidIDToken(t *testing.T) {
 	cases := []struct {
 		name       string
 		token      string
-		want       bool
-		wantReason string
+		wantStatus identityStatus
 	}{
-		{name: "verified token", token: makeValidIDToken(t, "user:1"), want: true},
-		{name: "no subject still authorizes", token: makeValidIDToken(t, ""), want: true},
-		{name: "missing exp rejected", token: makeIDToken(t, "user:1", 0), wantReason: reasonIdentityUnavailable},
-		{name: "expired rejected", token: makeIDToken(t, "user:1", time.Now().Add(-time.Hour).Unix()), wantReason: reasonIdentityUnavailable},
-		{name: "absent rejected", token: "", wantReason: reasonIdentityUnavailable},
+		{name: "verified token", token: makeValidIDToken(t, "user:1")},
+		{name: "no subject still authorizes", token: makeValidIDToken(t, "")},
+		{name: "missing exp rejected", token: makeIDToken(t, "user:1", 0), wantStatus: identityRejected},
+		{name: "expired rejected", token: makeIDToken(t, "user:1", time.Now().Add(-time.Hour).Unix()), wantStatus: identityRejected},
+		{name: "absent rejected", token: "", wantStatus: identityRejected},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			ok, reason := newTestApp(t).validIDToken(identityRequest(t, tt.token))
-			if ok != tt.want {
-				t.Fatalf("validIDToken = %v, want %v (reason %q)", ok, tt.want, reason)
-			}
-			if reason != tt.wantReason {
-				t.Fatalf("reason = %q, want %q", reason, tt.wantReason)
+			if status := newTestApp(t).validIDToken(identityRequest(t, tt.token)); status != tt.wantStatus {
+				t.Fatalf("validIDToken = %v, want %v", status, tt.wantStatus)
 			}
 		})
+	}
+}
+
+// capabilityReason is the single place a status turns into an envelope token, so
+// the three routes cannot invent their own. The transient status has none: it is
+// served as a 503, never in an envelope.
+func TestIdentityStatus_CapabilityReason(t *testing.T) {
+	cases := map[identityStatus]string{
+		identityVerified:        "",
+		identityRejected:        reasonIdentityUnavailable,
+		identityUnverifiable:    reasonIdentityUnverifiable,
+		identitySigningKeysDown: "",
+	}
+	for status, want := range cases {
+		if got := status.capabilityReason(); got != want {
+			t.Errorf("status %v: capabilityReason = %q, want %q", status, got, want)
+		}
 	}
 }
 
@@ -301,24 +315,25 @@ func TestValidIDToken(t *testing.T) {
 // wave the caller through. The distinct reason keeps a JWKS outage from reading
 // as a crowd of logged-out users.
 
+// No signing-keys URL is resolvable at all, so verification can never succeed
+// on this stack: a standing condition, served in-band as capability=false.
 func TestVerifyIDToken_UnverifiableFailsClosed(t *testing.T) {
-	unreachable, _ := startJWKSServer(t)
-	unreachable.Close()
-
 	cases := []struct {
 		name string
 		cfg  map[string]string
 	}{
 		{name: "no grafana config on context", cfg: nil},
 		{name: "config carries no app URL", cfg: map[string]string{}},
-		{name: "signing keys unreachable", cfg: map[string]string{sdkconfig.AppURL: unreachable.URL}},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			r := identityRequestWithConfig(t, makeValidIDToken(t, "user:1"), tt.cfg)
-			id, reason := newTestApp(t).deriveCompletionUserID(r)
-			if reason != reasonIdentityUnverifiable {
-				t.Fatalf("reason = %q, want %q", reason, reasonIdentityUnverifiable)
+			id, status := newTestApp(t).deriveCompletionUserID(r)
+			if status != identityUnverifiable {
+				t.Fatalf("status = %v, want identityUnverifiable", status)
+			}
+			if status.capabilityReason() != reasonIdentityUnverifiable {
+				t.Fatalf("reason = %q, want %q", status.capabilityReason(), reasonIdentityUnverifiable)
 			}
 			if id != "" {
 				t.Fatalf("expected empty id when unverifiable, got %q", id)
@@ -327,17 +342,80 @@ func TestVerifyIDToken_UnverifiableFailsClosed(t *testing.T) {
 	}
 }
 
-// A 5xx from the signing-keys endpoint is an outage, not a bad token: the
-// caller must not be told they are unauthenticated.
-func TestVerifyIDToken_SigningKeysErrorIsUnverifiable(t *testing.T) {
-	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+// --- Signing-keys outage: a transient 503, not a capability envelope ---------
+//
+// The signing-keys URL resolves fine, the FETCH fails. §7 reserves the in-band
+// capability envelope for "never works here", and the front-end caches an empty
+// capability=false result without retrying — so reporting a 30-second JWKS blip
+// that way darkens the gated surfaces past the end of the outage. Every route
+// that gates on identity therefore serves the transient path instead.
+
+func TestIdentityGate_SigningKeysOutageIsTransient503(t *testing.T) {
+	fiveHundred := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
-	t.Cleanup(broken.Close)
+	t.Cleanup(fiveHundred.Close)
 
-	r := identityRequestWithConfig(t, makeValidIDToken(t, "user:1"), map[string]string{sdkconfig.AppURL: broken.URL})
-	if _, reason := newTestApp(t).deriveCompletionUserID(r); reason != reasonIdentityUnverifiable {
-		t.Fatalf("reason = %q, want %q", reason, reasonIdentityUnverifiable)
+	refused, _ := startJWKSServer(t)
+	refused.Close()
+
+	// Healthy listers and both toggles on: nothing but the identity gate can
+	// 503 these routes, so the status pins the gate's behavior.
+	withLister(t, singlePageLister())
+	withGuideLister(t, singlePageGuideLister())
+
+	origins := []struct{ name, appURL string }{
+		{name: "signing keys 5xx", appURL: fiveHundred.URL},
+		{name: "signing keys unreachable", appURL: refused.URL},
+	}
+	routes := []struct {
+		name string
+		do   func(*testing.T, map[string]string) *httptest.ResponseRecorder
+	}{
+		{
+			name: "custom-guide-repository",
+			do: func(t *testing.T, cfg map[string]string) *httptest.ResponseRecorder {
+				rr, _ := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
+				return rr
+			},
+		},
+		{
+			name: "completion-records/my",
+			do: func(t *testing.T, cfg map[string]string) *httptest.ResponseRecorder {
+				rr, _ := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
+				return rr
+			},
+		},
+		{
+			name: "completion-records/capability",
+			do: func(t *testing.T, cfg map[string]string) *httptest.ResponseRecorder {
+				rr := httptest.NewRecorder()
+				newTestApp(t).handleCompletionCapability(rr,
+					completionRequestWithConfig(t, "/completion-records/capability", "user:1", cfg))
+				return rr
+			},
+		},
+	}
+
+	for _, origin := range origins {
+		cfg := map[string]string{
+			featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
+			sdkconfig.AppURL:               origin.appURL,
+		}
+		for _, route := range routes {
+			t.Run(origin.name+"/"+route.name, func(t *testing.T) {
+				rr := route.do(t, cfg)
+				if rr.Code != http.StatusServiceUnavailable {
+					t.Fatalf("status = %d, want 503 (body %s)", rr.Code, rr.Body.String())
+				}
+				if got := rr.Header().Get("Retry-After"); got == "" {
+					t.Errorf("expected a Retry-After hint on a transient 503")
+				}
+				if body := rr.Body.String(); !strings.Contains(body, "-unavailable") {
+					t.Errorf("expected a machine error token, got %s", body)
+				}
+			})
+		}
 	}
 }
 
@@ -352,8 +430,8 @@ func TestVerifyIDToken_KeySetFetchedOncePerInstance(t *testing.T) {
 
 	for i := range 5 {
 		r := identityRequestWithConfig(t, makeValidIDToken(t, "user:1"), cfg)
-		if _, reason := app.deriveCompletionUserID(r); reason != "" {
-			t.Fatalf("request %d: unexpected reason %q", i, reason)
+		if _, status := app.deriveCompletionUserID(r); status != identityVerified {
+			t.Fatalf("request %d: unexpected status %v", i, status)
 		}
 	}
 
@@ -370,8 +448,8 @@ func TestVerifyIDToken_RebuiltWhenAppURLChanges(t *testing.T) {
 
 	for _, server := range []*httptest.Server{first, second} {
 		r := identityRequestWithConfig(t, makeValidIDToken(t, "user:1"), map[string]string{sdkconfig.AppURL: server.URL})
-		if _, reason := app.deriveCompletionUserID(r); reason != "" {
-			t.Fatalf("unexpected reason %q for %s", reason, server.URL)
+		if _, status := app.deriveCompletionUserID(r); status != identityVerified {
+			t.Fatalf("unexpected status %v for %s", status, server.URL)
 		}
 	}
 

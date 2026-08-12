@@ -18,7 +18,10 @@ const SigningKeysPath = "/api/signing-keys/keys"
 
 // signingKeysFetchTimeout bounds one JWKS fetch. authlib's key retriever
 // defaults to http.DefaultClient, which has no timeout, and the fetch runs
-// inline in the identity gate of every proxy route.
+// inline in the identity gate of every proxy route. It also bounds Verify's
+// detached context, which is a different thing: the client timeout covers one
+// HTTP round trip, the deadline covers the whole wait including another
+// caller's in-flight fetch.
 const signingKeysFetchTimeout = 5 * time.Second
 
 // ErrMissingExpiry rejects an ID token carrying no `exp` claim. go-jose
@@ -31,9 +34,11 @@ var ErrMissingExpiry = errors.New("id token has no exp claim")
 // client-set header cannot name a subject the proxy routes then trust.
 //
 // Safe for concurrent use, and meant to be built once per stack: authlib's key
-// retriever caches the key set locally (10 minutes, singleflight-deduplicated,
-// re-fetching once on an unknown `kid`), so a per-request verifier would throw
-// that cache away.
+// retriever caches a fetched key set locally for the plugin-instance lifetime
+// (cache.NoExpiration; the 10-minute TTL applies only to negative entries for
+// unknown `kid`s, which are re-fetched once), so a per-request verifier would
+// throw that cache away. A key Grafana rotates out of its JWKS therefore stays
+// accepted until the instance restarts.
 type IDTokenVerifier struct {
 	verifier *authn.IDTokenVerifier
 }
@@ -73,7 +78,14 @@ func signingKeysURL(appURL string) (string, error) {
 // claim VERBATIM, typed prefix included (e.g. "user:abc123"). A verified token
 // may legitimately carry no subject, so ("", nil) is a success.
 func (v *IDTokenVerifier) Verify(ctx context.Context, token string) (string, error) {
-	claims, err := v.verifier.Verify(ctx, token)
+	// Detach from the caller's cancellation, bounded so detached never means
+	// unkillable: authlib singleflights the key fetch across concurrent callers,
+	// so the leader's canceled request would otherwise fail every waiter with a
+	// spurious signing-keys outage. The key fetch is Verify's only I/O.
+	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), signingKeysFetchTimeout)
+	defer cancel()
+
+	claims, err := v.verifier.Verify(fetchCtx, token)
 	if err != nil {
 		return "", err
 	}

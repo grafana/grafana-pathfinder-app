@@ -25,58 +25,96 @@ import (
 // stays an identity attestation, never an outbound credential: proxy routes
 // exchange it for an access token (pkg/plugin/auth) and send that instead.
 //
-// Every failure yields a machine reason token for the capability envelope
-// rather than a bare bool, so a signing-key outage (reasonIdentityUnverifiable)
-// is distinguishable from an unauthenticated caller (reasonIdentityUnavailable)
-// without backend log access.
+// Every failure yields an identityStatus rather than a bare bool, so all three
+// proxy routes make one shared decision about how each distinct failure is
+// served and cannot drift apart.
 
-// validIDToken reports whether the request carries a verified Grafana ID token,
-// plus the reason it did not ("" on success). A verified token with no `sub` is
-// accepted: namespace-global routes have no per-user need.
-func (a *App) validIDToken(r *http.Request) (bool, string) {
-	_, reason := a.verifyIDToken(r)
-	return reason == "", reason
+// identityStatus is the verdict of the identity gate. Three distinct failures,
+// because BACKEND_PROXY_PATTERN.md §7's transient/structural split cuts across
+// them: only one of the three is retryable, and reporting a retryable outage as
+// a standing condition darkens the surface past the end of the outage.
+type identityStatus int
+
+const (
+	// identityVerified: the caller carries a cryptographically verified token.
+	identityVerified identityStatus = iota
+
+	// identityRejected: no token at all, or one this stack will not accept —
+	// forged signature, unknown `kid`, wrong `typ`, expired, or no `exp`.
+	identityRejected
+
+	// identityUnverifiable: no signing-keys URL is resolvable on this stack (no
+	// Grafana config on the request, or a config carrying no app URL), so
+	// verification can never succeed here.
+	identityUnverifiable
+
+	// identitySigningKeysDown: the signing-keys URL resolved but the fetch
+	// failed. Retryable, so routes serve §7's 503 + Retry-After — a capability
+	// envelope would read as "never works here" for the whole client cache TTL.
+	identitySigningKeysDown
+)
+
+// capabilityReason is the envelope token for a status served as a soft 200.
+// identitySigningKeysDown has none: it takes each route's transient path.
+func (s identityStatus) capabilityReason() string {
+	switch s {
+	case identityRejected:
+		return reasonIdentityUnavailable
+	case identityUnverifiable:
+		return reasonIdentityUnverifiable
+	default:
+		return ""
+	}
+}
+
+// validIDToken reports whether the request carries a verified Grafana ID token.
+// A verified token with no `sub` is accepted: namespace-global routes have no
+// per-user need.
+func (a *App) validIDToken(r *http.Request) identityStatus {
+	_, status := a.verifyIDToken(r)
+	return status
 }
 
 // subjectFromIDToken returns the request's verified ID-token `sub` claim
 // VERBATIM, typed prefix included (e.g. "user:abc123"). Fail closed: absent,
-// unverifiable, expired, and subject-less tokens all yield a reason.
-func (a *App) subjectFromIDToken(r *http.Request) (string, string) {
-	sub, reason := a.verifyIDToken(r)
-	if reason != "" {
-		return "", reason
+// unverifiable, expired, and subject-less tokens all yield a failing status.
+func (a *App) subjectFromIDToken(r *http.Request) (string, identityStatus) {
+	sub, status := a.verifyIDToken(r)
+	if status != identityVerified {
+		return "", status
 	}
 	if sub == "" {
-		return "", reasonIdentityUnavailable
+		return "", identityRejected
 	}
-	return sub, ""
+	return sub, identityVerified
 }
 
 // verifyIDToken verifies the inbound ID token and returns its `sub` claim.
-func (a *App) verifyIDToken(r *http.Request) (string, string) {
+func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 	token := strings.TrimSpace(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
 	if token == "" {
-		return "", reasonIdentityUnavailable
+		return "", identityRejected
 	}
 
 	verifier, err := a.idTokenVerifier(r.Context())
 	if err != nil {
 		a.ctxLogger(r.Context()).Info("cannot verify caller id token", "error", err)
-		return "", reasonIdentityUnverifiable
+		return "", identityUnverifiable
 	}
 
 	sub, err := verifier.Verify(r.Context(), token)
 	switch {
 	case err == nil:
-		return sub, ""
+		return sub, identityVerified
 	case auth.SigningKeysUnavailable(err):
-		// Still fail closed, but Info-level and under a distinct reason: this is
-		// an outage, not an unauthenticated caller.
-		a.ctxLogger(r.Context()).Info("cannot verify caller id token", "error", err)
-		return "", reasonIdentityUnverifiable
+		a.ctxLogger(r.Context()).Info("cannot fetch signing keys to verify caller id token", "error", err)
+		return "", identitySigningKeysDown
 	default:
-		a.ctxLogger(r.Context()).Debug("caller id token rejected", "error", err)
-		return "", reasonIdentityUnavailable
+		// Info, not Debug: this branch is only reachable when a token was present
+		// and unacceptable, which is exactly the attack #1568 closed, so it must
+		// be observable without raising the log level.
+		a.ctxLogger(r.Context()).Info("caller id token rejected", "error", err)
+		return "", identityRejected
 	}
 }
 
