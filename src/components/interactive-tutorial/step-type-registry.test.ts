@@ -10,6 +10,7 @@
 
 import {
   CHALLENGE_BLOCK_SCHEMA,
+  DATA_CHECK_STEP_SCHEMA,
   STEP_TYPE_SCHEMAS,
   INTERACTIVE_STEP_SCHEMA,
   INTERACTIVE_MULTISTEP_SCHEMA,
@@ -273,6 +274,32 @@ describe('step-type-registry', () => {
     });
   });
 
+  describe('DATA_CHECK_STEP_SCHEMA', () => {
+    it('refTarget is "none" — the runner never executes a data check', () => {
+      expect(DATA_CHECK_STEP_SCHEMA.refTarget).toBe('none');
+    });
+
+    it('toStepInfoExtension pauses the section run', () => {
+      const ext = DATA_CHECK_STEP_SCHEMA.toStepInfoExtension({ requirements: 'r', skippable: true });
+      expect(ext).toMatchObject({ targetAction: 'data-check', pausesSectionRun: true });
+    });
+
+    it('toEnhancedProps is the quiz surface plus onStepReset (the Redo button needs it)', () => {
+      const ctx = makeCtx();
+      expect(DATA_CHECK_STEP_SCHEMA.toEnhancedProps(ctx)).toEqual({
+        ...INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps(ctx),
+        onStepReset: ctx.onStepReset,
+      });
+    });
+  });
+
+  describe('pausesSectionRun', () => {
+    it('is set only on the step types the user must perform themselves', () => {
+      const paused = STEP_TYPE_SCHEMAS.filter((s) => s.toStepInfoExtension({}).pausesSectionRun).map((s) => s.kind);
+      expect(paused).toEqual(['guided', 'data-check']);
+    });
+  });
+
   describe('idPrefix conventions match stepId numbering in symmetry tripwire', () => {
     it.each([
       [INTERACTIVE_STEP_SCHEMA, 'step'],
@@ -283,6 +310,7 @@ describe('step-type-registry', () => {
       [TERMINAL_CONNECT_STEP_SCHEMA, 'terminal-connect'],
       [CODE_BLOCK_STEP_SCHEMA, 'codeblock'],
       [CHALLENGE_BLOCK_SCHEMA, 'challenge'],
+      [DATA_CHECK_STEP_SCHEMA, 'data-check'],
     ])('%o uses prefix %s', (schema: StepTypeSchema, expected: string) => {
       expect(schema.idPrefix).toBe(expected);
     });

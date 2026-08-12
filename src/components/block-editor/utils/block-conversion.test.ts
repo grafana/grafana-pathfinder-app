@@ -41,7 +41,7 @@ describe('getAvailableConversions', () => {
     });
 
     it('should return 13 options for any non-container type', () => {
-      // 13 non-container types minus 1 (the source type) = 12
+      // 14 non-container types minus 1 (the source type) = 13
       expect(getAvailableConversions('markdown')).toHaveLength(13);
       expect(getAvailableConversions('html')).toHaveLength(13);
       expect(getAvailableConversions('quiz')).toHaveLength(13);

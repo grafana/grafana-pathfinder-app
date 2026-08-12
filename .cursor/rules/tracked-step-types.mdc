@@ -37,6 +37,8 @@ Assume you're adding a `FooStep` component:
 
 5. **Registry site 1** — in `step-type-registry.ts`, add `FOO_STEP_SCHEMA` with the right `kind`, `parseTypeKey: 'foo-step'`, `idPrefix`, `refTarget`, `toStepInfoExtension`, `toEnhancedProps`. Append to `STEP_TYPE_SCHEMAS` and `STEP_TYPE_KIND_KEYS`. Add the `ParseTypeKey` and `idPrefix` literals. Then add the `[FooStep, FOO_STEP_SCHEMA]` pair to the exported `STEP_TYPE_LOOKUP` map in `interactive-section.tsx`, and call `resetFooStepCounter()` from `resetInteractiveCounters()` in the same file.
 
+   Decide what "Do Section" should do with the new type. The runner drives a step by calling `executeInteractiveAction` with `stepInfo.targetAction`; an action it doesn't recognize falls through to a `logger.warn` and reports success, which silently marks the step complete without doing anything. If the step is the user's to perform, set `pausesSectionRun: true` in `toStepInfoExtension` — the runner then stops on it and the section offers "Resume" (`InteractiveGuided` and `DataCheckStep` both do this). If it should reset like an ordinary step, include `onStepReset: ctx.onStepReset` in `toEnhancedProps` and render a Redo affordance.
+
 6. **Registry site 2** — add `FooStep` to `INTERACTIVE_STEP_COMPONENT_TYPES` in `section-child-classifier.ts`. Add a test case in `section-child-classifier.test.tsx`.
 
 7. **Barrel** — export `FooStep` from `src/components/interactive-tutorial/index.ts`.

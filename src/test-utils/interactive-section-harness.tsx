@@ -242,6 +242,9 @@ export function createTerminalConnectStepMock() {
 export function createCodeBlockStepMock() {
   return { CodeBlockStep: () => null, resetCodeBlockStepCounter: jest.fn() };
 }
+export function createDataCheckStepMock() {
+  return { DataCheckStep: () => null, resetDataCheckStepCounter: jest.fn() };
+}
 export function createInteractiveConditionalMock() {
   // Mirror production: the real component self-tags as skip-numbering.
   return { InteractiveConditional: markSkipsSectionNumbering(() => null) };

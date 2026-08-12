@@ -1147,7 +1147,9 @@ Give every data check an explicit `id`. Completion state is keyed off a hash tha
 
 `variableName` stores the chosen data source **uid**, not its name, and makes it available to later blocks as `{{yourVariableName}}`. Without it the pick is still remembered for the guide; it just is not addressable from other blocks.
 
-The `"ai"` and `"either"` modes need the Grafana Assistant to be available in the instance. There is no separate admin flag. The assistant cannot pick the data source — it is fixed to the learner's selection — and it can run at most three queries per check.
+The `"ai"` and `"either"` modes need the Grafana Assistant to be available in the instance. There is no separate admin flag. The assistant cannot pick the data source — it is fixed to the learner's selection — and it can run at most three queries per check. On an instance without the assistant, `"either"` falls back to the query check, and `"ai"` — which has no fallback — says so in place of the buttons. Prefer `"either"` over `"ai"` for that reason.
+
+Inside a section, "Do section" stops when it reaches a data check rather than completing it: the runner has no data source pick to run the check against, and answering it on the learner's behalf would defeat the point. The learner runs the check, then clicks "Resume" to continue — the same handoff a `guided` block gets. A passed check can be re-run: the completed step offers "Redo", which clears it and, in a section, re-locks the steps that follow.
 
 #### Snippet reference block
 

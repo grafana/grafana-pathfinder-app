@@ -178,6 +178,7 @@ export const INTERACTIVE_GUIDED_SCHEMA: StepTypeSchema = {
     skippable: props.skippable,
     isMultiStep: false,
     isGuided: true,
+    pausesSectionRun: true,
   }),
   toEnhancedProps: INTERACTIVE_STEP_SCHEMA.toEnhancedProps,
 };
@@ -302,8 +303,6 @@ export const DATA_CHECK_STEP_SCHEMA: StepTypeSchema = {
   kind: 'data-check',
   parseTypeKey: 'data-check-step',
   idPrefix: 'data-check',
-  // The check is the user's to run; the section's Do Section runner can't
-  // answer it for them, so no ref is stored.
   refTarget: 'none',
   toStepInfoExtension: (props) => ({
     targetAction: 'data-check',
@@ -313,9 +312,16 @@ export const DATA_CHECK_STEP_SCHEMA: StepTypeSchema = {
     skippable: props.skippable,
     isMultiStep: false,
     isGuided: false,
+    // The check is the user's to run — the runner has no data source pick to
+    // run it against, and completing it for them would defeat the gate.
+    pausesSectionRun: true,
   }),
-  // Mirrors Quiz: the block owns its own state machine.
-  toEnhancedProps: INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps,
+  // Quiz's surface plus `onStepReset`, which the step's Redo button needs to
+  // clear the section's tail.
+  toEnhancedProps: (ctx) => ({
+    ...INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps(ctx),
+    onStepReset: ctx.onStepReset,
+  }),
 };
 
 /** Ordered array of every tracked step-type schema. The consumer in

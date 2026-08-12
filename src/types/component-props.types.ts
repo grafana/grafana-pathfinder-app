@@ -95,6 +95,7 @@ export interface StepInfo {
   isMultiStep: boolean; // Flag to identify component type
   isGuided: boolean; // Flag to identify guided (user-performed) steps
   isQuiz?: boolean; // Flag to identify quiz steps
+  pausesSectionRun?: boolean; // "Do Section" stops here — only the user can perform this step
 }
 
 // ============================================================================

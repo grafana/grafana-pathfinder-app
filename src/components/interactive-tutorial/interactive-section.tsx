@@ -808,10 +808,9 @@ export function InteractiveSection({
 
             const stepInfo = stepComponents[i]!;
 
-            // PAUSE: If this is a guided step, stop automated execution
-            // User must manually click the guided step's "Do it" button
-            // Once complete, they can click "Resume" to continue
-            if (stepInfo.isGuided) {
+            // PAUSE: this step is the user's to perform (guided, data check).
+            // They act on it themselves, then click "Resume" to continue.
+            if (stepInfo.pausesSectionRun) {
               ActionMonitor.getInstance().forceEnable(); // Re-enable monitor for guided mode
               // (cursor is already at `i` via the prior COMPLETE_STEP dispatches)
               setIsRunning(false); // Stop the automated loop

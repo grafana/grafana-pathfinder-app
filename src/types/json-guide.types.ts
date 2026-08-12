@@ -5,6 +5,8 @@
  * for rendering through the existing content pipeline.
  */
 
+import type { SupportedDatasourceType } from '../constants/datasource-types';
+
 // ============ ROOT STRUCTURE ============
 
 /**
@@ -724,7 +726,7 @@ export interface JsonCodeBlockBlock extends AuthorAnnotated {
 // ============ DATA CHECK BLOCK ============
 
 /** Data source types a data check can run against. */
-export type DataCheckDatasourceType = 'prometheus' | 'loki' | 'tempo' | 'pyroscope';
+export type DataCheckDatasourceType = SupportedDatasourceType;
 
 /**
  * Which check the author offers the user.

@@ -179,6 +179,7 @@ export const testIds = {
     runQueryButton: (stepId: string) => `data-check-run-query-${stepId}`,
     askAiButton: (stepId: string) => `data-check-ask-ai-${stepId}`,
     skipButton: (stepId: string) => `data-check-skip-${stepId}`,
+    redoButton: (stepId: string) => `data-check-redo-${stepId}`,
     failure: (stepId: string) => `data-check-failure-${stepId}`,
   },
 

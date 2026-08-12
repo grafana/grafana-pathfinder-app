@@ -14,9 +14,12 @@ import {
 
 const mockRunQuery = jest.fn();
 const mockMarkStepCompleted = jest.fn();
+const mockResetStep = jest.fn();
+const mockCheckerResetStep = jest.fn();
 const mockSetResponse = jest.fn();
 const mockDeleteResponse = jest.fn();
 let mockStoredCompleted = false;
+let mockStoredReason: string | null = null;
 let mockAssistantAvailable = true;
 let mockStoredResponse: string | undefined;
 
@@ -81,13 +84,19 @@ jest.mock('../../lib/analytics', () => ({
 }));
 
 jest.mock('../../requirements-manager', () => ({
-  useStepChecker: () => ({ isEnabled: true, isChecking: false, explanation: null }),
+  useStepChecker: () => ({
+    isEnabled: true,
+    isChecking: false,
+    explanation: null,
+    resetStep: (...args: unknown[]) => mockCheckerResetStep(...args),
+  }),
   validateInteractiveRequirements: jest.fn(),
 }));
 
 jest.mock('../../global-state/completion-store', () => ({
-  useStepCompletion: () => ({ completed: mockStoredCompleted, reason: null }),
+  useStepCompletion: () => ({ completed: mockStoredCompleted, reason: mockStoredReason }),
   markStepCompleted: (...args: unknown[]) => mockMarkStepCompleted(...args),
+  resetStep: (...args: unknown[]) => mockResetStep(...args),
   STANDALONE_SECTION_ID: '__standalone__',
 }));
 
@@ -132,9 +141,12 @@ beforeEach(() => {
   mockRunQuery.mockReset();
   mockRunQuery.mockResolvedValue({ ok: true, hasData: true, seriesCount: 1, rowCount: 1 });
   mockMarkStepCompleted.mockReset();
+  mockResetStep.mockReset();
+  mockCheckerResetStep.mockReset();
   mockSetResponse.mockReset();
   mockDeleteResponse.mockReset();
   mockStoredCompleted = false;
+  mockStoredReason = null;
   mockAssistantAvailable = true;
   mockStoredResponse = undefined;
 });
@@ -313,6 +325,26 @@ describe('DataCheckStep', () => {
       window.removeEventListener(DATA_CHECK_REQUEST_EVENT, listener);
     });
 
+    it('fails the check rather than spinning when nothing answers the request', async () => {
+      jest.useFakeTimers();
+      try {
+        renderStep({ mode: 'ai' });
+        await selectDatasource();
+        await click('data-check-ask-ai-check-1');
+
+        expect(screen.getByText('Checking your data…')).toBeInTheDocument();
+
+        await act(async () => {
+          jest.advanceTimersByTime(45_000);
+        });
+
+        expect(await screen.findByTestId('data-check-failure-check-1')).toBeInTheDocument();
+        expect(mockMarkStepCompleted).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('ignores a result meant for another step', async () => {
       renderStep({ mode: 'ai' });
       await selectDatasource();
@@ -321,6 +353,14 @@ describe('DataCheckStep', () => {
       act(() => dispatchDataCheckResult({ requestId: 'someone-else', passed: true, reason: 'ok' }));
 
       expect(mockMarkStepCompleted).not.toHaveBeenCalled();
+    });
+
+    it('says so rather than stranding the user when ai is the only mode and the assistant is absent', () => {
+      mockAssistantAvailable = false;
+      renderStep({ mode: 'ai' });
+
+      expect(screen.getByRole('alert')).toHaveTextContent(/Grafana Assistant/);
+      expect(screen.queryByTestId('data-check-ask-ai-check-1')).not.toBeInTheDocument();
     });
 
     it('hides the AI affordance when the assistant is unavailable', () => {
@@ -401,6 +441,14 @@ describe('DataCheckStep', () => {
       expect(mockMarkStepCompleted).toHaveBeenCalled();
     });
 
+    it('records the skip as skipped rather than as a pass', async () => {
+      renderStep({ skippable: true });
+
+      await click('data-check-skip-check-1');
+
+      expect(mockMarkStepCompleted).toHaveBeenCalledWith('check-1', undefined, 'skipped');
+    });
+
     it('offers a skip when no data source of the type exists', () => {
       renderStep({ datasourceType: 'tempo', skippable: true });
 
@@ -416,6 +464,41 @@ describe('DataCheckStep', () => {
 
       expect(screen.getByText('Data available')).toBeInTheDocument();
       expect(screen.queryByTestId('data-check-run-query-check-1')).not.toBeInTheDocument();
+    });
+
+    it('says skipped when that is how the step completed', () => {
+      mockStoredCompleted = true;
+      mockStoredReason = 'skipped';
+
+      renderStep();
+
+      expect(screen.getByText('Skipped')).toBeInTheDocument();
+    });
+  });
+
+  describe('redo', () => {
+    it('clears a standalone step back to unchecked', async () => {
+      mockStoredCompleted = true;
+      renderStep();
+
+      await click('data-check-redo-check-1');
+
+      expect(mockResetStep).toHaveBeenCalledWith('check-1', undefined);
+      expect(mockCheckerResetStep).toHaveBeenCalledWith();
+    });
+
+    it('resets through the section when one owns the step', async () => {
+      mockStoredCompleted = true;
+      const onStepReset = jest.fn();
+      renderStep({ onStepComplete: jest.fn(), onStepReset, sectionId: 'section-1' });
+
+      await click('data-check-redo-check-1');
+
+      // The section owns the tail reset; a per-step store write here would
+      // wipe the preceding steps the user kept.
+      expect(onStepReset).toHaveBeenCalledWith('check-1');
+      expect(mockResetStep).not.toHaveBeenCalled();
+      expect(mockCheckerResetStep).toHaveBeenCalledWith({ skipStoreWrite: true });
     });
   });
 });

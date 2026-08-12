@@ -260,7 +260,7 @@ See [guided-interactions.md](./guided-interactions.md) for detailed documentatio
 ### data-check
 
 - **Purpose**: confirm the user's data source holds the data the guide teaches against.
-- **Behavior**: the user picks a data source of the authored type and presses a button; the step completes only if the check passes, and shows a warning underneath when it doesn't.
+- **Behavior**: the user picks a data source of the authored type and presses a button; the step completes only if the check passes, and shows a warning underneath when it doesn't. Inside a section, "Do section" pauses here for the user to run the check, then continues on "Resume".
 - **Use when**: the guide is worthless against an instance without the data — building a panel from container CPU, querying a specific label, and so on.
 - **Not a requirement**: requirement tokens are re-evaluated on several timers, so a query behind one would run repeatedly. A data check runs once, on the button press.
 
