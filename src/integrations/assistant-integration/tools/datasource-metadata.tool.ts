@@ -53,6 +53,13 @@ const toolInputSchema: JSONSchema = {
   additionalProperties: false,
 };
 
+/** Input schema offered when the datasource is pinned — the model has nothing to choose. */
+const pinnedToolInputSchema: JSONSchema = {
+  type: 'object',
+  properties: {},
+  additionalProperties: false,
+};
+
 /**
  * Validate tool input
  */
@@ -213,10 +220,20 @@ const formatMetadataForDisplay = (
   return lines.join('\n');
 };
 
+export interface DatasourceMetadataToolOptions {
+  /**
+   * Restrict the tool to one datasource. The model-supplied uid and type are
+   * dropped from the schema and ignored, so a check bound to the user's pick
+   * cannot be answered with metadata from somewhere else.
+   */
+  pinnedDatasourceUid?: string;
+}
+
 /**
  * Creates a datasource metadata tool that fetches metadata from supported datasources.
  *
  * @param onArtifact - Optional callback to receive the structured artifact data
+ * @param options - Optional constraints, notably `pinnedDatasourceUid`
  * @returns An InlineToolRunnable that can be passed to useInlineAssistant
  *
  * @example
@@ -231,23 +248,27 @@ const formatMetadataForDisplay = (
  * ```
  */
 export const createDatasourceMetadataTool = (
-  onArtifact?: (artifact: DatasourceMetadataArtifact) => void
+  onArtifact?: (artifact: DatasourceMetadataArtifact) => void,
+  options: DatasourceMetadataToolOptions = {}
 ): InlineToolRunnable => {
+  const { pinnedDatasourceUid } = options;
+
   return createTool(
     async (input: ToolInput, _options: ToolInvokeOptions): Promise<ToolOutput> => {
       // Get all datasources
       const allDatasources = getDataSourceSrv().getList();
 
       // Find the target datasource
-      const dsSettings = findDatasource(allDatasources, input);
+      const resolvedInput: ToolInput = pinnedDatasourceUid ? { datasourceUid: pinnedDatasourceUid } : input;
+      const dsSettings = findDatasource(allDatasources, resolvedInput);
 
       if (!dsSettings) {
         const supported = filterSupportedDatasources(allDatasources);
         if (supported.length === 0) {
           return 'No supported datasources found. Supported types: Prometheus, Loki, Tempo, Pyroscope.';
         }
-        if (input.datasourceType) {
-          return `No ${input.datasourceType} datasource found. Available types: ${supported.map((ds) => ds.type).join(', ')}`;
+        if (resolvedInput.datasourceType) {
+          return `No ${resolvedInput.datasourceType} datasource found. Available types: ${supported.map((ds) => ds.type).join(', ')}`;
         }
         return 'Could not find the specified datasource.';
       }
@@ -283,9 +304,10 @@ export const createDatasourceMetadataTool = (
     },
     {
       name: 'fetch_datasource_metadata',
-      description:
-        "Fetches metadata (labels, metrics, services, tags, profile types) from Grafana datasources. Supports Prometheus, Loki, Tempo, and Pyroscope. Use this tool to discover what data is available in the user's environment for building queries or customizing configurations.",
-      inputSchema: toolInputSchema,
+      description: pinnedDatasourceUid
+        ? "Fetches metadata (labels, metrics, services, tags, profile types) from the data source the user selected for this check. Takes no arguments — you cannot choose the data source, it is fixed to the user's selection."
+        : "Fetches metadata (labels, metrics, services, tags, profile types) from Grafana datasources. Supports Prometheus, Loki, Tempo, and Pyroscope. Use this tool to discover what data is available in the user's environment for building queries or customizing configurations.",
+      inputSchema: pinnedDatasourceUid ? pinnedToolInputSchema : toolInputSchema,
       validate: validateInput,
       responseFormat: 'content_and_artifact',
     }

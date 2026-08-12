@@ -96,6 +96,12 @@ function describeError(err: unknown): string {
 }
 
 /**
+ * `BackendSrv` cancels an in-flight request whose id a later one reuses, so a
+ * per-datasource id would let two concurrent checks abort each other.
+ */
+let requestSequence = 0;
+
+/**
  * Run one query and report whether it returned any data.
  *
  * `showErrorAlert: false` keeps a failed check in the step rather than firing
@@ -111,7 +117,13 @@ export async function runDataCheckQuery(request: DataCheckQueryRequest): Promise
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), DATA_CHECK_QUERY_LIMITS.timeoutMs);
   const onCallerAbort = () => timeoutController.abort();
-  signal?.addEventListener('abort', onCallerAbort);
+  if (signal?.aborted) {
+    onCallerAbort();
+  } else {
+    signal?.addEventListener('abort', onCallerAbort);
+  }
+
+  requestSequence += 1;
 
   try {
     const response = await lastValueFrom(
@@ -119,7 +131,8 @@ export async function runDataCheckQuery(request: DataCheckQueryRequest): Promise
         url: '/api/ds/query',
         method: 'POST',
         showErrorAlert: false,
-        requestId: `pathfinder-data-check-${datasourceUid}`,
+        abortSignal: timeoutController.signal,
+        requestId: `pathfinder-data-check-${datasourceUid}-${requestSequence}`,
         data: {
           from: from || DATA_CHECK_QUERY_LIMITS.defaultFrom,
           to: to || DATA_CHECK_QUERY_LIMITS.defaultTo,

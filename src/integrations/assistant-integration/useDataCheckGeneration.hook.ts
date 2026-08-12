@@ -28,9 +28,9 @@ export interface UseDataCheckGenerationReturn {
 
 const SYSTEM_PROMPT = `You are verifying whether a Grafana user's data source actually contains the data a tutorial needs.
 
-You have two tools:
-- fetch_datasource_metadata: lists the labels, metrics, services, or profile types that exist. Start here — it is cheap.
-- run_datasource_query: runs one query and reports whether it returned data. You may call it at most ${DATA_CHECK_QUERY_BUDGET} times. You cannot choose the data source; it is fixed to the user's selection.
+You have two tools. Both read only the data source the user selected — you cannot choose another.
+- fetch_datasource_metadata: lists the labels, metrics, services, or profile types that exist. Start here — it is cheap and takes no arguments.
+- run_datasource_query: runs one query and reports whether it returned data. You may call it at most ${DATA_CHECK_QUERY_BUDGET} times.
 
 Investigate, then answer. Return EXACTLY ONE JSON object and nothing else — no prose, no code fences:
 { "verdict": "pass" | "fail", "reason": "<one short sentence>" }
@@ -117,7 +117,7 @@ export function useDataCheckGeneration(contentKey: string): UseDataCheckGenerati
       settledRef.current = false;
 
       const tools = [
-        createDatasourceMetadataTool(),
+        createDatasourceMetadataTool(undefined, { pinnedDatasourceUid: input.datasourceUid }),
         createDataCheckQueryTool({
           datasourceUid: input.datasourceUid,
           datasourceType: input.datasourceType,

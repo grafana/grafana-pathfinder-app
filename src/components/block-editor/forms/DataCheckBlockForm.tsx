@@ -37,6 +37,40 @@ const QUERY_PLACEHOLDERS: Record<DataCheckDatasourceType, string> = {
   pyroscope: 'process_cpu:cpu:nanoseconds:cpu:nanoseconds|{}',
 };
 
+/**
+ * Fields this form owns outright: a save rebuilds them from form state, so
+ * their absence means the author cleared them. Everything else is carried over
+ * untouched — `objectives`, `authorNote`, and `id`, whose stability keeps
+ * completion progress from leaking across a block type change.
+ */
+const FORM_OWNED_FIELDS = [
+  'type',
+  'datasourceType',
+  'mode',
+  'title',
+  'content',
+  'query',
+  'aiPrompt',
+  'timeFrom',
+  'timeTo',
+  'failureMessage',
+  'variableName',
+  'requirements',
+  'skippable',
+  'hint',
+] as const satisfies ReadonlyArray<keyof JsonDataCheckBlock>;
+
+function carriedOverFields(block: JsonDataCheckBlock | null): Partial<JsonDataCheckBlock> {
+  if (!block) {
+    return {};
+  }
+  const carried: Record<string, unknown> = { ...block };
+  for (const field of FORM_OWNED_FIELDS) {
+    delete carried[field];
+  }
+  return carried as Partial<JsonDataCheckBlock>;
+}
+
 export function DataCheckBlockForm({
   initialData,
   onSubmit,
@@ -47,7 +81,6 @@ export function DataCheckBlockForm({
   const styles = useStyles2(getBlockFormStyles);
 
   const initial = initialData && isDataCheckBlock(initialData) ? initialData : null;
-  const initialId = initial?.id;
 
   const [datasourceType, setDatasourceType] = useState<DataCheckDatasourceType>(
     initial?.datasourceType ?? 'prometheus'
@@ -79,9 +112,7 @@ export function DataCheckBlockForm({
 
       const block: JsonDataCheckBlock = {
         type: 'data-check',
-        // Completion state is keyed off a hash that excludes the block type, so
-        // an explicit id keeps progress from leaking across a type change.
-        ...(initialId ? { id: initialId } : {}),
+        ...carriedOverFields(initial),
         datasourceType,
         mode,
         ...(title.trim() && { title: title.trim() }),
@@ -100,7 +131,7 @@ export function DataCheckBlockForm({
       onSubmit(block as JsonBlock);
     },
     [
-      initialId,
+      initial,
       datasourceType,
       mode,
       title,

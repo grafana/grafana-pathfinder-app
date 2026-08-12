@@ -2,7 +2,7 @@
  * Tests for the data-check query executor.
  */
 
-import { of, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { runDataCheckQuery, DATA_CHECK_QUERY_LIMITS } from './run-data-check-query';
 
 const mockFetch = jest.fn();
@@ -135,6 +135,78 @@ describe('runDataCheckQuery', () => {
       await runDataCheckQuery(baseRequest);
 
       expect(mockFetch.mock.calls[0][0].data.queries[0].datasource).toEqual({ uid: 'ds-uid', type: 'prometheus' });
+    });
+
+    it('hands the backend a signal so the timeout can cancel the request', async () => {
+      respondWith({ A: { frames: [] } });
+
+      await runDataCheckQuery(baseRequest);
+
+      expect(mockFetch.mock.calls[0][0].abortSignal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('gives each query its own request id', async () => {
+      respondWith({ A: { frames: [] } });
+
+      await runDataCheckQuery(baseRequest);
+      await runDataCheckQuery(baseRequest);
+
+      const [first, second] = mockFetch.mock.calls.map((call) => call[0].requestId);
+      expect(first).not.toBe(second);
+      expect(first).toContain('pathfinder-data-check-ds-uid');
+    });
+  });
+
+  describe('cancellation', () => {
+    it('aborts an in-flight request when the caller signal fires', async () => {
+      let capturedSignal: AbortSignal | undefined;
+      mockFetch.mockImplementation(
+        (request) =>
+          new Observable((subscriber) => {
+            capturedSignal = request.abortSignal;
+            request.abortSignal.addEventListener('abort', () => subscriber.error(new Error('aborted')));
+          })
+      );
+      const controller = new AbortController();
+
+      const pending = runDataCheckQuery({ ...baseRequest, signal: controller.signal });
+      controller.abort();
+      await pending;
+
+      expect(capturedSignal?.aborted).toBe(true);
+    });
+
+    it('starts aborted when the caller signal already fired', async () => {
+      let abortedAtRequest: boolean | undefined;
+      mockFetch.mockImplementation((request) => {
+        abortedAtRequest = request.abortSignal.aborted;
+        return of({ data: { results: { A: { frames: [] } } } });
+      });
+      const controller = new AbortController();
+      controller.abort();
+
+      await runDataCheckQuery({ ...baseRequest, signal: controller.signal });
+
+      expect(abortedAtRequest).toBe(true);
+    });
+
+    it('reports a timeout when the request outlives the cap', async () => {
+      jest.useFakeTimers();
+      mockFetch.mockImplementation(
+        (request) =>
+          new Observable((subscriber) => {
+            request.abortSignal.addEventListener('abort', () => subscriber.error(new Error('aborted')));
+          })
+      );
+
+      const pending = runDataCheckQuery(baseRequest);
+      jest.advanceTimersByTime(DATA_CHECK_QUERY_LIMITS.timeoutMs);
+      jest.useRealTimers();
+
+      await expect(pending).resolves.toEqual({
+        ok: false,
+        error: `Query timed out after ${DATA_CHECK_QUERY_LIMITS.timeoutMs / 1000}s.`,
+      });
     });
   });
 
