@@ -168,6 +168,32 @@ describe('useTerminalLive session lifetime', () => {
     expect(hook.result.current.sessionId).toBeNull();
   });
 
+  it('names an exhausted quota from the frame code instead of the generic message', async () => {
+    const { hook, stream } = await connectedHook();
+
+    act(() => {
+      stream.next(frame({ type: 'error', error: 'Failed to create VM, please try again', code: 'vm_quota_exceeded' }));
+    });
+
+    expect(hook.result.current.error).toMatch(/maximum number of sandbox VMs/i);
+  });
+
+  // New codes are an additive change within v1, and a backend older than the
+  // field sends none at all: both must fall back to the sentence, not be fatal.
+  it.each([
+    ['an unrecognised code', { type: 'error', error: 'something new went wrong', code: 'quantum_flux' }],
+    ['no code at all', { type: 'error', error: 'something new went wrong' }],
+  ])('falls back to the backend sentence for %s', async (_name, event) => {
+    const { hook, stream } = await connectedHook();
+
+    act(() => {
+      stream.next(frame(event));
+    });
+
+    expect(hook.result.current.status).toBe('error');
+    expect(hook.result.current.error).toBe('something new went wrong');
+  });
+
   it('drops the session id on an explicit disconnect', async () => {
     const { hook, stream } = await connectedHook();
 

@@ -22,6 +22,7 @@ import {
   createSession,
   sessionChannelAddress,
   toCodaError,
+  type CodaErrorCode,
   type CodaSession,
   type TerminalVMOptions,
 } from './coda-api';
@@ -55,14 +56,20 @@ export type { TerminalVMOptions };
  * registered" and "your role is too low" are all normal states that need
  * distinct guidance — and they are only distinguishable by the error code,
  * since the plugin returns several different failures per status.
+ *
+ * Shared with the Live `error` frame, which carries a `code` from the same
+ * closed set. `fallback` is the backend's own sentence: an unrecognised code
+ * (new ones are an additive change within v1) and an absent one (an older
+ * backend) both land there rather than being fatal.
  */
-function codaSessionErrorMessage(err: unknown): string {
-  const codaErr = toCodaError(err);
-  switch (codaErr.code) {
+function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: string): string {
+  switch (code) {
     case 'plugin_not_installed':
       return 'The Coda app plugin is not installed or not enabled in this Grafana instance.';
     case 'coda_not_registered':
       return 'Coda is not registered. An administrator must complete registration.';
+    case 'coda_auth_failed':
+      return 'Coda rejected the Coda app plugin’s credential. An administrator must register it again.';
     case 'role_forbidden':
       // The plugin gates sandbox creation on a Grafana basic role, Editor by
       // default. An admin can lower it with `minimumSessionRole` on the Coda
@@ -73,9 +80,19 @@ function codaSessionErrorMessage(err: unknown): string {
       return 'You already have the maximum number of sandbox VMs. Wait for one to expire, or close another terminal.';
     case 'rate_limited':
       return 'Too many sandbox requests. Wait a moment and try again.';
+    case 'terminal_disconnected':
+      return 'The sandbox VM is no longer connected. Connect again to start a new session.';
+    case 'coda_unavailable':
+    case 'upstream_failed':
+      return 'The sandbox service could not be reached. Wait a moment and try again.';
     default:
-      return codaErr.message;
+      return fallback;
   }
+}
+
+function codaSessionErrorMessage(err: unknown): string {
+  const codaErr = toCodaError(err);
+  return codaErrorCodeMessage(codaErr.code, codaErr.message);
 }
 
 interface UseTerminalLiveOptions {
@@ -105,6 +122,12 @@ interface SessionEvent {
   type: 'output' | 'error' | 'connected' | 'disconnected' | 'status' | 'heartbeat';
   data?: string;
   error?: string;
+  /**
+   * Classification of an `error` event, from the same closed set as the REST
+   * `code`. Added after v1.0, so absent on an older backend — branch on it,
+   * fall back to `error` for display.
+   */
+  code?: CodaErrorCode;
   state?: string;
   message?: string;
   vmId?: string;
@@ -386,10 +409,11 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   }
                   break;
 
-                case 'error':
+                case 'error': {
                   connectionLogRef.current.error('Backend error received', null, {
                     sessionId: session.sessionId,
                     backendError: msg.error,
+                    backendErrorCode: msg.code,
                     category: 'backend_error',
                   });
 
@@ -397,12 +421,15 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
                   // doesn't auto-reconnect and create a retry loop.
                   cleanup();
 
-                  terminal.writeln('\r\n');
-                  terminal.writeln(`\x1b[31m✖ Error: ${msg.error}\x1b[0m`);
+                  const message = codaErrorCodeMessage(msg.code, msg.error || 'Unknown error');
 
-                  setError(msg.error || 'Unknown error');
+                  terminal.writeln('\r\n');
+                  terminal.writeln(`\x1b[31m✖ Error: ${message}\x1b[0m`);
+
+                  setError(message);
                   setStatus('error');
                   break;
+                }
 
                 case 'connected':
                   if (handshakeTimeoutRef.current) {
