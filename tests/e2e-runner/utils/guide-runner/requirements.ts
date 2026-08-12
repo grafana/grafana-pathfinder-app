@@ -376,6 +376,17 @@ function logRequirementResult(stepId: string, result: RequirementResult): void {
 // ============================================
 
 /**
+ * Maximum time to poll for a settled requirements state after a fix attempt
+ * finds no Fix button, before concluding the step is genuinely unfixable.
+ *
+ * The plugin's requirement check can be mid-transition right after a fix
+ * attempt (or the initial check): the Fix button is briefly absent even
+ * though the step settles to met/idle moments later. Polling here avoids
+ * reporting a transient DOM read as a terminal failure.
+ */
+const NO_FIX_BUTTON_SETTLE_TIMEOUT_MS = 1000;
+
+/**
  * Click the Fix button for a step and wait for the fix action to complete (L3-4B).
  *
  * This function:
@@ -441,6 +452,34 @@ export async function clickFixButton(
 }
 
 /**
+ * Poll briefly for a settled requirements state when no Fix button is present (L3-4B).
+ *
+ * Repeatedly re-detects requirements until they become met, a Fix button
+ * appears, or `settleTimeoutMs` elapses. Returns the last observed result,
+ * so callers can tell a genuinely unfixable state from a transient one.
+ *
+ * @param page - Playwright Page object
+ * @param step - The testable step to check
+ * @param settleTimeoutMs - Maximum time to poll for a settled state
+ * @returns The last observed RequirementResult
+ */
+async function waitForNoFixButtonSettle(
+  page: Page,
+  step: TestableStep,
+  settleTimeoutMs = NO_FIX_BUTTON_SETTLE_TIMEOUT_MS
+): Promise<RequirementResult> {
+  const startTime = Date.now();
+  let latest = await detectRequirements(page, step);
+
+  while (!latest.requirementsMet && !latest.hasFixButton && Date.now() - startTime < settleTimeoutMs) {
+    await page.waitForTimeout(REQUIREMENTS_POLL_INTERVAL_MS);
+    latest = await detectRequirements(page, step);
+  }
+
+  return latest;
+}
+
+/**
  * Attempt to fix requirements for a step with retry logic (L3-4B).
  *
  * This function implements the fix button retry mechanism:
@@ -488,7 +527,7 @@ export async function attemptToFixRequirements(
     }
 
     // First, detect current requirements to get fix type
-    const currentRequirements = await detectRequirements(page, step);
+    let currentRequirements = await detectRequirements(page, step);
 
     // If requirements are already met, we're done
     if (currentRequirements.requirementsMet) {
@@ -506,20 +545,45 @@ export async function attemptToFixRequirements(
       break;
     }
 
-    // Check if fix button is available
+    // Check if fix button is available. A missing Fix button can be a
+    // transient DOM read right after a check, so poll briefly for it to
+    // settle before treating this as a terminal failure.
     if (!currentRequirements.hasFixButton) {
-      if (verbose) {
-        console.log(`   ✗ No Fix button available - cannot fix requirements`);
+      const settledRequirements = await waitForNoFixButtonSettle(page, step);
+
+      if (settledRequirements.requirementsMet) {
+        if (verbose) {
+          console.log(`   ✓ Requirements settled to met`);
+        }
+        success = true;
+        finalStatus = 'met';
+        attempts.push({
+          success: true,
+          attemptNumber,
+          durationMs: Date.now() - attemptStartTime,
+          requirementsMet: true,
+        });
+        break;
       }
-      failureReason = 'No Fix button available';
-      attempts.push({
-        success: false,
-        attemptNumber,
-        durationMs: Date.now() - attemptStartTime,
-        error: 'No Fix button available',
-        requirementsMet: false,
-      });
-      break;
+
+      if (!settledRequirements.hasFixButton) {
+        if (verbose) {
+          console.log(`   ✗ No Fix button available - cannot fix requirements`);
+        }
+        failureReason = 'No Fix button available';
+        attempts.push({
+          success: false,
+          attemptNumber,
+          durationMs: Date.now() - attemptStartTime,
+          error: 'No Fix button available',
+          requirementsMet: false,
+        });
+        break;
+      }
+
+      // A Fix button appeared during the settle window; use the settled
+      // result (including its fixType) for the click below.
+      currentRequirements = settledRequirements;
     }
 
     // Click the fix button
