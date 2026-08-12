@@ -8,7 +8,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BlockFormModal } from './BlockFormModal';
 import type { ConversionWarning } from './forms/TypeSwitchDropdown';
-import type { JsonMarkdownBlock } from '../../types/json-guide.types';
+import type { JsonGuidedBlock, JsonMarkdownBlock, JsonMultistepBlock } from '../../types/json-guide.types';
 
 // Mock the form components to simplify testing
 jest.mock('./forms/MarkdownBlockForm', () => ({
@@ -51,8 +51,37 @@ jest.mock('./forms/VideoBlockForm', () => ({ VideoBlockForm: () => null }));
 jest.mock('./forms/SectionBlockForm', () => ({ SectionBlockForm: () => null }));
 jest.mock('./forms/ConditionalBlockForm', () => ({ ConditionalBlockForm: () => null }));
 jest.mock('./forms/InteractiveBlockForm', () => ({ InteractiveBlockForm: () => null }));
-jest.mock('./forms/MultistepBlockForm', () => ({ MultistepBlockForm: () => null }));
-jest.mock('./forms/GuidedBlockForm', () => ({ GuidedBlockForm: () => null }));
+jest.mock('./forms/MultistepBlockForm', () => ({
+  MultistepBlockForm: ({ onSwitchBlockType }: { onSwitchBlockType?: (type: string) => void }) => (
+    <button data-testid="multistep-to-guided" onClick={() => onSwitchBlockType?.('guided')}>
+      Switch to guided
+    </button>
+  ),
+}));
+jest.mock('./forms/GuidedBlockForm', () => ({
+  GuidedBlockForm: ({
+    onSwitchBlockType,
+  }: {
+    onSwitchBlockType?: (type: string, warning?: ConversionWarning) => void;
+  }) => (
+    <>
+      <button data-testid="guided-to-multistep" onClick={() => onSwitchBlockType?.('multistep')}>
+        Switch to multistep
+      </button>
+      <button
+        data-testid="guided-to-multistep-with-warning"
+        onClick={() =>
+          onSwitchBlockType?.('multistep', {
+            message: 'Converting will lose guided settings',
+            lostFields: ['stepTimeout', 'completeEarly'],
+          })
+        }
+      >
+        Switch to multistep with warning
+      </button>
+    </>
+  ),
+}));
 jest.mock('./forms/QuizBlockForm', () => ({ QuizBlockForm: () => null }));
 jest.mock('./forms/InputBlockForm', () => ({ InputBlockForm: () => null }));
 
@@ -118,6 +147,108 @@ describe('BlockFormModal type switch integration', () => {
 
       // Form should still render
       expect(screen.getByTestId('markdown-form')).toBeInTheDocument();
+    });
+
+    it('routes multistep to guided through the field-aware converter', () => {
+      const onConvertType = jest.fn();
+      const onSwitchBlockType = jest.fn();
+      const initialData: JsonMultistepBlock = {
+        type: 'multistep',
+        content: 'Complete these steps',
+        steps: [{ action: 'noop', tooltip: 'Preserve this text' }],
+      };
+
+      render(
+        <BlockFormModal
+          {...defaultProps}
+          blockType="multistep"
+          initialData={initialData}
+          onConvertType={onConvertType}
+          onSwitchBlockType={onSwitchBlockType}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('multistep-to-guided'));
+
+      expect(onConvertType).toHaveBeenCalledWith('guided');
+      expect(onSwitchBlockType).not.toHaveBeenCalled();
+    });
+
+    it('routes guided to multistep through the field-aware converter', () => {
+      const onConvertType = jest.fn();
+      const onSwitchBlockType = jest.fn();
+      const initialData: JsonGuidedBlock = {
+        type: 'guided',
+        content: 'Follow these steps',
+        steps: [{ action: 'noop', description: 'Preserve this text' }],
+      };
+
+      render(
+        <BlockFormModal
+          {...defaultProps}
+          blockType="guided"
+          initialData={initialData}
+          onConvertType={onConvertType}
+          onSwitchBlockType={onSwitchBlockType}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('guided-to-multistep'));
+
+      expect(onConvertType).toHaveBeenCalledWith('multistep');
+      expect(onSwitchBlockType).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the generic switch when no field-aware converter is available', () => {
+      const onSwitchBlockType = jest.fn();
+
+      render(
+        <BlockFormModal
+          {...defaultProps}
+          blockType="multistep"
+          initialData={{ type: 'multistep', content: 'Complete these steps', steps: [] }}
+          onSwitchBlockType={onSwitchBlockType}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('multistep-to-guided'));
+
+      expect(onSwitchBlockType).toHaveBeenCalledWith('guided');
+    });
+
+    it('waits for confirmation before a warning-bearing field-aware conversion', async () => {
+      const onConvertType = jest.fn();
+      const onSwitchBlockType = jest.fn();
+      const initialData: JsonGuidedBlock = {
+        type: 'guided',
+        content: 'Follow these steps',
+        steps: [{ action: 'noop', description: 'Preserve this text' }],
+        stepTimeout: 15_000,
+        completeEarly: true,
+      };
+
+      render(
+        <BlockFormModal
+          {...defaultProps}
+          blockType="guided"
+          initialData={initialData}
+          onConvertType={onConvertType}
+          onSwitchBlockType={onSwitchBlockType}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('guided-to-multistep-with-warning'));
+
+      expect(onConvertType).not.toHaveBeenCalled();
+      expect(onSwitchBlockType).not.toHaveBeenCalled();
+      expect(screen.getByText('Converting will lose guided settings')).toBeInTheDocument();
+      expect(screen.getByText('stepTimeout')).toBeInTheDocument();
+      expect(screen.getByText('completeEarly')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Convert anyway'));
+
+      await waitFor(() => expect(onConvertType).toHaveBeenCalledWith('multistep'));
+      expect(onSwitchBlockType).not.toHaveBeenCalled();
     });
   });
 

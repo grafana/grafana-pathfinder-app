@@ -161,35 +161,28 @@ export function useBlockConversionHandlers(
   // Convert between multistep and guided types
   const handleConvertType = useCallback(
     (newType: 'multistep' | 'guided') => {
-      const blockData = editingNestedBlock?.block ?? editingBlock?.block;
+      const blockData = editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
       if (!blockData || (blockData.type !== 'multistep' && blockData.type !== 'guided')) {
         return;
       }
 
       const currentBlock = blockData as JsonMultistepBlock | JsonGuidedBlock;
-      let convertedBlock: JsonMultistepBlock | JsonGuidedBlock;
+      const convertedBlock = {
+        ...convertBlockType(currentBlock, newType),
+        steps:
+          newType === 'guided'
+            ? currentBlock.steps.map(stepMultistepToGuided)
+            : currentBlock.steps.map(stepGuidedToMultistep),
+      } as JsonMultistepBlock | JsonGuidedBlock;
 
-      if (newType === 'guided') {
-        convertedBlock = {
-          type: 'guided',
-          content: currentBlock.content,
-          steps: currentBlock.steps.map(stepMultistepToGuided),
-          ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
-          ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
-          ...(currentBlock.skippable && { skippable: currentBlock.skippable }),
-        };
-      } else {
-        convertedBlock = {
-          type: 'multistep',
-          content: currentBlock.content,
-          steps: currentBlock.steps.map(stepGuidedToMultistep),
-          ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
-          ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
-          ...(currentBlock.skippable && { skippable: currentBlock.skippable }),
-        };
-      }
-
-      if (editingNestedBlock) {
+      if (editingConditionalBranchBlock) {
+        editor.updateConditionalBranchBlock(
+          editingConditionalBranchBlock.conditionalId,
+          editingConditionalBranchBlock.branch,
+          editingConditionalBranchBlock.nestedIndex,
+          convertedBlock
+        );
+      } else if (editingNestedBlock) {
         // Update nested block
         editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
       } else if (editingBlock) {
@@ -200,7 +193,7 @@ export function useBlockConversionHandlers(
       // Close the modal
       closeBlockForm();
     },
-    [editingBlock, editingNestedBlock, editor, closeBlockForm]
+    [editingBlock, editingNestedBlock, editingConditionalBranchBlock, editor, closeBlockForm]
   );
 
   // Switch any block to a different type
