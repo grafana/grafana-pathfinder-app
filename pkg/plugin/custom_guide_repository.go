@@ -111,15 +111,15 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Identity gate first. This is a namespace-global catalogue, so we only
-	// STRUCTURALLY validate the ID token (validIDToken); there is no per-user
-	// need, so we deliberately do not extract `sub`. Missing/invalid identity on
-	// a GET read is a soft-200 capability envelope (not 401): these routes gate
-	// whether a feature renders at all, and a bare error status conflates "never
-	// works here" with a transient blip (BACKEND_PROXY_PATTERN.md §3, §7).
-	if !validIDToken(r) {
+	// Identity gate first. This is a namespace-global catalogue, so validIDToken
+	// only needs a verified caller; there is no per-user need, so we deliberately
+	// do not extract `sub`. Missing/invalid identity on a GET read is a soft-200
+	// capability envelope (not 401): these routes gate whether a feature renders
+	// at all, and a bare error status conflates "never works here" with a
+	// transient blip (BACKEND_PROXY_PATTERN.md §3, §7).
+	if ok, reason := a.validIDToken(r); !ok {
 		a.writeJSON(w, customGuideRepositoryResponse{
-			Capability: customGuideCapability{Available: false, Reason: reasonIdentityUnavailable},
+			Capability: customGuideCapability{Available: false, Reason: reason},
 			Guides:     []customGuideRepositoryEntry{},
 		}, http.StatusOK)
 		return

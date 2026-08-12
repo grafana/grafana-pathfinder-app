@@ -69,7 +69,7 @@ func withGuideLister(t *testing.T, l customGuideLister) {
 func customGuideRequestWithConfig(t *testing.T, target, sub string, cfg map[string]string) *http.Request {
 	t.Helper()
 	r, _ := http.NewRequest(http.MethodGet, target, nil)
-	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeIDToken(t, sub, timeNow().Add(time.Hour).Unix()))
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeValidIDToken(t, sub))
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace})
 	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
 	return r.WithContext(ctx)
@@ -127,8 +127,8 @@ func TestCustomGuide_ServesShapedCatalogue(t *testing.T) {
 	}
 }
 
-// A structurally valid token with no `sub` claim is still authorized: the
-// catalogue is namespace-global and must not depend on subject extraction.
+// A verified token with no `sub` claim is still authorized: the catalogue is
+// namespace-global and must not depend on subject extraction.
 func TestCustomGuide_SubjectlessTokenStillServes(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	withGuideLister(t, singlePageGuideLister(guideEntry("fe-01", "One", "published", "guide")))
@@ -342,7 +342,7 @@ func TestCustomGuide_ToggleOffStructurallyUnavailable(t *testing.T) {
 	l := singlePageGuideLister()
 	withGuideLister(t, l)
 
-	cfg := map[string]string{sdkconfig.AppURL: "http://grafana.example"} // toggle absent
+	cfg := map[string]string{sdkconfig.AppURL: testSigningKeysURL()} // toggle absent
 	rr, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
 
 	if rr.Code != http.StatusOK {
@@ -356,7 +356,10 @@ func TestCustomGuide_ToggleOffStructurallyUnavailable(t *testing.T) {
 	}
 }
 
-func TestCustomGuide_NoAppURLStructurallyUnavailable(t *testing.T) {
+// The identity gate resolves the stack's signing keys from the app URL, so with
+// no app URL the caller cannot be verified and the request fails closed there —
+// before the config branch that would otherwise report app-url-unavailable.
+func TestCustomGuide_NoAppURLFailsIdentityClosed(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := singlePageGuideLister()
 	withGuideLister(t, l)
@@ -364,11 +367,24 @@ func TestCustomGuide_NoAppURLStructurallyUnavailable(t *testing.T) {
 	cfg := map[string]string{featuretoggles.EnabledFeatures: customGuideAggregationToggle} // no app URL
 	_, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
 
-	if body.Capability.Available || body.Capability.Reason != reasonAppURLUnavailable {
-		t.Errorf("expected app-url-unavailable with no app URL, got %+v", body.Capability)
+	if body.Capability.Available || body.Capability.Reason != reasonIdentityUnverifiable {
+		t.Errorf("expected identity-unverifiable with no app URL, got %+v", body.Capability)
 	}
 	if l.callCount() != 0 {
 		t.Errorf("structurally unavailable must not hit upstream; got %d LISTs", l.callCount())
+	}
+}
+
+// resolveCustomGuideBackend keeps its own app-URL guard so it cannot build an
+// upstream URL against an empty base, independent of the gate that runs above
+// it. Exercised directly because the identity gate now subsumes it end-to-end.
+func TestResolveCustomGuideBackend_NoAppURL(t *testing.T) {
+	r := customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1",
+		map[string]string{featuretoggles.EnabledFeatures: customGuideAggregationToggle})
+
+	_, _, available, reason := newTestApp(t).resolveCustomGuideBackend(r)
+	if available || reason != reasonAppURLUnavailable {
+		t.Errorf("available = %v, reason = %q; want false / %q", available, reason, reasonAppURLUnavailable)
 	}
 }
 

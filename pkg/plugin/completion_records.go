@@ -51,6 +51,12 @@ const (
 
 	reasonIdentityUnavailable = "identity-unavailable"
 	reasonBackendUnavailable  = "backend-unavailable"
+
+	// reasonIdentityUnverifiable separates "we could not check the caller's ID
+	// token" (no app URL to resolve signing keys from, or the JWKS endpoint is
+	// unreachable) from "the caller has no valid one". Both fail closed; only
+	// this one is an operational fault.
+	reasonIdentityUnverifiable = "identity-unverifiable"
 )
 
 // completionListMaxTotalRecords is the aggregate budget across all LIST pages
@@ -60,13 +66,14 @@ const (
 var completionListMaxTotalRecords = 50_000
 
 // deriveCompletionUserID is the canonical identity contract for the whole
-// Completion Records epic: the caller's ID-token `sub` claim VERBATIM, typed
-// prefix included (e.g. "user:abc123"). Reads and writes must join on the
+// Completion Records epic: the caller's VERIFIED ID-token `sub` claim VERBATIM,
+// typed prefix included (e.g. "user:abc123"). Reads and writes must join on the
 // same key — epic PR 4's write hook MUST stamp `spec.userId` with this exact
-// helper. Fail closed with no login/numeric fallback; see
-// app_platform_identity.go and the trust boundary in docs/developer/CODA.md.
-func deriveCompletionUserID(r *http.Request) (string, bool) {
-	return subjectFromIDToken(r)
+// helper. Returns the capability reason on failure ("" on success), fail closed
+// with no login/numeric fallback; see app_platform_identity.go and the trust
+// boundary in docs/developer/CODA.md.
+func (a *App) deriveCompletionUserID(r *http.Request) (string, string) {
+	return a.subjectFromIDToken(r)
 }
 
 // completionCapability is the availability signal the front-end and epic PRs
@@ -460,10 +467,10 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	// capability envelope (not 401): these routes gate whether a feature
 	// renders at all, and a bare error status conflates "never works here"
 	// with a transient blip.
-	userID, ok := deriveCompletionUserID(r)
-	if !ok {
+	userID, reason := a.deriveCompletionUserID(r)
+	if reason != "" {
 		a.writeMyCompletions(w, myCompletionsResponse{
-			Capability:  completionCapability{Available: false, Reason: reasonIdentityUnavailable},
+			Capability:  completionCapability{Available: false, Reason: reason},
 			Completions: []collatedCompletion{},
 		})
 		return
@@ -519,8 +526,8 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if _, ok := deriveCompletionUserID(r); !ok {
-		a.writeJSON(w, completionCapability{Available: false, Reason: reasonIdentityUnavailable}, http.StatusOK)
+	if _, reason := a.deriveCompletionUserID(r); reason != "" {
+		a.writeJSON(w, completionCapability{Available: false, Reason: reason}, http.StatusOK)
 		return
 	}
 

@@ -74,9 +74,10 @@ the fixed internal aggregator.
   ID token always carries `exp`, and accepting its absence weakens the one structural check we
   have.
 - **Only per-user-data proxies extract `sub`** (verbatim, typed prefix included). A
-  namespace-global catalogue proxy validates structure and forwards; it has no per-user need and
-  must not grow one by accident. Ship this as one shared helper with two layers:
-  `validIDToken(r)` (everyone) and `subjectFromIDToken(r)` (per-user routes only).
+  namespace-global catalogue proxy needs a verified caller and nothing more; it has no per-user
+  need and must not grow one by accident. Ship this as one shared helper with two layers:
+  `validIDToken(r)` (everyone) and `subjectFromIDToken(r)` (per-user routes only). Both verify;
+  they differ only in whether a `sub` is required.
 - Use the SDK constant `backend.GrafanaUserSignInTokenHeaderName`, never a hardcoded
   `"X-Grafana-Id"` string.
 - Missing/invalid identity on a GET read → **soft-200 capability envelope**
@@ -118,23 +119,36 @@ re-argue this trade-off per PR; link here instead. (It previously lived in
 was extracted into the `grafana-coda-app` plugin and `CODA.md` became a consumer guide.)
 
 The `/completion-records/*` and `/custom-guide-repository` routes authenticate callers by
-**structural (non-signature) validation** of the Grafana-forwarded ID token (`X-Grafana-Id`, via the
-SDK constant `backend.GrafanaUserSignInTokenHeaderName`): well-formed JWT, `exp` present and
-unexpired, with the `sub` claim extracted verbatim only on routes that serve per-user data
-(`pkg/plugin/app_platform_identity.go`).
+**cryptographically verifying** the Grafana-forwarded ID token (`X-Grafana-Id`, via the SDK constant
+`backend.GrafanaUserSignInTokenHeaderName`) against the stack's own published JWKS at
+`GET {appURL}/api/signing-keys/keys` — the unauthenticated endpoint of the same instance that
+issued the token (`pkg/plugin/auth/id_token.go`, over `github.com/grafana/authlib`). Verified:
+ES256 signature against a `kid` in the live key set, `typ: "jwt"` (an access token must not
+authenticate an identity), and `exp`/`nbf` with go-jose's one-minute leeway. `exp` **presence** is
+additionally required here, because go-jose validates expiry only when the claim is present and an
+`exp`-less token would otherwise verify as non-expiring. The `sub` claim is extracted verbatim
+only on routes that serve per-user data (`pkg/plugin/app_platform_identity.go`).
 
-This is defensible **only** because requests reach the plugin exclusively via Grafana's trusted
-server→plugin forwarding, and the plugin backend is not independently reachable with a client-set
-`X-Grafana-Id`.
+Because the signature is checked, none of this depends on Grafana's server→plugin forwarding to
+keep the header honest — which matters, since `X-Grafana-Id` is **not** on
+`ClearAuthHeadersMiddleware`'s strip-list and `ForwardIDMiddleware` overwrites rather than
+deletes, so a client-set value can survive to the plugin whenever the authenticated requester has
+no ID token of its own (#1568).
+
+Verification failures always fail **closed**, under two distinguishable capability reasons:
+`identity-unavailable` when the token is absent or unacceptable, and `identity-unverifiable` when
+the signing keys could not be resolved (no app URL in the plugin's Grafana config, or the JWKS
+endpoint is unreachable). The key set is cached per plugin instance for 10 minutes by authlib,
+with a single re-fetch on an unknown `kid`, so steady-state verification costs no network calls.
 
 Outbound, the ID token is **not** forwarded as a credential. It is exchanged for a short-lived
 on-behalf-of access token sent on `X-Access-Token`, per the outbound bullets above — never the
 caller's `Cookie`, and never a replay of the inbound `Authorization` header.
 
-The single future-hardening item is cryptographic verification of the inbound ID token against
-Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime
-key-endpoint configuration. (`authlib` is already a direct dependency for the outbound token
-exchange; this is about the inbound check.)
+One deliberate omission: `aud` is not validated, because an ID token's audience is `org:<orgID>`,
+which tells a plugin nothing it can act on. This mirrors Grafana's own ExtendedJWT client. Binding
+the token's `namespace` claim to the plugin-context namespace is tracked separately and is not
+required for the signature to make `sub` unforgeable.
 
 ## 4. Cache
 
@@ -199,7 +213,8 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   unavailable on this stack** (toggle off / identity not forwarded / terminal upstream), and
   **transient hiccup**.
 - Structural unavailability is signaled **in-band**: HTTP 200 with
-  `capability: { available: false, reason: "identity-unavailable" | "backend-unavailable" }`.
+  `capability: { available: false, reason: "identity-unavailable" | "identity-unverifiable" |
+"backend-unavailable" }`.
   A bare 503 conflates "never works here" with "blip": the front-end already lumps 503 into its
   not-rolled-out status set (`UNAVAILABLE_STATUSES` in `src/utils/fetchBackendGuides.ts`, mirrored
   in `src/context-engine/context.init.ts`) and silently renders empty with no retry, so a
@@ -306,8 +321,9 @@ go test ./pkg/plugin -run TestContract -update
       registered — value goldens _and_ the reflected tag golden
 - [ ] One toggle const; SDK header constant; `timeNow` seam everywhere
 - [ ] Debug-level upstream logs; cache metrics; first-request credential diagnostics
-- [ ] Tests: pagination, TTL expiry, `exp == 0` rejection, isolation, failure matrix, config
-      branch
+- [ ] Tests: pagination, TTL expiry, ID-token rejection matrix (forged signature, unknown `kid`,
+      wrong `typ`, `exp == 0`, expired), signing-keys-unavailable fails closed, isolation, failure
+      matrix, config branch
 - [ ] Runtime smoke procedure in the PR body, gating dependent work and the final outbound header
       set
 

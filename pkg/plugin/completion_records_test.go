@@ -72,10 +72,14 @@ func rec(userID, guideSource, guideID, title, category, pathID, source, complete
 // Enables both the legacy `.com` toggle (completion-records proxy) and the GAP
 // `.app` toggle (custom-guide catalogue proxy) so this shared helper models a
 // transition-state stack aggregating both groups.
+//
+// The app URL points at the test JWKS endpoint (app_platform_identity_test.go)
+// because the identity gate resolves the stack's signing keys from it. Upstream
+// LISTs go to injected listers, so nothing else dials this origin.
 func testGrafanaConfig() map[string]string {
 	return map[string]string{
 		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
-		sdkconfig.AppURL:               "http://grafana.example",
+		sdkconfig.AppURL:               testSigningKeysURL(),
 	}
 }
 
@@ -86,7 +90,7 @@ func completionRequestWithConfig(t *testing.T, target, sub string, cfg map[strin
 	t.Helper()
 	r, _ := http.NewRequest(http.MethodGet, target, nil)
 	if sub != "" {
-		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeIDToken(t, sub, timeNow().Add(time.Hour).Unix()))
+		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeValidIDToken(t, sub))
 	}
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace})
 	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
@@ -681,7 +685,7 @@ func TestMyCompletions_ToggleOffStructurallyUnavailable(t *testing.T) {
 	l := singlePageLister()
 	withLister(t, l)
 
-	cfg := map[string]string{sdkconfig.AppURL: "http://grafana.example"} // toggle absent
+	cfg := map[string]string{sdkconfig.AppURL: testSigningKeysURL()} // toggle absent
 	rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -694,7 +698,10 @@ func TestMyCompletions_ToggleOffStructurallyUnavailable(t *testing.T) {
 	}
 }
 
-func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
+// The identity gate resolves the stack's signing keys from the app URL, so with
+// no app URL the caller cannot be verified and the request fails closed there —
+// before the config branch that would otherwise report backend-unavailable.
+func TestMyCompletions_NoAppURLFailsIdentityClosed(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := singlePageLister()
 	withLister(t, l)
@@ -704,11 +711,24 @@ func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
-	if body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
-		t.Fatalf("expected capability=false %q, got %+v", reasonBackendUnavailable, body.Capability)
+	if body.Capability.Available || body.Capability.Reason != reasonIdentityUnverifiable {
+		t.Fatalf("expected capability=false %q, got %+v", reasonIdentityUnverifiable, body.Capability)
 	}
 	if l.callCount() != 0 {
 		t.Fatalf("structural unavailability must not hit upstream, got %d calls", l.callCount())
+	}
+}
+
+// resolveCompletionBackend keeps its own app-URL guard so it cannot build an
+// upstream URL against an empty base, independent of the gate that runs above
+// it. Exercised directly because the identity gate now subsumes it end-to-end.
+func TestResolveCompletionBackend_NoAppURL(t *testing.T) {
+	r := completionRequestWithConfig(t, "/completion-records/my", "user:1",
+		map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle})
+
+	_, _, available, reason := newTestApp(t).resolveCompletionBackend(r)
+	if available || reason != reasonBackendUnavailable {
+		t.Errorf("available = %v, reason = %q; want false / %q", available, reason, reasonBackendUnavailable)
 	}
 }
 
