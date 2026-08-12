@@ -160,9 +160,11 @@ Authlib caches fetched keys for the lifetime of one verifier. Pathfinder reuses 
 at most **five minutes**, then rebuilds it against the same signing-keys URL, so steady-state
 verification avoids per-request network calls while a key removed from JWKS remains trusted for
 no more than five minutes. Unknown `kid`s still trigger authlib's immediate re-fetch, so a newly
-published key need not wait for that interval. The fetch itself is detached from the caller's
-cancellation and separately deadlined, because authlib dedupes it across concurrent callers with
-singleflight: one canceled request would otherwise fail every waiter with a spurious outage.
+published key need not wait for that interval; that re-fetch merges into the current verifier's
+cached set rather than replacing it, so it never prunes a retired key and the five-minute rebuild
+stays the revocation bound. The fetch itself is detached from the caller's cancellation and
+separately deadlined, because authlib dedupes it across concurrent callers with singleflight: one
+canceled request would otherwise fail every waiter with a spurious outage.
 
 Outbound, the ID token is **not** forwarded as a credential. It is exchanged for a short-lived
 on-behalf-of access token sent on `X-Access-Token`, per the outbound bullets above — never the
