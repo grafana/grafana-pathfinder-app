@@ -18,7 +18,12 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
-import { useCodaTerminalGate, type CodaTerminalGate } from '../../integrations/coda/useCodaAvailability.hook';
+import {
+  useCodaSessionEligibility,
+  useCodaTerminalGate,
+  type CodaSandboxEligibility,
+  type CodaTerminalGate,
+} from '../../integrations/coda/useCodaAvailability.hook';
 import {
   execInSession,
   isRoleForbidden,
@@ -45,18 +50,26 @@ export type ChallengeState =
   'idle' | 'connecting' | 'preparing' | 'ready' | 'checking' | 'solved' | 'failed-check' | 'setup-failed';
 
 /**
- * The operator-owned reason a coda-mode challenge cannot run, if there is one.
- * Stable from first paint, so it is safe to render instead of the Start button.
+ * The reason a coda-mode challenge cannot run, if there is one.
+ *
+ * The two gate cases are operator-owned and stable from first paint. The third
+ * is this user's Grafana role, which the backend answers in
+ * `capabilities.caller` — so a learner below the floor is told before a Start
+ * click spends a session request, rather than after a `403 role_forbidden`.
+ * `checking` and `unknown` deliberately yield null: attempt, and let the
+ * reactive path handle it.
  */
-function codaConfigGateMessage(gate: CodaTerminalGate): string | null {
+function codaConfigGateMessage(gate: CodaTerminalGate, eligibility: CodaSandboxEligibility): string | null {
   switch (gate) {
     case 'disabled':
       return 'This challenge runs in a Coda sandbox VM, and the sandbox terminal is turned off for this Grafana. An administrator can enable it in Pathfinder’s configuration.';
     case 'plugin-missing':
       return 'This challenge runs in a Coda sandbox VM, and the Coda app plugin is not installed or not enabled in this Grafana.';
-    default:
-      return null;
   }
+  if (eligibility.state === 'role_forbidden') {
+    return `This challenge runs in a Coda sandbox VM, and your Grafana role does not allow starting one — it needs ${eligibility.minimumSessionRole} or above. Ask an administrator for that role, or to lower minimumSessionRole on the Coda plugin.`;
+  }
+  return null;
 }
 
 /**
@@ -68,8 +81,12 @@ function codaConfigGateMessage(gate: CodaTerminalGate): string | null {
  * is gated, so without this check `openTerminal` silently no-ops and the block
  * waits on a connection that can never arrive.
  */
-function codaUnavailableMessage(gate: CodaTerminalGate, terminalWired: boolean): string | null {
-  const configReason = codaConfigGateMessage(gate);
+function codaUnavailableMessage(
+  gate: CodaTerminalGate,
+  eligibility: CodaSandboxEligibility,
+  terminalWired: boolean
+): string | null {
+  const configReason = codaConfigGateMessage(gate, eligibility);
   if (configReason) {
     return configReason;
   }
@@ -213,6 +230,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
   const codaGate = useCodaTerminalGate();
+  const codaEligibility = useCodaSessionEligibility();
   const { checkPostconditions } = useGuideRequirements();
 
   const [generatedStepId] = useState(() => {
@@ -394,7 +412,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     // Fail fast rather than wait on a connection that cannot arrive. Checked
     // here as well as on the click so that an availability probe still in
     // flight at click time resolves into an error, never a hang.
-    const unavailable = codaUnavailableMessage(codaGate, !!terminalCtx?.isTerminalRegistered);
+    const unavailable = codaUnavailableMessage(codaGate, codaEligibility, !!terminalCtx?.isTerminalRegistered);
     if (unavailable) {
       setErrorDetail(unavailable);
       setState('setup-failed');
@@ -415,7 +433,15 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setErrorDetail(terminalCtx.error || 'Could not start the challenge VM. Please try again.');
       setState('setup-failed');
     }
-  }, [state, terminalCtx?.status, terminalCtx?.error, terminalCtx?.isTerminalRegistered, codaGate, runSetup]);
+  }, [
+    state,
+    terminalCtx?.status,
+    terminalCtx?.error,
+    terminalCtx?.isTerminalRegistered,
+    codaGate,
+    codaEligibility,
+    runSetup,
+  ]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleStart = useCallback(() => {
@@ -424,7 +450,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setState('setup-failed');
       return;
     }
-    const unavailable = codaUnavailableMessage(codaGate, terminalCtx.isTerminalRegistered);
+    const unavailable = codaUnavailableMessage(codaGate, codaEligibility, terminalCtx.isTerminalRegistered);
     if (unavailable) {
       setErrorDetail(unavailable);
       setState('setup-failed');
@@ -445,7 +471,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     if (terminalCtx.status === 'connected') {
       runSetup();
     }
-  }, [terminalCtx, codaGate, vmTemplate, vmScenario, vmApp, runSetup]);
+  }, [terminalCtx, codaGate, codaEligibility, vmTemplate, vmScenario, vmApp, runSetup]);
 
   const handleCheckMyWork = useCallback(async () => {
     setState('checking');
@@ -490,7 +516,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   }, [state, resetToIdle]);
 
   // Standard mode never touches Coda, so it must never see a Coda gate.
-  const configGateMessage = mode === 'coda' ? codaConfigGateMessage(codaGate) : null;
+  const configGateMessage = mode === 'coda' ? codaConfigGateMessage(codaGate, codaEligibility) : null;
 
   // The spinner banner only renders for *in-progress* states. Terminal
   // states like failed-check get their own non-animated affordance — see

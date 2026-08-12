@@ -72,10 +72,16 @@ fields:     [ { name: "event", type: string } ]   // JSON-encoded SessionEvent
 | `status`            | VM state update (`pending`, `provisioning`, `active`, `checking`, `replacing`, `ssh_connecting`, `retrying`) |
 | `connected`         | SSH session ready (carries `vmId`)                                                                           |
 | `disconnected`      | Session ended                                                                                                |
-| `error`             | Error message                                                                                                |
+| `error`             | Error message, plus a `code` from the same closed set the REST routes use                                    |
 | `heartbeat`         | Keep-alive, every 3 s                                                                                        |
 
 `seq` is reserved on `SessionEvent` for future ordering; it is not emitted in v1.
+
+An `error` frame's `code` is what turns "Failed to create VM, please try again" into "you already have
+the maximum number of sandbox VMs" (`vm_quota_exceeded`). It was added after v1.0 and is optional, so
+an unrecognised code and an absent one both fall back to displaying `error` — never fatal, since new
+codes are an additive change within v1. `codaErrorCodeMessage` in `useTerminalLive.hook.ts` is shared
+with the REST path so both read the same code the same way.
 
 ## Exec
 
@@ -113,6 +119,31 @@ must all pass for the panel to render:
 
 The block editor palette needs the latter two. `CodaBackendStatus` on the configuration page reports
 which gate is unmet and links to `/plugins/grafana-coda-app`.
+
+**"Registered" is not "usable".** `registered` means a credential was obtained and stored, which stays
+true of a refresh token that expired 90 days ago while every call 401s. `CodaBackendStatus` therefore
+reads `isCodaUsable(capabilities)` — `registered && credential.state !== 'expired' && !configErrors.length`
+— and names which of the three failed. Both fields are absent on a Coda plugin older than 1.2.0, and
+absent counts as no evidence of a problem, so this is never stricter than reading `registered` was.
+
+### The caller's own role
+
+`GET /v1/capabilities` also answers whether _this_ user may spend VM quota, in `caller`.
+`useCodaSessionEligibility()` reads it as four states, and the two that are not verdicts are the point:
+
+| State            | Means                                             | Do                                         |
+| ---------------- | ------------------------------------------------- | ------------------------------------------ |
+| `checking`       | The probe is in flight                            | Wait; offer the action                     |
+| `eligible`       | `caller.canCreateSessions` is true                | Offer the action                           |
+| `role_forbidden` | `caller.canCreateSessions` is false               | Say so, naming `caller.minimumSessionRole` |
+| `unknown`        | Coda plugin older than the field, or probe failed | Attempt, and handle `403 role_forbidden`   |
+
+Collapsing that into a boolean would either hide the sandbox from someone entitled to it or offer it to
+someone who cannot have it. `minimumSessionRole` is for the message only — **never rank roles against it
+here**: the plugin context carries only the basic role, RBAC cannot grant past it, and
+`canCreateSessions` already carries the decision. The challenge block uses this to explain itself before
+a Start click spends a session request; the reactive `403` path stays in place for `unknown` and for the
+terminal panel's own Connect button.
 
 **A present `TerminalContext` is not a working terminal.** `TerminalProvider` mounts unconditionally
 in `docs-panel.tsx` while `TerminalPanel` — the only caller of `_register`, and therefore the only
@@ -204,7 +235,7 @@ Grafana restart.
 | `src/integrations/coda/useTerminalLive.hook.ts`                 | Live subscription, publish, provision progress bar, 35 s handshake timeout               |
 | `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` |
 | `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                         |
-| `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection, cached per page load                                           |
+| `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                    |
 | `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                    |
 | `src/requirements-manager/checks/coda.ts`                       | `coda-exit-zero:` check (always gated)                                                   |
 | `src/requirements-manager/checks/terminal.ts`                   | `is-terminal-active` check                                                               |
@@ -280,6 +311,13 @@ that mounted but failed to start logs a reason, whereas one that never mounted i
 
 The plugin is installed but has no refresh token. An admin must enter an enrollment key at
 `/plugins/grafana-coda-app`.
+
+### "Coda's credential has expired"
+
+The plugin is registered, but Coda no longer accepts the credential it stored — the refresh token
+expired, or was revoked. Nothing on the Pathfinder side fixes this: an admin needs a fresh enrollment
+key and must register again at `/plugins/grafana-coda-app`. Reported by `credential.state` on
+`GET /v1/capabilities`, and only by Coda plugin 1.2.0 and later.
 
 ### Challenge check always fails
 

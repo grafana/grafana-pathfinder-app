@@ -1,7 +1,16 @@
 import { of, throwError } from 'rxjs';
 import { getBackendSrv } from '@grafana/runtime';
 
-import { createSession, execInSession, getCapabilities, toCodaError, sessionChannelAddress } from './coda-api';
+import {
+  codaSessionEligibility,
+  createSession,
+  execInSession,
+  getCapabilities,
+  isCodaUsable,
+  toCodaError,
+  sessionChannelAddress,
+  type CodaCapabilities,
+} from './coda-api';
 
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
@@ -47,6 +56,54 @@ describe('coda-api request options', () => {
 describe('toCodaError', () => {
   it('reads a bare 404 as the plugin being absent, since the backend always sends a code', () => {
     expect(toCodaError({ status: 404 })).toMatchObject({ code: 'plugin_not_installed' });
+  });
+});
+
+function capabilities(overrides: Partial<CodaCapabilities> = {}): CodaCapabilities {
+  return {
+    registered: true,
+    templates: [],
+    sampleApps: [],
+    alloyScenarios: [],
+    limits: { maxVMsPerUser: 3, maxExecTimeoutMs: 120_000, maxOutputBytes: 32_768 },
+    ...overrides,
+  };
+}
+
+describe('isCodaUsable', () => {
+  it('refuses a registered backend whose credential has expired', () => {
+    expect(isCodaUsable(capabilities({ credential: { state: 'expired' } }))).toBe(false);
+  });
+
+  it('refuses a registered backend that reports configuration errors', () => {
+    expect(isCodaUsable(capabilities({ configErrors: ['apiUrl is not set'] }))).toBe(false);
+  });
+
+  it('accepts absent evidence: unknown and unreachable are not a dead credential', () => {
+    expect(isCodaUsable(capabilities({ credential: { state: 'unknown' } }))).toBe(true);
+    expect(isCodaUsable(capabilities({ credential: { state: 'unreachable' } }))).toBe(true);
+  });
+
+  // Never stricter than reading `registered` was, or upgrading Pathfinder would
+  // break a stack running a 1.1.x Coda plugin that cannot answer.
+  it('is no stricter than registered on a backend that omits both fields', () => {
+    expect(isCodaUsable(capabilities())).toBe(true);
+    expect(isCodaUsable(capabilities({ registered: false }))).toBe(false);
+  });
+});
+
+describe('codaSessionEligibility', () => {
+  it('reads an absent caller as unknown rather than guessing either answer', () => {
+    expect(codaSessionEligibility(capabilities())).toBe('unknown');
+  });
+
+  it('answers before a session request is spent finding out', () => {
+    expect(
+      codaSessionEligibility(capabilities({ caller: { canCreateSessions: true, minimumSessionRole: 'Editor' } }))
+    ).toBe('eligible');
+    expect(
+      codaSessionEligibility(capabilities({ caller: { canCreateSessions: false, minimumSessionRole: 'Editor' } }))
+    ).toBe('role_forbidden');
   });
 });
 

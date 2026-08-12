@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePluginContext } from '@grafana/data';
 import { isAppPluginEnabled } from '@grafana/runtime';
 import { getConfigWithDefaults } from '../../constants';
-import { CODA_PLUGIN_ID } from './coda-api';
+import {
+  CODA_PLUGIN_ID,
+  codaSessionEligibility,
+  getCapabilities,
+  type CodaCapabilities,
+  type CodaSessionRole,
+} from './coda-api';
 
 /**
  * Whether the Coda app plugin is installed and enabled. Pathfinder's terminal UI
@@ -23,6 +29,7 @@ export function isCodaPluginAvailable(): Promise<boolean> {
 
 export function resetCodaAvailabilityCache(): void {
   cached = undefined;
+  cachedCapabilities = undefined;
 }
 
 /**
@@ -83,4 +90,73 @@ export function useCodaTerminalGate(): CodaTerminalGate {
     return 'checking';
   }
   return availability === 'available' ? 'configured' : 'plugin-missing';
+}
+
+/**
+ * `/capabilities` for this page load, or `null` when it cannot be read at all —
+ * the plugin is absent, or the request failed. Callers must read `null` as
+ * "cannot answer", never as an answer.
+ *
+ * Cached like the availability probe above. `caller` is the one per-user part of
+ * the response, which is safe here only because a page load has one user.
+ */
+let cachedCapabilities: Promise<CodaCapabilities | null> | undefined;
+
+function loadCapabilities(): Promise<CodaCapabilities | null> {
+  if (!cachedCapabilities) {
+    cachedCapabilities = isCodaPluginAvailable()
+      .then((available) => (available ? getCapabilities() : null))
+      .catch(() => null);
+  }
+  return cachedCapabilities;
+}
+
+/**
+ * Whether this user may start a sandbox, known *before* a session request is
+ * spent finding out.
+ *
+ * Four states, not a boolean: `checking` while the probe is in flight, and
+ * `unknown` for a Coda plugin older than `caller` — collapsing either into
+ * `eligible` or `role_forbidden` would hide the sandbox from someone entitled to
+ * it, or offer it to someone who cannot have it. On both, attempt the call and
+ * keep handling `403 role_forbidden`.
+ */
+export type CodaSandboxEligibility =
+  | { state: 'checking' }
+  | { state: 'eligible' }
+  | { state: 'unknown' }
+  | { state: 'role_forbidden'; minimumSessionRole: CodaSessionRole };
+
+function readEligibility(capabilities: CodaCapabilities | null): CodaSandboxEligibility {
+  if (!capabilities) {
+    return { state: 'unknown' };
+  }
+  const verdict = codaSessionEligibility(capabilities);
+  if (verdict === 'eligible') {
+    return { state: 'eligible' };
+  }
+  if (verdict === 'role_forbidden' && capabilities.caller) {
+    return { state: 'role_forbidden', minimumSessionRole: capabilities.caller.minimumSessionRole };
+  }
+  // A refusal reason this build does not recognise is deliberately `unknown`
+  // rather than `eligible`: attempt and handle the 403, do not pass it as fine.
+  return { state: 'unknown' };
+}
+
+export function useCodaSessionEligibility(): CodaSandboxEligibility {
+  const [eligibility, setEligibility] = useState<CodaSandboxEligibility>({ state: 'checking' });
+
+  useEffect(() => {
+    let cancelled = false;
+    loadCapabilities().then((capabilities) => {
+      if (!cancelled) {
+        setEligibility(readEligibility(capabilities));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return eligibility;
 }

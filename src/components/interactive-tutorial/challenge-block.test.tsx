@@ -4,7 +4,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
 import { resetInteractiveCounters } from './interactive-section';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
-import { useCodaTerminalGate } from '../../integrations/coda/useCodaAvailability.hook';
+import { useCodaSessionEligibility, useCodaTerminalGate } from '../../integrations/coda/useCodaAvailability.hook';
 import { execInSession } from '../../integrations/coda/coda-api';
 import { checkPostconditions } from '../../requirements-manager';
 
@@ -14,6 +14,7 @@ jest.mock('../../integrations/coda/TerminalContext', () => ({
 
 jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
   useCodaTerminalGate: jest.fn(),
+  useCodaSessionEligibility: jest.fn(),
 }));
 
 jest.mock('../../requirements-manager', () => {
@@ -40,6 +41,9 @@ jest.mock('../../global-state/completion-store', () => ({
 
 const mockedUseTerminalContext = useTerminalContext as jest.MockedFunction<typeof useTerminalContext>;
 const mockedUseCodaTerminalGate = useCodaTerminalGate as jest.MockedFunction<typeof useCodaTerminalGate>;
+const mockedUseCodaSessionEligibility = useCodaSessionEligibility as jest.MockedFunction<
+  typeof useCodaSessionEligibility
+>;
 const mockedExecInSession = execInSession as jest.MockedFunction<typeof execInSession>;
 const mockedCheckPostconditions = checkPostconditions as jest.MockedFunction<typeof checkPostconditions>;
 
@@ -90,6 +94,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   resetChallengeCounter();
   mockedUseCodaTerminalGate.mockReturnValue('configured');
+  mockedUseCodaSessionEligibility.mockReturnValue({ state: 'eligible' });
 });
 
 describe('ChallengeBlock', () => {
@@ -469,6 +474,44 @@ describe('ChallengeBlock', () => {
 
       expect(screen.getByText(/coda app plugin is not installed/i)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    // Before `caller.canCreateSessions`, the only way to learn the role floor
+    // was a reactive 403 after a Start click had already spent a session
+    // request and a VM connect attempt.
+    it('says why instead of offering Start when the backend says the role is too low', () => {
+      mockedUseCodaSessionEligibility.mockReturnValue({ state: 'role_forbidden', minimumSessionRole: 'Editor' });
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByText(/needs Editor or above/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    it('names the floor the backend reported rather than assuming Editor', () => {
+      mockedUseCodaSessionEligibility.mockReturnValue({ state: 'role_forbidden', minimumSessionRole: 'Admin' });
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByText(/needs Admin or above/i)).toBeInTheDocument();
+    });
+
+    // A Coda plugin older than the field cannot answer, and the probe is async.
+    // Neither may hide the sandbox from a learner who is entitled to it — the
+    // reactive 403 path still covers being wrong.
+    it.each([
+      ['the backend cannot answer', { state: 'unknown' } as const],
+      ['the probe has not resolved', { state: 'checking' } as const],
+      ['the caller is eligible', { state: 'eligible' } as const],
+    ])('still offers Start when %s', (_name, eligibility) => {
+      mockedUseCodaSessionEligibility.mockReturnValue(eligibility);
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
     });
 
     it('leaves standard mode alone when Coda is unavailable', () => {

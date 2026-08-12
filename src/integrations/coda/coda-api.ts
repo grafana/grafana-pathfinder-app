@@ -2,22 +2,26 @@
  * TEMPORARY local client for the `grafana-coda-app` v1 API.
  *
  * ---------------------------------------------------------------------------
- * TODO: delete this file and import `@grafana/coda-client` instead.
+ * TODO (on or after 2026-08-15): delete this file and depend on the published
+ * package instead.
  *
- * The Coda plugin repo already ships that package (`packages/coda-client`),
- * and it is a superset of this file: it also owns the Grafana Live protocol —
- * frame unwrapping, the mandatory `{ useSocket: true }` publish, and a
- * one-shot session object that cannot be left subscribed after an error.
+ * It is published as **`@grafana-coda/sandbox-client@1.1.1`** — an interim
+ * scope, so it is consumed through an npm alias that keeps the import
+ * specifier this file will be replaced by:
  *
- * It is not consumed here yet only because it is not installable. Publishing
- * needs an npm trusted publisher configured on npmjs.com (see that repo's
- * `packages/coda-client/RELEASING.md`), and the GitHub fallbacks do not work:
- * `grafana-coda-app` is private while this repo is public, so no external
- * contributor or forked-PR CI run could authenticate, and our `.npmrc` sets
- * `ignore-scripts=true` (which would leave a git dependency unbuilt, since
- * `dist/` is gitignored) as well as `allow-git=none`.
+ *   "@grafana/coda-client": "npm:@grafana-coda/sandbox-client@^1.1.1"
  *
- * When the package lands, the swap is:
+ * The one thing blocking that line today is our own `.npmrc`:
+ * `min-release-age=3` refuses any version published less than three days ago,
+ * and 1.1.1 went out on **2026-08-12 ~15:20 UTC**, so `npm ci` rejects it
+ * until **2026-08-15 ~15:20 UTC**. Adding the dependency before then makes the
+ * repo uninstallable, which is why the hand copy is still here.
+ *
+ * The package is a superset of this file: it also owns the Grafana Live
+ * protocol — frame unwrapping, the mandatory `{ useSocket: true }` publish, and
+ * a one-shot session object that cannot be left subscribed after an error.
+ *
+ * The swap is:
  *   - replace this file with re-exports from `@grafana/coda-client`;
  *   - move `useTerminalLive.hook.ts` onto its `CodaSession` class, which
  *     deletes the frame parsing, channel splitting, `publishOverSocket` cast
@@ -68,6 +72,45 @@ export interface CodaTimings {
   maxProvisionMs: number;
 }
 
+/**
+ * Whether the credential the *backend* holds still works.
+ *
+ * `registered` cannot answer this: it means a credential was obtained and
+ * stored, which stays true of a refresh token that expired 90 days ago while
+ * every call 401s. `unknown` means nothing has exercised it yet and
+ * `unreachable` is a statement about Coda rather than the token — both are
+ * absent evidence, not evidence of a dead credential.
+ */
+export type CodaCredentialState = 'unknown' | 'ok' | 'expired' | 'unreachable' | (string & {});
+
+export interface CodaCredentialHealth {
+  state: CodaCredentialState;
+  /** RFC 3339. Absent while `unknown`. */
+  checkedAt?: string;
+}
+
+/** A Grafana basic role. Open because the vocabulary is Grafana's, not ours. */
+export type CodaSessionRole = 'Viewer' | 'Editor' | 'Admin' | (string & {});
+
+/** A behaviour-changing *input* the backend advertises honouring. */
+export type CodaFeature = 'exec.readyFile' | (string & {});
+
+export interface CodaCallerCapabilities {
+  /**
+   * Whether this caller's Grafana basic role meets the floor for spending VM
+   * quota — the same check `POST /v1/sessions` and exec enforce, so `false`
+   * means those calls would answer `403 role_forbidden`.
+   */
+  canCreateSessions: boolean;
+  /**
+   * The effective floor, for writing the message ("needs Editor or above").
+   * Not for deciding: the backend sees only the basic role and RBAC cannot
+   * grant past it, so ranking roles here would reimplement the one thing
+   * {@link canCreateSessions} exists to settle.
+   */
+  minimumSessionRole: CodaSessionRole;
+}
+
 export interface CodaCapabilities {
   registered: boolean;
   templates: CodaCatalogueItem[];
@@ -82,6 +125,50 @@ export interface CodaCapabilities {
   pluginVersion?: string;
   timings?: CodaTimings;
   readyGate?: { defaultPath: string };
+  /** Absent on a backend older than the release that added the list. */
+  features?: CodaFeature[];
+  /**
+   * The only per-caller part of this response: never share it between users.
+   * Absent on an older backend — read it through {@link codaSessionEligibility}.
+   */
+  caller?: CodaCallerCapabilities;
+  credential?: CodaCredentialHealth;
+  /** Problems with the backend's own configuration that stop registration. */
+  configErrors?: string[];
+}
+
+/**
+ * Whether Coda can actually be used, as opposed to merely being registered.
+ *
+ * Read this rather than `registered` alone: reading `registered` is how a green
+ * "Coda is ready" came to be rendered on a stack that 401s on every session.
+ *
+ * Absent fields mean an older backend, so they count as "no evidence of a
+ * problem" — that is the additive rule this API works by, and it keeps this no
+ * stricter than `registered` was against a backend that cannot answer.
+ */
+export function isCodaUsable(capabilities: CodaCapabilities): boolean {
+  return (
+    capabilities.registered &&
+    capabilities.credential?.state !== 'expired' &&
+    (capabilities.configErrors?.length ?? 0) === 0
+  );
+}
+
+/**
+ * Whether the caller may start a session, as a three-state answer.
+ *
+ * `unknown` means the backend predates the field. Attempt the call and handle
+ * the `403` — do not assume either answer, which would hide the sandbox from
+ * someone entitled to it or offer it to someone who cannot have it.
+ */
+export type CodaSessionEligibility = 'eligible' | 'role_forbidden' | 'unknown' | (string & {});
+
+export function codaSessionEligibility(capabilities: CodaCapabilities): CodaSessionEligibility {
+  if (!capabilities.caller) {
+    return 'unknown';
+  }
+  return capabilities.caller.canCreateSessions ? 'eligible' : 'role_forbidden';
 }
 
 /**

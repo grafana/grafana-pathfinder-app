@@ -59,7 +59,10 @@ frame name: "coda.session.v1"
 fields:     [ { name: "event", type: string } ]
 ```
 
-`SessionEvent.type` is one of `output`, `error`, `connected`, `disconnected`, `status`, `heartbeat`.
+`SessionEvent.type` is one of `output`, `error`, `connected`, `disconnected`, `status`, `heartbeat`. An
+`error` frame also carries a `code` from the same closed set as the REST errors — branch on that, and
+fall back to the `error` sentence for a code this build does not recognise or a backend that sends
+none. New codes are additive within v1; an unknown one is never fatal.
 
 ## Exec is session-scoped
 
@@ -95,6 +98,18 @@ is resolved at runtime:
 bundles the first two as one verdict (`checking` / `disabled` / `plugin-missing` / `configured`) for
 callers that need to *say* which one is unmet. Never assume the plugin is present — every failure path
 must degrade quietly.
+
+Two questions the backend answers on `GET /v1/capabilities`, both absent on a Coda plugin older than
+1.2.0, and absent must always mean "no evidence of a problem":
+
+- **Is Coda usable?** `isCodaUsable(capabilities)`, not `registered` — which stays true for a refresh
+  token that expired 90 days ago while every call 401s. `CodaBackendStatus` reads it, and surfaces
+  `configErrors` because those name what stops registration.
+- **May *this* user start one?** `useCodaSessionEligibility()` → `checking` / `eligible` /
+  `role_forbidden` / `unknown`. Four states, not a boolean: on `unknown` and `checking`, attempt the
+  call and keep handling `403 role_forbidden`. Use `caller.minimumSessionRole` for the message only —
+  never rank the user's role against it, since the plugin context carries only the basic role and RBAC
+  cannot grant past it.
 
 **`useTerminalContext()` returning non-null does not mean there is a terminal.** `TerminalProvider`
 mounts unconditionally; `TerminalPanel` registers the real `connect` only behind the three gates, so
