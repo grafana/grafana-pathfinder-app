@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/config"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
+
+const idTokenVerifierMaxAge = 5 * time.Minute
 
 // Shared caller-identity helpers for App Platform proxy routes
 // (docs/design/BACKEND_PROXY_PATTERN.md §3). Two layers: validIDToken for
@@ -120,9 +123,9 @@ func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 
 // idTokenVerifier returns this stack's ID-token verifier, building it on first
 // use. The signing-keys URL derives from the per-request Grafana config, so the
-// verifier cannot be built in NewApp; it is then held for the instance lifetime
-// so authlib's key cache is shared across requests instead of refetched per
-// call.
+// verifier cannot be built in NewApp. It is reused briefly so authlib's key
+// cache is shared across requests, then rebuilt to bound how long a key removed
+// from the live JWKS remains trusted.
 func (a *App) idTokenVerifier(ctx context.Context) (*auth.IDTokenVerifier, error) {
 	cfg := config.GrafanaConfigFromContext(ctx)
 	if cfg == nil {
@@ -138,13 +141,17 @@ func (a *App) idTokenVerifier(ctx context.Context) (*auth.IDTokenVerifier, error
 
 	a.idVerifierMu.Lock()
 	defer a.idVerifierMu.Unlock()
-	if a.idVerifier != nil && a.idVerifierAppURL == appURL {
+	now := timeNow()
+	if a.idVerifier != nil && a.idVerifierAppURL == appURL &&
+		now.Before(a.idVerifierCreatedAt.Add(idTokenVerifierMaxAge)) {
 		return a.idVerifier, nil
 	}
 	verifier, err := auth.NewIDTokenVerifier(appURL)
 	if err != nil {
 		return nil, err
 	}
-	a.idVerifier, a.idVerifierAppURL = verifier, appURL
+	a.idVerifier = verifier
+	a.idVerifierAppURL = appURL
+	a.idVerifierCreatedAt = now
 	return verifier, nil
 }

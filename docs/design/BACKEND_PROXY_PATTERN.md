@@ -82,6 +82,9 @@ the fixed internal aggregator.
   need and must not grow one by accident. Ship this as one shared helper with two layers:
   `validIDToken(r)` (everyone) and `subjectFromIDToken(r)` (per-user routes only). Both verify;
   they differ only in whether a `sub` is required.
+- Reuse the verifier across requests to share authlib's key cache, but rebuild it against the same
+  signing-keys URL at least every five minutes. Authlib otherwise keeps successfully fetched keys
+  for the verifier lifetime, which would let a key removed from JWKS remain trusted indefinitely.
 - Use the SDK constant `backend.GrafanaUserSignInTokenHeaderName`, never a hardcoded
   `"X-Grafana-Id"` string.
 - Missing/invalid identity on a GET read → **soft-200 capability envelope**
@@ -153,10 +156,11 @@ Verification failures always fail **closed**, under the three outcomes listed in
 bullets above, all decided by one shared `identityStatus`
 (`pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way.
 
-A fetched key set is cached by authlib for the **plugin-instance lifetime** (`cache.NoExpiration`;
-authlib's 10-minute TTL applies only to negative entries for unknown `kid`s, which are re-fetched
-once), so steady-state verification costs no network calls — and a key Grafana rotates out of its
-JWKS stays accepted until the instance restarts. The fetch itself is detached from the caller's
+Authlib caches fetched keys for the lifetime of one verifier. Pathfinder reuses that verifier for
+at most **five minutes**, then rebuilds it against the same signing-keys URL, so steady-state
+verification avoids per-request network calls while a key removed from JWKS remains trusted for
+no more than five minutes. Unknown `kid`s still trigger authlib's immediate re-fetch, so a newly
+published key need not wait for that interval. The fetch itself is detached from the caller's
 cancellation and separately deadlined, because authlib dedupes it across concurrent callers with
 singleflight: one canceled request would otherwise fail every waiter with a spurious outage.
 
@@ -328,6 +332,8 @@ go test ./pkg/plugin -run TestContract -update
 - [ ] Inbound: JWKS signature verification everywhere via the shared verifier (plus `exp` present);
       `sub` extraction only where data is per-user; fail closed, with the three §3 outcomes routed
       from the one shared `identityStatus`
+- [ ] Rebuild the verifier at least every 5 min; same-URL rotation tests prove a removed key is
+      rejected and a newly published key is accepted after refresh
 - [ ] Outbound: shared identity-forwarding helper; ID-token-derived headers only; never `Cookie`;
       never replay inbound `Authorization`
 - [ ] Per-user data ⇒ identity-partitioned cache; shared blob ⇒ identity-invariance proven &

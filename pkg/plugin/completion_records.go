@@ -72,7 +72,7 @@ var completionListMaxTotalRecords = 50_000
 // same key — epic PR 4's write hook MUST stamp `spec.userId` with this exact
 // helper. Returns the identity-gate status alongside it, fail closed with no
 // login/numeric fallback; see app_platform_identity.go and the trust boundary
-// in docs/developer/CODA.md.
+// in docs/design/BACKEND_PROXY_PATTERN.md §3.
 func (a *App) deriveCompletionUserID(r *http.Request) (string, identityStatus) {
 	return a.subjectFromIDToken(r)
 }

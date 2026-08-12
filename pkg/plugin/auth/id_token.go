@@ -33,12 +33,9 @@ var ErrMissingExpiry = errors.New("id token has no exp claim")
 // (X-Grafana-Id) against the issuing stack's published signing keys, so a
 // client-set header cannot name a subject the proxy routes then trust.
 //
-// Safe for concurrent use, and meant to be built once per stack: authlib's key
-// retriever caches a fetched key set locally for the plugin-instance lifetime
-// (cache.NoExpiration; the 10-minute TTL applies only to negative entries for
-// unknown `kid`s, which are re-fetched once), so a per-request verifier would
-// throw that cache away. A key Grafana rotates out of its JWKS therefore stays
-// accepted until the instance restarts.
+// Safe for concurrent use. Authlib caches fetched keys for the lifetime of this
+// verifier, so callers must reuse it across requests but replace it on a bounded
+// schedule to preserve key-removal revocation.
 type IDTokenVerifier struct {
 	verifier *authn.IDTokenVerifier
 }

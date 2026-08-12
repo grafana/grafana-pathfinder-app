@@ -60,24 +60,7 @@ var testSigningKeysURL = sync.OnceValue(func() string {
 // testSigningKeysURL); otherwise it is closed on cleanup.
 func startJWKSServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	var fetches atomic.Int32
-
-	// SEC 1 uncompressed point: 0x04 ‖ X(32) ‖ Y(32) for P-256.
-	point, err := testSigningKey().PublicKey.Bytes()
-	if err != nil {
-		panic(fmt.Sprintf("encode test public key: %v", err))
-	}
-	body, err := json.Marshal(map[string]any{"keys": []map[string]string{{
-		"kty": "EC",
-		"crv": "P-256",
-		"alg": "ES256",
-		"use": "sig",
-		"kid": testSigningKeyID,
-		"x":   base64.RawURLEncoding.EncodeToString(point[1:33]),
-		"y":   base64.RawURLEncoding.EncodeToString(point[33:]),
-	}}})
-	if err != nil {
-		panic(fmt.Sprintf("marshal test JWKS: %v", err))
-	}
+	body := jwksBody(testSigningKeyID, testSigningKey())
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != auth.SigningKeysPath {
@@ -92,6 +75,26 @@ func startJWKSServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 		t.Cleanup(server.Close)
 	}
 	return server, &fetches
+}
+
+func jwksBody(kid string, key *ecdsa.PrivateKey) []byte {
+	point, err := key.PublicKey.Bytes()
+	if err != nil {
+		panic(fmt.Sprintf("encode test public key: %v", err))
+	}
+	body, err := json.Marshal(map[string]any{"keys": []map[string]string{{
+		"kty": "EC",
+		"crv": "P-256",
+		"alg": "ES256",
+		"use": "sig",
+		"kid": kid,
+		"x":   base64.RawURLEncoding.EncodeToString(point[1:33]),
+		"y":   base64.RawURLEncoding.EncodeToString(point[33:]),
+	}}})
+	if err != nil {
+		panic(fmt.Sprintf("marshal test JWKS: %v", err))
+	}
+	return body
 }
 
 // idToken describes a token to sign. The zero value is invalid on purpose:
@@ -421,9 +424,9 @@ func TestIdentityGate_SigningKeysOutageIsTransient503(t *testing.T) {
 
 // --- Key caching -------------------------------------------------------------
 
-// The verifier is held on the App so authlib's key cache survives across
-// requests. Rebuilding it per call would fetch the JWKS on every proxy request.
-func TestVerifyIDToken_KeySetFetchedOncePerInstance(t *testing.T) {
+// The verifier is held briefly so authlib's key cache survives across requests.
+func TestVerifyIDToken_KeySetFetchedOnceWithinMaxAge(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	server, fetches := startJWKSServer(t)
 	cfg := map[string]string{sdkconfig.AppURL: server.URL}
 	app := newTestApp(t)
@@ -437,6 +440,63 @@ func TestVerifyIDToken_KeySetFetchedOncePerInstance(t *testing.T) {
 
 	if got := fetches.Load(); got != 1 {
 		t.Fatalf("JWKS fetched %d times, want 1", got)
+	}
+}
+
+func TestVerifyIDToken_KeySetRefreshBoundsRetiredKeyTrust(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	retiredKey := testSigningKey()
+	activeKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate active key: %v", err)
+	}
+
+	var currentJWKS atomic.Value
+	currentJWKS.Store(jwksBody("retired-key", retiredKey))
+	var fetches atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != auth.SigningKeysPath {
+			http.NotFound(w, r)
+			return
+		}
+		fetches.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(currentJWKS.Load().([]byte))
+	}))
+	t.Cleanup(server.Close)
+
+	validExp := time.Now().Add(time.Hour).Unix()
+	retiredToken := signIDToken(t, idToken{
+		sub: "user:1", exp: validExp, kid: "retired-key", typ: "jwt", key: retiredKey,
+	})
+	activeToken := signIDToken(t, idToken{
+		sub: "user:1", exp: validExp, kid: "active-key", typ: "jwt", key: activeKey,
+	})
+	cfg := map[string]string{sdkconfig.AppURL: server.URL}
+	app := newTestApp(t)
+	verify := func(token string) identityStatus {
+		t.Helper()
+		_, status := app.deriveCompletionUserID(identityRequestWithConfig(t, token, cfg))
+		return status
+	}
+
+	if status := verify(retiredToken); status != identityVerified {
+		t.Fatalf("retired token before rotation: status = %v, want verified", status)
+	}
+	currentJWKS.Store(jwksBody("active-key", activeKey))
+	advance(idTokenVerifierMaxAge - time.Second)
+	if status := verify(retiredToken); status != identityVerified {
+		t.Fatalf("retired token inside refresh window: status = %v, want verified", status)
+	}
+	advance(time.Second)
+	if status := verify(retiredToken); status != identityRejected {
+		t.Fatalf("retired token after refresh: status = %v, want rejected", status)
+	}
+	if status := verify(activeToken); status != identityVerified {
+		t.Fatalf("active token after refresh: status = %v, want verified", status)
+	}
+	if got := fetches.Load(); got != 2 {
+		t.Fatalf("JWKS fetched %d times, want 2", got)
 	}
 }
 

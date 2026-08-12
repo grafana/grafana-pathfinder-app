@@ -195,6 +195,7 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | `plugin/settings.go`                | Parses `JSONData` and decrypts `SecureJSONData`. Reads only `secureJsonData.accessToken` into `OBOToken`; the exchange namespace comes from plugin-context, not settings. |
 | `plugin/app_platform_client.go`     | Shared paginated LIST client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, per-page byte cap + timeout, two-axis error classification (transient/terminal, namespace-global/caller-scoped), first-request credential diagnostics. |
 | `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `identityStatus` — fail-closed JWKS signature verification via `pkg/plugin/auth/id_token.go` (outbound credentials come from `pkg/plugin/auth` too); `deriveCompletionUserID` (the epic's canonical identity contract) delegates here. Trust boundary documented in `docs/design/BACKEND_PROXY_PATTERN.md`. |
+| `plugin/auth/id_token.go`           | Inbound Grafana ID-token verifier: derives the stack-local JWKS endpoint from the Grafana app URL, verifies ES256 signature, token type, and expiry, and classifies signing-key fetch failures for the shared identity gate. The verifier is rebuilt at least every 5 min, so a key removed from JWKS stays trusted for no longer than that. |
 
 **Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
 
