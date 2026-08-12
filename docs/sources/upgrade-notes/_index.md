@@ -23,11 +23,17 @@ This makes the sandbox terminal usable by any Grafana plugin rather than only In
 
 If you use the Coda terminal:
 
-1. Install and enable the **Coda app plugin** (`grafana-coda-app`).
-2. Go to its configuration page at **Administration → Plugins → Coda-App** and enter your Coda API URL, relay URL, and enrollment key, then select **Register with Coda**.
-3. Leave **Enable Coda terminal** switched on in Interactive learning's settings.
+1. Install and enable the **Coda** app plugin (`grafana-coda-app`).
+2. Set it up by following its own [operator guide](https://github.com/grafana/grafana-coda-app/blob/main/docs/OPERATORS.md), which is the authority on the Coda side and covers the two Grafana settings the plugin cannot register without, the session role floor, enrollment, and verification.
+3. Leave **Enable Coda terminal** switched on in Interactive learning's settings. That is the only Coda setting Interactive learning still owns.
 
-**Your enrollment key must be re-entered.** Grafana stores encrypted plugin settings per plugin and never exposes their values back, so the existing registration cannot be migrated automatically — by Interactive learning or by anyone else. Use the same enrollment key you used originally; if you no longer have it, ask your Coda administrator for a new one.
+Three things catch people migrating an already-working terminal. All three are Coda-side, and the operator guide covers each in full — they are named here because the previous version of this note got them wrong.
+
+**You need a new enrollment key, and saving is the whole registration.** Grafana stores encrypted plugin settings per plugin and never exposes their values back, so the existing refresh token cannot be migrated — by Interactive learning or by anyone else. Ask your Coda administrator for a key issued for this Grafana instance. On the Coda plugin's **Configuration** tab, fill in the API URL, relay URL and enrollment key and select **Save settings**. Saving redeems the key; there is no button to press afterwards.
+
+**Do not press `Register now` during setup.** It always forces re-registration, so pressing it after a successful save re-submits a key that has just been spent. Coda answers `401` and you are told your key was rejected moments after it worked. Your stack is not broken by this — the plugin only replaces its stored credential on success, and a redemption Coda refuses revokes nothing — but the diagnosis is a false alarm that has cost people a replacement key. `Register now` is a recovery control, not a setup step.
+
+**Check the session role floor if your learners are Viewers.** The Coda plugin requires a Grafana basic role of Editor or above to start a sandbox, set by its `minimumSessionRole` setting and defaulting to Editor. Interactive learning's embedded backend had no role check at all, so this is a behaviour change introduced by the move: a stack whose learners sign in as Viewers can complete every step above and still get `403 role_forbidden` on every sandbox. There is no control for it on the configuration page — see the operator guide for the two routes that work, and set it before your last configuration-page save.
 
 Until the Coda app plugin is installed and registered, Interactive learning hides the terminal panel and the terminal block types. Guides containing those blocks still load; the affected steps report that the sandbox is unavailable rather than failing. Interactive learning's configuration page names whichever step is still outstanding.
 
