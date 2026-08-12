@@ -16,15 +16,19 @@ jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
   useCodaTerminalGate: jest.fn(),
 }));
 
+jest.mock('../../requirements-manager', () => {
+  const checkPostconditions = jest.fn();
+  return {
+    checkPostconditions,
+    useGuideRequirements: () => ({ checkPostconditions }),
+  };
+});
+
 // Only the request is mocked; toCodaError and the error classification are
 // real, so the messages asserted below are the ones a learner would see.
 jest.mock('../../integrations/coda/coda-api', () => ({
   ...jest.requireActual('../../integrations/coda/coda-api'),
   execInSession: jest.fn(),
-}));
-
-jest.mock('../../requirements-manager', () => ({
-  checkPostconditions: jest.fn(),
 }));
 
 jest.mock('../../global-state/completion-store', () => ({

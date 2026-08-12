@@ -27,7 +27,7 @@ import {
   PATHFINDER_READY_FILE,
   type ExecResponse,
 } from '../../integrations/coda/coda-api';
-import { checkPostconditions } from '../../requirements-manager';
+import { useGuideRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 
 // The atomic temp+rename guarantees the gated coda-exit-zero check never
@@ -213,6 +213,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
   const codaGate = useCodaTerminalGate();
+  const { checkPostconditions } = useGuideRequirements();
 
   const [generatedStepId] = useState(() => {
     challengeCounter += 1;
@@ -471,7 +472,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       setErrorDetail(`Could not run the check: ${message}`);
       setState('failed-check');
     }
-  }, [successCriteria, stepId, markComplete]);
+  }, [checkPostconditions, successCriteria, stepId, markComplete]);
 
   const handleRevealNextHint = useCallback(() => {
     setHintsRevealed((n) => Math.min(n + 1, hintLevels.length));
