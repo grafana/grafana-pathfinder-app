@@ -8,6 +8,8 @@ import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties }
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { INTERACTIVE_QUIZ_SCHEMA } from './step-type-registry';
+import { STEP_STATES } from './step-states';
 
 // ============ Types ============
 
@@ -457,6 +459,9 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         [styles.blocked]: isBlocked,
       })}
       data-testid={testIds.interactive.quiz(stepId)}
+      data-step-id={stepId}
+      data-test-step-kind={INTERACTIVE_QUIZ_SCHEMA.kind}
+      data-test-step-state={isCompleted ? STEP_STATES.COMPLETED : isBlocked ? STEP_STATES.REQUIREMENTS_UNMET : STEP_STATES.IDLE}
     >
       {/* Question */}
       <div className={styles.question}>

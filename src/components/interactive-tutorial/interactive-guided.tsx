@@ -29,6 +29,7 @@ import { useInteractiveMode } from '../../global-state/interactive-mode-context'
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { INTERACTIVE_GUIDED_SCHEMA } from './step-type-registry';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -757,6 +758,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-step-id={stepId || renderedStepId}
         data-state={uiState}
         data-testid={testIds.interactive.step(renderedStepId)}
+        data-test-step-kind={INTERACTIVE_GUIDED_SCHEMA.kind}
         data-test-step-state={uiState}
         data-test-substep-index={isExecuting ? currentStepIndex : undefined}
         data-test-substep-total={internalActions.length}

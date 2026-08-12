@@ -25,6 +25,7 @@ import { useInteractiveMode } from '../../global-state/interactive-mode-context'
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { INTERACTIVE_MULTISTEP_SCHEMA } from './step-type-registry';
 
 let anonymousMultiStepCounter = 0;
 
@@ -777,6 +778,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         data-internal-actions={JSON.stringify(internalActions)}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
+        data-test-step-kind={INTERACTIVE_MULTISTEP_SCHEMA.kind}
         data-test-step-state={uiState}
         data-test-substep-index={isExecuting ? currentActionIndex : undefined}
         data-test-substep-total={internalActions.length}

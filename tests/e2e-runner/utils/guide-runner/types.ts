@@ -10,6 +10,8 @@
 
 import { Locator } from '@playwright/test';
 
+import type { StepTypeKind } from '../../../../src/components/interactive-tutorial/step-type-registry';
+
 // ============================================
 // Step Types
 // ============================================
@@ -24,8 +26,18 @@ import { Locator } from '@playwright/test';
  * - U3: Steps may not be clickable when discovered (sequential dependencies)
  */
 export interface TestableStep {
-  /** Unique identifier for the step (extracted from data-testid) */
+  /** Unique identifier for the step (extracted from data-step-id) */
   stepId: string;
+
+  /**
+   * The tracked step-type kind, read from the shared `data-test-step-kind`
+   * root marker (sourced from the step-type registry's `STEP_TYPE_KIND_KEYS`
+   * — see `.cursor/rules/tracked-step-types.mdc`). Distinguishes
+   * plain/multistep/guided steps (which the runner can execute today) from
+   * quiz/terminal/terminal-connect/codeblock/challenge steps, which are
+   * discovered and classified but not yet driven by `executeStep`.
+   */
+  kind: StepTypeKind;
 
   /** Zero-based index in DOM order (top to bottom) */
   index: number;

@@ -10,9 +10,21 @@
 import { Page, Locator } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
-import { STEP_SELECTOR, STEP_TESTID_PREFIX } from './constants';
+import { STEP_TYPE_KIND_KEYS } from '../../../../src/components/interactive-tutorial/step-type-registry';
 import { calculateStepTimeout } from './execution';
 import type { TestableStep, StepDiscoveryResult } from './types';
+
+/**
+ * Selector for tracked step root elements, built from the step-type
+ * registry's `STEP_TYPE_KIND_KEYS` — the single source of truth for
+ * tracked step kinds (see `.cursor/rules/tracked-step-types.mdc`). Every
+ * tracked step component sets `data-test-step-kind` on its outermost
+ * element, so this selector matches only step roots. Unlike the old
+ * data-testid prefix match on the `interactive-step-` namespace, it never
+ * matches the completed-step badge, which shares that namespace but
+ * carries no `data-test-step-kind`.
+ */
+const STEP_KIND_SELECTOR = STEP_TYPE_KIND_KEYS.map((kind) => `[data-test-step-kind="${kind}"]`).join(', ');
 
 // ============================================
 // Discovery Functions
@@ -50,19 +62,22 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
   const steps: TestableStep[] = [];
 
   // Query all rendered step elements in DOM order
-  const stepElements = await page.locator(STEP_SELECTOR).all();
+  const stepElements = await page.locator(STEP_KIND_SELECTOR).all();
 
   for (let index = 0; index < stepElements.length; index++) {
     const element = stepElements[index];
 
-    // Extract step ID from data-testid attribute
-    const dataTestId = await element.getAttribute('data-testid');
-    if (!dataTestId) {
-      console.warn(`Step at index ${index} missing data-testid attribute, skipping`);
+    // Extract step ID from the data-step-id attribute. Every tracked step
+    // component sets this alongside data-test-step-kind (see
+    // .cursor/rules/tracked-step-types.mdc), so it works uniformly across
+    // all kinds instead of parsing kind-specific data-testid values.
+    const stepId = await element.getAttribute('data-step-id');
+    if (!stepId) {
+      console.warn(`Step at index ${index} missing data-step-id attribute, skipping`);
       continue;
     }
 
-    const stepId = dataTestId.replace(STEP_TESTID_PREFIX, '');
+    const kind = (await element.getAttribute('data-test-step-kind')) as TestableStep['kind'];
 
     // Scroll step into view so below-the-fold or lazy-rendered content (e.g. Skip button) is in DOM
     await element.scrollIntoViewIfNeeded().catch(() => {});
@@ -73,12 +88,18 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
     // L3-4A: Extract refTarget for requirements detection
     const refTarget = (await element.getAttribute('data-reftarget')) ?? undefined;
 
-    // Check if "Do it" button exists (U1: not all steps have buttons)
+    // Check if "Do it" button exists (U1: not all steps have buttons).
+    // NOTE: this button contract (and the skip/show-me checks below) is only
+    // wired up for the plain/multistep/guided family today. Quiz, terminal,
+    // terminal-connect, codeblock, and challenge steps are discovered and
+    // classified via `kind` but report hasDoItButton/skippable as false
+    // until execution support for those kinds is added — see
+    // docs/developer/E2E_TESTING.md.
     const hasDoItButton = await checkDoItButtonExists(page, stepId);
     const hasShowMeButton = (await page.getByTestId(testIds.interactive.showMeButton(stepId)).count()) > 0;
 
     // Check if already completed (U2: objectives-based or noop completion)
-    const isPreCompleted = await checkStepCompleted(page, stepId);
+    const isPreCompleted = await checkStepCompleted(page, stepId, element);
 
     // Check if step is skippable (presence of skip button indicates skippable)
     // Note: Skip button only renders when step is skippable AND not completed
@@ -97,6 +118,7 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
 
     steps.push({
       stepId,
+      kind,
       index,
       sectionId,
       skippable: effectiveSkippable,
@@ -155,11 +177,20 @@ async function checkDoItButtonExists(page: Page, stepId: string): Promise<boolea
  *
  * @param page - Playwright Page object
  * @param stepId - The step identifier
+ * @param element - The discovered step's root element locator
  * @returns true if the completion indicator is visible
  */
-async function checkStepCompleted(page: Page, stepId: string): Promise<boolean> {
+async function checkStepCompleted(page: Page, stepId: string, element: Locator): Promise<boolean> {
+  // Plain/multistep/guided steps render a dedicated completed badge with this testid.
   const completedIndicator = page.getByTestId(testIds.interactive.stepCompleted(stepId));
-  return completedIndicator.isVisible();
+  if (await completedIndicator.isVisible()) {
+    return true;
+  }
+  // Other tracked kinds (quiz, terminal, terminal-connect, codeblock,
+  // challenge) don't render that badge; fall back to the shared
+  // data-test-step-state contract (see docs/developer/E2E_TESTING_CONTRACT.md).
+  const stateAttr = await element.getAttribute('data-test-step-state');
+  return stateAttr === 'completed';
 }
 
 /**
@@ -309,6 +340,10 @@ export async function extractGuidedInfo(
 export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false): void {
   const multistepCount = result.steps.filter((s) => s.isMultistep).length;
   const guidedCount = result.steps.filter((s) => s.isGuided).length;
+  const kindCounts = result.steps.reduce<Record<string, number>>((acc, s) => {
+    acc[s.kind] = (acc[s.kind] ?? 0) + 1;
+    return acc;
+  }, {});
 
   console.log(`\n📋 Step Discovery Results`);
   console.log(`   Total steps: ${result.totalSteps}`);
@@ -320,6 +355,7 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
   if (guidedCount > 0) {
     console.log(`   Guided: ${guidedCount}`);
   }
+  console.log(`   By kind: ${Object.entries(kindCounts).map(([k, c]) => `${k}:${c}`).join(', ')}`);
   console.log(`   Discovery time: ${result.durationMs}ms`);
 
   if (verbose && result.steps.length > 0) {

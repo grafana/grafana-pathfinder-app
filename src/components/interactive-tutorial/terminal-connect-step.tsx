@@ -14,6 +14,7 @@ import { css } from '@emotion/css';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { TERMINAL_CONNECT_STEP_SCHEMA } from './step-type-registry';
 
 export interface TerminalConnectStepProps {
   buttonText?: string;
@@ -207,6 +208,8 @@ export const TerminalConnectStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        data-step-id={renderedStepId}
+        data-test-step-kind={TERMINAL_CONNECT_STEP_SCHEMA.kind}
         data-test-step-state={stepState}
         data-testid={testIds.interactive.terminalConnectStep(renderedStepId)}
       >

@@ -22,6 +22,7 @@ import { css } from '@emotion/css';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { useGuideRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { CHALLENGE_BLOCK_SCHEMA } from './step-type-registry';
 
 const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
 // /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The
@@ -461,7 +462,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 
   if (isCompleted) {
     return (
-      <div className={styles.container} data-test-step-state="completed" data-testid={`challenge-block-${stepId}`}>
+      <div
+        className={styles.container}
+        data-step-id={stepId}
+        data-test-step-kind={CHALLENGE_BLOCK_SCHEMA.kind}
+        data-test-step-state="completed"
+        data-testid={`challenge-block-${stepId}`}
+      >
         <h4 className={styles.title}>{title}</h4>
         <div className={styles.brief}>{brief}</div>
         <div className={styles.solved}>
@@ -472,7 +479,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   }
 
   return (
-    <div className={styles.container} data-test-step-state={state} data-testid={`challenge-block-${stepId}`}>
+    <div
+      className={styles.container}
+      data-step-id={stepId}
+      data-test-step-kind={CHALLENGE_BLOCK_SCHEMA.kind}
+      data-test-step-state={state}
+      data-testid={`challenge-block-${stepId}`}
+    >
       <h4 className={styles.title}>{title}</h4>
       <div className={styles.brief}>{brief}</div>
 

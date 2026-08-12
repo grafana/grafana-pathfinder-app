@@ -31,6 +31,7 @@ import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
+import { INTERACTIVE_STEP_SCHEMA } from './step-type-registry';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -972,6 +973,7 @@ export const InteractiveStep = forwardRef<
         data-openguide={openGuide}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
+        data-test-step-kind={INTERACTIVE_STEP_SCHEMA.kind}
         data-test-step-state={deriveInteractiveStepState({
           isCompleted: isCompletedWithObjectives,
           isRunning: isShowRunning || isDoRunning,

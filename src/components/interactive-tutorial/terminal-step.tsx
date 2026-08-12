@@ -17,6 +17,7 @@ import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { logger } from '../../lib/logging';
+import { TERMINAL_STEP_SCHEMA } from './step-type-registry';
 
 export interface TerminalStepProps {
   command: string;
@@ -256,6 +257,8 @@ export const TerminalStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        data-step-id={renderedStepId}
+        data-test-step-kind={TERMINAL_STEP_SCHEMA.kind}
         data-test-step-state={stepState}
         data-testid={testIds.interactive.terminalStep(renderedStepId)}
       >

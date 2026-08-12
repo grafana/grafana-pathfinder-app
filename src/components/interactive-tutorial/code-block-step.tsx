@@ -18,6 +18,7 @@ import { markStepCompleted, useStepCompletion } from '../../global-state/complet
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import { logger } from '../../lib/logging';
+import { CODE_BLOCK_STEP_SCHEMA } from './step-type-registry';
 import { useAssistantBlockValue } from '../../integrations/assistant-integration';
 
 export interface CodeBlockStepProps {
@@ -272,6 +273,8 @@ export const CodeBlockStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        data-step-id={renderedStepId}
+        data-test-step-kind={CODE_BLOCK_STEP_SCHEMA.kind}
         data-test-step-state={stepState}
         data-testid={testIds.codeBlock.step(renderedStepId)}
       >
