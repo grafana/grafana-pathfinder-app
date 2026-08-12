@@ -169,6 +169,52 @@ describe('GuidedHandler', () => {
 
       consoleErrorSpy.mockRestore();
     });
+
+    // A guided step asks the user to click. If the toggle is already in the
+    // requested state, that instruction would make them turn it off — the
+    // toggle problem with a human in the loop.
+    it('completes without waiting for a click when targetState is already satisfied', async () => {
+      document.body.innerHTML = '<button id="drawer" aria-expanded="true">Add</button>';
+      const button = document.querySelector<HTMLButtonElement>('#drawer')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: '<p>Click Add</p>' },
+        0,
+        1,
+        5
+      );
+
+      expect(result).toBe('completed');
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      // Without the note the box would flash "Click Add" and vanish.
+      const [highlighted, shownComment] = (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls[0];
+      expect(highlighted).toBe(button);
+      expect(shownComment).toContain('Already in the right position');
+      expect(shownComment).toContain('Click Add');
+    });
+
+    it('still waits for the user when targetState is not yet satisfied', async () => {
+      document.body.innerHTML = '<button id="drawer" aria-expanded="false">Add</button>';
+      const button = document.querySelector<HTMLButtonElement>('#drawer')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      // Stand in for the user performing the click the guided step asked for.
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        button.setAttribute('aria-expanded', 'true');
+        button.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true },
+        0,
+        1,
+        5
+      );
+
+      expect(result).toBe('completed');
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
+    });
   });
 
   describe('cancel', () => {

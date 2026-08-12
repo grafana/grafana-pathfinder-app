@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
+	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
 
 // Shared paginated LIST client for App Platform proxy routes
@@ -21,9 +24,12 @@ import (
 // callers supply the group/version + resource and decode each `items[].spec`
 // through a per-kind callback.
 
-// pathfinderBackendAggregationToggle mirrors the front-end availability check
-// in src/utils/fetchBackendGuides.ts: the boot-time toggle the aggregation
-// layer sets when the pathfinderbackend API is served on this instance.
+// pathfinderBackendAggregationToggle gates the completion-records proxy on the
+// LEGACY CAP group (pathfinderbackend.ext.grafana.com). The custom-guide proxy
+// moved to the GAP `.app` toggle (customGuideAggregationToggle); the two are
+// intentionally distinct until completion-records also migrates to GAP. The
+// name derives from the group, dots→dashes — the Go mirror of the `.app`
+// derivation in src/utils/interactive-guides-api.ts.
 const pathfinderBackendAggregationToggle = "aggregation.pathfinderbackend-ext-grafana-com.enabled"
 
 // appPlatformUpstreamTimeout caps a single LIST page fetch. The aggregate
@@ -51,18 +57,27 @@ type appPlatformListPage struct {
 	Continue string
 }
 
+// accessTokenMinter exchanges a caller's ID token for a short-lived access
+// token scoped to that user. Satisfied by auth.Exchanger; an interface here so
+// tests can stub the exchange without an auth-api.
+type accessTokenMinter interface {
+	Mint(ctx context.Context, namespace, idToken string) (string, error)
+}
+
 // appPlatformListClient fetches pages of a namespace LIST from the stack's
-// own aggregated App Platform API, riding the caller's identity (§3).
+// own aggregated App Platform API, as the calling user (§3).
 type appPlatformListClient struct {
 	appURL     string
+	minter     accessTokenMinter
 	idToken    string
 	httpClient *http.Client
 	logger     log.Logger
 }
 
-func newAppPlatformListClient(appURL, idToken string, logger log.Logger) *appPlatformListClient {
+func newAppPlatformListClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *appPlatformListClient {
 	return &appPlatformListClient{
 		appURL:     appURL,
+		minter:     minter,
 		idToken:    idToken,
 		httpClient: &http.Client{Timeout: appPlatformUpstreamTimeout},
 		logger:     logger,
@@ -76,8 +91,8 @@ func newAppPlatformListClient(appURL, idToken string, logger log.Logger) *appPla
 var credentialDiagOnce sync.Once
 
 // listPage fetches one page of a namespace LIST. The body is bounded by
-// maxBytes; errors carry the upstream status for transient/terminal/
-// identity-scoped classification.
+// maxBytes; upstream HTTP failures carry the status for retryability and scope
+// classification, and a mint failure carries errAccessTokenMintFailed instead.
 func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (*appPlatformListPage, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("app platform list: empty namespace")
@@ -94,11 +109,19 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 	reqCtx, cancel := context.WithTimeout(ctx, appPlatformUpstreamTimeout)
 	defer cancel()
 
+	// Mint per request rather than per client: authlib caches by subject for
+	// most of the token's 10-minute life, so this is a cache hit on all but the
+	// first call for a given user.
+	accessToken, err := c.minter.Mint(reqCtx, namespace, c.idToken)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errAccessTokenMintFailed, err)
+	}
+
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("app platform list: build request: %w", err)
 	}
-	forwardIdentityHeaders(req.Header, c.idToken)
+	req.Header.Set(auth.AccessTokenHeader, accessToken)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -112,7 +135,7 @@ func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, name
 			"resource", resource,
 			"status", resp.StatusCode,
 			"idTokenPresent", c.idToken != "",
-			"identityHeaders", "Authorization=Bearer<id-token>,X-Grafana-Id")
+			"identityHeaders", auth.AccessTokenHeader+"=<obo-access-token>")
 	})
 
 	if resp.StatusCode != http.StatusOK {
@@ -160,6 +183,11 @@ type appPlatformUpstreamError struct {
 
 func (e *appPlatformUpstreamError) Error() string { return e.msg }
 
+// errAccessTokenMintFailed marks a failure to mint the caller's on-behalf-of
+// access token. It is caller-scoped (auth-api can reject one subject token
+// while serving others) and carries no HTTP status, so it stays transient.
+var errAccessTokenMintFailed = errors.New("app platform list: mint access token")
+
 // isTransientUpstreamStatus reports whether an HTTP status should be treated
 // as transient (retryable): 429 and any 5xx. All other non-2xx are terminal.
 func isTransientUpstreamStatus(status int) bool {
@@ -185,13 +213,25 @@ func isTerminalUpstreamError(err error) bool {
 	return false
 }
 
-// isIdentityScopedUpstreamError reports whether an upstream failure means the
-// aggregator rejected this caller's forwarded identity (401/403). Error-level
-// companion to isIdentityScopedUpstreamStatus, shared by every proxy route.
-func isIdentityScopedUpstreamError(err error) bool {
+// isNamespaceGlobalUpstreamError reports whether an upstream failure is a
+// property of the namespace rather than of one caller's identity, and may
+// therefore be shared across callers through a negative cache (§4, §5).
+//
+// This is an allow-list, not a deny-list on the identity-scoped statuses: any
+// failure shape we cannot positively place — including future statusless ones —
+// stays unshared, which costs re-probes but never replays one caller's error to
+// another. Scope is orthogonal to transient/terminal: a mint failure is
+// caller-scoped AND transient.
+func isNamespaceGlobalUpstreamError(err error) bool {
+	// Ordering matters: the mint hop is itself an HTTP call to auth-api, so its
+	// failures also satisfy the net.Error check below.
+	if errors.Is(err, errAccessTokenMintFailed) {
+		return false
+	}
 	var ue *appPlatformUpstreamError
 	if errors.As(err, &ue) {
-		return isIdentityScopedUpstreamStatus(ue.status)
+		return !isIdentityScopedUpstreamStatus(ue.status)
 	}
-	return false
+	var netErr net.Error
+	return errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded)
 }

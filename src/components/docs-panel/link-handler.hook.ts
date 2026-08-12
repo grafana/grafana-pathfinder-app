@@ -11,7 +11,7 @@ import {
   AnalyticsLinkType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
+import { countUnlockedMilestones, getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -525,20 +525,16 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           });
 
           // Mark current milestone done if it has no interactive steps
-          if (activeTab?.content?.type === 'learning-journey' && activeTab?.currentUrl && activeTab?.baseUrl) {
+          const journey = activeTab?.content?.metadata.learningJourney;
+          if (activeTab?.content?.type === 'learning-journey' && activeTab.currentUrl && journey) {
             const hasInteractiveSteps = (contentRef?.current?.querySelectorAll('[data-step-id]').length ?? 0) > 0;
             if (!hasInteractiveSteps) {
               const slug = getMilestoneSlug(activeTab.currentUrl);
               if (slug) {
-                markMilestoneDone(
-                  activeTab.baseUrl,
-                  slug,
-                  activeTab.content?.metadata?.learningJourney?.totalMilestones,
-                  {
-                    packageManifest: activeTab.content?.metadata?.packageManifest,
-                    guideTitle: activeTab.title,
-                  }
-                );
+                markMilestoneDone(journey.baseUrl, slug, countUnlockedMilestones(journey.milestones ?? []), {
+                  packageManifest: activeTab.content?.metadata?.packageManifest,
+                  guideTitle: activeTab.title,
+                });
               }
             }
           }

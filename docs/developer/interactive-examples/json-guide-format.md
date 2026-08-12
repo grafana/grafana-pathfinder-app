@@ -117,13 +117,13 @@ Embed YouTube or native HTML5 video.
 }
 ```
 
-| Field      | Type                      | Required | Description                           |
-| ---------- | ------------------------- | -------- | ------------------------------------- |
-| `src`      | string                    | ✅       | Video URL (embed URL for YouTube)     |
-| `provider` | `"youtube"` \| `"native"` | ❌       | Video provider (default: `"youtube"`) |
-| `title`    | string                    | ❌       | Video title for accessibility         |
-| `start`    | number                    | ❌       | Start time in seconds                 |
-| `end`      | number                    | ❌       | End time in seconds                   |
+| Field      | Type                                   | Required | Description                       |
+| ---------- | -------------------------------------- | -------- | --------------------------------- |
+| `src`      | string                                 | ✅       | Video URL (embed URL for YouTube) |
+| `provider` | `"youtube"` \| `"native"` \| `"vimeo"` | ❌       | Video provider hint               |
+| `title`    | string                                 | ❌       | Video title for accessibility     |
+| `start`    | number                                 | ❌       | Start time in seconds             |
+| `end`      | number                                 | ❌       | End time in seconds               |
 
 **YouTube Example:**
 
@@ -179,6 +179,7 @@ A single interactive step with "Show me" and "Do it" buttons.
 | `reftarget`       | string   | ✅\*     | —                   | CSS selector or button text (\*optional for `noop` actions)        |
 | `content`         | string   | ✅       | —                   | Markdown description shown to user                                 |
 | `targetvalue`     | string   | ❌       | —                   | Value for `formfill` actions (supports regex, see below)           |
+| `targetstate`     | string   | ❌       | —                   | Desired end state for a toggle target (see below)                  |
 | `tooltip`         | string   | ❌       | —                   | Tooltip shown on highlight (supports markdown)                     |
 | `requirements`    | string[] | ❌       | —                   | Conditions that must be met                                        |
 | `objectives`      | string[] | ❌       | —                   | Objectives marked complete after this step                         |
@@ -195,15 +196,88 @@ A single interactive step with "Show me" and "Do it" buttons.
 
 **Action Types:**
 
-| Action      | Description                    | `reftarget`             | `targetvalue`                          |
-| ----------- | ------------------------------ | ----------------------- | -------------------------------------- |
-| `highlight` | Highlight an element           | CSS selector            | —                                      |
-| `button`    | Click a button                 | Button text or selector | —                                      |
-| `formfill`  | Enter text in input            | CSS selector            | Text to enter                          |
-| `navigate`  | Navigate to URL                | URL path                | —                                      |
-| `hover`     | Hover over element             | CSS selector            | —                                      |
-| `noop`      | Informational step (no action) | Optional                | —                                      |
-| `popout`    | Dock or undock the docs panel  | —                       | `"floating"` or `"sidebar"` (required) |
+| Action      | Description                    | `reftarget`             | `targetvalue`                          | `targetstate` |
+| ----------- | ------------------------------ | ----------------------- | -------------------------------------- | ------------- |
+| `highlight` | Highlight an element           | CSS selector            | —                                      | ✅            |
+| `button`    | Click a button                 | Button text or selector | —                                      | ✅            |
+| `formfill`  | Enter text in input            | CSS selector            | Text to enter                          | —             |
+| `navigate`  | Navigate to URL                | URL path                | —                                      | —             |
+| `hover`     | Hover over element             | CSS selector            | —                                      | —             |
+| `noop`      | Informational step (no action) | Optional                | —                                      | —             |
+| `popout`    | Dock or undock the docs panel  | —                       | `"floating"` or `"sidebar"` (required) | —             |
+
+**Toggle targets — `targetstate`:**
+
+Without `targetstate`, a step clicks its target unconditionally. For anything with
+toggle semantics that is a trap: the step's effect depends on where the user left
+the UI. Clicking Grafana's dashboard **+ New** button when the drawer is already
+open _closes_ it, taking the next step's target out of the DOM with it.
+
+`targetstate` declares the state you want instead of the click you want. The step
+reads the control, clicks only if the state differs, then re-reads to confirm — so
+it is safe to re-run and converges from either starting state.
+
+```json
+{
+  "type": "interactive",
+  "action": "highlight",
+  "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
+  "targetstate": "true",
+  "content": "Open the edit sidebar."
+}
+```
+
+`"true"` / `"false"` auto-detects the control's state signal, probing `checked`,
+`aria-pressed`, `aria-expanded`, `aria-checked`, `aria-selected`, and finally an
+`aria-label` that names the action ("Collapse …" means already expanded). If the
+step targets a wrapper, it descends to the control that actually holds the state —
+necessary for Grafana's `Switch`, where the stable `data-testid` sits on a wrapper
+whose click does nothing.
+
+A bare `true` / `false` is accepted too and means the same thing — validation
+coerces it to the string form. The stored value is always a string, because the
+backend `InteractiveGuide` CRD cannot model a field that is boolean-or-string
+(the generated Kubernetes schema would be invalid), and a raw boolean sent to
+that API is rejected. Prefer `"true"` when writing guides by hand so the file
+matches what round-trips.
+
+When a control carries its state somewhere else, name the attribute:
+
+```json
+{ "targetstate": "data-state:open" }
+```
+
+Naming an attribute also changes _where_ the state is read. The step looks for
+that attribute on the element you selected first, then on its descendants —
+rather than descending to the nearest checkbox or ARIA toggle, which is what the
+`true`/`false` form does. That matters because the named-attribute form exists
+for controls with no standard signal, so the element you point at usually is not
+one the auto-detector would recognise. The click still lands on the interactive
+control, which is not always the element carrying the attribute.
+
+A step with `targetstate` never blocks. Requirements are unaffected — the
+control exists in both states, so `exists-reftarget` still passes and "Do it"
+stays enabled. Pressing it when the control is already in the requested state
+does nothing and marks the step complete, so the user always moves on. Two
+cases warn rather than fail:
+
+- the control exposes no readable state → clicks unconditionally, i.e. exactly
+  today's behaviour
+- the click ran but the state did not change → completes, leaving the user free
+  to set it by hand
+
+So adding `targetstate` can never make a working step worse, and can never
+strand someone mid-guide.
+
+When there is nothing to change, the comment box says so — "Already in the right
+position — nothing to change." is prepended above your own comment, so the guide
+never instructs someone to flip a control that is already correct. This applies
+to "Show me", to each step of a multistep, and to guided steps, which complete
+straight away rather than waiting for a click that would undo the state.
+
+Note that `targetstate` does not auto-complete a top-level step on arrival — the
+user still presses "Do it", it just does nothing. Auto-completing an
+already-satisfied step is what `objectives` is for.
 
 **Formfill Validation:**
 
@@ -494,6 +568,28 @@ Executes multiple actions **automatically** when user clicks "Do it".
 | `objectives`   | string[]   | ❌       | Objectives tracked                |
 | `skippable`    | boolean    | ❌       | Allow skipping                    |
 
+Individual steps accept `targetstate` too, and a sequence is where toggles bite
+hardest — one blind click part-way through can remove the target the next step
+needs:
+
+```json
+{
+  "type": "multistep",
+  "content": "Open the edit sidebar and add a panel.",
+  "steps": [
+    {
+      "action": "highlight",
+      "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
+      "targetstate": "true"
+    },
+    {
+      "action": "highlight",
+      "reftarget": "div[data-testid='data-testid sidebar add new panel']"
+    }
+  ]
+}
+```
+
 #### Guided Block
 
 Highlights elements and **waits for user** to perform actions.
@@ -529,6 +625,12 @@ Highlights elements and **waits for user** to perform actions.
 | `requirements`  | string[]   | ❌       | Requirements for the block               |
 | `objectives`    | string[]   | ❌       | Objectives tracked                       |
 | `skippable`     | boolean    | ❌       | Allow skipping                           |
+
+Steps accept `targetstate` here too, with the meaning adjusted for a step the
+user performs: a control already in the requested state completes immediately
+instead of asking the user to click it. Without that, the guide would tell
+someone to click a toggle that is already correct, and their click would move it
+the wrong way.
 
 #### Quiz Block
 
@@ -804,7 +906,6 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
   "content": "Try this PromQL query:",
   "code": "rate(http_requests_total[5m])",
   "language": "promql",
-  "filename": "example.promql",
   "reftarget": "textarea.inputarea"
 }
 ```
@@ -814,8 +915,7 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
 | `content`      | string   | ❌       | Markdown description shown above the code block                        |
 | `code`         | string   | ✅       | The code snippet                                                       |
 | `language`     | string   | ❌       | Syntax highlighting language (e.g., `promql`, `logql`, `yaml`, `json`) |
-| `filename`     | string   | ❌       | Filename label shown above the code (purely informational)             |
-| `reftarget`    | string   | ❌       | CSS selector of a Monaco editor — when set, an Insert button appears   |
+| `reftarget`    | string   | ✅       | Verified CSS selector of the target Monaco editor                      |
 | `requirements` | string[] | ❌       | Conditions that must be met for this step                              |
 | `objectives`   | string[] | ❌       | Objectives marked complete after this step                             |
 | `skippable`    | boolean  | ❌       | Allow skipping                                                         |
@@ -834,7 +934,7 @@ A shell command shown with copy-to-clipboard and an "Execute" button that runs t
 
 | Field          | Type     | Required | Description                                                 |
 | -------------- | -------- | -------- | ----------------------------------------------------------- |
-| `content`      | string   | ❌       | Markdown description shown above the command                |
+| `content`      | string   | ✅       | Markdown description shown above the command                |
 | `command`      | string   | ✅       | The shell command                                           |
 | `requirements` | string[] | ❌       | Conditions that must be met (commonly `is-terminal-active`) |
 | `skippable`    | boolean  | ❌       | Allow skipping                                              |
@@ -865,7 +965,7 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 
 See [`CODA.md`](../CODA.md) for the full VM template catalog and lifecycle details.
 
-#### Grot Guide Block
+#### Grot Guide block
 
 A choose-your-own-adventure decision tree where each screen offers options that branch to other screens.
 
@@ -873,43 +973,145 @@ A choose-your-own-adventure decision tree where each screen offers options that 
 {
   "type": "grot-guide",
   "id": "intro-tree",
-  "title": "Choose your path",
+  "welcome": {
+    "title": "Choose your path",
+    "body": "Pick the path that best matches your goal.",
+    "ctas": [{ "text": "Start", "screenId": "start" }]
+  },
   "screens": [
     {
+      "type": "question",
       "id": "start",
       "title": "What do you want to do?",
-      "body": "Pick the path that best matches your goal.",
       "options": [
-        { "label": "Set up Prometheus", "next": "prometheus" },
-        { "label": "Set up Loki", "next": "loki" }
+        { "text": "Set up Prometheus", "screenId": "prometheus" },
+        { "text": "Set up Loki", "screenId": "loki" }
       ]
     },
     {
+      "type": "result",
       "id": "prometheus",
       "title": "Set up Prometheus",
       "body": "Open the connections page to add a Prometheus data source.",
-      "options": [{ "label": "Done", "next": "end" }]
+      "links": []
     },
     {
+      "type": "result",
       "id": "loki",
       "title": "Set up Loki",
       "body": "Open the connections page to add a Loki data source.",
-      "options": [{ "label": "Done", "next": "end" }]
-    },
-    { "id": "end", "title": "All set", "body": "You're ready to start querying." }
-  ],
-  "startScreen": "start"
+      "links": []
+    }
+  ]
 }
 ```
 
-| Field         | Type           | Required | Description                                          |
-| ------------- | -------------- | -------- | ---------------------------------------------------- |
-| `id`          | string         | ❌       | Block ID                                             |
-| `title`       | string         | ❌       | Title shown above the screen                         |
-| `screens`     | `GrotScreen[]` | ✅       | The decision-tree screens (see below)                |
-| `startScreen` | string         | ❌       | ID of the first screen (defaults to the first entry) |
+| Field     | Type                | Required | Description                       |
+| --------- | ------------------- | -------- | --------------------------------- |
+| `id`      | string              | ❌       | Block ID                          |
+| `welcome` | `GrotGuideWelcome`  | ✅       | Welcome copy and entry-point CTAs |
+| `screens` | `GrotGuideScreen[]` | ✅       | Question and result screens       |
 
-Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each option has a `label` and a `next` screen ID. A screen with no `options` ends the tree. The block editor includes a YAML import flow for converting Grot Guide YAML directly into JSON.
+Welcome CTAs and question options use `{ "text", "screenId" }`; every `screenId` must resolve to a screen. A question screen has `type: "question"` and an `options` array. A result screen has `type: "result"`, markdown `body`, and optional links. The block editor includes a YAML import flow for converting Grot Guide YAML directly into JSON.
+
+#### Challenge block
+
+A capture-the-flag style task: a title, a markdown brief, optional progressive hints, and a "Check my work" button that evaluates a single requirement token. The `mode` field picks the execution model, and most of the other fields follow from it.
+
+| Mode         | Behavior                                                                                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `"standard"` | Runs against the learner's own Grafana. Nothing is provisioned, and the brief and "Check my work" are available immediately. `successCriteria` is any Pathfinder requirement, such as `has-datasource:prometheus`. |
+| `"coda"`     | Provisions a Coda VM with a terminal, runs the setup script, then reveals "Check my work". `successCriteria` is typically `coda-exit-zero:<command>`.                                                              |
+
+`mode` is optional, and it resolves to a different value depending on how the block reaches you:
+
+- **Omitted in JSON** — the runtime treats the block as `"coda"`. Challenges predate `"standard"`, so an existing guide with no `mode` keeps its original Coda behavior.
+- **Created in the block editor** — the challenge form writes `mode` explicitly and seeds a brand-new block with `"standard"`, the cheaper authoring path. Opening a legacy block that has no `mode` infers `"coda"`, either from the presence of a VM or setup field or as the safe fallback.
+
+**Always write `mode` explicitly in hand-written JSON.** A challenge with no `mode` resolves to `"coda"` and provisions a VM, which is rarely what an author omitting the field intended. Read the availability note at the end of this section before choosing that path.
+
+Standard mode:
+
+```json
+{
+  "type": "challenge",
+  "mode": "standard",
+  "title": "Connect your first data source",
+  "brief": "Add a Prometheus data source so the rest of this guide has something to query.",
+  "successCriteria": "has-datasource:prometheus",
+  "failureMessage": "No Prometheus data source yet — check the connections page.",
+  "hintLevels": [
+    { "text": "Start from Connections > Data sources." },
+    { "text": "The Add new data source button is in the top right." }
+  ]
+}
+```
+
+Coda mode:
+
+```json
+{
+  "type": "challenge",
+  "mode": "coda",
+  "title": "Fix the broken scrape config",
+  "brief": "The Prometheus config in `/etc/prometheus` has an invalid scrape setting. Repair it so `promtool check config` passes.",
+  "vmTemplate": "vm-aws",
+  "setupScript": "set -euo pipefail\nsed -i 's/scrape_interval:/scrape_intervall:/' /etc/prometheus/prometheus.yml",
+  "successCriteria": "coda-exit-zero:promtool check config /etc/prometheus/prometheus.yml"
+}
+```
+
+| Field             | Type                     | Required | Default   | Description                                                                        |
+| ----------------- | ------------------------ | -------- | --------- | ---------------------------------------------------------------------------------- |
+| `mode`            | `"coda"` \| `"standard"` | ❌       | see above | Execution model                                                                    |
+| `title`           | string                   | ✅       | —         | Short title shown above the brief                                                  |
+| `brief`           | string                   | ✅       | —         | Markdown problem statement                                                         |
+| `successCriteria` | string                   | ✅       | —         | Requirement evaluated when the user clicks "Check my work"                         |
+| `id`              | string                   | ❌       | —         | Block ID                                                                           |
+| `vmTemplate`      | string                   | ❌       | `vm-aws`  | VM template to provision; ignored when `mode` is `"standard"`                      |
+| `vmScenario`      | string                   | ❌       | —         | Scenario for the `alloy-scenario` template; ignored when `mode` is `"standard"`    |
+| `vmApp`           | string                   | ❌       | —         | App for the `sample-app` template; ignored when `mode` is `"standard"`             |
+| `setupScript`     | string                   | ❌       | —         | Bash script run server-side once the VM is ready                                   |
+| `setupCommands`   | string[]                 | ❌       | —         | **Deprecated** — bash commands run sequentially server-side; prefer `setupScript`  |
+| `hintLevels`      | `{ text: string }[]`     | ❌       | `[]`      | Progressive hints revealed on demand                                               |
+| `failureMessage`  | string                   | ❌       | —         | Message shown when the success check fails, replacing the checker's own error text |
+| `requirements`    | string[]                 | ❌       | —         | Prerequisite conditions for the challenge                                          |
+| `objectives`      | string[]                 | ❌       | —         | Objectives marked complete after this block                                        |
+| `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                     |
+
+`requirements`, `objectives`, and `skippable` are accepted by the schema, but the challenge runtime does not receive them yet — the block always renders, never contributes to objective tracking, and shows no skip control. Do not rely on them to gate a challenge or to credit an objective.
+
+`hintLevels` is an array of objects, not an array of strings. Each entry is `{ "text": "..." }` with non-empty text, and hints are revealed one at a time in array order. Hints appear only once the challenge is ready to attempt or has failed a check, so a learner stuck waiting on VM provisioning cannot reach them.
+
+`setupScript` and `setupCommands` are not equivalent. The whole `setupScript` string is passed to the remote login shell as a single command with a 120-second budget, so multi-line scripts, heredocs, and control flow all work. Each `setupCommands` entry is a separate remote invocation with its own 30-second budget and no shared shell state, so `cd`, `export`, and heredocs do not carry from one entry to the next; the first non-zero exit abandons the remaining entries.
+
+`setupScript` takes precedence, but only when it is non-empty after trimming — a whitespace-only `setupScript` falls through to `setupCommands`. `setupCommands` is kept only for back-compat: opening a legacy block in the block editor joins the array with newlines into `setupScript` and drops `setupCommands` on save, so a block migrates the first time an author edits it. Write `setupScript` in new content.
+
+Switching a challenge from `"coda"` to `"standard"` in the block editor discards `setupScript` along with the VM fields, and switching back does not restore it. Copy the script out first if you might need it again.
+
+Coda mode is gated on two settings at once: the plugin's Coda-terminal setting, and per-user dev mode for the user viewing the guide. Both must be on, so coda mode is currently a development-only path rather than something an administrator turns on for everyone. When the gate is closed the block neither errors nor hides — it sits on "Provisioning challenge VM…" indefinitely, offering only a Cancel button ([#1541](https://github.com/grafana/grafana-pathfinder-app/issues/1541)). Because a challenge with no `mode` resolves to `"coda"`, an omitted `mode` is the most common way to reach that state. `"standard"` mode has no such dependency and works on every stack.
+
+#### Snippet reference block
+
+A pointer to a published snippet. The renderer never sees this block — the guide schema accepts `snippet-ref`, and every ref is expanded after validation and before render, splicing the referenced snippet's blocks in at the ref's position. A guide therefore picks up the snippet's published content on every load, subject to a short cache: successful resolutions are held for five minutes, so a republished snippet can take that long to appear. Failed resolutions are not cached, so a broken ref is retried on every load.
+
+```json
+{
+  "type": "snippet-ref",
+  "snippetId": "connect-prometheus-data-source"
+}
+```
+
+| Field       | Type   | Required | Description                                                                                                             |
+| ----------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `snippetId` | string | ✅       | Upstream snippet ID, resolved after validation and before render. Must be kebab-case: `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` |
+| `id`        | string | ❌       | Stable identifier for this snippet-ref instance                                                                         |
+
+A ref may sit at the top level of `blocks`, or nested inside a `section`, a `conditional` (in either `whenTrue` or `whenFalse`), or an `assistant`. It may not sit inside a `collapsible` — that container holds content blocks only, and the schema rejects a ref there.
+
+Snippets cannot reference other snippets. The snippet schema rejects `snippet-ref` at every supported nesting depth, so a snippet body may contain any other block type but never a ref.
+
+If a ref cannot be resolved — unknown ID, catalog fetch failure — it is replaced with an inert markdown placeholder naming the snippet ID and an error code. The guide still renders, but nothing interactive appears in the ref's place. The resolver does not distinguish a missing snippet from a transient failure, so an unknown ID reports `network-error` rather than a not-found code.
 
 ---
 
@@ -920,8 +1122,8 @@ Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each
 | `markdown`         | Content     | Formatted text with headings, lists, code, tables                               |
 | `html`             | Content     | Raw HTML for migration/custom content                                           |
 | `image`            | Content     | Embedded images with optional dimensions                                        |
-| `video`            | Content     | YouTube or native HTML5 video embeds                                            |
-| `code-block`       | Content     | Code snippet with copy and optional Monaco-editor insert                        |
+| `video`            | Content     | YouTube, Vimeo, or native HTML5 video embeds                                    |
+| `code-block`       | Content     | Code snippet with copy and Monaco-editor insert                                 |
 | `section`          | Structure   | Container for grouped interactive steps with "Do Section"                       |
 | `collapsible`      | Structure   | Hides nested content behind a toggle                                            |
 | `conditional`      | Structure   | Shows different content based on runtime conditions                             |
@@ -931,9 +1133,11 @@ Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each
 | `guided`           | Interactive | User-performed sequence with detection                                          |
 | `terminal`         | Interactive | A shell command with copy and execute (requires Coda terminal)                  |
 | `terminal-connect` | Interactive | Button that provisions a sandbox VM and opens a terminal panel                  |
+| `challenge`        | Interactive | Task with hints and a "Check my work" success check                             |
 | `grot-guide`       | Interactive | Choose-your-own-adventure decision tree                                         |
 | `quiz`             | Assessment  | Knowledge check with single/multiple choice                                     |
 | `input`            | Assessment  | Collects user responses as variables                                            |
+| `snippet-ref`      | Reusable    | Expands a published snippet in place before render                              |
 
 ---
 
@@ -1160,7 +1364,6 @@ All types are exported from `src/types/json-guide.types.ts`:
 import {
   // Root structure
   JsonGuide,
-  JsonMatchMetadata,
 
   // Block union
   JsonBlock,
@@ -1173,6 +1376,7 @@ import {
 
   // Structural blocks
   JsonSectionBlock,
+  JsonCollapsibleBlock,
   JsonConditionalBlock,
   ConditionalDisplayMode,
   ConditionalSectionConfig,
@@ -1190,6 +1394,12 @@ import {
   JsonQuizBlock,
   JsonQuizChoice,
   JsonInputBlock,
+  JsonTerminalBlock,
+  JsonTerminalConnectBlock,
+  JsonChallengeBlock,
+  JsonCodeBlockBlock,
+  JsonGrotGuideBlock,
+  JsonSnippetRefBlock,
 } from '../types/json-guide.types';
 ```
 
@@ -1202,6 +1412,7 @@ import {
   isImageBlock,
   isVideoBlock,
   isSectionBlock,
+  isCollapsibleBlock,
   isConditionalBlock,
   isAssistantBlock,
   isInteractiveBlock,
@@ -1209,6 +1420,12 @@ import {
   isGuidedBlock,
   isQuizBlock,
   isInputBlock,
+  isTerminalBlock,
+  isTerminalConnectBlock,
+  isChallengeBlock,
+  isCodeBlockBlock,
+  isGrotGuideBlock,
+  isSnippetRefBlock,
   hasAssistantEnabled,
 } from '../types/json-guide.types';
 ```
@@ -1225,6 +1442,8 @@ import {
   CURRENT_SCHEMA_VERSION,
 } from '../types/json-guide.schema';
 ```
+
+The prescriptive coupling checklist and the limits of the automated drift checks are documented in [schema-type coupling rules](../../../.cursor/rules/schema-coupling.mdc). The recursive JSON guide schemas rely on manual paired review plus focused tests; unlike several non-recursive package schemas, they are not declared with `satisfies z.ZodType<T>`.
 
 ## See also
 

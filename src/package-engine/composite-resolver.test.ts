@@ -16,11 +16,19 @@ jest.mock('./recommender-resolver', () => ({
   RecommenderPackageResolver: jest.fn().mockImplementation(() => mockRecommenderResolver),
 }));
 
+jest.mock('./app-platform-resolver', () => ({
+  AppPlatformPackageResolver: jest.fn().mockImplementation(() => mockAppPlatformResolver),
+}));
+
 const mockBundledResolver: PackageResolver = {
   resolve: jest.fn(),
 };
 
 const mockRecommenderResolver: PackageResolver = {
+  resolve: jest.fn(),
+};
+
+const mockAppPlatformResolver: PackageResolver = {
   resolve: jest.fn(),
 };
 
@@ -179,6 +187,77 @@ describe('CompositePackageResolver', () => {
       expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('app-platform cache bypass (§6.8)', () => {
+    const SUCCESS_APP_PLATFORM: PackageResolution = {
+      ok: true,
+      id: 'fe-alerting-01',
+      contentUrl: 'backend-guide:fe-alerting-01',
+      manifestUrl: 'app-platform:stacks-123/fe-alerting-01',
+      repository: 'app-platform',
+    };
+
+    it('never caches successful app-platform resolutions — each call re-fetches', async () => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_APP_PLATFORM);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      const first = await composite.resolve('fe-alerting-01');
+      const second = await composite.resolve('fe-alerting-01');
+
+      expect(first).toEqual(second);
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
+    });
+
+    it('still caches successful bundled/CDN resolutions (regression guard)', async () => {
+      (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      await composite.resolve('test-guide');
+      await composite.resolve('test-guide');
+
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not cache app-platform failures — a member published later re-resolves (§6.8)', async () => {
+      const appPlatformFailure: PackageResolution = {
+        ok: false,
+        id: 'fe-missing',
+        error: { code: 'not-found', message: 'not found' },
+        // App-platform failures carry the repository so the composite can skip
+        // negative-caching them (static-tier failures don't, so they stay cached).
+        repository: 'app-platform',
+      };
+      (mockBundledResolver.resolve as jest.Mock)
+        .mockResolvedValueOnce(appPlatformFailure) // not published yet
+        .mockResolvedValueOnce(SUCCESS_APP_PLATFORM); // author publishes it
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      const first = await composite.resolve('fe-missing');
+      const second = await composite.resolve('fe-missing');
+
+      expect(first.ok).toBe(false);
+      expect(second.ok).toBe(true);
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
+    });
+
+    it('truly concurrent calls still share one in-flight resolution (dedup preserved)', async () => {
+      let resolveFn!: (value: PackageResolution) => void;
+      (mockBundledResolver.resolve as jest.Mock).mockReturnValue(
+        new Promise<PackageResolution>((resolve) => {
+          resolveFn = resolve;
+        })
+      );
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+      const first = composite.resolve('fe-alerting-01');
+      const second = composite.resolve('fe-alerting-01');
+
+      resolveFn(SUCCESS_APP_PLATFORM);
+      await Promise.all([first, second]);
+
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe('CompositePackageResolver degradation', () => {
@@ -192,6 +271,22 @@ describe('CompositePackageResolver degradation', () => {
     const composite = new CompositePackageResolver([mockBundledResolver, mockRecommenderResolver]);
 
     await expect(composite.resolve('test-guide')).rejects.toThrow('Unexpected resolver crash');
+  });
+
+  // Eviction has to land on the first-hop reaction, not on a derived promise:
+  // a caller retrying inside its own rejection handler would otherwise be
+  // handed the still-cached rejected promise and never reach the resolver.
+  it('evicts a rejected resolution before the caller can retry synchronously', async () => {
+    (mockBundledResolver.resolve as jest.Mock)
+      .mockRejectedValueOnce(new Error('Unexpected resolver crash'))
+      .mockResolvedValueOnce(SUCCESS_BUNDLED);
+
+    const composite = new CompositePackageResolver([mockBundledResolver]);
+
+    const retried = await composite.resolve('test-guide').catch(() => composite.resolve('test-guide'));
+
+    expect(retried).toEqual(SUCCESS_BUNDLED);
+    expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
   });
 
   it('should return network-error code when both resolvers fail with network-error', async () => {
@@ -257,6 +352,43 @@ describe('createCompositeResolver', () => {
     expect(RecommenderPackageResolver).toHaveBeenCalledWith('https://recommender.grafana.com');
   });
 
+  it('always creates an AppPlatformPackageResolver, appended last (bundled-first precedence, §6.6)', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    const SUCCESS_APP_PLATFORM: PackageResolution = {
+      ok: true,
+      id: 'fe-alerting-01',
+      contentUrl: 'backend-guide:fe-alerting-01',
+      manifestUrl: 'app-platform:stacks-123/fe-alerting-01',
+      repository: 'app-platform',
+    };
+    (mockAppPlatformResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_APP_PLATFORM);
+
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    const result = await resolver.resolve('fe-alerting-01');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repository).toBe('app-platform');
+    }
+    // Bundled and recommender were tried first and missed before app-platform answered.
+    expect(mockBundledResolver.resolve).toHaveBeenCalled();
+    expect(mockRecommenderResolver.resolve).toHaveBeenCalled();
+  });
+
+  it('bundled still wins over app-platform on an ID collision (§6.6)', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(SUCCESS_BUNDLED);
+
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    const result = await resolver.resolve('test-guide');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repository).toBe('bundled');
+    }
+    expect(mockAppPlatformResolver.resolve).not.toHaveBeenCalled();
+  });
+
   it('should use custom recommender URL from config', () => {
     const resolver = createCompositeResolver({
       acceptedTermsAndConditions: true,
@@ -266,5 +398,49 @@ describe('createCompositeResolver', () => {
 
     const { RecommenderPackageResolver } = require('./recommender-resolver');
     expect(RecommenderPackageResolver).toHaveBeenCalledWith('https://custom-recommender.example.com');
+  });
+
+  // Finding #4: app-platform is the composite's last resolver, so its failure is
+  // the `lastFailure` returned on every all-miss. Only failures from an actual
+  // upstream attempt carry `repository` (and should evict); the cheap declines
+  // (GAP off / no namespace) must NOT, or negative caching is repealed for every
+  // tier. These run against the real createCompositeResolver, not a 1-resolver
+  // composite, which is why the existing single-resolver tests missed it.
+  it('caches an all-miss when app-platform merely declines (untagged failure)', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    // A cheap decline (e.g. GAP toggle off) — no request issued, no repository tag.
+    (mockAppPlatformResolver.resolve as jest.Mock).mockResolvedValue({
+      ok: false,
+      id: 'missing',
+      error: { code: 'not-found', message: 'App Platform backend is not available on this instance' },
+    });
+
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    await resolver.resolve('missing');
+    await resolver.resolve('missing');
+
+    expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(1);
+    expect(mockRecommenderResolver.resolve).toHaveBeenCalledTimes(1);
+    expect(mockAppPlatformResolver.resolve).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-resolves an all-miss when app-platform made a real attempt (tagged failure)', async () => {
+    (mockBundledResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    (mockRecommenderResolver.resolve as jest.Mock).mockResolvedValue(NOT_FOUND);
+    // A real upstream not-found (member not yet published) — tagged so a later
+    // publish is picked up.
+    (mockAppPlatformResolver.resolve as jest.Mock).mockResolvedValue({
+      ok: false,
+      id: 'fe-x',
+      error: { code: 'not-found', message: 'not published yet' },
+      repository: 'app-platform',
+    });
+
+    const resolver = createCompositeResolver({ acceptedTermsAndConditions: true });
+    await resolver.resolve('fe-x');
+    await resolver.resolve('fe-x');
+
+    expect(mockAppPlatformResolver.resolve).toHaveBeenCalledTimes(2);
   });
 });

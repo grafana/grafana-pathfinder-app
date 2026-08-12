@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "markdown-only",
+  "title": "Markdown Only (Synthetic Fixture)",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "# Read-only guide\n\nThis fixture contains no interactive steps. It is used to verify the E2E runner handles markdown-only guides correctly."
+    },
+    {
+      "type": "image",
+      "src": "https://grafana.com/static/img/grafana_logo.svg",
+      "alt": "Grafana logo"
+    }
+  ]
+}

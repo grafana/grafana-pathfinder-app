@@ -33,12 +33,18 @@ jest.mock('../learning-paths', () => ({
   getPathsData: () => getPathsDataMock(),
 }));
 
+import { config, setBackendSrv, type BackendSrv } from '@grafana/runtime';
 import {
   setJourneyCompletionPercentage,
   setJourneyCompletionPercentageAsync,
   markMilestoneDone,
+  getMilestoneSlug,
 } from './learning-journey-helpers';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
+import {
+  fetchCustomGuideRepository,
+  invalidateCustomGuideRepositoryCache,
+} from '../lib/custom-guide-repository-client';
 
 let emitted: CompletionFact[];
 let unsubscribe: () => void;
@@ -151,6 +157,15 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
     expect(markGuideCompletedMock).toHaveBeenCalledWith('m1');
   });
 
+  it('records a private App Platform member under its bare id, not the backend-guide: scheme (finding #1)', async () => {
+    // The member launch URL is `backend-guide:<id>`; getMilestoneSlug must strip
+    // the scheme so completion is keyed the way LearningPath.guides reads it back
+    // — otherwise My Learning path progress is stuck at 0%.
+    await markMilestoneDone('base', getMilestoneSlug('backend-guide:fe-alerting-01'));
+    expect(markGuideCompletedMock).toHaveBeenCalledWith('fe-alerting-01');
+    expect(milestoneMarkCompletedMock).toHaveBeenCalledWith('base', 'fe-alerting-01');
+  });
+
   it('the same milestone marked done from multiple surfaces emits one guide completion', async () => {
     await markMilestoneDone('base', 'm1');
     await markMilestoneDone('base', 'm1');
@@ -228,5 +243,50 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     await markMilestoneDone('base', 'm2', 3);
 
     expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(1);
+  });
+});
+
+// Durable completion identity for the launch surfaces that thread the raw
+// catalogue manifest. Un-normalized, these two shapes split the durable key
+// against resolver-path launches of the same guide: an omitted `repository`
+// lands on fallbackSource 'bundled', and the CLI's stamped default lands on
+// 'interactive-tutorials'.
+describe('catalogue-launched path (App Platform provenance)', () => {
+  const GAP_TOGGLE = 'aggregation.pathfinderbackend-ext-grafana-app.enabled';
+  const featureToggles = config.featureToggles as Record<string, boolean>;
+
+  async function launchManifestFromCatalogue(manifest: Record<string, unknown>): Promise<Record<string, unknown>> {
+    featureToggles[GAP_TOGGLE] = true;
+    invalidateCustomGuideRepositoryCache();
+    setBackendSrv({
+      get: async () => ({ capability: { available: true }, guides: [{ id: 'fe-alerting-path', manifest }] }),
+    } as unknown as BackendSrv);
+
+    const [entry] = await fetchCustomGuideRepository('stacks-123');
+    return { ...entry!.manifest, id: entry!.id };
+  }
+
+  afterEach(() => {
+    delete featureToggles[GAP_TOGGLE];
+    invalidateCustomGuideRepositoryCache();
+  });
+
+  it.each([
+    ['omits repository entirely', undefined],
+    ["carries the CLI's interactive-tutorials default", 'interactive-tutorials'],
+  ])("records journey completion as 'app-platform' when the catalogue manifest %s", async (_label, repository) => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
+    const packageManifest = await launchManifestFromCatalogue({
+      type: 'path',
+      milestones: ['m1', 'm2', 'm3'],
+      ...(repository != null && { repository }),
+    });
+
+    await markMilestoneDone('base', 'm3', 3, { packageManifest });
+
+    expect(emitted.find((f) => f.kind === 'journey')).toMatchObject({
+      guideSource: 'app-platform',
+      guideId: 'fe-alerting-path',
+    });
   });
 });

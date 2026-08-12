@@ -234,6 +234,13 @@ export interface PackageResolutionFailure {
   ok: false;
   id: string;
   error: ResolutionError;
+  /**
+   * Repository that produced this failure, when the resolver knows it. Lets the
+   * composite resolver skip negative-caching failures from mutable repositories
+   * (e.g. app-platform), so a package published after a `not-found` re-resolves
+   * instead of staying cached-missing for the session.
+   */
+  repository?: string;
 }
 
 /** Discriminated union: callers must check `.ok` before accessing data. */

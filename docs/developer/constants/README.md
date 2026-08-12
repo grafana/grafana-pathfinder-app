@@ -157,6 +157,7 @@ The constants directory is organized into specialized files that separate concer
 **Key Exports**:
 
 - `INTERACTIVE_Z_INDEX` - Object containing:
+  - `FLOATING_PANEL` - 1045 (popped-out guide panel; deliberately sits _below_ Grafana's overlay layer so menus, tooltips, and modals opened from within it stay on top — see the doc comment in `interactive-z-index.ts` and issue #1439)
   - `BLOCKING_OVERLAY` - 9999 (blocks interaction with specific elements)
   - `HIGHLIGHT_OUTLINE` - 9999 (visual highlight around target elements)
   - `COMMENT_BOX` - 10002 (explanation tooltips for interactive steps)
@@ -172,10 +173,10 @@ The constants directory is organized into specialized files that separate concer
 
 **Critical Dependencies**:
 
-- **Grafana UI**: Values must exceed Grafana's z-index ranges (modals, portals, tooltips up to ~2000)
+- **Grafana UI**: Interactive overlays must exceed Grafana's z-index ranges (modals, portals, tooltips up to ~2000); `FLOATING_PANEL` is the deliberate exception and sits below them
 - **Interactive Styles**: Must coordinate with other styling systems to prevent stacking context issues
 
-**Why It Exists**: Pathfinder runs as a Grafana plugin and must render interactive overlays above all Grafana UI elements (modals, navigation, tooltips). These intentionally high z-index values (9999+) ensure guides remain visible and functional regardless of Grafana's own UI state. Centralizing these values prevents z-index conflicts and makes stacking order explicit.
+**Why It Exists**: Pathfinder runs as a Grafana plugin and must render interactive overlays (highlights, blocking overlay, comment boxes) above all Grafana UI elements (modals, navigation, tooltips). These intentionally high z-index values (9999+) ensure guides remain visible and functional regardless of Grafana's own UI state. `FLOATING_PANEL` is the one exception — it portals into the shared Grafana portal container and must yield to Grafana's overlay layer, so it sits below it (see the doc comment in `interactive-z-index.ts`). Centralizing these values prevents z-index conflicts and makes stacking order explicit.
 
 ---
 

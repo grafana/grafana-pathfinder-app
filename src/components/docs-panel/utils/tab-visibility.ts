@@ -18,9 +18,8 @@ export interface TabVisibilityResult {
 
 /**
  * Computes which tabs fit in the visible area and which move to overflow.
- * Strip-excluded chrome stays out of the guide-tab competition; remaining
- * tabs share available width. Recommendations is prefixed into visibleTabs
- * for the rail (Dev Tools is strip-excluded and not shown there either).
+ * Recommendations stays out of the guide-tab competition (left-rail icon);
+ * remaining strip tabs share available width.
  */
 export function computeTabVisibility(
   tabs: LearningJourneyTab[],

@@ -12,6 +12,10 @@ export { useLearningPaths, useGuideCompletion } from './learning-paths.hook';
 export { useNextLearningAction, computeNextAction } from './useNextLearningAction';
 export type { LearningProfileSummary, NextLearningAction } from './useNextLearningAction';
 
+// Discover More (external package index)
+export { useDiscoverMore } from './useDiscoverMore';
+export type { DiscoverMoreItem, UseDiscoverMoreReturn } from './useDiscoverMore';
+
 // Badge utilities
 export {
   BADGES,

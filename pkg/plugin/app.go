@@ -8,7 +8,13 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/resource/httpadapter"
+
+	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
+
+// tokenExchangeURL is auth-api's token-exchange endpoint. Static in production;
+// tests override it to point at a stub server.
+var tokenExchangeURL = auth.DefaultTokenExchangeURL
 
 // Make sure App implements required interfaces.
 var (
@@ -22,13 +28,37 @@ var (
 type App struct {
 	backend.CallResourceHandler
 
+	// Mints per-request access tokens for the App Platform proxy routes. Nil
+	// when the stack has no on-behalf-of credentials provisioned, in which case
+	// those routes report themselves unavailable instead of failing.
+	oboExchanger *auth.Exchanger
+
 	logger log.Logger
 }
 
 // NewApp creates a new App instance.
-func NewApp(_ context.Context, _ backend.AppInstanceSettings) (instancemgmt.Instance, error) {
+func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instancemgmt.Instance, error) {
+	logger := log.DefaultLogger.With("plugin", "grafana-pathfinder-app")
+
+	settings, err := ParseSettings(appSettings)
+	if err != nil {
+		logger.Warn("Failed to parse settings, using defaults", "error", err)
+		settings = &Settings{}
+	}
+
 	app := &App{
-		logger: log.DefaultLogger.With("plugin", "grafana-pathfinder-app"),
+		logger: logger,
+	}
+
+	// A stack without provisioned on-behalf-of credentials still loads: the App
+	// Platform proxy routes report capability=false and the rest of the plugin
+	// is unaffected.
+	oboExchanger, err := auth.New(settings.OBOToken, tokenExchangeURL)
+	app.oboExchanger = oboExchanger
+	if err != nil {
+		logger.Warn("On-behalf-of auth setup failed, App Platform proxy routes disabled", "error", err)
+	} else if oboExchanger == nil {
+		logger.Info("On-behalf-of auth not provisioned, App Platform proxy routes disabled")
 	}
 
 	mux := http.NewServeMux()

@@ -140,6 +140,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         enabled,
         pinned,
         jsonData: {
+          ...(jsonData || {}),
           ...getConfigWithDefaults(jsonData || {}),
           enableAssistantDevMode: newValue,
         },
@@ -223,10 +224,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     setIsSaving(true);
 
     try {
-      // Spread full config with defaults to preserve fields managed by other tabs,
-      // then override with this form's fields. Prevents data loss if jsonData is
-      // incomplete after a plugin version update.
+      // Preserve ALL existing jsonData fields first (including provisioned fields
+      // like stackId that aren't in DocsPluginConfig), then apply defaults for
+      // known fields, then override with this form's fields.
       const newJsonData = {
+        ...(jsonData || {}),
         ...getConfigWithDefaults(jsonData || {}),
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,

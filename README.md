@@ -75,12 +75,12 @@ Editors and admins can author custom interactive guides in two ways:
 
 ### Documentation
 
-- **[JSON Guide Format Reference](docs/developer/interactive-examples/json-guide-format.md)** — Complete reference for the JSON guide structure and all block types (markdown, image, video, section, conditional, interactive, multistep, guided, code-block, terminal, terminal-connect, grot-guide, quiz, input, assistant)
+- **[JSON Guide Format Reference](docs/developer/interactive-examples/json-guide-format.md)** — Complete reference for the JSON guide structure and every block type, with a summary table and a per-type section
 - **[Interactive Types](docs/developer/interactive-examples/interactive-types.md)** — Action types (`highlight`, `button`, `formfill`, `navigate`, `hover`, `noop`, `popout`) and when to use each
 - **[Requirements Reference](docs/developer/interactive-examples/requirements-reference.md)** — Available requirements for controlling when interactive elements are accessible
 - **[Selectors Reference](docs/developer/interactive-examples/selectors-reference.md)** — How to target DOM elements with the enhanced selector engine and the resilience pipeline
 
-See the [JSON Guide Demo](src/bundled-interactives/json-guide-demo.json) for a complete example of all block types.
+See the [JSON Guide Demo](src/bundled-interactives/json-guide-demo/content.json) for a worked example of the most common block types.
 
 ## For developers
 

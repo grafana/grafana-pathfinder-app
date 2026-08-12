@@ -105,6 +105,36 @@ describe('json-parser — field-name alias acceptance', () => {
     expect(actions[0]).toMatchObject({ targetAction: 'highlight', refTarget: '.a' });
     expect(actions[1]).toMatchObject({ targetAction: 'button', refTarget: 'Save' });
   });
+
+  // A nested step that drops targetstate blind-clicks the toggle, which is the
+  // failure this field exists to prevent. Cover both container types.
+  it.each([
+    ['multistep', 'interactive-multi-step'],
+    ['guided', 'interactive-guided'],
+  ])('%s block: carries targetstate onto each inner step', (blockType, elementType) => {
+    const guide: JsonGuide = {
+      id: `${blockType}-targetstate`,
+      title: `${blockType} targetstate`,
+      blocks: [
+        {
+          type: blockType,
+          content: 'Sequence',
+          steps: [
+            { action: 'highlight', reftarget: '.toggle', targetstate: true },
+            { action: 'highlight', reftarget: '.custom', targetState: 'data-state:open' },
+            { action: 'button', reftarget: 'Save' },
+          ],
+        },
+      ],
+    } as unknown as JsonGuide;
+
+    const block = parseJsonGuide(guide).data!.elements.find((el) => el.type === elementType);
+    const actions = (block!.props as { internalActions: Array<{ targetState?: boolean | string }> }).internalActions;
+
+    expect(actions[0]!.targetState).toBe(true);
+    expect(actions[1]!.targetState).toBe('data-state:open');
+    expect(actions[2]!.targetState).toBeUndefined();
+  });
 });
 
 describe('json-parser — stable derived stepIds (closes #8 standalone instability)', () => {

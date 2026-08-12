@@ -29,6 +29,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop' | 'popout';
   refTarget: string;
   targetValue?: string;
+  targetState?: boolean | string;
   postVerify?: string;
   targetComment?: string;
   doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
@@ -85,6 +86,7 @@ export interface StepInfo {
   targetAction?: string; // Optional for multi-step and guided
   refTarget?: string; // Optional for multi-step and guided
   targetValue?: string;
+  targetState?: boolean | string;
   targetComment?: string; // Optional comment to show during execution
   requirements?: string;
   postVerify?: string;

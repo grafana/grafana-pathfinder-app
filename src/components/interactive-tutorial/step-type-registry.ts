@@ -102,6 +102,7 @@ export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
     targetAction: props.targetAction,
     refTarget: props.refTarget,
     targetValue: props.targetValue,
+    targetState: props.targetState,
     targetComment: props.targetComment,
     requirements: props.requirements,
     postVerify: props.postVerify,

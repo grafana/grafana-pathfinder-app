@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 
+import type { JsonBlock } from './json-guide.types';
 import { isValidRequirement, unknownRequirementMessage } from './requirements.types';
 
 // ============ COMPLETENESS MESSAGES ============
@@ -48,6 +49,21 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
     ctx.addIssue({ code: 'custom', message: unknownRequirementMessage(token) });
   }
 });
+
+/**
+ * Desired end state for a toggle target. `true`/`false` auto-detects the
+ * control's state signal; `"<attribute>:<value>"` names it explicitly.
+ */
+const TargetStateSchema = z
+  .string()
+  .optional()
+  .refine(
+    (value) => value === undefined || value === 'true' || value === 'false' || /^[a-zA-Z][\w-]*:.+$/.test(value.trim()),
+    { error: 'targetstate must be "true", "false", or "<attribute>:<value>" (e.g. "aria-expanded:true")' }
+  )
+  .describe(
+    'Desired end state for a toggle target. The step reads the control and only clicks when the state differs, so it is safe to re-run. Use "true"/"false" to auto-detect (aria-expanded, aria-pressed, checked, aria-checked, aria-selected), or "<attribute>:<value>" when the control exposes state some other way. Authoring a bare `true`/`false` is accepted: `normalizeJsonGuideAliases` coerces it to the string form before this schema runs, because the backend InteractiveGuide CRD cannot model a boolean-or-string field.'
+  );
 
 /**
  * Schema for safe URLs (http/https only).
@@ -140,6 +156,7 @@ export const JsonStepSchema = z
       .string()
       .optional()
       .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    targetstate: TargetStateSchema,
     requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
     tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
     description: z.string().optional().describe('Step description shown to the user'),
@@ -286,6 +303,7 @@ export const JsonInteractiveBlockSchema = z
       .string()
       .optional()
       .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    targetstate: TargetStateSchema,
     content: z
       .string()
       .min(1, 'Interactive content is required')
@@ -1028,17 +1046,31 @@ export type InferredJsonQuizChoice = z.infer<typeof JsonQuizChoiceSchema>;
 // ============ KNOWN FIELDS FOR UNKNOWN FIELD DETECTION ============
 
 /**
+ * Non-block registry keys — nested shapes that are validated positionally
+ * (`steps[]`, `choices[]`) or are not blocks at all (the guide root, the
+ * package manifest).
+ */
+type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_manifest' | '_conditionalSectionConfig';
+
+/**
  * Known fields for each block type.
  * Used by unknown-fields.ts to detect unknown fields for forward compatibility warnings.
- * Keep in sync with the schemas above.
+ *
+ * The `satisfies` clause is the ratchet: this registry must be **total** over
+ * `JsonBlock['type']`. A block type with no entry here is invisible to
+ * `detectUnknownFields`, which silently returns no warnings for it — so a
+ * typo'd optional field would pass `validate --strict`. The public type stays
+ * `Record<string, …>` so callers can index with an unvalidated `block.type`.
  */
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   _guide: new Set(['schemaVersion', 'id', 'title', 'blocks']),
   _step: new Set([
+    'id',
     'action',
     'reftarget',
 
     'targetvalue',
+    'targetstate',
     'requirements',
     'tooltip',
     'description',
@@ -1063,6 +1095,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'reftarget',
 
     'targetvalue',
+    'targetstate',
     'content',
     'tooltip',
     'requirements',
@@ -1178,6 +1211,25 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'hint',
     'authorNote',
   ]),
+  challenge: new Set([
+    'type',
+    'id',
+    'mode',
+    'title',
+    'brief',
+    'vmTemplate',
+    'vmScenario',
+    'vmApp',
+    'setupCommands',
+    'setupScript',
+    'successCriteria',
+    'hintLevels',
+    'failureMessage',
+    'requirements',
+    'objectives',
+    'skippable',
+    'authorNote',
+  ]),
   'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),
   'snippet-ref': new Set(['type', 'id', 'snippetId', 'authorNote']),
   _manifest: new Set([
@@ -1200,29 +1252,12 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'targeting',
     'testEnvironment',
   ]),
-};
+} satisfies Record<JsonBlock['type'] | KnownFieldsMetaKey, ReadonlySet<string>>;
 
 /**
- * All valid block type names.
- * Useful for validation and error messages.
+ * All valid block type names. Derived from `KNOWN_FIELDS` so the two cannot
+ * disagree; the CLI registry-completeness test anchors here.
  */
-export const VALID_BLOCK_TYPES = new Set([
-  'markdown',
-  'html',
-  'image',
-  'video',
-  'interactive',
-  'multistep',
-  'guided',
-  'section',
-  'collapsible',
-  'conditional',
-  'quiz',
-  'input',
-  'assistant',
-  'terminal',
-  'terminal-connect',
-  'code-block',
-  'grot-guide',
-  'snippet-ref',
-]);
+export const VALID_BLOCK_TYPES: ReadonlySet<string> = new Set(
+  Object.keys(KNOWN_FIELDS).filter((key) => !key.startsWith('_'))
+);

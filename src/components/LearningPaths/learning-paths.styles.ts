@@ -167,6 +167,11 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       cursor: 'pointer',
       userSelect: 'none',
     }),
+    // For a header with nothing to disclose: no click affordance to imply one.
+    headerStatic: css({
+      cursor: 'default',
+      userSelect: 'auto',
+    }),
     content: css({
       flex: 1,
       minWidth: 0,
@@ -223,8 +228,14 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       transition: 'all 0.2s ease',
       whiteSpace: 'nowrap',
 
-      '&:hover': {
+      '&:hover:not(:disabled)': {
         backgroundColor: theme.colors.primary.shade,
+      },
+      // Launch is single-flight, so every card's action is disabled while one is
+      // preparing — without this they stay fully lit and look clickable.
+      '&:disabled': {
+        opacity: 0.6,
+        cursor: 'not-allowed',
       },
     }),
     resetButton: css({
@@ -323,10 +334,19 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       paddingTop: theme.spacing(1),
     }),
     guideList: css({
+      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
+    }),
+  };
+};
+
+export const getGuideListStyles = (theme: GrafanaTheme2) => {
+  const colors = getColorPalette(theme);
+
+  return {
+    list: css({
       display: 'flex',
       flexDirection: 'column',
       gap: theme.spacing(0.5),
-      padding: `0 ${theme.spacing(1.5)} ${theme.spacing(1.5)}`,
     }),
     guideItem: css({
       display: 'flex',
@@ -360,6 +380,34 @@ export const getLearningPathCardStyles = (theme: GrafanaTheme2) => {
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
+    }),
+  };
+};
+
+// ============================================================================
+// COVER-PAGE TABLE OF CONTENTS STYLES
+// ============================================================================
+
+export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
+  return {
+    container: css({
+      margin: `${theme.spacing(2)} 0`,
+      padding: theme.spacing(2),
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+    }),
+    heading: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      margin: `0 0 ${theme.spacing(1.5)}`,
+      fontSize: theme.typography.h5.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+    }),
+    headingIcon: css({
+      color: theme.colors.text.secondary,
     }),
   };
 };

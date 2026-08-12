@@ -6,6 +6,7 @@
 
 import { StorageKeys } from '../../lib/storage-keys';
 
+import { DEFAULT_GUIDE_TITLE } from './editor-chrome-status';
 import type { BlockType, BlockTypeMetadata } from './types';
 
 /**
@@ -116,7 +117,7 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     icon: '🏆',
     grafanaIcon: 'shield-exclamation',
     name: 'Challenge',
-    description: 'CTF-style task in a Coda VM with progressive hints',
+    description: 'Hands-on task with progressive hints and a check-my-work button',
   },
   'code-block': {
     type: 'code-block',
@@ -139,46 +140,24 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Snippet',
     description: 'Reuse a published snippet by reference (always loads the latest)',
   },
+  assistant: {
+    type: 'assistant',
+    icon: '✨',
+    grafanaIcon: 'ai',
+    name: 'Assistant',
+    description: 'AI-customizable container (authored via markdown block customization)',
+  },
 };
 
 /**
- * Ordered list of block types for the palette.
- * Note: 'html' is intentionally excluded - it's only supported for legacy content.
- */
-export const BLOCK_TYPE_ORDER: BlockType[] = [
-  'markdown',
-  'image',
-  'video',
-  'section',
-  'collapsible',
-  'conditional',
-  'interactive',
-  'multistep',
-  'guided',
-  'terminal',
-  'terminal-connect',
-  'challenge',
-  'code-block',
-  'quiz',
-  'input',
-  'grot-guide',
-  'snippet-ref',
-];
-
-/**
- * Palette groupings — drives the section headers in `BlockPalette`.
- * Order is preserved; types within each group keep their `BLOCK_TYPE_ORDER`
- * relative ordering.
+ * Palette groupings — drives the section headers in `BlockPalette`, and the
+ * single source of palette membership and ordering.
  *
  * - **Content** — passive, author-authored material the user reads.
  * - **Interactive** — blocks that require user action or input at runtime.
  * - **Structure** — containers and special-purpose framing blocks.
  */
-export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
-  id: 'content' | 'interactive' | 'structure' | 'reusable';
-  label: string;
-  types: BlockType[];
-}> = [
+export const BLOCK_TYPE_GROUPS = [
   {
     id: 'content',
     label: 'Content',
@@ -187,7 +166,7 @@ export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
   {
     id: 'interactive',
     label: 'Interactive',
-    types: ['interactive', 'multistep', 'guided', 'input', 'quiz', 'terminal', 'terminal-connect'],
+    types: ['interactive', 'multistep', 'guided', 'input', 'quiz', 'terminal', 'terminal-connect', 'challenge'],
   },
   {
     id: 'structure',
@@ -199,7 +178,34 @@ export const BLOCK_TYPE_GROUPS: ReadonlyArray<{
     label: 'Reusable',
     types: ['snippet-ref'],
   },
-] as const;
+] as const satisfies ReadonlyArray<{
+  id: 'content' | 'interactive' | 'structure' | 'reusable';
+  label: string;
+  types: readonly BlockType[];
+}>;
+
+/**
+ * Block types deliberately absent from the palette groups.
+ *
+ * - `html` is legacy-only; authors should use markdown.
+ * - `assistant` is authored by toggling AI customization on a markdown block,
+ *   not as a standalone palette entry.
+ */
+export const PALETTE_EXCLUDED_BLOCK_TYPES = ['html', 'assistant'] as const satisfies readonly BlockType[];
+
+type GroupedBlockType = (typeof BLOCK_TYPE_GROUPS)[number]['types'][number];
+type UngroupedBlockType = Exclude<BlockType, GroupedBlockType | (typeof PALETTE_EXCLUDED_BLOCK_TYPES)[number]>;
+
+/**
+ * `BlockPalette` renders by mapping `BLOCK_TYPE_GROUPS`, so a block type in
+ * neither a group nor the exclusion list is absent from the palette silently.
+ */
+const _palettePartitionIsTotal: UngroupedBlockType extends never
+  ? true
+  : ['block types missing from BLOCK_TYPE_GROUPS and PALETTE_EXCLUDED_BLOCK_TYPES:', UngroupedBlockType] = true;
+void _palettePartitionIsTotal;
+
+export const BLOCK_TYPE_ORDER: BlockType[] = BLOCK_TYPE_GROUPS.flatMap((group) => group.types);
 
 /**
  * Local storage key for persisting editor state.
@@ -224,7 +230,7 @@ export const BACKEND_TRACKING_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_BACKEND_TRA
  */
 export const DEFAULT_GUIDE_METADATA = {
   id: 'new-guide',
-  title: 'New guide',
+  title: DEFAULT_GUIDE_TITLE,
 };
 
 /**
@@ -249,6 +255,28 @@ export const POPOUT_TARGET_MODES = [
   { value: 'floating', label: 'Undock (move to floating window)' },
   { value: 'sidebar', label: 'Dock (return to sidebar)' },
 ] as const;
+
+/**
+ * Desired end state options for toggle targets, shared by the top-level
+ * interactive block form and the nested step editor.
+ */
+export const TARGET_STATE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'Click unconditionally' },
+  { value: 'true', label: 'On — expanded, pressed or checked' },
+  { value: 'false', label: 'Off — collapsed, unpressed or unchecked' },
+];
+
+/**
+ * Author-typed target state → the authored value, with `''` meaning unset.
+ *
+ * Stays a string. The editor already holds the value as one (the select above
+ * emits `'true'`/`'false'`), and `targetstate` is persisted as a string so the
+ * backend InteractiveGuide CRD can carry it — that schema cannot model a
+ * boolean-or-string field, and a raw boolean would be rejected on write.
+ */
+export function parseAuthoredTargetState(value: string): string | undefined {
+  return value.trim() || undefined;
+}
 
 /**
  * Video provider options

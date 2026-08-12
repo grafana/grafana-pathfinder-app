@@ -24,6 +24,9 @@ npm run server
 # Run all tests, no coverage (CI mode - agents should use this for focused runs)
 npm run test:ci
 
+# Validate the contract-evolution review gate and disposition policy
+npm run test:review-contract
+
 # Run tests in watch mode (for local development)
 npm test
 
@@ -94,6 +97,10 @@ mage test
 
 # Lint Go code
 mage lint
+
+# Regenerate the Go/TypeScript contract goldens under pkg/plugin/testdata/contract
+# (see docs/design/BACKEND_PROXY_PATTERN.md §10)
+go test ./pkg/plugin -run TestContract -update
 ```
 
 ## Additional per-platform backend builds
