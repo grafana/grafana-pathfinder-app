@@ -275,7 +275,7 @@ export const CodeBlockStep = forwardRef<
       'interactive-step',
       isCompleted && 'completed',
       (isInsertRunning || isShowRunning || isCurrentlyExecuting) && 'executing',
-      !isEnabled && styles.disabled,
+      !isEnabled && !isCompleted && styles.disabled,
       className,
     ]
       .filter(Boolean)

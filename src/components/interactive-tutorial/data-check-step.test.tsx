@@ -16,6 +16,8 @@ const mockRunQuery = jest.fn();
 const mockMarkStepCompleted = jest.fn();
 const mockResetStep = jest.fn();
 const mockCheckerResetStep = jest.fn();
+const mockCheckerMarkSkipped = jest.fn();
+let mockCheckerEnabled = true;
 const mockSetResponse = jest.fn();
 const mockDeleteResponse = jest.fn();
 let mockStoredCompleted = false;
@@ -52,7 +54,7 @@ jest.mock('@grafana/ui', () => ({
   ),
   Field: ({ children }: any) => <div>{children}</div>,
   Icon: ({ name }: any) => <span data-testid={`icon-${name}`} />,
-  useStyles2: () => new Proxy({}, { get: () => '' }),
+  useStyles2: () => new Proxy({}, { get: (_target: unknown, key: string) => key }),
 }));
 
 jest.mock('@grafana/runtime', () => ({
@@ -85,9 +87,10 @@ jest.mock('../../lib/analytics', () => ({
 
 jest.mock('../../requirements-manager', () => ({
   useStepChecker: () => ({
-    isEnabled: true,
+    isEnabled: mockCheckerEnabled,
     isChecking: false,
     explanation: null,
+    markSkipped: (...args: unknown[]) => mockCheckerMarkSkipped(...args),
     resetStep: (...args: unknown[]) => mockCheckerResetStep(...args),
   }),
   validateInteractiveRequirements: jest.fn(),
@@ -143,6 +146,8 @@ beforeEach(() => {
   mockMarkStepCompleted.mockReset();
   mockResetStep.mockReset();
   mockCheckerResetStep.mockReset();
+  mockCheckerMarkSkipped.mockReset();
+  mockCheckerEnabled = true;
   mockSetResponse.mockReset();
   mockDeleteResponse.mockReset();
   mockStoredCompleted = false;
@@ -473,6 +478,28 @@ describe('DataCheckStep', () => {
       renderStep();
 
       expect(screen.getByText('Skipped')).toBeInTheDocument();
+    });
+
+    // Skipping drives the checker to a terminal state, so `isEnabled` goes
+    // false on the very step that now renders Redo. Blanketing the container
+    // in the disabled style there leaves Redo visible but unclickable.
+    it('stays interactive once completed, even with the checker disabled', () => {
+      mockStoredCompleted = true;
+      mockStoredReason = 'skipped';
+      mockCheckerEnabled = false;
+
+      renderStep();
+
+      expect(screen.getByTestId('data-check-step-check-1')).not.toHaveClass('disabled');
+      expect(screen.getByTestId('interactive-redo-check-1')).toBeInTheDocument();
+    });
+
+    it('keeps the disabled blanket on an unmet, incomplete step', () => {
+      mockCheckerEnabled = false;
+
+      renderStep();
+
+      expect(screen.getByTestId('data-check-step-check-1')).toHaveClass('disabled');
     });
   });
 

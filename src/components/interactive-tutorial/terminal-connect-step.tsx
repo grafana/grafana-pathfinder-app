@@ -204,7 +204,7 @@ export const TerminalConnectStep = forwardRef<
       'interactive-step',
       isCompleted && 'completed',
       (isTerminalConnecting || isCurrentlyExecuting) && 'executing',
-      !isEnabled && styles.disabled,
+      !isEnabled && !isCompleted && styles.disabled,
       className,
     ]
       .filter(Boolean)

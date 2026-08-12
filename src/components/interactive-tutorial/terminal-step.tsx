@@ -259,7 +259,7 @@ export const TerminalStep = forwardRef<
       'interactive-step',
       isCompleted && 'completed',
       (isExecRunning || isCurrentlyExecuting) && 'executing',
-      !isEnabled && styles.disabled,
+      !isEnabled && !isCompleted && styles.disabled,
       className,
     ]
       .filter(Boolean)

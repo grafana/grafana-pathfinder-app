@@ -445,7 +445,15 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
     stepState = STEP_STATES.ERROR;
   }
 
-  const containerClasses = ['interactive-step', isCompleted && 'completed', !isEnabled && styles.disabled, className]
+  // A completed step renders only its badge and Redo. Blanketing it in
+  // `pointer-events: none` — which Skip does, by driving the checker to a
+  // terminal state — leaves Redo visible but unclickable.
+  const containerClasses = [
+    'interactive-step',
+    isCompleted && 'completed',
+    !isEnabled && !isCompleted && styles.disabled,
+    className,
+  ]
     .filter(Boolean)
     .join(' ');
 
