@@ -13,9 +13,9 @@
  *
  * The one thing blocking that line today is our own `.npmrc`:
  * `min-release-age=3` refuses any version published less than three days ago,
- * and 1.1.1 went out on **2026-08-12 ~15:20 UTC**, so `npm ci` rejects it
- * until **2026-08-15 ~15:20 UTC**. Adding the dependency before then makes the
- * repo uninstallable, which is why the hand copy is still here.
+ * and 1.1.1 went out at **2026-08-12T15:26:59Z**, so `npm ci` rejects it until
+ * **2026-08-15T15:26:59Z**. Adding the dependency before then makes the repo
+ * uninstallable, which is why the hand copy is still here.
  *
  * The package is a superset of this file: it also owns the Grafana Live
  * protocol — frame unwrapping, the mandatory `{ useSocket: true }` publish, and
