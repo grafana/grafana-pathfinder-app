@@ -30,15 +30,30 @@ export function getTerminalConnectionStatus(): ConnectionStatus {
 /**
  * Read the active Coda session id from outside React. Exec calls are
  * session-scoped, and the requirement checker runs outside the React tree.
+ *
+ * Gated on `connected`: exec reuses the stream's SSH client, so an id read out
+ * of a terminal that is not attached can only buy a doomed request.
  */
 export function getTerminalSessionId(): string | null {
-  return _moduleTerminalSessionId;
+  return _moduleTerminalStatus === 'connected' ? _moduleTerminalSessionId : null;
 }
 
 export interface TerminalContextValue {
   status: ConnectionStatus;
   /** Active Coda session id, or null when disconnected */
   sessionId: string | null;
+  /** Last connection error reported by the terminal, or null. */
+  error: string | null;
+  /**
+   * Whether a TerminalPanel has registered itself, so `connect` and
+   * `openTerminal` actually reach the Live hook.
+   *
+   * The provider mounts unconditionally but the panel is gated (dev mode,
+   * `enableCodaTerminal`, and the Coda plugin being installed), so a present
+   * context is not a working terminal. Callers that would otherwise wait on a
+   * connection must check this or they wait forever.
+   */
+  isTerminalRegistered: boolean;
   connect: (vmOpts?: TerminalVMOptions) => void;
   disconnect: () => void;
   /** Send a command string to the terminal (appends newline to execute) */
@@ -53,6 +68,7 @@ export interface TerminalContextValue {
   _register: (opts: {
     status: ConnectionStatus;
     sessionId: string | null;
+    error: string | null;
     connect: (vmOpts?: TerminalVMOptions) => void;
     disconnect: () => void;
     sendCommand: (command: string) => Promise<void>;
@@ -79,6 +95,8 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   // Store registered hook values from TerminalPanel
   const [registeredStatus, setRegisteredStatus] = useState<ConnectionStatus>('disconnected');
   const [registeredSessionId, setRegisteredSessionId] = useState<string | null>(null);
+  const [registeredError, setRegisteredError] = useState<string | null>(null);
+  const [isTerminalRegistered, setIsTerminalRegistered] = useState(false);
   const registeredConnectRef = useRef<((vmOpts?: TerminalVMOptions) => void) | null>(null);
   const registeredDisconnectRef = useRef<(() => void) | null>(null);
   const registeredSendCommandRef = useRef<((command: string) => Promise<void>) | null>(null);
@@ -107,12 +125,15 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     (opts: {
       status: ConnectionStatus;
       sessionId: string | null;
+      error: string | null;
       connect: (vmOpts?: TerminalVMOptions) => void;
       disconnect: () => void;
       sendCommand: (command: string) => Promise<void>;
     }) => {
       setRegisteredStatus(opts.status);
       setRegisteredSessionId(opts.sessionId);
+      setRegisteredError(opts.error);
+      setIsTerminalRegistered(true);
       registeredConnectRef.current = opts.connect;
       registeredDisconnectRef.current = opts.disconnect;
       registeredSendCommandRef.current = opts.sendCommand;
@@ -194,6 +215,8 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   const value: TerminalContextValue = {
     status: registeredStatus,
     sessionId: registeredSessionId,
+    error: registeredError,
+    isTerminalRegistered,
     connect,
     disconnect,
     sendCommand,

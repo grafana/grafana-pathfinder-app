@@ -69,8 +69,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
   useEffect(() => {
-    terminalCtx?._register({ status, sessionId, connect, disconnect, sendCommand });
-  }, [terminalCtx, status, sessionId, connect, disconnect, sendCommand]);
+    terminalCtx?._register({ status, sessionId, error, connect, disconnect, sendCommand });
+  }, [terminalCtx, status, sessionId, error, connect, disconnect, sendCommand]);
 
   // Sync: when something calls context.openTerminal, the context sets its
   // isExpanded flag. Mirror that into the panel's local state so we actually

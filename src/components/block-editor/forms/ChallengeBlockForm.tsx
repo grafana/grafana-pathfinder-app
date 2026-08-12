@@ -30,6 +30,7 @@ import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonChallengeBlock, JsonChallengeHint } from '../../../types/json-guide.types';
 import { sampleAppsUrl, alloyScenariosUrl } from '../../../integrations/coda/coda-api';
+import { useCodaTerminalGate } from '../../../integrations/coda/useCodaAvailability.hook';
 
 const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
   { label: 'Default (vm-aws)', value: '' },
@@ -218,6 +219,11 @@ export function ChallengeBlockForm({
   const initial = initialData && isChallengeBlock(initialData) ? initialData : null;
 
   const [mode, setMode] = useState<ChallengeMode>(() => inferInitialMode(initial));
+  // Annotated, not disabled: a guide is often authored on a stack that has no
+  // Coda for learners who do, so blocking the mode would block legitimate work.
+  // The author only needs to know their own preview will not run.
+  const codaGate = useCodaTerminalGate();
+  const codaUnavailableHere = codaGate === 'disabled' || codaGate === 'plugin-missing';
   const [title, setTitle] = useState(initial?.title ?? '');
   const [brief, setBrief] = useState(initial?.brief ?? '');
   const [vmTemplate, setVmTemplate] = useState(initial?.vmTemplate ?? '');
@@ -338,7 +344,9 @@ export function ChallengeBlockForm({
           description={
             mode === 'standard'
               ? 'Verifies against the learner’s own Grafana via a Pathfinder requirement. No VM, no terminal.'
-              : 'Provisions a Coda VM with a terminal; verifies with a shell command (coda-exit-zero).'
+              : codaUnavailableHere
+                ? 'Provisions a Coda VM with a terminal; verifies with a shell command (coda-exit-zero). This Grafana cannot run Coda challenges — the sandbox terminal is off or the Coda app plugin is missing — so the block will report that instead of starting. It still works for learners on a stack where Coda is enabled.'
+                : 'Provisions a Coda VM with a terminal; verifies with a shell command (coda-exit-zero).'
           }
         >
           <RadioButtonGroup options={MODE_OPTIONS} value={mode} onChange={(v) => setMode(v)} fullWidth />

@@ -114,6 +114,14 @@ must all pass for the panel to render:
 The block editor palette needs the latter two. `CodaBackendStatus` on the configuration page reports
 which gate is unmet and links to `/plugins/grafana-coda-app`.
 
+**A present `TerminalContext` is not a working terminal.** `TerminalProvider` mounts unconditionally
+in `docs-panel.tsx` while `TerminalPanel` — the only caller of `_register`, and therefore the only
+source of a real `connect` — is behind all three gates. Anything that would _wait_ on a connection
+must check `isTerminalRegistered` first, or it waits forever on a `connect` that is still `null`
+(issue #1541). The challenge block does both: `useCodaTerminalGate()` for the two operator-owned
+gates, which are stable enough to render up front, and `isTerminalRegistered` at click time and in
+its status watcher, because the panel loads lazily and is not registered on first paint.
+
 ## Configuration
 
 Pathfinder keeps exactly one Coda setting:

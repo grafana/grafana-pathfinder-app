@@ -67,6 +67,12 @@ fields:     [ { name: "event", type: string } ]
 `execInSession(sessionId, { command, readyFile, timeoutMs })`. There is no "current session"
 fallback — a missing session id is a "not ready" state, not an error to surface raw.
 
+Knowing when a session has died is the **consumer's** job now: `cleanup()` in
+`useTerminalLive.hook.ts` clears `sessionId`, and every terminating path that does not call it clears
+the id itself. `getTerminalSessionId()` additionally returns `null` unless the status is `connected`.
+Do not reintroduce a retained id — exec reuses the stream's SSH client, so it can only be spent on a
+session the backend has forgotten.
+
 `readyFile` gates the command behind that file existing. That is a **UI-race guard, not a security
 boundary** — the learner has full shell access to the same VM. Use `PATHFINDER_READY_FILE` from
 `coda-api.ts` rather than writing the literal: the setup write and the check must agree.
@@ -85,8 +91,15 @@ is resolved at runtime:
 | `useCodaPluginAvailable()` | `isAppPluginEnabled('grafana-coda-app')`, cached per page load |
 | `isDevMode` | terminal panel only |
 
-`docs-panel.tsx` needs all three; `BlockPalette.tsx` needs the first two. Never assume the plugin is
-present — every failure path must degrade quietly.
+`docs-panel.tsx` needs all three; `BlockPalette.tsx` needs the first two. `useCodaTerminalGate()`
+bundles the first two as one verdict (`checking` / `disabled` / `plugin-missing` / `configured`) for
+callers that need to *say* which one is unmet. Never assume the plugin is present — every failure path
+must degrade quietly.
+
+**`useTerminalContext()` returning non-null does not mean there is a terminal.** `TerminalProvider`
+mounts unconditionally; `TerminalPanel` registers the real `connect` only behind the three gates, so
+an unregistered context has `connect === null` and `openTerminal` silently no-ops. Anything that waits
+on a connection must check `isTerminalRegistered` or it hangs (issue #1541).
 
 ## Key files
 
@@ -94,9 +107,9 @@ present — every failure path must degrade quietly.
 |------|---------|
 | `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `sessionChannelAddress` |
 | `src/integrations/coda/useTerminalLive.hook.ts` | Live subscription, publish, animated provision progress bar, 35 s handshake timeout |
-| `src/integrations/coda/TerminalContext.tsx` | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` for the requirements checker |
+| `src/integrations/coda/TerminalContext.tsx` | Shared context (`isTerminalRegistered`, `error`) + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` for the requirements checker |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |
-| `src/integrations/coda/useCodaAvailability.hook.ts` | Runtime plugin detection |
+| `src/integrations/coda/useCodaAvailability.hook.ts` | Runtime plugin detection and `useCodaTerminalGate()` |
 | `src/integrations/coda/terminal-storage.ts` | localStorage/sessionStorage keys for panel state, scrollback, last VM opts |
 | `src/requirements-manager/checks/coda.ts` | `coda-exit-zero:` check (always gated on `PATHFINDER_READY_FILE`) |
 | `src/components/AppConfig/CodaBackendStatus.tsx` | Reports backend availability; links to the Coda plugin's own config page |

@@ -4,11 +4,16 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
 import { resetInteractiveCounters } from './interactive-section';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import { useCodaTerminalGate } from '../../integrations/coda/useCodaAvailability.hook';
 import { execInSession } from '../../integrations/coda/coda-api';
 import { checkPostconditions } from '../../requirements-manager';
 
 jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: jest.fn(),
+}));
+
+jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
+  useCodaTerminalGate: jest.fn(),
 }));
 
 // Only the request is mocked; toCodaError and the error classification are
@@ -30,6 +35,7 @@ jest.mock('../../global-state/completion-store', () => ({
 }));
 
 const mockedUseTerminalContext = useTerminalContext as jest.MockedFunction<typeof useTerminalContext>;
+const mockedUseCodaTerminalGate = useCodaTerminalGate as jest.MockedFunction<typeof useCodaTerminalGate>;
 const mockedExecInSession = execInSession as jest.MockedFunction<typeof execInSession>;
 const mockedCheckPostconditions = checkPostconditions as jest.MockedFunction<typeof checkPostconditions>;
 
@@ -47,6 +53,8 @@ interface MockCtxOverrides {
   status?: 'disconnected' | 'connecting' | 'connected' | 'error';
   openTerminal?: jest.Mock;
   sessionId?: string | null;
+  error?: string | null;
+  isTerminalRegistered?: boolean;
 }
 
 function mockTerminalCtx(overrides: MockCtxOverrides = {}): { openTerminal: jest.Mock } {
@@ -54,6 +62,8 @@ function mockTerminalCtx(overrides: MockCtxOverrides = {}): { openTerminal: jest
   mockedUseTerminalContext.mockReturnValue({
     status: overrides.status ?? 'disconnected',
     sessionId: overrides.sessionId === undefined ? SESSION_ID : overrides.sessionId,
+    error: overrides.error ?? null,
+    isTerminalRegistered: overrides.isTerminalRegistered ?? true,
     connect: jest.fn(),
     disconnect: jest.fn(),
     sendCommand: jest.fn(),
@@ -75,6 +85,7 @@ const baseProps = {
 beforeEach(() => {
   jest.clearAllMocks();
   resetChallengeCounter();
+  mockedUseCodaTerminalGate.mockReturnValue('configured');
 });
 
 describe('ChallengeBlock', () => {
@@ -428,6 +439,91 @@ describe('ChallengeBlock', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  // Issue #1541: TerminalProvider mounts unconditionally while TerminalPanel —
+  // which registers the real connect — is gated, so a coda-mode challenge used
+  // to sit on "Provisioning challenge VM…" forever with only a Cancel button.
+  describe('Coda availability gating', () => {
+    it('says why instead of offering Start when the sandbox terminal is turned off', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('disabled');
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByText(/sandbox terminal is turned off/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    it('says why instead of offering Start when the Coda app plugin is absent', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('plugin-missing');
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByText(/coda app plugin is not installed/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    it('leaves standard mode alone when Coda is unavailable', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('plugin-missing');
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} mode="standard" successCriteria="has-dashboard-named:X" />);
+
+      expect(screen.queryByText(/sandbox not available/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+
+    it('fails fast rather than hanging when the context is present but no panel registered', async () => {
+      const { openTerminal } = mockTerminalCtx({ isTerminalRegistered: false });
+
+      render(<ChallengeBlock {...baseProps} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/sandbox terminal is not available here/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/provisioning challenge vm/i)).not.toBeInTheDocument();
+      expect(openTerminal).not.toHaveBeenCalled();
+    });
+
+    it('fails once an in-flight availability probe resolves to unavailable', async () => {
+      mockedUseCodaTerminalGate.mockReturnValue('checking');
+      mockTerminalCtx({ isTerminalRegistered: false });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      // Still probing: the block waits rather than guessing.
+      expect(screen.getByText(/provisioning challenge vm/i)).toBeInTheDocument();
+
+      mockedUseCodaTerminalGate.mockReturnValue('plugin-missing');
+      mockTerminalCtx({ isTerminalRegistered: false });
+      rerender(<ChallengeBlock {...baseProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/coda app plugin is not installed/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/provisioning challenge vm/i)).not.toBeInTheDocument();
+    });
+
+    it('surfaces the terminal’s own error instead of a generic retry hint', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({
+        status: 'error',
+        error: 'Coda is not registered. An administrator must complete registration.',
+      });
+      rerender(<ChallengeBlock {...baseProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/coda is not registered/i)).toBeInTheDocument();
       });
     });
   });

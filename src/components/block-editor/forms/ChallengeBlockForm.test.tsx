@@ -10,6 +10,7 @@ import { of } from 'rxjs';
 import { getBackendSrv } from '@grafana/runtime';
 
 import { ChallengeBlockForm } from './ChallengeBlockForm';
+import { useCodaTerminalGate } from '../../../integrations/coda/useCodaAvailability.hook';
 import type { JsonChallengeBlock } from '../../../types/json-guide.types';
 import type { JsonBlock } from '../types';
 
@@ -17,7 +18,12 @@ jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
 }));
 
+jest.mock('../../../integrations/coda/useCodaAvailability.hook', () => ({
+  useCodaTerminalGate: jest.fn(),
+}));
+
 const mockedGetBackendSrv = getBackendSrv as jest.MockedFunction<typeof getBackendSrv>;
+const mockedUseCodaTerminalGate = useCodaTerminalGate as jest.MockedFunction<typeof useCodaTerminalGate>;
 
 /**
  * Wire the backendSrv so /sample-apps and /alloy-scenarios respond with a
@@ -80,6 +86,7 @@ beforeAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockBackend();
+  mockedUseCodaTerminalGate.mockReturnValue('configured');
 });
 
 describe('ChallengeBlockForm', () => {
@@ -118,6 +125,16 @@ describe('ChallengeBlockForm', () => {
       renderForm({ vmTemplate: 'vm-aws-alloy-scenario' });
       const scenariosCall = fetch.mock.calls.find((c) => c[0].url.endsWith('/alloy-scenarios'));
       expect(scenariosCall).toBeDefined();
+    });
+
+    // Issue #1539: without `retry`, Grafana's global handler reads a Coda 401 as
+    // the caller's own session expiring and fires a spurious /api/login/ping
+    // plus a replayed request.
+    it('opts out of Grafana global 401 handling on the catalog fetch', () => {
+      const fetch = mockBackend();
+      renderForm({ vmTemplate: 'vm-aws-sample-app' });
+      const sampleAppsCall = fetch.mock.calls.find((c) => c[0].url.endsWith('/sample-apps'));
+      expect(sampleAppsCall![0]).toMatchObject({ retry: 1 });
     });
 
     it('does NOT fetch either catalog for the default template', () => {
@@ -389,6 +406,32 @@ describe('ChallengeBlockForm', () => {
       expect(submitted.vmTemplate).toBeUndefined();
       expect(submitted.vmApp).toBeUndefined();
       expect(submitted.setupScript).toBeUndefined();
+    });
+  });
+
+  // Issue #1541: an author whose own stack cannot run Coda needs to know their
+  // preview will not start. Annotated rather than disabled — a guide is often
+  // authored on a stack without Coda for learners on a stack with it.
+  describe('Coda availability annotation', () => {
+    it('warns in the mode description when Coda cannot run here', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('plugin-missing');
+      renderForm({ mode: 'coda' } as Partial<JsonChallengeBlock>);
+
+      expect(screen.getByText(/this grafana cannot run coda challenges/i)).toBeInTheDocument();
+    });
+
+    it('keeps the Coda VM option selectable so cross-stack authoring still works', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('disabled');
+      renderForm({ mode: 'standard' } as Partial<JsonChallengeBlock>);
+
+      const codaRadio = screen.getByRole('radio', { name: /coda vm/i });
+      expect(codaRadio).not.toBeDisabled();
+    });
+
+    it('says nothing when Coda is configured', () => {
+      renderForm({ mode: 'coda' } as Partial<JsonChallengeBlock>);
+
+      expect(screen.queryByText(/this grafana cannot run coda challenges/i)).not.toBeInTheDocument();
     });
   });
 });

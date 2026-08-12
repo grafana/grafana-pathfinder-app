@@ -18,6 +18,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import { useCodaTerminalGate, type CodaTerminalGate } from '../../integrations/coda/useCodaAvailability.hook';
 import {
   execInSession,
   isRoleForbidden,
@@ -42,6 +43,41 @@ const EMPTY_SETUP_COMMANDS = Object.freeze([]) as unknown as string[];
 
 export type ChallengeState =
   'idle' | 'connecting' | 'preparing' | 'ready' | 'checking' | 'solved' | 'failed-check' | 'setup-failed';
+
+/**
+ * The operator-owned reason a coda-mode challenge cannot run, if there is one.
+ * Stable from first paint, so it is safe to render instead of the Start button.
+ */
+function codaConfigGateMessage(gate: CodaTerminalGate): string | null {
+  switch (gate) {
+    case 'disabled':
+      return 'This challenge runs in a Coda sandbox VM, and the sandbox terminal is turned off for this Grafana. An administrator can enable it in Pathfinder’s configuration.';
+    case 'plugin-missing':
+      return 'This challenge runs in a Coda sandbox VM, and the Coda app plugin is not installed or not enabled in this Grafana.';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Why a Start click cannot succeed, or null if it can (or if the availability
+ * probe has not resolved yet, in which case the caller should keep waiting).
+ *
+ * `terminalWired` is the load-bearing half: `TerminalProvider` mounts
+ * unconditionally while `TerminalPanel` — which registers the real `connect` —
+ * is gated, so without this check `openTerminal` silently no-ops and the block
+ * waits on a connection that can never arrive.
+ */
+function codaUnavailableMessage(gate: CodaTerminalGate, terminalWired: boolean): string | null {
+  const configReason = codaConfigGateMessage(gate);
+  if (configReason) {
+    return configReason;
+  }
+  if (gate === 'checking') {
+    return null;
+  }
+  return terminalWired ? null : 'The sandbox terminal is not available here, so this challenge cannot start.';
+}
 
 export interface ChallengeHintProps {
   text: string;
@@ -176,6 +212,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 }) => {
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
+  const codaGate = useCodaTerminalGate();
 
   const [generatedStepId] = useState(() => {
     challengeCounter += 1;
@@ -353,6 +390,15 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     if (state !== 'connecting') {
       return;
     }
+    // Fail fast rather than wait on a connection that cannot arrive. Checked
+    // here as well as on the click so that an availability probe still in
+    // flight at click time resolves into an error, never a hang.
+    const unavailable = codaUnavailableMessage(codaGate, !!terminalCtx?.isTerminalRegistered);
+    if (unavailable) {
+      setErrorDetail(unavailable);
+      setState('setup-failed');
+      return;
+    }
     // Don't react to the status that was already current when the user
     // clicked Start/Try again — wait for it to change in response to our
     // openTerminal call. Otherwise a stale 'error' from a prior failed
@@ -363,15 +409,23 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     if (terminalCtx?.status === 'connected') {
       runSetup();
     } else if (terminalCtx?.status === 'error') {
-      setErrorDetail('Could not start the challenge VM. Please try again.');
+      // The terminal's own message names the actual cause — unregistered
+      // backend, role floor, quota — so prefer it over a generic retry hint.
+      setErrorDetail(terminalCtx.error || 'Could not start the challenge VM. Please try again.');
       setState('setup-failed');
     }
-  }, [state, terminalCtx?.status, runSetup]);
+  }, [state, terminalCtx?.status, terminalCtx?.error, terminalCtx?.isTerminalRegistered, codaGate, runSetup]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleStart = useCallback(() => {
     if (!terminalCtx) {
       setErrorDetail('Terminal integration is not available.');
+      setState('setup-failed');
+      return;
+    }
+    const unavailable = codaUnavailableMessage(codaGate, terminalCtx.isTerminalRegistered);
+    if (unavailable) {
+      setErrorDetail(unavailable);
       setState('setup-failed');
       return;
     }
@@ -390,7 +444,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     if (terminalCtx.status === 'connected') {
       runSetup();
     }
-  }, [terminalCtx, vmTemplate, vmScenario, vmApp, runSetup]);
+  }, [terminalCtx, codaGate, vmTemplate, vmScenario, vmApp, runSetup]);
 
   const handleCheckMyWork = useCallback(async () => {
     setState('checking');
@@ -434,6 +488,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     // cancelRequestedRef on the next iteration and calls resetToIdle itself.
   }, [state, resetToIdle]);
 
+  // Standard mode never touches Coda, so it must never see a Coda gate.
+  const configGateMessage = mode === 'coda' ? codaConfigGateMessage(codaGate) : null;
+
   // The spinner banner only renders for *in-progress* states. Terminal
   // states like failed-check get their own non-animated affordance — see
   // the failed-check render below.
@@ -475,6 +532,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         </Alert>
       )}
 
+      {state === 'idle' && configGateMessage && (
+        <Alert title="Sandbox not available" severity="warning">
+          {configGateMessage}
+        </Alert>
+      )}
+
       {statusBanner && (
         <div className={styles.status}>
           <Icon name="fa fa-spinner" />
@@ -490,7 +553,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       )}
 
       <div className={styles.actions}>
-        {state === 'idle' && (
+        {state === 'idle' && !configGateMessage && (
           <Button variant="primary" icon="play" onClick={handleStart}>
             Start challenge
           </Button>
