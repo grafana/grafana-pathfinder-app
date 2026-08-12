@@ -35,7 +35,7 @@ import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
 import { fetchAppPlatformLearningPaths, type AppPlatformPathsResult } from './app-platform-paths';
 import { markGuideCompleted as coordinatorMarkGuideCompleted } from './badge-coordinator';
 
-const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: {} };
+const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: Object.create(null) };
 
 // ============================================================================
 // CONSTANTS
@@ -204,7 +204,10 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return appPlatformData.guideMetadata[guideId];
       }
       const { guideMetadata } = getPathsData();
-      return guideMetadata[guideId] || { title: guideId, estimatedMinutes: 5 };
+      // Bundled JSON keeps Object.prototype, so gate on own keys — otherwise a
+      // guide id of `toString` resolves to a function and renders untitled.
+      const staticEntry = Object.hasOwn(guideMetadata, guideId) ? guideMetadata[guideId] : undefined;
+      return staticEntry || { title: guideId, estimatedMinutes: 5 };
     },
     [dynamicGuideData, appPlatformData]
   );

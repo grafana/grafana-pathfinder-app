@@ -72,6 +72,35 @@ describe('fetchCustomGuideRepository', () => {
     expect(result[1]!.manifest?.repository).toBe('app-platform');
   });
 
+  // The proxy serializes the stored type verbatim with no validation and no
+  // omitempty, so the wire can carry "" or anything else. Drop it at the
+  // boundary rather than let CustomGuideManifest.type overclaim.
+  it.each(['', 'PATH', 'milestone', 'journey ', 'path\x00'])(
+    'drops the unrecognized manifest type %p',
+    async (wireType) => {
+      mockGet.mockResolvedValue({
+        capability: { available: true },
+        guides: [{ id: 'fe-guide', status: 'published', manifest: { type: wireType, description: 'kept' } }],
+      });
+
+      const result = await fetchCustomGuideRepository('stacks-123');
+
+      expect(result[0]!.manifest?.type).toBeUndefined();
+      expect(result[0]!.manifest?.description).toBe('kept');
+    }
+  );
+
+  it.each(['guide', 'path', 'journey'])('keeps the recognized manifest type %p', async (wireType) => {
+    mockGet.mockResolvedValue({
+      capability: { available: true },
+      guides: [{ id: 'fe-guide', status: 'published', manifest: { type: wireType } }],
+    });
+
+    const result = await fetchCustomGuideRepository('stacks-123');
+
+    expect(result[0]!.manifest?.type).toBe(wireType);
+  });
+
   it('normalizes before caching, so a cached read is stamped too', async () => {
     mockGet.mockResolvedValue({
       capability: { available: true },

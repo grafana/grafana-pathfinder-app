@@ -84,8 +84,11 @@ export const CustomGuideAuthorWireSchema = z.strictObject({
  * - `type` is `string`, not `PackageType`. Go declares
  *   `Type string \`json:"type"\`` with no `omitempty`, so a manifest with no
  *   type emits `"type": ""` — not a member of `'guide' | 'path' | 'journey'`.
- * - `depends` is an array of arbitrary JSON, not `DependencyList`. Go declares
- *   `Depends []json.RawMessage`, which forwards whatever the CR holds.
+ *   The client narrows it at the boundary, mapping anything else to `undefined`.
+ * - `depends` is an array of arbitrary JSON. Go declares
+ *   `Depends []json.RawMessage`, which forwards whatever the CR holds; the
+ *   client declares no `depends` field, so nothing reads it as a typed
+ *   `DependencyList`.
  *
  * @coupling Go struct: customGuideManifest
  */

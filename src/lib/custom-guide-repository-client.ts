@@ -16,16 +16,21 @@ import { PLUGIN_BACKEND_URL } from '../constants';
 import { isBackendApiAvailable } from '../utils/fetchBackendGuides';
 import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
-import type { Author, DependencyList, PackageType } from '../types/package.types';
+import { PackageTypeSchema } from '../types/package.schema';
+import type { Author, PackageType } from '../types/package.types';
 
+/**
+ * `type` is optional because the Go proxy forwards the stored string verbatim
+ * with no validation and no omitempty — `requestCatalogue` drops anything that
+ * isn't a PackageType rather than let the declaration overclaim the wire.
+ */
 export interface CustomGuideManifest {
-  type: PackageType;
+  type?: PackageType;
   repository?: string;
   description?: string;
   milestones?: string[];
   category?: string;
   author?: Author;
-  depends?: DependencyList;
 }
 
 export interface CustomGuideRepositoryEntry {
@@ -49,9 +54,12 @@ interface CustomGuideCapability {
   reason?: string;
 }
 
+type WireManifest = Omit<CustomGuideManifest, 'type'> & { type?: string };
+type WireEntry = Omit<CustomGuideRepositoryEntry, 'manifest'> & { manifest?: WireManifest };
+
 interface CustomGuideRepositoryResponse {
   capability: CustomGuideCapability;
-  guides: CustomGuideRepositoryEntry[];
+  guides: WireEntry[];
   asOf?: string;
 }
 
@@ -93,6 +101,31 @@ function reportCatalogueFetchFailure(err: unknown): void {
   }
 }
 
+function narrowPackageType(type: string | undefined): PackageType | undefined {
+  const parsed = PackageTypeSchema.safeParse(type);
+  return parsed.success ? parsed.data : undefined;
+}
+
+// Every entry from this proxy is an App Platform package, but the CR manifest
+// leaves `repository` omitempty (and authoring tooling may stamp the CDN
+// default). Force it here — the launch surfaces thread this manifest into
+// packageInfo, and a missing/wrong value fails the `app-platform` gate in
+// package-content.ts (fabricated public websiteUrl) and mislabels the durable
+// completion source (completion-identity.ts guideSource). `type` is narrowed in
+// the same pass: the proxy forwards it unvalidated, so anything that isn't a
+// PackageType becomes undefined, which the `'path'`/`'journey'` comparisons
+// downstream already treat as "not a path".
+function shapeEntry(entry: WireEntry): CustomGuideRepositoryEntry {
+  const { manifest, ...rest } = entry;
+  if (!manifest) {
+    return rest;
+  }
+  return {
+    ...rest,
+    manifest: { ...manifest, type: narrowPackageType(manifest.type), repository: APP_PLATFORM_REPOSITORY },
+  };
+}
+
 async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
   const response = await getBackendSrv().get<CustomGuideRepositoryResponse>(
     CUSTOM_GUIDE_REPOSITORY_URL,
@@ -111,15 +144,7 @@ async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
     return [];
   }
   const guides = Array.isArray(response.guides) ? response.guides : [];
-  // Every entry from this proxy is an App Platform package, but the CR manifest
-  // leaves `repository` omitempty (and authoring tooling may stamp the CDN
-  // default). Force it here — the launch surfaces thread this manifest into
-  // packageInfo, and a missing/wrong value fails the `app-platform` gate in
-  // package-content.ts (fabricated public websiteUrl) and mislabels the durable
-  // completion source (completion-identity.ts guideSource).
-  return guides.map((entry) =>
-    entry.manifest ? { ...entry, manifest: { ...entry.manifest, repository: APP_PLATFORM_REPOSITORY } } : entry
-  );
+  return guides.map(shapeEntry);
 }
 
 /**
