@@ -201,12 +201,14 @@ export const INTERACTIVE_QUIZ_SCHEMA: StepTypeSchema = {
     // action — without this the runner would credit the answer for them.
     pausesSectionRun: true,
   }),
-  // Quiz omits isCurrentlyExecuting + onStepReset and uses the simple
-  // `disabled` formula.
+  // Quiz omits isCurrentlyExecuting (the runner never drives it) and uses the
+  // simple `disabled` formula. `onStepReset` is what its Redo button needs to
+  // re-lock the steps after it.
   toEnhancedProps: (ctx) => ({
     stepId: ctx.stepInfo.stepId,
     isEligibleForChecking: ctx.isEligibleForChecking,
     onStepComplete: ctx.onStepComplete,
+    onStepReset: ctx.onStepReset,
     stepIndex: ctx.documentStepIndex,
     totalSteps: ctx.documentTotalSteps,
     sectionId: ctx.sectionId,
@@ -271,13 +273,14 @@ export const CODE_BLOCK_STEP_SCHEMA: StepTypeSchema = {
     isMultiStep: true,
     isGuided: false,
   }),
-  // CodeBlock has isCurrentlyExecuting (like a plain step) but no
-  // onStepReset (like a quiz). Distinct shape — keep it explicit.
+  // CodeBlock has isCurrentlyExecuting (like a plain step) on top of the
+  // quiz surface. Distinct shape — keep it explicit.
   toEnhancedProps: (ctx) => ({
     stepId: ctx.stepInfo.stepId,
     isEligibleForChecking: ctx.isEligibleForChecking,
     isCurrentlyExecuting: ctx.isCurrentlyExecuting,
     onStepComplete: ctx.onStepComplete,
+    onStepReset: ctx.onStepReset,
     stepIndex: ctx.documentStepIndex,
     totalSteps: ctx.documentTotalSteps,
     sectionId: ctx.sectionId,
@@ -327,12 +330,8 @@ export const DATA_CHECK_STEP_SCHEMA: StepTypeSchema = {
     // run it against, and completing it for them would defeat the gate.
     pausesSectionRun: true,
   }),
-  // Quiz's surface plus `onStepReset`, which the step's Redo button needs to
-  // clear the section's tail.
-  toEnhancedProps: (ctx) => ({
-    ...INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps(ctx),
-    onStepReset: ctx.onStepReset,
-  }),
+  // Mirrors Quiz: the block owns its own state machine.
+  toEnhancedProps: INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps,
 };
 
 /** Ordered array of every tracked step-type schema. The consumer in

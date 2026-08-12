@@ -16,6 +16,8 @@ import { useStepChecker, validateInteractiveRequirements } from '../../requireme
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { useStepRedo, useStepResetSignal } from './hooks/use-step-reset';
+import { StepRedoButton } from './step-redo-button';
 import { logger } from '../../lib/logging';
 
 export interface TerminalStepProps {
@@ -35,7 +37,7 @@ export interface TerminalStepProps {
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
-  onStepReset?: () => void;
+  onStepReset?: (stepId: string) => void;
 
   // Step position tracking
   stepIndex?: number;
@@ -160,6 +162,16 @@ export const TerminalStep = forwardRef<
       isEligibleForChecking,
       skippable,
       sectionId, // Lets the checker write skip / objectives transitions to the store
+    });
+
+    const clearLocalState = useCallback(() => setCopyFeedback(false), []);
+    useStepResetSignal({ resetTrigger, clearLocalState, resetChecker: checker.resetStep });
+    const handleRedo = useStepRedo({
+      stepId: renderedStepId,
+      sectionId,
+      onStepReset,
+      clearLocalState,
+      resetChecker: checker.resetStep,
     });
 
     const markComplete = useCallback(() => {
@@ -331,6 +343,12 @@ export const TerminalStep = forwardRef<
           <div className={styles.completedBadge}>
             <Icon name="check-circle" size="sm" />
             <span>Done</span>
+            <StepRedoButton
+              stepId={renderedStepId}
+              onClick={handleRedo}
+              disabled={disabled}
+              title="Run the command again"
+            />
           </div>
         )}
       </div>

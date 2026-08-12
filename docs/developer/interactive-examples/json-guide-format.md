@@ -398,6 +398,8 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 
 "Do section" runs what it can and hands back control for the rest. It performs `interactive` steps itself; `multistep`, `code-block`, `terminal`, and `terminal-connect` blocks run themselves through their own executor; and `guided`, `quiz`, `challenge`, and `data-check` blocks stop the run, because only the learner can answer them. After a stop the button reads "Resume". A section whose remaining blocks are all in that last group has nothing for "Do section" to run, so the learner works through it block by block — worth keeping in mind when a section opens with a quiz or a data check.
 
+Every completed step in a section offers "Redo", and redoing one also un-completes the steps after it: they were reached on the strength of that step, so the section walks the learner forward from there again. "Reset section" does the same for the whole section. A skipped step resets the same way a completed one does.
+
 #### Collapsible Block
 
 Hides its nested blocks behind a toggle. Use it to gate solutions or example outputs so learners attempt an exercise before revealing the answer. Unlike a section, it is purely presentational and tracks no completion state.
@@ -1151,7 +1153,7 @@ Give every data check an explicit `id`. Completion state is keyed off a hash tha
 
 The `"ai"` and `"either"` modes need the Grafana Assistant to be available in the instance. There is no separate admin flag. The assistant cannot pick the data source — it is fixed to the learner's selection — and it can run at most three queries per check. On an instance without the assistant, `"either"` falls back to the query check, and `"ai"` — which has no fallback — says so in place of the buttons. Prefer `"either"` over `"ai"` for that reason.
 
-Inside a section, "Do section" stops when it reaches a data check rather than completing it: the runner has no data source pick to run the check against, and answering it on the learner's behalf would defeat the point. The learner runs the check, then clicks "Resume" to continue — the same handoff a `guided` block gets. A passed check can be re-run: the completed step offers "Redo", which clears it and, in a section, re-locks the steps that follow.
+Inside a section, "Do section" stops when it reaches a data check rather than completing it: the runner has no data source pick to run the check against, and answering it on the learner's behalf would defeat the point. The learner runs the check, then clicks "Resume" to continue — the same handoff a `guided` block gets.
 
 #### Snippet reference block
 

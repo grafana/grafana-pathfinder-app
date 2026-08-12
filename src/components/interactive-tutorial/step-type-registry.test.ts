@@ -196,10 +196,11 @@ describe('step-type-registry', () => {
       expect(INTERACTIVE_QUIZ_SCHEMA.refTarget).toBe('none');
     });
 
-    it('toEnhancedProps omits isCurrentlyExecuting and onStepReset', () => {
-      const props = INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps(makeCtx({ isCurrentlyExecuting: true }));
+    it('toEnhancedProps omits isCurrentlyExecuting but carries onStepReset for Redo', () => {
+      const ctx = makeCtx({ isCurrentlyExecuting: true });
+      const props = INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps(ctx);
       expect('isCurrentlyExecuting' in props).toBe(false);
-      expect('onStepReset' in props).toBe(false);
+      expect(props.onStepReset).toBe(ctx.onStepReset);
     });
 
     it('disabled formula is simple — ignores sectionRequirementsPassed and isRunning', () => {
@@ -242,11 +243,12 @@ describe('step-type-registry', () => {
       });
     });
 
-    it('toEnhancedProps includes isCurrentlyExecuting but omits onStepReset', () => {
-      const props = CODE_BLOCK_STEP_SCHEMA.toEnhancedProps(makeCtx({ isCurrentlyExecuting: true }));
+    it('toEnhancedProps includes isCurrentlyExecuting and onStepReset', () => {
+      const ctx = makeCtx({ isCurrentlyExecuting: true });
+      const props = CODE_BLOCK_STEP_SCHEMA.toEnhancedProps(ctx);
       expect('isCurrentlyExecuting' in props).toBe(true);
       expect(props.isCurrentlyExecuting).toBe(true);
-      expect('onStepReset' in props).toBe(false);
+      expect(props.onStepReset).toBe(ctx.onStepReset);
     });
 
     it('uses the orchestrated disabled formula (mirrors plain step)', () => {
@@ -284,12 +286,8 @@ describe('step-type-registry', () => {
       expect(ext).toMatchObject({ targetAction: 'data-check', pausesSectionRun: true });
     });
 
-    it('toEnhancedProps is the quiz surface plus onStepReset (the Redo button needs it)', () => {
-      const ctx = makeCtx();
-      expect(DATA_CHECK_STEP_SCHEMA.toEnhancedProps(ctx)).toEqual({
-        ...INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps(ctx),
-        onStepReset: ctx.onStepReset,
-      });
+    it('shares the quiz toEnhancedProps formula', () => {
+      expect(DATA_CHECK_STEP_SCHEMA.toEnhancedProps).toBe(INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps);
     });
   });
 

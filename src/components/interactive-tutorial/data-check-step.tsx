@@ -19,7 +19,7 @@ import { getDataSourceSrv } from '@grafana/runtime';
 import { getNormalizedDatasourceType, type SupportedDatasourceType } from '../../constants/datasource-types';
 import { testIds } from '../../constants/testIds';
 import { useGuideResponsesOptional } from '../../docs-retrieval';
-import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
 import {
   DATA_CHECK_RESULT_EVENT,
@@ -33,6 +33,8 @@ import { logger } from '../../lib/logging';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import type { DataCheckMode } from '../../types/json-guide.types';
+import { useStepRedo, useStepResetSignal } from './hooks/use-step-reset';
+import { StepRedoButton } from './step-redo-button';
 import { STEP_STATES, type StepStateValue } from './step-states';
 
 export interface DataCheckStepProps {
@@ -256,37 +258,23 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
     clearAiTimeout();
   }, [clearAiTimeout]);
 
-  // Section reset clears the verdict but deliberately keeps the data source
-  // pick — re-picking after every reset would be hostile. The section has
-  // already cleared the store for the tail, so the FSM reset must not write
-  // (parity with quiz / interactive-step).
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: clear the verdict when the parent section increments resetTrigger */
-  useEffect(() => {
-    if (!resetTrigger || resetTrigger <= 0) {
-      return;
-    }
+  const clearVerdict = useCallback(() => {
     cancelInFlight();
     setCheckState('idle');
     setFailureDetail('');
-    checker.resetStep?.({ skipStoreWrite: true });
-  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }, [cancelInFlight]);
 
-  // Redo: put the step back to unchecked so the user can run it again,
-  // matching the Redo affordance on ordinary steps. In a section the reset
-  // has to go through the parent so following steps re-lock too.
-  const handleRedo = useCallback(() => {
-    cancelInFlight();
-    setCheckState('idle');
-    setFailureDetail('');
-    if (onStepReset) {
-      onStepReset(renderedStepId);
-      checker.resetStep?.({ skipStoreWrite: true });
-      return;
-    }
-    resetStep(renderedStepId, sectionId);
-    checker.resetStep?.();
-  }, [cancelInFlight, onStepReset, renderedStepId, sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A reset clears the verdict but deliberately keeps the data source pick —
+  // re-picking after every reset would be hostile.
+  useStepResetSignal({ resetTrigger, clearLocalState: clearVerdict, resetChecker: checker.resetStep });
+
+  const handleRedo = useStepRedo({
+    stepId: renderedStepId,
+    sectionId,
+    onStepReset,
+    clearLocalState: clearVerdict,
+    resetChecker: checker.resetStep,
+  });
 
   useEffect(() => () => cancelInFlight(), [cancelInFlight]);
 
@@ -572,16 +560,12 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
         <div className={styles.completedBadge}>
           <Icon name={completionReason === 'skipped' ? 'forward' : 'check-circle'} size="sm" />
           <span>{completionReason === 'skipped' ? 'Skipped' : 'Data available'}</span>
-          <Button
-            size="sm"
-            variant="secondary"
-            fill="text"
+          <StepRedoButton
+            stepId={renderedStepId}
             onClick={handleRedo}
             disabled={disabled}
-            data-testid={testIds.dataCheck.redoButton(renderedStepId)}
-          >
-            ↻ Redo
-          </Button>
+            title="Run the check again"
+          />
         </div>
       )}
     </div>

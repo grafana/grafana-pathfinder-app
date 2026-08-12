@@ -192,10 +192,12 @@ const SURFACE = {
   InteractiveStep: [...COMMON_PROPS, 'isCurrentlyExecuting', 'onStepReset'],
   InteractiveMultiStep: [...COMMON_PROPS, 'isCurrentlyExecuting', 'onStepReset'],
   InteractiveGuided: [...COMMON_PROPS, 'isCurrentlyExecuting', 'onStepReset'],
-  InteractiveQuiz: [...COMMON_PROPS],
-  TerminalStep: [...COMMON_PROPS],
-  TerminalConnectStep: [...COMMON_PROPS],
-  CodeBlockStep: [...COMMON_PROPS, 'isCurrentlyExecuting'],
+  // Every completable step carries `onStepReset`: its Redo has to re-lock the
+  // steps after it, which only the section can do.
+  InteractiveQuiz: [...COMMON_PROPS, 'onStepReset'],
+  TerminalStep: [...COMMON_PROPS, 'onStepReset'],
+  TerminalConnectStep: [...COMMON_PROPS, 'onStepReset'],
+  CodeBlockStep: [...COMMON_PROPS, 'isCurrentlyExecuting', 'onStepReset'],
 };
 
 function lastCapture(type: keyof typeof SURFACE): any {
@@ -252,7 +254,7 @@ describe('InteractiveSection step-type symmetry — Phase 0 tripwire', () => {
     expectSurface('InteractiveGuided');
   });
 
-  it('InteractiveQuiz receives the quiz enhanced-prop surface (no isCurrentlyExecuting, no onStepReset)', async () => {
+  it('InteractiveQuiz receives the quiz enhanced-prop surface (onStepReset but no isCurrentlyExecuting)', async () => {
     render(
       <InteractiveSection id="t4" title="t4" autoCollapse={false}>
         <InteractiveQuiz />
@@ -261,10 +263,10 @@ describe('InteractiveSection step-type symmetry — Phase 0 tripwire', () => {
     await waitFor(() => expect(captures.get('InteractiveQuiz')).toBeDefined());
     expectSurface('InteractiveQuiz');
 
-    // Negative assertions — quiz must NOT receive these props
+    // Negative assertion — the runner never drives a quiz, so it has no
+    // notion of one "currently executing".
     const props = lastCapture('InteractiveQuiz');
     expect('isCurrentlyExecuting' in props).toBe(false);
-    expect('onStepReset' in props).toBe(false);
   });
 
   it('TerminalStep receives the terminal enhanced-prop surface', async () => {
@@ -277,7 +279,6 @@ describe('InteractiveSection step-type symmetry — Phase 0 tripwire', () => {
     expectSurface('TerminalStep');
     const props = lastCapture('TerminalStep');
     expect('isCurrentlyExecuting' in props).toBe(false);
-    expect('onStepReset' in props).toBe(false);
   });
 
   it('TerminalConnectStep receives the terminal-connect enhanced-prop surface', async () => {
@@ -290,10 +291,9 @@ describe('InteractiveSection step-type symmetry — Phase 0 tripwire', () => {
     expectSurface('TerminalConnectStep');
     const props = lastCapture('TerminalConnectStep');
     expect('isCurrentlyExecuting' in props).toBe(false);
-    expect('onStepReset' in props).toBe(false);
   });
 
-  it('CodeBlockStep receives the code-block enhanced-prop surface (isCurrentlyExecuting but no onStepReset)', async () => {
+  it('CodeBlockStep receives the code-block enhanced-prop surface (isCurrentlyExecuting and onStepReset)', async () => {
     render(
       <InteractiveSection id="t7" title="t7" autoCollapse={false}>
         <CodeBlockStep />
@@ -301,8 +301,6 @@ describe('InteractiveSection step-type symmetry — Phase 0 tripwire', () => {
     );
     await waitFor(() => expect(captures.get('CodeBlockStep')).toBeDefined());
     expectSurface('CodeBlockStep');
-    const props = lastCapture('CodeBlockStep');
-    expect('onStepReset' in props).toBe(false);
   });
 
   it('stepId numbering increments per-type position within the section', async () => {

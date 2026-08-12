@@ -381,6 +381,55 @@ describe('ChallengeBlock', () => {
       expect(openTerminal).not.toHaveBeenCalled();
     });
 
+    it('a section reset takes a solved challenge back to unsolved', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        error: [],
+      });
+
+      const props = { ...baseProps, mode: 'standard' as const, successCriteria: 'has-dashboard-named:My Dashboard' };
+      const { rerender } = render(<ChallengeBlock {...props} resetTrigger={0} />);
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+      await waitFor(() => expect(screen.getByText(/challenge solved/i)).toBeInTheDocument());
+
+      rerender(<ChallengeBlock {...props} resetTrigger={1} />);
+
+      // `'solved'` is local state, so a store-only reset used to leave the
+      // challenge showing itself as solved forever.
+      expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+
+    it('routes Redo through the section so the following steps re-lock', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        error: [],
+      });
+      const onStepReset = jest.fn();
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          successCriteria="has-dashboard-named:My Dashboard"
+          stepId="sec-challenge-1"
+          onStepComplete={jest.fn()}
+          onStepReset={onStepReset}
+          sectionId="sec"
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+      await waitFor(() => expect(screen.getByText(/challenge solved/i)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId('interactive-redo-sec-challenge-1'));
+
+      expect(onStepReset).toHaveBeenCalledWith('sec-challenge-1');
+    });
+
     it('passes the success criterion verbatim to checkPostconditions (no coda-exit-zero wrapping)', async () => {
       mockTerminalCtx({ status: 'disconnected' });
       mockedCheckPostconditions.mockResolvedValue({

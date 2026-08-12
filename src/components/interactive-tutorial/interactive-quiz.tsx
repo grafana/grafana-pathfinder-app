@@ -1,12 +1,14 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { css, cx, keyframes } from '@emotion/css';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 
 import { useStepChecker } from '../../requirements-manager';
+import { useStepRedo, useStepResetSignal } from './hooks/use-step-reset';
+import { StepRedoButton } from './step-redo-button';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
-import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 // ============ Types ============
@@ -47,6 +49,7 @@ export interface InteractiveQuizProps {
   stepId?: string;
   isEligibleForChecking?: boolean;
   onStepComplete?: (stepId: string) => void;
+  onStepReset?: (stepId: string) => void;
   disabled?: boolean;
   resetTrigger?: number;
 
@@ -121,6 +124,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   stepId: providedStepId,
   isEligibleForChecking = true,
   onStepComplete,
+  onStepReset,
   disabled = false,
   resetTrigger,
   stepIndex,
@@ -160,11 +164,6 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     },
     [isStandalone, stepId, sectionId]
   );
-  const persistReset = useCallback(() => {
-    if (isStandalone) {
-      resetStep(stepId, sectionId);
-    }
-  }, [isStandalone, stepId, sectionId]);
   const [lastResult, setLastResult] = useState<'none' | 'correct' | 'incorrect'>('none');
   const [showHint, setShowHint] = useState<string | null>(null);
   const [isRevealed, setIsRevealed] = useState(false);
@@ -172,7 +171,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
   // Display order. Computed ONCE on mount via lazy init so a parent re-render
   // cannot reorder choices mid-quiz. Re-shuffled only when the parent triggers
-  // a reset (see effect below). Selection, completion, hints, analytics, and
+  // a reset. Selection, completion, hints, analytics, and
   // test IDs are all id-keyed, so display-order changes never alter quiz state.
   const [displayChoices, setDisplayChoices] = useState<QuizChoice[]>(() =>
     shuffle ? shuffleQuizChoices(choices) : choices
@@ -194,27 +193,25 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     sectionId, // Lets the checker write skip transitions to the store
   });
 
-  // Handle reset trigger from parent section.
-  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset quiz state when the parent section increments resetTrigger */
-  useEffect(() => {
-    if (resetTrigger && resetTrigger > 0) {
-      setSelectedIds(new Set());
-      setAttempts(0);
-      persistReset();
-      setLastResult('none');
-      setShowHint(null);
-      setIsRevealed(false);
-      // Re-shuffle on retry so the user can't lean on remembered positions.
-      setDisplayChoices(shuffle ? shuffleQuizChoices(choices) : choices);
-      // Section already wrote the store via `resetSteps(tailStepIds)`;
-      // suppress the per-child store write so the broadcast doesn't fan
-      // out and wipe preceding completions (parity with interactive-step).
-      if (checkerResetStep) {
-        checkerResetStep({ skipStoreWrite: true });
-      }
-    }
-  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
-  /* eslint-enable react-hooks/set-state-in-effect */
+  const clearLocalState = useCallback(() => {
+    setSelectedIds(new Set());
+    setAttempts(0);
+    setLastResult('none');
+    setShowHint(null);
+    setIsRevealed(false);
+    // Re-shuffle on retry so the user can't lean on remembered positions.
+    setDisplayChoices(shuffle ? shuffleQuizChoices(choices) : choices);
+  }, [shuffle, choices]);
+
+  useStepResetSignal({ resetTrigger, clearLocalState, resetChecker: checkerResetStep });
+
+  const handleRedo = useStepRedo({
+    stepId,
+    sectionId,
+    onStepReset,
+    clearLocalState,
+    resetChecker: checkerResetStep,
+  });
 
   // Compute effective completion state
   const isCompleted = storedCompleted || stepCompleted;
@@ -559,6 +556,10 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
           >
             Skip
           </Button>
+        )}
+
+        {isCompleted && (
+          <StepRedoButton stepId={stepId} onClick={handleRedo} disabled={disabled} title="Answer this again" />
         )}
       </div>
     </div>

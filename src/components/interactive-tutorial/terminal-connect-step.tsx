@@ -14,6 +14,8 @@ import { css } from '@emotion/css';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { useStepRedo } from './hooks/use-step-reset';
+import { StepRedoButton } from './step-redo-button';
 
 export interface TerminalConnectStepProps {
   buttonText?: string;
@@ -33,7 +35,7 @@ export interface TerminalConnectStepProps {
   isCurrentlyExecuting?: boolean;
   onStepComplete?: (stepId: string) => void;
   resetTrigger?: number;
-  onStepReset?: () => void;
+  onStepReset?: (stepId: string) => void;
 
   stepIndex?: number;
   totalSteps?: number;
@@ -121,6 +123,10 @@ export const TerminalConnectStep = forwardRef<
     const { completed: storedCompleted } = useStepCompletion(renderedStepId, sectionId);
     const isStandalone = !onStepComplete;
     const isCompleted = storedCompleted;
+
+    // No requirements checker here, and nothing local stands in for
+    // completion — clearing the store entry is the whole reset.
+    const handleRedo = useStepRedo({ stepId: renderedStepId, sectionId, onStepReset });
 
     const markComplete = useCallback(() => {
       if (isCompleted) {
@@ -247,6 +253,7 @@ export const TerminalConnectStep = forwardRef<
           <div className={styles.completedBadge}>
             <Icon name="check-circle" size="sm" />
             <span>Connected</span>
+            <StepRedoButton stepId={renderedStepId} onClick={handleRedo} title="Connect again" />
           </div>
         )}
       </div>

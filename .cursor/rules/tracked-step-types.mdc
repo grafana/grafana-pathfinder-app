@@ -45,7 +45,10 @@ Assume you're adding a `FooStep` component:
    | The component performs it (its `executeStep` handle does the work) | `refTarget: 'multiStepRefs'` + `isMultiStep: true`             | `multistep`, `terminal`, `terminal-connect`, `codeblock` |
    | Only the user can perform it                                    | `pausesSectionRun: true` — the runner stops, section offers "Resume" | `guided`, `quiz`, `challenge`, `data-check`     |
 
-   If the type should also reset like an ordinary step, include `onStepReset: ctx.onStepReset` in `toEnhancedProps` and render a Redo affordance (`DataCheckStep` is the smallest example).
+   Then wire the reset side, which is not optional — a step that ignores it keeps showing itself as completed or skipped after every reset, including "Reset section":
+
+   - Call `useStepResetSignal` (`hooks/use-step-reset.ts`) with `resetChecker: checker.resetStep` plus a `clearLocalState` that drops anything standing in for completion. The section clears the store for the affected steps itself and then bumps `resetTrigger`; the step's local state and its requirements FSM (whose terminal completed/skipped state also drives `isEnabled`) are the step's own to clear.
+   - Render `<StepRedoButton>` in the completed state, with `useStepRedo` for the handler. Redo is not per-step: it has to re-lock the following steps, which is why the handler goes through `onStepReset` when a section owns the step. `DataCheckStep` is the smallest example.
 
 6. **Registry site 2** — add `FooStep` to `INTERACTIVE_STEP_COMPONENT_TYPES` in `section-child-classifier.ts`. Add a test case in `section-child-classifier.test.tsx`.
 

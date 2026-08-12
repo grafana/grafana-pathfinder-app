@@ -481,7 +481,7 @@ describe('DataCheckStep', () => {
       mockStoredCompleted = true;
       renderStep();
 
-      await click('data-check-redo-check-1');
+      await click('interactive-redo-check-1');
 
       expect(mockResetStep).toHaveBeenCalledWith('check-1', undefined);
       expect(mockCheckerResetStep).toHaveBeenCalledWith();
@@ -492,7 +492,7 @@ describe('DataCheckStep', () => {
       const onStepReset = jest.fn();
       renderStep({ onStepComplete: jest.fn(), onStepReset, sectionId: 'section-1' });
 
-      await click('data-check-redo-check-1');
+      await click('interactive-redo-check-1');
 
       // The section owns the tail reset; a per-step store write here would
       // wipe the preceding steps the user kept.

@@ -22,6 +22,8 @@ import { css } from '@emotion/css';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { checkPostconditions } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { useStepRedo, useStepResetSignal } from './hooks/use-step-reset';
+import { StepRedoButton } from './step-redo-button';
 
 const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
 // /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The
@@ -69,6 +71,8 @@ export interface ChallengeBlockProps {
 
   stepId?: string;
   onStepComplete?: (stepId: string) => void;
+  onStepReset?: (stepId: string) => void;
+  resetTrigger?: number;
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
@@ -188,6 +192,8 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   failureMessage,
   stepId: providedStepId,
   onStepComplete,
+  onStepReset,
+  resetTrigger,
   sectionId,
 }) => {
   const styles = useStyles2(getStyles);
@@ -203,7 +209,8 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // brief and Check my work are visible immediately. Coda-mode challenges
   // start at idle so the learner clicks Start (which triggers terminal
   // open + setup script).
-  const [state, setState] = useState<ChallengeState>(mode === 'standard' ? 'ready' : 'idle');
+  const initialState: ChallengeState = mode === 'standard' ? 'ready' : 'idle';
+  const [state, setState] = useState<ChallengeState>(initialState);
   const [errorDetail, setErrorDetail] = useState<string>('');
   const [hintsRevealed, setHintsRevealed] = useState(0);
   // Setup progress (current step / total) — surfaced in the status banner so
@@ -250,6 +257,22 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setErrorDetail('');
     setState('idle');
   }, []);
+
+  // `'solved'` stands in for completion here, so a store-only reset would
+  // leave the challenge showing itself as solved. Hints go back too: a
+  // re-attempt starts from the same blank page the first one did.
+  const clearLocalState = useCallback(() => {
+    cancelRequestedRef.current = true;
+    setupStartedRef.current = false;
+    setSetupProgress(null);
+    setErrorDetail('');
+    setHintsRevealed(0);
+    setState(initialState);
+  }, [initialState]);
+
+  useStepResetSignal({ resetTrigger, clearLocalState });
+
+  const handleRedo = useStepRedo({ stepId, sectionId, onStepReset, clearLocalState });
 
   const runSetup = useCallback(async () => {
     if (setupStartedRef.current) {
@@ -465,6 +488,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         <div className={styles.brief}>{brief}</div>
         <div className={styles.solved}>
           <Icon name="check-circle" /> Challenge solved
+          <StepRedoButton stepId={stepId} onClick={handleRedo} title="Attempt this challenge again" />
         </div>
       </div>
     );
