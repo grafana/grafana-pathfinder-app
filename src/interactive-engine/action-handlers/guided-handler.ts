@@ -88,7 +88,8 @@ export class GuidedHandler {
     action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
-    timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout
+    timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout,
+    onActionCompleted?: () => void
   ): Promise<CompletionResult> {
     return withFaroUserAction(
       createInteractionName(UserInteraction.DoItButtonClick),
@@ -98,7 +99,7 @@ export class GuidedHandler {
         step_index: stepIndex,
         total_steps: totalSteps,
       },
-      () => this.runGuidedStep(action, stepIndex, totalSteps, timeout),
+      () => this.runGuidedStep(action, stepIndex, totalSteps, timeout, onActionCompleted),
       // Internal waits are bounded by `timeout`; the margin only catches a hung step.
       timeout + 10_000,
       { critical: true, outcomeFrom: outcomeFromCompletionResult }
@@ -109,7 +110,8 @@ export class GuidedHandler {
     action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
-    timeout: number
+    timeout: number,
+    onActionCompleted?: () => void
   ): Promise<CompletionResult> {
     // Clean up any stale listeners from previous cancelled sessions
     // This prevents interference when user cancels mid-session and restarts
@@ -159,7 +161,7 @@ export class GuidedHandler {
 
       // CRITICAL FIX: Attach listener BEFORE highlighting to avoid race condition
       // If we highlight first, fast users might click before the listener is ready
-      const completionPromise = this.createCompletionListener(action, targetElement, timeout);
+      const completionPromise = this.createCompletionListener(action, targetElement, timeout, onActionCompleted);
 
       // Create skip promise if step is skippable
       const skipPromise = action.isSkippable
@@ -636,7 +638,8 @@ export class GuidedHandler {
   private createCompletionListener(
     action: GuidedAction,
     targetElement: HTMLElement,
-    timeout: number
+    timeout: number,
+    onActionCompleted?: () => void
   ): Promise<CompletionResult> {
     // Create abort controller for cancellation
     this.currentAbortController = new AbortController();
@@ -662,7 +665,8 @@ export class GuidedHandler {
       signal,
       action.targetValue,
       action.formHint,
-      action.validateInput
+      action.validateInput,
+      onActionCompleted
     );
 
     // Create timeout promise
@@ -766,7 +770,8 @@ export class GuidedHandler {
     signal: AbortSignal,
     targetValue?: string,
     formHint?: string,
-    validateInput?: boolean
+    validateInput?: boolean,
+    onActionCompleted?: () => void
   ): Promise<CompletionResult> {
     switch (actionType) {
       case 'hover':
@@ -775,7 +780,7 @@ export class GuidedHandler {
       case 'highlight':
         // For guided mode, ALWAYS let clicks pass through naturally
         // We just want to detect that the user clicked, not block the action
-        return this.waitForClick(element, signal, false);
+        return this.waitForClick(element, signal, false, onActionCompleted);
       case 'formfill':
         // For formfill, monitor input changes with debounced validation
         return this.waitForFormfill(element, signal, targetValue, formHint, validateInput);
@@ -870,7 +875,8 @@ export class GuidedHandler {
   private async waitForClick(
     element: HTMLElement,
     signal: AbortSignal,
-    preventDefaultClick = false
+    preventDefaultClick = false,
+    onActionCompleted?: () => void
   ): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
       let isResolved = false; // Prevent double resolution
@@ -887,6 +893,13 @@ export class GuidedHandler {
           rectUpdateInterval = null;
         }
         resolve(result);
+      };
+      const complete = () => {
+        if (isResolved) {
+          return;
+        }
+        cleanup('completed');
+        onActionCompleted?.();
       };
 
       // Periodically verify element is still connected
@@ -913,7 +926,7 @@ export class GuidedHandler {
         const isTargetOrChild = element === clickedElement || element.contains(clickedElement);
 
         if (isTargetOrChild) {
-          cleanup('completed');
+          complete();
           return;
         }
 
@@ -937,7 +950,7 @@ export class GuidedHandler {
           if (element.isConnected) {
             element.click();
           }
-          cleanup('completed');
+          complete();
         }
       };
 

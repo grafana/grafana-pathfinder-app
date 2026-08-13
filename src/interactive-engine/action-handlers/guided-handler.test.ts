@@ -215,6 +215,33 @@ describe('GuidedHandler', () => {
       expect(result).toBe('completed');
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
     });
+
+    it('persists final click completion before the target replaces its DOM subtree', async () => {
+      document.body.innerHTML = '<main id="route"><button id="install">Install</button></main>';
+      const button = document.querySelector<HTMLButtonElement>('#install')!;
+      const eventOrder: string[] = [];
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      button.addEventListener('click', () => {
+        eventOrder.push('route changed');
+        document.querySelector('#route')?.remove();
+      });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        button.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#install' },
+        0,
+        1,
+        100,
+        () => eventOrder.push('completion persisted')
+      );
+
+      expect(result).toBe('completed');
+      expect(eventOrder).toEqual(['completion persisted', 'route changed']);
+      expect(button.isConnected).toBe(false);
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
   });
 
   describe('cancel', () => {
