@@ -58,7 +58,9 @@ export function GuideResponseProvider({ guideId, children }: GuideResponseProvid
       try {
         const loaded = await guideResponseStorage.getForGuide(guideId);
         if (!controller.signal.aborted) {
-          setResponses(loaded);
+          // A response written while the load was in flight is newer than what
+          // storage returned; replacing wholesale would drop it.
+          setResponses((prev) => ({ ...loaded, ...prev }));
           setIsLoading(false);
         }
       } catch {

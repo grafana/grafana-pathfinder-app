@@ -103,15 +103,29 @@ jest.mock('../../global-state/completion-store', () => ({
   STANDALONE_SECTION_ID: '__standalone__',
 }));
 
-jest.mock('../../docs-retrieval', () => ({
-  useGuideResponsesOptional: () => ({
-    getResponse: () => mockStoredResponse,
-    setResponse: (...args: unknown[]) => mockSetResponse(...args),
-    deleteResponse: (...args: unknown[]) => mockDeleteResponse(...args),
-    hasResponse: () => mockStoredResponse !== undefined,
-    isLoading: false,
-  }),
-}));
+// Stateful like the real provider: a write has to re-render, or nothing reading
+// the stored pick would ever see it.
+jest.mock('../../docs-retrieval', () => {
+  const react = require('react');
+  return {
+    useGuideResponsesOptional: () => {
+      const [stored, setStored] = react.useState(() => mockStoredResponse);
+      return {
+        getResponse: () => stored,
+        setResponse: (key: string, value: string) => {
+          mockSetResponse(key, value);
+          setStored(value);
+        },
+        deleteResponse: (key: string) => {
+          mockDeleteResponse(key);
+          setStored(undefined);
+        },
+        hasResponse: () => stored !== undefined,
+        isLoading: false,
+      };
+    },
+  };
+});
 
 jest.mock('../../integrations/assistant-integration/assistant-dev-mode', () => ({
   useIsAssistantAvailable: () => mockAssistantAvailable,
@@ -223,6 +237,24 @@ describe('DataCheckStep', () => {
     it('keeps the run button disabled until a data source is picked', () => {
       renderStep();
 
+      expect(screen.getByTestId('data-check-run-query-check-1')).toBeDisabled();
+    });
+
+    it('ignores a remembered pick that no longer exists', () => {
+      mockStoredResponse = 'deleted-ds';
+
+      renderStep();
+
+      expect(screen.getByLabelText(/Select a prometheus data source/i)).toHaveValue('');
+      expect(screen.getByTestId('data-check-run-query-check-1')).toBeDisabled();
+    });
+
+    it('ignores a remembered pick of another data source type', () => {
+      mockStoredResponse = 'loki-1';
+
+      renderStep();
+
+      expect(screen.getByLabelText(/Select a prometheus data source/i)).toHaveValue('');
       expect(screen.getByTestId('data-check-run-query-check-1')).toBeDisabled();
     });
   });

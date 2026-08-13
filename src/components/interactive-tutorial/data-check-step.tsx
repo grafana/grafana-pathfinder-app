@@ -145,6 +145,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
+function readRememberedUid(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null;
+}
+
 /** Options for the picker, narrowed to the type the author asked for. */
 function getDatasourceOptions(datasourceType: SupportedDatasourceType): Array<ComboboxOption<string>> {
   try {
@@ -197,10 +201,18 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
   // remembered per guide without colliding with authored variables.
   const responseKey = variableName ?? `__dataCheckDatasource_${renderedStepId}`;
 
-  const [datasourceUid, setDatasourceUid] = useState<string | null>(() => {
-    const existing = responseContext?.getResponse(responseKey);
-    return typeof existing === 'string' && existing ? existing : null;
-  });
+  const datasourceOptions = useMemo(() => getDatasourceOptions(datasourceType), [datasourceType]);
+
+  // The stored response is the pick's home, and it arrives asynchronously — reading
+  // it once into state would strand the picker empty on every reload.
+  const [uncontrolledUid, setUncontrolledUid] = useState<string | null>(null);
+  const rememberedUid = responseContext ? readRememberedUid(responseContext.getResponse(responseKey)) : uncontrolledUid;
+  // A remembered uid can name a data source that has since been deleted, or one of
+  // another type after the author changed `datasourceType`. Trusting it would run a
+  // check against a data source the picker never offered.
+  const datasourceUid =
+    rememberedUid && datasourceOptions.some((option) => option.value === rememberedUid) ? rememberedUid : null;
+
   const [checkState, setCheckState] = useState<CheckState>('idle');
   const [failureDetail, setFailureDetail] = useState('');
 
@@ -225,8 +237,6 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
     skippable,
     sectionId,
   });
-
-  const datasourceOptions = useMemo(() => getDatasourceOptions(datasourceType), [datasourceType]);
 
   const markComplete = useCallback(
     (reason: ProgressReason = 'manual') => {
@@ -284,15 +294,16 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
       // A pass belongs to the data source it was run against; switching away
       // must not leave a green check standing.
       cancelInFlight();
-      setDatasourceUid(uid);
       setCheckState('idle');
       setFailureDetail('');
-      if (responseContext) {
-        if (uid) {
-          responseContext.setResponse(responseKey, uid);
-        } else {
-          responseContext.deleteResponse(responseKey);
-        }
+      if (!responseContext) {
+        setUncontrolledUid(uid);
+        return;
+      }
+      if (uid) {
+        responseContext.setResponse(responseKey, uid);
+      } else {
+        responseContext.deleteResponse(responseKey);
       }
     },
     [responseContext, responseKey, cancelInFlight]

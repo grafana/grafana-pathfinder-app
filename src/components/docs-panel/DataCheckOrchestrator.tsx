@@ -29,6 +29,9 @@ function DataCheckOrchestrator({ contentKey }: DataCheckOrchestratorProps): null
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearPending = useCallback(() => {
+    // Dropping the controller without aborting leaves the assistant — and the
+    // queries it is spending — running for a step that is already gone.
+    pendingRef.current?.abort.abort();
     pendingRef.current = null;
     if (timeoutRef.current !== null) {
       clearTimeout(timeoutRef.current);
@@ -37,7 +40,9 @@ function DataCheckOrchestrator({ contentKey }: DataCheckOrchestratorProps): null
     reset();
   }, [reset]);
 
-  useEffect(() => () => clearPending(), [clearPending]);
+  // Runs on unmount and whenever the panel swaps guides; the step that asked for
+  // the check is gone either way.
+  useEffect(() => () => clearPending(), [clearPending, contentKey]);
 
   useEffect(() => {
     const handler = async (e: Event) => {
@@ -69,7 +74,6 @@ function DataCheckOrchestrator({ contentKey }: DataCheckOrchestratorProps): null
         if (!pending) {
           return;
         }
-        pending.abort.abort();
         dispatchDataCheckResult({
           requestId: pending.requestId,
           passed: false,
