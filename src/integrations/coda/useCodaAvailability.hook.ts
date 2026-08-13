@@ -22,7 +22,14 @@ let cached: Promise<boolean> | undefined;
 
 export function isCodaPluginAvailable(): Promise<boolean> {
   if (!cached) {
-    cached = isAppPluginEnabled(CODA_PLUGIN_ID).catch(() => false);
+    // isAppPluginEnabled is served by Grafana core's own @grafana/runtime at
+    // runtime, not bundled with this plugin — it is absent on core versions
+    // older than ~13.1 and calling it throws synchronously rather than
+    // rejecting, which the .catch below cannot protect against.
+    cached =
+      typeof isAppPluginEnabled === 'function'
+        ? isAppPluginEnabled(CODA_PLUGIN_ID).catch(() => false)
+        : Promise.resolve(false);
   }
   return cached;
 }

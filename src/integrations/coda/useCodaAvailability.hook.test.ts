@@ -99,3 +99,24 @@ describe('useCodaSessionEligibility', () => {
     expect(mockedGetCapabilities).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('isCodaPluginAvailable', () => {
+  // isAppPluginEnabled is served by Grafana core's own @grafana/runtime at
+  // runtime, not bundled with this plugin, and is absent on core versions
+  // older than ~13.1. Calling it there throws synchronously rather than
+  // rejecting, which crashed the whole docs panel on those versions.
+  it('resolves false instead of throwing when the running Grafana core predates isAppPluginEnabled', async () => {
+    let result!: Promise<boolean>;
+    // @grafana/runtime is already cached (with isAppPluginEnabled present) from
+    // this file's static import above — reset the registry first, or doMock
+    // below is silently ignored and the module keeps the wrong mock.
+    jest.resetModules();
+    jest.isolateModules(() => {
+      jest.doMock('@grafana/runtime', () => ({}));
+      const { isCodaPluginAvailable } = require('./useCodaAvailability.hook');
+      result = isCodaPluginAvailable();
+    });
+
+    await expect(result).resolves.toBe(false);
+  });
+});
