@@ -123,6 +123,8 @@ scripts/upsert-learning-path.sh \
   --package ./drilldown-logs-lj
 ```
 
+Guides uploaded this way can be loaded and edited in the editor like any other, with two caveats for a path's **cover page**. The editor's guide model has no `manifest` field, so saving a cover page drops `spec.manifest` and collapses the path into a flat guide — the resolver then treats it as `type: "guide"` and the milestones stop rendering, with no warning. Save, publish, and unpublish also replace `metadata` wholesale, which erases the provenance annotations `upsert-learning-path.sh` writes, so a later re-run refuses the package until you pass `--overwrite`. Re-upload with the script rather than editing a cover page in place.
+
 See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, the `spec.manifest` field table, error codes, and curl recipes for each operation.
 
 ---

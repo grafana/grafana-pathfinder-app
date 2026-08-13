@@ -131,36 +131,32 @@ upload in that case; rename the package instead.
 
 The CRD's block schema is generated from `#Block` / `#NestedBlock` /
 `#Step` in `kinds/interactiveguide.cue` and lags the app's block schema
-by roughly twenty fields. Blocks nested three or more levels deep fall
+by more than twenty fields. Blocks nested three or more levels deep fall
 under `x-kubernetes-preserve-unknown-fields` and survive; anything
 shallower is **silently pruned**. There is no 422 and no warning from
 the API: the write returns 200 and the field is simply gone on the next
 GET.
 
-**`targetstate` is the one to know about.** Every other field on the
-list costs you rendering or authoring metadata. `targetstate` is the
-desired end state of a toggle, so losing it downgrades a step from
-drive-to-state to a blind click — a behaviour change, not a cosmetic
-one, and `src/bundled-interactives/loki-grafana-101/content.json` uses
-it.
+**Some of what gets pruned is behaviour, not decoration.** A `challenge`
+block loses `brief` and `successCriteria`, both of which its app-side
+schema requires — so the pruned block fails validation on the way back
+out. `setupCommands` / `setupScript` and the
+`vmTemplate` / `vmApp` / `vmScenario` trio are how a terminal block
+reaches its VM, and `enable-coda` uses them. `code`, `language`,
+`screens`, and `snippetId` are the entire payload of `code-block`,
+`grot-guide`, and `snippet-ref`. `targetstate` is the desired end state
+of a toggle, so losing it downgrades a step from drive-to-state to a
+blind click. Only the remainder costs you rendering or authoring
+metadata alone.
 
-Do not treat any list in this document as authoritative — the set moves
-whenever either schema changes, and it has grown twice while this page
-was being written. The live check is the script itself:
-`upsert-learning-path.sh` warns per resource with the exact fields your
-content would lose, and `--strict-blocks` turns that warning into a
-failure. Run it with `--dry-run` before an upload.
+Do not expect a list in this document to be authoritative — the set
+moves whenever either schema changes, and it grew twice while this page
+was being written. Deliberately, there isn't one here. The live check is
+the script itself: `upsert-learning-path.sh` warns per resource with the
+exact fields your content would lose, and `--strict-blocks` turns that
+warning into a failure. Run it with `--dry-run` before an upload.
 
-As of backend `kinds/interactiveguide.cue` on `main`, the undeclared
-set is:
-
-> `authorNote`, `autoCollapse`, `brief`, `collapsed`, `command`,
-> `datasourceFilter`, `defaultValue`, `end`, `failureMessage`,
-> `hintLevels`, `id` (on steps), `mode`, `openGuide`, `setupCommands`,
-> `setupScript`, `shuffle`, `start`, `successCriteria`, `targetstate`,
-> `vmApp`, `vmScenario`, `vmTemplate`
-
-To regenerate it, diff `KNOWN_FIELDS` in
+To enumerate the current set, diff `KNOWN_FIELDS` in
 `src/types/json-guide.schema.ts` against `_blockFields` / `#Block` /
 `#NestedBlock` / `#Step` in the backend's
 `kinds/interactiveguide.cue`. The `BLOCK` and `STEP` allowlists inside
@@ -193,14 +189,25 @@ in place. A name without it belongs to someone else, and the run is
 the package up front, so a collision on the cover page cannot leave the
 milestones already replaced. Pass `--overwrite` to replace them
 deliberately; the summary then reports them as `replaced` rather than
-`updated`. Annotations set by other tools are preserved across an
-update.
+`updated`.
+
+`upsert-guide.sh` merges its annotations over whatever the resource
+already carries, so an update through the scripts preserves annotations
+another tool set. **Nothing else does.** The block editor's save,
+publish, and unpublish each send `metadata` as
+`{name, namespace, resourceVersion}`, and a PUT replaces the whole
+object — so one **unpublish** click on a script-uploaded milestone
+erases `managed-by`, and the next run refuses the entire package as
+foreign. Neither the refusal message nor `--overwrite` can distinguish
+that self-inflicted detachment from a genuine collision, so if you know
+the guides are yours, `--overwrite` is the answer.
 
 `--dry-run` performs the same LIST, so the preview marks each resource
 as new, an update, or a collision. It exits non-zero on any validation
-failure, which makes it usable as a CI gate; if the stack is
+failure, which makes it usable as a CI gate. If the stack is
 unreachable the collision check is skipped with a warning and the rest
-of the validation still runs.
+of the validation still runs — the header then prints
+`Collisions: not checked`, so a preview that only linted JSON says so.
 
 Re-running is additive. Existing resources are updated in place, but
 nothing is ever deleted, so a milestone dropped from `manifest.json`

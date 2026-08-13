@@ -48,6 +48,8 @@
 #   64 usage error
 #   66 package directory or file not readable
 #   127 missing curl/jq
+#   130 interrupted (SIGINT)
+#   143 terminated (SIGTERM)
 
 set -euo pipefail
 
@@ -151,7 +153,12 @@ STACK="${STACK#http://}"
 STACK="${STACK%/}"
 
 TMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
+# The signal handlers must exit: bash resumes the script after a trap that
+# doesn't, so a Ctrl-C would delete TMP_DIR and keep uploading from spec files
+# that no longer exist.
+trap 'rm -rf "$TMP_DIR"' EXIT
+trap 'rm -rf "$TMP_DIR"; exit 130' INT
+trap 'rm -rf "$TMP_DIR"; exit 143' TERM
 
 # Slug rule mirrors upsert-guide.sh, which derives metadata.name this way.
 slugify() {
@@ -214,25 +221,40 @@ OVERWROTE=0
 FAILED=0
 FAILED_NAMES=
 
-# Composes one package directory into a spec and hands it to upsert-guide.sh.
-upsert_package() {
+record_failure() {
+  FAILED=$((FAILED + 1))
+  FAILED_NAMES="${FAILED_NAMES} $1"
+}
+
+validated() {
+  [[ " ${FAILED_NAMES} " != *" $1 "* ]]
+}
+
+# Everything checkable without the stack, plus the spec file the write step
+# sends. Runs for every package before the first write: milestones upload
+# before the cover page, so a fault caught late leaves published milestones
+# with no path sequencing them.
+validate_package() {
   local dir="$1" label="$2" expected_id="$3"
   local manifest="${dir}/manifest.json" content="${dir}/content.json"
 
   [[ -r "$manifest" ]] || { echo "missing manifest.json in ${dir}" >&2; return 1; }
   [[ -r "$content" ]] || { echo "missing content.json in ${dir}" >&2; return 1; }
 
-  local id title blocks
-  id=$(jq -r '.id // empty' "$content")
-  title=$(jq -r '.title // empty' "$content")
-  blocks=$(jq -r 'if (.blocks | type) == "array" then (.blocks | length) else "" end' "$content")
+  local fields id title blocks
+  fields=$(jq -r '[.id // "", .title // "",
+    (if (.blocks | type) == "array" then (.blocks | length) else "" end)] | @tsv' "$content") || {
+    echo "${content} is not readable as a JSON object" >&2
+    return 1
+  }
+  IFS=$'\t' read -r id title blocks <<<"$fields"
 
-  [[ -n "$id" ]] || { echo "${dir}/content.json has no .id" >&2; return 1; }
-  [[ -n "$title" ]] || { echo "${dir}/content.json has no .title" >&2; return 1; }
-  [[ -n "$blocks" ]] || { echo "${dir}/content.json .blocks is missing or not an array" >&2; return 1; }
+  [[ -n "$id" ]] || { echo "${content} has no .id" >&2; return 1; }
+  [[ -n "$title" ]] || { echo "${content} has no .title" >&2; return 1; }
+  [[ -n "$blocks" ]] || { echo "${content} .blocks is missing or not an array" >&2; return 1; }
 
   if [[ -n "$expected_id" && "$id" != "$expected_id" ]]; then
-    echo "${dir}/content.json .id is \"${id}\" but manifest.json declares \"${expected_id}\"" >&2
+    echo "${content} .id is \"${id}\" but manifest.json declares \"${expected_id}\"" >&2
     return 1
   fi
 
@@ -245,23 +267,14 @@ upsert_package() {
     return 1
   fi
 
-  local owner=-
-  if [[ "$COLLISION_CHECK" == true ]]; then
-    owner=$(existing_owner "$id")
-    if [[ "$owner" != "-" && "$owner" != "$MANAGED_BY_VALUE" ]]; then
-      if [[ "$OVERWRITE" == false ]]; then
-        echo "  refusing to overwrite \"${id}\" in ${NAMESPACE}: this tool did not upload it." >&2
-        echo "  A write replaces spec wholesale and the API keeps no revisions, so the" >&2
-        echo "  existing guide could not be restored. Rename the package, or pass" >&2
-        echo "  --overwrite to replace it deliberately." >&2
-        return 1
-      fi
-      echo "  warning: replacing \"${id}\", which this tool did not upload" >&2
-    fi
-  fi
-
+  # A failed scan must not read as "nothing would be pruned": --strict-blocks
+  # is set precisely to guarantee that, and errexit is disabled in here because
+  # every call site invokes this in a condition context.
   local unknown
-  unknown=$(jq -r "$UNKNOWN_BLOCK_FIELDS_JQ" "$content")
+  unknown=$(jq -r "$UNKNOWN_BLOCK_FIELDS_JQ" "$content") || {
+    echo "could not scan ${content} for undeclared block fields" >&2
+    return 1
+  }
   if [[ -n "$unknown" ]]; then
     echo "  warning: ${id} uses block fields the CRD does not declare: ${unknown}" >&2
     if [[ "$STRICT_BLOCKS" == true ]]; then
@@ -274,29 +287,46 @@ upsert_package() {
   spec_file="${TMP_DIR}/$(slugify "$id").json"
   if [[ "$NO_MANIFEST" == true ]]; then
     manifest_obj=
-    jq --arg status "$STATUS" '. + {status: $status}' "$content" > "$spec_file"
+    jq --arg status "$STATUS" '. + {status: $status}' "$content" > "$spec_file" || {
+      echo "could not build a spec from ${content}" >&2
+      return 1
+    }
   else
     manifest_obj=$(build_manifest "$manifest") || true
     [[ -n "$manifest_obj" ]] || { echo "could not build spec.manifest from ${manifest}" >&2; return 1; }
     jq --argjson manifest "$manifest_obj" --arg status "$STATUS" \
-      '. + {status: $status, manifest: $manifest}' "$content" > "$spec_file"
+      '. + {status: $status, manifest: $manifest}' "$content" > "$spec_file" || {
+      echo "could not build a spec from ${content}" >&2
+      return 1
+    }
   fi
 
-  if [[ "$DRY_RUN" == true ]]; then
-    local note=
-    if [[ "$owner" == "$MANAGED_BY_VALUE" ]]; then
-      note="  (updates existing)"
-    elif [[ "$owner" != "-" ]]; then
-      note="  << replaces a guide this tool did not upload"
-    fi
-    printf '  %-7s %s  (%s blocks)%s\n' "$label" "$id" "$blocks" "$note"
-    if [[ "$VERBOSE" == true ]]; then
-      sed 's/^/    /' "$spec_file"
-    elif [[ -n "$manifest_obj" ]]; then
-      echo "$manifest_obj" | sed 's/^/      /'
-    fi
-    return 0
+  [[ "$DRY_RUN" == true ]] || return 0
+
+  local note='' owner='-'
+  [[ "$COLLISION_CHECK" == false ]] || owner=$(existing_owner "$id")
+  if [[ "$owner" == "$MANAGED_BY_VALUE" ]]; then
+    note="  (updates existing)"
+  elif [[ "$owner" != "-" ]]; then
+    note="  << replaces a guide this tool did not upload"
   fi
+  printf '  %-7s %s  (%s blocks)%s\n' "$label" "$id" "$blocks" "$note"
+  if [[ "$VERBOSE" == true ]]; then
+    sed 's/^/    /' "$spec_file"
+  elif [[ -n "$manifest_obj" ]]; then
+    echo "$manifest_obj" | sed 's/^/      /'
+  fi
+}
+
+# Uploads the spec validate_package composed for one already-vetted package.
+write_package() {
+  local label="$1" id="$2"
+  local spec_file owner='-'
+  spec_file="${TMP_DIR}/$(slugify "$id").json"
+
+  [[ "$COLLISION_CHECK" == false ]] || owner=$(existing_owner "$id")
+  [[ "$owner" == "-" || "$owner" == "$MANAGED_BY_VALUE" ]] ||
+    echo "  warning: replacing \"${id}\", which this tool did not upload" >&2
 
   local output
   if ! output=$("$UPSERT_GUIDE" --stack "$STACK" --token "$TOKEN" \
@@ -332,6 +362,15 @@ ROOT_CONTENT="${PACKAGE}/content.json"
 [[ -r "$ROOT_MANIFEST" ]] || { echo "missing manifest.json in ${PACKAGE}" >&2; exit 66; }
 [[ -r "$ROOT_CONTENT" ]] || { echo "missing content.json in ${PACKAGE}" >&2; exit 66; }
 
+# Both root files are read by bare command substitutions below, which under
+# `set -e` would abort on jq's own exit code with nothing but its parse error.
+for root_file in "$ROOT_MANIFEST" "$ROOT_CONTENT"; do
+  jq -e 'type == "object"' "$root_file" >/dev/null 2>&1 || {
+    echo "${root_file} is not readable as a JSON object" >&2
+    exit 1
+  }
+done
+
 PKG_TYPE=$(jq -r '.type // empty' "$ROOT_MANIFEST")
 PKG_ID=$(jq -r '.id // empty' "$ROOT_MANIFEST")
 case "$PKG_TYPE" in
@@ -339,6 +378,16 @@ case "$PKG_TYPE" in
   "") echo "${ROOT_MANIFEST} has no .type" >&2; exit 1 ;;
   *) echo "${ROOT_MANIFEST} has unsupported .type \"${PKG_TYPE}\" (expected guide, path or journey)" >&2; exit 1 ;;
 esac
+
+[[ -n "$PKG_ID" ]] || { echo "${ROOT_MANIFEST} has no .id" >&2; exit 1; }
+# PKG_ID is stamped onto every milestone as an annotation value before the cover
+# page validates its own id, so a value carrying a newline and an `=` could
+# forge the managed-by key the overwrite guard reads.
+if [[ "$(slugify "$PKG_ID")" != "$PKG_ID" ]]; then
+  echo "package id \"${PKG_ID}\" is not a valid resource name (would upload as \"$(slugify "$PKG_ID")\")." >&2
+  echo "spec.id and metadata.name must match or milestone resolution breaks. Rename the package." >&2
+  exit 1
+fi
 
 MILESTONES=()
 if [[ "$PKG_TYPE" != "guide" ]]; then
@@ -419,20 +468,28 @@ fi
 # anyone else's stops the run.
 EXISTING=
 COLLISION_CHECK=false
+LIST_URL=
+LIST_JSON=
 if [[ -n "$NAMESPACE" ]]; then
   LIST_URL="https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NAMESPACE}/interactiveguides"
-  if LIST_JSON=$(curl -sSf -H "Authorization: Bearer ${TOKEN}" "$LIST_URL" 2>/dev/null); then
-    EXISTING=$(echo "$LIST_JSON" | jq -r --arg key "$MANAGED_BY_KEY" '
-      .items[]? | [.metadata.name, (.metadata.annotations[$key] // "")] | @tsv')
-    COLLISION_CHECK=true
-  elif [[ "$DRY_RUN" == false && "$OVERWRITE" == false ]]; then
-    echo "could not list existing guides at ${LIST_URL}" >&2
-    echo "listing is how this tool avoids clobbering guides it did not upload." >&2
-    echo "Grant the token list access, or pass --overwrite to write without the check." >&2
-    exit 1
-  else
-    echo "warning: could not list existing guides; not checking for collisions" >&2
-  fi
+  LIST_JSON=$(curl -sSf -H "Authorization: Bearer ${TOKEN}" "$LIST_URL" 2>/dev/null) || LIST_JSON=
+fi
+# A 2xx body is not proof of a collection. There is no -L here, so a redirect
+# page or a Status envelope also parses, and `.items[]?` would then read as "the
+# namespace is empty" — disabling the guard exactly when it can see nothing.
+# Whether the check ran is reported below, in both modes: a dry run that
+# silently skips it is a JSON linter claiming to be a collision gate.
+if [[ -n "$LIST_JSON" ]] && echo "$LIST_JSON" | jq -e '(.items | type) == "array"' >/dev/null 2>&1; then
+  EXISTING=$(echo "$LIST_JSON" | jq -r --arg key "$MANAGED_BY_KEY" '
+    .items[]? | [.metadata.name, (.metadata.annotations[$key] // "")] | @tsv')
+  COLLISION_CHECK=true
+elif [[ "$DRY_RUN" == false && "$OVERWRITE" == false ]]; then
+  echo "could not list existing guides at ${LIST_URL}" >&2
+  echo "listing is how this tool avoids clobbering guides it did not upload." >&2
+  echo "Grant the token list access, or pass --overwrite to write without the check." >&2
+  exit 1
+else
+  echo "warning: could not list existing guides; not checking for collisions" >&2
 fi
 
 # Prints the managed-by annotation of an existing resource, "unmanaged" when
@@ -447,76 +504,85 @@ existing_owner() {
 TOTAL=$(( ${#MILESTONES[@]} + 1 ))
 RESOURCES="resources"
 [[ "$TOTAL" -ne 1 ]] || RESOURCES="resource"
-echo "Package:   ${PKG_ID} (${PKG_TYPE}, ${TOTAL} ${RESOURCES})"
-[[ -z "$NAMESPACE" ]] || echo "Namespace: ${NAMESPACE}"
-echo "Status:    ${STATUS}"
-[[ "$DRY_RUN" == false ]] || echo "Mode:      dry run, no writes"
+echo "Package:    ${PKG_ID} (${PKG_TYPE}, ${TOTAL} ${RESOURCES})"
+[[ -z "$NAMESPACE" ]] || echo "Namespace:  ${NAMESPACE}"
+echo "Status:     ${STATUS}"
+[[ "$DRY_RUN" == false ]] || echo "Mode:       dry run, no writes"
+[[ "$COLLISION_CHECK" == true ]] || echo "Collisions: not checked"
 echo
-
-# Vet every name the run would write before writing any of them. The
-# per-resource check inside upsert_package would also refuse, but only after
-# the earlier milestones had been replaced — and milestones upload first, so
-# by the time a colliding cover page is reached the damage is done.
-if [[ "$COLLISION_CHECK" == true && "$OVERWRITE" == false ]]; then
-  CLASHES=
-  for name in ${MILESTONES[@]+"${MILESTONES[@]}"} "$PKG_ID"; do
-    clash_owner=$(existing_owner "$name")
-    if [[ "$clash_owner" != "-" && "$clash_owner" != "$MANAGED_BY_VALUE" ]]; then
-      CLASHES="${CLASHES} ${name}"
-    fi
-  done
-  if [[ -n "$CLASHES" ]]; then
-    echo "refusing to write: these guides already exist in ${NAMESPACE} and were not" >&2
-    echo "uploaded by this tool:${CLASHES}" >&2
-    echo "A write replaces spec wholesale and the API keeps no revisions, so they could" >&2
-    echo "not be restored. Rename the colliding packages, or pass --overwrite." >&2
-    exit 1
-  fi
-fi
-
-STEP=0
-for milestone in ${MILESTONES[@]+"${MILESTONES[@]}"}; do
-  STEP=$((STEP + 1))
-  dir=$(lookup_dir "$milestone")
-  if [[ -z "$dir" ]]; then
-    echo "  [${STEP}/${TOTAL}]      milestone \"${milestone}\" has no subdirectory under ${PACKAGE}" >&2
-    echo "  ids found: $(printf '%s' "$INDEX" | cut -f1 | paste -sd' ' -)" >&2
-    FAILED=$((FAILED + 1))
-    FAILED_NAMES="${FAILED_NAMES} ${milestone}"
-    [[ "$CONTINUE_ON_ERROR" == true ]] || exit 1
-    continue
-  fi
-  if ! upsert_package "$dir" "[${STEP}/${TOTAL}]" "$milestone"; then
-    FAILED=$((FAILED + 1))
-    FAILED_NAMES="${FAILED_NAMES} ${milestone}"
-    [[ "$CONTINUE_ON_ERROR" == true ]] || exit 1
-  fi
-done
-
-STEP=$((STEP + 1))
-if ! upsert_package "$PACKAGE" "[${STEP}/${TOTAL}]" "$PKG_ID"; then
-  FAILED=$((FAILED + 1))
-  FAILED_NAMES="${FAILED_NAMES} ${PKG_ID}"
-fi
-
-echo
-if [[ "$DRY_RUN" == true ]]; then
-  VALID=$((TOTAL - FAILED))
-  if [[ "$FAILED" -gt 0 ]]; then
-    echo "Dry run failed: ${FAILED} of ${TOTAL} ${RESOURCES} did not validate."
-  else
-    echo "Dry run complete: ${VALID} ${RESOURCES} would be uploaded."
-  fi
-else
-  SUMMARY="Done. ${CREATED} created, ${UPDATED} updated"
-  [[ "$OVERWROTE" -eq 0 ]] || SUMMARY="${SUMMARY}, ${OVERWROTE} replaced"
-  echo "${SUMMARY}, ${FAILED} failed."
-fi
 
 # One gate for both modes. A dry run that exits 0 on a fault the real run
 # treats as fatal is worse than no preview at all: wired up as a CI check it
 # greenlights an upload that then half-publishes the path.
-if [[ "$FAILED" -gt 0 ]]; then
-  echo "Failed:${FAILED_NAMES}" >&2
+report_and_exit() {
+  echo
+  if [[ "$DRY_RUN" == true ]]; then
+    if [[ "$FAILED" -gt 0 ]]; then
+      echo "Dry run failed: ${FAILED} of ${TOTAL} ${RESOURCES} did not validate."
+    else
+      echo "Dry run complete: ${TOTAL} ${RESOURCES} would be uploaded."
+    fi
+  else
+    local summary="Done. ${CREATED} created, ${UPDATED} updated"
+    [[ "$OVERWROTE" -eq 0 ]] || summary="${summary}, ${OVERWROTE} replaced"
+    echo "${summary}, ${FAILED} failed."
+  fi
+
+  if [[ "$FAILED" -gt 0 ]]; then
+    echo "Failed:${FAILED_NAMES}" >&2
+    exit 1
+  fi
+  exit 0
+}
+
+# Milestones upload before the cover page, so every check that can refuse the
+# run has to happen before the first write — otherwise a cover page rejected on
+# its own content leaves the milestones already replaced, with nothing
+# sequencing them. Only the provenance lookup here needs the stack.
+ORDER=(${MILESTONES[@]+"${MILESTONES[@]}"} "$PKG_ID")
+CLASHES=
+STEP=0
+for name in "${ORDER[@]}"; do
+  STEP=$((STEP + 1))
+  if [[ "$name" == "$PKG_ID" ]]; then
+    dir="$PACKAGE"
+  else
+    dir=$(lookup_dir "$name")
+  fi
+  if [[ -z "$dir" ]]; then
+    echo "  [${STEP}/${TOTAL}]      milestone \"${name}\" has no subdirectory under ${PACKAGE}" >&2
+    echo "  ids found: $(printf '%s' "$INDEX" | cut -f1 | paste -sd' ' -)" >&2
+    record_failure "$name"
+    continue
+  fi
+  validate_package "$dir" "[${STEP}/${TOTAL}]" "$name" || record_failure "$name"
+  if [[ "$COLLISION_CHECK" == true && "$OVERWRITE" == false ]]; then
+    clash_owner=$(existing_owner "$name")
+    if [[ "$clash_owner" != "-" && "$clash_owner" != "$MANAGED_BY_VALUE" ]]; then
+      CLASHES="${CLASHES} ${name}"
+    fi
+  fi
+done
+
+if [[ -n "$CLASHES" ]]; then
+  echo "refusing to write: these guides already exist in ${NAMESPACE} and were not" >&2
+  echo "uploaded by this tool:${CLASHES}" >&2
+  echo "A write replaces spec wholesale and the API keeps no revisions, so they could" >&2
+  echo "not be restored. Rename the colliding packages, or pass --overwrite." >&2
   exit 1
 fi
+
+[[ "$DRY_RUN" == false ]] || report_and_exit
+[[ "$FAILED" -eq 0 || "$CONTINUE_ON_ERROR" == true ]] || report_and_exit
+
+STEP=0
+for name in "${ORDER[@]}"; do
+  STEP=$((STEP + 1))
+  validated "$name" || continue
+  write_package "[${STEP}/${TOTAL}]" "$name" || {
+    record_failure "$name"
+    [[ "$CONTINUE_ON_ERROR" == true ]] || report_and_exit
+  }
+done
+
+report_and_exit
