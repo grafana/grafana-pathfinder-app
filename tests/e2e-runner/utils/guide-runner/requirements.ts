@@ -7,13 +7,14 @@
  * @see docs/developer/E2E_TESTING.md#requirements-and-skip-behavior
  */
 
-import { Page } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
 import { isSessionValid } from '../../auth/grafana-auth';
 import {
   REQUIREMENTS_CHECK_TIMEOUT_MS,
   REQUIREMENTS_POLL_INTERVAL_MS,
+  REQUIREMENTS_SETTLE_TIMEOUT_MS,
   FIX_BUTTON_TIMEOUT_MS,
   MAX_FIX_ATTEMPTS,
   POST_FIX_SETTLE_DELAY_MS,
@@ -76,9 +77,15 @@ export async function validateSession(page: Page): Promise<boolean> {
  *
  * @param page - Playwright Page object
  * @param step - The testable step to check
+ * @param timeoutMs - Optional per-read timeout, used by the settle poll to keep
+ * a detached or slow-to-settle element from hanging past its settle budget
  * @returns RequirementResult with detected requirements information
  */
-export async function detectRequirements(page: Page, step: TestableStep): Promise<RequirementResult> {
+export async function detectRequirements(
+  page: Page,
+  step: TestableStep,
+  timeoutMs?: number
+): Promise<RequirementResult> {
   const { stepId, skippable } = step;
 
   // Check if step is pre-completed - if so, requirements are implicitly met
@@ -94,12 +101,14 @@ export async function detectRequirements(page: Page, step: TestableStep): Promis
     };
   }
 
+  const readOptions = timeoutMs !== undefined ? { timeout: timeoutMs } : undefined;
+
   const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
   const doItButtonCount = await doItButton.count();
-  const doItButtonEnabled = doItButtonCount > 0 ? await doItButton.isEnabled() : false;
+  const doItButtonEnabled = doItButtonCount > 0 ? await readEnabledSafely(doItButton, readOptions) : false;
   const showMeButton = page.getByTestId(testIds.interactive.showMeButton(stepId));
   const showMeButtonCount = await showMeButton.count();
-  const showMeButtonEnabled = showMeButtonCount > 0 ? await showMeButton.isEnabled() : false;
+  const showMeButtonEnabled = showMeButtonCount > 0 ? await readEnabledSafely(showMeButton, readOptions) : false;
   const actionButtonCount = doItButtonCount + showMeButtonCount;
   const actionButtonEnabled = doItButtonEnabled || showMeButtonEnabled;
 
@@ -119,7 +128,7 @@ export async function detectRequirements(page: Page, step: TestableStep): Promis
   let explanationText: string | undefined;
   if (hasExplanation && !isChecking) {
     try {
-      explanationText = await explanationElement.textContent().then((t) => t?.trim());
+      explanationText = await explanationElement.textContent(readOptions).then((t) => t?.trim());
       // Remove button text from explanation (Fix this, Retry, Skip)
       explanationText = explanationText
         ?.replace(/Fix this$/, '')
@@ -147,7 +156,7 @@ export async function detectRequirements(page: Page, step: TestableStep): Promis
   // Determine fix type from DOM if fix button exists
   let fixType: RequirementFixType | undefined;
   if (hasFixButton) {
-    fixType = await detectFixType(page, step);
+    fixType = await detectFixType(page, step, timeoutMs);
   }
 
   // Determine requirement status
@@ -187,6 +196,26 @@ export async function detectRequirements(page: Page, step: TestableStep): Promis
 }
 
 /**
+ * Read a locator's enabled state without letting a detached or
+ * slow-to-settle element hang or throw (L3-4A).
+ *
+ * Used by the settle poll, where reads are intentionally bounded by the
+ * remaining settle budget: a timeout here means the element is mid-transition,
+ * not that the caller should propagate an error.
+ *
+ * @param locator - The locator to read
+ * @param options - Optional timeout to bound the read
+ * @returns The enabled state, or false if the read could not complete
+ */
+async function readEnabledSafely(locator: Locator, options?: { timeout: number }): Promise<boolean> {
+  try {
+    return await locator.isEnabled(options);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Detect the fix type available for a step (L3-4A).
  *
  * Fix types are determined by the requirement that failed:
@@ -200,16 +229,22 @@ export async function detectRequirements(page: Page, step: TestableStep): Promis
  *
  * @param page - Playwright Page object
  * @param step - The testable step to check
+ * @param timeoutMs - Optional per-read timeout, forwarded from detectRequirements
  * @returns The detected fix type, or undefined if cannot be determined
  */
-async function detectFixType(page: Page, step: TestableStep): Promise<RequirementFixType | undefined> {
+async function detectFixType(
+  page: Page,
+  step: TestableStep,
+  timeoutMs?: number
+): Promise<RequirementFixType | undefined> {
   const { stepId, targetAction, refTarget } = step;
 
   // Get explanation text for clues about the fix type
   const explanationElement = page.getByTestId(testIds.interactive.requirementCheck(stepId));
+  const readOptions = timeoutMs !== undefined ? { timeout: timeoutMs } : undefined;
   let explanationText = '';
   try {
-    explanationText = (await explanationElement.textContent()) || '';
+    explanationText = (await explanationElement.textContent(readOptions)) || '';
   } catch {
     // Ignore errors
   }
@@ -376,18 +411,6 @@ function logRequirementResult(stepId: string, result: RequirementResult): void {
 // ============================================
 
 /**
- * Maximum time to poll for a settled requirements state before concluding
- * an unmet read is genuinely terminal, rather than a transient DOM state.
- *
- * The plugin's requirement check can be mid-transition right after the
- * initial check or right after a fix button click: a step can read as
- * unmet (with or without a Fix button) even though it settles to met
- * moments later. Polling here avoids reporting that transient read as a
- * terminal failure.
- */
-const REQUIREMENTS_SETTLE_TIMEOUT_MS = 1000;
-
-/**
  * Click the Fix button for a step and wait for the fix action to complete (L3-4B).
  *
  * This function:
@@ -455,13 +478,15 @@ export async function clickFixButton(
 /**
  * Poll briefly for a settled requirements state starting from an unmet read (L3-4B).
  *
- * Repeatedly re-detects requirements until they become met, a Fix button
- * appears, or `settleTimeoutMs` elapses. Returns the last observed result,
- * so callers can tell a genuinely unfixable state from a transient one.
+ * A visible Fix button is itself an actionable settled state, so the loop
+ * only keeps waiting while the state is unmet with no Fix button; it
+ * returns as soon as either becomes true, or `settleTimeoutMs` elapses.
+ * Callers pass in the unmet result they already read, so an already-settled
+ * state returns immediately without an extra detection round-trip.
  *
- * Callers pass in the unmet result they already read, so a settled state
- * (already met, or already showing a Fix button) returns immediately
- * without an extra detection round-trip.
+ * Each re-detection is bounded by the settle budget remaining, so a
+ * detached element mid-transition fails fast instead of hanging past the
+ * settle window.
  *
  * @param page - Playwright Page object
  * @param step - The testable step to check
@@ -478,9 +503,20 @@ async function waitForRequirementsSettle(
   const startTime = Date.now();
   let latest = initial;
 
-  while (!latest.requirementsMet && !latest.hasFixButton && Date.now() - startTime < settleTimeoutMs) {
-    await page.waitForTimeout(REQUIREMENTS_POLL_INTERVAL_MS);
-    latest = await detectRequirements(page, step);
+  while (!latest.requirementsMet && !latest.hasFixButton) {
+    const remainingBeforeWait = settleTimeoutMs - (Date.now() - startTime);
+    if (remainingBeforeWait <= 0) {
+      break;
+    }
+
+    await page.waitForTimeout(Math.min(REQUIREMENTS_POLL_INTERVAL_MS, remainingBeforeWait));
+
+    const remainingForRead = settleTimeoutMs - (Date.now() - startTime);
+    if (remainingForRead <= 0) {
+      break;
+    }
+
+    latest = await detectRequirements(page, step, remainingForRead);
   }
 
   return latest;
@@ -552,9 +588,6 @@ export async function attemptToFixRequirements(
       break;
     }
 
-    // Check if fix button is available. A missing Fix button can be a
-    // transient DOM read right after a check, so poll briefly for it to
-    // settle before treating this as a terminal failure.
     if (!currentRequirements.hasFixButton) {
       const settledRequirements = await waitForRequirementsSettle(page, step, currentRequirements);
 
@@ -588,8 +621,6 @@ export async function attemptToFixRequirements(
         break;
       }
 
-      // A Fix button appeared during the settle window; use the settled
-      // result (including its fixType) for the click below.
       currentRequirements = settledRequirements;
     }
 
@@ -610,9 +641,6 @@ export async function attemptToFixRequirements(
       continue; // Try again
     }
 
-    // Recheck requirements after fix. A click can leave the DOM mid-transition,
-    // so poll briefly for it to settle before recording this attempt as failed -
-    // without clicking Fix again or consuming another attempt to do so.
     const postFixRequirements = await detectRequirements(page, step);
     const settledPostFixRequirements = postFixRequirements.requirementsMet
       ? postFixRequirements
@@ -644,7 +672,6 @@ export async function attemptToFixRequirements(
         requirementsMet: false,
       });
 
-      // Update final status from the settled post-fix check
       finalStatus = settledPostFixRequirements.status;
     }
   }
