@@ -7,6 +7,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { DataCheckStep } from './data-check-step';
 import {
+  DATA_CHECK_CANCEL_EVENT,
   DATA_CHECK_REQUEST_EVENT,
   dispatchDataCheckResult,
   type DataCheckRequestDetail,
@@ -25,65 +26,19 @@ let mockStoredReason: string | null = null;
 let mockAssistantAvailable = true;
 let mockStoredResponse: string | undefined;
 
-jest.mock('@grafana/ui', () => ({
-  Alert: ({ title, children }: any) => (
-    <div role="alert">
-      {title}
-      {children}
-    </div>
-  ),
-  Button: ({ children, onClick, disabled, ...rest }: any) => (
-    <button onClick={onClick} disabled={disabled} {...rest}>
-      {children}
-    </button>
-  ),
-  Combobox: ({ options, value, onChange, placeholder, ...rest }: any) => (
-    <select
-      aria-label={placeholder}
-      value={value ?? ''}
-      onChange={(e) => onChange(e.target.value ? { value: e.target.value } : null)}
-      {...rest}
-    >
-      <option value="">{placeholder}</option>
-      {options.map((o: any) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  ),
-  Field: ({ children }: any) => <div>{children}</div>,
-  Icon: ({ name }: any) => <span data-testid={`icon-${name}`} />,
-  useStyles2: () => new Proxy({}, { get: (_target: unknown, key: string) => key }),
-}));
+jest.mock('@grafana/ui', () => require('../../test-utils/data-check-stubs').grafanaUiStub);
 
 jest.mock('@grafana/runtime', () => ({
-  getDataSourceSrv: () => ({
-    getList: () => [
-      { uid: 'prom-1', name: 'Prometheus', type: 'prometheus' },
-      { uid: 'prom-2', name: 'Prometheus staging', type: 'prometheus' },
-      { uid: 'loki-1', name: 'Loki', type: 'loki' },
-    ],
-  }),
+  getDataSourceSrv: () => ({ getList: () => require('../../test-utils/data-check-stubs').DATASOURCE_LIST }),
 }));
 
 jest.mock('../../lib/datasource/run-data-check-query', () => ({
   runDataCheckQuery: (...args: unknown[]) => mockRunQuery(...args),
 }));
 
-jest.mock('../../lib/logging', () => ({
-  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
-}));
+jest.mock('../../lib/logging', () => require('../../test-utils/data-check-stubs').loggerStub);
 
-jest.mock('../../lib/analytics', () => ({
-  reportAppInteraction: jest.fn(),
-  UserInteraction: {
-    DataCheckRun: 'data_check_run',
-    DataCheckPassed: 'data_check_passed',
-    DataCheckFailed: 'data_check_failed',
-    DataCheckSkipped: 'data_check_skipped',
-  },
-}));
+jest.mock('../../lib/analytics', () => require('../../test-utils/data-check-stubs').analyticsStub);
 
 jest.mock('../../requirements-manager', () => ({
   useStepChecker: () => ({
@@ -380,6 +335,25 @@ describe('DataCheckStep', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+
+    it('tells the orchestrator to stop when the step goes away', async () => {
+      const cancelled: string[] = [];
+      const listener = (e: Event) => cancelled.push((e as CustomEvent).detail.requestId);
+      window.addEventListener(DATA_CHECK_CANCEL_EVENT, listener);
+      let requestId = '';
+      const requestListener = (e: Event) => (requestId = (e as CustomEvent).detail.requestId);
+      window.addEventListener(DATA_CHECK_REQUEST_EVENT, requestListener);
+
+      const { unmount } = renderStep({ mode: 'ai' });
+      await selectDatasource();
+      await click('data-check-ask-ai-check-1');
+
+      unmount();
+
+      expect(cancelled).toEqual([requestId]);
+      window.removeEventListener(DATA_CHECK_CANCEL_EVENT, listener);
+      window.removeEventListener(DATA_CHECK_REQUEST_EVENT, requestListener);
     });
 
     it('ignores a result meant for another step', async () => {

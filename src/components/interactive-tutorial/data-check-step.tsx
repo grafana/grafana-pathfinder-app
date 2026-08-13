@@ -1,13 +1,7 @@
 /**
- * DataCheckStep Component
- *
  * Verifies the user's data source actually holds the data the guide teaches
- * against. The user picks a data source, then runs the check; the step
- * completes only when the check passes.
- *
- * The check runs on click and never on a cadence — that is the whole reason
- * this is a step rather than a `requirements` token, which the requirements
- * pipeline would re-evaluate on several timers.
+ * against. A step rather than a `requirements` token because the check runs on
+ * click only — the requirements pipeline would re-evaluate it on several timers.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -23,6 +17,7 @@ import { markStepCompleted, useStepCompletion } from '../../global-state/complet
 import type { ProgressReason } from '../../global-state/progress-events';
 import {
   DATA_CHECK_RESULT_EVENT,
+  dispatchDataCheckCancel,
   dispatchDataCheckRequest,
   type DataCheckResultDetail,
 } from '../../integrations/assistant-integration/data-check-event';
@@ -72,8 +67,7 @@ export interface DataCheckStepProps {
 
 type CheckState = 'idle' | 'checking' | 'failed';
 
-/** Backstop for the AI check, longer than the orchestrator's own timeout so
- *  its more specific message wins whenever one is listening. */
+/** Longer than the orchestrator's own timeout, so its more specific message wins. */
 const AI_CHECK_TIMEOUT_MS = 45_000;
 
 let dataCheckStepCounter = 0;
@@ -149,7 +143,6 @@ function readRememberedUid(value: unknown): string | null {
   return typeof value === 'string' && value ? value : null;
 }
 
-/** Options for the picker, narrowed to the type the author asked for. */
 function getDatasourceOptions(datasourceType: SupportedDatasourceType): Array<ComboboxOption<string>> {
   try {
     return getDataSourceSrv()
@@ -264,6 +257,11 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
   const cancelInFlight = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    // The assistant half runs in an orchestrator this step can't see, so giving
+    // up has to be said out loud or that work keeps spending queries.
+    if (pendingAiRequestRef.current) {
+      dispatchDataCheckCancel({ requestId: pendingAiRequestRef.current });
+    }
     pendingAiRequestRef.current = null;
     clearAiTimeout();
   }, [clearAiTimeout]);
@@ -274,8 +272,6 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
     setFailureDetail('');
   }, [cancelInFlight]);
 
-  // A reset clears the verdict but deliberately keeps the data source pick —
-  // re-picking after every reset would be hostile.
   useStepResetSignal({ resetTrigger, clearLocalState: clearVerdict, resetChecker: checker.resetStep });
 
   const handleRedo = useStepRedo({
@@ -379,9 +375,8 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
     pendingAiRequestRef.current = requestId;
     setCheckState('checking');
     setFailureDetail('');
-    // The request is answered over a window event by an orchestrator this step
-    // can't see. Surfaces that render guides without one (the guide-reader
-    // overlay) would otherwise leave the step spinning for good.
+    // Nothing answers the request on a surface with no orchestrator, and the
+    // step would spin for good.
     aiTimeoutRef.current = setTimeout(() => {
       if (pendingAiRequestRef.current !== requestId) {
         return;
@@ -456,9 +451,8 @@ export const DataCheckStep: React.FC<DataCheckStepProps> = ({
     stepState = STEP_STATES.ERROR;
   }
 
-  // A completed step renders only its badge and Redo. Blanketing it in
-  // `pointer-events: none` — which Skip does, by driving the checker to a
-  // terminal state — leaves Redo visible but unclickable.
+  // Skip drives the checker to a terminal state, so the disabled blanket would
+  // land on the very step now rendering Redo and leave it unclickable.
   const containerClasses = [
     'interactive-step',
     isCompleted && 'completed',

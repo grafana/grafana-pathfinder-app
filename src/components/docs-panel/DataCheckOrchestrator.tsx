@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import {
+  DATA_CHECK_CANCEL_EVENT,
   DATA_CHECK_REQUEST_EVENT,
   dispatchDataCheckResult,
+  type DataCheckCancelDetail,
   type DataCheckRequestDetail,
 } from '../../integrations/assistant-integration/data-check-event';
 import { useDataCheckGeneration } from '../../integrations/assistant-integration/useDataCheckGeneration.hook';
@@ -16,11 +18,9 @@ interface DataCheckOrchestratorProps {
 }
 
 /**
- * Runs the assistant half of data checks off the step component.
- *
- * Mounted lazily so `@grafana/assistant` stays out of the docs-panel init chain
- * — its runtime init throws under jsdom. Hooks cannot be called conditionally,
- * so the SDK hook has to live in a component that only mounts when wanted.
+ * Runs the assistant half of data checks off the step component. Mounted lazily
+ * because `@grafana/assistant`'s runtime init throws under jsdom, and a hook
+ * cannot be called conditionally.
  */
 function DataCheckOrchestrator({ contentKey }: DataCheckOrchestratorProps): null {
   const { generate, verdict, error, reset, isAssistantAvailable } = useDataCheckGeneration(contentKey);
@@ -40,9 +40,20 @@ function DataCheckOrchestrator({ contentKey }: DataCheckOrchestratorProps): null
     reset();
   }, [reset]);
 
-  // Runs on unmount and whenever the panel swaps guides; the step that asked for
-  // the check is gone either way.
-  useEffect(() => () => clearPending(), [clearPending, contentKey]);
+  useEffect(() => () => clearPending(), [clearPending]);
+
+  // A guide swap keeps this component mounted — `contentKey` is the tab, not the
+  // guide — so the step that asked is the one that says when to stop.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<DataCheckCancelDetail>).detail;
+      if (detail?.requestId && detail.requestId === pendingRef.current?.requestId) {
+        clearPending();
+      }
+    };
+    window.addEventListener(DATA_CHECK_CANCEL_EVENT, handler);
+    return () => window.removeEventListener(DATA_CHECK_CANCEL_EVENT, handler);
+  }, [clearPending]);
 
   useEffect(() => {
     const handler = async (e: Event) => {

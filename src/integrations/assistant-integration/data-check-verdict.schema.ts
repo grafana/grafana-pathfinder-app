@@ -3,11 +3,9 @@ import { z } from 'zod';
 import { cleanAssistantResponse } from './useAssistantGeneration.hook';
 
 /**
- * The assistant's verdict on a data check.
- *
- * `reason` is displayed as plain text only. Keeping the acted-on part of the
- * response to a two-value enum is what stops a crafted label or log line in the
- * user's own data from steering the outcome.
+ * `reason` is displayed as plain text only. Keeping the acted-on part to a
+ * two-value enum is what stops a crafted label or log line in the user's own
+ * data from steering the outcome.
  */
 export const DataCheckVerdictSchema = z.object({
   verdict: z.enum(['pass', 'fail']),
@@ -46,16 +44,9 @@ function extractBalancedObjects(text: string): string[] {
 }
 
 /**
- * Parse the assistant's response into a verdict.
- *
- * The prompt asks for a bare JSON object, but models routinely wrap it in a
- * sentence of preamble or a code fence, so the verdict is looked for anywhere
- * in the response rather than required to be the whole of it. The last
- * schema-valid object wins: the verdict is the model's closing answer, and
- * anything earlier is preamble that may quote the shape without asserting it.
- *
- * Fails closed: anything we cannot read as an explicit `pass` leaves the step
- * incomplete, so a malformed or truncated response can never complete a check.
+ * The last schema-valid object anywhere in the response wins — models wrap the
+ * verdict in prose or a fence, and anything earlier may quote the shape without
+ * asserting it. Fails closed: only an explicit `pass` can complete a step.
  */
 export function parseDataCheckVerdict(
   text: string

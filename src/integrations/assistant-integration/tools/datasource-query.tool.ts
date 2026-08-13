@@ -1,10 +1,7 @@
 /**
- * Query tool for data-check steps.
- *
- * Lets the assistant test whether data exists by running queries. Every limit
- * here is enforced in this closure rather than asked of the model: the data
- * source uid is captured at construction and is not a tool input, so the model
- * can only ever query the one the user picked.
+ * Limits are enforced in this closure rather than asked of the model: the data
+ * source uid is captured at construction and is never a tool input, so the model
+ * can only query the one the user picked.
  */
 
 import {
@@ -18,10 +15,8 @@ import {
 import type { SupportedDatasourceType } from '../../../constants/datasource-types';
 import { runDataCheckQuery } from '../../../lib/datasource/run-data-check-query';
 
-/** Queries one assistant-driven data check may run. */
 export const DATA_CHECK_QUERY_BUDGET = 3;
 
-/** Characters of tool output returned to the model. */
 const MAX_OUTPUT_CHARS = 600;
 
 interface ToolInput {
@@ -67,11 +62,7 @@ const QUERY_DESCRIPTIONS: Record<SupportedDatasourceType, string> = {
   pyroscope: 'a query shaped as "<profileTypeId>|<labelSelector>"',
 };
 
-/**
- * Build the query tool bound to one data source and one budget.
- *
- * Construct a fresh tool per check — the budget counter lives in the closure.
- */
+/** Construct a fresh tool per check — the budget counter lives in the closure. */
 export const createDataCheckQueryTool = (options: DataCheckQueryToolOptions): InlineToolRunnable => {
   const { datasourceUid, datasourceType, timeFrom, timeTo, signal, onQueryRun } = options;
   const budget = options.budget ?? DATA_CHECK_QUERY_BUDGET;

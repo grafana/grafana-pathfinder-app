@@ -1,9 +1,6 @@
 /**
- * Query execution for data-check steps.
- *
  * The only place in the plugin that runs a data source query. Both check paths
- * go through it — the author's query on the `query` path, and the assistant's
- * composed queries on the `ai` path — so the cost caps below are enforced once.
+ * go through it, so the cost caps below are enforced once.
  */
 
 import { getBackendSrv } from '@grafana/runtime';
@@ -11,7 +8,6 @@ import { lastValueFrom } from 'rxjs';
 import type { SupportedDatasourceType } from '../../constants/datasource-types';
 import { logger } from '../logging';
 
-/** Caps applied to every data-check query regardless of caller. */
 export const DATA_CHECK_QUERY_LIMITS = {
   maxDataPoints: 100,
   timeoutMs: 15_000,
@@ -101,12 +97,7 @@ function describeError(err: unknown): string {
  */
 let requestSequence = 0;
 
-/**
- * Run one query and report whether it returned any data.
- *
- * `showErrorAlert: false` keeps a failed check in the step rather than firing
- * Grafana's global error toast.
- */
+/** `showErrorAlert: false` keeps a failed check in the step, off Grafana's global toast. */
 export async function runDataCheckQuery(request: DataCheckQueryRequest): Promise<DataCheckQueryResult> {
   const { datasourceUid, datasourceType, query, from, to, signal } = request;
 

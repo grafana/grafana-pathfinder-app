@@ -1,9 +1,6 @@
 /**
- * Tests for DataCheckOrchestrator, with the assistant hook stubbed.
- *
- * The orchestrator outlives the step that asked for a check, so the lifecycle
- * these cover is the one that matters: whatever the guide does next, the work
- * the check started has to stop with it.
+ * The orchestrator outlives the step that asked for a check, so what these cover
+ * is that the work stops when its owner does.
  */
 
 import React from 'react';
@@ -12,6 +9,7 @@ import { act, render, waitFor } from '@testing-library/react';
 import DataCheckOrchestrator from './DataCheckOrchestrator';
 import {
   DATA_CHECK_RESULT_EVENT,
+  dispatchDataCheckCancel,
   dispatchDataCheckRequest,
   type DataCheckResultDetail,
 } from '../../integrations/assistant-integration/data-check-event';
@@ -77,13 +75,37 @@ describe('DataCheckOrchestrator', () => {
     expect(signal.aborted).toBe(true);
   });
 
-  it('aborts an in-flight check when the panel swaps guides', async () => {
+  it('aborts when the step that asked gives up', async () => {
+    render(<DataCheckOrchestrator contentKey="tab-1" />);
+    const signal = await startCheck();
+
+    await act(async () => {
+      dispatchDataCheckCancel({ requestId: 'req-1' });
+    });
+
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("leaves another step's check alone when one cancels", async () => {
+    render(<DataCheckOrchestrator contentKey="tab-1" />);
+    const signal = await startCheck();
+
+    await act(async () => {
+      dispatchDataCheckCancel({ requestId: 'someone-else' });
+    });
+
+    expect(signal.aborted).toBe(false);
+  });
+
+  // `contentKey` is the tab id, so it survives a guide swap and misses the case
+  // it looks like it covers. The step's own cancel is what stops the work.
+  it('does not abort on a tab change alone', async () => {
     const { rerender } = render(<DataCheckOrchestrator contentKey="tab-1" />);
     const signal = await startCheck();
 
     rerender(<DataCheckOrchestrator contentKey="tab-2" />);
 
-    expect(signal.aborted).toBe(true);
+    expect(signal.aborted).toBe(false);
   });
 
   it('ignores a result that arrives after it unmounts', async () => {
