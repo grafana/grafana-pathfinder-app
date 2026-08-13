@@ -331,7 +331,10 @@ export async function fetchPackageById(
     };
   }
 
-  const resolution = await _packageResolver.resolve(packageId, { loadContent: false });
+  // verifyPublished: this resolve() is the whole answer for a deep link (no
+  // content-loading call follows to catch a draft/missing id), unlike the
+  // baseUrl hydration resolve() in fetchPackageContent below.
+  const resolution = await _packageResolver.resolve(packageId, { loadContent: false, verifyPublished: true });
 
   if (!resolution.ok) {
     return {

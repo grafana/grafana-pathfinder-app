@@ -78,6 +78,59 @@ function attemptedFailure(
   return { ok: false, id, error: { code, message }, repository: APP_PLATFORM_REPOSITORY };
 }
 
+type ProbeResult = { ok: true; resource: InteractiveGuideResource } | { ok: false; failure: PackageResolutionFailure };
+
+/**
+ * Fetches the guide and applies the same not-found/not-published gate used by
+ * the content-loading paths below. Shared so the URL-only path (when asked to
+ * verify) and the metadata/content paths enforce identical rules.
+ */
+async function probePublishedGuide(namespace: string, packageId: string): Promise<ProbeResult> {
+  try {
+    // SECURITY: itemUrl encodes both namespace and packageId to prevent path
+    // traversal (F3) — mirrors fetchBackendInteractive in
+    // docs-retrieval/content-fetcher/backend-guide.ts.
+    const url = itemUrl(namespace, packageId);
+    const response = await lastValueFrom(
+      getBackendSrv().fetch<InteractiveGuideResource>({ url, method: 'GET', showErrorAlert: false })
+    );
+    const resource = response.data;
+
+    if (!resource?.spec) {
+      return {
+        ok: false,
+        failure: attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" has no spec`),
+      };
+    }
+
+    // Published-only, matching every other catalogue surface (usePublishedGuides,
+    // fetchAppPlatformLearningPaths). Without this a draft member of a published
+    // path renders unlocked and opens for every namespace viewer. A draft
+    // therefore resolves not-found → renders locked, like an unpublished member.
+    if (resource.spec.status !== 'published') {
+      return {
+        ok: false,
+        failure: attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" is not published`),
+      };
+    }
+
+    return { ok: true, resource };
+  } catch (err) {
+    const status = (err as { status?: number })?.status;
+    // A 403 (no read permission) is folded into the same not-found result as a
+    // missing guide: telling an unauthorized caller "it exists but you can't
+    // read it" would leak existence information they aren't entitled to.
+    if (status === 404 || status === 403) {
+      return {
+        ok: false,
+        failure: attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" not found`),
+      };
+    }
+    const message = err instanceof Error ? err.message : 'app platform fetch failed';
+    return { ok: false, failure: attemptedFailure(packageId, 'network-error', message) };
+  }
+}
+
 /**
  * Builds the manifest for a resolution: the persisted spec.manifest when
  * present, otherwise an inferred `{ id, type: 'guide', repository: 'app-platform' }`
@@ -152,60 +205,44 @@ export class AppPlatformPackageResolver implements PackageResolver {
     };
 
     if (!options?.loadContent) {
-      return resolution;
+      // URL-only mode is a pure string build with no upstream request — fine
+      // for callers about to fetch content anyway (they'll hit the same gate
+      // there), but not for a caller treating a successful resolve() as the
+      // whole answer. verifyPublished opts into the same probe below.
+      if (!options?.verifyPublished) {
+        return resolution;
+      }
+      const probe = await probePublishedGuide(namespace, packageId);
+      return probe.ok ? resolution : probe.failure;
     }
 
     const metadataOnly = options.loadContent === 'metadata-only';
 
-    try {
-      // SECURITY: itemUrl encodes both namespace and packageId to prevent path
-      // traversal (F3) — mirrors fetchBackendInteractive in
-      // docs-retrieval/content-fetcher/backend-guide.ts.
-      const url = itemUrl(namespace, packageId);
-      const response = await lastValueFrom(
-        getBackendSrv().fetch<InteractiveGuideResource>({ url, method: 'GET', showErrorAlert: false })
-      );
-      const resource = response.data;
-
-      if (!resource?.spec) {
-        return attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" has no spec`);
-      }
-
-      // Published-only, matching every other catalogue surface (usePublishedGuides,
-      // fetchAppPlatformLearningPaths). Without this a draft member of a published
-      // path renders unlocked and opens for every namespace viewer. A draft
-      // therefore resolves not-found → renders locked, like an unpublished member.
-      if (resource.spec.status !== 'published') {
-        return attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" is not published`);
-      }
-
-      resolution.manifest = buildManifest(packageId, resource.spec);
-
-      if (!metadataOnly) {
-        if (!resource.spec.blocks || !resource.spec.title) {
-          return attemptedFailure(
-            packageId,
-            'validation-error',
-            `App platform guide "${packageId}" is missing required fields`
-          );
-        }
-        const content: ContentJson = {
-          id: resource.spec.id || resource.metadata?.name || packageId,
-          title: resource.spec.title,
-          schemaVersion: resource.spec.schemaVersion || '1.0',
-          blocks: resource.spec.blocks as JsonBlock[],
-        };
-        resolution.content = content;
-      }
-
-      return resolution;
-    } catch (err) {
-      const status = (err as { status?: number })?.status;
-      if (status === 404) {
-        return attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" not found`);
-      }
-      const message = err instanceof Error ? err.message : 'app platform fetch failed';
-      return attemptedFailure(packageId, 'network-error', message);
+    const probe = await probePublishedGuide(namespace, packageId);
+    if (!probe.ok) {
+      return probe.failure;
     }
+    const resource = probe.resource;
+
+    resolution.manifest = buildManifest(packageId, resource.spec);
+
+    if (!metadataOnly) {
+      if (!resource.spec?.blocks || !resource.spec.title) {
+        return attemptedFailure(
+          packageId,
+          'validation-error',
+          `App platform guide "${packageId}" is missing required fields`
+        );
+      }
+      const content: ContentJson = {
+        id: resource.spec.id || resource.metadata?.name || packageId,
+        title: resource.spec.title,
+        schemaVersion: resource.spec.schemaVersion || '1.0',
+        blocks: resource.spec.blocks as JsonBlock[],
+      };
+      resolution.content = content;
+    }
+
+    return resolution;
   }
 }

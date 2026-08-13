@@ -79,6 +79,79 @@ describe('AppPlatformPackageResolver — no loadContent', () => {
   });
 });
 
+describe('AppPlatformPackageResolver — verifyPublished (URL-only probe, #1561)', () => {
+  it('fails a draft guide instead of silently succeeding, tagged for cache eviction', async () => {
+    mockFetch.mockReturnValue(of(okResource({ status: 'draft' })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: false, verifyPublished: true });
+
+    expect(mockFetch).toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.code).toBe('not-found');
+    // Repository-tagged (attemptedFailure), not decline — composite-resolver's
+    // cache eviction keys on `repository`, so an untagged failure here would
+    // stay cache-locked as missing even after the guide is published.
+    expect(result.repository).toBe('app-platform');
+  });
+
+  it('fails a nonexistent guide the same way (404)', async () => {
+    mockFetch.mockReturnValue(throwError(() => ({ status: 404 })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('missing-guide', { loadContent: false, verifyPublished: true });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.code).toBe('not-found');
+    expect(result.repository).toBe('app-platform');
+  });
+
+  it('maps a 403 (no read permission) to the same not-found result as a 404', async () => {
+    mockFetch.mockReturnValue(throwError(() => ({ status: 403 })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('forbidden-guide', { loadContent: false, verifyPublished: true });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.code).toBe('not-found');
+    expect(result.repository).toBe('app-platform');
+  });
+
+  it('still resolves successfully for a published guide (no regression)', async () => {
+    mockFetch.mockReturnValue(of(okResource()));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: false, verifyPublished: true });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.contentUrl).toBe('backend-guide:fe-alerting-01');
+    // URL-only mode still doesn't populate content/manifest, even when verified.
+    expect(result.content).toBeUndefined();
+    expect(result.manifest).toBeUndefined();
+  });
+
+  it('does not probe when verifyPublished is absent (baseUrl hydration hot path stays cheap)', async () => {
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: false });
+
+    expect(result.ok).toBe(true);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+});
+
 describe('AppPlatformPackageResolver — metadata-only', () => {
   it('returns the persisted manifest without fetching content', async () => {
     mockFetch.mockReturnValue(

@@ -258,6 +258,16 @@ export interface ResolveOptions {
    * - `false` / `undefined`: resolve URLs only, no content fetching
    */
   loadContent?: boolean | 'metadata-only';
+  /**
+   * When `loadContent` is falsy, still verify (server-side, where the
+   * resolver supports it) that the package exists and is published before
+   * reporting success. Without this, URL-only resolution is a pure string
+   * build with no existence check — fine for a hot path that's about to fetch
+   * content anyway and will fail there, but not for a caller that treats a
+   * successful resolve() as the whole answer (e.g. deep links by bare ID).
+   * Ignored by resolvers with no draft/published distinction.
+   */
+  verifyPublished?: boolean;
 }
 
 /**
