@@ -137,6 +137,13 @@ export const POST_CLICK_SETTLE_DELAY_MS = 500;
 export const SCROLL_INTO_VIEW_TIMEOUT_MS = 5000;
 
 /**
+ * Timeout for the late-completion/detachment attribute read performed
+ * immediately before scrolling a step into view. Kept short so a step that
+ * detaches mid-read can't stall on an otherwise-unbounded locator read.
+ */
+export const LATE_COMPLETION_CHECK_TIMEOUT_MS = 2000;
+
+/**
  * Polling interval for checking completion during wait.
  * Used for detecting objective-based auto-completion.
  */

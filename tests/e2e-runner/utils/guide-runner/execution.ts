@@ -21,6 +21,7 @@ import {
   BUTTON_APPEAR_TIMEOUT_MS,
   SCROLL_SETTLE_DELAY_MS,
   SCROLL_INTO_VIEW_TIMEOUT_MS,
+  LATE_COMPLETION_CHECK_TIMEOUT_MS,
   POST_CLICK_SETTLE_DELAY_MS,
   COMPLETION_POLL_INTERVAL_MS,
   DEFAULT_SESSION_CHECK_INTERVAL,
@@ -203,6 +204,48 @@ export async function waitForStepCompletion(
 export async function checkObjectiveCompletion(page: Page, stepId: string): Promise<boolean> {
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
   const state = await stepLocator.getAttribute('data-test-step-state');
+  return state === 'completed';
+}
+
+/**
+ * Recheck completion/detachment immediately before the scroll call in
+ * executeStep. Bounded so a step that's mid-detach can't hang the run on an
+ * otherwise-unbounded attribute read (Playwright auto-waits on a missing
+ * element up to its own timeout by default).
+ *
+ * A successful `count()` of zero (before or after the bounded read) means
+ * the step is already gone and this returns true, matching how detachment is
+ * treated as completion elsewhere in this file. A `count()` error, or an
+ * attached element whose read failed for an unrelated reason, is a genuine
+ * fault and propagates instead of being reported as "already done".
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier
+ * @param timeout - Bound for the attribute read (ms)
+ * @returns true if the step is already completed or detached
+ */
+async function checkLateCompletionOrDetachment(
+  page: Page,
+  stepId: string,
+  timeout = LATE_COMPLETION_CHECK_TIMEOUT_MS
+): Promise<boolean> {
+  const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
+  if ((await stepLocator.count()) === 0) {
+    return true;
+  }
+
+  let state: string | null;
+  try {
+    state = await stepLocator.getAttribute('data-test-step-state', { timeout });
+  } catch (err) {
+    // The bounded read didn't complete (e.g. the element detached mid-read).
+    // Re-count: a successful zero confirms late detachment; an attached
+    // element (or a failing re-count) is a genuine fault and must propagate.
+    if ((await stepLocator.count()) === 0) {
+      return true;
+    }
+    throw err;
+  }
   return state === 'completed';
 }
 
@@ -873,10 +916,10 @@ export async function executeStep(
 
     // Some no-op/objective-based steps complete (or their element detaches)
     // between discovery and execution; recheck immediately before scrolling so
-    // a step that's already done doesn't block on the scroll below.
-    const stepLocatorForPrecheck = page.getByTestId(testIds.interactive.step(step.stepId));
-    const detachedBeforeScroll = (await stepLocatorForPrecheck.count().catch(() => 0)) === 0;
-    if (detachedBeforeScroll || (await checkObjectiveCompletion(page, step.stepId))) {
+    // a step that's already done doesn't block on the scroll below. Bounded
+    // and error-propagating: a query/navigation fault fails the step instead
+    // of being mistaken for "already done".
+    if (await checkLateCompletionOrDetachment(page, step.stepId)) {
       if (verbose) {
         console.log(`   ⊘ Step ${step.stepId} completed or detached before scroll (late completion)`);
       }

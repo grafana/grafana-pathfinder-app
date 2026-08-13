@@ -61,7 +61,11 @@ import {
   executeStep,
 } from './execution';
 import { handleRequirementsWithFix } from './requirements';
-import { SCROLL_INTO_VIEW_TIMEOUT_MS, GUIDED_RELOAD_LOAD_TIMEOUT_MS } from './constants';
+import {
+  SCROLL_INTO_VIEW_TIMEOUT_MS,
+  GUIDED_RELOAD_LOAD_TIMEOUT_MS,
+  LATE_COMPLETION_CHECK_TIMEOUT_MS,
+} from './constants';
 import type { TestableStep } from './types';
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
@@ -505,5 +509,76 @@ describe('executeStep - skip sync sequential-flow regression', () => {
     expect(result.status).toBe('failed');
     expect(result.skippable).toBe(true);
     expect(result.error).toMatch(/skip sync/i);
+  });
+});
+
+describe('executeStep - late completion/detachment precheck', () => {
+  it('propagates a genuine query failure instead of treating it as pre-completion', async () => {
+    const stepLocator = createLocator({ count: jest.fn().mockRejectedValue(new Error('Target closed')) });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      off: jest.fn(),
+      url: jest.fn().mockReturnValue('http://localhost:3000/'),
+    } as unknown as Page;
+    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+
+    const result = await executeStep(page, step, {});
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('Target closed');
+  });
+
+  it('bounds the completion read and treats a successful re-count of zero as late detachment', async () => {
+    // getAttribute never resolves in time (simulating a mid-read detach); the
+    // precheck must re-count rather than trust a stale "attached" result.
+    let countCalls = 0;
+    const getAttribute = jest.fn().mockRejectedValue(new Error('Element not attached'));
+    const count = jest.fn().mockImplementation(() => {
+      countCalls += 1;
+      return Promise.resolve(countCalls === 1 ? 1 : 0); // attached, then gone mid-read
+    });
+    const stepLocator = createLocator({ count, getAttribute });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      off: jest.fn(),
+      url: jest.fn().mockReturnValue('http://localhost:3000/'),
+    } as unknown as Page;
+    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+
+    const result = await executeStep(page, step, {});
+
+    expect(result.status).toBe('skipped');
+    expect(result.skipReason).toBe('pre_completed');
+    expect(getAttribute).toHaveBeenCalledWith('data-test-step-state', { timeout: LATE_COMPLETION_CHECK_TIMEOUT_MS });
+    expect(countCalls).toBe(2);
+  });
+
+  it('propagates the original read error when the element is still attached after a failed bounded read', async () => {
+    const readError = new Error('Some other read failure');
+    let countCalls = 0;
+    const getAttribute = jest.fn().mockRejectedValue(readError);
+    const count = jest.fn().mockImplementation(() => {
+      countCalls += 1;
+      return Promise.resolve(1); // always attached
+    });
+    const stepLocator = createLocator({ count, getAttribute });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      off: jest.fn(),
+      url: jest.fn().mockReturnValue('http://localhost:3000/'),
+    } as unknown as Page;
+    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+
+    const result = await executeStep(page, step, {});
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe(readError.message);
+    expect(countCalls).toBe(2);
   });
 });
