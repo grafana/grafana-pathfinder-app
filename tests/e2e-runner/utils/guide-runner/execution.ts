@@ -42,6 +42,7 @@ import {
   captureFinalScreenshot,
 } from './artifacts';
 import { validateSession, handleRequirementsWithFix } from './requirements';
+import { dismissBadgeCelebrations } from './badge-celebrations';
 import type {
   TestableStep,
   SkipReason,
@@ -428,6 +429,7 @@ async function waitForSubstepAdvance(
       const skipBtn = commentBox.getByRole('button', { name: /^Skip$/ });
       const count = await skipBtn.count();
       if (count > 0) {
+        await dismissBadgeCelebrations(page);
         await skipBtn.click().catch(() => {});
       }
     }
@@ -575,6 +577,7 @@ async function runGuidedSubstepLoop(
     try {
       if (action === 'noop') {
         const continueBtn = commentBox.getByRole('button', { name: /Continue/ });
+        await dismissBadgeCelebrations(page);
         await continueBtn.click();
       } else if (action === 'button' || action === 'highlight') {
         if (!reftarget) {
@@ -583,6 +586,7 @@ async function runGuidedSubstepLoop(
         const urlBefore = page.url();
         const target = await resolveGuidedTarget(page, reftarget, action);
         await target.scrollIntoViewIfNeeded();
+        await dismissBadgeCelebrations(page);
         await target.click();
         await page.waitForTimeout(100);
         if (urlBefore !== page.url()) {
@@ -854,6 +858,7 @@ export async function executeStep(
       );
     }
     await waitForStepActionEnabled(page, step.stepId, action);
+    await dismissBadgeCelebrations(page);
     await stepActionButton(page, step.stepId, action).click();
 
     if (verbose) {
