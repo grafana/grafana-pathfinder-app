@@ -318,13 +318,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Combined completion state: objectives always win
     const isCompletedWithObjectives = storedCompleted || checker.completionReason === 'objectives';
 
-    // Main execution logic
     const executeStep = useCallback(async (): Promise<boolean> => {
       if (!checker.isEnabled || (isCompletedWithObjectives && !allowCompletedRetryRef.current) || isExecuting) {
         return false;
       }
 
-      // Check objectives before executing
       if (checker.completionReason === 'objectives') {
         persistCompletion();
         if (onStepComplete && stepId) {
@@ -342,7 +340,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setFailedStepIndex(-1);
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
-      // Commit execution before overlay creation so observers never see the idle UI and guided overlay together.
+      // Commit execution before overlay creation so idle controls and the overlay never overlap.
       await waitForReactUpdates();
 
       let completionPersisted = false;
@@ -350,7 +348,6 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         if (completionPersisted) {
           return;
         }
-        completionPersisted = true;
         persistCompletion();
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
@@ -358,16 +355,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         if (onComplete) {
           onComplete();
         }
+        completionPersisted = true;
       };
 
       try {
-        // Execute each internal action in sequence, waiting for user
         for (let i = 0; i < internalActions.length; i++) {
           const action = internalActions[i];
           setCurrentStepIndex(i);
           setCurrentStepStatus('waiting');
 
-          // Execute guided step and wait for user completion
           const completeBeforeActionEffect =
             completeEarly && i === internalActions.length - 1 ? completeStep : undefined;
           const result = await guidedHandler.executeGuidedStep(

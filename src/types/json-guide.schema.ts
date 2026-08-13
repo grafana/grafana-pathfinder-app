@@ -390,7 +390,7 @@ export const JsonGuidedBlockSchema = z.object({
     .boolean()
     .optional()
     .describe(
-      'Persist the guided block at its final completion signal. For a final button or highlight action, the click signal causes completion to persist during capture, before the application click handler runs. A final action without a click signal persists after its result. Cancellation, timeout, or error does not persist completion.'
+      'Persist the guided block at its final completion signal. For a final button or highlight action, click activation causes completion to persist during capture, before the application click handler runs. A final action without click activation persists after its result. Cancellation, timeout, or error does not persist completion.'
     ),
   ...AuthorAnnotatedSchema.shape,
 });

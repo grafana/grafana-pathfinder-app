@@ -395,9 +395,9 @@ export interface JsonGuidedBlock extends AuthorAnnotated {
   skippable?: boolean;
   /**
    * Persist completion from the final guided action signal.
-   * For a final button or highlight action, the click signal causes completion to persist during capture.
+   * For a final button or highlight action, click activation causes completion to persist during capture.
    * The application click handler runs after persistence.
-   * A final action without a click signal persists after its result.
+   * A final action without click activation persists after its result.
    * Cancellation, timeout, or error does not persist completion.
    */
   completeEarly?: boolean;

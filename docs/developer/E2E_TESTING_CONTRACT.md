@@ -399,9 +399,13 @@ React components derive attributes from existing UI state:
 />
 ```
 
-For guided and multi-step components, `executing` takes precedence over `completed`. This keeps the active substep observable when `completeEarly` persists completion before the remaining actions settle.
+For multi-step components, `executing` takes precedence over `completed`. A multi-step `completeEarly` write can occur before its automated actions settle.
 
-After composite execution settles, genuine objectives completion is authoritative and suppresses stale local error or cancellation state. A `completeEarly` write alone does not receive this exception, so failures remain recoverable through Retry or Skip.
+For guided components, `executing` also takes precedence during a narrower final-action window. Final click activation can persist while the application handler and guided cleanup settle.
+
+After composite execution settles, genuine objectives completion is authoritative. It suppresses stale local error or cancellation state.
+
+For multi-step execution, a `completeEarly` write alone does not suppress an error. For guided execution, callback failure becomes an error before completion wins. Successful final-action persistence keeps the completed outcome if later setup or cleanup fails.
 
 `InteractiveStep` also prioritizes active execution, but after execution settles it lets `completed` override a stale local error because completed rendering suppresses its error affordances. The `cancelled` state applies only to guided execution.
 

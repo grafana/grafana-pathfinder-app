@@ -147,13 +147,14 @@ Individual steps can also be marked skippable:
 
 `completeEarly` changes when a guided block stores completion. It does not skip internal actions or complete before the final action.
 
-- For a final `button` or `highlight` action, the click signal stores completion during capture. The application click handler runs afterward.
-- A final action without a click signal stores completion after its result. This rule includes `hover`, `formfill`, `noop`, skip, and satisfied `targetstate` results.
+- For a final `button` or `highlight` action, click activation stores completion during capture. Activation can match the target or its proximity fallback.
+- The application click handler runs after capture-phase completion work.
+- A final action without click activation stores completion after its result. This rule includes `hover`, `formfill`, `noop`, skip, and satisfied `targetstate` results.
 - Cancellation, timeout, or error does not store completion.
 
 Use this field when the final click can change routes or replace its target subtree.
 
-`InteractiveGuided` owns the idempotent completion write and completion callbacks. `GuidedHandler` owns listeners, timers, the overlay, click ordering, and cleanup.
+`InteractiveGuided` owns the idempotent completion write and completion callbacks. `GuidedHandler` owns listeners, timeouts, connectivity intervals, the overlay, click ordering, and cleanup.
 
 ```json
 {

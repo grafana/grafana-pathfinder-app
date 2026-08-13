@@ -351,12 +351,79 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
       expect(screen.queryByTestId(testIds.interactive.step('complete-early-click'))).not.toBeInTheDocument();
     });
   });
+
+  it('passes the completion callback only to the final action', async () => {
+    const actionOrder: string[] = [];
+    const onStepComplete = jest.fn(() => actionOrder.push('completion persisted'));
+    mockExecuteGuidedStep.mockImplementation(async (_action, index, _total, _timeout, onActionCompleted) => {
+      actionOrder.push(`action ${index}`);
+      onActionCompleted?.();
+      return 'completed';
+    });
+
+    render(
+      <InteractiveGuided
+        stepId="two-action-gate"
+        sectionId="section"
+        completeEarly={true}
+        onStepComplete={onStepComplete}
+        internalActions={[
+          { targetAction: 'hover', refTarget: '#row' },
+          { targetAction: 'highlight', refTarget: '#install' },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(2);
+      expect(onStepComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(mockExecuteGuidedStep.mock.calls[0][4]).toBeUndefined();
+    expect(mockExecuteGuidedStep.mock.calls[1][4]).toEqual(expect.any(Function));
+    expect(actionOrder).toEqual(['action 0', 'action 1', 'completion persisted']);
+  });
+
+  it('retries completion work when its first callback attempt throws', async () => {
+    const onStepComplete = jest
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error('parent persistence failed');
+      })
+      .mockImplementation(() => undefined);
+    mockExecuteGuidedStep.mockImplementation(async (_action, _index, _total, _timeout, onActionCompleted) => {
+      try {
+        onActionCompleted?.();
+      } catch {
+        onActionCompleted?.();
+      }
+      return 'completed';
+    });
+
+    render(
+      <InteractiveGuided
+        stepId="callback-retry"
+        sectionId="section"
+        completeEarly={true}
+        onStepComplete={onStepComplete}
+        internalActions={[{ targetAction: 'highlight', refTarget: '#install' }]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(onStepComplete).toHaveBeenCalledTimes(2);
+    });
+  });
 });
 
 describe('InteractiveGuided — cancellation', () => {
   it('does not persist completeEarly completion after cancellation', async () => {
     mockExecuteGuidedStep.mockResolvedValue('cancelled');
     const onStepComplete = jest.fn();
+    const onComplete = jest.fn();
 
     render(
       <InteractiveGuided
@@ -364,6 +431,7 @@ describe('InteractiveGuided — cancellation', () => {
         sectionId="section"
         completeEarly={true}
         onStepComplete={onStepComplete}
+        onComplete={onComplete}
         internalActions={[{ targetAction: 'noop' }]}
       />
     );
@@ -375,6 +443,35 @@ describe('InteractiveGuided — cancellation', () => {
       expect(step).toHaveAttribute('data-test-step-state', 'cancelled');
     });
     expect(onStepComplete).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+});
+
+describe('InteractiveGuided — failed completion', () => {
+  it.each(['timeout', 'error'] as const)('does not persist completion after %s', async (result) => {
+    mockExecuteGuidedStep.mockResolvedValue(result);
+    const onStepComplete = jest.fn();
+    const onComplete = jest.fn();
+    const stepId = `failed-${result}`;
+
+    render(
+      <InteractiveGuided
+        stepId={stepId}
+        sectionId="section"
+        completeEarly={true}
+        onStepComplete={onStepComplete}
+        onComplete={onComplete}
+        internalActions={[{ targetAction: 'noop' }]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId(testIds.interactive.step(stepId))).toHaveAttribute('data-test-step-state', 'error');
+    });
+    expect(onStepComplete).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
   });
 });
 
@@ -400,6 +497,7 @@ describe('InteractiveGuided — objectives completion', () => {
 describe('InteractiveGuided — completeEarly retry', () => {
   it('reruns failed actions without persisting the failed run', async () => {
     mockExecuteGuidedStep.mockResolvedValueOnce('error').mockResolvedValueOnce('completed');
+    const onComplete = jest.fn();
 
     function RetryHarness() {
       const [, forceRender] = React.useReducer((value) => value + 1, 0);
@@ -407,7 +505,10 @@ describe('InteractiveGuided — completeEarly retry', () => {
         <InteractiveGuided
           stepId="complete-early-retry"
           completeEarly={true}
-          onComplete={forceRender}
+          onComplete={() => {
+            onComplete();
+            forceRender();
+          }}
           internalActions={[{ targetAction: 'noop' }]}
         />
       );
@@ -420,6 +521,7 @@ describe('InteractiveGuided — completeEarly retry', () => {
     await waitFor(() => {
       expect(step).toHaveAttribute('data-test-step-state', 'error');
     });
+    expect(onComplete).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('complete-early-retry')));
 
@@ -429,6 +531,7 @@ describe('InteractiveGuided — completeEarly retry', () => {
     await waitFor(() => {
       expect(step).toHaveAttribute('data-test-step-state', 'completed');
     });
+    expect(onComplete).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -633,15 +633,16 @@ someone to click a toggle that is already correct, and their click would move it
 the wrong way.
 
 `completeEarly` does not skip guided actions or complete the block before its
-final action. For a final `button` or `highlight` action, the click signal stores
-completion during capture. The application click handler runs afterward. A final
-action without a click signal stores completion after its result. This rule
-includes a satisfied `targetstate`. Cancellation, timeout, or error does not store
-completion.
+final action. For a final `button` or `highlight` action, click activation stores
+completion during capture. Activation can match the target or its proximity
+fallback. The application click handler runs after capture-phase completion work.
+A final action without click activation stores completion after its result. This
+rule includes a satisfied `targetstate`. Cancellation, timeout, or error does not
+store completion.
 
 `InteractiveGuided` owns the idempotent completion write and completion
-callbacks. `GuidedHandler` owns listeners, timers, the overlay, click ordering,
-and cleanup.
+callbacks. `GuidedHandler` owns listeners, timeouts, connectivity intervals, the
+overlay, click ordering, and cleanup.
 
 #### Quiz Block
 

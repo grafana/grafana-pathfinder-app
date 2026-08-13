@@ -23,26 +23,25 @@ import { commentForTargetState } from './toggle-click';
 
 export type { CompletionResult };
 
-/**
- * Handler for guided interactions where users manually perform actions
- * System highlights elements and waits for user to complete actions naturally
- * Useful for hover-dependent UIs and teaching users actual interaction patterns
- */
-/**
- * Represents an active event listener that needs cleanup
- */
 interface ActiveListener {
-  target: EventTarget; // EventTarget instead of HTMLElement to support document listeners
+  target: EventTarget;
   type: string;
   handler: EventListener;
   options?: AddEventListenerOptions;
 }
 
+interface GuidedStepArbiter {
+  promise: Promise<CompletionResult>;
+  settle: (result: CompletionResult, beforeSettle?: () => void) => CompletionResult;
+  getResult: () => CompletionResult | null;
+}
+
 export class GuidedHandler {
   private activeListeners: ActiveListener[] = [];
   private pendingTimeouts: Array<ReturnType<typeof setTimeout>> = [];
+  private pendingIntervals: Array<ReturnType<typeof setInterval>> = [];
   private currentAbortController: AbortController | null = null;
-  private completedSteps: number[] = []; // Track completed steps for progress display
+  private completedSteps: number[] = [];
 
   constructor(
     private stateManager: InteractiveStateManager,
@@ -73,17 +72,9 @@ export class GuidedHandler {
     }
   }
 
-  /**
-   * Reset completed steps tracking (call before starting new guided sequence)
-   */
   resetProgress(): void {
     this.completedSteps = [];
   }
-
-  /**
-   * Execute a single guided step: highlight target and wait for user action
-   * Returns true if user completed, false if timeout/cancelled
-   */
   async executeGuidedStep(
     action: GuidedAction,
     stepIndex: number,
@@ -106,6 +97,34 @@ export class GuidedHandler {
     );
   }
 
+  private createGuidedStepArbiter(): GuidedStepArbiter {
+    let result: CompletionResult | null = null;
+    let resolvePromise!: (result: CompletionResult) => void;
+    const promise = new Promise<CompletionResult>((resolve) => {
+      resolvePromise = resolve;
+    });
+
+    return {
+      promise,
+      settle: (nextResult, beforeSettle) => {
+        if (result !== null) {
+          return result;
+        }
+
+        result = nextResult;
+        try {
+          beforeSettle?.();
+        } catch (error) {
+          logger.error('Guided completion callback failed', { error });
+          result = 'error';
+        }
+        resolvePromise(result);
+        return result;
+      },
+      getResult: () => result,
+    };
+  }
+
   private async runGuidedStep(
     action: GuidedAction,
     stepIndex: number,
@@ -113,17 +132,14 @@ export class GuidedHandler {
     timeout: number,
     onActionCompleted?: () => void
   ): Promise<CompletionResult> {
-    // Clean up any stale listeners from previous cancelled sessions
-    // This prevents interference when user cancels mid-session and restarts
-    this.cleanupListeners();
+    const arbiter = this.createGuidedStepArbiter();
 
     try {
+      this.cleanupListeners();
       if (action.targetAction === 'noop') {
-        return this.executeNoopStep(action, stepIndex, totalSteps, timeout);
+        return await this.executeNoopStep(action, stepIndex, totalSteps, timeout);
       }
 
-      // At this point, action is not noop, so refTarget must exist
-      // targetAction can be hover/button/highlight/formfill
       const refTarget = action.refTarget;
       const targetAction = action.targetAction as 'hover' | 'button' | 'highlight' | 'formfill';
 
@@ -133,8 +149,6 @@ export class GuidedHandler {
 
       await this.expandNavigationParentIfNeeded(refTarget);
 
-      // Find target element using action-specific logic with retry
-      // For skippable steps, skip retries to fail fast and auto-skip
       let targetElement: HTMLElement;
       try {
         targetElement = await this.findTargetElementWithRetry(
@@ -142,74 +156,61 @@ export class GuidedHandler {
           targetAction,
           timeout,
           INTERACTIVE_CONFIG.guided.retryInterval,
-          action.isSkippable === true // Skip retries for skippable steps - fail fast
+          action.isSkippable === true
         );
       } catch (elementNotFoundError) {
-        // Element not found - if step is skippable, auto-skip without showing UI
-        // This handles cases where the DOM state has changed (e.g., second run after reset)
         if (action.isSkippable) {
-          // Track as completed (skipped counts as done for progress)
-          this.completedSteps.push(stepIndex);
-          return 'skipped';
+          return this.finishGuidedStep('skipped', stepIndex);
         }
-        // Not skippable - re-throw to be handled by outer catch
         throw elementNotFoundError;
       }
 
-      // Prepare element (scroll into view, open navigation if needed)
       await this.prepareElement(targetElement);
-
-      // CRITICAL FIX: Attach listener BEFORE highlighting to avoid race condition
-      // If we highlight first, fast users might click before the listener is ready
-      const completionPromise = this.createCompletionListener(action, targetElement, timeout, onActionCompleted);
-
-      // Create skip promise if step is skippable
-      const skipPromise = action.isSkippable
-        ? this.createSkipListener(stepIndex)
-        : new Promise<CompletionResult>(() => {}); // Never resolves if not skippable
-
-      // Create cancel promise - always available via comment box cancel button
-      const cancelPromise = this.createCancelListener(stepIndex);
-
-      // Now highlight the target element with persistent highlight
-      // Note: highlightTarget uses navigationManager.highlightWithComment which includes
-      // the 300ms DOM settling delay after scroll
+      // Attach before highlighting so click activation cannot beat the listener.
+      this.createCompletionListener(action, targetElement, timeout, arbiter, onActionCompleted);
+      if (action.isSkippable) {
+        this.createSkipListener(stepIndex, arbiter);
+      }
+      this.createCancelListener(stepIndex, arbiter);
       await this.highlightTarget(
         targetElement,
         targetAction,
         stepIndex,
         totalSteps,
-        // The completion listener above already resolved if the state matched,
-        // so without this the box would flash "click this" and vanish.
         commentForTargetState(action.targetComment, targetElement, action.targetState),
         action.isSkippable,
-        action.formHint, // Pass form hint for formfill validation feedback
-        action.targetValue, // Pass target value for data-test-target-value attribute
-        action.refTarget! // E2E contract: selector for current target (data-test-refTarget)
+        action.formHint,
+        action.targetValue,
+        action.refTarget!
       );
 
-      // Wait for user to complete the action, skip, cancel, or timeout
-      const result = await Promise.race([completionPromise, skipPromise, cancelPromise]);
-
-      // CRITICAL: Always clean up listeners AND highlights after step completes (any outcome)
-      // This prevents:
-      // 1. Stale listeners from interfering with subsequent guided sessions
-      // 2. Stale comment boxes from dispatching events to non-existent listeners
-      this.cleanupListeners(true);
-
-      // Track completion for progress display (both completed and skipped count as done)
-      if (result === 'completed' || result === 'skipped') {
-        this.completedSteps.push(stepIndex);
-      }
-
-      return result;
+      return this.finishGuidedStep(await arbiter.promise, stepIndex);
     } catch (error) {
-      logger.error(`Guided step ${stepIndex + 1} failed`, { error });
-      // Clean up abort controller and listeners on error to prevent resource leaks
-      this.cancel();
-      // An exception is an action failure, not a user cancellation.
-      return 'error';
+      const settledResult = arbiter.getResult();
+      if (settledResult === null) {
+        logger.error(`Guided step ${stepIndex + 1} failed`, { error });
+      } else if (settledResult !== 'error') {
+        logger.warn(`Guided step ${stepIndex + 1} settled before setup failed`, { error, result: settledResult });
+      }
+      const result = settledResult ?? arbiter.settle('error');
+      return this.finishGuidedStep(result, stepIndex);
     }
+  }
+
+  private finishGuidedStep(result: CompletionResult, stepIndex: number): CompletionResult {
+    if (this.currentAbortController) {
+      this.currentAbortController.abort();
+      this.currentAbortController = null;
+    }
+    try {
+      this.cleanupListeners(true);
+    } catch (error) {
+      logger.error('Guided cleanup failed', { error });
+    }
+    if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
+      this.completedSteps.push(stepIndex);
+    }
+    return result;
   }
 
   /**
@@ -222,37 +223,33 @@ export class GuidedHandler {
     totalSteps: number,
     timeout: number
   ): Promise<CompletionResult> {
-    // Clean up any stale listeners from previous steps
     this.cleanupListeners();
+    const arbiter = this.createGuidedStepArbiter();
     this.currentAbortController = new AbortController();
-
-    const skipPromise = action.isSkippable
-      ? this.createSkipListener(stepIndex)
-      : new Promise<CompletionResult>(() => {}); // Never resolves if not skippable
-
-    const cancelPromise = this.createCancelListener(stepIndex);
+    const signal = this.currentAbortController.signal;
+    if (action.isSkippable) {
+      this.createSkipListener(stepIndex, arbiter);
+    }
+    this.createCancelListener(stepIndex, arbiter);
     const completionPromise = this.createNoopCompletionListener(stepIndex, timeout);
-
-    // Show comment box without highlighting any element
-    // Use navigationManager to show a floating comment box
+    void completionPromise.then((result) => arbiter.settle(result));
+    const handleAbort = () => {
+      arbiter.settle('cancelled');
+    };
+    signal.addEventListener('abort', handleAbort, { once: true });
+    this.activeListeners.push({
+      target: signal,
+      type: 'abort',
+      handler: handleAbort,
+      options: { once: true },
+    });
     await this.showNoopCommentBox(
       stepIndex,
       totalSteps,
       action.targetComment || 'Complete this step to continue',
       action.isSkippable
     );
-
-    // Wait for user to complete, skip, cancel, or timeout
-    const result = await Promise.race([completionPromise, skipPromise, cancelPromise]);
-
-    // Track completion for progress display
-    if (result === 'completed' || result === 'skipped') {
-      this.completedSteps.push(stepIndex);
-    }
-
-    this.navigationManager.clearAllHighlights();
-
-    return result;
+    return this.finishGuidedStep(await arbiter.promise, stepIndex);
   }
 
   /**
@@ -631,31 +628,22 @@ export class GuidedHandler {
     }
   }
 
-  /**
-   * Create completion listener and return promise that resolves when user completes action
-   * Listener is attached immediately to avoid race condition with fast clicks
-   */
   private createCompletionListener(
     action: GuidedAction,
     targetElement: HTMLElement,
     timeout: number,
+    arbiter: GuidedStepArbiter,
     onActionCompleted?: () => void
-  ): Promise<CompletionResult> {
-    // Create abort controller for cancellation
+  ): void {
     this.currentAbortController = new AbortController();
     const signal = this.currentAbortController.signal;
-
-    // Create completion promise based on action type (listener attached immediately)
-    // Note: This method is only called for non-noop actions, so we can safely narrow the type
     const actionType = action.targetAction as 'hover' | 'button' | 'highlight' | 'formfill';
-
-    // A toggle already in the requested state must not be handed to the user to
-    // click — clicking it would move it away, which is the whole toggle problem
-    // with a human in the loop. Mirrors the pre-filled formfill case below.
+    // Do not click an already-satisfied toggle away from its target state.
     if (actionType === 'button' || actionType === 'highlight') {
       const target = parseTargetState(action.targetState);
       if (target && satisfiesTargetState(resolveStateSource(targetElement, target), target) === true) {
-        return Promise.resolve('completed');
+        arbiter.settle('completed');
+        return;
       }
     }
 
@@ -663,111 +651,84 @@ export class GuidedHandler {
       actionType,
       targetElement,
       signal,
+      arbiter,
       action.targetValue,
       action.formHint,
       action.validateInput,
       onActionCompleted
     );
+    void completionPromise.then(
+      (result) => arbiter.settle(result),
+      (error) => {
+        logger.error('Guided completion listener failed', { error });
+        arbiter.settle('error');
+      }
+    );
 
-    // Create timeout promise
-    const timeoutPromise = new Promise<CompletionResult>((resolve) => {
-      const timeoutId = setTimeout(() => resolve('timeout'), timeout);
-      this.pendingTimeouts.push(timeoutId);
-    });
-
-    // Create cancellation promise
-    const cancellationPromise = new Promise<CompletionResult>((resolve) => {
-      signal.addEventListener('abort', () => resolve('cancelled'));
-    });
-
-    // Race between completion, timeout, and cancellation
-    return Promise.race([completionPromise, timeoutPromise, cancellationPromise]).then((result) => {
-      // Clean up listeners when promise resolves
-      this.cleanupListeners();
-      return result;
+    const timeoutId = setTimeout(() => arbiter.settle('timeout'), timeout);
+    this.pendingTimeouts.push(timeoutId);
+    const handleAbort = () => {
+      arbiter.settle('cancelled');
+    };
+    signal.addEventListener('abort', handleAbort, { once: true });
+    this.activeListeners.push({
+      target: signal,
+      type: 'abort',
+      handler: handleAbort,
+      options: { once: true },
     });
   }
 
-  /**
-   * Create skip listener that resolves when user clicks skip button in comment box
-   */
-  private createSkipListener(stepIndex: number): Promise<CompletionResult> {
-    return new Promise<CompletionResult>((resolve) => {
-      const handleSkip = (event: Event) => {
-        const customEvent = event as CustomEvent<{ stepIndex: number }>;
-        if (customEvent.detail.stepIndex === stepIndex) {
-          resolve('skipped');
-        }
-      };
+  private createSkipListener(stepIndex: number, arbiter: GuidedStepArbiter): void {
+    const handleSkip = (event: Event) => {
+      const customEvent = event as CustomEvent<{ stepIndex: number }>;
+      if (customEvent.detail.stepIndex === stepIndex) {
+        arbiter.settle('skipped');
+      }
+    };
 
-      document.addEventListener('guided-step-skipped', handleSkip);
-      this.activeListeners.push({
+    document.addEventListener('guided-step-skipped', handleSkip);
+    this.activeListeners.push({
+      target: document,
+      type: 'guided-step-skipped',
+      handler: handleSkip,
+    });
+  }
+
+  private createCancelListener(stepIndex: number, arbiter: GuidedStepArbiter): void {
+    const handleCancel = (event: Event) => {
+      const customEvent = event as CustomEvent<{ stepIndex: number }>;
+      if (customEvent.detail.stepIndex === stepIndex) {
+        arbiter.settle('cancelled');
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        arbiter.settle('cancelled');
+      }
+    };
+
+    document.addEventListener('guided-step-cancelled', handleCancel);
+    document.addEventListener('keydown', handleKeyDown);
+    this.activeListeners.push(
+      {
         target: document,
-        type: 'guided-step-skipped',
-        handler: handleSkip,
-      });
-    });
+        type: 'guided-step-cancelled',
+        handler: handleCancel,
+      },
+      {
+        target: document,
+        type: 'keydown',
+        handler: handleKeyDown as EventListener,
+      }
+    );
   }
 
-  /**
-   * Create cancel listener that resolves when user clicks cancel button in comment box
-   * or presses Escape key
-   */
-  private createCancelListener(stepIndex: number): Promise<CompletionResult> {
-    return new Promise<CompletionResult>((resolve) => {
-      let isResolved = false;
-
-      const handleCancel = (event: Event) => {
-        if (isResolved) {
-          return;
-        }
-        const customEvent = event as CustomEvent<{ stepIndex: number }>;
-        if (customEvent.detail.stepIndex === stepIndex) {
-          isResolved = true;
-          // Clear highlights when cancelled from comment box
-          this.navigationManager.clearAllHighlights();
-          resolve('cancelled');
-        }
-      };
-
-      // Handle Escape key press to cancel guided step
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (isResolved) {
-          return;
-        }
-        if (event.key === 'Escape') {
-          isResolved = true;
-          // Clear highlights when cancelled via Escape key
-          this.navigationManager.clearAllHighlights();
-          resolve('cancelled');
-        }
-      };
-
-      document.addEventListener('guided-step-cancelled', handleCancel);
-      document.addEventListener('keydown', handleKeyDown);
-
-      this.activeListeners.push(
-        {
-          target: document,
-          type: 'guided-step-cancelled',
-          handler: handleCancel,
-        },
-        {
-          target: document,
-          type: 'keydown',
-          handler: handleKeyDown as EventListener,
-        }
-      );
-    });
-  }
-
-  /**
-   * Attach completion listener based on action type
-   */
   private async attachCompletionListener(
     actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     element: HTMLElement,
     signal: AbortSignal,
+    arbiter: GuidedStepArbiter,
     targetValue?: string,
     formHint?: string,
     validateInput?: boolean,
@@ -778,28 +739,19 @@ export class GuidedHandler {
         return this.waitForHover(element, signal);
       case 'button':
       case 'highlight':
-        // For guided mode, ALWAYS let clicks pass through naturally
-        // We just want to detect that the user clicked, not block the action
-        return this.waitForClick(element, signal, false, onActionCompleted);
+        return this.waitForClick(element, signal, arbiter, onActionCompleted);
       case 'formfill':
-        // For formfill, monitor input changes with debounced validation
         return this.waitForFormfill(element, signal, targetValue, formHint, validateInput);
       default:
         throw new Error(`Unsupported guided action type: ${actionType}`);
     }
   }
 
-  /**
-   * Wait for user to hover over element and dwell for specified time
-   * If mouse is already hovering, counts immediately
-   */
   private async waitForHover(element: HTMLElement, signal: AbortSignal): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
       let hoverTimeout: NodeJS.Timeout | null = null;
-      let isResolved = false; // Prevent double resolution
+      let isResolved = false;
       const dwellTime = INTERACTIVE_CONFIG.guided.hoverDwell;
-
-      // Centralized cleanup function to clear timer and resolve
       const cleanup = (result: CompletionResult) => {
         if (isResolved) {
           return;
@@ -813,12 +765,10 @@ export class GuidedHandler {
       };
 
       const startDwellTimer = () => {
-        // Clear any existing timer first
         if (hoverTimeout) {
           clearTimeout(hoverTimeout);
           hoverTimeout = null;
         }
-        // Start dwell timer
         hoverTimeout = setTimeout(() => {
           cleanup('completed');
         }, dwellTime);
@@ -831,58 +781,37 @@ export class GuidedHandler {
       };
 
       const handleMouseLeave = () => {
-        // Cancel dwell timer if user leaves too early
         if (hoverTimeout) {
           clearTimeout(hoverTimeout);
           hoverTimeout = null;
         }
       };
 
-      // Attach listeners
       element.addEventListener('mouseenter', handleMouseEnter);
       element.addEventListener('mouseleave', handleMouseLeave);
-
-      // Store for cleanup
       this.activeListeners.push(
         { target: element, type: 'mouseenter', handler: handleMouseEnter },
         { target: element, type: 'mouseleave', handler: handleMouseLeave }
       );
 
-      // CRITICAL FIX: Check if mouse is already hovering over the element
-      // If the element matches :hover pseudo-class, start the dwell timer immediately
       if (element.matches(':hover')) {
         startDwellTimer();
       }
-
-      // Handle cancellation - uses centralized cleanup to ensure timer is cleared
       signal.addEventListener('abort', () => {
         cleanup('cancelled');
       });
     });
   }
 
-  /**
-   * Wait for user to click element or within its highlighted bounds
-   * For guided mode, we detect clicks but let them pass through to the actual element
-   *
-   * IMPROVEMENTS:
-   * - Slightly expanded click zone (16px padding) for better targeting
-   * - Capture phase listening to catch events before they can be stopped
-   * - Better SVG/nested element handling
-   * - Fixed listener cleanup bug (was attaching to document but cleaning up from document.body)
-   * - Centralized cleanup to prevent resource leaks
-   */
   private async waitForClick(
     element: HTMLElement,
     signal: AbortSignal,
-    preventDefaultClick = false,
+    arbiter: GuidedStepArbiter,
     onActionCompleted?: () => void
   ): Promise<CompletionResult> {
     return new Promise<CompletionResult>((resolve) => {
-      let isResolved = false; // Prevent double resolution
+      let isResolved = false;
       let rectUpdateInterval: NodeJS.Timeout | null = null;
-
-      // Centralized cleanup function to clear interval and resolve
       const cleanup = (result: CompletionResult) => {
         if (isResolved) {
           return;
@@ -898,19 +827,16 @@ export class GuidedHandler {
         if (isResolved) {
           return;
         }
-        cleanup('completed');
-        onActionCompleted?.();
+        cleanup(arbiter.settle('completed', onActionCompleted));
       };
-
-      // Periodically verify element is still connected
       rectUpdateInterval = setInterval(() => {
         if (!element.isConnected) {
           cleanup('cancelled');
         }
       }, INTERACTIVE_CONFIG.guided.connectivityCheckInterval);
+      this.pendingIntervals.push(rectUpdateInterval);
 
       const handleClick = (event: Event) => {
-        // Prevent double resolution
         if (isResolved) {
           return;
         }
@@ -918,11 +844,6 @@ export class GuidedHandler {
         const mouseEvent = event as MouseEvent;
         const clickedElement = mouseEvent.target as HTMLElement;
 
-        // Primary check: Did user click the target element or something inside it?
-        // This handles:
-        // - Direct clicks on the element
-        // - Clicks on child elements (like SVG icons inside buttons)
-        // - Clicks on deeply nested elements
         const isTargetOrChild = element === clickedElement || element.contains(clickedElement);
 
         if (isTargetOrChild) {
@@ -930,10 +851,8 @@ export class GuidedHandler {
           return;
         }
 
-        // Fallback check: Is click within slightly expanded bounds?
-        // Recalculate rect on each click to handle dynamic/hover-revealed elements
         const elementRect = element.getBoundingClientRect();
-        const padding = 16; // Slightly increased from 12px for better targeting
+        const padding = 16;
         const clickX = mouseEvent.clientX;
         const clickY = mouseEvent.clientY;
 
@@ -944,9 +863,6 @@ export class GuidedHandler {
           clickY <= elementRect.bottom + padding;
 
         if (isWithinBounds) {
-          // Click is within bounds - programmatically trigger click on target element
-          // This helps when an overlay or SVG is blocking the actual element
-          // SAFETY: Only click if element is still connected to DOM (avoid "form not connected" errors)
           if (element.isConnected) {
             element.click();
           }
@@ -954,12 +870,7 @@ export class GuidedHandler {
         }
       };
 
-      // CRITICAL: Listen in CAPTURE PHASE to catch events before other handlers
-      // This prevents issues where an SVG or overlay stops event propagation
-      // We still let the event continue (don't preventDefault) so the actual click happens
       document.addEventListener('click', handleClick, { capture: true });
-
-      // Store for cleanup - using EventTarget type so no cast needed
       this.activeListeners.push({
         target: document,
         type: 'click',
@@ -967,7 +878,6 @@ export class GuidedHandler {
         options: { capture: true },
       });
 
-      // Handle cancellation - uses centralized cleanup to ensure interval is cleared
       signal.addEventListener('abort', () => {
         cleanup('cancelled');
       });
@@ -1197,20 +1107,17 @@ export class GuidedHandler {
     /* eslint-enable no-restricted-syntax */
   }
 
-  /**
-   * Clean up all active event listeners
-   * @param clearHighlights - If true, also clears the comment box UI. Default false.
-   *                          Should be true when step completes, false when starting a new step.
-   */
   private cleanupListeners(clearHighlights = false): void {
-    // Clear all pending timeouts to prevent zombie timer fires
     for (const timeoutId of this.pendingTimeouts) {
       clearTimeout(timeoutId);
     }
     this.pendingTimeouts = [];
+    for (const intervalId of this.pendingIntervals) {
+      clearInterval(intervalId);
+    }
+    this.pendingIntervals = [];
 
     this.activeListeners.forEach(({ target, type, handler, options }) => {
-      // Use stored options if available, otherwise no options
       if (options) {
         target.removeEventListener(type, handler, options);
       } else {
@@ -1218,21 +1125,19 @@ export class GuidedHandler {
       }
     });
     this.activeListeners = [];
-
-    // Only clear highlights when explicitly requested (after step completes, not at step start)
     if (clearHighlights) {
       this.navigationManager.clearAllHighlights();
     }
   }
-
-  /**
-   * Cancel current guided step
-   */
   cancel(): void {
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
     }
-    this.cleanupListeners(true);
+    try {
+      this.cleanupListeners(true);
+    } catch (error) {
+      logger.error('Guided cleanup failed', { error });
+    }
   }
 }
