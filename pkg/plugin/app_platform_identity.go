@@ -1,82 +1,73 @@
 package plugin
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
 // Shared caller-identity helpers for App Platform proxy routes
 // (docs/design/BACKEND_PROXY_PATTERN.md §3). Two layers: validIDToken for
-// routes that only need a structurally valid caller, subjectFromIDToken for
+// routes that only need a verified caller, subjectFromIDToken for
 // per-user-data routes that additionally key on the caller's subject.
 //
-// Trust boundary: structural (non-signature) validation is defensible only
-// because requests reach the plugin exclusively via Grafana's trusted
-// server→plugin forwarding — see "App Platform proxies — identity trust
-// boundary" in docs/developer/CODA.md. The ID token is an identity
+// Trust boundary: the inbound X-Grafana-Id header can survive to the plugin
+// on requests whose authenticated requester has no ID token of its own (see
+// docs/developer/CODA.md), so it is verified locally — signature, type, and
+// exp — against the issuing stack's own JWKS (pkg/plugin/auth.IdentityVerifier)
+// before any of its claims are trusted. The ID token is an identity
 // attestation, never an outbound credential: proxy routes exchange it for an
 // access token (pkg/plugin/auth) and send that instead.
 
-// validIDToken reports whether the request carries a structurally valid
-// Grafana ID token: well-formed JWT with `exp` present and unexpired.
-func validIDToken(r *http.Request) bool {
-	_, ok := parseIDToken(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
+// validIDToken reports whether the request carries a Grafana ID token that
+// verifies against this stack's own JWKS: well-formed JWT, correct signature,
+// correct type, and `exp` present and unexpired.
+func (a *App) validIDToken(r *http.Request) bool {
+	_, ok := a.verifyIDToken(r)
 	return ok
 }
 
-// subjectFromIDToken returns the request's ID-token `sub` claim VERBATIM,
-// typed prefix included (e.g. "user:abc123"). Fail closed: absent, malformed,
-// missing-exp, expired, or subject-less tokens yield ("", false).
-func subjectFromIDToken(r *http.Request) (string, bool) {
-	sub, ok := parseIDToken(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
+// subjectFromIDToken returns the request's verified ID-token `sub` claim
+// VERBATIM, typed prefix included (e.g. "user:abc123"). Fail closed: absent,
+// malformed, unverifiable, missing-exp, expired, or subject-less tokens yield
+// ("", false).
+func (a *App) subjectFromIDToken(r *http.Request) (string, bool) {
+	sub, ok := a.verifyIDToken(r)
 	if !ok || sub == "" {
 		return "", false
 	}
 	return sub, true
 }
 
-// parseIDToken structurally validates a JWT and returns its `sub` claim.
-// A forwarded Grafana ID token always carries `exp`, so a missing (or zero)
-// `exp` is rejected rather than treated as non-expiring.
-func parseIDToken(token string) (string, bool) {
-	token = strings.TrimSpace(token)
+// verifyIDToken verifies the request's ID token against this stack's own JWKS
+// and returns its `sub` claim verbatim. Verification needs the stack's app
+// URL to locate the JWKS endpoint, which is only resolvable from the
+// request's plugin config — BACKEND_PROXY_PATTERN.md §4 requires identity
+// validation to run before the rest of config resolution (feature toggles,
+// namespace, OBO), so this resolves only the app URL it needs for itself,
+// here, rather than promoting app-url resolution into a separate step ahead
+// of the identity gate. An app URL that isn't yet resolvable fails closed the
+// same way any other identity failure does.
+func (a *App) verifyIDToken(r *http.Request) (string, bool) {
+	token := strings.TrimSpace(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
 	if token == "" {
 		return "", false
 	}
 
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
+	cfg := config.GrafanaConfigFromContext(r.Context())
+	if cfg == nil {
+		return "", false
+	}
+	appURL, err := cfg.AppURL()
+	if err != nil || appURL == "" {
 		return "", false
 	}
 
-	payload, err := decodeJWTSegment(parts[1])
+	sub, err := a.identityVerifier.VerifySubject(r.Context(), appURL, token)
 	if err != nil {
 		return "", false
 	}
-
-	var claims struct {
-		Sub string `json:"sub"`
-		Exp int64  `json:"exp"`
-	}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return "", false
-	}
-	if claims.Exp == 0 || timeNow().Unix() >= claims.Exp {
-		return "", false
-	}
-
-	return claims.Sub, true
-}
-
-// decodeJWTSegment decodes a base64url JWT segment, tolerating both the
-// unpadded (RFC 7515) and padded encodings.
-func decodeJWTSegment(seg string) ([]byte, error) {
-	if b, err := base64.RawURLEncoding.DecodeString(seg); err == nil {
-		return b, nil
-	}
-	return base64.URLEncoding.DecodeString(seg)
+	return sub, true
 }

@@ -68,14 +68,16 @@ func rec(userID, guideSource, guideID, title, category, pathID, source, complete
 	}
 }
 
-// testGrafanaConfig is the healthy config: aggregation toggles on, app URL set.
-// Enables both the legacy `.com` toggle (completion-records proxy) and the GAP
-// `.app` toggle (custom-guide catalogue proxy) so this shared helper models a
-// transition-state stack aggregating both groups.
+// testGrafanaConfig is the healthy config: aggregation toggles on, app URL
+// pointed at the shared test JWKS server (app_platform_identity_test.go) so a
+// makeIDToken-signed ID token verifies. Enables both the legacy `.com` toggle
+// (completion-records proxy) and the GAP `.app` toggle (custom-guide
+// catalogue proxy) so this shared helper models a transition-state stack
+// aggregating both groups.
 func testGrafanaConfig() map[string]string {
 	return map[string]string{
 		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
-		sdkconfig.AppURL:               "http://grafana.example",
+		sdkconfig.AppURL:               testJWKSServerURL(),
 	}
 }
 
@@ -86,7 +88,11 @@ func completionRequestWithConfig(t *testing.T, target, sub string, cfg map[strin
 	t.Helper()
 	r, _ := http.NewRequest(http.MethodGet, target, nil)
 	if sub != "" {
-		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeIDToken(t, sub, timeNow().Add(time.Hour).Unix()))
+		// A real wall-clock expiry, not timeNow(): the JWKS verifier calls
+		// time.Now() internally and ignores the package's mockable clock, so an
+		// exp built from a frozen timeNow() can land in the past relative to the
+		// real clock and make an intended-valid token fail to verify.
+		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeIDToken(t, sub, time.Now().Add(time.Hour).Unix()))
 	}
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace})
 	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
@@ -681,7 +687,10 @@ func TestMyCompletions_ToggleOffStructurallyUnavailable(t *testing.T) {
 	l := singlePageLister()
 	withLister(t, l)
 
-	cfg := map[string]string{sdkconfig.AppURL: "http://grafana.example"} // toggle absent
+	// App URL points at the real test JWKS server so identity verification
+	// itself succeeds — this test isolates the toggle-off branch downstream of
+	// the identity gate, not the identity gate itself.
+	cfg := map[string]string{sdkconfig.AppURL: testJWKSServerURL()} // toggle absent
 	rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
@@ -694,6 +703,11 @@ func TestMyCompletions_ToggleOffStructurallyUnavailable(t *testing.T) {
 	}
 }
 
+// With no app URL at all, the identity gate itself cannot verify the token's
+// signature (it needs the app URL to locate the JWKS) and fails closed before
+// resolveCompletionBackend's own app-URL check ever runs — so this reports
+// reasonIdentityUnavailable, not the backend-resolution reason a config that
+// resolves an empty app URL used to produce.
 func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := singlePageLister()
@@ -704,8 +718,8 @@ func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rr.Code)
 	}
-	if body.Capability.Available || body.Capability.Reason != reasonBackendUnavailable {
-		t.Fatalf("expected capability=false %q, got %+v", reasonBackendUnavailable, body.Capability)
+	if body.Capability.Available || body.Capability.Reason != reasonIdentityUnavailable {
+		t.Fatalf("expected capability=false %q, got %+v", reasonIdentityUnavailable, body.Capability)
 	}
 	if l.callCount() != 0 {
 		t.Fatalf("structural unavailability must not hit upstream, got %d calls", l.callCount())

@@ -69,7 +69,9 @@ func withGuideLister(t *testing.T, l customGuideLister) {
 func customGuideRequestWithConfig(t *testing.T, target, sub string, cfg map[string]string) *http.Request {
 	t.Helper()
 	r, _ := http.NewRequest(http.MethodGet, target, nil)
-	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeIDToken(t, sub, timeNow().Add(time.Hour).Unix()))
+	// A real wall-clock expiry, not timeNow(): the JWKS verifier calls
+	// time.Now() internally and ignores the package's mockable clock.
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeIDToken(t, sub, time.Now().Add(time.Hour).Unix()))
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace})
 	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
 	return r.WithContext(ctx)
@@ -318,7 +320,7 @@ func TestCustomGuide_ExpiredOrExplessTokenRejected(t *testing.T) {
 
 	cases := map[string]string{
 		"no exp claim":  makeIDToken(t, "user:1", 0),
-		"expired token": makeIDToken(t, "user:1", timeNow().Add(-time.Hour).Unix()),
+		"expired token": makeIDToken(t, "user:1", time.Now().Add(-time.Hour).Unix()),
 	}
 	for name, token := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -342,7 +344,10 @@ func TestCustomGuide_ToggleOffStructurallyUnavailable(t *testing.T) {
 	l := singlePageGuideLister()
 	withGuideLister(t, l)
 
-	cfg := map[string]string{sdkconfig.AppURL: "http://grafana.example"} // toggle absent
+	// App URL points at the real test JWKS server so identity verification
+	// itself succeeds — this test isolates the toggle-off branch downstream of
+	// the identity gate, not the identity gate itself.
+	cfg := map[string]string{sdkconfig.AppURL: testJWKSServerURL()} // toggle absent
 	rr, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
 
 	if rr.Code != http.StatusOK {
@@ -356,6 +361,11 @@ func TestCustomGuide_ToggleOffStructurallyUnavailable(t *testing.T) {
 	}
 }
 
+// With no app URL at all, the identity gate itself cannot verify the token's
+// signature (it needs the app URL to locate the JWKS) and fails closed before
+// resolveCustomGuideBackend's own app-URL check ever runs — so this reports
+// reasonIdentityUnavailable, not the backend-resolution reason a config that
+// resolves an empty app URL used to produce.
 func TestCustomGuide_NoAppURLStructurallyUnavailable(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	l := singlePageGuideLister()
@@ -364,8 +374,8 @@ func TestCustomGuide_NoAppURLStructurallyUnavailable(t *testing.T) {
 	cfg := map[string]string{featuretoggles.EnabledFeatures: customGuideAggregationToggle} // no app URL
 	_, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
 
-	if body.Capability.Available || body.Capability.Reason != reasonAppURLUnavailable {
-		t.Errorf("expected app-url-unavailable with no app URL, got %+v", body.Capability)
+	if body.Capability.Available || body.Capability.Reason != reasonIdentityUnavailable {
+		t.Errorf("expected identity-unavailable with no app URL, got %+v", body.Capability)
 	}
 	if l.callCount() != 0 {
 		t.Errorf("structurally unavailable must not hit upstream; got %d LISTs", l.callCount())

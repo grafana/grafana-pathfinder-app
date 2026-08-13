@@ -157,13 +157,17 @@ All routes are prefixed by Grafana as `/api/plugins/grafana-pathfinder-app/resou
 ### App Platform proxies — identity trust boundary
 
 The `/completion-records/*` routes (and any future plugin-backend proxy of the App Platform
-aggregator — see `docs/design/BACKEND_PROXY_PATTERN.md`) authenticate callers by **structural
-(non-signature) validation** of the Grafana-forwarded ID token (`X-Grafana-Id`, via the SDK
-constant `backend.GrafanaUserSignInTokenHeaderName`): well-formed JWT, `exp` present and
-unexpired, with the `sub` claim extracted verbatim only on routes that serve per-user data
-(`pkg/plugin/app_platform_identity.go`). This is defensible **only** because requests reach the
-plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend is not
-independently reachable with a client-set `X-Grafana-Id`.
+aggregator — see `docs/design/BACKEND_PROXY_PATTERN.md`) authenticate callers by verifying the
+Grafana-forwarded ID token (`X-Grafana-Id`, via the SDK constant
+`backend.GrafanaUserSignInTokenHeaderName`) against the stack's own JWKS
+(`pkg/plugin/auth.IdentityVerifier`, backed by `github.com/grafana/authlib`'s
+`authn.NewIDTokenVerifier`): well-formed JWT, correct signature, `exp` present and unexpired, with
+the `sub` claim extracted verbatim only on routes that serve per-user data
+(`pkg/plugin/app_platform_identity.go`). The JWKS lives at the stack's own unauthenticated
+`{appURL}/api/signing-keys/keys` — the same endpoint Grafana's own `ext_jwt` authn client trusts —
+so verification needs the app URL resolved before it can run; that resolution happens inside the
+identity gate itself, ahead of the rest of config resolution (feature toggles, namespace, OBO), and
+an app URL that isn't yet resolvable fails closed the same way any other identity failure does.
 
 Outbound, the ID token is never used as a credential. Proxies exchange it for a short-lived
 on-behalf-of access token (`pkg/plugin/auth`, using the CAP token stack-state-service provisions
@@ -173,10 +177,10 @@ reach the plugin), and never the ID token itself, which no hop on the outbound p
 authentication. A stack with no provisioned CAP token reports `capability.reason:
 "obo-unavailable"`.
 
-The single future-hardening item is cryptographic verification of the ID token against
-Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime
-key-endpoint configuration. Do not re-argue this trade-off per PR — this section is the
-canonical statement for all App Platform proxies.
+Cryptographic verification of the ID token against the stack's own JWKS is implemented
+(`pkg/plugin/auth.IdentityVerifier`), so a caller-forwarded `X-Grafana-Id` header can no longer
+carry a forged `sub` claim past the identity gate. This section is the canonical statement for all
+App Platform proxies.
 
 ### Command execution (`pkg/plugin/coda_exec.go`)
 

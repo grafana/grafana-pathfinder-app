@@ -39,6 +39,13 @@ type App struct {
 	// those routes report themselves unavailable instead of failing.
 	oboExchanger *auth.Exchanger
 
+	// Verifies inbound Grafana ID tokens (X-Grafana-Id) against the issuing
+	// stack's own JWKS before any of their claims are trusted — see
+	// app_platform_identity.go and docs/developer/CODA.md. Unlike oboExchanger
+	// this is never nil: every stack serves its own signing keys, so identity
+	// verification has no "unprovisioned" state to degrade into.
+	identityVerifier *auth.IdentityVerifier
+
 	// Logger
 	logger log.Logger
 
@@ -66,11 +73,12 @@ func NewApp(ctx context.Context, appSettings backend.AppInstanceSettings) (insta
 	}
 
 	app := &App{
-		settings:        settings,
-		logger:          logger,
-		streamSessions:  make(map[string]*streamSession),
-		userVMs:         make(map[string]string),
-		execRateLimiter: newExecRateLimiter(),
+		settings:         settings,
+		logger:           logger,
+		streamSessions:   make(map[string]*streamSession),
+		userVMs:          make(map[string]string),
+		execRateLimiter:  newExecRateLimiter(),
+		identityVerifier: auth.NewIdentityVerifier(),
 	}
 
 	// A stack without provisioned on-behalf-of credentials still loads: the App

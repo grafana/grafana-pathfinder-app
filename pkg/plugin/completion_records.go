@@ -60,13 +60,13 @@ const (
 var completionListMaxTotalRecords = 50_000
 
 // deriveCompletionUserID is the canonical identity contract for the whole
-// Completion Records epic: the caller's ID-token `sub` claim VERBATIM, typed
-// prefix included (e.g. "user:abc123"). Reads and writes must join on the
-// same key — epic PR 4's write hook MUST stamp `spec.userId` with this exact
-// helper. Fail closed with no login/numeric fallback; see
+// Completion Records epic: the caller's verified ID-token `sub` claim
+// VERBATIM, typed prefix included (e.g. "user:abc123"). Reads and writes must
+// join on the same key — epic PR 4's write hook MUST stamp `spec.userId` with
+// this exact helper. Fail closed with no login/numeric fallback; see
 // app_platform_identity.go and the trust boundary in docs/developer/CODA.md.
-func deriveCompletionUserID(r *http.Request) (string, bool) {
-	return subjectFromIDToken(r)
+func (a *App) deriveCompletionUserID(r *http.Request) (string, bool) {
+	return a.subjectFromIDToken(r)
 }
 
 // completionCapability is the availability signal the front-end and epic PRs
@@ -460,7 +460,7 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	// capability envelope (not 401): these routes gate whether a feature
 	// renders at all, and a bare error status conflates "never works here"
 	// with a transient blip.
-	userID, ok := deriveCompletionUserID(r)
+	userID, ok := a.deriveCompletionUserID(r)
 	if !ok {
 		a.writeMyCompletions(w, myCompletionsResponse{
 			Capability:  completionCapability{Available: false, Reason: reasonIdentityUnavailable},
@@ -519,7 +519,7 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if _, ok := deriveCompletionUserID(r); !ok {
+	if _, ok := a.deriveCompletionUserID(r); !ok {
 		a.writeJSON(w, completionCapability{Available: false, Reason: reasonIdentityUnavailable}, http.StatusOK)
 		return
 	}
