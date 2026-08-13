@@ -9,12 +9,14 @@ import React, { useState, useCallback, useMemo, useEffect, ReactNode } from 'rea
 import { css } from '@emotion/css';
 import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon, Combobox, type ComboboxOption } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
-import { getDataSourceSrv } from '@grafana/runtime';
 import { useGuideResponsesOptional } from '../../docs-retrieval';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { StorageEvents } from '../../lib/event-names';
 import { logger } from '../../lib/logging';
 import { testIds } from '../../constants/testIds';
+import { DataCheckControls } from './data-check-controls';
+import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
+import { useDataCheck } from './use-data-check';
 
 /** Props for the InputBlock component */
 export interface InputBlockProps {
@@ -44,6 +46,14 @@ export interface InputBlockProps {
   children?: ReactNode;
   /** Filter datasources by type (e.g., 'prometheus', 'loki'). Only used when inputType is 'datasource'. */
   datasourceFilter?: string;
+  /** Query whose non-empty result confirms the picked datasource holds the guide's data. Enables the check. */
+  dataCheckQuery?: string;
+  /** Message shown when the check finds no data */
+  dataCheckFailureMessage?: string;
+  /** Check query range start (defaults to now-1h) */
+  dataCheckTimeFrom?: string;
+  /** Check query range end (defaults to now) */
+  dataCheckTimeTo?: string;
 }
 
 /** Get styles for the input block */
@@ -92,37 +102,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
 });
 
 /**
- * Get datasource options from the DataSourceSrv.
- * Uses the modern synchronous API instead of the deprecated /api/datasources endpoint.
- */
-function getDatasourceOptions(filter?: string): Array<ComboboxOption<string>> {
-  try {
-    const datasourceSrv = getDataSourceSrv();
-    const datasources = datasourceSrv.getList();
-
-    // Filter by type if specified (case-insensitive)
-    // Supports exact match (e.g., "prometheus") or partial match where
-    // the datasource type contains the filter (e.g., "testdata" matches "grafana-testdata-datasource")
-    const filtered = filter
-      ? datasources.filter((ds) => {
-          const filterLower = filter.toLowerCase();
-          const typeLower = ds.type.toLowerCase();
-          return typeLower === filterLower || typeLower.includes(filterLower);
-        })
-      : datasources;
-
-    return filtered.map((ds) => ({
-      label: ds.name,
-      value: ds.name,
-      description: ds.type,
-    }));
-  } catch (error) {
-    logger.warn('[InputBlock] Failed to get datasources', { error });
-    return [];
-  }
-}
-
-/**
  * Input Block component for collecting user responses.
  */
 export function InputBlock({
@@ -138,15 +117,20 @@ export function InputBlock({
   skippable = false,
   children,
   datasourceFilter,
+  dataCheckQuery,
+  dataCheckFailureMessage,
+  dataCheckTimeFrom,
+  dataCheckTimeTo,
 }: InputBlockProps) {
   const styles = useStyles2(getStyles);
   const responseContext = useGuideResponsesOptional();
 
-  // Get datasource options (memoized to avoid re-fetching on every render)
-  const datasourceOptions = useMemo(
-    () => (inputType === 'datasource' ? getDatasourceOptions(datasourceFilter) : []),
+  // Get datasources (memoized to avoid re-fetching on every render)
+  const datasources = useMemo(
+    () => (inputType === 'datasource' ? filterDatasourcesByType(datasourceFilter) : []),
     [inputType, datasourceFilter]
   );
+  const datasourceOptions = useMemo(() => toDatasourceOptions(datasources), [datasources]);
 
   // Local state for the input value
   const [textValue, setTextValue] = useState<string>(() => {
@@ -184,6 +168,14 @@ export function InputBlock({
   });
 
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  const selectedDatasource = datasourceValue ? (datasources.find((ds) => ds.name === datasourceValue) ?? null) : null;
+  const dataCheck = useDataCheck({
+    datasource: selectedDatasource,
+    query: dataCheckQuery,
+    timeFrom: dataCheckTimeFrom,
+    timeTo: dataCheckTimeTo,
+  });
 
   // Compile pattern regex if provided
   const patternRegex = useMemo(() => {
@@ -243,11 +235,33 @@ export function InputBlock({
   }, []);
 
   // Handle datasource selection change
-  const handleDatasourceChange = useCallback((option: ComboboxOption<string> | null) => {
-    setDatasourceValue(option?.value ?? null);
-    setIsSaved(false);
-    setValidationError(null);
-  }, []);
+  const resetDataCheck = dataCheck.reset;
+  const handleDatasourceChange = useCallback(
+    (option: ComboboxOption<string> | null) => {
+      setDatasourceValue(option?.value ?? null);
+      setIsSaved(false);
+      setValidationError(null);
+      // A verdict belongs to the data source it was run against.
+      resetDataCheck();
+    },
+    [resetDataCheck]
+  );
+
+  const runDataCheck = dataCheck.run;
+  const dataCheckType = dataCheck.supportedType;
+  const handleRunDataCheck = useCallback(async () => {
+    reportAppInteraction(UserInteraction.DataCheckRun, {
+      datasource_type: dataCheckType ?? 'unknown',
+      variable_name: variableName,
+      blocking: false,
+    });
+    const passed = await runDataCheck();
+    reportAppInteraction(passed ? UserInteraction.DataCheckPassed : UserInteraction.DataCheckFailed, {
+      datasource_type: dataCheckType ?? 'unknown',
+      variable_name: variableName,
+      blocking: false,
+    });
+  }, [runDataCheck, dataCheckType, variableName]);
 
   // Handle reset/clear
   const handleReset = useCallback(() => {
@@ -261,10 +275,11 @@ export function InputBlock({
       setBoolValue(typeof defaultValue === 'boolean' ? defaultValue : false);
     } else if (inputType === 'datasource') {
       setDatasourceValue(typeof defaultValue === 'string' ? defaultValue : null);
+      resetDataCheck();
     }
     setIsSaved(false);
     setValidationError(null);
-  }, [responseContext, variableName, inputType, defaultValue]);
+  }, [responseContext, variableName, inputType, defaultValue, resetDataCheck]);
 
   // Handle save
   const handleSave = useCallback(() => {
@@ -440,8 +455,27 @@ export function InputBlock({
                 onChange={handleDatasourceChange}
                 placeholder={placeholder || 'Select a data source...'}
                 isClearable
+                data-testid={testIds.interactive.datasourcePicker(variableName)}
               />
             </Field>
+            {dataCheckQuery && (
+              <DataCheckControls
+                state={dataCheck.state}
+                failureDetail={dataCheck.failureDetail}
+                failureMessage={dataCheckFailureMessage}
+                canRun={dataCheck.canRun}
+                isUnsupportedType={Boolean(selectedDatasource) && !dataCheck.supportedType}
+                onRun={handleRunDataCheck}
+                runTestId={testIds.dataCheck.runQueryButton(variableName)}
+                failureTestId={testIds.dataCheck.failure(variableName)}
+              />
+            )}
+            {dataCheckQuery && dataCheck.state === 'passed' && (
+              <span className={styles.savedIndicator}>
+                <Icon name="check" />
+                Data available
+              </span>
+            )}
           </div>
         );
 

@@ -115,4 +115,130 @@ describe('InputBlockForm', () => {
       variableName: 'datasourceName',
     });
   });
+
+  describe('the datasource variant', () => {
+    function renderDatasourceForm(onSubmit: (block: JsonBlock) => void = jest.fn()) {
+      const form = renderForm(onSubmit);
+      fireEvent.change(form.promptInput, { target: { value: 'Pick a data source' } });
+      fireEvent.change(form.variableNameInput, { target: { value: 'metricsDatasource' } });
+      fireEvent.click(screen.getByRole('radio', { name: 'Datasource' }));
+      return form;
+    }
+
+    const queryInput = () => screen.getByPlaceholderText('e.g., container_cpu_usage_seconds_total');
+
+    it('submits a plain picker with no check fields', () => {
+      const onSubmit = jest.fn();
+      const { submitButton } = renderDatasourceForm(onSubmit);
+
+      fireEvent.change(screen.getByPlaceholderText('e.g., prometheus, testdata'), {
+        target: { value: 'prometheus' },
+      });
+      fireEvent.click(submitButton);
+
+      expect(onSubmit).toHaveBeenCalledWith({
+        type: 'input',
+        prompt: 'Pick a data source',
+        inputType: 'datasource',
+        variableName: 'metricsDatasource',
+        datasourceFilter: 'prometheus',
+      });
+    });
+
+    it('reveals the rest of the check only once a query is entered', () => {
+      renderDatasourceForm();
+      expect(screen.queryByRole('checkbox', { name: /holds the section up/i })).not.toBeInTheDocument();
+
+      fireEvent.change(queryInput(), { target: { value: 'up' } });
+      expect(screen.getByRole('checkbox', { name: /holds the section up/i })).toBeInTheDocument();
+    });
+
+    it('submits the full check surface', () => {
+      const onSubmit = jest.fn();
+      const { submitButton } = renderDatasourceForm(onSubmit);
+
+      fireEvent.change(queryInput(), { target: { value: '  up  ' } });
+      fireEvent.change(screen.getByPlaceholderText(/No container metrics here/i), {
+        target: { value: 'Nothing here.' },
+      });
+      fireEvent.change(screen.getByPlaceholderText('e.g., now-6h'), { target: { value: 'now-6h' } });
+      fireEvent.change(screen.getByPlaceholderText('e.g., now'), { target: { value: 'now' } });
+      fireEvent.click(screen.getByRole('checkbox', { name: /holds the section up/i }));
+      fireEvent.click(submitButton);
+
+      expect(onSubmit).toHaveBeenCalledWith({
+        type: 'input',
+        prompt: 'Pick a data source',
+        inputType: 'datasource',
+        variableName: 'metricsDatasource',
+        dataCheckQuery: 'up',
+        dataCheckFailureMessage: 'Nothing here.',
+        dataCheckTimeFrom: 'now-6h',
+        dataCheckTimeTo: 'now',
+        dataCheckBlocking: true,
+      });
+    });
+
+    it('drops the check fields when the query is cleared, which the schema would reject', () => {
+      const onSubmit = jest.fn();
+      const { submitButton } = renderDatasourceForm(onSubmit);
+
+      fireEvent.change(queryInput(), { target: { value: 'up' } });
+      fireEvent.click(screen.getByRole('checkbox', { name: /holds the section up/i }));
+      fireEvent.change(queryInput(), { target: { value: '' } });
+      fireEvent.click(submitButton);
+
+      expect(onSubmit).toHaveBeenCalledWith({
+        type: 'input',
+        prompt: 'Pick a data source',
+        inputType: 'datasource',
+        variableName: 'metricsDatasource',
+      });
+    });
+
+    it('drops the check fields when the author switches back to a text input', () => {
+      const onSubmit = jest.fn();
+      const { submitButton } = renderDatasourceForm(onSubmit);
+
+      fireEvent.change(queryInput(), { target: { value: 'up' } });
+      fireEvent.click(screen.getByRole('radio', { name: 'Text' }));
+      fireEvent.click(submitButton);
+
+      expect(onSubmit).toHaveBeenCalledWith({
+        type: 'input',
+        prompt: 'Pick a data source',
+        inputType: 'text',
+        variableName: 'metricsDatasource',
+      });
+    });
+
+    it('round-trips an existing check when editing', () => {
+      const onSubmit = jest.fn();
+      render(
+        <InputBlockForm
+          initialData={{
+            type: 'input',
+            prompt: 'Pick a data source',
+            inputType: 'datasource',
+            variableName: 'metricsDatasource',
+            dataCheckQuery: 'up',
+            dataCheckFailureMessage: 'Nothing here.',
+            dataCheckBlocking: true,
+          }}
+          onSubmit={onSubmit}
+          onCancel={jest.fn()}
+          isEditing
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Update block' }));
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dataCheckQuery: 'up',
+          dataCheckFailureMessage: 'Nothing here.',
+          dataCheckBlocking: true,
+        })
+      );
+    });
+  });
 });
