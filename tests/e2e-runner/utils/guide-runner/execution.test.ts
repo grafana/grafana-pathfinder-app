@@ -189,15 +189,20 @@ describe('waitForGuidedCommentBoxReady', () => {
     await expect(waitForGuidedCommentBoxReady(page, stepLocator, commentBox, 1000)).resolves.toBe('completed');
   });
 
-  it("resolves 'detached' when the step's element is confirmed gone while waiting", async () => {
+  it("resolves 'detached' when the step's element is confirmed gone while waiting, without reading its attributes", async () => {
+    // In real Playwright, getAttribute() on a missing element auto-waits up to
+    // its own timeout instead of resolving instantly, so detachment must be
+    // decided by count() alone, before any attribute read is attempted.
+    const getAttribute = jest.fn().mockRejectedValue(new Error('must not be called: step is already detached'));
     const stepLocator = createLocator({
-      getAttribute: jest.fn().mockResolvedValue(null),
+      getAttribute,
       count: jest.fn().mockResolvedValue(0),
     });
     const commentBox = createLocator({ count: jest.fn().mockResolvedValue(0) });
     const page = { waitForTimeout: jest.fn().mockResolvedValue(undefined) } as unknown as Page;
 
     await expect(waitForGuidedCommentBoxReady(page, stepLocator, commentBox, 1000)).resolves.toBe('detached');
+    expect(getAttribute).not.toHaveBeenCalled();
   });
 
   it('fails fast on an error state instead of waiting out the full timeout', async () => {

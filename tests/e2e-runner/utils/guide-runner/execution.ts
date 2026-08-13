@@ -546,7 +546,16 @@ export async function waitForGuidedCommentBoxReady(
       return 'ready';
     }
 
-    // Bound this read by the remaining budget so a stuck/missing locator
+    // Check detachment via an immediate, successful count() BEFORE any bounded
+    // attribute read. In real Playwright, getAttribute() on a missing element
+    // auto-waits up to its own timeout, so an already-detached step must be
+    // caught here first or it would burn the full remaining budget for
+    // nothing. A count() error is not caught: it propagates as designed.
+    if ((await stepLocator.count()) === 0) {
+      return 'detached';
+    }
+
+    // Bound this read by the remaining budget so a stuck-but-attached locator
     // can't exceed this wait's own deadline.
     let state: string | null;
     try {
@@ -563,9 +572,6 @@ export async function waitForGuidedCommentBoxReady(
     }
     if (state === 'cancelled') {
       throw new Error('Guided step was cancelled while waiting for comment box');
-    }
-    if (state === null && (await stepLocator.count()) === 0) {
-      return 'detached';
     }
 
     await page.waitForTimeout(Math.min(GUIDED_SUBSTEP_ADVANCE_POLL_MS, Math.max(1, deadline - Date.now())));
