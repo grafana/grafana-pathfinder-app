@@ -15,6 +15,39 @@ function hasQueuedCelebration(text: string): boolean {
   return /\(\+\d+ more\)/.test(text);
 }
 
+type ToastTextResult = { state: 'read'; text: string } | { state: 'gone' };
+
+function errorReason(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function readToastText(toast: Locator, timeout: number, context: string): Promise<ToastTextResult> {
+  const boundedTimeout = Math.max(1, Math.min(timeout, BADGE_TRANSITION_TIMEOUT_MS));
+
+  try {
+    return {
+      state: 'read',
+      text: (await toast.textContent({ timeout: boundedTimeout })) ?? '',
+    };
+  } catch (readError) {
+    const readReason = errorReason(readError);
+
+    try {
+      if (!(await isVisible(toast))) {
+        return { state: 'gone' };
+      }
+    } catch (visibilityError) {
+      throw new Error(
+        `Badge celebration ${context} failed within ${boundedTimeout}ms: ${readReason}. Visibility recheck failed: ${errorReason(visibilityError)}`
+      );
+    }
+
+    throw new Error(
+      `Badge celebration ${context} failed within ${boundedTimeout}ms while the toast remained visible: ${readReason}`
+    );
+  }
+}
+
 async function waitForVisibleToast(page: Page, toast: Locator): Promise<boolean> {
   for (let elapsed = 0; elapsed < BADGE_IDLE_TIMEOUT_MS; elapsed += BADGE_TRANSITION_POLL_MS) {
     if (await isVisible(toast)) {
@@ -28,17 +61,28 @@ async function waitForVisibleToast(page: Page, toast: Locator): Promise<boolean>
 
 async function waitForToastTransition(page: Page, previousText: string, expectNextToast: boolean): Promise<boolean> {
   const toast = page.getByTestId(testIds.learningPaths.badgeToast).first();
+  let elapsed = 0;
 
-  for (let elapsed = 0; elapsed < BADGE_TRANSITION_TIMEOUT_MS; elapsed += BADGE_TRANSITION_POLL_MS) {
+  while (elapsed < BADGE_TRANSITION_TIMEOUT_MS) {
     if (!(await isVisible(toast))) {
       if (!expectNextToast) {
         return true;
       }
-    } else if ((await toast.textContent()) !== previousText) {
-      return true;
+    } else {
+      const readStartedAt = Date.now();
+      const textResult = await readToastText(toast, BADGE_TRANSITION_TIMEOUT_MS - elapsed, 'transition text read');
+      elapsed = Math.min(BADGE_TRANSITION_TIMEOUT_MS, elapsed + Math.max(0, Date.now() - readStartedAt));
+      if (textResult.state === 'gone' || textResult.text !== previousText) {
+        return true;
+      }
     }
 
-    await page.waitForTimeout(BADGE_TRANSITION_POLL_MS);
+    const pollDelay = Math.min(BADGE_TRANSITION_POLL_MS, BADGE_TRANSITION_TIMEOUT_MS - elapsed);
+    if (pollDelay <= 0) {
+      break;
+    }
+    await page.waitForTimeout(pollDelay);
+    elapsed += pollDelay;
   }
 
   return !(await isVisible(toast));
@@ -52,7 +96,15 @@ export async function dismissBadgeCelebrations(page: Page): Promise<void> {
       return;
     }
 
-    const previousText = (await toast.textContent()) ?? '';
+    const textResult = await readToastText(
+      toast,
+      BADGE_TRANSITION_TIMEOUT_MS,
+      `text read before attempt ${attempt} of ${MAX_BADGE_CELEBRATIONS}`
+    );
+    if (textResult.state === 'gone') {
+      continue;
+    }
+    const previousText = textResult.text;
     const dismissButton = page.getByTestId(testIds.learningPaths.badgeToastDismiss);
 
     try {

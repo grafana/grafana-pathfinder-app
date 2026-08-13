@@ -18,6 +18,11 @@ interface BadgeHarnessOptions {
   remainsVisible?: boolean;
   initialDelayMs?: number;
   interToastDelayMs?: number;
+  textReadFailure?: {
+    call: number;
+    mode: 'disappear' | 'visible';
+    error: Error;
+  };
 }
 
 function createBadgeHarness(titles: string[], options: BadgeHarnessOptions = {}) {
@@ -26,6 +31,7 @@ function createBadgeHarness(titles: string[], options: BadgeHarnessOptions = {})
   let nextIndex = currentIndex === 0 ? 1 : 0;
   let nextVisibleAt =
     currentIndex === -1 && titles.length > 0 ? (options.initialDelayMs ?? 0) : Number.POSITIVE_INFINITY;
+  let textReadCount = 0;
   const events: string[] = [];
   const toast = {} as Locator;
   const dismissButton = {} as Locator;
@@ -44,9 +50,19 @@ function createBadgeHarness(titles: string[], options: BadgeHarnessOptions = {})
   toast.first = jest.fn(() => toast);
   toast.count = jest.fn(async () => (currentIndex >= 0 ? 1 : 0));
   toast.isVisible = jest.fn(async () => currentIndex >= 0);
-  toast.textContent = jest.fn(async () => {
+  toast.textContent = jest.fn(async (textOptions?: { timeout?: number }) => {
     if (currentIndex < 0) {
       return null;
+    }
+    textReadCount++;
+    if (options.textReadFailure?.call === textReadCount) {
+      elapsedMs += textOptions?.timeout ?? 0;
+      if (options.textReadFailure.mode === 'disappear') {
+        currentIndex = -1;
+        nextVisibleAt =
+          nextIndex < titles.length ? elapsedMs + (options.interToastDelayMs ?? 0) : Number.POSITIVE_INFINITY;
+      }
+      throw options.textReadFailure.error;
     }
     const queueCount = titles.length - nextIndex;
     const queueText = queueCount > 0 ? ` (+${queueCount} more)` : '';
@@ -82,9 +98,18 @@ function createBadgeHarness(titles: string[], options: BadgeHarnessOptions = {})
     page,
     events,
     dismissClick: dismissButton.click as jest.Mock,
+    textContent: toast.textContent as jest.Mock,
     waitForTimeout,
     getElapsedMs: () => elapsedMs,
   };
+}
+
+function expectBoundedTextReads(textContent: jest.Mock): void {
+  expect(textContent).toHaveBeenCalled();
+  for (const [options] of textContent.mock.calls) {
+    expect(options.timeout).toBeGreaterThan(0);
+    expect(options.timeout).toBeLessThanOrEqual(1000);
+  }
 }
 
 describe('dismissBadgeCelebrations', () => {
@@ -153,6 +178,63 @@ describe('dismissBadgeCelebrations', () => {
     await expect(dismissBadgeCelebrations(page)).rejects.toThrow(
       'Badge celebration dismissal failed on attempt 1 of 3: Dismiss button was detached'
     );
+  });
+
+  it('does not click a stale dismiss control when the initial toast disappears during its text read', async () => {
+    const { page, dismissClick, textContent, getElapsedMs } = createBadgeHarness(['First badge'], {
+      textReadFailure: {
+        call: 1,
+        mode: 'disappear',
+        error: new Error('Text read timed out'),
+      },
+    });
+    const dateNow = jest.spyOn(Date, 'now').mockImplementation(getElapsedMs);
+
+    try {
+      await expect(dismissBadgeCelebrations(page)).resolves.toBeUndefined();
+    } finally {
+      dateNow.mockRestore();
+    }
+
+    expect(dismissClick).not.toHaveBeenCalled();
+    expectBoundedTextReads(textContent);
+  });
+
+  it('accepts a queued toast that disappears during its bounded transition text read', async () => {
+    const { page, dismissClick, textContent, getElapsedMs } = createBadgeHarness(['First badge', 'Second badge'], {
+      textReadFailure: {
+        call: 2,
+        mode: 'disappear',
+        error: new Error('Transition text read timed out'),
+      },
+    });
+    const dateNow = jest.spyOn(Date, 'now').mockImplementation(getElapsedMs);
+
+    try {
+      await expect(dismissBadgeCelebrations(page)).resolves.toBeUndefined();
+    } finally {
+      dateNow.mockRestore();
+    }
+
+    expect(dismissClick).toHaveBeenCalledTimes(1);
+    expectBoundedTextReads(textContent);
+  });
+
+  it('reports a bounded text-read error when the toast remains visible', async () => {
+    const { page, dismissClick, textContent } = createBadgeHarness(['First badge'], {
+      textReadFailure: {
+        call: 1,
+        mode: 'visible',
+        error: new Error('Text read timed out'),
+      },
+    });
+
+    await expect(dismissBadgeCelebrations(page)).rejects.toThrow(
+      'Badge celebration text read before attempt 1 of 3 failed within 1000ms while the toast remained visible: Text read timed out'
+    );
+
+    expect(dismissClick).not.toHaveBeenCalled();
+    expectBoundedTextReads(textContent);
   });
 
   it('dismisses the toast before a requirement Fix click', async () => {
