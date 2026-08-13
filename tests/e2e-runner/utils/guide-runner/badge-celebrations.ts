@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
 
+// The runner opens one guide per browser context, and each guide-completed event awards at most three new badges.
 const MAX_BADGE_CELEBRATIONS = 3;
 const BADGE_TRANSITION_TIMEOUT_MS = 1000;
 const BADGE_IDLE_TIMEOUT_MS = 100;
@@ -105,12 +106,12 @@ export async function dismissBadgeCelebrations(page: Page): Promise<void> {
       continue;
     }
     const previousText = textResult.text;
-    const dismissButton = page.getByTestId(testIds.learningPaths.badgeToastDismiss);
+    const dismissButton = page.getByTestId(testIds.learningPaths.badgeToastDismiss).first();
 
     try {
       await dismissButton.click({ timeout: BADGE_TRANSITION_TIMEOUT_MS });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorReason(error);
       throw new Error(
         `Badge celebration dismissal failed on attempt ${attempt} of ${MAX_BADGE_CELEBRATIONS}: ${reason}`
       );

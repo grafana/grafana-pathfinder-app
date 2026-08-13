@@ -80,6 +80,7 @@ function createBadgeHarness(titles: string[], options: BadgeHarnessOptions = {})
         nextIndex < titles.length ? elapsedMs + (options.interToastDelayMs ?? 0) : Number.POSITIVE_INFINITY;
     }
   });
+  dismissButton.first = jest.fn(() => dismissButton);
 
   const page = {
     getByTestId: jest.fn((testId: string) => {
