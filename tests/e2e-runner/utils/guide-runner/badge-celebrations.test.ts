@@ -9,30 +9,46 @@ jest.mock('@playwright/test', () => ({
 
 import { testIds } from '../../../../src/constants/testIds';
 import { dismissBadgeCelebrations } from './badge-celebrations';
-import { runGuidedSubstepLoop } from './execution';
+import { runGuidedSubstepLoop, waitForFormfillSettle } from './execution';
 import { clickFixButton } from './requirements';
 import type { TestableStep } from './types';
 
 interface BadgeHarnessOptions {
   clickError?: Error;
   remainsVisible?: boolean;
+  initialDelayMs?: number;
+  interToastDelayMs?: number;
 }
 
 function createBadgeHarness(titles: string[], options: BadgeHarnessOptions = {}) {
-  let currentIndex = 0;
+  let elapsedMs = 0;
+  let currentIndex = titles.length > 0 && (options.initialDelayMs ?? 0) === 0 ? 0 : -1;
+  let nextIndex = currentIndex === 0 ? 1 : 0;
+  let nextVisibleAt =
+    currentIndex === -1 && titles.length > 0 ? (options.initialDelayMs ?? 0) : Number.POSITIVE_INFINITY;
   const events: string[] = [];
   const toast = {} as Locator;
   const dismissButton = {} as Locator;
-  const waitForTimeout = jest.fn().mockResolvedValue(undefined);
+  const revealDueToast = () => {
+    if (currentIndex === -1 && nextIndex < titles.length && elapsedMs >= nextVisibleAt) {
+      currentIndex = nextIndex;
+      nextIndex++;
+      nextVisibleAt = Number.POSITIVE_INFINITY;
+    }
+  };
+  const waitForTimeout = jest.fn(async (timeoutMs: number) => {
+    elapsedMs += timeoutMs;
+    revealDueToast();
+  });
 
   toast.first = jest.fn(() => toast);
-  toast.count = jest.fn(async () => (currentIndex < titles.length ? 1 : 0));
-  toast.isVisible = jest.fn(async () => currentIndex < titles.length);
+  toast.count = jest.fn(async () => (currentIndex >= 0 ? 1 : 0));
+  toast.isVisible = jest.fn(async () => currentIndex >= 0);
   toast.textContent = jest.fn(async () => {
-    if (currentIndex >= titles.length) {
+    if (currentIndex < 0) {
       return null;
     }
-    const queueCount = titles.length - currentIndex - 1;
+    const queueCount = titles.length - nextIndex;
     const queueText = queueCount > 0 ? ` (+${queueCount} more)` : '';
     return `Badge unlocked!${queueText} ${titles[currentIndex]} Nice!`;
   });
@@ -43,7 +59,9 @@ function createBadgeHarness(titles: string[], options: BadgeHarnessOptions = {})
       throw options.clickError;
     }
     if (!options.remainsVisible) {
-      currentIndex++;
+      currentIndex = -1;
+      nextVisibleAt =
+        nextIndex < titles.length ? elapsedMs + (options.interToastDelayMs ?? 0) : Number.POSITIVE_INFINITY;
     }
   });
 
@@ -65,17 +83,28 @@ function createBadgeHarness(titles: string[], options: BadgeHarnessOptions = {})
     events,
     dismissClick: dismissButton.click as jest.Mock,
     waitForTimeout,
+    getElapsedMs: () => elapsedMs,
   };
 }
 
 describe('dismissBadgeCelebrations', () => {
-  it('returns without waiting when no toast is present', async () => {
+  it('returns after a bounded idle check when no toast is present', async () => {
     const { page, dismissClick, waitForTimeout } = createBadgeHarness([]);
 
     await dismissBadgeCelebrations(page);
 
     expect(dismissClick).not.toHaveBeenCalled();
-    expect(waitForTimeout).not.toHaveBeenCalled();
+    expect(waitForTimeout).toHaveBeenCalledTimes(4);
+  });
+
+  it('waits for a delayed first toast', async () => {
+    const { page, dismissClick } = createBadgeHarness(['First badge'], {
+      initialDelayMs: 50,
+    });
+
+    await dismissBadgeCelebrations(page);
+
+    expect(dismissClick).toHaveBeenCalledTimes(1);
   });
 
   it('dismisses one toast', async () => {
@@ -94,6 +123,16 @@ describe('dismissBadgeCelebrations', () => {
     expect(dismissClick).toHaveBeenCalledTimes(3);
   });
 
+  it('waits for the next queued toast across an inter-toast gap', async () => {
+    const { page, dismissClick } = createBadgeHarness(['First badge', 'Second badge'], {
+      interToastDelayMs: 75,
+    });
+
+    await dismissBadgeCelebrations(page);
+
+    expect(dismissClick).toHaveBeenCalledTimes(2);
+  });
+
   it('throws a bounded error when the toast remains visible', async () => {
     const { page, dismissClick, waitForTimeout } = createBadgeHarness(['First badge'], {
       remainsVisible: true,
@@ -103,7 +142,7 @@ describe('dismissBadgeCelebrations', () => {
       'Badge celebration remained visible after attempt 1 of 3 (1000ms timeout)'
     );
     expect(dismissClick).toHaveBeenCalledTimes(1);
-    expect(waitForTimeout).toHaveBeenCalledTimes(20);
+    expect(waitForTimeout).toHaveBeenCalledTimes(40);
   });
 
   it('includes the dismiss control error in the diagnostic', async () => {
@@ -149,7 +188,7 @@ describe('dismissBadgeCelebrations', () => {
     expect(events).toEqual(['dismiss', 'fix']);
   });
 
-  it('dismisses the toast before a guided hover', async () => {
+  it('dismisses the toast before a hidden target reveal hover', async () => {
     const { page: badgePage, events } = createBadgeHarness(['First badge']);
     const stepLocator = {
       count: jest.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(0),
@@ -178,12 +217,24 @@ describe('dismissBadgeCelebrations', () => {
     const commentBoxLocator = {
       first: jest.fn(() => commentBox),
     } as unknown as Locator;
-    const target = {
-      first: jest.fn(),
-      isVisible: jest.fn().mockResolvedValue(true),
+    let targetVisible = false;
+    const panel = {
+      count: jest.fn().mockResolvedValue(1),
       scrollIntoViewIfNeeded: jest.fn().mockResolvedValue(undefined),
       hover: jest.fn(async () => {
-        events.push('hover');
+        events.push('panel-hover');
+        targetVisible = true;
+      }),
+      locator: jest.fn(),
+    } as unknown as Locator;
+    const target = {
+      first: jest.fn(),
+      count: jest.fn().mockResolvedValue(1),
+      isVisible: jest.fn(async () => targetVisible),
+      locator: jest.fn(() => panel),
+      scrollIntoViewIfNeeded: jest.fn().mockResolvedValue(undefined),
+      hover: jest.fn(async () => {
+        events.push('target-hover');
       }),
     } as unknown as Locator;
     target.first = jest.fn(() => target);
@@ -212,6 +263,32 @@ describe('dismissBadgeCelebrations', () => {
       })
     ).resolves.toEqual({ completed: true });
 
-    expect(events).toEqual(['dismiss', 'hover']);
+    expect(events).toEqual(['dismiss', 'panel-hover', 'target-hover']);
+  });
+
+  it('dismisses a delayed toast before a form-fill retry', async () => {
+    const { page, events, getElapsedMs } = createBadgeHarness(['First badge'], {
+      initialDelayMs: 3000,
+    });
+    let retried = false;
+    const stepLocator = {
+      count: jest.fn().mockResolvedValue(1),
+      getAttribute: jest.fn(async () => (retried ? 'valid' : 'invalid')),
+    } as unknown as Locator;
+    const target = {
+      fill: jest.fn(async () => {
+        events.push('retry-fill');
+        retried = true;
+      }),
+    } as unknown as Locator;
+    const dateNow = jest.spyOn(Date, 'now').mockImplementation(getElapsedMs);
+
+    try {
+      await waitForFormfillSettle(page, stepLocator, target, 'value');
+    } finally {
+      dateNow.mockRestore();
+    }
+
+    expect(events).toEqual(['dismiss', 'retry-fill']);
   });
 });
