@@ -376,15 +376,16 @@ function logRequirementResult(stepId: string, result: RequirementResult): void {
 // ============================================
 
 /**
- * Maximum time to poll for a settled requirements state after a fix attempt
- * finds no Fix button, before concluding the step is genuinely unfixable.
+ * Maximum time to poll for a settled requirements state before concluding
+ * an unmet read is genuinely terminal, rather than a transient DOM state.
  *
- * The plugin's requirement check can be mid-transition right after a fix
- * attempt (or the initial check): the Fix button is briefly absent even
- * though the step settles to met/idle moments later. Polling here avoids
- * reporting a transient DOM read as a terminal failure.
+ * The plugin's requirement check can be mid-transition right after the
+ * initial check or right after a fix button click: a step can read as
+ * unmet (with or without a Fix button) even though it settles to met
+ * moments later. Polling here avoids reporting that transient read as a
+ * terminal failure.
  */
-const NO_FIX_BUTTON_SETTLE_TIMEOUT_MS = 1000;
+const REQUIREMENTS_SETTLE_TIMEOUT_MS = 1000;
 
 /**
  * Click the Fix button for a step and wait for the fix action to complete (L3-4B).
@@ -452,24 +453,30 @@ export async function clickFixButton(
 }
 
 /**
- * Poll briefly for a settled requirements state when no Fix button is present (L3-4B).
+ * Poll briefly for a settled requirements state starting from an unmet read (L3-4B).
  *
  * Repeatedly re-detects requirements until they become met, a Fix button
  * appears, or `settleTimeoutMs` elapses. Returns the last observed result,
  * so callers can tell a genuinely unfixable state from a transient one.
  *
+ * Callers pass in the unmet result they already read, so a settled state
+ * (already met, or already showing a Fix button) returns immediately
+ * without an extra detection round-trip.
+ *
  * @param page - Playwright Page object
  * @param step - The testable step to check
+ * @param initial - The unmet RequirementResult observed just before this call
  * @param settleTimeoutMs - Maximum time to poll for a settled state
  * @returns The last observed RequirementResult
  */
-async function waitForNoFixButtonSettle(
+async function waitForRequirementsSettle(
   page: Page,
   step: TestableStep,
-  settleTimeoutMs = NO_FIX_BUTTON_SETTLE_TIMEOUT_MS
+  initial: RequirementResult,
+  settleTimeoutMs = REQUIREMENTS_SETTLE_TIMEOUT_MS
 ): Promise<RequirementResult> {
   const startTime = Date.now();
-  let latest = await detectRequirements(page, step);
+  let latest = initial;
 
   while (!latest.requirementsMet && !latest.hasFixButton && Date.now() - startTime < settleTimeoutMs) {
     await page.waitForTimeout(REQUIREMENTS_POLL_INTERVAL_MS);
@@ -549,7 +556,7 @@ export async function attemptToFixRequirements(
     // transient DOM read right after a check, so poll briefly for it to
     // settle before treating this as a terminal failure.
     if (!currentRequirements.hasFixButton) {
-      const settledRequirements = await waitForNoFixButtonSettle(page, step);
+      const settledRequirements = await waitForRequirementsSettle(page, step, currentRequirements);
 
       if (settledRequirements.requirementsMet) {
         if (verbose) {
@@ -603,10 +610,15 @@ export async function attemptToFixRequirements(
       continue; // Try again
     }
 
-    // Recheck requirements after fix
+    // Recheck requirements after fix. A click can leave the DOM mid-transition,
+    // so poll briefly for it to settle before recording this attempt as failed -
+    // without clicking Fix again or consuming another attempt to do so.
     const postFixRequirements = await detectRequirements(page, step);
+    const settledPostFixRequirements = postFixRequirements.requirementsMet
+      ? postFixRequirements
+      : await waitForRequirementsSettle(page, step, postFixRequirements);
 
-    if (postFixRequirements.requirementsMet) {
+    if (settledPostFixRequirements.requirementsMet) {
       if (verbose) {
         console.log(`   ✓ Fix successful - requirements now met`);
       }
@@ -632,8 +644,8 @@ export async function attemptToFixRequirements(
         requirementsMet: false,
       });
 
-      // Update final status from post-fix check
-      finalStatus = postFixRequirements.status;
+      // Update final status from the settled post-fix check
+      finalStatus = settledPostFixRequirements.status;
     }
   }
 

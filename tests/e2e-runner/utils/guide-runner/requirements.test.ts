@@ -1,9 +1,10 @@
 /**
  * Unit tests for guide-runner requirements handling.
  *
- * Covers the settle-window behavior in attemptToFixRequirements: when a fix
- * attempt finds no Fix button, the runner polls briefly for the DOM to
- * settle before it reports a terminal failure.
+ * Covers the settle-window behavior in attemptToFixRequirements: an unmet
+ * read (with or without a Fix button) gets a short poll to settle before
+ * the runner reports a terminal failure, both on the initial read of an
+ * attempt and on the read taken right after a Fix button click.
  */
 
 jest.mock('@playwright/test', () => ({
@@ -19,6 +20,10 @@ import { testIds } from '../../../../src/constants/testIds';
 import { REQUIREMENTS_POLL_INTERVAL_MS } from './constants';
 import { attemptToFixRequirements } from './requirements';
 import type { TestableStep } from './types';
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
 // ============================================
 // Test Fixtures
@@ -56,11 +61,26 @@ interface DomState {
 }
 
 /**
+ * A fake clock that only advances when page.waitForTimeout() is called,
+ * so elapsed time in the code under test matches the waits it actually
+ * requested instead of drifting with incidental Date.now() calls.
+ *
+ * Tests that rely on the settle window expiring, or on a known elapsed
+ * amount, must also run `jest.spyOn(Date, 'now').mockImplementation(() => clock.now)`.
+ */
+function createFakeClock() {
+  return { now: 0 };
+}
+
+/**
  * Build a mock Page whose getByTestId() responses advance through a
  * sequence of DOM states, one state per detectRequirements() call.
  * The last state repeats for any calls beyond the sequence length.
  */
-function createSequencedPage(states: DomState[]): { page: Page; waitForTimeout: jest.Mock } {
+function createSequencedPage(
+  states: DomState[],
+  clock: { now: number } = createFakeClock()
+): { page: Page; waitForTimeout: jest.Mock; fixButtonClick: jest.Mock } {
   let callIndex = -1;
   const currentState = () => states[Math.min(callIndex, states.length - 1)];
   const countFor = (pick: (state: DomState) => boolean) =>
@@ -105,11 +125,14 @@ function createSequencedPage(states: DomState[]): { page: Page; waitForTimeout: 
     }
     return locator;
   });
-  const waitForTimeout = jest.fn().mockResolvedValue(undefined);
+  const waitForTimeout = jest.fn().mockImplementation((ms: number) => {
+    clock.now += ms;
+    return Promise.resolve(undefined);
+  });
 
   const page = { getByTestId, waitForTimeout } as unknown as Page;
 
-  return { page, waitForTimeout };
+  return { page, waitForTimeout, fixButtonClick: fixLocator.click };
 }
 
 const UNMET_NO_FIX_BUTTON: DomState = {
@@ -117,6 +140,15 @@ const UNMET_NO_FIX_BUTTON: DomState = {
   hasExplanation: true,
   explanationText: 'Checking your setup',
   hasFixButton: false,
+  hasRetryButton: false,
+  hasSkipButton: false,
+};
+
+const UNMET_HAS_FIX_BUTTON: DomState = {
+  doItEnabled: false,
+  hasExplanation: true,
+  explanationText: 'Fix available',
+  hasFixButton: true,
   hasRetryButton: false,
   hasSkipButton: false,
 };
@@ -129,13 +161,17 @@ const MET: DomState = {
   hasSkipButton: false,
 };
 
-describe('attemptToFixRequirements - no Fix button settle window', () => {
-  it('reports success when requirements settle to met during the settle window', async () => {
-    const { page, waitForTimeout } = createSequencedPage([
-      UNMET_NO_FIX_BUTTON, // initial read in the attempt loop
-      UNMET_NO_FIX_BUTTON, // initial read inside the settle poll
-      MET, // settles to met after one poll
-    ]);
+describe('attemptToFixRequirements - settle window', () => {
+  it('reports success when requirements settle to met before a Fix button ever appears', async () => {
+    const clock = createFakeClock();
+    jest.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    const { page, waitForTimeout } = createSequencedPage(
+      [
+        UNMET_NO_FIX_BUTTON, // initial read in the attempt loop
+        MET, // settles to met after one poll
+      ],
+      clock
+    );
     const step = createTestableStep();
 
     const result = await attemptToFixRequirements(page, step);
@@ -151,28 +187,47 @@ describe('attemptToFixRequirements - no Fix button settle window', () => {
   });
 
   it('reports "No Fix button available" when requirements stay unmet for the whole window', async () => {
-    const dateNowSpy = jest.spyOn(Date, 'now');
-    let simulatedNow = 0;
-    dateNowSpy.mockImplementation(() => {
-      simulatedNow += 300;
-      return simulatedNow;
-    });
+    const clock = createFakeClock();
+    jest.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    const { page, waitForTimeout } = createSequencedPage([UNMET_NO_FIX_BUTTON], clock);
+    const step = createTestableStep();
 
-    try {
-      const { page, waitForTimeout } = createSequencedPage([UNMET_NO_FIX_BUTTON]);
-      const step = createTestableStep();
+    const result = await attemptToFixRequirements(page, step);
 
-      const result = await attemptToFixRequirements(page, step);
-
-      expect(result.success).toBe(false);
-      expect(result.failureReason).toBe('No Fix button available');
-      expect(result.totalAttempts).toBe(1);
-      expect(result.attempts[0].error).toBe('No Fix button available');
-      // It kept polling for the settle window rather than giving up on the
-      // first sampled state.
-      expect(waitForTimeout.mock.calls.length).toBeGreaterThan(1);
-    } finally {
-      dateNowSpy.mockRestore();
+    expect(result.success).toBe(false);
+    expect(result.failureReason).toBe('No Fix button available');
+    expect(result.totalAttempts).toBe(1);
+    expect(result.attempts[0].error).toBe('No Fix button available');
+    // It kept polling for the settle window (driven by the fake clock
+    // advancing with each waitForTimeout call) rather than giving up on
+    // the first sampled state.
+    expect(waitForTimeout.mock.calls.length).toBeGreaterThan(1);
+    for (const call of waitForTimeout.mock.calls) {
+      expect(call[0]).toBe(REQUIREMENTS_POLL_INTERVAL_MS);
     }
+  });
+
+  it('settles to met after a Fix click even on the final allowed attempt', async () => {
+    const clock = createFakeClock();
+    jest.spyOn(Date, 'now').mockImplementation(() => clock.now);
+    const { page, waitForTimeout, fixButtonClick } = createSequencedPage(
+      [
+        UNMET_HAS_FIX_BUTTON, // initial read: Fix button present
+        UNMET_NO_FIX_BUTTON, // immediate post-click read: still unmet, no Fix button
+        MET, // settles to met after one poll
+      ],
+      clock
+    );
+    const step = createTestableStep();
+
+    const result = await attemptToFixRequirements(page, step, { maxAttempts: 1 });
+
+    expect(result.success).toBe(true);
+    expect(result.finalStatus).toBe('met');
+    expect(result.totalAttempts).toBe(1);
+    // The settle poll re-detected requirements; it did not click Fix again
+    // to get there.
+    expect(fixButtonClick).toHaveBeenCalledTimes(1);
+    expect(waitForTimeout.mock.calls.length).toBe(2);
   });
 });
