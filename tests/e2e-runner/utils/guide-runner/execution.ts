@@ -510,32 +510,66 @@ export async function waitForFormfillSettle(
 }
 
 /**
- * Wait for the guided comment box to become visible, bounded by the step's own
- * timeout budget rather than a fixed short constant. Polls step state alongside
- * the comment box so a step that has already entered `error`/`cancelled` fails
- * fast instead of waiting out the full timeout.
+ * Outcome of waiting for the guided comment box:
+ * - `ready`: the comment box is visible and its contract can be read.
+ * - `completed`: the step reached `completed` while we were waiting.
+ * - `detached`: the step element was confirmed gone (a successful query
+ *   returned zero matches) while we were waiting.
+ */
+export type GuidedCommentBoxWaitOutcome = 'ready' | 'completed' | 'detached';
+
+/**
+ * Wait for the guided comment box to become visible, bounded by an absolute
+ * deadline rather than a fixed short constant. Every locator read inside the
+ * loop is itself bounded by the remaining time so a missing/slow locator
+ * can't silently consume more than this wait's own budget (e.g. the outer
+ * test timeout). Polls step state alongside the comment box so a step that
+ * has already entered `error`/`cancelled` fails fast, and returns a distinct
+ * outcome for `completed`/detached so the caller can treat those as legitimate
+ * step completion rather than "comment box never appeared".
  */
 export async function waitForGuidedCommentBoxReady(
   page: Page,
   stepLocator: Locator,
   commentBox: Locator,
   timeoutMs = GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS
-): Promise<void> {
+): Promise<GuidedCommentBoxWaitOutcome> {
   const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if ((await commentBox.count()) > 0 && (await commentBox.isVisible())) {
-      return;
+
+  for (;;) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error('Guided step: comment box not visible');
     }
-    const state = await stepLocator.getAttribute('data-test-step-state').catch(() => null);
+
+    if ((await commentBox.count()) > 0 && (await commentBox.isVisible())) {
+      return 'ready';
+    }
+
+    // Bound this read by the remaining budget so a stuck/missing locator
+    // can't exceed this wait's own deadline.
+    let state: string | null;
+    try {
+      state = await stepLocator.getAttribute('data-test-step-state', { timeout: remainingMs });
+    } catch {
+      state = null;
+    }
+
+    if (state === 'completed') {
+      return 'completed';
+    }
     if (state === 'error') {
       throw new Error('Guided step entered error state while waiting for comment box');
     }
     if (state === 'cancelled') {
       throw new Error('Guided step was cancelled while waiting for comment box');
     }
-    await page.waitForTimeout(GUIDED_SUBSTEP_ADVANCE_POLL_MS);
+    if (state === null && (await stepLocator.count()) === 0) {
+      return 'detached';
+    }
+
+    await page.waitForTimeout(Math.min(GUIDED_SUBSTEP_ADVANCE_POLL_MS, Math.max(1, deadline - Date.now())));
   }
-  throw new Error('Guided step: comment box not visible');
 }
 
 /**
@@ -548,14 +582,19 @@ export async function runGuidedSubstepLoop(
   options: {
     stepLocator: Locator;
     perSubstepTimeoutMs: number;
-    /** Bounds the comment-box visibility wait; defaults to GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS. */
-    commentBoxTimeoutMs?: number;
+    /**
+     * Absolute deadline (Date.now()-based epoch ms) bounding the cumulative
+     * comment-box visibility wait across every substep in this loop. Defaults
+     * to `Date.now() + GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS` when omitted.
+     */
+    commentBoxDeadlineMs?: number;
     verbose?: boolean;
     artifactsDir?: string;
   }
 ): Promise<{ completed: boolean }> {
   let stepLocator = options.stepLocator;
   const { perSubstepTimeoutMs, verbose = false, artifactsDir } = options;
+  const commentBoxDeadlineMs = options.commentBoxDeadlineMs ?? Date.now() + GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS;
   const guidedStepCount = step.guidedStepCount ?? 1;
 
   const captureLoopArtifacts = async (context: string) => {
@@ -564,16 +603,15 @@ export async function runGuidedSubstepLoop(
     }
   };
 
-  // Step unmount mid-loop is a completion signal. Re-resolving the locator
-  // handles reload/navigation (e.g. a completeEarly action reloading the page);
-  // a query error against a mid-navigation document is treated the same way.
+  // Step unmount mid-loop is a completion signal (section auto-collapse, or
+  // navigation unmounted it). Re-resolving the locator handles reload (e.g. a
+  // completeEarly action). A query error is NOT treated as detachment here:
+  // callers already synchronize on navigation before calling this, so a fault
+  // at this point (closed page, destroyed context, unrelated query error)
+  // is a genuine failure and must propagate rather than be reported as success.
   const stepDetached = async (): Promise<boolean> => {
     stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-    try {
-      return (await stepLocator.count()) === 0;
-    } catch {
-      return true;
-    }
+    return (await stepLocator.count()) === 0;
   };
 
   while (true) {
@@ -606,11 +644,20 @@ export async function runGuidedSubstepLoop(
     }
 
     const commentBox = page.locator('.interactive-comment-box').first();
+    let commentBoxOutcome: GuidedCommentBoxWaitOutcome;
     try {
-      await waitForGuidedCommentBoxReady(page, stepLocator, commentBox, options.commentBoxTimeoutMs);
+      commentBoxOutcome = await waitForGuidedCommentBoxReady(
+        page,
+        stepLocator,
+        commentBox,
+        Math.max(1, commentBoxDeadlineMs - Date.now())
+      );
     } catch (err) {
       await captureLoopArtifacts('comment-box-not-visible');
       throw err;
+    }
+    if (commentBoxOutcome === 'completed' || commentBoxOutcome === 'detached') {
+      return { completed: true };
     }
 
     const action = await commentBox.getAttribute('data-test-action');
@@ -646,6 +693,11 @@ export async function runGuidedSubstepLoop(
           page.off('framenavigated', onFrameNavigated);
         }
         if (navigated || urlBefore !== page.url()) {
+          // The action reloaded/navigated the page (e.g. a completeEarly install).
+          // The pre-navigation locator is stale, so wait for the new document to
+          // settle before re-resolving the step locator against it. A failed/timed
+          // out load is a genuine failure (broken reload) and must propagate, not
+          // be swallowed into a false "completed" result.
           await page.waitForLoadState('domcontentloaded', { timeout: GUIDED_RELOAD_LOAD_TIMEOUT_MS });
           stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
         }
@@ -719,8 +771,12 @@ function createSkippedResult(
 /**
  * Click a skippable step's Skip control and wait for the plugin to leave the
  * `requirements-unmet` state, so the next step in a sequential section isn't
- * gated on "Complete previous step". Best-effort: swallows failures so a step
- * that can't sync still returns the skipped result instead of throwing.
+ * gated on "Complete previous step".
+ *
+ * Throws on any failure (missing Skip control, click error, or a transition
+ * timeout) instead of swallowing it: recording a skip while the plugin can
+ * still be `requirements-unmet` reproduces the exact bug this fixes, so the
+ * caller must surface a clear runner failure rather than a false skip.
  *
  * @param page - Playwright Page object
  * @param stepId - The step identifier
@@ -732,14 +788,12 @@ export async function clickSkipButtonAndSync(
   timeout = SKIP_SYNC_TIMEOUT_MS
 ): Promise<void> {
   const skipButton = page.getByTestId(testIds.interactive.skipButton(stepId));
-  if ((await skipButton.count().catch(() => 0)) === 0) {
-    return;
+  if ((await skipButton.count()) === 0) {
+    throw new Error(`Step ${stepId}: no Skip control available to sync the requirements-unmet state`);
   }
-  await skipButton.click({ timeout }).catch(() => {});
+  await skipButton.click({ timeout });
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
-  await expect(stepLocator)
-    .not.toHaveAttribute('data-test-step-state', 'requirements-unmet', { timeout })
-    .catch(() => {});
+  await expect(stepLocator).not.toHaveAttribute('data-test-step-state', 'requirements-unmet', { timeout });
 }
 
 /**
@@ -849,12 +903,41 @@ export async function executeStep(
     // If requirements are not met after fix attempts
     if (!requirements.requirementsMet && requirements.status === 'unmet') {
       if (determineUnmetRequirementOutcome(step.skippable) === 'skip') {
+        // Click the Skip control and wait for the plugin to leave requirements-unmet
+        // so the next sequential step isn't gated on "Complete previous step". Only
+        // record the skip once that's confirmed; a sync failure is a clear runner
+        // failure rather than a false skip that reproduces the original bug.
+        try {
+          await clickSkipButtonAndSync(page, step.stepId);
+        } catch (syncError) {
+          const syncErrorMsg = syncError instanceof Error ? syncError.message : String(syncError);
+          if (verbose) {
+            console.log(`   ✗ Step ${step.stepId} failed: skip sync did not complete (${syncErrorMsg})`);
+          }
+          let artifacts: ArtifactPaths | undefined;
+          if (artifactsDir) {
+            artifacts = await captureFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir);
+            if (artifacts && preScreenshotPath) {
+              artifacts.screenshotPre = preScreenshotPath;
+            } else if (preScreenshotPath) {
+              artifacts = { screenshotPre: preScreenshotPath };
+            }
+          }
+          return {
+            stepId: step.stepId,
+            status: 'failed',
+            durationMs: Date.now() - startTime,
+            currentUrl: page.url(),
+            consoleErrors,
+            error: `Step is skippable but Skip sync failed: ${syncErrorMsg}`,
+            skippable: step.skippable,
+            classification: classifyError(syncErrorMsg),
+            artifacts,
+          };
+        }
         if (verbose) {
           console.log(`   ⊘ Step ${step.stepId} skipped due to unmet requirements (skippable)`);
         }
-        // Click the Skip control and wait for the plugin to leave requirements-unmet
-        // so the next sequential step isn't gated on "Complete previous step".
-        await clickSkipButtonAndSync(page, step.stepId);
         return createSkippedResult(step, page, startTime, consoleErrors, 'requirements_unmet');
       }
       const errorMsg = fixResult
@@ -976,9 +1059,10 @@ export async function executeStep(
       const { completed } = await runGuidedSubstepLoop(page, step, {
         stepLocator,
         perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
-        // Bound the comment-box readiness wait by the step's own timeout budget
-        // (which already accounts for guidedStepCount) instead of a fixed 5s.
-        commentBoxTimeoutMs: timeout,
+        // Bound the *cumulative* comment-box readiness wait, across every
+        // substep, by the step's own timeout budget (which already accounts
+        // for guidedStepCount) instead of a fixed 5s re-granted per substep.
+        commentBoxDeadlineMs: Date.now() + timeout,
         verbose,
         artifactsDir,
       });
