@@ -2,11 +2,12 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { from } from 'rxjs';
 
-import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import { ChallengeBlock, deriveChallengeStepState, resetChallengeCounter } from './challenge-block';
 import { resetInteractiveCounters } from './interactive-section';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { checkPostconditions } from '../../requirements-manager';
 import { getBackendSrv } from '@grafana/runtime';
+import { STEP_STATES } from './step-states';
 
 jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: jest.fn(),
@@ -416,6 +417,98 @@ describe('ChallengeBlock', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('E2E Contract: data-test-step-state', () => {
+    it.each([
+      ['idle', STEP_STATES.IDLE],
+      ['connecting', STEP_STATES.EXECUTING],
+      ['preparing', STEP_STATES.EXECUTING],
+      ['ready', STEP_STATES.IDLE],
+      ['checking', STEP_STATES.CHECKING],
+      ['solved', STEP_STATES.COMPLETED],
+      ['failed-check', STEP_STATES.ERROR],
+      ['setup-failed', STEP_STATES.ERROR],
+    ] as const)('maps local state %s to shared STEP_STATES value %s', (localState, expected) => {
+      expect(deriveChallengeStepState(localState)).toBe(expected);
+    });
+
+    it('every value deriveChallengeStepState can return is a valid STEP_STATES value', () => {
+      const allLocalStates = [
+        'idle',
+        'connecting',
+        'preparing',
+        'ready',
+        'checking',
+        'solved',
+        'failed-check',
+        'setup-failed',
+      ] as const;
+      for (const localState of allLocalStates) {
+        expect(Object.values(STEP_STATES)).toContain(deriveChallengeStepState(localState));
+      }
+    });
+
+    it('renders data-test-step-state="executing" while provisioning the VM', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      render(<ChallengeBlock {...baseProps} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId(/challenge-block-/)).toHaveAttribute('data-test-step-state', STEP_STATES.EXECUTING);
+      });
+    });
+
+    it('renders data-test-step-state="idle" once ready for Check my work', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      mockTerminalCtx({ status: 'connected' });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId(/challenge-block-/)).toHaveAttribute('data-test-step-state', STEP_STATES.IDLE);
+      });
+    });
+
+    it('renders data-test-step-state="error" on setup failure', async () => {
+      const post = jest
+        .fn()
+        .mockResolvedValueOnce({ stdout: '', stderr: 'permission denied\n', exitCode: 1, durationMs: 5 });
+      setBackend(post);
+      mockTerminalCtx({ status: 'connected' });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={['rm /etc/secrets']} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId(/challenge-block-/)).toHaveAttribute('data-test-step-state', STEP_STATES.ERROR);
+      });
+    });
+
+    it('renders data-test-step-state="completed" once solved', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: baseProps.successCriteria,
+        pass: true,
+        error: [],
+      });
+      mockTerminalCtx({ status: 'connected' });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId(/challenge-block-/)).toHaveAttribute('data-test-step-state', STEP_STATES.COMPLETED);
       });
     });
   });

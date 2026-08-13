@@ -41,6 +41,31 @@ The source-level tripwires live in `src/components/docs-panel/docs-panel.contrac
 
 ---
 
+## Step discovery contract: data-test-step-kind, data-step-id, and the executable-kind boundary
+
+Every tracked step component (see the two-site registry in `.cursor/rules/tracked-step-types.mdc`) sets two attributes on its outermost element:
+
+- **`data-test-step-kind`**: one of `plain`, `multistep`, `guided`, `quiz`, `terminal`, `terminal-connect`, `codeblock`, `challenge` — the exact `kind` value from that component's schema in `src/components/interactive-tutorial/step-type-registry.ts` (`STEP_TYPE_SCHEMAS`). This is the single source of truth for the list of tracked kinds.
+- **`data-step-id`**: the step's stable ID, uniform across all 8 kinds. Before this contract, only `InteractiveStep`/`InteractiveMultiStep`/`InteractiveGuided` set it; quiz, terminal, terminal-connect, codeblock, and challenge now set it too.
+
+### The executable-kind boundary
+
+The e2e runner's `discoverStepsFromDOM` (`tests/e2e-runner/utils/guide-runner/discovery.ts`) does not select on every kind that carries the marker. It selects only `EXECUTABLE_STEP_KINDS` (`tests/e2e-runner/utils/guide-runner/types.ts`): `plain`, `multistep`, `guided`. Quiz, terminal, terminal-connect, codeblock, and challenge steps render the marker (so the plugin-side contract stays uniform across all 8 kinds), but the runner's generic executor (`execution.ts`) only knows how to drive the `testIds.interactive.doItButton`/`stepCompleted` button and completion-badge contract that the executable kinds share. Discovering a deferred kind without a way to execute it would just fail on a missing "Do it" button, so discovery excludes them entirely — they are never handed to `executeAllSteps`.
+
+Adding execution support for a deferred kind means extending `EXECUTABLE_STEP_KINDS` and `execution.ts` together, plus the button/completion contract that kind's component exposes.
+
+### Marker-first discovery with a legacy fallback
+
+`discoverStepsFromDOM` tries `STEP_KIND_SELECTOR` (built from `EXECUTABLE_STEP_KINDS`) first. If zero elements match — which happens when the runner image deploys before the matching Pathfinder plugin build, so the deployed plugin doesn't render `data-test-step-kind` yet — it falls back to `LEGACY_STEP_SELECTOR`, a `data-testid^="interactive-step-"` prefix match that explicitly excludes the completed-step badge (`interactive-step-completed-<id>`) via a `:not()` clause. Steps discovered through the fallback report `kind: 'legacy'` on the resulting `TestableStep`.
+
+This two-tier selector is exported from `discovery.ts` (and re-exported from the `guide-runner` barrel) so `guide-runner.spec.ts`'s pre-discovery readiness gate waits on the exact same selector discovery uses, instead of a separately maintained copy.
+
+**Known limitation**: a guide made up entirely of deferred-kind blocks (quiz/terminal/terminal-connect/codeblock/challenge) has zero executable steps and currently fails the pre-discovery readiness gate and the runner's `discoveryResult.totalSteps > 0` assertion, because `countInteractiveBlocks()` (`tests/e2e-runner/utils/guide-runner/static-analysis.ts`) classifies every block type in `INTERACTIVE_BLOCK_TYPES` as "interactive", not just the executable ones. Fixing that classification is tracked separately from the selector-consistency fix described above.
+
+The source-level tests live in `tests/e2e-runner/utils/guide-runner/step-kind-marker.parity.test.ts` (registry ↔ marker parity, executable-kind boundary) and `tests/e2e-runner/utils/guide-runner/discovery.behavior.test.ts` (marker-first selection, legacy fallback, deferred-kind exclusion, against real DOM fixtures).
+
+---
+
 ## Block editor header contract
 
 The block-editor header exposes two stable row testids that responsive e2e tests depend on to assert the two-row layout holds at narrow widths:
@@ -104,7 +129,25 @@ The DOM is the natural boundary for testing a UI system. By exposing structured 
 
 ### Step Components
 
-Applied to `InteractiveStep`, `InteractiveMultiStep`, and `InteractiveGuided` elements.
+Applied to `InteractiveStep`, `InteractiveMultiStep`, `InteractiveGuided`, `InteractiveQuiz`, `TerminalStep`, `TerminalConnectStep`, `CodeBlockStep`, and `ChallengeBlock` elements, unless otherwise noted.
+
+#### `data-test-step-kind`
+
+**Purpose**: Identifies which tracked step kind rendered this element — see [Step discovery contract](#step-discovery-contract-data-test-step-kind-data-step-id-and-the-executable-kind-boundary) above.
+
+**Values**: `plain`, `multistep`, `guided`, `quiz`, `terminal`, `terminal-connect`, `codeblock`, `challenge` — sourced from `STEP_TYPE_SCHEMAS` in `src/components/interactive-tutorial/step-type-registry.ts`.
+
+**Presence**: Always present, on all 8 tracked step components.
+
+**Example**:
+
+```html
+<div class="interactive-step" data-test-step-kind="plain" data-step-id="create-dashboard">
+  <!-- Step content -->
+</div>
+```
+
+---
 
 #### `data-test-step-state`
 

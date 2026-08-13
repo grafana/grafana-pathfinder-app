@@ -23,6 +23,7 @@ import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { useGuideRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { CHALLENGE_BLOCK_SCHEMA } from './step-type-registry';
+import { STEP_STATES, type StepStateValue } from './step-states';
 
 const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
 // /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The
@@ -38,6 +39,39 @@ const EMPTY_SETUP_COMMANDS = Object.freeze([]) as unknown as string[];
 
 export type ChallengeState =
   'idle' | 'connecting' | 'preparing' | 'ready' | 'checking' | 'solved' | 'failed-check' | 'setup-failed';
+
+/**
+ * Maps ChallengeBlock's local lifecycle state onto the shared
+ * `data-test-step-state` contract (`STEP_STATES` — see
+ * docs/developer/E2E_TESTING_CONTRACT.md), so E2E tests can rely on the
+ * same small value space across every tracked step kind instead of
+ * learning challenge-specific state names.
+ *
+ * - `connecting` / `preparing`: the block is busy provisioning — executing.
+ * - `ready`: setup is done and "Check my work" is available — idle,
+ *   analogous to a step waiting for the user to act.
+ * - `checking`: verifying the success criterion — checking.
+ * - `solved`: handled by the early-return branch below with a literal
+ *   'completed', but mapped here too for exhaustiveness/testability.
+ * - `failed-check` / `setup-failed`: the block needs a retry — error.
+ */
+export function deriveChallengeStepState(state: ChallengeState): StepStateValue {
+  switch (state) {
+    case 'idle':
+    case 'ready':
+      return STEP_STATES.IDLE;
+    case 'connecting':
+    case 'preparing':
+      return STEP_STATES.EXECUTING;
+    case 'checking':
+      return STEP_STATES.CHECKING;
+    case 'solved':
+      return STEP_STATES.COMPLETED;
+    case 'failed-check':
+    case 'setup-failed':
+      return STEP_STATES.ERROR;
+  }
+}
 
 export interface ChallengeHintProps {
   text: string;
@@ -466,7 +500,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         className={styles.container}
         data-step-id={stepId}
         data-test-step-kind={CHALLENGE_BLOCK_SCHEMA.kind}
-        data-test-step-state="completed"
+        data-test-step-state={STEP_STATES.COMPLETED}
         data-testid={`challenge-block-${stepId}`}
       >
         <h4 className={styles.title}>{title}</h4>
@@ -483,7 +517,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       className={styles.container}
       data-step-id={stepId}
       data-test-step-kind={CHALLENGE_BLOCK_SCHEMA.kind}
-      data-test-step-state={state}
+      data-test-step-state={deriveChallengeStepState(state)}
       data-testid={`challenge-block-${stepId}`}
     >
       <h4 className={styles.title}>{title}</h4>

@@ -13,12 +13,30 @@ import { Locator } from '@playwright/test';
 import type { StepTypeKind } from '../../../../src/components/interactive-tutorial/step-type-registry';
 
 /**
- * `TestableStep.kind` value space: every real tracked step kind from the
- * step-type registry, plus `'legacy'` for steps discovered through the
- * compatibility fallback selector (deployed plugin build predates the
- * `data-test-step-kind` marker — see discovery.ts `LEGACY_STEP_SELECTOR`).
+ * Executable-kind boundary: the tracked step kinds the e2e runner can
+ * both discover AND drive through the generic `testIds.interactive.*`
+ * button/completion contract in execution.ts.
+ *
+ * The plugin renders `data-test-step-kind` on all 8 tracked kinds (see
+ * `.cursor/rules/tracked-step-types.mdc`), but quiz, terminal,
+ * terminal-connect, codeblock, and challenge steps each use their own
+ * button/completion UI that execution.ts's generic executor doesn't know
+ * how to drive. discovery.ts intentionally selects only this list, so
+ * those kinds are never handed to `executeAllSteps` only to fail on a
+ * missing "Do it" button. Extend this list and execution.ts together
+ * when adding execution support for a new kind.
  */
-export type TestableStepKind = StepTypeKind | 'legacy';
+export const EXECUTABLE_STEP_KINDS = ['plain', 'multistep', 'guided'] as const satisfies readonly StepTypeKind[];
+
+export type ExecutableStepKind = (typeof EXECUTABLE_STEP_KINDS)[number];
+
+/**
+ * `TestableStep.kind` value space: an executable kind, or `'legacy'` for
+ * steps discovered through the compatibility fallback selector (deployed
+ * plugin build predates the `data-test-step-kind` marker — see
+ * discovery.ts `LEGACY_STEP_SELECTOR`).
+ */
+export type TestableStepKind = ExecutableStepKind | 'legacy';
 
 // ============================================
 // Step Types
@@ -38,19 +56,14 @@ export interface TestableStep {
   stepId: string;
 
   /**
-   * The tracked step-type kind, read from the shared `data-test-step-kind`
-   * root marker (sourced from the step-type registry's `STEP_TYPE_KIND_KEYS`
-   * — see `.cursor/rules/tracked-step-types.mdc`). Distinguishes
-   * plain/multistep/guided steps (which the runner can execute today) from
-   * quiz/terminal/terminal-connect/codeblock/challenge steps, which are
-   * discovered and classified but not yet driven by `executeStep`.
-   *
-   * Optional: absent (undefined) when the step was discovered through the
-   * legacy fallback selector against a deployed plugin build that predates
-   * the marker. Callers that need a display/report value should treat a
-   * missing `kind` as `'legacy'`.
+   * The step's kind: one of `EXECUTABLE_STEP_KINDS` when read from the
+   * shared `data-test-step-kind` root marker, or `'legacy'` when the step
+   * was discovered through the fallback selector (deployed plugin build
+   * predates the marker). Quiz/terminal/terminal-connect/codeblock/challenge
+   * steps are outside the executable-kind boundary and are never returned
+   * by `discoverStepsFromDOM` — see `EXECUTABLE_STEP_KINDS` above.
    */
-  kind?: TestableStepKind;
+  kind: TestableStepKind;
 
   /** Zero-based index in DOM order (top to bottom) */
   index: number;

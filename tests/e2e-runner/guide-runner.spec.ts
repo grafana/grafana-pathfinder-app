@@ -36,6 +36,8 @@ import {
   AllStepsResult,
   AbortReason,
   StepTestResult,
+  STEP_KIND_SELECTOR,
+  LEGACY_STEP_SELECTOR,
 } from './utils/guide-runner';
 import {
   printHeader,
@@ -266,9 +268,16 @@ test.describe('Guide Runner', () => {
       return;
     }
 
-    // Verify guide content loaded (first step visible indicates interactive content rendered)
-    // Use a more general selector since step IDs vary by guide
-    const firstStep = page.locator('[data-testid^="interactive-step-"]').first();
+    // Verify guide content loaded (first step visible indicates interactive content rendered).
+    // Reuse discovery.ts's own executable-kind marker selector plus its legacy
+    // fallback, so this gate can never drift from what discoverStepsFromDOM
+    // actually looks for (see EXECUTABLE_STEP_KINDS in guide-runner/types.ts).
+    // Known limitation: a guide composed entirely of quiz/terminal/terminal-connect/
+    // codeblock/challenge blocks has zero executable steps and will still fail
+    // here, because countInteractiveBlocks() above classifies those block types
+    // as "interactive" even though the runner cannot execute them yet. Fixing
+    // that classification is tracked separately from this selector consistency fix.
+    const firstStep = page.locator(`${STEP_KIND_SELECTOR}, ${LEGACY_STEP_SELECTOR}`).first();
     await expect(firstStep).toBeVisible({ timeout: 15000 });
 
     // ============================================

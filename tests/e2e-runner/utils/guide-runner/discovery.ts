@@ -10,21 +10,25 @@
 import { Page, Locator } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
-import { STEP_TYPE_KIND_KEYS } from '../../../../src/components/interactive-tutorial/step-type-registry';
 import { calculateStepTimeout } from './execution';
-import type { TestableStep, StepDiscoveryResult } from './types';
+import { EXECUTABLE_STEP_KINDS } from './types';
+import type { ExecutableStepKind, TestableStep, StepDiscoveryResult } from './types';
 
 /**
- * Selector for tracked step root elements, built from the step-type
- * registry's `STEP_TYPE_KIND_KEYS` — the single source of truth for
- * tracked step kinds (see `.cursor/rules/tracked-step-types.mdc`). Every
- * tracked step component sets `data-test-step-kind` on its outermost
- * element, so this selector matches only step roots. Unlike the old
- * data-testid prefix match on the `interactive-step-` namespace, it never
- * matches the completed-step badge, which shares that namespace but
- * carries no `data-test-step-kind`.
+ * Selector for executable step root elements, built from `EXECUTABLE_STEP_KINDS`
+ * (see types.ts) — the runner's explicit boundary for which tracked step
+ * kinds it can discover AND drive. Every tracked step component sets
+ * `data-test-step-kind` on its outermost element (all 8 kinds, per
+ * `.cursor/rules/tracked-step-types.mdc`), but this selector deliberately
+ * matches only the executable subset. Unlike the old data-testid prefix
+ * match on the `interactive-step-` namespace, it never matches the
+ * completed-step badge, which shares that namespace but carries no
+ * `data-test-step-kind`.
+ *
+ * Exported so guide-runner.spec.ts's pre-discovery readiness gate can wait
+ * on the same selector instead of duplicating a hardcoded one.
  */
-const STEP_KIND_SELECTOR = STEP_TYPE_KIND_KEYS.map((kind) => `[data-test-step-kind="${kind}"]`).join(', ');
+export const STEP_KIND_SELECTOR = EXECUTABLE_STEP_KINDS.map((kind) => `[data-test-step-kind="${kind}"]`).join(', ');
 
 /**
  * Compatibility fallback selector, used only when `STEP_KIND_SELECTOR`
@@ -32,8 +36,11 @@ const STEP_KIND_SELECTOR = STEP_TYPE_KIND_KEYS.map((kind) => `[data-test-step-ki
  * `data-test-step-kind` marker (runner/plugin version skew). Matches the
  * old `interactive-step-` data-testid namespace but excludes the
  * completed-step badge, which shares that prefix.
+ *
+ * Exported for the same reason as `STEP_KIND_SELECTOR` above.
  */
-const LEGACY_STEP_SELECTOR = '[data-testid^="interactive-step-"]:not([data-testid^="interactive-step-completed-"])';
+export const LEGACY_STEP_SELECTOR =
+  '[data-testid^="interactive-step-"]:not([data-testid^="interactive-step-completed-"])';
 
 /** Prefix stripped from `data-testid` to recover the step ID for legacy fallback elements that carry no `data-step-id`. */
 const LEGACY_STEP_TESTID_PREFIX = 'interactive-step-';
@@ -106,9 +113,13 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
       continue;
     }
 
-    // Legacy fallback elements predate the marker, so `kind` is left
-    // undefined (reported as 'legacy' by callers that need a display value).
-    const kind = (await element.getAttribute('data-test-step-kind')) as TestableStep['kind'] | null;
+    // Elements found via STEP_KIND_SELECTOR always carry one of
+    // EXECUTABLE_STEP_KINDS as their data-test-step-kind value (the selector
+    // is literally built from that list). Legacy fallback elements predate
+    // the marker entirely, so they're always 'legacy'.
+    const kind: TestableStep['kind'] = usingLegacySelector
+      ? 'legacy'
+      : ((await element.getAttribute('data-test-step-kind')) as ExecutableStepKind);
 
     // Scroll step into view so below-the-fold or lazy-rendered content (e.g. Skip button) is in DOM
     await element.scrollIntoViewIfNeeded().catch(() => {});
@@ -119,13 +130,13 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
     // L3-4A: Extract refTarget for requirements detection
     const refTarget = (await element.getAttribute('data-reftarget')) ?? undefined;
 
-    // Check if "Do it" button exists (U1: not all steps have buttons).
-    // NOTE: this button contract (and the skip/show-me checks below) is only
-    // wired up for the plain/multistep/guided family today. Quiz, terminal,
-    // terminal-connect, codeblock, and challenge steps are discovered and
-    // classified via `kind` but report hasDoItButton/skippable as false
-    // until execution support for those kinds is added — see
-    // docs/developer/E2E_TESTING.md.
+    // Check if "Do it" button exists (U1: not all steps have buttons). Every
+    // discovered step is either an executable kind (plain/multistep/guided) or
+    // 'legacy' (pre-marker plain/multistep/guided) — both use the generic
+    // testIds.interactive.* button/completion contract that execution.ts
+    // drives. Quiz/terminal/terminal-connect/codeblock/challenge steps are
+    // outside the executable-kind boundary (see EXECUTABLE_STEP_KINDS in
+    // types.ts) and are never discovered here.
     const hasDoItButton = await checkDoItButtonExists(page, stepId);
     const hasShowMeButton = (await page.getByTestId(testIds.interactive.showMeButton(stepId)).count()) > 0;
 
@@ -149,7 +160,7 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
 
     steps.push({
       stepId,
-      kind: kind ?? undefined,
+      kind,
       index,
       sectionId,
       skippable: effectiveSkippable,
@@ -372,8 +383,7 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
   const multistepCount = result.steps.filter((s) => s.isMultistep).length;
   const guidedCount = result.steps.filter((s) => s.isGuided).length;
   const kindCounts = result.steps.reduce<Record<string, number>>((acc, s) => {
-    const key = s.kind ?? 'legacy';
-    acc[key] = (acc[key] ?? 0) + 1;
+    acc[s.kind] = (acc[s.kind] ?? 0) + 1;
     return acc;
   }, {});
 

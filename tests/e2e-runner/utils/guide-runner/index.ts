@@ -12,6 +12,8 @@
 // ============================================
 export type {
   TestableStep,
+  TestableStepKind,
+  ExecutableStepKind,
   StepDiscoveryResult,
   StepStatus,
   SkipReason,
@@ -27,6 +29,7 @@ export type {
   AllStepsResult,
   OnStepCompleteCallback,
 } from './types';
+export { EXECUTABLE_STEP_KINDS } from './types';
 
 // ============================================
 // Constants
@@ -58,7 +61,13 @@ export {
 // ============================================
 // Discovery
 // ============================================
-export { discoverStepsFromDOM, logDiscoveryResults, resolveEffectiveSkippable } from './discovery';
+export {
+  discoverStepsFromDOM,
+  logDiscoveryResults,
+  resolveEffectiveSkippable,
+  STEP_KIND_SELECTOR,
+  LEGACY_STEP_SELECTOR,
+} from './discovery';
 export { ensureDocsPanelOpen } from './bootstrap';
 
 // ============================================
