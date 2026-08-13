@@ -69,10 +69,10 @@ the fixed internal aggregator.
   back to `X-Grafana-User` or a numeric id, never use a service account. On GET reads the refusal
   is expressed as the §7 capability envelope (soft-200), not a 401 — "fail closed" constrains
   _what_ is served (nothing), not the status code.
-- **Every proxy structurally validates the ID token** before spending an upstream call:
-  well-formed JWT, `exp` **present and** unexpired. **Reject `exp == 0`** — a forwarded Grafana
-  ID token always carries `exp`, and accepting its absence weakens the one structural check we
-  have.
+- **Every proxy verifies the ID token** before spending an upstream call: well-formed JWT,
+  correct signature against the issuing stack's own JWKS, `exp` **present and** unexpired.
+  **Reject `exp == 0`** — a forwarded Grafana ID token always carries `exp`, and accepting its
+  absence weakens one of the few checks we have.
 - **Only per-user-data proxies extract `sub`** (verbatim, typed prefix included). A
   namespace-global catalogue proxy validates structure and forwards; it has no per-user need and
   must not grow one by accident. Ship this as one shared helper with two layers:
@@ -110,10 +110,9 @@ the fixed internal aggregator.
 - **Never replay the inbound `Authorization` header.** Grafana strips it before plugin resource
   handlers, so replaying it forwards an absent header — dead code that reads as load-bearing.
 - Write down the trust assumption **once**, in `docs/developer/CODA.md`, identically for all
-  proxies: structural (non-signature) JWT validation is defensible _only_ because requests reach
-  the plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend
-  is not independently reachable with a client-set `X-Grafana-Id`. Name JWKS verification via
-  `github.com/grafana/authlib` as the single future-hardening item; do not re-argue it per PR.
+  proxies: every inbound ID token is cryptographically verified against the issuing stack's own
+  JWKS (`pkg/plugin/auth.IdentityVerifier`, backed by `github.com/grafana/authlib`) before any of
+  its claims are trusted — see `pkg/plugin/app_platform_identity.go`. Do not re-argue this per PR.
 
 ## 4. Cache
 
@@ -269,8 +268,8 @@ go test ./pkg/plugin -run TestContract -update
 - [ ] Shared paginated LIST client; drains `continue`; per-page + aggregate deadlines; per-page
       byte cap + aggregate budget with logged truncation
 - [ ] Namespace from `PluginConfigFromContext().Namespace` — never a query param
-- [ ] Inbound: structural JWT validation everywhere (`exp` present + unexpired); `sub` extraction
-      only where data is per-user; fail closed
+- [ ] Inbound: ID token verified against the stack's own JWKS everywhere (`exp` present +
+      unexpired); `sub` extraction only where data is per-user; fail closed
 - [ ] Outbound: shared identity-forwarding helper; ID-token-derived headers only; never `Cookie`;
       never replay inbound `Authorization`
 - [ ] Per-user data ⇒ identity-partitioned cache; shared blob ⇒ identity-invariance proven &
