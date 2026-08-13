@@ -12,6 +12,8 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
+- **2026-08-12**: `docs/developer/RELEASE_PROCESS.md` — Corrected dev deployment, CLI publish triggers, runtime dependencies, MCP smoke testing, Node base-image guidance, and plugin-tarball isolation. Validated against current release/publish workflows, `Dockerfile.cli`, `scripts/cli-build-utils.js`, and package scripts.
+- **2026-08-12**: `docs/developer/learning-paths/README.md` — Added App Platform paths and the badge coordinator; corrected completion, reset, metadata lookup, storage ownership, and current test/export coverage. Validated against current learning-path logic, storage integrations, custom-guide catalogue adapter, and My Learning reset flow.
 - **2026-08-07**: `docs/developer/CROSS_TAB_CONTROLLER.md` — Corrected the wire protocol for `runId`, `targetState`, pairing, sidebar handoff, sender-scoped replies, and single-live-tab command execution. Validated against current cross-tab types, controller channel, live-tab executor, and interactive step emitters.
 - **2026-08-07**: `.cursor/rules/schema-coupling.mdc` — Corrected the JSON-guide coupling guarantees, Zod unknown-field behavior, validation layout, test commands, and package-schema distinctions. Validated against current guide/package schemas, types, and coupling tests.
 - **2026-08-07**: `docs/developer/interactive-examples/json-guide-format.md` — Corrected video, code-block, terminal, challenge, snippet-reference, and Grot Guide contracts plus the exported type/guard list. Validated against `json-guide.schema.ts` and `json-guide.types.ts`.
@@ -60,6 +62,7 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Files confirmed as not needing an AGENTS.md entry. Format: path, reason. -->
 
+- `docs/_maintenance-backlog.md` — Workflow-owned state for the maintain-docs skill; the skill reads it directly, so it does not need agent-context indexing.
 - `docs/developer/provisioning/README.md` — 4-line stub with only external links to Grafana provisioning docs. No agent-relevant content.
 - `.cursor/skills/maintain-docs/SKILL.md` — Discovered automatically by IDE via `.cursor/skills/` glob pattern. No AGENTS.md entry needed.
 - `.cursor/skills/design-review/SKILL.md` — Same as above.
