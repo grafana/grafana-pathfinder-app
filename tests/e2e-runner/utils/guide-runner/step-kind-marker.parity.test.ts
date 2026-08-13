@@ -2,13 +2,19 @@
  * Parity tripwire — every tracked step-type kind in `STEP_TYPE_SCHEMAS`
  * must set the shared `data-test-step-kind` root marker on its component,
  * and the e2e runner's discovery selector must be built from the
- * registry's `STEP_TYPE_KIND_KEYS` instead of a hardcoded kind list or
- * the old `data-testid^="interactive-step-"` prefix match.
+ * registry's `STEP_TYPE_KIND_KEYS` instead of a hardcoded kind list.
  *
  * This locks in the fix for the confirmed step-discovery contract defect:
- * the old selector also matched the `interactive-step-completed-<id>`
- * badge (same prefix, different element) and had no way to recognize
+ * the old selector matched the `interactive-step-completed-<id>` badge
+ * (same prefix, different element) and had no way to recognize
  * quiz/terminal/terminal-connect/codeblock/challenge steps.
+ *
+ * `discovery.ts` still falls back to the legacy `interactive-step-` prefix
+ * selector when the marker selector finds nothing, for compatibility with
+ * a deployed plugin build that predates the marker (runner/plugin version
+ * skew). This test asserts the marker selector is tried first and that the
+ * legacy fallback excludes the completed-step badge — it does not require
+ * the legacy selector to be absent.
  *
  * Mirrors the pattern in `step-type-registry.test.ts` (data-driven schema
  * checks) and `content-renderer.registry-parity.test.ts` (source scanning).
@@ -17,7 +23,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { STEP_TYPE_SCHEMAS, type StepTypeKind } from '../../../../src/components/interactive-tutorial/step-type-registry';
+import {
+  STEP_TYPE_SCHEMAS,
+  type StepTypeKind,
+} from '../../../../src/components/interactive-tutorial/step-type-registry';
 
 const INTERACTIVE_TUTORIAL_DIR = path.resolve(__dirname, '../../../../src/components/interactive-tutorial');
 const DISCOVERY_FILE = path.resolve(__dirname, 'discovery.ts');
@@ -54,8 +63,22 @@ describe('step-kind marker parity (runner discovery contract)', () => {
     expect(source).toMatch(/data-test-step-kind/);
   });
 
-  it('discovery.ts no longer selects steps by the interactive-step- testid prefix', () => {
+  it('discovery.ts tries the marker selector before the legacy testid-prefix fallback', () => {
     const source = fs.readFileSync(DISCOVERY_FILE, 'utf8');
-    expect(source).not.toMatch(/data-testid\^="interactive-step-"/);
+    const markerCallIndex = source.indexOf('page.locator(STEP_KIND_SELECTOR)');
+    const legacyCallIndex = source.indexOf('page.locator(LEGACY_STEP_SELECTOR)');
+    expect(markerCallIndex).toBeGreaterThan(-1);
+    expect(legacyCallIndex).toBeGreaterThan(-1);
+    expect(markerCallIndex).toBeLessThan(legacyCallIndex);
+    // The fallback call must be conditioned on the marker selector finding nothing.
+    const betweenCalls = source.slice(markerCallIndex, legacyCallIndex);
+    expect(betweenCalls).toMatch(/stepElements\.length === 0/);
+  });
+
+  it('discovery.ts legacy fallback selector excludes the completed-step badge', () => {
+    const source = fs.readFileSync(DISCOVERY_FILE, 'utf8');
+    expect(source).toMatch(
+      /LEGACY_STEP_SELECTOR\s*=\s*'\[data-testid\^="interactive-step-"\]:not\(\[data-testid\^="interactive-step-completed-"\]\)'/
+    );
   });
 });

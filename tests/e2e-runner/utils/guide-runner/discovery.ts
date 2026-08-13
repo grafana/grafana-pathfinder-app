@@ -26,6 +26,18 @@ import type { TestableStep, StepDiscoveryResult } from './types';
  */
 const STEP_KIND_SELECTOR = STEP_TYPE_KIND_KEYS.map((kind) => `[data-test-step-kind="${kind}"]`).join(', ');
 
+/**
+ * Compatibility fallback selector, used only when `STEP_KIND_SELECTOR`
+ * finds zero elements — i.e. the deployed plugin build predates the
+ * `data-test-step-kind` marker (runner/plugin version skew). Matches the
+ * old `interactive-step-` data-testid namespace but excludes the
+ * completed-step badge, which shares that prefix.
+ */
+const LEGACY_STEP_SELECTOR = '[data-testid^="interactive-step-"]:not([data-testid^="interactive-step-completed-"])';
+
+/** Prefix stripped from `data-testid` to recover the step ID for legacy fallback elements that carry no `data-step-id`. */
+const LEGACY_STEP_TESTID_PREFIX = 'interactive-step-';
+
 // ============================================
 // Discovery Functions
 // ============================================
@@ -61,23 +73,42 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
   const startTime = Date.now();
   const steps: TestableStep[] = [];
 
-  // Query all rendered step elements in DOM order
-  const stepElements = await page.locator(STEP_KIND_SELECTOR).all();
+  // Query all rendered step elements in DOM order. Prefer the marker
+  // selector; only fall back to the legacy testid-prefix selector when the
+  // deployed plugin build predates the data-test-step-kind marker (see
+  // LEGACY_STEP_SELECTOR above).
+  let stepElements = await page.locator(STEP_KIND_SELECTOR).all();
+  let usingLegacySelector = false;
+  if (stepElements.length === 0) {
+    usingLegacySelector = true;
+    console.warn(
+      '[discovery] No elements matched the data-test-step-kind marker; falling back to the legacy ' +
+        'interactive-step- testid selector. This indicates the deployed Pathfinder plugin build predates ' +
+        'the marker contract.'
+    );
+    stepElements = await page.locator(LEGACY_STEP_SELECTOR).all();
+  }
 
   for (let index = 0; index < stepElements.length; index++) {
     const element = stepElements[index];
 
-    // Extract step ID from the data-step-id attribute. Every tracked step
-    // component sets this alongside data-test-step-kind (see
-    // .cursor/rules/tracked-step-types.mdc), so it works uniformly across
-    // all kinds instead of parsing kind-specific data-testid values.
-    const stepId = await element.getAttribute('data-step-id');
+    // Extract step ID. Every tracked step component sets data-step-id
+    // alongside data-test-step-kind (see .cursor/rules/tracked-step-types.mdc),
+    // so it works uniformly across all kinds. Legacy fallback elements may
+    // predate data-step-id too, so fall back to stripping the data-testid prefix.
+    let stepId = await element.getAttribute('data-step-id');
+    if (!stepId && usingLegacySelector) {
+      const dataTestId = await element.getAttribute('data-testid');
+      stepId = dataTestId ? dataTestId.replace(LEGACY_STEP_TESTID_PREFIX, '') : null;
+    }
     if (!stepId) {
-      console.warn(`Step at index ${index} missing data-step-id attribute, skipping`);
+      console.warn(`Step at index ${index} missing a step id attribute, skipping`);
       continue;
     }
 
-    const kind = (await element.getAttribute('data-test-step-kind')) as TestableStep['kind'];
+    // Legacy fallback elements predate the marker, so `kind` is left
+    // undefined (reported as 'legacy' by callers that need a display value).
+    const kind = (await element.getAttribute('data-test-step-kind')) as TestableStep['kind'] | null;
 
     // Scroll step into view so below-the-fold or lazy-rendered content (e.g. Skip button) is in DOM
     await element.scrollIntoViewIfNeeded().catch(() => {});
@@ -118,7 +149,7 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
 
     steps.push({
       stepId,
-      kind,
+      kind: kind ?? undefined,
       index,
       sectionId,
       skippable: effectiveSkippable,
@@ -341,7 +372,8 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
   const multistepCount = result.steps.filter((s) => s.isMultistep).length;
   const guidedCount = result.steps.filter((s) => s.isGuided).length;
   const kindCounts = result.steps.reduce<Record<string, number>>((acc, s) => {
-    acc[s.kind] = (acc[s.kind] ?? 0) + 1;
+    const key = s.kind ?? 'legacy';
+    acc[key] = (acc[key] ?? 0) + 1;
     return acc;
   }, {});
 
@@ -355,7 +387,11 @@ export function logDiscoveryResults(result: StepDiscoveryResult, verbose = false
   if (guidedCount > 0) {
     console.log(`   Guided: ${guidedCount}`);
   }
-  console.log(`   By kind: ${Object.entries(kindCounts).map(([k, c]) => `${k}:${c}`).join(', ')}`);
+  console.log(
+    `   By kind: ${Object.entries(kindCounts)
+      .map(([k, c]) => `${k}:${c}`)
+      .join(', ')}`
+  );
   console.log(`   Discovery time: ${result.durationMs}ms`);
 
   if (verbose && result.steps.length > 0) {

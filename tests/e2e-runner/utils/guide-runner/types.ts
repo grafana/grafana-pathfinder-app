@@ -12,6 +12,14 @@ import { Locator } from '@playwright/test';
 
 import type { StepTypeKind } from '../../../../src/components/interactive-tutorial/step-type-registry';
 
+/**
+ * `TestableStep.kind` value space: every real tracked step kind from the
+ * step-type registry, plus `'legacy'` for steps discovered through the
+ * compatibility fallback selector (deployed plugin build predates the
+ * `data-test-step-kind` marker — see discovery.ts `LEGACY_STEP_SELECTOR`).
+ */
+export type TestableStepKind = StepTypeKind | 'legacy';
+
 // ============================================
 // Step Types
 // ============================================
@@ -36,8 +44,13 @@ export interface TestableStep {
    * plain/multistep/guided steps (which the runner can execute today) from
    * quiz/terminal/terminal-connect/codeblock/challenge steps, which are
    * discovered and classified but not yet driven by `executeStep`.
+   *
+   * Optional: absent (undefined) when the step was discovered through the
+   * legacy fallback selector against a deployed plugin build that predates
+   * the marker. Callers that need a display/report value should treat a
+   * missing `kind` as `'legacy'`.
    */
-  kind: StepTypeKind;
+  kind?: TestableStepKind;
 
   /** Zero-based index in DOM order (top to bottom) */
   index: number;

@@ -461,7 +461,9 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       data-testid={testIds.interactive.quiz(stepId)}
       data-step-id={stepId}
       data-test-step-kind={INTERACTIVE_QUIZ_SCHEMA.kind}
-      data-test-step-state={isCompleted ? STEP_STATES.COMPLETED : isBlocked ? STEP_STATES.REQUIREMENTS_UNMET : STEP_STATES.IDLE}
+      data-test-step-state={
+        isCompleted ? STEP_STATES.COMPLETED : isBlocked ? STEP_STATES.REQUIREMENTS_UNMET : STEP_STATES.IDLE
+      }
     >
       {/* Question */}
       <div className={styles.question}>
