@@ -255,11 +255,15 @@ export function InputBlock({
       variable_name: variableName,
       blocking: false,
     });
-    const passed = await runDataCheck();
-    reportAppInteraction(passed ? UserInteraction.DataCheckPassed : UserInteraction.DataCheckFailed, {
+    const outcome = await runDataCheck();
+    if (outcome === 'aborted') {
+      return;
+    }
+    reportAppInteraction(outcome === 'passed' ? UserInteraction.DataCheckPassed : UserInteraction.DataCheckFailed, {
       datasource_type: dataCheckType ?? 'unknown',
       variable_name: variableName,
       blocking: false,
+      outcome,
     });
   }, [runDataCheck, dataCheckType, variableName]);
 

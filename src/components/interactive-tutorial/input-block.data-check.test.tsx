@@ -171,6 +171,20 @@ describe('an advisory check', () => {
     expect(screen.queryByTestId(FAILURE)).not.toBeInTheDocument();
   });
 
+  it("does not dress a failed query up in the author's no-data message", async () => {
+    mockRunQuery.mockResolvedValue({ ok: false, error: 'Query timed out after 15s.' });
+    renderPicker({ dataCheckQuery: 'up', dataCheckFailureMessage: 'No container metrics here.' });
+    await pick();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(RUN));
+    });
+
+    await waitFor(() => expect(screen.getByTestId(FAILURE)).toBeInTheDocument());
+    const failure = screen.getByTestId(FAILURE);
+    expect(failure).toHaveTextContent('Query timed out after 15s.');
+    expect(failure).not.toHaveTextContent('No container metrics here.');
+  });
+
   it('says so rather than querying a data source type no check can read', async () => {
     renderPicker({ dataCheckQuery: 'up', datasourceFilter: 'mysql' });
     await pick('Reporting');

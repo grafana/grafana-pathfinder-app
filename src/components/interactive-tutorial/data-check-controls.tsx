@@ -63,13 +63,22 @@ export function DataCheckControls({
 }: DataCheckControlsProps) {
   const styles = useStyles2(getStyles);
   const isChecking = state === 'checking';
+  const hasFailed = state === 'no-data' || state === 'error';
+
+  // The author's message describes absent data, so it must not stand in for a
+  // check that never ran — a user told the metric is missing may skip a blocking
+  // step when the real problem is their connection or permissions.
+  const failureText =
+    state === 'error'
+      ? `The check could not run. ${failureDetail}`.trim()
+      : failureMessage || 'The data is currently not available.';
 
   return (
     <>
-      {state === 'failed' && (
+      {hasFailed && (
         <div className={styles.failure} role="status" aria-live="polite" data-testid={failureTestId}>
           <Icon name="exclamation-triangle" />
-          <div>{failureMessage || failureDetail || 'The data is currently not available.'}</div>
+          <div>{failureText}</div>
         </div>
       )}
 
@@ -96,7 +105,7 @@ export function DataCheckControls({
             disabled={!canRun || isChecking || disabled}
             data-testid={runTestId}
           >
-            {state === 'failed' ? 'Run check again' : 'Run check'}
+            {hasFailed ? 'Run check again' : 'Run check'}
           </Button>
         )}
         {children}

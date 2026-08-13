@@ -238,26 +238,35 @@ export function DatasourceCheckStep({
       step_id: renderedStepId,
       blocking: true,
     });
-    const passed = await run();
-    reportAppInteraction(passed ? UserInteraction.DataCheckPassed : UserInteraction.DataCheckFailed, {
+    const outcome = await run();
+    // A check the user gave up on, or one a newer run replaced, has no outcome
+    // to report and must not complete the step it no longer speaks for.
+    if (outcome === 'aborted') {
+      return;
+    }
+    reportAppInteraction(outcome === 'passed' ? UserInteraction.DataCheckPassed : UserInteraction.DataCheckFailed, {
       datasource_type: supportedType ?? 'unknown',
       step_id: renderedStepId,
       blocking: true,
+      outcome,
     });
-    if (passed) {
+    if (outcome === 'passed') {
       markComplete();
     }
   }, [run, markComplete, supportedType, renderedStepId]);
 
   const markSkipped = checker.markSkipped;
   const handleSkip = useCallback(async () => {
+    // Giving up has to stop the query too: it would otherwise keep spending
+    // after the user moved on, and leave Redo inert until it finished.
+    reset();
     reportAppInteraction(UserInteraction.DataCheckSkipped, {
       datasource_type: supportedType ?? 'unknown',
       step_id: renderedStepId,
     });
     await markSkipped?.();
     markComplete('skipped');
-  }, [markSkipped, markComplete, supportedType, renderedStepId]);
+  }, [reset, markSkipped, markComplete, supportedType, renderedStepId]);
 
   const isEnabled = checker.isEnabled && !disabled;
   const hasDatasources = datasourceOptions.length > 0;
@@ -272,7 +281,7 @@ export function DatasourceCheckStep({
     stepState = STEP_STATES.CHECKING;
   } else if (!isEnabled) {
     stepState = STEP_STATES.REQUIREMENTS_UNMET;
-  } else if (state === 'failed') {
+  } else if (state === 'no-data' || state === 'error') {
     stepState = STEP_STATES.ERROR;
   }
 

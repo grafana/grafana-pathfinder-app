@@ -848,6 +848,8 @@ Turn blocking on deliberately. It makes the block count toward the section's ste
 
 Only Prometheus, Loki, Tempo, and Pyroscope can be queried. If the user picks a data source of any other type, the block says so instead of offering the button rather than silently passing. Queries are capped at 100 data points and abort after 15 seconds. Pyroscope queries are written as `<profileTypeId>|<labelSelector>`.
 
+`dataCheckFailureMessage` is shown **only** when the query ran and came back empty. A timeout, a permissions error, or a broken data source reports the underlying error instead — a user told their metric is missing might go looking for the wrong problem, or skip a blocking step believing the data is genuinely absent. Write the message for the empty-result case and let the error path speak for itself.
+
 Give every blocking check an explicit `id`. It becomes the step id that completion is stored against, so without one, editing the guide can orphan a user's progress.
 
 **Using Variables:**

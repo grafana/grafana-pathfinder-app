@@ -288,6 +288,44 @@ describe('running the check', () => {
     await waitFor(() => expect(screen.getByTestId(TEST_IDS.failure)).toHaveTextContent('parse error at line 1'));
   });
 
+  // A user told the metric is missing may skip a blocking step, when the real
+  // problem is that the query never ran.
+  it("does not dress a failed query up in the author's no-data message", async () => {
+    mockRunQuery.mockResolvedValue({ ok: false, error: 'Query timed out after 15s.' });
+    renderStep({ failureMessage: 'No container metrics here.' });
+    await pick();
+    await click(TEST_IDS.run);
+
+    await waitFor(() => expect(screen.getByTestId(TEST_IDS.failure)).toBeInTheDocument());
+    const failure = screen.getByTestId(TEST_IDS.failure);
+    expect(failure).toHaveTextContent('Query timed out after 15s.');
+    expect(failure).toHaveTextContent(/could not run/i);
+    expect(failure).not.toHaveTextContent('No container metrics here.');
+  });
+
+  it('distinguishes the two failures in telemetry', async () => {
+    const { reportAppInteraction } = require('../../lib/analytics');
+    mockRunQuery.mockResolvedValue(noData);
+    renderStep();
+    await pick();
+    await click(TEST_IDS.run);
+    await waitFor(() =>
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        'data_check_failed',
+        expect.objectContaining({ outcome: 'no-data' })
+      )
+    );
+
+    mockRunQuery.mockResolvedValue({ ok: false, error: 'boom' });
+    await click(TEST_IDS.run);
+    await waitFor(() =>
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        'data_check_failed',
+        expect.objectContaining({ outcome: 'error' })
+      )
+    );
+  });
+
   it('offers another attempt after a failure', async () => {
     mockRunQuery.mockResolvedValue(noData);
     renderStep();
@@ -369,6 +407,62 @@ describe('skipping', () => {
   it('is offered when no data source of the authored type exists', () => {
     renderStep({ datasourceFilter: 'elasticsearch', skippable: true });
     expect(screen.getByTestId(TEST_IDS.skip)).toBeInTheDocument();
+  });
+
+  describe('while a check is still running', () => {
+    // Skip is clickable during a check, so giving up has to stop the query too.
+    let settle: (result: unknown) => void;
+
+    beforeEach(async () => {
+      mockRunQuery.mockImplementation(
+        (req: { signal?: AbortSignal }) =>
+          new Promise((resolve) => {
+            settle = resolve;
+            req.signal?.addEventListener('abort', () => resolve({ ok: false, error: 'aborted' }));
+          })
+      );
+      renderStep({ skippable: true });
+      await pick();
+      await click(TEST_IDS.run);
+    });
+
+    it('aborts the in-flight query', async () => {
+      const signal = mockRunQuery.mock.calls[0]![0].signal as AbortSignal;
+      expect(signal.aborted).toBe(false);
+      await click(TEST_IDS.skip);
+      expect(signal.aborted).toBe(true);
+    });
+
+    it('records the skip rather than the pass the late query would report', async () => {
+      await click(TEST_IDS.skip);
+      expect(mockMarkStepCompleted).toHaveBeenCalledWith('check-1', undefined, 'skipped');
+
+      // The abandoned request lands after the skip and must change nothing.
+      await act(async () => {
+        settle({ ok: true, hasData: true, seriesCount: 1, rowCount: 1 });
+      });
+      expect(mockMarkStepCompleted).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports no outcome for the check it abandoned', async () => {
+      const { reportAppInteraction } = require('../../lib/analytics');
+      await click(TEST_IDS.skip);
+      await act(async () => {
+        settle({ ok: true, hasData: true, seriesCount: 1, rowCount: 1 });
+      });
+      const events = reportAppInteraction.mock.calls.map((c: unknown[]) => c[0]);
+      expect(events).toContain('data_check_skipped');
+      expect(events).not.toContain('data_check_passed');
+      expect(events).not.toContain('data_check_failed');
+    });
+
+    it('leaves Redo working instead of inert until the query finishes', async () => {
+      mockStoredCompleted = true;
+      mockStoredReason = 'skipped';
+      await click(TEST_IDS.skip);
+      await click(TEST_IDS.redo);
+      expect(mockResetStep).toHaveBeenCalledWith('check-1', undefined);
+    });
   });
 });
 
