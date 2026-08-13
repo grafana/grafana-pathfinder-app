@@ -386,7 +386,12 @@ export const JsonGuidedBlockSchema = z.object({
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
-  completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
+  completeEarly: z
+    .boolean()
+    .optional()
+    .describe(
+      'Persist the guided block at its final completion signal. For a final button or highlight action, the click signal causes completion to persist during capture, before the application click handler runs. A final action without a click signal persists after its result. Cancellation, timeout, or error does not persist completion.'
+    ),
   ...AuthorAnnotatedSchema.shape,
 });
 

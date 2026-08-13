@@ -590,7 +590,7 @@ needs:
 }
 ```
 
-#### Guided Block
+#### Guided block
 
 Highlights elements and **waits for user** to perform actions.
 
@@ -616,21 +616,32 @@ Highlights elements and **waits for user** to perform actions.
 }
 ```
 
-| Field           | Type       | Required | Description                              |
-| --------------- | ---------- | -------- | ---------------------------------------- |
-| `content`       | string     | ✅       | Description shown to user                |
-| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform    |
-| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)  |
-| `completeEarly` | boolean    | ❌       | Complete when user performs action early |
-| `requirements`  | string[]   | ❌       | Requirements for the block               |
-| `objectives`    | string[]   | ❌       | Objectives tracked                       |
-| `skippable`     | boolean    | ❌       | Allow skipping                           |
+| Field           | Type       | Required | Description                                     |
+| --------------- | ---------- | -------- | ----------------------------------------------- |
+| `content`       | string     | ✅       | Description shown to user                       |
+| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform           |
+| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)         |
+| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal |
+| `requirements`  | string[]   | ❌       | Requirements for the block                      |
+| `objectives`    | string[]   | ❌       | Objectives tracked                              |
+| `skippable`     | boolean    | ❌       | Allow skipping                                  |
 
 Steps accept `targetstate` here too, with the meaning adjusted for a step the
 user performs: a control already in the requested state completes immediately
 instead of asking the user to click it. Without that, the guide would tell
 someone to click a toggle that is already correct, and their click would move it
 the wrong way.
+
+`completeEarly` does not skip guided actions or complete the block before its
+final action. For a final `button` or `highlight` action, the click signal stores
+completion during capture. The application click handler runs afterward. A final
+action without a click signal stores completion after its result. This rule
+includes a satisfied `targetstate`. Cancellation, timeout, or error does not store
+completion.
+
+`InteractiveGuided` owns the idempotent completion write and completion
+callbacks. `GuidedHandler` owns listeners, timers, the overlay, click ordering,
+and cleanup.
 
 #### Quiz Block
 
