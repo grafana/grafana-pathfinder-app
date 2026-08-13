@@ -133,9 +133,9 @@ describe('clickSkipButtonAndSync', () => {
     });
     const skipButton = createLocator();
     const page = {
-      getByTestId: jest.fn().mockImplementation((testId: string) =>
-        testId.startsWith('interactive-skip-') ? skipButton : stepLocator
-      ),
+      getByTestId: jest
+        .fn()
+        .mockImplementation((testId: string) => (testId.startsWith('interactive-skip-') ? skipButton : stepLocator)),
     } as unknown as Page;
 
     await clickSkipButtonAndSync(page, 'step-1', 200);
@@ -149,9 +149,9 @@ describe('clickSkipButtonAndSync', () => {
     });
     const skipButton = createLocator();
     const page = {
-      getByTestId: jest.fn().mockImplementation((testId: string) =>
-        testId.startsWith('interactive-skip-') ? skipButton : stepLocator
-      ),
+      getByTestId: jest
+        .fn()
+        .mockImplementation((testId: string) => (testId.startsWith('interactive-skip-') ? skipButton : stepLocator)),
     } as unknown as Page;
 
     await expect(clickSkipButtonAndSync(page, 'step-1', 20)).resolves.toBeUndefined();
@@ -172,9 +172,7 @@ describe('waitForGuidedCommentBoxReady', () => {
     const commentBox = createLocator({ count: jest.fn().mockResolvedValue(0) });
     const page = { waitForTimeout: jest.fn().mockResolvedValue(undefined) } as unknown as Page;
 
-    await expect(waitForGuidedCommentBoxReady(page, stepLocator, commentBox, 30000)).rejects.toThrow(
-      'error state'
-    );
+    await expect(waitForGuidedCommentBoxReady(page, stepLocator, commentBox, 30000)).rejects.toThrow('error state');
     // Only one poll iteration should have happened before the fast failure.
     expect(page.waitForTimeout).not.toHaveBeenCalled();
   });
@@ -254,9 +252,7 @@ describe('runGuidedSubstepLoop', () => {
       getAttribute: jest
         .fn()
         .mockImplementation((name: string) =>
-          Promise.resolve(
-            name === 'data-test-action' ? 'button' : name === 'data-test-reftarget' ? 'Install' : null
-          )
+          Promise.resolve(name === 'data-test-action' ? 'button' : name === 'data-test-reftarget' ? 'Install' : null)
         ),
     });
 
