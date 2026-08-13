@@ -505,7 +505,7 @@ async function waitForFormfillSettle(
  * Run the guided substep loop: read comment box contract, perform action, wait for advance.
  * Phase 4: formfill validation, hover dwell, skippable substeps, navigation re-query, error diagnostics.
  */
-async function runGuidedSubstepLoop(
+export async function runGuidedSubstepLoop(
   page: Page,
   step: TestableStep,
   options: {
@@ -598,6 +598,7 @@ async function runGuidedSubstepLoop(
         }
         const target = await resolveGuidedTarget(page, reftarget, 'hover');
         await target.scrollIntoViewIfNeeded();
+        await dismissBadgeCelebrations(page);
         await target.hover();
         await page.waitForTimeout(GUIDED_HOVER_DWELL_MS);
       } else if (action === 'formfill') {
@@ -606,6 +607,7 @@ async function runGuidedSubstepLoop(
         }
         const target = await resolveGuidedTarget(page, reftarget, 'formfill');
         await target.scrollIntoViewIfNeeded();
+        await dismissBadgeCelebrations(page);
         await target.fill(targetValue ?? '');
         await waitForFormfillSettle(page, stepLocator, target, targetValue ?? '');
       } else {

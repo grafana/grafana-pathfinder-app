@@ -1,7 +1,15 @@
 import type { Locator, Page } from '@playwright/test';
 
+jest.mock('@playwright/test', () => ({
+  Page: jest.fn(),
+  Locator: jest.fn(),
+  expect: jest.fn(),
+  test: jest.fn(),
+}));
+
 import { testIds } from '../../../../src/constants/testIds';
 import { dismissBadgeCelebrations } from './badge-celebrations';
+import { runGuidedSubstepLoop } from './execution';
 import { clickFixButton } from './requirements';
 import type { TestableStep } from './types';
 
@@ -139,5 +147,71 @@ describe('dismissBadgeCelebrations', () => {
     await clickFixButton(page, step, 'navigation');
 
     expect(events).toEqual(['dismiss', 'fix']);
+  });
+
+  it('dismisses the toast before a guided hover', async () => {
+    const { page: badgePage, events } = createBadgeHarness(['First badge']);
+    const stepLocator = {
+      count: jest.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(0),
+      getAttribute: jest.fn(async (name: string) => {
+        if (name === 'data-test-step-state') {
+          return 'executing';
+        }
+        if (name === 'data-test-substep-index') {
+          return '0';
+        }
+        return null;
+      }),
+    } as unknown as Locator;
+    const commentBox = {
+      waitFor: jest.fn().mockResolvedValue(undefined),
+      getAttribute: jest.fn(async (name: string) => {
+        if (name === 'data-test-action') {
+          return 'hover';
+        }
+        if (name === 'data-test-reftarget') {
+          return '#guided-target';
+        }
+        return null;
+      }),
+    } as unknown as Locator;
+    const commentBoxLocator = {
+      first: jest.fn(() => commentBox),
+    } as unknown as Locator;
+    const target = {
+      first: jest.fn(),
+      isVisible: jest.fn().mockResolvedValue(true),
+      scrollIntoViewIfNeeded: jest.fn().mockResolvedValue(undefined),
+      hover: jest.fn(async () => {
+        events.push('hover');
+      }),
+    } as unknown as Locator;
+    target.first = jest.fn(() => target);
+    const getBadgeLocator = badgePage.getByTestId.bind(badgePage);
+    const page = {
+      getByTestId: jest.fn((testId: string) => {
+        if (testId === testIds.interactive.step('guided-step')) {
+          return stepLocator;
+        }
+        return getBadgeLocator(testId);
+      }),
+      locator: jest.fn((selector: string) => {
+        return selector === '.interactive-comment-box' ? commentBoxLocator : target;
+      }),
+      waitForTimeout: badgePage.waitForTimeout.bind(badgePage),
+    } as unknown as Page;
+    const step = {
+      stepId: 'guided-step',
+      guidedStepCount: 1,
+    } as TestableStep;
+
+    await expect(
+      runGuidedSubstepLoop(page, step, {
+        stepLocator,
+        perSubstepTimeoutMs: 100,
+      })
+    ).resolves.toEqual({ completed: true });
+
+    expect(events).toEqual(['dismiss', 'hover']);
   });
 });
