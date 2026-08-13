@@ -35,7 +35,12 @@ export class CompositePackageResolver implements PackageResolver {
   }
 
   async resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
-    const cacheKey = `${packageId}:${options?.loadContent ?? false}`;
+    // verifyPublished must be part of the key: two same-tick calls for the
+    // same id and loadContent but different verifyPublished would otherwise
+    // collide, and whichever resolve() lands in the cache first would satisfy
+    // both — silently skipping the publish-status probe for the caller that
+    // asked for it (#1561).
+    const cacheKey = `${packageId}:${options?.loadContent ?? false}:${options?.verifyPublished ?? false}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
       return cached;
