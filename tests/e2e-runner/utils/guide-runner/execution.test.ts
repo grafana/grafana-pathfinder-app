@@ -1,31 +1,31 @@
 /**
  * Unit tests for the runner lifecycle fixes in execution.ts:
  * 1. Skip sync (clickSkipButtonAndSync) — only records a skip after the
- *    plugin confirms it left requirements-unmet; fails loudly otherwise.
+ *    plugin reaches an explicit terminal state (completed or a successful
+ *    detach), supporting either Skip control the plugin renders.
  * 2. Guided readiness (waitForGuidedCommentBoxReady) — bounds every read by
  *    the remaining deadline and distinguishes ready/completed/detached.
  * 3. Reload/detached-step handling (runGuidedSubstepLoop) — re-resolves the
  *    step locator after a detected reload, but propagates genuine query and
  *    navigation-sync failures instead of reporting false completion.
- * 4. Late no-op completion / bounded scroll (scrollStepIntoView).
+ * 4. Late completion/detachment precheck (executeStep) — bounded, error
+ *    propagating, and classified as 'passed' consistently with the
+ *    pre-click objective check (never a differently-labeled 'skipped').
  *
  * @see tests/e2e-runner/utils/guide-runner/execution.ts
  */
 
 jest.mock('@playwright/test', () => {
-  const readState = async (locator: { getAttribute: (name: string) => Promise<string | null> }) =>
-    locator.getAttribute('data-test-step-state');
-
   return {
     Page: jest.fn(),
     Locator: jest.fn(),
     test: jest.fn(),
-    expect: (locator: { getAttribute: (name: string) => Promise<string | null> }) => {
-      const poll = async (matches: (value: string | null) => boolean, opts?: { timeout?: number }) => {
+    expect: (locator: { getAttribute: (name: string, opts?: { timeout?: number }) => Promise<string | null> }) => {
+      const poll = async (attr: string, matches: (value: string | null) => boolean, opts?: { timeout?: number }) => {
         const timeout = opts?.timeout ?? 5000;
         const deadline = Date.now() + timeout;
         for (;;) {
-          const value = await readState(locator);
+          const value = await locator.getAttribute(attr);
           if (matches(value)) {
             return;
           }
@@ -36,11 +36,11 @@ jest.mock('@playwright/test', () => {
         }
       };
       return {
-        toHaveAttribute: (_attr: string, value: string, opts?: { timeout?: number }) =>
-          poll((current) => current === value, opts),
+        toHaveAttribute: (attr: string, value: string, opts?: { timeout?: number }) =>
+          poll(attr, (current) => current === value, opts),
         not: {
-          toHaveAttribute: (_attr: string, value: string, opts?: { timeout?: number }) =>
-            poll((current) => current !== value, opts),
+          toHaveAttribute: (attr: string, value: string, opts?: { timeout?: number }) =>
+            poll(attr, (current) => current !== value, opts),
         },
       };
     },
@@ -59,6 +59,7 @@ import {
   waitForGuidedCommentBoxReady,
   runGuidedSubstepLoop,
   executeStep,
+  summarizeResults,
 } from './execution';
 import { handleRequirementsWithFix } from './requirements';
 import {
@@ -66,7 +67,7 @@ import {
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
   LATE_COMPLETION_CHECK_TIMEOUT_MS,
 } from './constants';
-import type { TestableStep } from './types';
+import type { StepTestResult, TestableStep } from './types';
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
@@ -103,6 +104,32 @@ function createLocator(overrides: Partial<Record<string, jest.Mock>> = {}): Loca
   } as unknown as Locator;
 }
 
+/** Routes getByTestId to distinct locators for the two Skip control shapes and the step itself. */
+function createSkipRoutedPage(routes: {
+  stepSkipButton?: Locator;
+  requirementSkipButton?: Locator;
+  stepLocator?: Locator;
+  extra?: Record<string, unknown>;
+}): Page {
+  const stepSkipButton = routes.stepSkipButton ?? createLocator({ count: jest.fn().mockResolvedValue(0) });
+  const requirementSkipButton =
+    routes.requirementSkipButton ?? createLocator({ count: jest.fn().mockResolvedValue(0) });
+  const stepLocator = routes.stepLocator ?? createLocator();
+  return {
+    getByTestId: jest.fn().mockImplementation((testId: string) => {
+      if (testId.startsWith('interactive-requirement-skip-')) {
+        return requirementSkipButton;
+      }
+      if (testId.startsWith('interactive-skip-')) {
+        return stepSkipButton;
+      }
+      return stepLocator;
+    }),
+    waitForTimeout: jest.fn().mockResolvedValue(undefined),
+    ...routes.extra,
+  } as unknown as Page;
+}
+
 describe('scrollStepIntoView', () => {
   it('bounds scrollIntoViewIfNeeded with the scroll timeout', async () => {
     const stepElement = createLocator();
@@ -130,49 +157,77 @@ describe('scrollStepIntoView', () => {
 });
 
 describe('clickSkipButtonAndSync', () => {
-  it('throws when no Skip control is available (cannot sync, cannot claim success)', async () => {
-    const skipButton = createLocator({ count: jest.fn().mockResolvedValue(0) });
-    const page = { getByTestId: jest.fn().mockReturnValue(skipButton) } as unknown as Page;
+  it('throws when neither Skip control is rendered', async () => {
+    const page = createSkipRoutedPage({});
 
     await expect(clickSkipButtonAndSync(page, 'step-1', 100)).rejects.toThrow('no Skip control available');
-    expect(skipButton.click).not.toHaveBeenCalled();
+  });
+
+  it('prefers the step-level Skip control when both are rendered', async () => {
+    const stepSkipButton = createLocator();
+    const requirementSkipButton = createLocator();
+    const stepLocator = createLocator({ count: jest.fn().mockResolvedValue(0) }); // detach = terminal
+    const page = createSkipRoutedPage({ stepSkipButton, requirementSkipButton, stepLocator });
+
+    await expect(clickSkipButtonAndSync(page, 'step-1', 200)).resolves.toBeUndefined();
+
+    expect(stepSkipButton.click).toHaveBeenCalledWith({ timeout: 200 });
+    expect(requirementSkipButton.click).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the requirement-scoped Skip control when the step-level one is not rendered', async () => {
+    // detectRequirements().hasSkipButton reflects this narrower control
+    // (interactive-requirement-skip-*); support it too instead of assuming
+    // the always-available step-level control is the only shape.
+    const requirementSkipButton = createLocator();
+    const stepLocator = createLocator({ count: jest.fn().mockResolvedValue(0) });
+    const page = createSkipRoutedPage({ requirementSkipButton, stepLocator });
+
+    await expect(clickSkipButtonAndSync(page, 'step-1', 200)).resolves.toBeUndefined();
+
+    expect(requirementSkipButton.click).toHaveBeenCalledWith({ timeout: 200 });
   });
 
   it('throws when the Skip button click itself fails', async () => {
     const clickError = new Error('Element is not clickable');
-    const skipButton = createLocator({ click: jest.fn().mockRejectedValue(clickError) });
-    const page = { getByTestId: jest.fn().mockReturnValue(skipButton) } as unknown as Page;
+    const stepSkipButton = createLocator({ click: jest.fn().mockRejectedValue(clickError) });
+    const page = createSkipRoutedPage({ stepSkipButton });
 
     await expect(clickSkipButtonAndSync(page, 'step-1', 100)).rejects.toBe(clickError);
   });
 
-  it('resolves only once the step confirms it left requirements-unmet', async () => {
+  it('resolves once the step reaches the completed terminal state', async () => {
+    const stepSkipButton = createLocator();
     const stepLocator = createLocator({
-      getAttribute: jest.fn().mockResolvedValueOnce('requirements-unmet').mockResolvedValue('completed'),
-    });
-    const skipButton = createLocator();
-    const page = {
-      getByTestId: jest
+      getAttribute: jest
         .fn()
-        .mockImplementation((testId: string) => (testId.startsWith('interactive-skip-') ? skipButton : stepLocator)),
-    } as unknown as Page;
+        .mockResolvedValueOnce('checking')
+        .mockResolvedValueOnce('requirements-unmet')
+        .mockResolvedValue('completed'),
+    });
+    const page = createSkipRoutedPage({ stepSkipButton, stepLocator });
 
-    await expect(clickSkipButtonAndSync(page, 'step-1', 200)).resolves.toBeUndefined();
-    expect(skipButton.click).toHaveBeenCalledWith({ timeout: 200 });
+    await expect(clickSkipButtonAndSync(page, 'step-1', 500)).resolves.toBeUndefined();
   });
 
-  it('throws instead of silently recording a skip when the step never leaves requirements-unmet', async () => {
+  it('resolves once the step is successfully detached, not merely absent from requirements-unmet', async () => {
+    let calls = 0;
+    const stepSkipButton = createLocator();
     const stepLocator = createLocator({
+      count: jest.fn().mockImplementation(() => Promise.resolve(calls++ === 0 ? 1 : 0)),
       getAttribute: jest.fn().mockResolvedValue('requirements-unmet'),
     });
-    const skipButton = createLocator();
-    const page = {
-      getByTestId: jest
-        .fn()
-        .mockImplementation((testId: string) => (testId.startsWith('interactive-skip-') ? skipButton : stepLocator)),
-    } as unknown as Page;
+    const page = createSkipRoutedPage({ stepSkipButton, stepLocator });
 
-    await expect(clickSkipButtonAndSync(page, 'step-1', 20)).rejects.toThrow('Timed out waiting for attribute');
+    await expect(clickSkipButtonAndSync(page, 'step-1', 500)).resolves.toBeUndefined();
+  });
+
+  it('does not mistake a transient checking state for synchronized completion, and times out with a clear error', async () => {
+    const stepSkipButton = createLocator();
+    const stepLocator = createLocator({ getAttribute: jest.fn().mockResolvedValue('checking') });
+    const page = createSkipRoutedPage({ stepSkipButton, stepLocator });
+
+    await expect(clickSkipButtonAndSync(page, 'step-1', 20)).rejects.toThrow('did not reach a terminal state');
   });
 });
 
@@ -440,7 +495,7 @@ describe('executeStep - skip sync sequential-flow regression', () => {
     (handleRequirementsWithFix as jest.Mock).mockReset();
   });
 
-  it('only reports skipped once the plugin confirms it left requirements-unmet, unblocking the next step', async () => {
+  it('only reports skipped once the plugin confirms a terminal state, unblocking the next step', async () => {
     (handleRequirementsWithFix as jest.Mock).mockResolvedValue({
       requirements: {
         requirementsMet: false,
@@ -452,29 +507,25 @@ describe('executeStep - skip sync sequential-flow regression', () => {
         hasRetryButton: false,
       },
     });
+    const stepSkipButton = createLocator();
     const stepLocator = createLocator({
       getAttribute: jest
         .fn()
         .mockResolvedValueOnce(null) // pre-scroll late-completion check
         .mockResolvedValueOnce('requirements-unmet') // skip-sync poll #1
-        .mockResolvedValue('completed'), // skip-sync poll #2 — left requirements-unmet
+        .mockResolvedValue('completed'), // skip-sync poll #2 — reached the terminal state
     });
-    const skipButton = createLocator();
-    const page = {
-      getByTestId: jest
-        .fn()
-        .mockImplementation((testId: string) => (testId.startsWith('interactive-skip-') ? skipButton : stepLocator)),
-      waitForTimeout: jest.fn().mockResolvedValue(undefined),
-      on: jest.fn(),
-      off: jest.fn(),
-      url: jest.fn().mockReturnValue('http://localhost:3000/'),
-    } as unknown as Page;
+    const page = createSkipRoutedPage({
+      stepSkipButton,
+      stepLocator,
+      extra: { on: jest.fn(), off: jest.fn(), url: jest.fn().mockReturnValue('http://localhost:3000/') },
+    });
     const step = createTestableStep({ skippable: true, isGuided: false, guidedStepCount: undefined });
 
     const result = await executeStep(page, step, {});
 
     expect(result.status).toBe('skipped');
-    expect(skipButton.click).toHaveBeenCalled();
+    expect(stepSkipButton.click).toHaveBeenCalled();
   });
 
   it('returns a failed result — never a false skip — when Skip sync cannot confirm the transition', async () => {
@@ -490,18 +541,10 @@ describe('executeStep - skip sync sequential-flow regression', () => {
       },
     });
     const stepLocator = createLocator({ getAttribute: jest.fn().mockResolvedValue(null) });
-    const missingSkipButton = createLocator({ count: jest.fn().mockResolvedValue(0) });
-    const page = {
-      getByTestId: jest
-        .fn()
-        .mockImplementation((testId: string) =>
-          testId.startsWith('interactive-skip-') ? missingSkipButton : stepLocator
-        ),
-      waitForTimeout: jest.fn().mockResolvedValue(undefined),
-      on: jest.fn(),
-      off: jest.fn(),
-      url: jest.fn().mockReturnValue('http://localhost:3000/'),
-    } as unknown as Page;
+    const page = createSkipRoutedPage({
+      stepLocator,
+      extra: { on: jest.fn(), off: jest.fn(), url: jest.fn().mockReturnValue('http://localhost:3000/') },
+    });
     const step = createTestableStep({ skippable: true, isGuided: false, guidedStepCount: undefined });
 
     const result = await executeStep(page, step, {});
@@ -530,6 +573,71 @@ describe('executeStep - late completion/detachment precheck', () => {
     expect(result.error).toBe('Target closed');
   });
 
+  it("returns 'passed' (not 'skipped') when the step is already completed while still attached", async () => {
+    // Same DOM state the pre-click objective check reports as 'passed'; the
+    // late precheck must classify it the same way, not as a differently
+    // labeled 'skipped'/pre_completed result.
+    const stepLocator = createLocator({ getAttribute: jest.fn().mockResolvedValue('completed') });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      off: jest.fn(),
+      url: jest.fn().mockReturnValue('http://localhost:3000/'),
+    } as unknown as Page;
+    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+
+    const result = await executeStep(page, step, {});
+
+    expect(result.status).toBe('passed');
+    expect(result.skipReason).toBeUndefined();
+  });
+
+  it("returns 'passed' (not 'skipped') when the step's element is already detached", async () => {
+    const stepLocator = createLocator({ count: jest.fn().mockResolvedValue(0) });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      off: jest.fn(),
+      url: jest.fn().mockReturnValue('http://localhost:3000/'),
+    } as unknown as Page;
+    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+
+    const result = await executeStep(page, step, {});
+
+    expect(result.status).toBe('passed');
+  });
+
+  it('demonstrates the summary impact: a late-completed step now counts as a verified pass', async () => {
+    const stepLocator = createLocator({ getAttribute: jest.fn().mockResolvedValue('completed') });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      off: jest.fn(),
+      url: jest.fn().mockReturnValue('http://localhost:3000/'),
+    } as unknown as Page;
+    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+
+    const lateResult = await executeStep(page, step, {});
+    const otherSkippableFailure: StepTestResult = {
+      stepId: 'other-step',
+      status: 'failed',
+      durationMs: 10,
+      currentUrl: 'http://localhost:3000/',
+      consoleErrors: [],
+      skippable: true,
+    };
+
+    const summary = summarizeResults([lateResult, otherSkippableFailure]);
+
+    // Before this fix, the late-completed step was reported as 'skipped', so
+    // a run with zero verified passes and a skippable failure was reported
+    // as a failure. It's now a verified 'passed', so the run succeeds.
+    expect(summary.success).toBe(true);
+  });
+
   it('bounds the completion read and treats a successful re-count of zero as late detachment', async () => {
     // getAttribute never resolves in time (simulating a mid-read detach); the
     // precheck must re-count rather than trust a stale "attached" result.
@@ -551,8 +659,7 @@ describe('executeStep - late completion/detachment precheck', () => {
 
     const result = await executeStep(page, step, {});
 
-    expect(result.status).toBe('skipped');
-    expect(result.skipReason).toBe('pre_completed');
+    expect(result.status).toBe('passed');
     expect(getAttribute).toHaveBeenCalledWith('data-test-step-state', { timeout: LATE_COMPLETION_CHECK_TIMEOUT_MS });
     expect(countCalls).toBe(2);
   });

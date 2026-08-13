@@ -564,6 +564,30 @@ if (requirementsState === 'unmet') {
 
 ---
 
+### Skip controls and runner synchronization
+
+The plugin renders two Skip controls that both call the same underlying `markSkipped()` action:
+
+- **`interactive-skip-${stepId}`** (`testIds.interactive.skipButton`): the step's always-available Skip button. It renders whenever the step is skippable, is not a noop action, and is not already completed, regardless of requirements state. Step discovery uses this control to determine `step.skippable`.
+- **`interactive-requirement-skip-${stepId}`** (`testIds.interactive.requirementSkipButton`): a narrower Skip button rendered only inside the requirements-explanation banner when requirements have failed. `detectRequirements()` reports this control's presence as `hasSkipButton`.
+
+A test or runner that needs to skip a step should prefer the step-level control and fall back to the requirement-scoped one only when the step-level control is not rendered, so it supports whichever shape the plugin actually renders instead of assuming one fixed control.
+
+Clicking either control does not skip the step immediately from the runner's point of view. The runner must wait for `data-test-step-state` to reach a terminal value, `completed`, or for the step element to detach, before treating the step as skipped. A transient value such as `checking` is not a terminal state; a runner that stops polling on the first non-`requirements-unmet` value can record a false skip while the plugin is still mid-transition.
+
+```typescript
+// Prefer the step-level Skip control; fall back to the requirement-scoped one.
+const stepSkip = page.getByTestId(testIds.interactive.skipButton(stepId));
+const requirementSkip = page.getByTestId(testIds.interactive.requirementSkipButton(stepId));
+const skipButton = (await stepSkip.count()) > 0 ? stepSkip : requirementSkip;
+await skipButton.click();
+
+// Wait for a terminal state before treating the step as skipped.
+await page.waitForSelector('[data-step-id="my-step"][data-test-step-state="completed"]');
+```
+
+---
+
 ## Versioning and Stability
 
 ### Current Version
