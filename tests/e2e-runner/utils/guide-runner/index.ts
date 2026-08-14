@@ -60,6 +60,7 @@ export {
 // ============================================
 export { discoverStepsFromDOM, logDiscoveryResults, resolveEffectiveSkippable } from './discovery';
 export { ensureDocsPanelOpen } from './bootstrap';
+export { dismissBadgeCelebrations } from './badge-celebrations';
 
 // ============================================
 // Requirements

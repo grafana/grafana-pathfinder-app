@@ -19,7 +19,7 @@ import {
   getDefaultRecommenderUrl,
   isKnownRecommenderUrl,
 } from '../../constants';
-import { updatePluginSettings } from '../../utils/utils.plugin';
+import { fetchPluginJsonData, updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
 import { config, getBackendSrv } from '@grafana/runtime';
@@ -42,17 +42,8 @@ type State = {
   codaRelayUrl: string;
 };
 
-export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
-
-const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const hasDevParam = urlParams.get('dev') === 'true';
-  const s = useStyles2(getStyles);
-  const { enabled, pinned, jsonData } = plugin.meta;
-
-  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
-  // After save, page reload brings fresh jsonData - no sync needed
-  const [state, setState] = useState<State>(() => ({
+function buildStateFromJsonData(jsonData: DocsPluginConfig | undefined): State {
+  return {
     recommenderServiceUrl:
       jsonData?.recommenderServiceUrl && !isKnownRecommenderUrl(jsonData.recommenderServiceUrl)
         ? jsonData.recommenderServiceUrl
@@ -66,14 +57,57 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
     peerjsSecure: jsonData?.peerjsSecure ?? DEFAULT_PEERJS_SECURE,
     enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
+    // Never seeded from jsonData: the key is write-only, held in secureJsonData.
     codaEnrollmentKey: '',
     codaApiUrl: jsonData?.codaApiUrl || '',
     codaRelayUrl: jsonData?.codaRelayUrl || '',
-  }));
+  };
+}
+
+export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
+
+const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasDevParam = urlParams.get('dev') === 'true';
+  const s = useStyles2(getStyles);
+  const { enabled, pinned, jsonData: pluginJsonData } = plugin.meta;
+  const [resolvedJsonData, setResolvedJsonData] = useState<DocsPluginConfig>(pluginJsonData || {});
+  const [state, setState] = useState<State>(() => buildStateFromJsonData(pluginJsonData));
   const [isSaving, setIsSaving] = useState(false);
+  const isDraftEdited = useRef(false);
+
+  const editDraft = (changes: Partial<State>) => {
+    isDraftEdited.current = true;
+    setState((previous) => ({ ...previous, ...changes }));
+  };
+
+  // `plugin.meta.jsonData` can lag a recent save, so seed the form from the
+  // authoritative read — but never over an edit the admin has already made.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchPluginJsonData(plugin.meta.id)
+      .then((freshJsonData) => {
+        if (cancelled) {
+          return;
+        }
+
+        setResolvedJsonData(freshJsonData);
+        if (!isDraftEdited.current) {
+          setState(buildStateFromJsonData(freshJsonData));
+        }
+      })
+      .catch((error) => {
+        logger.error('Failed to fetch plugin settings for configuration form', { error });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [plugin.meta.id]);
 
   // Coda registration state
-  const codaRegistered = jsonData?.codaRegistered ?? false;
+  const codaRegistered = resolvedJsonData?.codaRegistered ?? false;
   const hasProvisionedKey = plugin.meta.secureJsonFields?.codaEnrollmentKey ?? false;
   const [isRegistering, setIsRegistering] = useState(false);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
@@ -82,14 +116,14 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   // SECURITY: Dev mode - hybrid approach (jsonData storage, multi-user ID scoping)
   // Get current user ID for scoping
   const currentUserId = config.bootData.user?.id;
-  const devModeUserIds = jsonData?.devModeUserIds ?? [];
+  const devModeUserIds = resolvedJsonData?.devModeUserIds ?? [];
 
   // Check if dev mode is enabled for THIS user (synchronous)
-  const devModeEnabledForUser = isDevModeEnabled(jsonData || {}, currentUserId);
+  const devModeEnabledForUser = isDevModeEnabled(resolvedJsonData || {}, currentUserId);
   const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
 
   // Assistant dev mode state
-  const assistantDevModeEnabled = jsonData?.enableAssistantDevMode ?? false;
+  const assistantDevModeEnabled = resolvedJsonData?.enableAssistantDevMode ?? false;
   const [assistantDevModeToggling, setAssistantDevModeToggling] = useState<boolean>(false);
 
   // Show dev mode input if URL param is set OR if dev mode is already enabled for this user
@@ -106,17 +140,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const isSubmitDisabled = isRecommenderUrlMissing || isCodaApiUrlMissing || isRelayUrlMissing;
 
   const onChangeRecommenderServiceUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      recommenderServiceUrl: event.target.value.trim(),
-    });
+    editDraft({ recommenderServiceUrl: event.target.value.trim() });
   };
 
   const onChangeTutorialUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      tutorialUrl: event.target.value.trim(),
-    });
+    editDraft({ tutorialUrl: event.target.value.trim() });
   };
 
   const onChangeDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -155,8 +183,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         enabled,
         pinned,
         jsonData: {
-          ...(jsonData || {}),
-          ...getConfigWithDefaults(jsonData || {}),
+          ...(resolvedJsonData || {}),
+          ...getConfigWithDefaults(resolvedJsonData || {}),
           enableAssistantDevMode: newValue,
         },
       });
@@ -177,53 +205,32 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   };
 
   const onToggleGlobalLinkInterception = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      interceptGlobalDocsLinks: event.target.checked,
-    });
+    editDraft({ interceptGlobalDocsLinks: event.target.checked });
   };
 
   const onToggleOpenPanelOnLaunch = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      openPanelOnLaunch: event.target.checked,
-    });
+    editDraft({ openPanelOnLaunch: event.target.checked });
   };
 
   const onToggleLiveSessions = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      enableLiveSessions: event.target.checked,
-    });
+    editDraft({ enableLiveSessions: event.target.checked });
   };
 
   const onToggleCodaTerminal = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      enableCodaTerminal: event.target.checked,
-    });
+    editDraft({ enableCodaTerminal: event.target.checked });
   };
 
   const onChangeCodaEnrollmentKey = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      codaEnrollmentKey: event.target.value,
-    });
+    editDraft({ codaEnrollmentKey: event.target.value });
     setRegistrationError(null);
   };
 
   const onChangeCodaApiUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      codaApiUrl: event.target.value.trim(),
-    });
+    editDraft({ codaApiUrl: event.target.value.trim() });
   };
 
   const onChangeCodaRelayUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      codaRelayUrl: event.target.value.trim(),
-    });
+    editDraft({ codaRelayUrl: event.target.value.trim() });
   };
 
   const performCodaRegistration = useCallback(
@@ -266,8 +273,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           enabled,
           pinned,
           jsonData: {
-            ...(jsonData || {}),
-            ...getConfigWithDefaults(jsonData || {}),
+            ...(resolvedJsonData || {}),
+            ...getConfigWithDefaults(resolvedJsonData || {}),
             codaRegistered: true,
             codaApiUrl: apiUrl,
           },
@@ -285,7 +292,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         setIsRegistering(false);
       }
     },
-    [hasProvisionedKey, enabled, pinned, jsonData, plugin.meta.id, state.codaApiUrl]
+    [hasProvisionedKey, enabled, pinned, resolvedJsonData, plugin.meta.id, state.codaApiUrl]
   );
 
   useEffect(() => {
@@ -310,33 +317,21 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   ]);
 
   const onChangePeerjsHost = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      peerjsHost: event.target.value.trim(),
-    });
+    editDraft({ peerjsHost: event.target.value.trim() });
   };
 
   const onChangePeerjsPort = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value.trim();
     const port = value === '' ? DEFAULT_PEERJS_PORT : parseInt(value, 10);
-    setState({
-      ...state,
-      peerjsPort: isNaN(port) ? DEFAULT_PEERJS_PORT : port,
-    });
+    editDraft({ peerjsPort: isNaN(port) ? DEFAULT_PEERJS_PORT : port });
   };
 
   const onChangePeerjsKey = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      peerjsKey: event.target.value.trim(),
-    });
+    editDraft({ peerjsKey: event.target.value.trim() });
   };
 
   const onTogglePeerjsSecure = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      peerjsSecure: event.target.checked,
-    });
+    editDraft({ peerjsSecure: event.target.checked });
   };
 
   const onSubmit = async (event: React.FormEvent) => {
@@ -368,8 +363,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       // like stackId that aren't in DocsPluginConfig), then apply defaults for
       // known fields, then override with this form's fields.
       const newJsonData = {
-        ...(jsonData || {}),
-        ...getConfigWithDefaults(jsonData || {}),
+        ...(resolvedJsonData || {}),
+        ...getConfigWithDefaults(resolvedJsonData || {}),
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
