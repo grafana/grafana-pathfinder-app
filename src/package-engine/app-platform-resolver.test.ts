@@ -112,7 +112,11 @@ describe('AppPlatformPackageResolver — verifyPublished (URL-only probe, #1561)
     expect(result.repository).toBe('app-platform');
   });
 
-  it('maps a 403 (no read permission) to the same not-found result as a 404', async () => {
+  // Kept distinct from not-found on purpose: this GET runs in the caller's own
+  // browser under their own session, so collapsing it conceals nothing they
+  // haven't already seen, and it would show a revoked or expired session a
+  // "not found" with a retry that can never succeed.
+  it('keeps a 403 (no read permission) distinct from not-found', async () => {
     mockFetch.mockReturnValue(throwError(() => ({ status: 403 })));
     const resolver = new AppPlatformPackageResolver();
 
@@ -122,8 +126,38 @@ describe('AppPlatformPackageResolver — verifyPublished (URL-only probe, #1561)
     if (result.ok) {
       return;
     }
-    expect(result.error.code).toBe('not-found');
+    expect(result.error.code).toBe('permission-denied');
     expect(result.repository).toBe('app-platform');
+  });
+
+  // A previously infallible URL-only path is now fallible: anything that isn't
+  // a 404 or 403 must still tag the repository so the failure is evicted.
+  it('reports a transport failure as network-error, still repository-tagged', async () => {
+    mockFetch.mockReturnValue(throwError(() => new Error('connection reset')));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('flaky-guide', { loadContent: false, verifyPublished: true });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.code).toBe('network-error');
+    expect(result.error.message).toContain('connection reset');
+    expect(result.repository).toBe('app-platform');
+  });
+
+  it('reports not-found when the resource carries no spec', async () => {
+    mockFetch.mockReturnValue(of({ data: { metadata: { name: 'spec-less' } } }));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('spec-less', { loadContent: false, verifyPublished: true });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      return;
+    }
+    expect(result.error.code).toBe('not-found');
   });
 
   it('still resolves successfully for a published guide (no regression)', async () => {

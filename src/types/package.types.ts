@@ -217,13 +217,20 @@ export interface PackageResolutionSuccess {
   manifest?: ManifestJson;
   /** Populated when resolve options request content loading */
   content?: ContentJson;
+  /**
+   * Raw resource the `verifyPublished` probe already fetched, when the resolver
+   * had to GET it to check publish status. Lets the caller's content load reuse
+   * it instead of issuing the identical request again. Opaque here — only the
+   * loader that understands this repository's resource shape narrows it.
+   */
+  probedResource?: unknown;
 }
 
 /**
  * Structured error from a failed resolution attempt.
  */
 export interface ResolutionError {
-  code: 'not-found' | 'network-error' | 'parse-error' | 'validation-error';
+  code: 'not-found' | 'permission-denied' | 'network-error' | 'parse-error' | 'validation-error';
   message: string;
 }
 
@@ -262,9 +269,11 @@ export interface ResolveOptions {
    * When `loadContent` is falsy, still verify (server-side, where the
    * resolver supports it) that the package exists and is published before
    * reporting success. Without this, URL-only resolution is a pure string
-   * build with no existence check — fine for a hot path that's about to fetch
-   * content anyway and will fail there, but not for a caller that treats a
-   * successful resolve() as the whole answer (e.g. deep links by bare ID).
+   * build with no existence check — fine for a hot path about to fetch content
+   * anyway, which will surface a missing package then, but not for a caller
+   * that must not open an unpublished one (e.g. deep links by bare ID). Note
+   * the content fetch carries no publish-status gate of its own, so nothing
+   * downstream catches a draft.
    * Ignored by resolvers with no draft/published distinction.
    */
   verifyPublished?: boolean;

@@ -10,6 +10,7 @@
  * - setPackageResolver injection and resolver-not-configured error
  */
 import { config, getBackendSrv, setBackendSrv, type BackendSrv } from '@grafana/runtime';
+import { of } from 'rxjs';
 import {
   fetchPackageContent,
   fetchPackageById,
@@ -251,6 +252,57 @@ describe('fetchPackageById', () => {
 
     await fetchPackageById('alerting-101');
     expect(resolver.resolve).toHaveBeenCalledWith('alerting-101', { loadContent: false, verifyPublished: true });
+  });
+
+  // The publish-status probe already GET the resource. Building content from it
+  // is what keeps the gated path at one upstream request instead of two.
+  it('builds content from the probed resource without re-fetching it', async () => {
+    const fetchSpy = jest.fn();
+    setBackendSrv({ fetch: fetchSpy } as unknown as BackendSrv);
+    setPackageResolver(
+      makeResolver({
+        ok: true,
+        id: 'probed-guide',
+        contentUrl: 'backend-guide:probed-guide',
+        manifestUrl: 'app-platform:ns/probed-guide',
+        repository: 'app-platform',
+        probedResource: {
+          metadata: { name: 'probed-guide' },
+          spec: { id: 'probed-guide', title: 'Probed guide', schemaVersion: '1.0', blocks: [] },
+        },
+      })
+    );
+
+    const result = await fetchPackageById('probed-guide');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.content?.metadata.title).toBe('Probed guide');
+  });
+
+  it('still fetches when the resolution carries no probed resource', async () => {
+    (config as { namespace?: string }).namespace = 'stacks-123';
+    setPackageResolver(
+      makeResolver({
+        ok: true,
+        id: 'unprobed-guide',
+        contentUrl: 'backend-guide:unprobed-guide',
+        manifestUrl: 'app-platform:ns/unprobed-guide',
+        repository: 'app-platform',
+      })
+    );
+    const fetchSpy = jest.fn().mockReturnValue(
+      of({
+        data: {
+          metadata: { name: 'unprobed-guide' },
+          spec: { id: 'unprobed-guide', title: 'Unprobed guide', schemaVersion: '1.0', blocks: [] },
+        },
+      })
+    );
+    setBackendSrv({ fetch: fetchSpy } as unknown as BackendSrv);
+
+    await fetchPackageById('unprobed-guide');
+
+    expect(fetchSpy).toHaveBeenCalled();
   });
 });
 

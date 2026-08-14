@@ -117,13 +117,25 @@ async function probePublishedGuide(namespace: string, packageId: string): Promis
     return { ok: true, resource };
   } catch (err) {
     const status = (err as { status?: number })?.status;
-    // A 403 (no read permission) is folded into the same not-found result as a
-    // missing guide: telling an unauthorized caller "it exists but you can't
-    // read it" would leak existence information they aren't entitled to.
-    if (status === 404 || status === 403) {
+    if (status === 404) {
       return {
         ok: false,
         failure: attemptedFailure(packageId, 'not-found', `App platform guide "${packageId}" not found`),
+      };
+    }
+    // 403 stays distinct from not-found. Folding it in would conceal nothing —
+    // this request runs in the caller's own browser under their own session, so
+    // they already saw the raw 403 — while costing a user whose session expired
+    // or whose role was revoked a "not found" with a retry that can never
+    // succeed, indistinguishable from a deleted guide.
+    if (status === 403) {
+      return {
+        ok: false,
+        failure: attemptedFailure(
+          packageId,
+          'permission-denied',
+          `No permission to read app platform guide "${packageId}"`
+        ),
       };
     }
     const message = err instanceof Error ? err.message : 'app platform fetch failed';
@@ -205,15 +217,22 @@ export class AppPlatformPackageResolver implements PackageResolver {
     };
 
     if (!options?.loadContent) {
-      // URL-only mode is a pure string build with no upstream request — fine
-      // for callers about to fetch content anyway (they'll hit the same gate
-      // there), but not for a caller treating a successful resolve() as the
-      // whole answer. verifyPublished opts into the same probe below.
+      // URL-only mode is a pure string build with no upstream request. The
+      // content fetch that normally follows carries no publish-status gate of
+      // its own (backend-guide.ts serves drafts on purpose, for share links and
+      // tab restore), so a caller that must not open a draft opts into the
+      // probe below rather than relying on a downstream check.
       if (!options?.verifyPublished) {
         return resolution;
       }
       const probe = await probePublishedGuide(namespace, packageId);
-      return probe.ok ? resolution : probe.failure;
+      if (!probe.ok) {
+        return probe.failure;
+      }
+      // Hand the fetched resource back so the caller's content load can reuse
+      // it instead of re-issuing the identical GET.
+      resolution.probedResource = probe.resource;
+      return resolution;
     }
 
     const metadataOnly = options.loadContent === 'metadata-only';
