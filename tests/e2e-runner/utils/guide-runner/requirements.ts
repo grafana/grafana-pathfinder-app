@@ -20,6 +20,7 @@ import {
   POST_FIX_SETTLE_DELAY_MS,
   NAVIGATION_FIX_SETTLE_DELAY_MS,
 } from './constants';
+import { dismissBadgeCelebrations } from './badge-celebrations';
 import type {
   TestableStep,
   RequirementStatus,
@@ -445,6 +446,7 @@ export async function clickFixButton(
   if (buttonCount === 0) {
     return false;
   }
+  await dismissBadgeCelebrations(page);
 
   try {
     // Click the fix button with timeout
