@@ -175,6 +175,10 @@ Requirements met? → Execute step
 
 **Skippable steps** (those with a Skip button) allow the test to continue when requirements cannot be met. **Mandatory steps** cause the test to abort on failure, marking remaining steps as `not_reached`.
 
+An unmet read gets a short settle window before the runner treats it as terminal. This applies whether or not a Fix button is visible. See `Requirements settle window` in the timing table below.
+
+The plugin's requirement check can be mid-transition right after the initial check, or right after a Fix button click. The runner polls briefly for the state to settle, instead of failing on one transient read.
+
 Overall success requires zero mandatory failures and either at least one verified pass or zero failed steps. A run where every step is skipped cleanly succeeds; a run with no verified pass and any failed skippable step fails.
 
 ## Artifacts and reporting
@@ -324,14 +328,15 @@ The environment is reset **between dependency chains**, not between every guide.
 
 ## Timing and timeouts
 
-| Constant             | Value            | Purpose                                      |
-| -------------------- | ---------------- | -------------------------------------------- |
-| Base step timeout    | 30s              | Maximum time for a single step               |
-| Multistep bonus      | +5s per action   | Added for each internal action in multisteps |
-| Guided substep bonus | +30s per substep | Added for each substep in guided blocks      |
-| Button enable wait   | 10s              | Wait for sequential dependencies             |
-| Fix button timeout   | 10s              | Per fix operation                            |
-| Max fix attempts     | 3                | Retry limit before giving up                 |
+| Constant                   | Value            | Purpose                                             |
+| -------------------------- | ---------------- | --------------------------------------------------- |
+| Base step timeout          | 30s              | Maximum time for a single step                      |
+| Multistep bonus            | +5s per action   | Added for each internal action in multisteps        |
+| Guided substep bonus       | +30s per substep | Added for each substep in guided blocks             |
+| Button enable wait         | 10s              | Wait for sequential dependencies                    |
+| Fix button timeout         | 10s              | Per fix operation                                   |
+| Max fix attempts           | 3                | Retry limit before giving up                        |
+| Requirements settle window | 1s               | Poll budget before an unmet read counts as terminal |
 
 Examples:
 

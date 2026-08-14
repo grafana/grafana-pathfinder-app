@@ -21,8 +21,7 @@ const TerminalProviderLazy = lazy(() =>
 );
 // Lazy so @grafana/assistant stays out of the docs-panel init chain (see AiFixOrchestrator).
 const AiFixOrchestrator = lazy(() => import('./AiFixOrchestrator'));
-import { usePluginContext } from '@grafana/data';
-import { DocsPluginConfig, getConfigWithDefaults } from '../../constants';
+import { DocsPluginConfig } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
@@ -39,7 +38,12 @@ import { logger } from '../../lib/logging';
 import { withGuideOpenAction, type GuideLoadOutcome } from '../../lib/telemetry';
 import { usePanelReadyMeasurement } from './hooks/usePanelReadyMeasurement';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
-import { useGuideProgressState, useAutoLaunchTutorial, type AutoLaunchTutorialDetail } from '../../hooks';
+import {
+  useGuideProgressState,
+  useAutoLaunchTutorial,
+  usePathfinderPluginConfig,
+  type AutoLaunchTutorialDetail,
+} from '../../hooks';
 import {
   fetchContent,
   getNextMilestoneUrlFromContent,
@@ -971,14 +975,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   useCustomGuideCatalogueOnOpen();
 
-  // Get plugin configuration for dev mode check. `meta` present means the
-  // context resolved; without it `getConfigWithDefaults({})` would read as an
-  // explicit "dev mode off" rather than "not known yet".
-  const pluginContext = usePluginContext();
-  const isPluginConfigResolved = Boolean(pluginContext?.meta);
-  const pluginConfig = React.useMemo(() => {
-    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-  }, [pluginContext?.meta?.jsonData]);
+  // Get plugin configuration for dev mode check. `isResolved` distinguishes a
+  // known config from "not known yet"; without it an all-defaults config would
+  // read as an explicit "dev mode off" and prune authorized tabs.
+  const { config: pluginConfig, isResolved: isPluginConfigResolved } = usePathfinderPluginConfig();
 
   // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
   const currentUserId = config.bootData.user?.id;
@@ -989,11 +989,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
   // Stable callback identity so effects depending on it do not re-run when isDevMode toggles.
   const logSession = useDevModeLogger(isDevMode);
-
-  // Set global config for utility functions that can't access React context
-  React.useEffect(() => {
-    (window as any).__pathfinderPluginConfig = pluginConfig;
-  }, [pluginConfig]);
 
   const { tabs, activeTabId, contextPanel } = model.useState();
   const { recommendationsReady = false } = contextPanel.useState();

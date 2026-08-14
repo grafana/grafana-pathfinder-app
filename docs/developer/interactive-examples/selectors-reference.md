@@ -8,12 +8,22 @@ Follow this priority order when choosing selectors:
 
 1. **`grafana:` selector paths** -- version-aware references to selectors maintained by Grafana core
 2. **`data-testid` attributes** -- stable when no known Grafana selector path exists
-3. **Semantic attributes** -- `href`, `aria-*`, `id`, `role`
-4. **`:contains()` text matching** -- reliable for buttons and labels
-5. **`:has()` structural matching** -- when you need to match by descendants
+3. **Semantic attributes** -- `href`, `id`, `role` (see the localization warning below before using `aria-*`)
+4. **`:has()` structural matching** -- when you need to match by descendants
+5. **`:contains()` / `:text()` text matching** -- last resort; breaks in every locale but the one you authored in
 6. **CSS class selectors** -- least stable; avoid auto-generated class names
 
-> Avoid selecting by auto-generated class names or deep DOM nesting. Use attributes (`data-testid`, `href`, `aria-*`, `id`) instead.
+> Avoid selecting by auto-generated class names or deep DOM nesting. Use attributes (`data-testid`, `href`, `id`) instead.
+
+> **Text-based targets are locale-bound.** Grafana ships translated, and Pathfinder itself ships in
+> 21 locales. `aria-label`, `placeholder`, `title`, `:contains()` and `:text()` all match against
+> translated strings, so a guide targeting `"Save & test"` simply does not match for a user running
+> Grafana in German. The selector engine flags these anchors `i18n-sensitive` and warns that the
+> "Selector uses translatable text — may break in different locales", but it cannot repair them at
+> match time: matching is a plain string comparison against whatever you authored. Only a
+> `grafana:` path or a `data-testid` survives translation. If the target has no stable anchor, the
+> real fix is upstream in the component (`add-e2e-selectors` in grafana/grafana, or `audit-testids`
+> for a plugin repo).
 
 ### Version-aware `grafana:` selectors
 
@@ -170,7 +180,7 @@ Prefer these tested selectors over brittle CSS classes. When you find a new reli
 
 ### Buttons by text
 
-For generic buttons, use the `button` action with the button's visible text as the `reftarget`. The system finds buttons by text reliably.
+For generic buttons with no stable anchor, use the `button` action with the button's visible text as the `reftarget`. The system matches buttons by text dependably **within a single locale** — but the match is a plain string comparison, so these targets break wherever the UI is translated. Reach for this only when no `grafana:` path or `data-testid` is available, and prefer fixing the component upstream over shipping a text-matched step.
 
 ```json
 {
