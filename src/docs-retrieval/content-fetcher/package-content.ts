@@ -90,6 +90,9 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
     }
 
     const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+    // Only surface the manifest description as a subtitle when it isn't
+    // already doing double duty as the title fallback above.
+    const description = resolution.content?.title ? resolution.manifest?.description : undefined;
 
     milestones.push({
       number,
@@ -97,6 +100,7 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
       duration: '5-10 min',
       url: resolution.contentUrl,
       isActive: false,
+      ...(description != null && { description }),
       ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
     });
   }
@@ -292,7 +296,15 @@ export async function fetchPackageContent(
       };
 
       if (currentMilestone === 0) {
-        contentString = injectJourneyExtrasIntoJsonGuide(ensureNonEmptyCoverContent(contentString), learningJourney);
+        // skipReadyToBegin: true — the React cover-page TOC (LearningPathTableOfContents)
+        // renders its own Start/Resume CTA against real progress data; the
+        // legacy HTML button always says "Ready to Begin" and always targets
+        // milestone 1, so leaving both on would show two conflicting CTAs.
+        contentString = injectJourneyExtrasIntoJsonGuide(
+          ensureNonEmptyCoverContent(contentString),
+          learningJourney,
+          true
+        );
       }
     }
   }

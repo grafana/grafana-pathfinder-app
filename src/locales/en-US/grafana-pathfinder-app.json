@@ -20,7 +20,10 @@
     "viewDocumentation": "View documentation"
   },
   "coverPage": {
-    "tableOfContents": "In this path"
+    "tableOfContents": "In this path",
+    "getStarted": "Get started",
+    "resume": "Resume",
+    "earnsBadge": "Earns {{badge}} badge"
   },
   "docsPanel": {
     "closeTab": "Close {{title}}",

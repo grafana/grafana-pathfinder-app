@@ -36,4 +36,21 @@ describe('GuideList', () => {
     expect(screen.getByText('Loading guides...')).toBeInTheDocument();
     expect(document.querySelector('[data-icon="fa fa-spinner"]')).toBeInTheDocument();
   });
+
+  it("renders a guide's description when present, and omits it when absent", () => {
+    const withDescription: PathGuide[] = [
+      {
+        id: 'a',
+        title: 'First module',
+        description: 'What data sources are and why they matter.',
+        completed: false,
+        isCurrent: true,
+      },
+      { id: 'b', title: 'Second module', completed: false, isCurrent: false },
+    ];
+    render(<GuideList guides={withDescription} />);
+
+    expect(screen.getByText('What data sources are and why they matter.')).toBeInTheDocument();
+    expect(screen.getByText('Second module').closest('div')).not.toHaveTextContent('undefined');
+  });
 });

@@ -24,7 +24,14 @@ export function GuideList({ guides, isLoading = false, className }: GuideListPro
         </div>
       ) : (
         guides.map((guide) => (
-          <div key={guide.id} className={cx(styles.guideItem, guide.isCurrent && styles.guideItemCurrent)}>
+          <div
+            key={guide.id}
+            className={cx(
+              styles.guideItem,
+              guide.isCurrent && styles.guideItemCurrent,
+              guide.description && styles.guideItemWithDescription
+            )}
+          >
             <span
               className={cx(
                 styles.guideIcon,
@@ -35,7 +42,10 @@ export function GuideList({ guides, isLoading = false, className }: GuideListPro
             >
               {guide.completed ? <Icon name="check" size="sm" /> : <Icon name="circle" size="sm" />}
             </span>
-            <span className={styles.guideTitle}>{guide.title}</span>
+            <span className={styles.guideTextGroup}>
+              <span className={styles.guideTitle}>{guide.title}</span>
+              {guide.description && <span className={styles.guideDescription}>{guide.description}</span>}
+            </span>
           </div>
         ))
       )}

@@ -50,6 +50,8 @@ export interface PathGuide {
   id: string;
   /** Display title */
   title: string;
+  /** Short summary shown under the title, when the source provides one */
+  description?: string;
   /** Whether this guide has been completed */
   completed: boolean;
   /** Whether this is the current/next guide to complete */

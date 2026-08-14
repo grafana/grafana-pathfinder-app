@@ -194,6 +194,15 @@ export function getBadgesByTriggerType(type: BadgeTrigger['type']): Badge[] {
   return BADGES.filter((b) => b.trigger.type === type);
 }
 
+/**
+ * Gets the badge (if any) a path/course earns on completion. A pure lookup
+ * against the badge definitions — independent of progress or completion
+ * state, so it can preview "earns X badge" before the user has started.
+ */
+export function getBadgeForPath(pathId: string): Badge | undefined {
+  return BADGES.find((b) => b.trigger.type === 'path-completed' && b.trigger.pathId === pathId);
+}
+
 // ============================================================================
 // BADGE DISPLAY HELPERS
 // ============================================================================
