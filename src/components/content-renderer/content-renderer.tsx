@@ -33,6 +33,7 @@ import {
   InteractiveQuiz,
   InteractiveConditional,
   InputBlock,
+  DatasourceCheckStep,
   TerminalStep,
   TerminalConnectStep,
   CodeBlockStep,
@@ -923,6 +924,8 @@ interface StandaloneStepPosition {
  *
  * Note: input-block is intentionally excluded — it doesn't track completion
  * and would inflate the total step count, making 100% completion impossible.
+ * An `input` block emits `datasource-check-step` instead when its author asked
+ * a failing data check to block, and only that form is tracked here.
  *
  * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 2. Adding a new interactive step
  * component type requires updates in 2 places:
@@ -1263,9 +1266,33 @@ function renderParsedElement(
           requirements={element.props.requirements}
           skippable={element.props.skippable}
           datasourceFilter={element.props.datasourceFilter}
+          dataCheckQuery={element.props.dataCheckQuery}
+          dataCheckFailureMessage={sub(element.props.dataCheckFailureMessage)}
+          dataCheckTimeFrom={element.props.dataCheckTimeFrom}
+          dataCheckTimeTo={element.props.dataCheckTimeTo}
         >
           {renderChildren(element.children)}
         </InputBlock>
+      );
+    case 'datasource-check-step':
+      return (
+        <DatasourceCheckStep
+          key={key}
+          stepId={element.props.stepId}
+          variableName={element.props.variableName}
+          query={element.props.query}
+          datasourceFilter={element.props.datasourceFilter}
+          placeholder={sub(element.props.placeholder)}
+          failureMessage={sub(element.props.failureMessage)}
+          timeFrom={element.props.timeFrom}
+          timeTo={element.props.timeTo}
+          requirements={element.props.requirements}
+          skippable={element.props.skippable}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </DatasourceCheckStep>
       );
     case 'video':
       return (

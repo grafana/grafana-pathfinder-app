@@ -32,6 +32,9 @@ export const EMPTY_CONDITIONS_MESSAGE = 'At least one condition is required';
 export const QUIZ_NO_CORRECT_CHOICE_PREFIX = 'Quiz has no correct choice yet';
 export const QUIZ_MULTI_CORRECT_PREFIX = 'Single-select quiz has more than one correct choice';
 
+/** Wide enough for any real PromQL/LogQL/TraceQL selector, narrow enough that a pasted payload is rejected at authoring time. */
+const MAX_DATA_CHECK_QUERY_LENGTH = 2000;
+
 // ============ PRIMITIVE SCHEMAS ============
 
 /**
@@ -472,27 +475,106 @@ export const JsonQuizBlockSchema = z
  * Schema for input block (collects user responses).
  * @coupling Type: JsonInputBlock
  */
-export const JsonInputBlockSchema = z.object({
-  type: z.literal('input'),
-  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
-  prompt: z.string().min(1, 'Input prompt is required').describe('Prompt shown above the input'),
-  inputType: z.enum(['text', 'boolean', 'datasource']).describe('Kind of input to render'),
-  variableName: z
-    .string()
-    .min(1, 'Variable name is required')
-    .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'Variable name must be a valid identifier')
-    .describe('Variable name used to reference the captured value (valid JS identifier)'),
-  placeholder: z.string().optional().describe('Placeholder text for text input'),
-  checkboxLabel: z.string().optional().describe('Label shown next to a boolean checkbox'),
-  defaultValue: z.union([z.string(), z.boolean()]).optional().describe('Default value (string or boolean)'),
-  required: z.boolean().optional().describe('Whether the input must be provided to continue'),
-  pattern: z.string().optional().describe('Regex pattern the value must match (text inputs only)'),
-  validationMessage: z.string().optional().describe('Message shown when validation fails'),
-  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
-  skippable: z.boolean().optional().describe('Allow user to skip this block'),
-  datasourceFilter: z.string().optional().describe('Filter for datasource input (e.g., loki, prometheus)'),
-  ...AuthorAnnotatedSchema.shape,
-});
+export const JsonInputBlockSchema = z
+  .object({
+    type: z.literal('input'),
+    id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+    prompt: z.string().min(1, 'Input prompt is required').describe('Prompt shown above the input'),
+    inputType: z.enum(['text', 'boolean', 'datasource']).describe('Kind of input to render'),
+    variableName: z
+      .string()
+      .min(1, 'Variable name is required')
+      .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'Variable name must be a valid identifier')
+      .describe('Variable name used to reference the captured value (valid JS identifier)'),
+    placeholder: z.string().optional().describe('Placeholder text for text input'),
+    checkboxLabel: z.string().optional().describe('Label shown next to a boolean checkbox'),
+    defaultValue: z.union([z.string(), z.boolean()]).optional().describe('Default value (string or boolean)'),
+    required: z.boolean().optional().describe('Whether the input must be provided to continue'),
+    pattern: z.string().optional().describe('Regex pattern the value must match (text inputs only)'),
+    validationMessage: z.string().optional().describe('Message shown when validation fails'),
+    requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+    skippable: z.boolean().optional().describe('Allow user to skip this block'),
+    datasourceFilter: z.string().optional().describe('Filter for datasource input (e.g., loki, prometheus)'),
+    dataCheckQuery: z
+      .string()
+      .trim()
+      .min(1, 'Data check query cannot be empty')
+      .max(MAX_DATA_CHECK_QUERY_LENGTH, `Data check query cannot exceed ${MAX_DATA_CHECK_QUERY_LENGTH} characters`)
+      .optional()
+      .describe(
+        "Query run against the picked data source to confirm it holds this guide's data. Its presence enables the check. Datasource inputs only, and only Prometheus, Loki, Tempo, and Pyroscope can be checked."
+      ),
+    dataCheckFailureMessage: z.string().optional().describe('Message shown when the check finds no data'),
+    dataCheckTimeFrom: z.string().optional().describe('Check query range start (defaults to now-1h)'),
+    dataCheckTimeTo: z.string().optional().describe('Check query range end (defaults to now)'),
+    dataCheckBlocking: z
+      .boolean()
+      .optional()
+      .describe(
+        'Make a failing check hold the section up. Off by default, where the check only reports what it found.'
+      ),
+    ...AuthorAnnotatedSchema.shape,
+  })
+  .superRefine((block, ctx) => {
+    const dataCheckFields = [
+      'dataCheckQuery',
+      'dataCheckFailureMessage',
+      'dataCheckTimeFrom',
+      'dataCheckTimeTo',
+      'dataCheckBlocking',
+    ] as const;
+
+    if (block.inputType !== 'datasource') {
+      for (const field of dataCheckFields) {
+        if (block[field] !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [field],
+            message: `\`${field}\` only applies when inputType is "datasource".`,
+          });
+        }
+      }
+      return;
+    }
+
+    if (block.dataCheckQuery) {
+      // A blocking check is a tracked step, and its completion record is keyed
+      // on the block id. A generated id moves whenever the guide is edited,
+      // orphaning every record earned under the old one.
+      if (block.dataCheckBlocking) {
+        if (!block.id?.trim()) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['id'],
+            message: 'A blocking data check needs an explicit `id`, so its completion records survive an edit.',
+          });
+        }
+        // A blocking check gates a section and writes durable completion, so it
+        // only ever runs against a data source the user chose. Seeding the pick
+        // would let it complete against one they never saw, and the tracked
+        // renderer drops the field anyway — inert, not merely unwise.
+        if (block.defaultValue !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['defaultValue'],
+            message: '`defaultValue` cannot seed a blocking data check — the user has to pick the data source.',
+          });
+        }
+      }
+      return;
+    }
+    // Without a query there is no check, so the fields that configure one are
+    // silently inert — which reads to an author as a check that never runs.
+    for (const field of dataCheckFields.filter((f) => f !== 'dataCheckQuery')) {
+      if (block[field] !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [field],
+          message: `\`${field}\` has no effect without \`dataCheckQuery\`.`,
+        });
+      }
+    }
+  });
 
 // ============ TERMINAL BLOCK SCHEMA ============
 
@@ -1178,6 +1260,11 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'requirements',
     'skippable',
     'datasourceFilter',
+    'dataCheckQuery',
+    'dataCheckFailureMessage',
+    'dataCheckTimeFrom',
+    'dataCheckTimeTo',
+    'dataCheckBlocking',
     'authorNote',
   ]),
   assistant: new Set(['type', 'id', 'assistantId', 'assistantType', 'blocks', 'authorNote']),

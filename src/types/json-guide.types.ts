@@ -548,6 +548,25 @@ export interface JsonInputBlock extends AuthorAnnotated {
   skippable?: boolean;
   /** Filter datasources by type (e.g., 'prometheus', 'loki'). Only used when inputType is 'datasource'. */
   datasourceFilter?: string;
+  /**
+   * Query run against the picked data source to confirm it holds the data this
+   * guide teaches against. Its presence is what enables the check; it runs on
+   * click only, never on a polling cadence. Only used when inputType is
+   * 'datasource', and only against Prometheus, Loki, Tempo, and Pyroscope.
+   */
+  dataCheckQuery?: string;
+  /** Message shown when the check finds no data */
+  dataCheckFailureMessage?: string;
+  /** Check query range start (defaults to "now-1h") */
+  dataCheckTimeFrom?: string;
+  /** Check query range end (defaults to "now") */
+  dataCheckTimeTo?: string;
+  /**
+   * Make a failing check hold the section up. Off by default: the check reports
+   * what it found and the user moves on. Turning it on makes this block a
+   * tracked step that completes only on a pass, or a skip when `skippable`.
+   */
+  dataCheckBlocking?: boolean;
 }
 
 // ============ TERMINAL BLOCK ============

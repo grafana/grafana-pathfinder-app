@@ -11,6 +11,7 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { testIds } from '../../../constants/testIds';
+import { slugify } from '../../../utils/slug';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonInputBlock } from '../../../types/json-guide.types';
 
@@ -80,6 +81,11 @@ export function InputBlockForm({
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [skippable, setSkippable] = useState(initial?.skippable ?? false);
   const [datasourceFilter, setDatasourceFilter] = useState(initial?.datasourceFilter ?? '');
+  const [dataCheckQuery, setDataCheckQuery] = useState(initial?.dataCheckQuery ?? '');
+  const [dataCheckFailureMessage, setDataCheckFailureMessage] = useState(initial?.dataCheckFailureMessage ?? '');
+  const [dataCheckTimeFrom, setDataCheckTimeFrom] = useState(initial?.dataCheckTimeFrom ?? '');
+  const [dataCheckTimeTo, setDataCheckTimeTo] = useState(initial?.dataCheckTimeTo ?? '');
+  const [dataCheckBlocking, setDataCheckBlocking] = useState(initial?.dataCheckBlocking ?? false);
 
   // Handle requirement quick-add
   const handleRequirementClick = useCallback((req: string) => {
@@ -101,14 +107,25 @@ export function InputBlockForm({
         return;
       }
 
+      const hasDataCheck = inputType === 'datasource' && dataCheckQuery.trim().length > 0;
+
       // Parse requirements
       const reqArray = requirements
         .split(',')
         .map((r) => r.trim())
         .filter((r) => r.length > 0);
 
+      const isBlockingCheck = hasDataCheck && dataCheckBlocking;
+      // The form has no id field, so an edit would otherwise drop the one the
+      // guide already carries — and a blocking check is schema-invalid without
+      // one, because its completion records are keyed on it. Derived from
+      // `variableName`, which is already a validated identifier, so the id is
+      // written into the JSON and survives later edits.
+      const blockId = initial?.id ?? (isBlockingCheck ? `check-${slugify(variableName.trim())}` : undefined);
+
       const block: JsonInputBlock = {
         type: 'input',
+        ...(blockId && { id: blockId }),
         prompt: prompt.trim(),
         inputType,
         variableName: variableName.trim(),
@@ -125,6 +142,15 @@ export function InputBlockForm({
         ...(reqArray.length > 0 && { requirements: reqArray }),
         ...(skippable && { skippable }),
         ...(inputType === 'datasource' && datasourceFilter.trim() && { datasourceFilter: datasourceFilter.trim() }),
+        // The query is what enables the check, so the rest is dropped without it —
+        // the schema rejects a check field that could never take effect.
+        ...(hasDataCheck && {
+          dataCheckQuery: dataCheckQuery.trim(),
+          ...(dataCheckFailureMessage.trim() && { dataCheckFailureMessage: dataCheckFailureMessage.trim() }),
+          ...(dataCheckTimeFrom.trim() && { dataCheckTimeFrom: dataCheckTimeFrom.trim() }),
+          ...(dataCheckTimeTo.trim() && { dataCheckTimeTo: dataCheckTimeTo.trim() }),
+          ...(dataCheckBlocking && { dataCheckBlocking }),
+        }),
       };
 
       onSubmit(block);
@@ -142,6 +168,12 @@ export function InputBlockForm({
       requirements,
       skippable,
       datasourceFilter,
+      dataCheckQuery,
+      dataCheckFailureMessage,
+      dataCheckTimeFrom,
+      dataCheckTimeTo,
+      dataCheckBlocking,
+      initial,
       onSubmit,
     ]
   );
@@ -289,6 +321,54 @@ export function InputBlockForm({
               placeholder="e.g., prometheus, testdata"
             />
           </Field>
+
+          <Field
+            label="Data check query"
+            description="Optional. Runs against the data source the user picks and passes when it returns data, so the guide can confirm the data it teaches against is really there. Prometheus, Loki, Tempo, and Pyroscope only."
+          >
+            <Input
+              value={dataCheckQuery}
+              onChange={(e) => setDataCheckQuery(e.currentTarget.value)}
+              placeholder="e.g., container_cpu_usage_seconds_total"
+            />
+          </Field>
+
+          {dataCheckQuery.trim().length > 0 && (
+            <>
+              <Field label="Check failure message" description="Shown when the check finds no data">
+                <Input
+                  value={dataCheckFailureMessage}
+                  onChange={(e) => setDataCheckFailureMessage(e.currentTarget.value)}
+                  placeholder="e.g., No container metrics here. Pick a data source scraping cAdvisor."
+                />
+              </Field>
+
+              <Field label="Check range from" description="Defaults to now-1h">
+                <Input
+                  value={dataCheckTimeFrom}
+                  onChange={(e) => setDataCheckTimeFrom(e.currentTarget.value)}
+                  placeholder="e.g., now-6h"
+                />
+              </Field>
+
+              <Field label="Check range to" description="Defaults to now">
+                <Input
+                  value={dataCheckTimeTo}
+                  onChange={(e) => setDataCheckTimeTo(e.currentTarget.value)}
+                  placeholder="e.g., now"
+                />
+              </Field>
+
+              <Field label="Blocking">
+                <Checkbox
+                  className={styles.checkbox}
+                  label="A failing check holds the section up until it passes or is skipped"
+                  checked={dataCheckBlocking}
+                  onChange={(e) => setDataCheckBlocking(e.currentTarget.checked)}
+                />
+              </Field>
+            </>
+          )}
         </>
       )}
 

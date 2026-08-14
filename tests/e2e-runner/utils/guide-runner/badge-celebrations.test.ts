@@ -274,7 +274,7 @@ describe('dismissBadgeCelebrations', () => {
   it('dismisses the toast before a hidden target reveal hover', async () => {
     const { page: badgePage, events } = createBadgeHarness(['First badge']);
     const stepLocator = {
-      count: jest.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(0),
+      count: jest.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValue(0),
       getAttribute: jest.fn(async (name: string) => {
         if (name === 'data-test-step-state') {
           return 'executing';
@@ -286,7 +286,8 @@ describe('dismissBadgeCelebrations', () => {
       }),
     } as unknown as Locator;
     const commentBox = {
-      waitFor: jest.fn().mockResolvedValue(undefined),
+      count: jest.fn().mockResolvedValue(1),
+      isVisible: jest.fn().mockResolvedValue(true),
       getAttribute: jest.fn(async (name: string) => {
         if (name === 'data-test-action') {
           return 'hover';
