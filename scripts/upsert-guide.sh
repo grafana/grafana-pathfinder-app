@@ -38,12 +38,18 @@
 #
 # Exit codes:
 #   0  success
-#   1  argument / spec / aggregator error
+#   1  argument / spec / aggregator error, or a refused ownership check
 #   64 usage error
 #   66 spec file not readable
 #   127 missing curl/jq
+#   130 interrupted (SIGINT)
+#   143 terminated (SIGTERM)
 
 set -euo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=scripts/lib/app-platform.sh
+source "${SCRIPT_DIR}/lib/app-platform.sh"
 
 usage() {
   cat <<EOF
@@ -53,6 +59,8 @@ Required:
   -s, --stack       Grafana stack hostname (e.g. learn.grafana.net or
                     <stack>.grafana.net). Without scheme.
   -t, --token       Service-account token (glsa_...) with Editor role.
+                    Prefer \$PATHFINDER_SA_TOKEN: an argv token is readable
+                    from the process table while the script runs.
   -f, --spec        Path to a JSON file containing the InteractiveGuide.
                     Either a bare spec or a full Kubernetes envelope
                     (e.g. from Library → Export); format is auto-detected.
@@ -63,6 +71,11 @@ Optional:
   -a, --annotation  key=value to record in metadata.annotations. Repeatable.
                     On update, merged into the resource's existing
                     annotations rather than replacing them.
+      --require-annotation key=value
+                    Refuse to update an existing resource unless it already
+                    carries this annotation. Checked against the same GET
+                    whose resourceVersion the update sends, so ownership and
+                    write are one optimistic transaction.
   -h, --help        Show this message.
 
 Defaults applied to the spec when missing:
@@ -78,18 +91,20 @@ EOF
 }
 
 STACK=
-TOKEN=
+TOKEN="${PATHFINDER_SA_TOKEN:-}"
 SPEC=
 NAMESPACE=
 ANNOTATIONS=()
+REQUIRE_ANNOTATION=
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -s|--stack) STACK="$2"; shift 2 ;;
-    -t|--token) TOKEN="$2"; shift 2 ;;
-    -f|--spec) SPEC="$2"; shift 2 ;;
-    -n|--namespace) NAMESPACE="$2"; shift 2 ;;
-    -a|--annotation) ANNOTATIONS+=("$2"); shift 2 ;;
+    -s|--stack) ap_require_value "$1" "${2-}"; STACK="$2"; shift 2 ;;
+    -t|--token) ap_require_value "$1" "${2-}"; TOKEN="$2"; shift 2 ;;
+    -f|--spec) ap_require_value "$1" "${2-}"; SPEC="$2"; shift 2 ;;
+    -n|--namespace) ap_require_value "$1" "${2-}"; NAMESPACE="$2"; shift 2 ;;
+    -a|--annotation) ap_require_value "$1" "${2-}"; ANNOTATIONS+=("$2"); shift 2 ;;
+    --require-annotation) ap_require_value "$1" "${2-}"; REQUIRE_ANNOTATION="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 64 ;;
   esac
@@ -116,23 +131,26 @@ ANNOTATIONS_JSON=$(printf '%s\n' ${ANNOTATIONS[@]+"${ANNOTATIONS[@]}"} | jq -Rs 
   | from_entries
 ') || exit 64
 
-# Strip scheme if the caller accidentally included one.
-STACK="${STACK#https://}"
-STACK="${STACK#http://}"
-STACK="${STACK%/}"
+if [[ -n "$REQUIRE_ANNOTATION" && "$REQUIRE_ANNOTATION" != *=* ]]; then
+  echo "--require-annotation must be key=value, got: $REQUIRE_ANNOTATION" >&2
+  exit 64
+fi
 
-# Slug rule mirrors src/components/block-editor/hooks/useBackendGuides.ts:110-116
-# so guides imported via this script and saved via the editor share names.
-slugify() {
-  echo "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-+|-+$//g'
-}
+STACK=$(ap_normalize_stack "$STACK")
+ap_validate_stack "$STACK"
+
+TMP_DIR=$(mktemp -d)
+# The signal handlers must exit: bash resumes the script after a trap that
+# doesn't, so a Ctrl-C would delete the payload and then send it.
+trap 'rm -rf "$TMP_DIR"; ap_auth_cleanup' EXIT
+trap 'rm -rf "$TMP_DIR"; ap_auth_cleanup; exit 130' INT
+trap 'rm -rf "$TMP_DIR"; ap_auth_cleanup; exit 143' TERM
+
+ap_auth_init "$TOKEN"
 
 # Auto-detect namespace if not provided.
 if [[ -z "$NAMESPACE" ]]; then
-  NAMESPACE=$(curl -sSf -H "Authorization: Bearer ${TOKEN}" "https://${STACK}/api/frontend/settings" \
-    | jq -r '.namespace // empty') || true
+  NAMESPACE=$(ap_detect_namespace "$STACK") || true
   if [[ -z "$NAMESPACE" ]]; then
     echo "could not auto-detect namespace from /api/frontend/settings; pass --namespace explicitly" >&2
     exit 1
@@ -165,7 +183,7 @@ if [[ -z "$RAW_NAME" ]]; then
   echo "spec must include an 'id' or 'title' to derive a resource name" >&2
   exit 1
 fi
-NAME=$(slugify "$RAW_NAME")
+NAME=$(ap_slugify "$RAW_NAME")
 if [[ -z "$NAME" ]]; then
   echo "spec.id/.title produced an empty slug after sanitisation" >&2
   exit 1
@@ -177,17 +195,18 @@ if [[ -z "$(echo "$SPEC_JSON" | jq -r '.id // ""')" ]]; then
   SPEC_JSON=$(echo "$SPEC_JSON" | jq --arg id "$NAME" '.id = $id')
 fi
 
-BASE="https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NAMESPACE}/interactiveguides"
+BASE=$(ap_guides_url "$STACK" "$NAMESPACE")
 
 # Writes the envelope and prints the response. Deliberately not `curl -f`:
 # on a rejection the K8s Status body names the offending field, and -f
-# discards it.
+# discards it. The payload goes via a file so it stays out of argv.
 write_resource() {
   local method="$1" url="$2" payload="$3" response code body
-  response=$(curl -sS -w $'\n%{http_code}' -X "$method" \
-    -H "Authorization: Bearer ${TOKEN}" \
+  local payload_file="${TMP_DIR}/payload.json"
+  printf '%s' "$payload" >"$payload_file"
+  response=$(ap_curl -w $'\n%{http_code}' -X "$method" \
     -H 'Content-Type: application/json' \
-    "$url" -d "$payload")
+    "$url" --data-binary "@${payload_file}")
   code="${response##*$'\n'}"
   body="${response%$'\n'*}"
 
@@ -204,7 +223,7 @@ write_resource() {
 
 # GET to decide between create and update. We intentionally accept any
 # status here so we can branch on it; -f would exit on non-2xx.
-RESPONSE=$(curl -sS -w $'\n%{http_code}' -H "Authorization: Bearer ${TOKEN}" "${BASE}/${NAME}")
+RESPONSE=$(ap_curl -w $'\n%{http_code}' "${BASE}/${NAME}")
 HTTP_CODE="${RESPONSE##*$'\n'}"
 BODY="${RESPONSE%$'\n'*}"
 
@@ -214,6 +233,20 @@ case "$HTTP_CODE" in
     if [[ -z "$RESOURCE_VERSION" || "$RESOURCE_VERSION" == "null" ]]; then
       echo "GET ${BASE}/${NAME} returned 200 but no metadata.resourceVersion" >&2
       exit 1
+    fi
+    # Ownership is checked against this response rather than a separate
+    # listing, so the resourceVersion the PUT sends is the one whose
+    # annotations were approved. A resource created or detached after a
+    # caller's own pre-flight cannot slip through in between.
+    if [[ -n "$REQUIRE_ANNOTATION" ]]; then
+      REQ_KEY="${REQUIRE_ANNOTATION%%=*}"
+      REQ_VALUE="${REQUIRE_ANNOTATION#*=}"
+      LIVE_VALUE=$(echo "$BODY" | jq -r --arg k "$REQ_KEY" '.metadata.annotations[$k] // ""')
+      if [[ "$LIVE_VALUE" != "$REQ_VALUE" ]]; then
+        echo "refusing to update ${NAME}: annotation ${REQ_KEY} is \"${LIVE_VALUE}\", expected \"${REQ_VALUE}\"" >&2
+        echo "A write replaces spec wholesale and the API keeps no revisions." >&2
+        exit 1
+      fi
     fi
     # Merge our annotations over the resource's existing ones so a PUT
     # doesn't drop annotations set by the editor or another tool.
@@ -230,7 +263,7 @@ case "$HTTP_CODE" in
           + (if ($merged | length) > 0 then { annotations: $merged } else {} end)),
         spec: $spec
       }')
-    echo "Updating ${NAME} (resourceVersion=${RESOURCE_VERSION})..." >&2
+    echo "Updating ${NAME} (action=update resourceVersion=${RESOURCE_VERSION})..." >&2
     write_resource PUT "${BASE}/${NAME}" "$ENVELOPE"
     ;;
   404)
@@ -244,7 +277,7 @@ case "$HTTP_CODE" in
           + (if ($ann | length) > 0 then { annotations: $ann } else {} end)),
         spec: $spec
       }')
-    echo "Creating ${NAME}..." >&2
+    echo "Creating ${NAME} (action=create)..." >&2
     write_resource POST "${BASE}" "$ENVELOPE"
     ;;
   401)

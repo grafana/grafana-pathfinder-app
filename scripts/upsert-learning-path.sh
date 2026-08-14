@@ -55,6 +55,8 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 UPSERT_GUIDE="${SCRIPT_DIR}/upsert-guide.sh"
+# shellcheck source=scripts/lib/app-platform.sh
+source "${SCRIPT_DIR}/lib/app-platform.sh"
 
 usage() {
   cat <<EOF
@@ -64,6 +66,8 @@ Required:
   -s, --stack       Grafana stack hostname (e.g. learn.grafana.net or
                     <stack>.grafana.net). Without scheme.
   -t, --token       Service-account token (glsa_...) with Editor role.
+                    Prefer \$PATHFINDER_SA_TOKEN: an argv token is readable
+                    from the process table while the script runs.
   -p, --package     Package directory containing manifest.json and
                     content.json. For a path/journey manifest, milestone
                     guides are read from its subdirectories.
@@ -99,7 +103,7 @@ EOF
 }
 
 STACK=
-TOKEN=
+TOKEN="${PATHFINDER_SA_TOKEN:-}"
 PACKAGE=
 NAMESPACE=
 STATUS=published
@@ -119,12 +123,12 @@ SOURCE_PACKAGE_KEY="pathfinderbackend.ext.grafana.app/source-package"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -s|--stack) STACK="$2"; shift 2 ;;
-    -t|--token) TOKEN="$2"; shift 2 ;;
-    -p|--package) PACKAGE="$2"; shift 2 ;;
-    -n|--namespace) NAMESPACE="$2"; shift 2 ;;
-    --status) STATUS="$2"; shift 2 ;;
-    --repository) REPOSITORY="$2"; shift 2 ;;
+    -s|--stack) ap_require_value "$1" "${2-}"; STACK="$2"; shift 2 ;;
+    -t|--token) ap_require_value "$1" "${2-}"; TOKEN="$2"; shift 2 ;;
+    -p|--package) ap_require_value "$1" "${2-}"; PACKAGE="$2"; shift 2 ;;
+    -n|--namespace) ap_require_value "$1" "${2-}"; NAMESPACE="$2"; shift 2 ;;
+    --status) ap_require_value "$1" "${2-}"; STATUS="$2"; shift 2 ;;
+    --repository) ap_require_value "$1" "${2-}"; REPOSITORY="$2"; shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
     --verbose) VERBOSE=true; shift ;;
     --continue-on-error) CONTINUE_ON_ERROR=true; shift ;;
@@ -148,33 +152,34 @@ command -v jq >/dev/null || { echo "jq is required but not installed" >&2; exit 
 
 PACKAGE="${PACKAGE%/}"
 
-STACK="${STACK#https://}"
-STACK="${STACK#http://}"
-STACK="${STACK%/}"
+STACK=$(ap_normalize_stack "$STACK")
+ap_validate_stack "$STACK"
 
 TMP_DIR=$(mktemp -d)
 # The signal handlers must exit: bash resumes the script after a trap that
 # doesn't, so a Ctrl-C would delete TMP_DIR and keep uploading from spec files
 # that no longer exist.
-trap 'rm -rf "$TMP_DIR"' EXIT
-trap 'rm -rf "$TMP_DIR"; exit 130' INT
-trap 'rm -rf "$TMP_DIR"; exit 143' TERM
+trap 'rm -rf "$TMP_DIR"; ap_auth_cleanup' EXIT
+trap 'rm -rf "$TMP_DIR"; ap_auth_cleanup; exit 130' INT
+trap 'rm -rf "$TMP_DIR"; ap_auth_cleanup; exit 143' TERM
 
-# Slug rule mirrors upsert-guide.sh, which derives metadata.name this way.
-slugify() {
-  echo "$1" \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed -E 's/[^a-z0-9-]+/-/g; s/-+/-/g; s/^-+|-+$//g'
-}
+ap_auth_init "$TOKEN"
+# The child gets the token through the environment. Passing it as an argument
+# would put it in the process table once per resource.
+export PATHFINDER_SA_TOKEN="$TOKEN"
 
 # Block fields the InteractiveGuide CRD declares. Source of truth is
-# #Block/#NestedBlock/#Step in grafana-pathfinder-backend/kinds/interactiveguide.cue;
-# anything else is pruned or rejected on write, so warn before it silently
-# disappears. Recursion stops at depth 3, where the CRD switches to
-# x-kubernetes-preserve-unknown-fields.
+# _blockFields/#Block/#NestedBlock/#Step in
+# grafana-pathfinder-backend/kinds/interactiveguide.cue; anything else is pruned
+# or rejected on write, so warn before it silently disappears. Recursion stops
+# at depth 3, where the CRD switches to x-kubernetes-preserve-unknown-fields.
+#
+# scripts/tests/upsert-learning-path.test.sh pins these against the app's own
+# KNOWN_FIELDS, so a block field the app gains and the CRD lacks fails a test
+# rather than surfacing as a silent prune on someone's upload.
 read -r -d '' UNKNOWN_BLOCK_FIELDS_JQ <<'JQ' || true
-def BLOCK: ["action","alt","assistantEnabled","assistantId","assistantType","blocks","checkboxLabel","choices","completeEarly","completionMode","conditions","content","description","display","doIt","formHint","height","hint","id","inputType","lazyRender","maxAttempts","multiSelect","objectives","pattern","placeholder","prompt","provider","question","reftarget","required","requirements","scrollContainer","showMe","skippable","src","stepTimeout","steps","targetvalue","title","tooltip","type","validateInput","validationMessage","variableName","verify","whenFalse","whenFalseSectionConfig","whenTrue","whenTrueSectionConfig","width"];
-def STEP: ["action","description","formHint","lazyRender","reftarget","requirements","scrollContainer","skippable","targetvalue","tooltip","validateInput"];
+def BLOCK: ["action","alt","assistantEnabled","assistantId","assistantType","authorNote","autoCollapse","blocks","brief","buttonText","checkboxLabel","choices","code","collapsed","command","completeEarly","completionMode","conditions","content","datasourceFilter","description","display","doIt","end","failureMessage","formHint","height","hint","hintLevels","id","inputType","language","lazyRender","maxAttempts","mode","multiSelect","objectives","openGuide","pattern","placeholder","prompt","provider","question","reftarget","required","requirements","screens","scrollContainer","setupCommands","setupScript","showMe","shuffle","skippable","snippetId","src","start","stepTimeout","steps","successCriteria","targetstate","targetvalue","title","tooltip","type","validateInput","validationMessage","variableName","verify","vmApp","vmScenario","vmTemplate","welcome","whenFalse","whenFalseSectionConfig","whenTrue","whenTrueSectionConfig","width"];
+def STEP: ["action","description","formHint","id","lazyRender","reftarget","requirements","scrollContainer","skippable","targetstate","targetvalue","tooltip","validateInput"];
 def scan(depth):
   if depth > 2 then empty
   else
@@ -241,17 +246,30 @@ validate_package() {
   [[ -r "$manifest" ]] || { echo "missing manifest.json in ${dir}" >&2; return 1; }
   [[ -r "$content" ]] || { echo "missing content.json in ${dir}" >&2; return 1; }
 
-  local fields id title blocks
-  fields=$(jq -r '[.id // "", .title // "",
-    (if (.blocks | type) == "array" then (.blocks | length) else "" end)] | @tsv' "$content") || {
+  # Types, not just presence: the CRD requires strings where the app schema
+  # does, and a numeric .title or a block without a .type is a 422 at write
+  # time — after earlier milestones have already been replaced.
+  local shape
+  shape=$(jq -r '
+    if (type != "object") then "content.json is not a JSON object"
+    elif ((.id | type) != "string" or (.id | length) == 0) then "content.json .id must be a non-empty string"
+    elif ((.title | type) != "string" or (.title | length) == 0) then "content.json .title must be a non-empty string"
+    elif ((.blocks | type) != "array") then "content.json .blocks must be an array"
+    elif ((.blocks | length) == 0) then "content.json .blocks is empty"
+    elif ([.blocks[] | select(type != "object")] | length) > 0 then "content.json .blocks contains a non-object entry"
+    elif ([.blocks[] | select((.type | type) != "string" or (.type | length) == 0)] | length) > 0 then "content.json has a block with no .type"
+    else "" end' "$content" 2>/dev/null) || {
     echo "${content} is not readable as a JSON object" >&2
     return 1
   }
-  IFS=$'\t' read -r id title blocks <<<"$fields"
+  [[ -z "$shape" ]] || { echo "${content}: ${shape#content.json }" >&2; return 1; }
 
-  [[ -n "$id" ]] || { echo "${content} has no .id" >&2; return 1; }
-  [[ -n "$title" ]] || { echo "${content} has no .title" >&2; return 1; }
-  [[ -n "$blocks" ]] || { echo "${content} .blocks is missing or not an array" >&2; return 1; }
+  local fields id blocks
+  fields=$(jq -r '[.id, (.blocks | length)] | @tsv' "$content") || {
+    echo "${content} is not readable as a JSON object" >&2
+    return 1
+  }
+  IFS=$'\t' read -r id blocks <<<"$fields"
 
   if [[ -n "$expected_id" && "$id" != "$expected_id" ]]; then
     echo "${content} .id is \"${id}\" but manifest.json declares \"${expected_id}\"" >&2
@@ -261,8 +279,8 @@ validate_package() {
   # The catalogue and manifest.milestones key on spec.id, while the resolver
   # and backend-guide: URLs GET by metadata.name — which upsert-guide.sh
   # slugifies from spec.id. If they diverge every milestone 404s silently.
-  if [[ "$(slugify "$id")" != "$id" ]]; then
-    echo "package id \"${id}\" is not a valid resource name (would upload as \"$(slugify "$id")\")." >&2
+  if [[ "$(ap_slugify "$id")" != "$id" ]]; then
+    echo "package id \"${id}\" is not a valid resource name (would upload as \"$(ap_slugify "$id")\")." >&2
     echo "spec.id and metadata.name must match or milestone resolution breaks. Rename the package." >&2
     return 1
   fi
@@ -284,7 +302,7 @@ validate_package() {
   fi
 
   local manifest_obj spec_file
-  spec_file="${TMP_DIR}/$(slugify "$id").json"
+  spec_file="${TMP_DIR}/$(ap_slugify "$id").json"
   if [[ "$NO_MANIFEST" == true ]]; then
     manifest_obj=
     jq --arg status "$STATUS" '. + {status: $status}' "$content" > "$spec_file" || {
@@ -322,15 +340,23 @@ validate_package() {
 write_package() {
   local label="$1" id="$2"
   local spec_file owner='-'
-  spec_file="${TMP_DIR}/$(slugify "$id").json"
+  spec_file="${TMP_DIR}/$(ap_slugify "$id").json"
 
   [[ "$COLLISION_CHECK" == false ]] || owner=$(existing_owner "$id")
   [[ "$owner" == "-" || "$owner" == "$MANAGED_BY_VALUE" ]] ||
     echo "  warning: replacing \"${id}\", which this tool did not upload" >&2
 
+  # The pre-flight listing is a snapshot; this makes the helper re-check
+  # ownership against the same GET whose resourceVersion it sends, so a
+  # resource created or detached since the listing cannot be replaced silently.
+  local guard=()
+  [[ "$OVERWRITE" == true ]] ||
+    guard=(--require-annotation "${MANAGED_BY_KEY}=${MANAGED_BY_VALUE}")
+
   local output
-  if ! output=$("$UPSERT_GUIDE" --stack "$STACK" --token "$TOKEN" \
+  if ! output=$("$UPSERT_GUIDE" --stack "$STACK" \
       --namespace "$NAMESPACE" --spec "$spec_file" \
+      ${guard[@]+"${guard[@]}"} \
       --annotation "${MANAGED_BY_KEY}=${MANAGED_BY_VALUE}" \
       --annotation "${SOURCE_PACKAGE_KEY}=${PKG_ID}" 2>&1); then
     printf '  %-7s %s  FAILED\n' "$label" "$id"
@@ -344,7 +370,7 @@ write_package() {
     return 1
   fi
 
-  if echo "$output" | grep -q '^Creating '; then
+  if echo "$output" | grep -q 'action=create'; then
     CREATED=$((CREATED + 1))
     printf '  %-7s %s  created\n' "$label" "$id"
   elif [[ "$owner" != "-" && "$owner" != "$MANAGED_BY_VALUE" ]]; then
@@ -383,8 +409,8 @@ esac
 # PKG_ID is stamped onto every milestone as an annotation value before the cover
 # page validates its own id, so a value carrying a newline and an `=` could
 # forge the managed-by key the overwrite guard reads.
-if [[ "$(slugify "$PKG_ID")" != "$PKG_ID" ]]; then
-  echo "package id \"${PKG_ID}\" is not a valid resource name (would upload as \"$(slugify "$PKG_ID")\")." >&2
+if [[ "$(ap_slugify "$PKG_ID")" != "$PKG_ID" ]]; then
+  echo "package id \"${PKG_ID}\" is not a valid resource name (would upload as \"$(ap_slugify "$PKG_ID")\")." >&2
   echo "spec.id and metadata.name must match or milestone resolution breaks. Rename the package." >&2
   exit 1
 fi
@@ -440,7 +466,7 @@ fi
 for milestone in ${MILESTONES[@]+"${MILESTONES[@]}"}; do
   if [[ "$milestone" == "$PKG_ID" ]]; then
     echo "milestone \"${milestone}\" has the same id as the package itself" >&2
-    echo "both map to resource name \"$(slugify "$PKG_ID")\", so the cover page would" >&2
+    echo "both map to resource name \"$(ap_slugify "$PKG_ID")\", so the cover page would" >&2
     echo "overwrite the milestone. Rename one of them." >&2
     exit 1
   fi
@@ -451,8 +477,7 @@ done
 # actually needs the stack. A dry run must still work offline, so failure
 # there degrades to a warning instead of aborting.
 if [[ -z "$NAMESPACE" ]]; then
-  NAMESPACE=$(curl -sSf -H "Authorization: Bearer ${TOKEN}" "https://${STACK}/api/frontend/settings" \
-    | jq -r '.namespace // empty') || true
+  NAMESPACE=$(ap_detect_namespace "$STACK") || true
   if [[ -z "$NAMESPACE" && "$DRY_RUN" == false ]]; then
     echo "could not auto-detect namespace from /api/frontend/settings; pass --namespace explicitly" >&2
     exit 1
@@ -463,28 +488,52 @@ fi
 # and a write replaces spec wholesale. A milestone id like `getting-started`
 # can therefore land on a hand-authored guide of that name — with no
 # revision verb in the API and no copy in the source repo, that overwrite is
-# unrecoverable. LIST the collection once and compare provenance so an
-# in-place update of our own resource stays silent while a collision with
-# anyone else's stops the run.
+# unrecoverable. LIST the collection and compare provenance so an in-place
+# update of our own resource stays silent while a collision with anyone
+# else's stops the run.
+LIST_URL=
+[[ -z "$NAMESPACE" ]] || LIST_URL=$(ap_guides_url "$STACK" "$NAMESPACE")
+
+# Drains metadata.continue: this API truncates a single-page read without
+# saying so (docs/design/BACKEND_PROXY_PATTERN.md), and a truncated page read
+# as the whole collection makes every name on a later page look free.
+# Fails whole rather than partial — a half-listing is what silently disables
+# the guard. errexit is off in here because the caller invokes it in a
+# condition context.
+MAX_LIST_PAGES=100
+collect_existing() {
+  [[ -n "$LIST_URL" ]] || return 1
+  local token='' page items acc='' pages=0
+  while :; do
+    local url="${LIST_URL}?limit=500"
+    [[ -z "$token" ]] || url="${url}&continue=${token}"
+    page=$(ap_curl -f "$url" 2>/dev/null) || return 1
+    # A 2xx body is not proof of a collection: with no -L a redirect page also
+    # parses, and `.items[]?` would then read as "the namespace is empty".
+    echo "$page" | jq -e '(.items | type) == "array"' >/dev/null 2>&1 || return 1
+    items=$(echo "$page" | jq -r --arg key "$MANAGED_BY_KEY" '
+      .items[] | [.metadata.name, (.metadata.annotations[$key] // "")] | @tsv') || return 1
+    [[ -z "$items" ]] || acc="${acc}${items}
+"
+    token=$(echo "$page" | jq -r '.metadata.continue // ""') || return 1
+    [[ -n "$token" ]] || break
+    pages=$((pages + 1))
+    [[ "$pages" -lt "$MAX_LIST_PAGES" ]] || {
+      echo "warning: stopped listing after ${MAX_LIST_PAGES} pages" >&2
+      return 1
+    }
+  done
+  printf '%s' "$acc"
+}
+
 EXISTING=
 COLLISION_CHECK=false
-LIST_URL=
-LIST_JSON=
-if [[ -n "$NAMESPACE" ]]; then
-  LIST_URL="https://${STACK}/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${NAMESPACE}/interactiveguides"
-  LIST_JSON=$(curl -sSf -H "Authorization: Bearer ${TOKEN}" "$LIST_URL" 2>/dev/null) || LIST_JSON=
-fi
-# A 2xx body is not proof of a collection. There is no -L here, so a redirect
-# page or a Status envelope also parses, and `.items[]?` would then read as "the
-# namespace is empty" — disabling the guard exactly when it can see nothing.
 # Whether the check ran is reported below, in both modes: a dry run that
 # silently skips it is a JSON linter claiming to be a collision gate.
-if [[ -n "$LIST_JSON" ]] && echo "$LIST_JSON" | jq -e '(.items | type) == "array"' >/dev/null 2>&1; then
-  EXISTING=$(echo "$LIST_JSON" | jq -r --arg key "$MANAGED_BY_KEY" '
-    .items[]? | [.metadata.name, (.metadata.annotations[$key] // "")] | @tsv')
+if EXISTING=$(collect_existing); then
   COLLISION_CHECK=true
 elif [[ "$DRY_RUN" == false && "$OVERWRITE" == false ]]; then
-  echo "could not list existing guides at ${LIST_URL}" >&2
+  echo "could not list existing guides at ${LIST_URL:-<no namespace resolved>}" >&2
   echo "listing is how this tool avoids clobbering guides it did not upload." >&2
   echo "Grant the token list access, or pass --overwrite to write without the check." >&2
   exit 1

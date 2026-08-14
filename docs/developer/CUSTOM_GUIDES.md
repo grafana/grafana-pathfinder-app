@@ -108,9 +108,10 @@ Guides can also be pushed into a stack from outside the editor — useful for CI
 Authentication is a Grafana service-account Bearer token; writes need the **Editor** or **Admin** role. The repo ships a small helper at [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) that handles the GET-then-create-or-update dance:
 
 ```bash
+export PATHFINDER_SA_TOKEN="$GRAFANA_SA_TOKEN"
+
 scripts/upsert-guide.sh \
   --stack learn.grafana.net \
-  --token "$GRAFANA_SA_TOKEN" \
   --spec ./my-guide.json
 ```
 
@@ -119,7 +120,6 @@ To upload a whole learning path or journey — a `manifest.json` plus the milest
 ```bash
 scripts/upsert-learning-path.sh \
   --stack learn.grafana.net \
-  --token "$GRAFANA_SA_TOKEN" \
   --package ./drilldown-logs-lj
 ```
 
