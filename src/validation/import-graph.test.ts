@@ -40,6 +40,7 @@ import {
   collectSourceFiles,
   loadTsconfigPaths,
   readJsoncFile,
+  stripJsonComments,
   resolveImportToRelative,
   resolvePathAlias,
   toPosixPath,
@@ -164,6 +165,35 @@ describe('readJsoncFile', () => {
       path.join(REPO_ROOT, '.config', 'tsconfig.json')
     );
     expect(parsed.compilerOptions?.paths).toEqual({ '*': ['../src/*'] });
+  });
+
+  it('keeps recursive globs intact', () => {
+    const parsed = readJsoncFile<{ include: string[] }>(path.join(REPO_ROOT, 'tsconfig.cli.json'));
+    expect(parsed.include).toContain('src/cli/**/*');
+  });
+});
+
+describe('stripJsonComments', () => {
+  it('strips line and block comments', () => {
+    expect(JSON.parse(stripJsonComments('{ // a\n"x": /* b */ 1 }'))).toEqual({ x: 1 });
+  });
+
+  it('leaves comment-like text inside strings alone', () => {
+    // A blind regex sweep turns "src/cli/**/*" into "src/cli*" by treating the
+    // `/**/` as an empty block comment, which silently narrows a tsconfig glob.
+    const cases = ['src/cli/**/*', 'a/**/b', 'https://example.com', '// not a comment', '/* nor this */'];
+    for (const value of cases) {
+      expect(JSON.parse(stripJsonComments(JSON.stringify({ value })))).toEqual({ value });
+    }
+  });
+
+  it('does not treat an escaped quote as the end of a string', () => {
+    const value = 'say \\"/**/\\" once';
+    expect(JSON.parse(stripJsonComments(`{ "value": "${value}" }`))).toEqual({ value: 'say "/**/" once' });
+  });
+
+  it('tolerates an unterminated comment rather than throwing', () => {
+    expect(stripJsonComments('{ "x": 1 } /* trailing')).toBe('{ "x": 1 } ');
   });
 });
 

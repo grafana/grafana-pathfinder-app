@@ -15,6 +15,11 @@ export const PANEL_MODE_CHANGE_EVENT = 'pathfinder-panel-mode-change';
 // already-mounted floating panel must be signalled to consume directly.
 export const REQUEST_FLOATING_GUIDE_EVENT = 'pathfinder-request-floating-guide';
 
+// Signals that window.__pathfinderPluginConfig has a new value; carries no
+// payload, because any script sharing the document can dispatch it. Owned by
+// publishPathfinderPluginConfig in hooks/usePathfinderPluginConfig.ts.
+export const PATHFINDER_CONFIG_UPDATED_EVENT = 'pathfinder-config-updated';
+
 // Ask the docs panel to open a URL in a new tab. Dispatched by the global
 // link interceptor, HomePanel's beside-Grafana launch path, and grot guides;
 // handled by useAutoOpenListener. Detail: { url, title, source?, launchKey? }
