@@ -9,6 +9,7 @@
  */
 
 import { Locator } from '@playwright/test';
+import type { E2EErrorCode, E2EExecutionOutcome } from '../../../../src/cli/e2e/schemas/e2e-report.schema';
 
 // ============================================
 // Step Types
@@ -313,6 +314,9 @@ export interface StepTestResult {
   /** Error message if status is 'failed' */
   error?: string;
 
+  /** Stable machine-readable error code. */
+  errorCode?: E2EErrorCode;
+
   /** Reason if status is 'skipped' */
   skipReason?: SkipReason;
 
@@ -356,6 +360,12 @@ export interface AllStepsResult {
 
   /** Human-readable abort message */
   abortMessage?: string;
+
+  /** Explicit terminal outcome for runner-level failures. */
+  outcome?: E2EExecutionOutcome;
+
+  /** Stable terminal code when no guide abort reason applies. */
+  errorCode?: E2EErrorCode;
 
   /** Path to final screenshot (only when alwaysScreenshot is enabled) */
   finalScreenshot?: string;

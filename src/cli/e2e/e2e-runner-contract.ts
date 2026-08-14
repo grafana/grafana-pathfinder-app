@@ -51,7 +51,28 @@ export const E2E_ENV = {
    * can surface it without hardcoding Playwright's per-test output-dir naming.
    */
   TRACE_OUTPUT_FILE: 'E2E_TRACE_OUTPUT_FILE',
+  /** Absolute path where the child reports its post-discovery deadline. */
+  DEADLINE_FILE_PATH: 'E2E_DEADLINE_FILE_PATH',
 } as const;
+
+export const GUIDE_SETUP_TIMEOUT_MS = 60000;
+export const GUIDE_INITIAL_TIMEOUT_MS = GUIDE_SETUP_TIMEOUT_MS * 2;
+export const RUNNER_DISCOVERY_WATCHDOG_MS = GUIDE_INITIAL_TIMEOUT_MS * 2 + GUIDE_SETUP_TIMEOUT_MS;
+export const RUNNER_DEADLINE_CLEANUP_GRACE_MS = 15000;
+export const RUNNER_FORCE_KILL_GRACE_MS = 5000;
+export const RUNNER_DEADLINE_POLL_MS = 250;
+
+export interface RunnerDeadlineFile {
+  deadlineEpochMs: number;
+}
+
+export function isRunnerDeadlineFile(value: unknown): value is RunnerDeadlineFile {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const deadlineEpochMs = (value as Record<string, unknown>).deadlineEpochMs;
+  return typeof deadlineEpochMs === 'number' && Number.isFinite(deadlineEpochMs) && deadlineEpochMs > 0;
+}
 
 /** Encode a boolean for transport through a string environment variable. */
 export function encodeEnvFlag(value: boolean): string {

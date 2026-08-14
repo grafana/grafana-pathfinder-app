@@ -172,6 +172,60 @@ describe('report outcome classification', () => {
     expect(isReportSuccess(report)).toBe(false);
   });
 
+  it('preserves infrastructure outcome and code in nested guide reports', () => {
+    const report = generateMultiGuideReport([
+      {
+        guide: { id: 'crashed', title: 'crashed', path: 'crashed/content.json' },
+        timestamp: '2026-01-01T00:00:00.000Z',
+        outcome: 'infrastructure_error',
+        errorCode: 'BROWSER_CRASHED',
+        errorMessage: 'The browser page crashed.',
+        results: [],
+        aborted: true,
+      },
+    ]);
+
+    expect(report.outcome).toBe('infrastructure_error');
+    expect(report.reports[0]).toMatchObject({
+      outcome: 'infrastructure_error',
+      errorCode: 'BROWSER_CRASHED',
+    });
+    expect(report.guides[0]).toMatchObject({
+      success: false,
+      outcome: 'infrastructure_error',
+      errorCode: 'BROWSER_CRASHED',
+    });
+  });
+
+  it('does not count infrastructure as a mandatory guide failure', () => {
+    const report = generateReport({
+      guide: { id: 'crashed', title: 'crashed', path: 'crashed/content.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'infrastructure_error',
+      errorCode: 'BROWSER_CRASHED',
+      results: [
+        {
+          stepId: 'active-step',
+          status: 'failed',
+          durationMs: 10,
+          currentUrl: '/',
+          consoleErrors: [],
+          errorCode: 'BROWSER_CRASHED',
+          classification: 'infrastructure',
+          skippable: false,
+        },
+      ],
+      aborted: true,
+    });
+
+    expect(report.summary).toMatchObject({
+      failed: 1,
+      mandatoryFailed: 0,
+      skippableFailed: 0,
+    });
+    expect(report.outcome).toBe('infrastructure_error');
+  });
+
   it('keeps auth-expired reports out of the passed multi-guide count', () => {
     const report = generateMultiGuideReport([
       {

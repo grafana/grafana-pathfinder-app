@@ -11,18 +11,21 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 - **DOM-based step discovery**: Tests interact with the rendered UI, not raw JSON. The plugin handles conditional logic; the runner iterates whatever steps are visible.
 - **Sequential execution**: Steps run in order, matching the real user flow.
 - **Requirements handling**: The runner detects unmet requirements, clicks Fix buttons, and handles skip/mandatory logic.
+- **Failure containment**: One controller owns browser termination, step deadlines, and the first terminal result.
 
 ## Source map for agents
 
 - `src/cli/commands/e2e.ts` — Commander options, input resolution, dependency planning, pre-flight orchestration, clean-stack resets, cloud routing, and per-guide Playwright invocation.
 - `src/cli/e2e/e2e-local-package.ts` — local path/journey manifest validation, repository loading, milestone expansion, target gating, and guide hydration.
 - `src/cli/e2e/e2e-runner-contract.ts` — environment-variable contract between the CLI process and Playwright runner.
+- `src/cli/e2e/process-watchdog.ts` — parent deadline handling and child-process termination.
 - `src/cli/e2e/e2e-package.ts` — remote package and repository resolution, content fetch, schema validation, side-effect classification, and pre-run skip reasons.
 - `src/cli/e2e/guide-chains.ts` — pure package graph planning across hard dependencies, capabilities, and recursive milestones, followed by leaf-guide hydration.
 - `src/cli/e2e/e2e-targets.ts` — manifest `testEnvironment` to concrete target URL or skip reason.
 - `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
 - `tests/e2e-runner/guide-runner.spec.ts` — browser-side guide loading, pre-flight checks, DOM discovery, step execution, and result file writing.
 - `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, requirement fixing, artifact capture, and failure classification.
+- `tests/e2e-runner/utils/guide-runner/termination.ts` — browser event arbitration and expected teardown handling.
 - `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
 
 ## Quick start
@@ -151,6 +154,12 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - JSON report when `--output` is specified; non-passing runs also write a default report under `--artifacts`
    - Failure artifacts in `--artifacts` directory
 
+6. **Failure containment**
+   - The runner monitors page crash, page close, context close, and browser disconnect events.
+   - The first unexpected terminal event wins.
+   - Normal Playwright teardown cannot replace a completed result.
+   - A terminal event stops guide work before the test teardown.
+
 ## Requirements and skip behavior
 
 The runner follows this decision tree when requirements are not met:
@@ -233,7 +242,10 @@ The report contract's single source of truth is the Zod schema in `src/cli/e2e/s
 Key contract fields:
 
 - `outcome`: one of `passed`, `failed`, `aborted`, `skipped`, `infrastructure_error`, or `configuration_error`. Multi-guide reports surface `aborted` when any guide's session expired.
-- `errorCode`: structured failure code present on non-passing reports. Notable values: `TIER_MISMATCH` (guide requires a different environment tier), `SKIPPED_PREREQ` (a prerequisite guide failed), `REPORT_MISSING` (Playwright exited but wrote no results file), `AUTH_EXPIRED`, `NO_CAPACITY`, `PLAYWRIGHT_SPAWN_FAILED`.
+- `errorCode`: structured failure code present on non-passing reports.
+- Browser termination codes are `BROWSER_CRASHED`, `BROWSER_DISCONNECTED`, `PAGE_CLOSED`, and `CONTEXT_CLOSED`.
+- Deadline codes are `STEP_TIMEOUT` and `RUNNER_TIMEOUT`.
+- Other notable codes include `AUTH_EXPIRED`, `NO_CAPACITY`, `REPORT_MISSING`, and `PLAYWRIGHT_SPAWN_FAILED`.
 - `guide.contentDigest`: SHA-256 digest of the exact guide content executed
 - `guide.sourceUrl`: remote package source URL when available
 - `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
@@ -242,7 +254,11 @@ Key contract fields:
 
 The runner always attempts to write a report, even when self-validation fails, so a diagnostic artifact is not lost. A failed validation logs the schema error, writes the original object, and exits with code 2. Consumers must validate the report against the schema matching the producing runner before processing it.
 
-Catchable setup, preflight, provisioning, and Playwright spawn failures still write zero-step reports that validate against the schema. OOM, SIGKILL, and corrupt or missing output remain the worker's responsibility.
+Catchable setup, preflight, provisioning, and Playwright spawn failures write zero-step reports that validate against the schema.
+
+The browser event monitor reports browser-process termination before Playwright's test deadline. The parent watchdog reports a wedged child as `RUNNER_TIMEOUT`.
+
+An external kill of the CLI parent can still prevent report creation. Corrupt output also remains an external recovery concern.
 
 Consumers that need a language-agnostic contract can extract the JSON Schema from the CLI, so the artifact always matches the binary that produced the report:
 
@@ -345,10 +361,32 @@ The environment is reset **between dependency chains**, not between every guide.
 | Skip sync                  | 5s               | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |
 | Guided reload wait         | 15s              | Bounds waiting for `domcontentloaded` after a detected reload or navigation mid-guided-step |
 
+The calculated step budget is one hard deadline. It includes requirements, actions, polling, artifacts, and cleanup.
+
+Nested operations cannot start a new full step budget. If the deadline wins, the runner aborts the work and closes the terminating page.
+
 Examples:
 
 - A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
 - A guided block with 3 substeps gets a 120s timeout (30s base + 3×30s).
+
+### Child-process watchdog
+
+Before discovery, the parent uses a 300s fallback deadline. This value comes from two initial 120s budgets plus one 60s setup budget.
+
+After discovery, the child writes its absolute guide deadline to the parent. The parent adds a 15s cleanup grace period.
+
+The child writes a temporary file and then renames it atomically. The parent ignores malformed, non-finite, and stale deadlines.
+
+An invalid deadline does not replace the 300s fallback.
+
+If the child exceeds this deadline, the parent sends `SIGTERM`. If the child remains alive for 5s, the parent sends `SIGKILL`.
+
+On Linux and macOS, the parent starts `npx` as a process-group leader. Each signal targets that group, including Node and Chromium descendants.
+
+On Windows, Node sends each signal to the direct child. The process-group behavior applies to the Cloud Linux and local macOS runners.
+
+The parent clears all watchdog timers and listeners after child close or spawn error. A watchdog expiry always reports `RUNNER_TIMEOUT`.
 
 ## Troubleshooting
 
@@ -459,19 +497,20 @@ jobs:
 
 These variables are consumed by the CLI or passed to the spawned Playwright process. You generally do not need to set runner variables directly — the CLI sets them from its own flags and defaults.
 
-| Variable                | Description                                                                    | Default                 |
-| ----------------------- | ------------------------------------------------------------------------------ | ----------------------- |
-| `GUIDE_JSON_PATH`       | Path to JSON guide file                                                        | Required                |
-| `GRAFANA_URL`           | Grafana instance URL                                                           | `http://localhost:3000` |
-| `STARTING_LOCATION`     | Same-origin path where the guide should begin (set from manifest or `/`)       | `/`                     |
-| `AUTH_STATE_FILE`       | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
-| `E2E_VERBOSE`           | Enable verbose logging                                                         | `false`                 |
-| `E2E_TRACE`             | Generate Playwright trace file                                                 | `false`                 |
-| `ABORT_FILE_PATH`       | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
-| `RESULTS_FILE_PATH`     | Path where the runner writes step results for JSON reporting                   | Temporary CLI path      |
-| `ARTIFACTS_DIR`         | Directory for screenshots, DOM snapshots, and related artifacts                | `/tmp/pathfinder-e2e-*` |
-| `ALWAYS_SCREENSHOT`     | Capture screenshots on success and failure                                     | `false`                 |
-| `E2E_TRACE_OUTPUT_FILE` | Path where the runner records the generated Playwright trace artifact location | Temporary CLI path      |
+| Variable                 | Description                                                                    | Default                 |
+| ------------------------ | ------------------------------------------------------------------------------ | ----------------------- |
+| `GUIDE_JSON_PATH`        | Path to JSON guide file                                                        | Required                |
+| `GRAFANA_URL`            | Grafana instance URL                                                           | `http://localhost:3000` |
+| `STARTING_LOCATION`      | Same-origin path where the guide should begin (set from manifest or `/`)       | `/`                     |
+| `AUTH_STATE_FILE`        | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
+| `E2E_VERBOSE`            | Enable verbose logging                                                         | `false`                 |
+| `E2E_TRACE`              | Generate Playwright trace file                                                 | `false`                 |
+| `ABORT_FILE_PATH`        | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
+| `RESULTS_FILE_PATH`      | Path where the runner writes step results for JSON reporting                   | Temporary CLI path      |
+| `ARTIFACTS_DIR`          | Directory for screenshots, DOM snapshots, and related artifacts                | `/tmp/pathfinder-e2e-*` |
+| `ALWAYS_SCREENSHOT`      | Capture screenshots on success and failure                                     | `false`                 |
+| `E2E_TRACE_OUTPUT_FILE`  | Path where the runner records the generated Playwright trace artifact location | Temporary CLI path      |
+| `E2E_DEADLINE_FILE_PATH` | Path where the child writes its absolute post-discovery deadline               | Temporary CLI path      |
 
 For cloud targets, pass `--cloud-instance-admin-token host=ENV_VAR_NAME`; the named env var contains an admin service-account token for that exact host. The env var name is user-defined, for example `GRAFANA_PLAY_ADMIN_TOKEN`.
 
@@ -479,16 +518,25 @@ For cloud targets, pass `--cloud-instance-admin-token host=ENV_VAR_NAME`; the na
 
 When a step fails, the runner assigns an error classification to help with triage:
 
-| Code                 | Classification   | Notes                                        |
-| -------------------- | ---------------- | -------------------------------------------- |
-| `SELECTOR_NOT_FOUND` | `unknown`        | Could be content-drift OR product-regression |
-| `ACTION_FAILED`      | `unknown`        | Needs human triage                           |
-| `REQUIREMENT_FAILED` | `unknown`        | Could be content-drift OR missing setup      |
-| `TIMEOUT`            | `unknown`        | Could be content, product, or performance    |
-| `NETWORK_ERROR`      | `infrastructure` | Definitely environmental                     |
-| `AUTH_EXPIRED`       | `infrastructure` | Definitely environmental                     |
+| Code                   | Classification   | Notes                                        |
+| ---------------------- | ---------------- | -------------------------------------------- |
+| `SELECTOR_NOT_FOUND`   | `unknown`        | Could be content-drift OR product-regression |
+| `ACTION_FAILED`        | `unknown`        | Needs human triage                           |
+| `REQUIREMENT_FAILED`   | `unknown`        | Could be content-drift OR missing setup      |
+| `TIMEOUT`              | `unknown`        | Could be content, product, or performance    |
+| `NETWORK_ERROR`        | `infrastructure` | Definitely environmental                     |
+| `AUTH_EXPIRED`         | `infrastructure` | Definitely environmental                     |
+| `BROWSER_CRASHED`      | `infrastructure` | Browser or target crash event                |
+| `PAGE_CLOSED`          | `infrastructure` | Unexpected page close                        |
+| `CONTEXT_CLOSED`       | `infrastructure` | Unexpected browser context close             |
+| `BROWSER_DISCONNECTED` | `infrastructure` | Browser process disconnected                 |
+| `RUNNER_TIMEOUT`       | `infrastructure` | Parent watchdog terminated the child         |
 
 Only high-confidence network, authentication, browser-crash, and closed-target failures are auto-classified as `infrastructure`. Selector, action, requirement, and step timeout failures default to `unknown` and require human triage.
+
+Stable error codes are authoritative. Text classification is a fallback for Playwright errors that arrive before an event signal.
+
+An infrastructure-classified step ends the guide with `outcome: infrastructure_error`. It never becomes `MANDATORY_FAILURE`.
 
 The implemented classifier lives in `tests/e2e-runner/utils/guide-runner/classification.ts`.
 

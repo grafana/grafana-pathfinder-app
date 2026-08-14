@@ -11,9 +11,10 @@ import { tmpdir } from 'os';
 import { ExitCode } from './exit-codes';
 import { E2E_ENV, encodeEnvFlag } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
-import type { E2EErrorCode } from './schemas/e2e-report.schema';
+import { E2EErrorCodeSchema, type E2EErrorCode } from './schemas/e2e-report.schema';
 import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
 import { resolveStartingPath } from './starting-location';
+import { createProcessWatchdog } from './process-watchdog';
 
 export { resolveStartingUrl } from './starting-location';
 
@@ -67,20 +68,31 @@ export type AbortReason = 'AUTH_EXPIRED' | 'MANDATORY_FAILURE';
 /**
  * Abort file content structure.
  */
-interface AbortFileContent {
+interface GuideAbortFileContent {
   abortReason: AbortReason;
   message: string;
 }
+
+interface TerminalFileContent {
+  errorCode: E2EErrorCode;
+  message: string;
+}
+
+type AbortFileContent = GuideAbortFileContent | TerminalFileContent;
+
 function isAbortFileContent(value: unknown): value is AbortFileContent {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
 
   const candidate = value as Record<string, unknown>;
-  return (
-    (candidate.abortReason === 'AUTH_EXPIRED' || candidate.abortReason === 'MANDATORY_FAILURE') &&
-    typeof candidate.message === 'string'
-  );
+  if (typeof candidate.message !== 'string') {
+    return false;
+  }
+  if (candidate.abortReason === 'AUTH_EXPIRED' || candidate.abortReason === 'MANDATORY_FAILURE') {
+    return true;
+  }
+  return E2EErrorCodeSchema.safeParse(candidate.errorCode).success;
 }
 
 /**
@@ -160,18 +172,28 @@ export function processPlaywrightResults(
   filePaths: { abortFilePath: string; resultsFilePath: string; traceOutputFilePath: string }
 ): PlaywrightResult {
   const playwrightExitCode = exitCode;
-  const success = playwrightExitCode === 0;
 
   // Trace location is reported by the runner (see e2e-runner-contract) so the
   // CLI never hardcodes Playwright's per-test output-dir naming.
   const traceFile = options.trace ? readFileIfExists(filePaths.traceOutputFilePath)?.trim() || undefined : undefined;
 
   const resultsData = readJsonIfExists<TestResultsData>(filePaths.resultsFilePath);
+  const success = playwrightExitCode === 0 && (!resultsData?.outcome || resultsData.outcome === 'passed');
 
   // An abort file means the runner stopped early (e.g. session expiry).
   const abortValue = readJsonIfExists<unknown>(filePaths.abortFilePath);
   const abortContent = isAbortFileContent(abortValue) ? abortValue : undefined;
   if (abortContent) {
+    if ('errorCode' in abortContent) {
+      return {
+        success: false,
+        exitCode: ExitCode.TEST_FAILURE,
+        traceFile,
+        abortMessage: abortContent.message,
+        errorCode: abortContent.errorCode,
+        resultsData,
+      };
+    }
     const abortExitCode = abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
 
     return {
@@ -198,6 +220,7 @@ export function processPlaywrightResults(
     success,
     exitCode: success ? ExitCode.SUCCESS : ExitCode.TEST_FAILURE,
     traceFile,
+    errorCode: resultsData.errorCode,
     resultsData,
   };
 }
@@ -211,6 +234,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const resultsFilePath = join(tempDir, 'results.json');
   const authStateFile = join(tempDir, 'auth.json');
   const traceOutputFilePath = join(tempDir, 'trace-path.txt');
+  const deadlineFilePath = join(tempDir, 'deadline.json');
   const playwrightOutputDir = join(artifactsDir, `playwright-${basename(tempDir)}`);
   const traceEnabled = options.trace && !options.token;
 
@@ -243,8 +267,27 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
     }
 
     const result = await new Promise<PlaywrightResult>((resolve) => {
+      let settled = false;
+      let watchdogExpired = false;
+      let watchdog: ReturnType<typeof createProcessWatchdog> | undefined;
+      const settle = (value: PlaywrightResult) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        watchdog?.stop();
+        resolve(value);
+      };
+      const runnerTimeout = (): PlaywrightResult => ({
+        success: false,
+        exitCode: ExitCode.TEST_FAILURE,
+        traceFile: traceEnabled ? readFileIfExists(traceOutputFilePath)?.trim() || undefined : undefined,
+        errorCode: 'RUNNER_TIMEOUT',
+        abortMessage: 'The Playwright child exceeded its runner deadline.',
+      });
       const proc = spawn('npx', playwrightArgs, {
         cwd: runnerRoot,
+        detached: process.platform !== 'win32',
         env: {
           ...process.env,
           [E2E_ENV.GUIDE_JSON_PATH]: guidePath,
@@ -259,12 +302,25 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           [E2E_ENV.ARTIFACTS_DIR]: artifactsDir,
           [E2E_ENV.ALWAYS_SCREENSHOT]: encodeEnvFlag(options.alwaysScreenshot),
           [E2E_ENV.TRACE_OUTPUT_FILE]: traceOutputFilePath,
+          [E2E_ENV.DEADLINE_FILE_PATH]: deadlineFilePath,
           PLAYWRIGHT_HTML_OPEN: 'never',
         },
         stdio: 'inherit',
       });
+      watchdog = createProcessWatchdog(proc, {
+        deadlineFilePath,
+        onExpire: () => {
+          watchdogExpired = true;
+          console.error('Playwright runner deadline expired; requesting child termination.');
+        },
+        onForceKill: () => settle(runnerTimeout()),
+      });
 
       proc.on('close', (code) => {
+        if (watchdogExpired) {
+          settle(runnerTimeout());
+          return;
+        }
         const result = processPlaywrightResults(
           code ?? 1,
           { trace: traceEnabled },
@@ -274,12 +330,16 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
             traceOutputFilePath,
           }
         );
-        resolve(result);
+        settle(result);
       });
 
       proc.on('error', (err) => {
+        if (watchdogExpired) {
+          settle(runnerTimeout());
+          return;
+        }
         console.error(`Failed to spawn Playwright: ${err.message}`);
-        resolve({
+        settle({
           success: false,
           exitCode: ExitCode.CONFIGURATION_ERROR,
           errorCode: 'PLAYWRIGHT_SPAWN_FAILED',
@@ -311,7 +371,9 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           ? 'aborted'
           : result.abortReason === 'MANDATORY_FAILURE'
             ? 'failed'
-            : 'infrastructure_error';
+            : result.errorCode === 'STEP_TIMEOUT'
+              ? 'failed'
+              : 'infrastructure_error';
       result.resultsData = createMinimalResultsData({
         guide: {
           id: guideId,

@@ -24,4 +24,8 @@ describe('classifyError', () => {
   it('classifies closed browser targets as infrastructure', () => {
     expect(classifyError('Target page, context or browser has been closed')).toBe('infrastructure');
   });
+
+  it('classifies the Playwright Target crashed message as infrastructure', () => {
+    expect(classifyError('Target crashed')).toBe('infrastructure');
+  });
 });

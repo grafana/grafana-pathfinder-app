@@ -41,6 +41,29 @@ The source-level tripwires live in `src/components/docs-panel/docs-panel.contrac
 
 ---
 
+## Guide runner termination contract
+
+The guide runner has one controller for unexpected browser termination. The controller monitors these Playwright events:
+
+- `page.crash`
+- unexpected `page.close`
+- `browser.disconnected`
+- `browserContext.close`
+
+The first event wins and supplies the stable report code. Later events cannot replace that result.
+
+Expected Playwright teardown disables the monitor. Thus, normal page closure cannot replace a completed guide result.
+
+Each step has one hard deadline based on its calculated step budget. The deadline includes requirements, actions, polling, artifacts, and cleanup.
+
+If the deadline expires, the controller stops guide work before it closes the page. The report uses `STEP_TIMEOUT`, not a browser-close code.
+
+Browser events use `BROWSER_CRASHED`, `BROWSER_DISCONNECTED`, `PAGE_CLOSED`, or `CONTEXT_CLOSED`. These codes always produce `outcome: infrastructure_error`.
+
+Unit tests use event emitters to test arbitration and cleanup. These tests do not replace behavior tests against a real Playwright browser.
+
+---
+
 ## Block editor header contract
 
 The block-editor header exposes two stable row testids that responsive e2e tests depend on to assert the two-row layout holds at narrow widths:

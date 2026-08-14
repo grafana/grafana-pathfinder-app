@@ -38,7 +38,8 @@ import {
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
   SKIP_SYNC_TIMEOUT_MS,
 } from './constants';
-import { classifyError } from './classification';
+import { classifyError, classifyInfrastructureErrorCode } from './classification';
+import { DeadlineExceededError, runWithDeadline } from './deadline';
 import {
   captureFailureArtifacts,
   captureSuccessArtifacts,
@@ -56,6 +57,7 @@ import type {
   AllStepsResult,
   OnStepCompleteCallback,
 } from './types';
+import type { GuideTerminationController } from './termination';
 import { resolveSelector } from '../selector-resolver';
 import type { Locator } from '@playwright/test';
 
@@ -88,6 +90,48 @@ export async function scrollStepIntoView(
   // Wait for scroll animation to complete
   if (scrollDelay > 0) {
     await page.waitForTimeout(scrollDelay);
+  }
+}
+
+export async function executeStep(
+  page: Page,
+  step: TestableStep,
+  options: StepExecutionOptions = {}
+): Promise<StepTestResult> {
+  const timeout = options.timeout ?? calculateStepTimeout(step);
+  const startedAt = Date.now();
+  const deadlineEpochMs = startedAt + timeout;
+  try {
+    return await runWithDeadline({
+      timeoutMs: timeout,
+      message: `Step ${step.stepId} exceeded its ${timeout}ms execution deadline`,
+      operation: (signal) => executeStepWork(page, step, { ...options, timeout, signal, deadlineEpochMs }),
+      cancel: async (error) => {
+        options.terminationController?.terminate({
+          code: error.code,
+          message: error.message,
+          outcome: 'failed',
+          classification: 'unknown',
+          stepId: step.stepId,
+        });
+        await page.close({ runBeforeUnload: false }).catch(() => undefined);
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof DeadlineExceededError)) {
+      throw error;
+    }
+    return {
+      stepId: step.stepId,
+      status: 'failed',
+      durationMs: Date.now() - startedAt,
+      currentUrl: page.url(),
+      consoleErrors: [],
+      error: error.message,
+      errorCode: error.code,
+      skippable: step.skippable,
+      classification: 'unknown',
+    };
   }
 }
 
@@ -151,10 +195,12 @@ async function currentStepAction(page: Page, stepId: string): Promise<StepAction
 async function waitForStepActionToAppear(
   page: Page,
   stepId: string,
-  timeout = BUTTON_APPEAR_TIMEOUT_MS
+  timeout = BUTTON_APPEAR_TIMEOUT_MS,
+  signal?: AbortSignal
 ): Promise<StepAction | undefined> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
+    signal?.throwIfAborted();
     const action = await currentStepAction(page, stepId);
     if (action) {
       return action;
@@ -288,12 +334,14 @@ async function readStepError(page: Page, stepId: string): Promise<string | undef
 export async function waitForCompletionWithObjectivePolling(
   page: Page,
   stepId: string,
-  timeout: number
+  timeout: number,
+  signal?: AbortSignal
 ): Promise<{ completedViaObjectives: boolean }> {
   const startTime = Date.now();
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
 
   while (Date.now() - startTime < timeout) {
+    signal?.throwIfAborted();
     if ((await stepLocator.count()) === 0) {
       return { completedViaObjectives: false };
     }
@@ -398,6 +446,7 @@ async function revealGuidedTarget(page: Page, target: Locator, timeout: number):
         return menuButton;
       }
     }
+    terminationController?.setActiveStep(undefined);
   }
   await target.waitFor({ state: 'visible', timeout });
   return target;
@@ -442,15 +491,16 @@ async function waitForSubstepAdvance(
   stepLocator: Locator,
   previousSubstepIndex: number,
   timeoutMs: number,
-  options: { commentBox?: Locator } = {}
+  options: { commentBox?: Locator; signal?: AbortSignal } = {}
 ): Promise<void> {
-  const { commentBox } = options;
+  const { commentBox, signal } = options;
   const deadline = Date.now() + timeoutMs;
   const skipAfterMs = Math.floor(timeoutMs * GUIDED_SKIP_AFTER_TIMEOUT_FRACTION);
   let lastState: string | null = null;
   let lastIndex: string | null = null;
 
   while (Date.now() < deadline) {
+    signal?.throwIfAborted();
     // Unmount mid-wait is a completion signal (section auto-collapse on final substep);
     // a bare getAttribute on a detached locator blocks until the global test timeout.
     if ((await stepLocator.count()) === 0) {
@@ -507,7 +557,8 @@ export async function waitForFormfillSettle(
   page: Page,
   stepLocator: Locator,
   target: Locator,
-  targetValue: string
+  targetValue: string,
+  signal?: AbortSignal
 ): Promise<void> {
   await page.waitForTimeout(GUIDED_FORMFILL_DEBOUNCE_MS);
 
@@ -526,6 +577,7 @@ export async function waitForFormfillSettle(
   };
 
   while (Date.now() < validDeadline) {
+    signal?.throwIfAborted();
     if ((await stepLocator.count()) === 0) {
       return;
     }
@@ -645,12 +697,14 @@ export async function runGuidedSubstepLoop(
      * to `Date.now() + GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS` when omitted.
      */
     commentBoxDeadlineMs?: number;
+    stepDeadlineMs?: number;
+    signal?: AbortSignal;
     verbose?: boolean;
     artifactsDir?: string;
   }
 ): Promise<{ completed: boolean }> {
   let stepLocator = options.stepLocator;
-  const { perSubstepTimeoutMs, verbose = false, artifactsDir } = options;
+  const { perSubstepTimeoutMs, verbose = false, artifactsDir, signal } = options;
   const commentBoxDeadlineMs = options.commentBoxDeadlineMs ?? Date.now() + GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS;
   const guidedStepCount = step.guidedStepCount ?? 1;
 
@@ -672,6 +726,7 @@ export async function runGuidedSubstepLoop(
   };
 
   while (true) {
+    signal?.throwIfAborted();
     if (await stepDetached()) {
       return { completed: true };
     }
@@ -775,7 +830,7 @@ export async function runGuidedSubstepLoop(
         await target.scrollIntoViewIfNeeded();
         await dismissBadgeCelebrations(page);
         await target.fill(targetValue ?? '');
-        await waitForFormfillSettle(page, stepLocator, target, targetValue ?? '');
+        await waitForFormfillSettle(page, stepLocator, target, targetValue ?? '', signal);
       } else {
         throw new Error(`Guided step: unknown data-test-action "${action}"`);
       }
@@ -788,7 +843,13 @@ export async function runGuidedSubstepLoop(
       return { completed: true };
     }
 
-    await waitForSubstepAdvance(page, stepLocator, safeIndex, perSubstepTimeoutMs, { commentBox });
+    const remainingStepMs = options.stepDeadlineMs
+      ? Math.max(1, options.stepDeadlineMs - Date.now())
+      : perSubstepTimeoutMs;
+    await waitForSubstepAdvance(page, stepLocator, safeIndex, Math.min(perSubstepTimeoutMs, remainingStepMs), {
+      commentBox,
+      signal,
+    });
     await page.waitForTimeout(GUIDED_BETWEEN_SUBSTEP_DELAY_MS);
   }
 }
@@ -901,7 +962,8 @@ async function buildFailureArtifacts(
 export async function clickSkipButtonAndSync(
   page: Page,
   stepId: string,
-  timeout = SKIP_SYNC_TIMEOUT_MS
+  timeout = SKIP_SYNC_TIMEOUT_MS,
+  signal?: AbortSignal
 ): Promise<void> {
   const stepSkipButton = page.getByTestId(testIds.interactive.skipButton(stepId));
   const requirementSkipButton = page.getByTestId(testIds.interactive.requirementSkipButton(stepId));
@@ -915,6 +977,7 @@ export async function clickSkipButtonAndSync(
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
   const deadline = Date.now() + timeout;
   for (;;) {
+    signal?.throwIfAborted();
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
       throw new Error(`Step ${stepId}: Skip did not reach a terminal state within ${timeout}ms`);
@@ -965,22 +1028,27 @@ export async function clickSkipButtonAndSync(
  * @param options - Execution options
  * @returns StepTestResult with execution outcome and diagnostics
  */
-export async function executeStep(
+interface StepExecutionOptions {
+  timeout?: number;
+  verbose?: boolean;
+  artifactsDir?: string;
+  alwaysScreenshot?: boolean;
+  terminationController?: GuideTerminationController;
+  signal?: AbortSignal;
+  deadlineEpochMs?: number;
+}
+
+async function executeStepWork(
   page: Page,
   step: TestableStep,
-  options: {
-    timeout?: number;
-    verbose?: boolean;
-    /** Directory to write artifacts to (L3-5D). If not set, no artifacts captured. */
-    artifactsDir?: string;
-    /** Capture screenshots on success, not just failure. Default: false */
-    alwaysScreenshot?: boolean;
-  } = {}
+  options: StepExecutionOptions = {}
 ): Promise<StepTestResult> {
   // L3-3C: Calculate appropriate timeout based on step type
   const calculatedTimeout = calculateStepTimeout(step);
   const { timeout = calculatedTimeout, verbose = false, artifactsDir, alwaysScreenshot = false } = options;
   const startTime = Date.now();
+  const deadlineEpochMs = options.deadlineEpochMs ?? startTime + timeout;
+  const remainingMs = (cap = Number.POSITIVE_INFINITY) => Math.max(1, Math.min(cap, deadlineEpochMs - Date.now()));
   const consoleErrors: string[] = [];
 
   // Set up console error capture for this step execution
@@ -1013,7 +1081,12 @@ export async function executeStep(
     // completed) is never classified differently depending on which check
     // happened to observe it first; detachment is treated the same way
     // detachment is treated as completion elsewhere in this file.
-    const lateOutcome = await checkLateCompletionOrDetachment(page, step.stepId);
+    options.signal?.throwIfAborted();
+    const lateOutcome = await checkLateCompletionOrDetachment(
+      page,
+      step.stepId,
+      remainingMs(LATE_COMPLETION_CHECK_TIMEOUT_MS)
+    );
     if (lateOutcome !== 'not-complete') {
       const lateArtifacts = await buildSuccessArtifacts(
         page,
@@ -1043,7 +1116,12 @@ export async function executeStep(
 
     // Scroll step into view before interaction. Bounded so a step that's
     // completing/detaching right around this point doesn't hang the run.
-    await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
+    await scrollStepIntoView(
+      page,
+      step.stepId,
+      Math.min(SCROLL_SETTLE_DELAY_MS, remainingMs()),
+      remainingMs(SCROLL_INTO_VIEW_TIMEOUT_MS)
+    );
 
     // Capture PRE screenshot if alwaysScreenshot is enabled
     if (artifactsDir && alwaysScreenshot) {
@@ -1062,6 +1140,7 @@ export async function executeStep(
       verbose,
       attemptFix: true, // Attempt fix for all steps, skip later if it fails
       maxFixAttempts: MAX_FIX_ATTEMPTS,
+      timeout: remainingMs(),
     });
 
     // If requirements are not met after fix attempts
@@ -1072,7 +1151,7 @@ export async function executeStep(
         // record the skip once that's confirmed; a sync failure is a clear runner
         // failure rather than a false skip that reproduces the original bug.
         try {
-          await clickSkipButtonAndSync(page, step.stepId);
+          await clickSkipButtonAndSync(page, step.stepId, remainingMs(SKIP_SYNC_TIMEOUT_MS), options.signal);
         } catch (syncError) {
           const syncErrorMsg = syncError instanceof Error ? syncError.message : String(syncError);
           if (verbose) {
@@ -1150,7 +1229,12 @@ export async function executeStep(
       if (verbose) {
         console.log(`   ⏳ Waiting for a step action to appear...`);
       }
-      action = await waitForStepActionToAppear(page, step.stepId, discoveredAction ? 1000 : BUTTON_APPEAR_TIMEOUT_MS);
+      action = await waitForStepActionToAppear(
+        page,
+        step.stepId,
+        remainingMs(discoveredAction ? 1000 : BUTTON_APPEAR_TIMEOUT_MS),
+        options.signal
+      );
     }
     if (!action) {
       if (await checkObjectiveCompletion(page, step.stepId)) {
@@ -1174,9 +1258,9 @@ export async function executeStep(
         `   ⏱ Multistep detected (${step.internalActionCount} actions), timeout: ${Math.round(timeout / 1000)}s`
       );
     }
-    await waitForStepActionEnabled(page, step.stepId, action);
+    await waitForStepActionEnabled(page, step.stepId, action, remainingMs(BUTTON_ENABLE_TIMEOUT_MS));
     await dismissBadgeCelebrations(page);
-    await stepActionButton(page, step.stepId, action).click();
+    await stepActionButton(page, step.stepId, action).click({ timeout: remainingMs() });
 
     if (verbose) {
       console.log(`   → Clicked "${action === 'do-it' ? 'Do it' : 'Show me'}" for step ${step.stepId}`);
@@ -1188,19 +1272,21 @@ export async function executeStep(
     // Phase 3: Guided step — wait for executing, run substep loop, then wait for completion
     if (step.isGuided && step.guidedStepCount != null && step.guidedStepCount > 0) {
       const stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-      await waitForGuidedExecutionStart(page, stepLocator, GUIDED_WAIT_EXECUTING_MS);
+      await waitForGuidedExecutionStart(page, stepLocator, remainingMs(GUIDED_WAIT_EXECUTING_MS));
       const { completed } = await runGuidedSubstepLoop(page, step, {
         stepLocator,
         perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
         // Bound the *cumulative* comment-box readiness wait, across every
         // substep, by the step's own timeout budget (which already accounts
         // for guidedStepCount) instead of a fixed 5s re-granted per substep.
-        commentBoxDeadlineMs: Date.now() + timeout,
+        commentBoxDeadlineMs: deadlineEpochMs,
+        stepDeadlineMs: deadlineEpochMs,
+        signal: options.signal,
         verbose,
         artifactsDir,
       });
       if (!completed) {
-        await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+        await waitForCompletionWithObjectivePolling(page, step.stepId, remainingMs(), options.signal);
       }
 
       const guidedArtifacts = await buildSuccessArtifacts(
@@ -1228,7 +1314,12 @@ export async function executeStep(
     // Wait for step completion. A detached element here means the step
     // completed (section auto-collapsed) or navigation unmounted it; otherwise
     // poll data-test-step-state. Detects manual and objective-based completion.
-    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
+    const { completedViaObjectives } = await waitForCompletionWithObjectivePolling(
+      page,
+      step.stepId,
+      remainingMs(),
+      options.signal
+    );
 
     if (verbose && completedViaObjectives) {
       console.log(`   ℹ Step ${step.stepId} completed quickly (possibly via objectives)`);
@@ -1272,6 +1363,7 @@ export async function executeStep(
       currentUrl: page.url(),
       consoleErrors,
       error: errorMsg,
+      errorCode: classifyInfrastructureErrorCode(errorMsg),
       skippable: step.skippable,
       // L3-5C: Classify the error for triage hints
       classification: classifyError(errorMsg),
@@ -1326,6 +1418,7 @@ export async function executeAllSteps(
     artifactsDir?: string;
     /** Capture screenshots on success, not just failure. Default: false */
     alwaysScreenshot?: boolean;
+    terminationController?: GuideTerminationController;
   } = {}
 ): Promise<AllStepsResult> {
   const {
@@ -1335,6 +1428,7 @@ export async function executeAllSteps(
     onStepComplete,
     artifactsDir,
     alwaysScreenshot = false,
+    terminationController,
   } = options;
   const results: StepTestResult[] = [];
   let aborted = false;
@@ -1348,6 +1442,7 @@ export async function executeAllSteps(
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
+    terminationController?.setActiveStep(step.stepId);
 
     // If we've aborted, mark remaining steps as not_reached
     if (aborted) {
@@ -1425,7 +1520,29 @@ export async function executeAllSteps(
     // - Skippable steps: if fail for any reason, log and continue (does NOT fail overall test)
     // - Mandatory steps: if fail for any reason, abort and mark remaining as NOT_REACHED
     if (result.status === 'failed') {
-      if (!step.skippable && stopOnMandatoryFailure) {
+      if (result.classification === 'infrastructure') {
+        aborted = true;
+        abortMessage = result.error ?? 'The guide stopped after an infrastructure error.';
+        for (let j = i + 1; j < steps.length; j++) {
+          results.push({
+            stepId: steps[j].stepId,
+            status: 'not_reached',
+            durationMs: 0,
+            currentUrl: page.url(),
+            consoleErrors: [],
+            skippable: steps[j].skippable,
+            classification: 'infrastructure',
+          });
+        }
+        terminationController?.setActiveStep(undefined);
+        return {
+          results,
+          aborted,
+          outcome: 'infrastructure_error',
+          errorCode: result.errorCode ?? 'UNKNOWN',
+          abortMessage,
+        };
+      } else if (!step.skippable && stopOnMandatoryFailure) {
         // Mandatory step failed - abort test
         if (verbose) {
           console.log(`   ❌ Mandatory step failed, aborting remaining steps`);
@@ -1441,7 +1558,10 @@ export async function executeAllSteps(
         // Note: Result is already recorded as 'failed', but test continues
       }
     }
+    terminationController?.setActiveStep(undefined);
   }
+
+  terminationController?.setActiveStep(undefined);
 
   // Capture final screenshot if alwaysScreenshot is enabled
   let finalScreenshot: string | undefined;
@@ -1492,7 +1612,12 @@ export function logStepResult(result: StepTestResult): void {
 
   // L3-4C: Show skippable indicator for failed steps
   if (result.status === 'failed') {
-    message += result.skippable ? ' [skippable - test continues]' : ' [mandatory - test stops]';
+    message +=
+      result.classification === 'infrastructure'
+        ? ' [infrastructure - guide stops]'
+        : result.skippable
+          ? ' [skippable - test continues]'
+          : ' [mandatory - test stops]';
   }
 
   if (result.skipReason) {
@@ -1537,10 +1662,11 @@ export interface ExecutionSummary {
 
 export function summarizeResults(results: StepTestResult[]): ExecutionSummary {
   const failedResults = results.filter((r) => r.status === 'failed');
+  const guideFailures = failedResults.filter((r) => r.classification !== 'infrastructure');
 
   // L3-4C: Separate mandatory vs skippable failures
-  const mandatoryFailed = failedResults.filter((r) => !r.skippable).length;
-  const skippableFailed = failedResults.filter((r) => r.skippable).length;
+  const mandatoryFailed = guideFailures.filter((r) => !r.skippable).length;
+  const skippableFailed = guideFailures.filter((r) => r.skippable).length;
 
   const counts = {
     total: results.length,

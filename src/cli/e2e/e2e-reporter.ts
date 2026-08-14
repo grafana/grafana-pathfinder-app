@@ -47,6 +47,7 @@ export interface TestStepResult {
   currentUrl: string;
   consoleErrors: string[];
   error?: string;
+  errorCode?: E2EErrorCode;
   skipReason?: string;
   skippable: boolean;
   /** Error classification for failure triage (L3-5C) */
@@ -100,6 +101,7 @@ export function resolvePlaywrightVersion(): string {
  */
 export function generateSummary(results: TestStepResult[]): ReportSummary {
   const failedResults = results.filter((r) => r.status === 'failed');
+  const guideFailures = failedResults.filter((r) => r.classification !== 'infrastructure');
 
   return {
     total: results.length,
@@ -108,8 +110,8 @@ export function generateSummary(results: TestStepResult[]): ReportSummary {
     skipped: results.filter((r) => r.status === 'skipped').length,
     notReached: results.filter((r) => r.status === 'not_reached').length,
     duration: results.reduce((sum, r) => sum + r.durationMs, 0),
-    mandatoryFailed: failedResults.filter((r) => !r.skippable).length,
-    skippableFailed: failedResults.filter((r) => r.skippable).length,
+    mandatoryFailed: guideFailures.filter((r) => !r.skippable).length,
+    skippableFailed: guideFailures.filter((r) => r.skippable).length,
   };
 }
 
@@ -139,6 +141,9 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
 
     if (result.error) {
       reportStep.error = result.error;
+    }
+    if (result.errorCode) {
+      reportStep.errorCode = result.errorCode;
     }
 
     // Include skippable flag for failed steps (useful for understanding why test passed/failed)
@@ -424,6 +429,7 @@ export function toGuideResult(report: E2ETestReport): GuideResult {
     title: report.guide.title,
     path: report.guide.path,
     success: isReportSuccess(report) && report.abortReason !== 'SKIPPED_PREREQ',
+    outcome: report.outcome,
     summary: report.summary,
     duration: report.summary.duration,
     sideEffects: report.guide.sideEffects,
@@ -431,6 +437,9 @@ export function toGuideResult(report: E2ETestReport): GuideResult {
 
   if (report.abortReason) {
     result.abortReason = report.abortReason;
+  }
+  if (report.errorCode) {
+    result.errorCode = report.errorCode;
   }
 
   return result;

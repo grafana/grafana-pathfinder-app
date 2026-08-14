@@ -145,6 +145,40 @@ describe('processPlaywrightResults', () => {
     });
   });
 
+  it('maps a structured browser crash to an infrastructure error code', () => {
+    const paths = filePaths();
+    writeFileSync(paths.abortFilePath, JSON.stringify({ errorCode: 'BROWSER_CRASHED', message: 'Page crashed' }));
+
+    expect(processPlaywrightResults(1, { trace: false }, paths)).toMatchObject({
+      success: false,
+      exitCode: ExitCode.TEST_FAILURE,
+      abortMessage: 'Page crashed',
+      errorCode: 'BROWSER_CRASHED',
+    });
+  });
+
+  it('does not treat an infrastructure result file as success', () => {
+    const paths = filePaths();
+    writeFileSync(
+      paths.resultsFilePath,
+      JSON.stringify({
+        guide: { id: 'g', title: 'g', path: 'g.json' },
+        timestamp: '2026-01-01T00:00:00.000Z',
+        outcome: 'infrastructure_error',
+        errorCode: 'PAGE_CLOSED',
+        results: [],
+        aborted: true,
+      })
+    );
+
+    expect(processPlaywrightResults(0, { trace: false }, paths)).toMatchObject({
+      success: false,
+      exitCode: ExitCode.TEST_FAILURE,
+      errorCode: 'PAGE_CLOSED',
+      resultsData: { outcome: 'infrastructure_error' },
+    });
+  });
+
   it('returns the trace path only when trace collection is enabled', () => {
     const paths = filePaths();
     writeFileSync(paths.traceOutputFilePath, 'artifacts/trace.zip\n');
@@ -374,5 +408,44 @@ describe('runPlaywrightTests', () => {
       abortReason,
       abortMessage: `${abortReason} message`,
     });
+  });
+
+  it('returns RUNNER_TIMEOUT after graceful and forced child termination', async () => {
+    jest.useFakeTimers();
+    const child = new EventEmitter() as EventEmitter & { kill: jest.Mock };
+    child.kill = jest.fn(() => true);
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    spawnMock.mockImplementation(() => child as never);
+    try {
+      const resultPromise = runPlaywrightTests(
+        { path: 'fixture.json', content: '{}' },
+        {
+          targetUrl: 'http://localhost:3000',
+          verbose: false,
+          trace: false,
+          headed: false,
+          artifacts: 'artifacts',
+          alwaysScreenshot: false,
+          startingLocation: '/',
+        }
+      );
+
+      await jest.advanceTimersByTimeAsync(300000);
+      expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+      await jest.advanceTimersByTimeAsync(5000);
+
+      await expect(resultPromise).resolves.toMatchObject({
+        success: false,
+        errorCode: 'RUNNER_TIMEOUT',
+        resultsData: {
+          outcome: 'infrastructure_error',
+          errorCode: 'RUNNER_TIMEOUT',
+        },
+      });
+      expect(child.kill).toHaveBeenLastCalledWith('SIGKILL');
+    } finally {
+      errorSpy.mockRestore();
+      jest.useRealTimers();
+    }
   });
 });

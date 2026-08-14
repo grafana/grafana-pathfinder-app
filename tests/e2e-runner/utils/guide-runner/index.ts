@@ -27,6 +27,7 @@ export type {
   AllStepsResult,
   OnStepCompleteCallback,
 } from './types';
+export type { GuideTermination, GuideTerminationController } from './termination';
 
 // ============================================
 // Constants
@@ -47,7 +48,9 @@ export {
 // ============================================
 // Error Classification
 // ============================================
-export { classifyError } from './classification';
+export { classifyError, classifyInfrastructureErrorCode } from './classification';
+export { createGuideTerminationController, GuideTerminationError, raceGuideTermination } from './termination';
+export { DeadlineExceededError, runWithDeadline } from './deadline';
 
 // ============================================
 // Artifact Collection

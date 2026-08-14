@@ -31,13 +31,13 @@ export const SECTION_SELECTOR = '[data-testid^="interactive-section-"]';
 // Timing Constants (L3-3C)
 // ============================================
 
+export { GUIDE_SETUP_TIMEOUT_MS, GUIDE_INITIAL_TIMEOUT_MS } from '../../../../src/cli/e2e/e2e-runner-contract';
+
 /**
  * Default timeout for waiting for step completion.
  * Per design doc: 30 seconds as a generous default.
  */
 export const DEFAULT_STEP_TIMEOUT_MS = 30000;
-export const GUIDE_SETUP_TIMEOUT_MS = 60000;
-export const GUIDE_INITIAL_TIMEOUT_MS = GUIDE_SETUP_TIMEOUT_MS * 2;
 export const STEP_OVERHEAD_TIMEOUT_MS = 20000;
 
 /**
@@ -256,6 +256,7 @@ export const INFRASTRUCTURE_ERROR_PATTERNS = [
 
   // Browser/Playwright infrastructure
   /browser.*closed/i,
+  /target crashed/i,
   /target.*closed/i,
   /page.*crashed/i,
   /context.*destroyed/i,
