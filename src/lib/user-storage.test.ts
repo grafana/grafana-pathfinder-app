@@ -2,6 +2,7 @@ import { getAppEvents } from '@grafana/runtime';
 
 import {
   __resetQuotaWarningForTests,
+  guideResponseStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
   journeyCompletionStorage,
@@ -173,6 +174,17 @@ describe('milestoneCompletionStorage', () => {
 
     await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set());
     expect(JSON.parse(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION) ?? '{}')).toEqual({});
+  });
+
+  it('clearAll drops every journey', async () => {
+    await milestoneCompletionStorage.markCompleted(journeyUrl, 'install-alloy');
+    await milestoneCompletionStorage.markCompleted('backend-guide:fe-alerting-path', 'fe-alerting-01');
+
+    await milestoneCompletionStorage.clearAll();
+
+    await expect(milestoneCompletionStorage.getCompleted(journeyUrl)).resolves.toEqual(new Set());
+    await expect(milestoneCompletionStorage.getCompleted('backend-guide:fe-alerting-path')).resolves.toEqual(new Set());
+    expect(localStorage.getItem(StorageKeys.MILESTONE_COMPLETION)).toBeNull();
   });
 });
 
@@ -549,5 +561,71 @@ describe('warnQuotaExceededOnce — surfaces a single toast across writes', () =
     throwQuotaOnNextWrite = true;
     await tabStorage.setTabs(['tab-2']);
     expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================================
+// GUIDE RESPONSE STORAGE — OWN-KEY LOOKUPS
+// ============================================================================
+
+describe('guideResponseStorage — own-key lookups', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    // Seeded so getAll() parses a fresh container instead of returning the module default.
+    localStorage.setItem(StorageKeys.GUIDE_RESPONSES, JSON.stringify({}));
+  });
+
+  it('round-trips responses for an ordinary guide id', async () => {
+    await guideResponseStorage.setResponse('docs-grafana-alerting', 'region', 'us-east-1');
+
+    await expect(guideResponseStorage.getForGuide('docs-grafana-alerting')).resolves.toEqual({ region: 'us-east-1' });
+    await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'region')).resolves.toBe('us-east-1');
+    await expect(guideResponseStorage.hasResponse('docs-grafana-alerting', 'region')).resolves.toBe(true);
+
+    await guideResponseStorage.deleteResponse('docs-grafana-alerting', 'region');
+
+    await expect(guideResponseStorage.getForGuide('docs-grafana-alerting')).resolves.toEqual({});
+    await expect(guideResponseStorage.hasResponse('docs-grafana-alerting', 'region')).resolves.toBe(false);
+  });
+
+  it('misses a guide id naming an inherited member instead of resolving through the prototype chain', async () => {
+    const responses = await guideResponseStorage.getForGuide('__proto__');
+
+    expect(responses).not.toBe(Object.prototype);
+    expect(responses).toEqual({});
+    await expect(guideResponseStorage.getResponse('__proto__', 'toString')).resolves.toBeUndefined();
+    await expect(guideResponseStorage.hasResponse('__proto__', 'toString')).resolves.toBe(false);
+  });
+
+  it('leaves Object.prototype unmodified when writing under a guide id naming an inherited member', async () => {
+    try {
+      await guideResponseStorage.setResponse('__proto__', 'ownKeyProbe', 'written');
+
+      expect(({} as Record<string, unknown>).ownKeyProbe).toBeUndefined();
+      expect(Object.hasOwn(Object.prototype, 'ownKeyProbe')).toBe(false);
+    } finally {
+      delete (Object.prototype as unknown as Record<string, unknown>).ownKeyProbe;
+    }
+  });
+
+  it('leaves Object.prototype unmodified when deleting under a guide id naming an inherited member', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Object.prototype, 'toLocaleString');
+
+    try {
+      await guideResponseStorage.deleteResponse('__proto__', 'toLocaleString');
+
+      expect(Object.hasOwn(Object.prototype, 'toLocaleString')).toBe(true);
+    } finally {
+      if (descriptor && !Object.hasOwn(Object.prototype, 'toLocaleString')) {
+        Object.defineProperty(Object.prototype, 'toLocaleString', descriptor);
+      }
+    }
+  });
+
+  it('misses a variable name naming an inherited member', async () => {
+    await guideResponseStorage.setResponse('docs-grafana-alerting', 'region', 'us-east-1');
+
+    await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'toString')).resolves.toBeUndefined();
+    await expect(guideResponseStorage.hasResponse('docs-grafana-alerting', 'toString')).resolves.toBe(false);
   });
 });

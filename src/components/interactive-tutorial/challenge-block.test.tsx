@@ -12,9 +12,13 @@ jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: jest.fn(),
 }));
 
-jest.mock('../../requirements-manager', () => ({
-  checkPostconditions: jest.fn(),
-}));
+jest.mock('../../requirements-manager', () => {
+  const checkPostconditions = jest.fn();
+  return {
+    checkPostconditions,
+    useGuideRequirements: () => ({ checkPostconditions }),
+  };
+});
 
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),

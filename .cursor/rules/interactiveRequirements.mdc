@@ -74,5 +74,6 @@ DOM monitoring must stay narrow or requirements rechecking feeds itself:
 2. Add a handler in `src/requirements-manager/requirements-checker.utils.ts`.
 3. The static validator picks it up automatically via enum imports.
 4. Add coverage in `src/validation/condition-validator.test.ts` — the coupling test fails otherwise.
+5. If it reads per-guide state, take the guide from the handler's `ctx.guideId` — never a global or a shared default — and add its prefix to `GUIDE_SCOPED_REQUIREMENT_PREFIXES` in `src/requirements-manager/controller-requirements.ts`, so controller mode evaluates it against the guide it is rendering instead of round-tripping it to whichever guide the live tab has open.
 
 Configuration defaults, including the heartbeat interval and watch window, live in `src/constants/interactive-config.ts`. Read the current values there rather than restating them here.

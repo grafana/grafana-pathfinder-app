@@ -159,6 +159,18 @@ export const REQUIREMENTS_CHECK_TIMEOUT_MS = 10000;
  */
 export const REQUIREMENTS_POLL_INTERVAL_MS = 200;
 
+/**
+ * Maximum time to poll for a settled requirements state before treating
+ * an unmet read (with or without a Fix button) as genuinely terminal,
+ * rather than a transient DOM state.
+ *
+ * The plugin's requirement check can be mid-transition right after the
+ * initial check or right after a Fix button click: a step can read as
+ * unmet even though it settles to met (or to showing a Fix button)
+ * moments later.
+ */
+export const REQUIREMENTS_SETTLE_TIMEOUT_MS = 1000;
+
 // ============================================
 // Fix Button Execution Constants (L3-4B)
 // ============================================

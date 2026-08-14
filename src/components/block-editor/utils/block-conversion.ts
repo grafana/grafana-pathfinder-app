@@ -2,7 +2,7 @@
  * Block Type Conversion Utility
  *
  * Generic, schema-driven block conversion that:
- * - Allows any non-container block to convert to any other non-container block
+ * - Allows any convertible block to convert to any other convertible block
  * - Auto-computes data loss warnings using KNOWN_FIELDS from the schema
  * - Copies common fields automatically
  * - Maps content-like fields between types
@@ -13,31 +13,84 @@ import type { BlockType } from '../types';
 import type { JsonBlock } from '../../../types/json-guide.types';
 import { logger } from '../../../lib/logging';
 
+// ============ Conversion eligibility ============
+
+/**
+ * Why a block type cannot be a conversion *source*; `null` means it can be one.
+ *
+ * Source and target eligibility stay separate because legacy source-only types
+ * remain callable even though current forms do not expose those conversions.
+ */
+const SOURCE_EXCLUSION_REASONS = {
+  markdown: null,
+  html: null,
+  image: null,
+  video: null,
+  interactive: null,
+  multistep: null,
+  guided: null,
+  quiz: null,
+  input: null,
+  terminal: null,
+  'terminal-connect': null,
+  challenge: null,
+  'code-block': null,
+  section: 'its nested blocks would be silently dropped',
+  conditional: 'its branch blocks would be silently dropped',
+  'grot-guide': 'its screens would be silently dropped',
+  collapsible: null,
+  assistant: null,
+  'snippet-ref': null,
+} satisfies Record<BlockType, string | null>;
+
+/**
+ * Why a block type cannot be a conversion *target*; `null` means it can be one.
+ *
+ * The insertion order of the eligible (`null`) keys is the user-visible order
+ * of the switch-type menu, so reordering them here reorders that menu.
+ *
+ * Excluding `collapsible` and `assistant` narrows the direct API: the previous
+ * guard rejected only the three container targets, so `assistant` -> `collapsible`
+ * and `collapsible` -> `assistant` used to succeed by copying `blocks`. Neither
+ * pair is reachable — `getAvailableConversions` never offered either as a target
+ * and no form exposes the switch for those sources.
+ */
+const TARGET_EXCLUSION_REASONS = {
+  markdown: null,
+  html: null,
+  image: null,
+  video: null,
+  interactive: null,
+  multistep: null,
+  guided: null,
+  quiz: null,
+  input: null,
+  terminal: null,
+  'terminal-connect': null,
+  challenge: null,
+  'code-block': null,
+  section: 'conversion cannot invent the nested blocks a container needs',
+  conditional: 'conversion cannot invent the branch blocks a container needs',
+  'grot-guide': 'conversion cannot invent the screens it needs',
+  collapsible: 'its children are restricted to presentational blocks',
+  assistant: 'it has no form of its own, so the editor would render nothing after the switch',
+  'snippet-ref': 'snippetId has no sensible placeholder',
+} satisfies Record<BlockType, string | null>;
+
+const excludedTypes = (reasons: Record<BlockType, string | null>): readonly BlockType[] =>
+  (Object.keys(reasons) as BlockType[]).filter((type) => reasons[type] !== null);
+
+const eligibleTypes = (reasons: Record<BlockType, string | null>): readonly BlockType[] =>
+  (Object.keys(reasons) as BlockType[]).filter((type) => reasons[type] === null);
+
+export const SOURCE_EXCLUDED_BLOCK_TYPES = excludedTypes(SOURCE_EXCLUSION_REASONS);
+
+export const TARGET_EXCLUDED_BLOCK_TYPES = excludedTypes(TARGET_EXCLUSION_REASONS);
+
+/** All block types that support conversion, in `TARGET_EXCLUSION_REASONS` key order. */
+const CONVERTIBLE_TYPES = eligibleTypes(TARGET_EXCLUSION_REASONS);
+
 // ============ Configuration Maps ============
-
-/**
- * Container types excluded from conversion (they have nested blocks).
- */
-const CONTAINER_TYPES: ReadonlySet<BlockType> = new Set(['section', 'conditional', 'grot-guide']);
-
-/**
- * All non-container block types that support conversion.
- */
-const CONVERTIBLE_TYPES: readonly BlockType[] = [
-  'markdown',
-  'html',
-  'image',
-  'video',
-  'interactive',
-  'multistep',
-  'guided',
-  'quiz',
-  'input',
-  'terminal',
-  'terminal-connect',
-  'challenge',
-  'code-block',
-];
 
 /**
  * Fields shared across many block types - always copy if present.
@@ -45,10 +98,10 @@ const CONVERTIBLE_TYPES: readonly BlockType[] = [
 const COMMON_FIELDS = ['requirements', 'objectives', 'skippable'] as const;
 
 /**
- * Primary content field for each block type.
- * Used to map content between different block types.
+ * Primary content field for each block type, or `null` for the types that have
+ * no single body of text to carry across a conversion.
  */
-const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
+const CONTENT_FIELDS: Record<BlockType, string | null> = {
   markdown: 'content',
   html: 'content',
   interactive: 'content',
@@ -60,6 +113,14 @@ const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
   'terminal-connect': 'content',
   challenge: 'brief',
   'code-block': 'content',
+  image: null,
+  video: null,
+  section: null,
+  conditional: null,
+  collapsible: null,
+  assistant: null,
+  'grot-guide': null,
+  'snippet-ref': null,
 };
 
 /**
@@ -70,10 +131,11 @@ const CONTENT_FIELDS: Partial<Record<BlockType, string>> = {
 export const PLACEHOLDER_URL = 'https://placeholder.invalid/replace-me';
 
 /**
- * Required defaults when converting TO these types.
- * Provides sensible defaults for required fields that don't have a source mapping.
+ * Required defaults when converting TO these types, or `null` for the types that
+ * need no invented field. Total over `BlockType` so a new type cannot silently
+ * become a target with unsatisfied required fields.
  */
-const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
+const REQUIRED_DEFAULTS: Record<BlockType, Record<string, unknown> | null> = {
   quiz: { choices: [{ id: 'a', text: 'Option A', correct: true }] },
   input: { inputType: 'text', variableName: 'userInput' },
   image: { src: PLACEHOLDER_URL, alt: '' },
@@ -88,6 +150,14 @@ const REQUIRED_DEFAULTS: Partial<Record<BlockType, Record<string, unknown>>> = {
     successCriteria: 'coda-exit-zero:true',
   },
   'code-block': { reftarget: "div[data-testid='data-testid Code editor container']", code: '// Your code here' },
+  markdown: null,
+  html: null,
+  section: null,
+  conditional: null,
+  collapsible: null,
+  assistant: null,
+  'grot-guide': null,
+  'snippet-ref': null,
 };
 
 // ============ Public API ============
@@ -104,15 +174,13 @@ export interface ConversionWarning {
 
 /**
  * Get available target types for a given source type.
- * Returns all non-container types except the source type itself.
+ * Returns every convertible target type except the source type itself.
  */
 export function getAvailableConversions(sourceType: BlockType): BlockType[] {
-  // Container types cannot be converted
-  if (CONTAINER_TYPES.has(sourceType)) {
+  if (SOURCE_EXCLUSION_REASONS[sourceType] !== null) {
     return [];
   }
 
-  // Return all non-container types except the source type
   return CONVERTIBLE_TYPES.filter((t) => t !== sourceType);
 }
 
@@ -164,7 +232,7 @@ export function getConversionWarning(source: JsonBlock, targetType: BlockType): 
  * Convert a block from one type to another.
  * Preserves compatible fields and provides sensible defaults for required fields.
  *
- * @throws Error if conversion involves container blocks or fails schema validation
+ * @throws Error if either type is excluded from conversion, or if the result fails schema validation
  */
 export function convertBlockType(source: JsonBlock, targetType: BlockType): JsonBlock {
   // Same type - no-op
@@ -174,9 +242,14 @@ export function convertBlockType(source: JsonBlock, targetType: BlockType): Json
 
   const sourceType = source.type as BlockType;
 
-  // Validate not converting container blocks
-  if (CONTAINER_TYPES.has(sourceType) || CONTAINER_TYPES.has(targetType)) {
-    throw new Error(`Cannot convert container blocks (section, conditional)`);
+  const sourceExclusion = SOURCE_EXCLUSION_REASONS[sourceType];
+  if (sourceExclusion !== null) {
+    throw new Error(`Cannot convert from a ${sourceType} block: ${sourceExclusion}`);
+  }
+
+  const targetExclusion = TARGET_EXCLUSION_REASONS[targetType];
+  if (targetExclusion !== null) {
+    throw new Error(`Cannot convert to a ${targetType} block: ${targetExclusion}`);
   }
 
   const converted: Record<string, unknown> = { type: targetType };

@@ -27,7 +27,7 @@ export interface AppPlatformPathsResult {
   guideMetadata: Record<string, GuideMetadataEntry>;
 }
 
-const EMPTY_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: {} };
+const EMPTY_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: Object.create(null) };
 
 /**
  * Fetches the namespace's custom-guide catalogue and splits it into
@@ -47,7 +47,9 @@ export async function fetchAppPlatformLearningPaths(namespace: string): Promise<
     return EMPTY_RESULT;
   }
 
-  const guideMetadata: Record<string, GuideMetadataEntry> = {};
+  // Null-prototype: ids are CR-authored, so `constructor`/`toString`/`__proto__`
+  // must not resolve through Object.prototype in the membership gate below.
+  const guideMetadata: Record<string, GuideMetadataEntry> = Object.create(null);
   for (const entry of published) {
     guideMetadata[entry.id] = {
       title: entry.title || entry.id,
@@ -69,7 +71,7 @@ export async function fetchAppPlatformLearningPaths(namespace: string): Promise<
       // in a published path's manifest must not leak into My Learning (it has no
       // guideMetadata entry, so it would render titled by its raw id and inflate
       // the denominator). Matches the resolver's published-only gate.
-      guides: (entry.manifest?.milestones ?? []).filter((id) => id in guideMetadata),
+      guides: (entry.manifest?.milestones ?? []).filter((id) => Object.hasOwn(guideMetadata, id)),
       badgeId: '',
       isPrivate: true,
       // Carried so the My Learning launch can render members with milestone

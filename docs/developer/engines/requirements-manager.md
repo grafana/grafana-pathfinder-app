@@ -145,6 +145,18 @@ The hook returns a comprehensive state object including:
 - Per-check timeout management via TimeoutManager
 - Retry state feedback (retryCount, isRetrying) for UI display
 
+### Guide identity for `var-*` checks
+
+`var-<name>:<value>` resolves the stored response for the guide that owns the check. Each `ContentRenderer` binds its derived guide id in `GuideRequirementsProvider`, and the requirements and postconditions APIs carry that identity through mount-time, retry, reactive, and action-verification checks. Concurrent renderers therefore never infer identity from mount order.
+
+In two-tab controller mode the step is still owned by the controller's renderer, so `splitGuideScopedRequirements` (`controller-requirements.ts`) keeps every per-guide token on the controller side, evaluates it through the scoped checker, round-trips only the remaining tokens to the live tab, and ANDs the two verdicts. `GUIDE_SCOPED_REQUIREMENT_PREFIXES` pins that set: `var-` reads `guideResponseStorage` under the renderer's guide id, and `section-completed:` reads `sectionDoneStorage` under the ambient content key with a DOM fallback over sections that only the controller renders. Neither crosses the wire, so the live tab's own guide can never satisfy a controller step ([#1574](https://github.com/grafana/grafana-pathfinder-app/issues/1574)).
+
+`src/global-state/guide-identity.ts` retains a compatibility fallback for callers outside a renderer tree. When that fallback has no registered identity it resolves to the empty string, which no writer ever stores under, so `var-*` checks fail instead of sharing a sentinel bucket.
+
+Renderer-owned code must therefore reach the checkers through `useGuideRequirements()`, never through the module-level `checkRequirements` / `checkPostconditions`. `unscoped-checkers.ratchet.test.ts` pins the allowlist of direct importers — today only the barrel, the provider itself, and `live-tab-executor.ts`, which has no renderer of its own and only ever receives the non-guide-scoped tokens.
+
+Scoping is only as precise as the derived id. `ContentRenderer` derives it by flattening the content URL's pathname, so distinct guides whose pathnames flatten to the same string still share a bucket — this separates identities, it does not make them unique. Hardening the derivation would orphan already-stored responses and needs a storage migration, so it is deliberately out of scope here.
+
 ## Objectives vs Requirements
 
 The system distinguishes between two types of conditions:
@@ -367,6 +379,7 @@ The Requirements Manager integrates with:
 
 - `TimeoutManager` - Manages debouncing and delayed checks
 - `guideResponseStorage` - Variable storage for var-based requirements
+- `global-state/guide-identity.ts` - Compatibility guide identity for callers outside a renderer tree (see [Guide identity for `var-*` checks](#guide-identity-for-var-checks))
 - DOM utilities in `src/lib/dom/` - DOM state checking functions
 
 ## Configuration

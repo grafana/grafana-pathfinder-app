@@ -42,6 +42,7 @@ import {
   captureFinalScreenshot,
 } from './artifacts';
 import { validateSession, handleRequirementsWithFix } from './requirements';
+import { dismissBadgeCelebrations } from './badge-celebrations';
 import type {
   TestableStep,
   SkipReason,
@@ -323,7 +324,7 @@ function guidedSelectorLocator(page: Page, selector: string): Locator {
   return parsed.trailingSelector ? matched.locator(parsed.trailingSelector).first() : matched;
 }
 
-async function revealGuidedTarget(target: Locator, timeout: number): Promise<Locator> {
+async function revealGuidedTarget(page: Page, target: Locator, timeout: number): Promise<Locator> {
   if (await target.isVisible()) {
     return target;
   }
@@ -331,6 +332,7 @@ async function revealGuidedTarget(target: Locator, timeout: number): Promise<Loc
     const panel = target.locator('xpath=ancestor::section[1]');
     if ((await panel.count()) > 0) {
       await panel.scrollIntoViewIfNeeded().catch(() => {});
+      await dismissBadgeCelebrations(page);
       await panel.hover({ timeout }).catch(() => {});
       if (await target.isVisible()) {
         return target;
@@ -351,6 +353,7 @@ async function revealGuidedTarget(target: Locator, timeout: number): Promise<Loc
  * Handles grafana: prefix through the Node-safe E2E resolver.
  */
 async function resolveGuidedTarget(page: Page, reftarget: string, actionType: string): Promise<Locator> {
+  await dismissBadgeCelebrations(page);
   const timeout = GUIDED_TARGET_RESOLUTION_TIMEOUT_MS;
   const selector = reftarget.startsWith('grafana:') ? resolveSelector(reftarget) : reftarget;
 
@@ -358,18 +361,18 @@ async function resolveGuidedTarget(page: Page, reftarget: string, actionType: st
     const byRole = page.getByRole('button', { name: reftarget });
     const n = await byRole.count();
     if (n > 0) {
-      return revealGuidedTarget(byRole.first(), timeout);
+      return revealGuidedTarget(page, byRole.first(), timeout);
     }
     const bySelector = guidedSelectorLocator(page, selector);
     const hasButton = bySelector.filter({ has: page.getByRole('button') });
     const hasCount = await hasButton.count();
     if (hasCount > 0) {
-      return revealGuidedTarget(hasButton.first(), timeout);
+      return revealGuidedTarget(page, hasButton.first(), timeout);
     }
-    return revealGuidedTarget(bySelector.first(), timeout);
+    return revealGuidedTarget(page, bySelector.first(), timeout);
   }
 
-  return revealGuidedTarget(guidedSelectorLocator(page, selector), timeout);
+  return revealGuidedTarget(page, guidedSelectorLocator(page, selector), timeout);
 }
 
 /**
@@ -428,6 +431,7 @@ async function waitForSubstepAdvance(
       const skipBtn = commentBox.getByRole('button', { name: /^Skip$/ });
       const count = await skipBtn.count();
       if (count > 0) {
+        await dismissBadgeCelebrations(page);
         await skipBtn.click().catch(() => {});
       }
     }
@@ -443,7 +447,7 @@ async function waitForSubstepAdvance(
 /**
  * After formfill: debounce, optionally wait for data-test-form-state="valid", or retry once on persistent invalid (Phase 4.1).
  */
-async function waitForFormfillSettle(
+export async function waitForFormfillSettle(
   page: Page,
   stepLocator: Locator,
   target: Locator,
@@ -478,6 +482,7 @@ async function waitForFormfillSettle(
         invalidSince = Date.now();
       }
       if (Date.now() - invalidSince >= GUIDED_FORMFILL_INVALID_PERSIST_MS) {
+        await dismissBadgeCelebrations(page);
         await target.fill(targetValue);
         await page.waitForTimeout(GUIDED_FORMFILL_DEBOUNCE_MS);
         const afterRetry = await readFormState();
@@ -503,7 +508,7 @@ async function waitForFormfillSettle(
  * Run the guided substep loop: read comment box contract, perform action, wait for advance.
  * Phase 4: formfill validation, hover dwell, skippable substeps, navigation re-query, error diagnostics.
  */
-async function runGuidedSubstepLoop(
+export async function runGuidedSubstepLoop(
   page: Page,
   step: TestableStep,
   options: {
@@ -575,6 +580,7 @@ async function runGuidedSubstepLoop(
     try {
       if (action === 'noop') {
         const continueBtn = commentBox.getByRole('button', { name: /Continue/ });
+        await dismissBadgeCelebrations(page);
         await continueBtn.click();
       } else if (action === 'button' || action === 'highlight') {
         if (!reftarget) {
@@ -583,6 +589,7 @@ async function runGuidedSubstepLoop(
         const urlBefore = page.url();
         const target = await resolveGuidedTarget(page, reftarget, action);
         await target.scrollIntoViewIfNeeded();
+        await dismissBadgeCelebrations(page);
         await target.click();
         await page.waitForTimeout(100);
         if (urlBefore !== page.url()) {
@@ -594,6 +601,7 @@ async function runGuidedSubstepLoop(
         }
         const target = await resolveGuidedTarget(page, reftarget, 'hover');
         await target.scrollIntoViewIfNeeded();
+        await dismissBadgeCelebrations(page);
         await target.hover();
         await page.waitForTimeout(GUIDED_HOVER_DWELL_MS);
       } else if (action === 'formfill') {
@@ -602,6 +610,7 @@ async function runGuidedSubstepLoop(
         }
         const target = await resolveGuidedTarget(page, reftarget, 'formfill');
         await target.scrollIntoViewIfNeeded();
+        await dismissBadgeCelebrations(page);
         await target.fill(targetValue ?? '');
         await waitForFormfillSettle(page, stepLocator, target, targetValue ?? '');
       } else {
@@ -854,6 +863,7 @@ export async function executeStep(
       );
     }
     await waitForStepActionEnabled(page, step.stepId, action);
+    await dismissBadgeCelebrations(page);
     await stepActionButton(page, step.stepId, action).click();
 
     if (verbose) {

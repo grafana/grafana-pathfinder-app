@@ -15,10 +15,21 @@ import React from 'react';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
+import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { testIds } from '../../constants/testIds';
+import { milestoneCompletionStorage } from '../../lib/user-storage';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
+}));
+
+// Not mocking `lib/logging`: the assertion below is about what the real
+// logger-to-Faro bridge emits, so only the bridge sink is replaced.
+jest.mock('../../lib/telemetry/bridge', () => ({
+  pushFaroError: jest.fn(),
+  pushFaroLog: jest.fn(),
+  pushFaroUserAction: jest.fn(),
+  registerTelemetryBridge: jest.fn(),
 }));
 
 const publishMock = jest.fn();
@@ -92,10 +103,12 @@ jest.mock('../../lib/user-storage', () => ({
   journeyCompletionStorage: { getAll: jest.fn(async () => ({})), clear: jest.fn() },
   interactiveStepStorage: { clearAll: jest.fn() },
   interactiveCompletionStorage: { clearAll: jest.fn() },
+  milestoneCompletionStorage: { clearAll: jest.fn() },
 }));
 jest.mock('../../global-state/completion-store', () => ({ evictAllContentCaches: jest.fn() }));
 
 const prepareMock = prepareGuideLaunch as jest.MockedFunction<typeof prepareGuideLaunch>;
+const pushFaroLogMock = pushFaroLog as jest.Mock;
 
 function deferred() {
   let resolve!: (r: PrepareGuideLaunchResult) => void;
@@ -194,15 +207,59 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it('surfaces a failed prepare as an error alert without opening a guide', async () => {
-    prepareMock.mockResolvedValue({ ok: false, error: 'Failed to load content' });
+    prepareMock.mockResolvedValue({ ok: false, error: 'Failed to load content', errorCode: 'fetch-failed' });
     const onOpenGuide = jest.fn();
 
     render(<MyLearningTab onOpenGuide={onOpenGuide} />);
-    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+    const continueButton = screen.getByTestId(testIds.learningPaths.continueButton('path-1'));
+    fireEvent.click(continueButton);
 
     await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
     expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' }));
     expect(onOpenGuide).not.toHaveBeenCalled();
+    // The alert replaces the pending pill: a dead click that only cleared the
+    // pending state is the failure this path exists to rule out.
+    expect(continueButton).not.toBeDisabled();
+    expect(continueButton).not.toHaveTextContent('Opening…');
+  });
+
+  it('keeps launch-URL secrets and forwarded error text out of logger and Faro context', async () => {
+    mockGetGuideUrlForPath.mockReturnValue(
+      'https://grafana.com/docs/learning-paths/path-1/guide-1/?token=url-secret#fragment-secret'
+    );
+    // Shaped like the fetch tier's forwarded Zod message (content-fetcher's
+    // `Invalid guide: ${message}`), which interpolates the authored token.
+    prepareMock.mockResolvedValue({
+      ok: false,
+      error:
+        'Invalid guide: Unknown requirement "authored-token-secret". See https://grafana.com/docs/x?leak=free-text-secret',
+      errorCode: 'fetch-failed',
+    });
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+
+    try {
+      render(<MyLearningTab onOpenGuide={jest.fn()} />);
+      fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+
+      await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
+      const expectedContext = {
+        content_url: 'grafana.com/docs/learning-paths/path-1/guide-1/',
+        error_code: 'fetch-failed',
+      };
+      expect(consoleError).toHaveBeenCalledWith('[MyLearning] Guide launch preparation failed', expectedContext);
+      expect(pushFaroLogMock).toHaveBeenCalledWith(
+        'error',
+        '[MyLearning] Guide launch preparation failed',
+        expectedContext
+      );
+      const emittedContext = JSON.stringify({ console: consoleError.mock.calls, faro: pushFaroLogMock.mock.calls });
+      expect(emittedContext).not.toContain('url-secret');
+      expect(emittedContext).not.toContain('fragment-secret');
+      expect(emittedContext).not.toContain('authored-token-secret');
+      expect(emittedContext).not.toContain('free-text-secret');
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it('keeps every not-yet-complete path in My Courses and only 100% in Completed', () => {
@@ -534,5 +591,28 @@ describe('MyLearningTab — App Platform guide launch', () => {
       source: 'home_page',
       packageInfo: undefined,
     });
+  });
+});
+
+describe('MyLearningTab — reset all learning progress', () => {
+  it('drops milestone checklists so a single later completion cannot re-complete a course', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(milestoneCompletionStorage.clearAll).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  it('leaves milestone checklists alone when the confirmation is declined', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect(milestoneCompletionStorage.clearAll).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 });

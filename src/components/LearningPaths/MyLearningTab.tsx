@@ -19,12 +19,14 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { StorageEvents } from '../../lib/event-names';
 import {
   learningProgressStorage,
   journeyCompletionStorage,
   interactiveStepStorage,
   interactiveCompletionStorage,
+  milestoneCompletionStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
 import type { EarnedBadge } from '../../types';
@@ -118,10 +120,15 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         if (result.ok) {
           onOpenGuide(result.launch);
         } else {
-          // The raw error is internal-shaped — keep it for the logs (Faro
-          // bridge makes launch failures countable) and show a translated
-          // generic message.
-          logger.error('[MyLearning] Guide launch preparation failed', { url, error: result.error });
+          // Log context reaches Faro attributes verbatim, so only stable,
+          // low-cardinality values go in: the URL loses its query and fragment,
+          // and the classification code stands in for `result.error`, whose free
+          // text can echo fetched-guide values. The user sees a translated
+          // generic message either way.
+          logger.error('[MyLearning] Guide launch preparation failed', {
+            content_url: normalizeTelemetryUrl(url),
+            error_code: result.errorCode,
+          });
           getAppEvents().publish({
             type: 'alert-error',
             payload: [
@@ -237,6 +244,11 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       for (const url of Object.keys(completions)) {
         await journeyCompletionStorage.clear(url);
       }
+
+      // Milestone checklists outlive a per-path reset for paths that predate the
+      // path-key fix, so a global reset has to drop them too — otherwise the next
+      // single completion re-crosses the all-milestones threshold.
+      await milestoneCompletionStorage.clearAll();
 
       // Clear all interactive guide step and completion state
       // This prevents guides from instantly re-completing when reopened

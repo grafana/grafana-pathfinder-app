@@ -86,6 +86,8 @@ github.com/grafana/dskit v0.0.0-20260108123158-1a1acfb6ef2e h1:zP30ZbtnWjy0KJxTo
 github.com/grafana/dskit v0.0.0-20260108123158-1a1acfb6ef2e/go.mod h1:Tl9i4F2CPp3cOiXo06JObTh05tENG/NV/ombn2XOY7Y=
 github.com/grafana/grafana-plugin-sdk-go v0.296.1 h1:7J0tGnR6u+RIT3XCX/T93Fb9BRQR0aHh6gYAYaAy1dw=
 github.com/grafana/grafana-plugin-sdk-go v0.296.1/go.mod h1:DWmZQakZl3peJdyqUTqNr95n0+BqrwfZBBwuWZhJTyY=
+github.com/grafana/grafana-plugin-sdk-go v0.296.2 h1:HNNKhkGnkMxPqT/5hYcHLfjsPEa1UiCX5S8QbXe+JfM=
+github.com/grafana/grafana-plugin-sdk-go v0.296.2/go.mod h1:wa5kuCUBrsZhCInGSf4cAmkt4YLDQtTLoRKuxCsMn+4=
 github.com/grafana/otel-profiling-go v0.6.0 h1:W7lOZaJj4IJISXMcM1UBk3fJF3tzF2OD6MJBJaQp1H8=
 github.com/grafana/otel-profiling-go v0.6.0/go.mod h1:cqLIDgNXlnzknJ0WLiEe+JPjZk2MZ4ftMdqRJRWj1ZM=
 github.com/grafana/pyroscope-go/godeltaprof v0.1.12 h1:X6OemT2WcLtxdmNukEQuIp0c+efWVI/tBTd0oeWeDHI=
