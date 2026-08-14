@@ -541,12 +541,25 @@ export const JsonInputBlockSchema = z
       // A blocking check is a tracked step, and its completion record is keyed
       // on the block id. A generated id moves whenever the guide is edited,
       // orphaning every record earned under the old one.
-      if (block.dataCheckBlocking && !block.id?.trim()) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['id'],
-          message: 'A blocking data check needs an explicit `id`, so its completion records survive an edit.',
-        });
+      if (block.dataCheckBlocking) {
+        if (!block.id?.trim()) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['id'],
+            message: 'A blocking data check needs an explicit `id`, so its completion records survive an edit.',
+          });
+        }
+        // A blocking check gates a section and writes durable completion, so it
+        // only ever runs against a data source the user chose. Seeding the pick
+        // would let it complete against one they never saw, and the tracked
+        // renderer drops the field anyway — inert, not merely unwise.
+        if (block.defaultValue !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['defaultValue'],
+            message: '`defaultValue` cannot seed a blocking data check — the user has to pick the data source.',
+          });
+        }
       }
       return;
     }

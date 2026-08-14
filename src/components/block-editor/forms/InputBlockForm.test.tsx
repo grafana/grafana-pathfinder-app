@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { InputBlockForm } from './InputBlockForm';
+import { JsonInputBlockSchema } from '../../../types/json-guide.schema';
 import type { JsonBlock } from '../types';
 
 function renderForm(onSubmit: (block: JsonBlock) => void = jest.fn()) {
@@ -168,6 +169,7 @@ describe('InputBlockForm', () => {
 
       expect(onSubmit).toHaveBeenCalledWith({
         type: 'input',
+        id: 'check-metricsdatasource',
         prompt: 'Pick a data source',
         inputType: 'datasource',
         variableName: 'metricsDatasource',
@@ -177,6 +179,55 @@ describe('InputBlockForm', () => {
         dataCheckTimeTo: 'now',
         dataCheckBlocking: true,
       });
+    });
+
+    // The form has no id field, so nothing else would supply one — and a
+    // blocking check the editor cannot produce validly is a dead authoring path.
+    it('emits a blocking check the schema accepts', () => {
+      const onSubmit = jest.fn();
+      const { submitButton } = renderDatasourceForm(onSubmit);
+
+      fireEvent.change(queryInput(), { target: { value: 'up' } });
+      fireEvent.click(screen.getByRole('checkbox', { name: /holds the section up/i }));
+      fireEvent.click(submitButton);
+
+      const result = JsonInputBlockSchema.safeParse(onSubmit.mock.calls[0]![0]);
+      expect(result.success).toBe(true);
+    });
+
+    it('leaves an advisory check without an id, since it stores no completion', () => {
+      const onSubmit = jest.fn();
+      const { submitButton } = renderDatasourceForm(onSubmit);
+
+      fireEvent.change(queryInput(), { target: { value: 'up' } });
+      fireEvent.click(submitButton);
+
+      expect(onSubmit.mock.calls[0]![0]).not.toHaveProperty('id');
+      expect(JsonInputBlockSchema.safeParse(onSubmit.mock.calls[0]![0]).success).toBe(true);
+    });
+
+    it("keeps the guide's own id on an edit rather than deriving a new one", () => {
+      const onSubmit = jest.fn();
+      render(
+        <InputBlockForm
+          initialData={{
+            type: 'input',
+            id: 'check-authored-by-hand',
+            prompt: 'Pick a data source',
+            inputType: 'datasource',
+            variableName: 'metricsDatasource',
+            dataCheckQuery: 'up',
+            dataCheckBlocking: true,
+          }}
+          onSubmit={onSubmit}
+          onCancel={jest.fn()}
+          isEditing
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Update block' }));
+
+      expect(onSubmit.mock.calls[0]![0]).toMatchObject({ id: 'check-authored-by-hand' });
     });
 
     it('drops the check fields when the query is cleared, which the schema would reject', () => {

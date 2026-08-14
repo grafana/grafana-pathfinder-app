@@ -11,6 +11,7 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { testIds } from '../../../constants/testIds';
+import { slugify } from '../../../utils/slug';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonInputBlock } from '../../../types/json-guide.types';
 
@@ -114,8 +115,17 @@ export function InputBlockForm({
         .map((r) => r.trim())
         .filter((r) => r.length > 0);
 
+      const isBlockingCheck = hasDataCheck && dataCheckBlocking;
+      // The form has no id field, so an edit would otherwise drop the one the
+      // guide already carries — and a blocking check is schema-invalid without
+      // one, because its completion records are keyed on it. Derived from
+      // `variableName`, which is already a validated identifier, so the id is
+      // written into the JSON and survives later edits.
+      const blockId = initial?.id ?? (isBlockingCheck ? `check-${slugify(variableName.trim())}` : undefined);
+
       const block: JsonInputBlock = {
         type: 'input',
+        ...(blockId && { id: blockId }),
         prompt: prompt.trim(),
         inputType,
         variableName: variableName.trim(),
@@ -163,6 +173,7 @@ export function InputBlockForm({
       dataCheckTimeFrom,
       dataCheckTimeTo,
       dataCheckBlocking,
+      initial,
       onSubmit,
     ]
   );

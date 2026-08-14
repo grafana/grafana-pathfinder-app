@@ -865,7 +865,7 @@ Every check aborts after 15 seconds. Result size is capped at 100 wherever the q
 
 `dataCheckFailureMessage` is shown **only** when the query ran and came back empty. A timeout, a permissions error, or a broken data source reports the underlying error instead — a user told their metric is missing might go looking for the wrong problem, or skip a blocking step believing the data is genuinely absent. Write the message for the empty-result case and let the error path speak for itself.
 
-A blocking check **must** carry an explicit `id`; validation rejects one without it. The id becomes the step id that completion is stored against, so a generated one would orphan a user's progress the next time the guide is edited. An advisory check needs no id — it is not a tracked step.
+A blocking check **must** carry an explicit `id`, and **must not** carry a `defaultValue`; validation rejects either. A gating check writes durable completion, so the data source has to be one the user chose — a seeded pick could complete a step against a data source they never saw. An advisory check honours `defaultValue` as usual. The id becomes the step id that completion is stored against, so a generated one would orphan a user's progress the next time the guide is edited. An advisory check needs no id — it is not a tracked step.
 
 `requirements` on an input block is honoured **only** when `dataCheckBlocking` is set. On every other input — text, boolean, and an advisory datasource picker — the field validates, parses, and then does nothing: the block always renders and always accepts a response. Do not use it to gate a plain input.
 

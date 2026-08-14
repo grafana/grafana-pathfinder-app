@@ -87,6 +87,30 @@ describe('input block data-check fields', () => {
     expect(result.success).toBe(true);
   });
 
+  // The tracked renderer has no `defaultValue` prop, so an authored one would be
+  // inert — and seeding the pick would let a gating check complete against a
+  // data source the user never chose.
+  it('rejects a defaultValue on a blocking check rather than dropping it', () => {
+    const result = JsonInputBlockSchema.safeParse({
+      ...basePicker,
+      id: 'check-metrics',
+      dataCheckQuery: 'up',
+      dataCheckBlocking: true,
+      defaultValue: 'Prometheus',
+    });
+    expect(result.success).toBe(false);
+    expect(issuePaths(result)).toContain('defaultValue');
+  });
+
+  it('still allows one on an advisory check, which honours it', () => {
+    const result = JsonInputBlockSchema.safeParse({
+      ...basePicker,
+      dataCheckQuery: 'up',
+      defaultValue: 'Prometheus',
+    });
+    expect(result.success).toBe(true);
+  });
+
   it.each(['text', 'boolean'])('rejects a check on a %s input, which has no data source to query', (inputType) => {
     const result = JsonInputBlockSchema.safeParse({
       ...basePicker,
