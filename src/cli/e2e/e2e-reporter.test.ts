@@ -226,6 +226,41 @@ describe('report outcome classification', () => {
     expect(report.outcome).toBe('infrastructure_error');
   });
 
+  it('counts diagnostic-only infrastructure classification as a mandatory failure', () => {
+    const report = generateReport({
+      guide: { id: 'network-panel', title: 'network-panel', path: 'network-panel/content.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      results: [
+        {
+          stepId: 'passed-step',
+          status: 'passed',
+          durationMs: 10,
+          currentUrl: '/',
+          consoleErrors: [],
+          skippable: false,
+        },
+        {
+          stepId: 'text-only-failure',
+          status: 'failed',
+          durationMs: 10,
+          currentUrl: '/',
+          consoleErrors: [],
+          error: 'Network panel not found',
+          classification: 'infrastructure',
+          skippable: false,
+        },
+      ],
+      aborted: true,
+    });
+
+    expect(report.summary).toMatchObject({
+      failed: 1,
+      mandatoryFailed: 1,
+      skippableFailed: 0,
+    });
+    expect(report.outcome).toBe('failed');
+  });
+
   it('keeps auth-expired reports out of the passed multi-guide count', () => {
     const report = generateMultiGuideReport([
       {

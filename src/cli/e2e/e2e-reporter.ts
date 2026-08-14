@@ -31,6 +31,7 @@ import {
   type MultiGuideSummary,
   type MultiGuideReport,
 } from './schemas/e2e-report.schema';
+import { isAuthoritativeBrowserInfrastructureCode } from './runner-infrastructure';
 
 // ============================================
 // Types - Input from Test Execution
@@ -101,7 +102,7 @@ export function resolvePlaywrightVersion(): string {
  */
 export function generateSummary(results: TestStepResult[]): ReportSummary {
   const failedResults = results.filter((r) => r.status === 'failed');
-  const guideFailures = failedResults.filter((r) => r.classification !== 'infrastructure');
+  const guideFailures = failedResults.filter((result) => !isAuthoritativeBrowserInfrastructureCode(result.errorCode));
 
   return {
     total: results.length,

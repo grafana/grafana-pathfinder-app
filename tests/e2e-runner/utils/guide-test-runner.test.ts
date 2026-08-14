@@ -410,6 +410,36 @@ describe('summarizeResults', () => {
     expect(summary.skippableFailed).toBe(1);
   });
 
+  it('counts diagnostic-only infrastructure classification as mandatory', () => {
+    const summary = summarizeResults([
+      createStepResult({ stepId: 'passed-step', status: 'passed' }),
+      createStepResult({
+        stepId: 'network-panel',
+        status: 'failed',
+        skippable: false,
+        classification: 'infrastructure',
+        error: 'Network panel not found',
+      }),
+    ]);
+
+    expect(summary).toMatchObject({ mandatoryFailed: 1, skippableFailed: 0, success: false });
+  });
+
+  it('excludes authoritative browser codes from guide-failure counts', () => {
+    const summary = summarizeResults([
+      createStepResult({ stepId: 'passed-step', status: 'passed' }),
+      createStepResult({
+        stepId: 'crashed-step',
+        status: 'failed',
+        skippable: false,
+        classification: 'infrastructure',
+        errorCode: 'BROWSER_CRASHED',
+      }),
+    ]);
+
+    expect(summary).toMatchObject({ mandatoryFailed: 0, skippableFailed: 0, success: false });
+  });
+
   it('sums duration across all results', () => {
     const results = [
       createStepResult({ stepId: 'step-1', durationMs: 1000 }),
@@ -539,6 +569,32 @@ describe('logStepResult', () => {
     logStepResult(result);
 
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('mandatory - test stops'));
+  });
+
+  it('logs diagnostic-only infrastructure classification as mandatory', () => {
+    logStepResult(
+      createStepResult({
+        status: 'failed',
+        skippable: false,
+        classification: 'infrastructure',
+        error: 'Network panel not found',
+      })
+    );
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('mandatory - test stops'));
+    expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining('infrastructure - guide stops'));
+  });
+
+  it('logs an authoritative browser code as infrastructure', () => {
+    logStepResult(
+      createStepResult({
+        status: 'failed',
+        skippable: false,
+        errorCode: 'BROWSER_CRASHED',
+      })
+    );
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('infrastructure - guide stops'));
   });
 
   it('includes error message when present', () => {

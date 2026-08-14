@@ -11,6 +11,7 @@
 import { Page, expect } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
+import { isAuthoritativeBrowserInfrastructureCode } from '../../../../src/cli/e2e/runner-infrastructure';
 import {
   DEFAULT_STEP_TIMEOUT_MS,
   GUIDE_INITIAL_TIMEOUT_MS,
@@ -93,15 +94,8 @@ export async function scrollStepIntoView(
   }
 }
 
-const AUTHORITATIVE_STEP_INFRASTRUCTURE_CODES = new Set([
-  'BROWSER_CRASHED',
-  'BROWSER_DISCONNECTED',
-  'PAGE_CLOSED',
-  'CONTEXT_CLOSED',
-]);
-
 export function hasAuthoritativeInfrastructureCode(result: StepTestResult): boolean {
-  return result.errorCode !== undefined && AUTHORITATIVE_STEP_INFRASTRUCTURE_CODES.has(result.errorCode);
+  return isAuthoritativeBrowserInfrastructureCode(result.errorCode);
 }
 
 export async function executeStep(
@@ -1653,12 +1647,11 @@ export function logStepResult(result: StepTestResult): void {
 
   // L3-4C: Show skippable indicator for failed steps
   if (result.status === 'failed') {
-    message +=
-      result.classification === 'infrastructure'
-        ? ' [infrastructure - guide stops]'
-        : result.skippable
-          ? ' [skippable - test continues]'
-          : ' [mandatory - test stops]';
+    message += hasAuthoritativeInfrastructureCode(result)
+      ? ' [infrastructure - guide stops]'
+      : result.skippable
+        ? ' [skippable - test continues]'
+        : ' [mandatory - test stops]';
   }
 
   if (result.skipReason) {
@@ -1703,7 +1696,8 @@ export interface ExecutionSummary {
 
 export function summarizeResults(results: StepTestResult[]): ExecutionSummary {
   const failedResults = results.filter((r) => r.status === 'failed');
-  const guideFailures = failedResults.filter((r) => r.classification !== 'infrastructure');
+  const infrastructureFailed = failedResults.filter(hasAuthoritativeInfrastructureCode);
+  const guideFailures = failedResults.filter((result) => !hasAuthoritativeInfrastructureCode(result));
 
   // L3-4C: Separate mandatory vs skippable failures
   const mandatoryFailed = guideFailures.filter((r) => !r.skippable).length;
@@ -1721,7 +1715,7 @@ export function summarizeResults(results: StepTestResult[]): ExecutionSummary {
 
   return {
     ...counts,
-    success: mandatoryFailed === 0 && (counts.passed > 0 || counts.failed === 0),
+    success: infrastructureFailed.length === 0 && mandatoryFailed === 0 && (counts.passed > 0 || counts.failed === 0),
     totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
   };
 }
