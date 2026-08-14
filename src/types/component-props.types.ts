@@ -95,6 +95,9 @@ export interface StepInfo {
   isMultiStep: boolean; // Flag to identify component type
   isGuided: boolean; // Flag to identify guided (user-performed) steps
   isQuiz?: boolean; // Flag to identify quiz steps
+  // Do Section stops here for the user. Without it the runner falls through to
+  // `executeInteractiveAction`'s default branch, which warns and reports success.
+  pausesSectionRun?: boolean;
 }
 
 // ============================================================================

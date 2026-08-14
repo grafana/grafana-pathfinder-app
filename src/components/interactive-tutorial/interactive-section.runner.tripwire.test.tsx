@@ -94,12 +94,16 @@ jest.mock('./terminal-connect-step', () => {
 jest.mock('./code-block-step', () => {
   return require('../../test-utils/interactive-section-harness').createCodeBlockStepMock();
 });
+jest.mock('./datasource-check-step', () => {
+  return require('../../test-utils/interactive-section-harness').createDatasourceCheckStepMock();
+});
 jest.mock('./interactive-conditional', () => {
   return require('../../test-utils/interactive-section-harness').createInteractiveConditionalMock();
 });
 
 import { testIds } from '../../constants/testIds';
 import { InteractiveStep } from './interactive-step';
+import { DatasourceCheckStep as DatasourceCheckStepReal } from './datasource-check-step';
 import { InteractiveGuided as InteractiveGuidedReal } from './interactive-guided';
 import { InteractiveSection, resetInteractiveCounters } from './interactive-section';
 
@@ -107,6 +111,7 @@ import { InteractiveSection, resetInteractiveCounters } from './interactive-sect
 // the harness mock ignores it. Cast through `React.FC<any>` so the
 // tripwire's `<InteractiveGuided />` JSX usage is clean.
 const InteractiveGuided = InteractiveGuidedReal as unknown as React.FC<any>;
+const DatasourceCheckStep = DatasourceCheckStepReal as unknown as React.FC<any>;
 import {
   memoryStore,
   resetSectionHarness,
@@ -320,6 +325,49 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
           Set<string> | undefined;
         expect(persisted).toBeDefined();
         expect(persisted!.has(`${SECTION_ID}-step-1`)).toBe(true);
+        expect(persisted!.has(`${SECTION_ID}-step-3`)).toBe(false);
+      } finally {
+        unsubscribe();
+      }
+    });
+  });
+
+  // `isGuided` used to be the only thing that could stop the loop. A data check
+  // has no `isGuided`, and an unrecognised `targetAction` falls through
+  // `executeInteractiveAction`'s default branch, which warns and then reports
+  // success — so without `pausesSectionRun` the runner marks a check complete
+  // that never ran, and walks straight past it.
+  describe('pausesSectionRun', () => {
+    it('stops the loop at a data check the same way a guided step does', async () => {
+      const { events, unsubscribe } = recordEvents(['interactive-section-completed']);
+      try {
+        render(
+          <InteractiveSection id="runner" title="Data check pause" autoCollapse={false}>
+            <InteractiveStep targetAction="highlight" refTarget=".a">
+              Step 1 (plain)
+            </InteractiveStep>
+            <DatasourceCheckStep variableName="metricsDatasource" query="up" />
+            <InteractiveStep targetAction="highlight" refTarget=".c">
+              Step 3 (plain)
+            </InteractiveStep>
+          </InteractiveSection>
+        );
+
+        await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+        act(() => {
+          screen.getByTestId(doSectionBtn(SECTION_ID)).click();
+        });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+
+        expect(events.filter((e) => e.name === 'interactive-section-completed')).toHaveLength(0);
+
+        const persisted = memoryStore.get(`section-steps::${NON_PREVIEW_KEY}::${SECTION_ID}`) as
+          Set<string> | undefined;
+        expect(persisted).toBeDefined();
+        expect(persisted!.has(`${SECTION_ID}-step-1`)).toBe(true);
+        // The check itself must not be credited — only the user pressing its
+        // own button can complete it.
+        expect(persisted!.has(`${SECTION_ID}-datasource-check-1`)).toBe(false);
         expect(persisted!.has(`${SECTION_ID}-step-3`)).toBe(false);
       } finally {
         unsubscribe();

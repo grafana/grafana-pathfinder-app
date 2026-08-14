@@ -165,11 +165,30 @@ export const testIds = {
     inputSaveButton: (stepId: string) => `interactive-input-save-${stepId}`,
     inputResetButton: (stepId: string) => `interactive-input-reset-${stepId}`,
     inputSkipButton: (stepId: string) => `interactive-input-skip-${stepId}`,
+    datasourcePicker: (variableName: string) => `interactive-datasource-picker-${variableName}`,
     terminalStep: (stepId: string) => `interactive-terminal-${stepId}`,
     terminalConnectStep: (stepId: string) => `interactive-terminal-connect-${stepId}`,
     terminalSkipButton: (stepId: string) => `interactive-terminal-skip-${stepId}`,
     terminalCopyButton: (stepId: string) => `interactive-terminal-copy-${stepId}`,
     lazyScrollRetryButton: (stepId: string) => `interactive-lazy-retry-${stepId}`,
+  },
+
+  // The blocking data check — a tracked step, so keyed by stepId.
+  dataCheck: {
+    step: (stepId: string) => `datasource-check-step-${stepId}`,
+    datasourcePicker: (stepId: string) => `datasource-check-picker-${stepId}`,
+    runQueryButton: (stepId: string) => `datasource-check-run-${stepId}`,
+    skipButton: (stepId: string) => `datasource-check-skip-${stepId}`,
+    failure: (stepId: string) => `datasource-check-failure-${stepId}`,
+  },
+
+  // The advisory data check on a passive input block. That host has no stepId,
+  // so these are keyed by variableName and kept in their own id space — one
+  // factory serving both would collide whenever a variable name matched a
+  // step's rendered id.
+  advisoryDataCheck: {
+    runQueryButton: (variableName: string) => `input-data-check-run-${variableName}`,
+    failure: (variableName: string) => `input-data-check-failure-${variableName}`,
   },
 
   // Code Block Step - for inserting code into Monaco editors

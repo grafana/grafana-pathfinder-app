@@ -46,12 +46,19 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
     refinements: [
       "Non-noop actions require 'reftarget' (step and interactive blocks)",
       "formfill with validateInput requires 'targetvalue' (step and interactive blocks)",
+      "'dataCheck*' fields require inputType 'datasource' (input blocks)",
+      "'dataCheck*' fields other than 'dataCheckQuery' require 'dataCheckQuery' (input blocks)",
     ],
   },
   block: {
     schema: JsonBlockSchema,
     description: 'Union of all block types with depth-limited nesting',
-    refinements: ["Non-noop actions require 'reftarget'", "formfill with validateInput requires 'targetvalue'"],
+    refinements: [
+      "Non-noop actions require 'reftarget'",
+      "formfill with validateInput requires 'targetvalue'",
+      "'dataCheck*' fields require inputType 'datasource'",
+      "'dataCheck*' fields other than 'dataCheckQuery' require 'dataCheckQuery'",
+    ],
   },
   content: {
     schema: ContentJsonSchema,

@@ -88,6 +88,12 @@ export enum UserInteraction {
   // Input Block Interactions
   InputBlockSubmit = 'input_block_submit',
 
+  // Data check on the datasource picker
+  DataCheckRun = 'data_check_run',
+  DataCheckPassed = 'data_check_passed',
+  DataCheckFailed = 'data_check_failed',
+  DataCheckSkipped = 'data_check_skipped',
+
   // Floating Panel
   FloatingPanelPopOut = 'floating_panel_pop_out',
   FloatingPanelDock = 'floating_panel_dock',
