@@ -19,7 +19,7 @@ jest.mock('@playwright/test', () => ({
 import type { Locator, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
-import { REQUIREMENTS_POLL_INTERVAL_MS, REQUIREMENTS_SETTLE_TIMEOUT_MS } from './constants';
+import { POST_FIX_SETTLE_DELAY_MS, REQUIREMENTS_POLL_INTERVAL_MS, REQUIREMENTS_SETTLE_TIMEOUT_MS } from './constants';
 import { attemptToFixRequirements, detectRequirements } from './requirements';
 import type { TestableStep } from './types';
 
@@ -32,6 +32,13 @@ afterEach(() => {
 // ============================================
 
 const STEP_ID = 'test-step-1';
+
+/** Badge dismissal polls at 25ms; every requirement wait is longer. */
+const BADGE_POLL_MS = 25;
+
+function requirementWaits(waitForTimeout: jest.Mock): number[] {
+  return waitForTimeout.mock.calls.map(([ms]) => ms as number).filter((ms) => ms !== BADGE_POLL_MS);
+}
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
@@ -117,6 +124,16 @@ function createSequencedPage(states: DomState[]): SequencedPageHandles {
   const retryLocator = { count: countFor((state) => state.hasRetryButton) };
   const skipLocator = { count: countFor((state) => state.hasSkipButton) };
 
+  // `clickFixButton` dismisses badge celebrations first (#1617). These tests are
+  // about the settle window, so the toast is always absent — but the locator has
+  // to exist, or the fix click throws before it ever reaches the code under test.
+  const badgeToastLocator: Record<string, unknown> = {
+    count: jest.fn().mockResolvedValue(0),
+    isVisible: jest.fn().mockResolvedValue(false),
+    textContent: jest.fn().mockResolvedValue(''),
+  };
+  badgeToastLocator.first = jest.fn().mockReturnValue(badgeToastLocator);
+
   const locatorsByTestId = new Map<string, unknown>([
     [testIds.interactive.doItButton(STEP_ID), doItLocator],
     [testIds.interactive.showMeButton(STEP_ID), showMeLocator],
@@ -124,6 +141,7 @@ function createSequencedPage(states: DomState[]): SequencedPageHandles {
     [testIds.interactive.requirementFixButton(STEP_ID), fixLocator],
     [testIds.interactive.requirementRetryButton(STEP_ID), retryLocator],
     [testIds.interactive.requirementSkipButton(STEP_ID), skipLocator],
+    [testIds.learningPaths.badgeToast, badgeToastLocator],
   ]);
 
   const getByTestId = jest.fn().mockImplementation((testId: string) => {
@@ -255,7 +273,10 @@ describe('attemptToFixRequirements - settle window', () => {
     // The settle poll re-detected requirements; it did not click Fix again
     // to get there.
     expect(fixButtonClick).toHaveBeenCalledTimes(1);
-    expect(waitForTimeout.mock.calls.length).toBe(2);
+    // Counting the requirement waits only. Badge dismissal polls on its own
+    // cadence before every fix click, and this assertion is about the settle
+    // window, not about how long looking for an absent toast takes.
+    expect(requirementWaits(waitForTimeout)).toEqual([POST_FIX_SETTLE_DELAY_MS, REQUIREMENTS_POLL_INTERVAL_MS]);
   });
 
   it('preserves fixType when a Fix button reappears during the initial settle poll', async () => {
