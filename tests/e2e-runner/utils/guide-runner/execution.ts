@@ -909,6 +909,7 @@ export async function clickSkipButtonAndSync(
   if ((await skipButton.count()) === 0) {
     throw new Error(`Step ${stepId}: no Skip control available to sync the requirements-unmet state`);
   }
+  await dismissBadgeCelebrations(page);
   await skipButton.click({ timeout });
 
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));

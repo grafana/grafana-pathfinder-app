@@ -50,6 +50,9 @@ jest.mock('@playwright/test', () => {
 jest.mock('./requirements', () => ({
   handleRequirementsWithFix: jest.fn(),
 }));
+jest.mock('./badge-celebrations', () => ({
+  dismissBadgeCelebrations: jest.fn().mockResolvedValue(undefined),
+}));
 
 import type { Locator, Page } from '@playwright/test';
 
@@ -62,6 +65,7 @@ import {
   summarizeResults,
 } from './execution';
 import { handleRequirementsWithFix } from './requirements';
+import { dismissBadgeCelebrations } from './badge-celebrations';
 import {
   SCROLL_INTO_VIEW_TIMEOUT_MS,
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
@@ -157,6 +161,10 @@ describe('scrollStepIntoView', () => {
 });
 
 describe('clickSkipButtonAndSync', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (dismissBadgeCelebrations as jest.Mock).mockResolvedValue(undefined);
+  });
   it('throws when neither Skip control is rendered', async () => {
     const page = createSkipRoutedPage({});
 
@@ -170,8 +178,12 @@ describe('clickSkipButtonAndSync', () => {
     const page = createSkipRoutedPage({ stepSkipButton, requirementSkipButton, stepLocator });
 
     await expect(clickSkipButtonAndSync(page, 'step-1', 200)).resolves.toBeUndefined();
+    expect(dismissBadgeCelebrations).toHaveBeenCalledWith(page);
 
     expect(stepSkipButton.click).toHaveBeenCalledWith({ timeout: 200 });
+    expect((dismissBadgeCelebrations as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan(
+      (stepSkipButton.click as jest.Mock).mock.invocationCallOrder[0]
+    );
     expect(requirementSkipButton.click).not.toHaveBeenCalled();
   });
 
