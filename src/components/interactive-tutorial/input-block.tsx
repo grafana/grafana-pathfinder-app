@@ -236,16 +236,13 @@ export function InputBlock({
 
   // Handle datasource selection change
   const resetDataCheck = dataCheck.reset;
-  const handleDatasourceChange = useCallback(
-    (option: ComboboxOption<string> | null) => {
-      setDatasourceValue(option?.value ?? null);
-      setIsSaved(false);
-      setValidationError(null);
-      // A verdict belongs to the data source it was run against.
-      resetDataCheck();
-    },
-    [resetDataCheck]
-  );
+  const handleDatasourceChange = useCallback((option: ComboboxOption<string> | null) => {
+    // The verdict clears itself: `useDataCheck` derives it against the current
+    // pick, so every writer of this variable invalidates it, not just this one.
+    setDatasourceValue(option?.value ?? null);
+    setIsSaved(false);
+    setValidationError(null);
+  }, []);
 
   const runDataCheck = dataCheck.run;
   const dataCheckType = dataCheck.supportedType;
@@ -255,7 +252,7 @@ export function InputBlock({
       variable_name: variableName,
       blocking: false,
     });
-    const outcome = await runDataCheck();
+    const { outcome, durationMs } = await runDataCheck();
     if (outcome === 'aborted') {
       return;
     }
@@ -264,6 +261,7 @@ export function InputBlock({
       variable_name: variableName,
       blocking: false,
       outcome,
+      duration_ms: durationMs,
     });
   }, [runDataCheck, dataCheckType, variableName]);
 
@@ -470,8 +468,8 @@ export function InputBlock({
                 canRun={dataCheck.canRun}
                 isUnsupportedType={Boolean(selectedDatasource) && !dataCheck.supportedType}
                 onRun={handleRunDataCheck}
-                runTestId={testIds.dataCheck.runQueryButton(variableName)}
-                failureTestId={testIds.dataCheck.failure(variableName)}
+                runTestId={testIds.advisoryDataCheck.runQueryButton(variableName)}
+                failureTestId={testIds.advisoryDataCheck.failure(variableName)}
               />
             )}
             {dataCheckQuery && dataCheck.state === 'passed' && (

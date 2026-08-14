@@ -772,7 +772,7 @@ Collects user responses that can be stored as variables and used elsewhere in th
 | `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                    |
 | `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                           |
 | `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType |
-| `requirements`      | string[]                                  | ❌       | —       | Requirements that must be met for this input                                         |
+| `requirements`      | string[]                                  | ❌       | —       | Honoured only on a blocking data check; inert on every other input (see below)       |
 | `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                    |
 
 Data check fields, all for `"datasource"` inputType only. `dataCheckQuery` is what enables the check; the rest are rejected without it.
@@ -835,6 +835,7 @@ A guide can teach "build a panel showing container CPU", the user can follow eve
 ```json
 {
   "type": "input",
+  "id": "check-container-metrics",
   "prompt": "Pick the data source holding your container metrics.",
   "inputType": "datasource",
   "variableName": "metricsDatasource",
@@ -858,11 +859,15 @@ The check runs **only when the user presses the button** — never on a polling 
 
 Turn blocking on deliberately. It makes the block count toward the section's step total, so an author who cannot guarantee the data exists on every instance should pair it with `skippable`.
 
-Only Prometheus, Loki, Tempo, and Pyroscope can be queried. If the user picks a data source of any other type, the block says so instead of offering the button rather than silently passing. Queries are capped at 100 data points and abort after 15 seconds. Pyroscope queries are written as `<profileTypeId>|<labelSelector>`.
+Only Prometheus, Loki, Tempo, and Pyroscope can be queried. If the user picks a data source of any other type, the block says so instead of offering the button rather than silently passing. Pyroscope queries are written as `<profileTypeId>|<labelSelector>`.
+
+Every check aborts after 15 seconds. Result size is capped at 100 wherever the query type honours it — Tempo's `limit`, Loki's `maxLines` — but a Prometheus instant query takes no `step`, so its cost is series cardinality, which nothing here caps. Keep the query selective: `{__name__=~".+"}` is one unbounded high-cardinality query against whatever tenant the user picked. `dataCheckTimeFrom` / `dataCheckTimeTo` are defaults, not bounds; nothing rejects `now-10y`.
 
 `dataCheckFailureMessage` is shown **only** when the query ran and came back empty. A timeout, a permissions error, or a broken data source reports the underlying error instead — a user told their metric is missing might go looking for the wrong problem, or skip a blocking step believing the data is genuinely absent. Write the message for the empty-result case and let the error path speak for itself.
 
-Give every blocking check an explicit `id`. It becomes the step id that completion is stored against, so without one, editing the guide can orphan a user's progress.
+A blocking check **must** carry an explicit `id`; validation rejects one without it. The id becomes the step id that completion is stored against, so a generated one would orphan a user's progress the next time the guide is edited. An advisory check needs no id — it is not a tracked step.
+
+`requirements` on an input block is honoured **only** when `dataCheckBlocking` is set. On every other input — text, boolean, and an advisory datasource picker — the field validates, parses, and then does nothing: the block always renders and always accepts a response. Do not use it to gate a plain input.
 
 **Using Variables:**
 

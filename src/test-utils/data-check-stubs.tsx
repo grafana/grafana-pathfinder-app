@@ -14,7 +14,7 @@ export const grafanaUiStub = {
       {children}
     </button>
   ),
-  Combobox: ({ options, value, onChange, placeholder, ...rest }: any) => (
+  Combobox: ({ options, value, onChange, placeholder, isClearable: _isClearable, ...rest }: any) => (
     <select
       aria-label={placeholder}
       value={value ?? ''}
@@ -40,6 +40,10 @@ export const loggerStub = {
 
 export const analyticsStub = {
   reportAppInteraction: jest.fn(),
+  buildInteractiveStepProperties: (
+    baseProperties: Record<string, string | number | boolean>,
+    stepContext: Record<string, unknown>
+  ) => ({ ...baseProperties, step_id: stepContext.stepId }),
   UserInteraction: {
     DataCheckRun: 'data_check_run',
     DataCheckPassed: 'data_check_passed',

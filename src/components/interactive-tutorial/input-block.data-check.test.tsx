@@ -7,6 +7,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+import { StorageEvents } from '../../lib/event-names';
 import { InputBlock } from './input-block';
 
 const mockRunQuery = jest.fn();
@@ -26,11 +27,21 @@ jest.mock('../../lib/logging', () => require('../../test-utils/data-check-stubs'
 
 jest.mock('../../lib/analytics', () => require('../../test-utils/data-check-stubs').analyticsStub);
 
+// `mockOtherWriters` stands in for everything else that can own the same
+// variable — the blocking step, a `{{var}}` write, a guide clear.
+let mockOtherWriters: Array<(value: string | undefined) => void> = [];
+
 jest.mock('../../docs-retrieval', () => {
   const react = require('react');
   return {
     useGuideResponsesOptional: () => {
       const [stored, setStored] = react.useState(undefined);
+      react.useEffect(() => {
+        mockOtherWriters.push(setStored);
+        return () => {
+          mockOtherWriters = mockOtherWriters.filter((writer) => writer !== setStored);
+        };
+      }, []);
       return {
         getResponse: () => stored,
         setResponse: (key: string, value: string) => {
@@ -45,8 +56,8 @@ jest.mock('../../docs-retrieval', () => {
   };
 });
 
-const RUN = 'datasource-check-run-metricsDatasource';
-const FAILURE = 'datasource-check-failure-metricsDatasource';
+const RUN = 'input-data-check-run-metricsDatasource';
+const FAILURE = 'input-data-check-failure-metricsDatasource';
 
 const baseProps = {
   prompt: 'Pick a data source.',
@@ -65,8 +76,21 @@ async function pick(name = 'Prometheus') {
   });
 }
 
+/** Someone other than this picker writes the variable it reads. */
+async function writeVariableElsewhere(value: string | undefined) {
+  await act(async () => {
+    mockOtherWriters.forEach((writer) => writer(value));
+    window.dispatchEvent(
+      new CustomEvent(StorageEvents.GuideResponseChanged, {
+        detail: { variableName: baseProps.variableName, value },
+      })
+    );
+  });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
+  mockOtherWriters = [];
   mockRunQuery.mockResolvedValue({ ok: true, hasData: true, seriesCount: 1, rowCount: 2 });
 });
 
@@ -191,5 +215,70 @@ describe('an advisory check', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/can't run here/i);
     expect(screen.queryByTestId(RUN)).not.toBeInTheDocument();
     expect(mockRunQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe('while a check is still running', () => {
+  beforeEach(async () => {
+    mockRunQuery.mockImplementation(() => new Promise(() => {}));
+    renderPicker({ dataCheckQuery: 'up' });
+    await pick();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(RUN));
+    });
+  });
+
+  it('says so, and refuses a second press until the first lands', () => {
+    expect(screen.getByText('Checking your data…')).toBeInTheDocument();
+    expect(screen.getByTestId(RUN)).toBeDisabled();
+  });
+
+  it('issues exactly one query however many times the button is pressed', async () => {
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(RUN));
+      fireEvent.click(screen.getByTestId(RUN));
+    });
+    expect(mockRunQuery).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The blocking step is the other writer this pairing ships with, so a verdict
+// here can be invalidated without this block's own handler ever running.
+describe('a data source swapped by someone else', () => {
+  it('drops a pass rather than reporting it against the new pick', async () => {
+    renderPicker({ dataCheckQuery: 'up' });
+    await pick();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(RUN));
+    });
+    await waitFor(() => expect(screen.getByText('Data available')).toBeInTheDocument());
+
+    await writeVariableElsewhere('Prometheus staging');
+    expect(screen.queryByText('Data available')).not.toBeInTheDocument();
+  });
+
+  it('drops a failure rather than blaming it on the new pick', async () => {
+    mockRunQuery.mockResolvedValue({ ok: true, hasData: false, seriesCount: 0, rowCount: 0 });
+    renderPicker({ dataCheckQuery: 'up', dataCheckFailureMessage: 'No container metrics here.' });
+    await pick();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(RUN));
+    });
+    await waitFor(() => expect(screen.getByTestId(FAILURE)).toBeInTheDocument());
+
+    await writeVariableElsewhere('Prometheus staging');
+    expect(screen.queryByTestId(FAILURE)).not.toBeInTheDocument();
+  });
+
+  it('drops a pass when a guide clear empties the picker', async () => {
+    renderPicker({ dataCheckQuery: 'up' });
+    await pick();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(RUN));
+    });
+    await waitFor(() => expect(screen.getByText('Data available')).toBeInTheDocument());
+
+    await writeVariableElsewhere(undefined);
+    expect(screen.queryByText('Data available')).not.toBeInTheDocument();
   });
 });

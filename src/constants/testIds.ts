@@ -173,13 +173,22 @@ export const testIds = {
     lazyScrollRetryButton: (stepId: string) => `interactive-lazy-retry-${stepId}`,
   },
 
-  // Datasource picker with a data check attached
+  // The blocking data check — a tracked step, so keyed by stepId.
   dataCheck: {
     step: (stepId: string) => `datasource-check-step-${stepId}`,
     datasourcePicker: (stepId: string) => `datasource-check-picker-${stepId}`,
     runQueryButton: (stepId: string) => `datasource-check-run-${stepId}`,
     skipButton: (stepId: string) => `datasource-check-skip-${stepId}`,
     failure: (stepId: string) => `datasource-check-failure-${stepId}`,
+  },
+
+  // The advisory data check on a passive input block. That host has no stepId,
+  // so these are keyed by variableName and kept in their own id space — one
+  // factory serving both would collide whenever a variable name matched a
+  // step's rendered id.
+  advisoryDataCheck: {
+    runQueryButton: (variableName: string) => `input-data-check-run-${variableName}`,
+    failure: (variableName: string) => `input-data-check-failure-${variableName}`,
   },
 
   // Code Block Step - for inserting code into Monaco editors

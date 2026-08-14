@@ -32,6 +32,9 @@ export const EMPTY_CONDITIONS_MESSAGE = 'At least one condition is required';
 export const QUIZ_NO_CORRECT_CHOICE_PREFIX = 'Quiz has no correct choice yet';
 export const QUIZ_MULTI_CORRECT_PREFIX = 'Single-select quiz has more than one correct choice';
 
+/** Wide enough for any real PromQL/LogQL/TraceQL selector, narrow enough that a pasted payload is rejected at authoring time. */
+const MAX_DATA_CHECK_QUERY_LENGTH = 2000;
+
 // ============ PRIMITIVE SCHEMAS ============
 
 /**
@@ -494,6 +497,9 @@ export const JsonInputBlockSchema = z
     datasourceFilter: z.string().optional().describe('Filter for datasource input (e.g., loki, prometheus)'),
     dataCheckQuery: z
       .string()
+      .trim()
+      .min(1, 'Data check query cannot be empty')
+      .max(MAX_DATA_CHECK_QUERY_LENGTH, `Data check query cannot exceed ${MAX_DATA_CHECK_QUERY_LENGTH} characters`)
       .optional()
       .describe(
         "Query run against the picked data source to confirm it holds this guide's data. Its presence enables the check. Datasource inputs only, and only Prometheus, Loki, Tempo, and Pyroscope can be checked."
@@ -531,7 +537,17 @@ export const JsonInputBlockSchema = z
       return;
     }
 
-    if (block.dataCheckQuery?.trim()) {
+    if (block.dataCheckQuery) {
+      // A blocking check is a tracked step, and its completion record is keyed
+      // on the block id. A generated id moves whenever the guide is edited,
+      // orphaning every record earned under the old one.
+      if (block.dataCheckBlocking && !block.id?.trim()) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['id'],
+          message: 'A blocking data check needs an explicit `id`, so its completion records survive an edit.',
+        });
+      }
       return;
     }
     // Without a query there is no check, so the fields that configure one are

@@ -4,7 +4,7 @@
  * one is a tracked step, so only this one can hold a section up.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { Alert, Button, Combobox, Field, Icon, useStyles2, type ComboboxOption } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -13,7 +13,7 @@ import { testIds } from '../../constants/testIds';
 import { useGuideResponsesOptional } from '../../docs-retrieval';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
-import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { buildInteractiveStepProperties, reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { DataCheckControls } from './data-check-controls';
 import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
@@ -109,7 +109,10 @@ export function DatasourceCheckStep({
   onStepComplete,
   onStepReset,
   resetTrigger,
+  stepIndex,
+  totalSteps,
   sectionId,
+  sectionTitle,
 }: DatasourceCheckStepProps) {
   const styles = useStyles2(getStyles);
   const responseContext = useGuideResponsesOptional();
@@ -183,7 +186,32 @@ export function DatasourceCheckStep({
 
   const checkerResetStep = checker.resetStep;
 
-  // Handle reset trigger from parent section.
+  const retract = useCallback(() => {
+    reset();
+    persistReset();
+    if (onStepReset && renderedStepId) {
+      onStepReset(renderedStepId);
+    }
+    checkerResetStep?.();
+  }, [reset, persistReset, onStepReset, renderedStepId, checkerResetStep]);
+
+  // A completion belongs to the data source it was earned against, and the pick
+  // can be rewritten by anything that owns the same variable — a sibling
+  // advisory picker, a `{{var}}` write, a guide clear. Watching the resolved
+  // name rather than this component's own handler is what makes those paths
+  // retract too. A name arriving where there was none is hydration, not a
+  // change, so it must not wipe a durable pass on reload.
+  const verdictOwner = useRef<string | null>(rememberedName);
+  useEffect(() => {
+    const previous = verdictOwner.current;
+    if (previous === rememberedName) {
+      return;
+    }
+    verdictOwner.current = rememberedName;
+    if (previous !== null) {
+      retract();
+    }
+  }, [rememberedName, retract]);
 
   useEffect(() => {
     if (resetTrigger && resetTrigger > 0) {
@@ -203,22 +231,13 @@ export function DatasourceCheckStep({
     if (disabled || state === 'checking') {
       return;
     }
-    reset();
-    persistReset();
-    if (onStepReset && renderedStepId) {
-      onStepReset(renderedStepId);
-    }
-    checkerResetStep?.();
-  }, [disabled, state, reset, persistReset, onStepReset, renderedStepId, checkerResetStep]);
+    retract();
+  }, [disabled, state, retract]);
 
+  // Writing the pick is all this does; the retraction rides on the name change.
   const handleDatasourceChange = useCallback(
     (option: ComboboxOption<string> | null) => {
       const name = option?.value ?? null;
-      // A pass belongs to the data source it was run against; switching away
-      // must not leave a green check standing.
-      reset();
-      persistReset();
-      checkerResetStep?.();
       if (!responseContext) {
         setUncontrolledName(name);
         return;
@@ -229,44 +248,61 @@ export function DatasourceCheckStep({
         responseContext.deleteResponse(variableName);
       }
     },
-    [responseContext, variableName, reset, persistReset, checkerResetStep]
+    [responseContext, variableName]
+  );
+
+  const stepContext = useMemo(
+    () => ({ stepId: renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle }),
+    [renderedStepId, stepIndex, totalSteps, sectionId, sectionTitle]
   );
 
   const handleRun = useCallback(async () => {
-    reportAppInteraction(UserInteraction.DataCheckRun, {
-      datasource_type: supportedType ?? 'unknown',
-      step_id: renderedStepId,
-      blocking: true,
-    });
-    const outcome = await run();
+    reportAppInteraction(
+      UserInteraction.DataCheckRun,
+      buildInteractiveStepProperties(
+        { datasource_type: supportedType ?? 'unknown', blocking: true, interaction_location: 'data_check_step' },
+        stepContext
+      )
+    );
+    const { outcome, durationMs } = await run();
     // A check the user gave up on, or one a newer run replaced, has no outcome
     // to report and must not complete the step it no longer speaks for.
     if (outcome === 'aborted') {
       return;
     }
-    reportAppInteraction(outcome === 'passed' ? UserInteraction.DataCheckPassed : UserInteraction.DataCheckFailed, {
-      datasource_type: supportedType ?? 'unknown',
-      step_id: renderedStepId,
-      blocking: true,
-      outcome,
-    });
+    reportAppInteraction(
+      outcome === 'passed' ? UserInteraction.DataCheckPassed : UserInteraction.DataCheckFailed,
+      buildInteractiveStepProperties(
+        {
+          datasource_type: supportedType ?? 'unknown',
+          blocking: true,
+          outcome,
+          duration_ms: durationMs,
+          interaction_location: 'data_check_step',
+        },
+        stepContext
+      )
+    );
     if (outcome === 'passed') {
       markComplete();
     }
-  }, [run, markComplete, supportedType, renderedStepId]);
+  }, [run, markComplete, supportedType, stepContext]);
 
   const markSkipped = checker.markSkipped;
   const handleSkip = useCallback(async () => {
     // Giving up has to stop the query too: it would otherwise keep spending
     // after the user moved on, and leave Redo inert until it finished.
     reset();
-    reportAppInteraction(UserInteraction.DataCheckSkipped, {
-      datasource_type: supportedType ?? 'unknown',
-      step_id: renderedStepId,
-    });
+    reportAppInteraction(
+      UserInteraction.DataCheckSkipped,
+      buildInteractiveStepProperties(
+        { datasource_type: supportedType ?? 'unknown', interaction_location: 'data_check_step' },
+        stepContext
+      )
+    );
     await markSkipped?.();
     markComplete('skipped');
-  }, [reset, markSkipped, markComplete, supportedType, renderedStepId]);
+  }, [reset, markSkipped, markComplete, supportedType, stepContext]);
 
   const isEnabled = checker.isEnabled && !disabled;
   const hasDatasources = datasourceOptions.length > 0;
@@ -341,6 +377,7 @@ export function DatasourceCheckStep({
                 value={selectedDatasource?.name ?? null}
                 onChange={handleDatasourceChange}
                 placeholder={placeholder || 'Select a data source...'}
+                isClearable
                 data-testid={testIds.dataCheck.datasourcePicker(renderedStepId)}
               />
             </Field>

@@ -74,13 +74,13 @@ describe('runDataCheckQuery', () => {
 
     const result = await runDataCheckQuery(baseRequest);
 
-    expect(result).toEqual({ ok: false, error: 'parse error: unexpected identifier' });
+    expect(result).toEqual({ ok: false, error: 'parse error: unexpected identifier', failureKind: 'query' });
   });
 
   it('rejects an empty query without calling the backend', async () => {
     const result = await runDataCheckQuery({ ...baseRequest, query: '   ' });
 
-    expect(result).toEqual({ ok: false, error: 'No query to run.' });
+    expect(result).toEqual({ ok: false, error: 'No query to run.', failureKind: 'query' });
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -89,7 +89,7 @@ describe('runDataCheckQuery', () => {
 
     const result = await runDataCheckQuery(baseRequest);
 
-    expect(result).toEqual({ ok: false, error: 'bad request' });
+    expect(result).toEqual({ ok: false, error: 'bad request', failureKind: 'query' });
   });
 
   it('falls back to the status code when the error carries no message', async () => {
@@ -97,7 +97,11 @@ describe('runDataCheckQuery', () => {
 
     const result = await runDataCheckQuery(baseRequest);
 
-    expect(result).toEqual({ ok: false, error: 'Query failed (HTTP 500 Internal Server Error).' });
+    expect(result).toEqual({
+      ok: false,
+      error: 'Query failed (HTTP 500 Internal Server Error).',
+      failureKind: 'query',
+    });
   });
 
   describe('request shape', () => {
@@ -118,6 +122,16 @@ describe('runDataCheckQuery', () => {
       expect(body.from).toBe(DATA_CHECK_QUERY_LIMITS.defaultFrom);
       expect(body.to).toBe(DATA_CHECK_QUERY_LIMITS.defaultTo);
       expect(body.queries[0].maxDataPoints).toBe(DATA_CHECK_QUERY_LIMITS.maxDataPoints);
+    });
+
+    // Asserting against the constant only proves it is wired, never that it is
+    // still small. `CONCERNS.md` records relaxing these as a fracture, so the
+    // numbers themselves are the contract and a one-line edit has to fail here.
+    it('pins the caps to their agreed values, not merely to the constant', () => {
+      expect(DATA_CHECK_QUERY_LIMITS.maxDataPoints).toBe(100);
+      expect(DATA_CHECK_QUERY_LIMITS.timeoutMs).toBe(15_000);
+      expect(DATA_CHECK_QUERY_LIMITS.defaultFrom).toBe('now-1h');
+      expect(DATA_CHECK_QUERY_LIMITS.defaultTo).toBe('now');
     });
 
     it('honours an author-supplied time range', async () => {
@@ -206,6 +220,7 @@ describe('runDataCheckQuery', () => {
       await expect(pending).resolves.toEqual({
         ok: false,
         error: `Query timed out after ${DATA_CHECK_QUERY_LIMITS.timeoutMs / 1000}s.`,
+        failureKind: 'timeout',
       });
     });
   });
@@ -213,8 +228,8 @@ describe('runDataCheckQuery', () => {
   describe('per-type query models', () => {
     it.each([
       ['prometheus', 'up', { expr: 'up', instant: true }],
-      ['loki', '{job="varlogs"}', { expr: '{job="varlogs"}', queryType: 'range' }],
-      ['tempo', '{ name = "GET" }', { query: '{ name = "GET" }', queryType: 'traceql' }],
+      ['loki', '{job="varlogs"}', { expr: '{job="varlogs"}', queryType: 'range', maxLines: 100 }],
+      ['tempo', '{ name = "GET" }', { query: '{ name = "GET" }', queryType: 'traceql', limit: 100 }],
     ])('builds the %s model', async (type, query, expected) => {
       respondWith({ A: { frames: [] } });
 

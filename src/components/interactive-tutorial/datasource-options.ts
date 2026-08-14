@@ -34,7 +34,3 @@ export function toDatasourceOptions(datasources: DataSourceInstanceSettings[]): 
     description: ds.type,
   }));
 }
-
-export function getDatasourceOptions(filter?: string): Array<ComboboxOption<string>> {
-  return toDatasourceOptions(filterDatasourcesByType(filter));
-}

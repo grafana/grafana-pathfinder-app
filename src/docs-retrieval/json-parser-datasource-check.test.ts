@@ -16,6 +16,7 @@ jest.mock('@grafana/data', () => ({
 
 const picker = (overrides: Record<string, unknown> = {}) => ({
   type: 'input',
+  id: 'metrics-check',
   inputType: 'datasource',
   variableName: 'metricsDatasource',
   prompt: 'Pick the data source holding your metrics.',
@@ -116,7 +117,7 @@ describe('input block → parsed element type', () => {
     expect(element.props.stepId).toBe('check-metrics');
   });
 
-  it('derives a stepId inside a section when the author gave none', () => {
+  it('keeps the authored id as the stepId inside a section', () => {
     const { elements } = parseBlocks([
       {
         type: 'section',
@@ -129,7 +130,12 @@ describe('input block → parsed element type', () => {
       (c): c is ParsedElement => typeof c !== 'string' && c.type === 'datasource-check-step'
     );
     expect(step).toBeDefined();
-    expect(step!.props.stepId).toBeTruthy();
+    expect(step!.props.stepId).toBe('metrics-check');
+  });
+
+  it('rejects a blocking check with no id, whose completion records would orphan on the next edit', () => {
+    const { id: _dropped, ...noId } = picker({ dataCheckQuery: 'up', dataCheckBlocking: true });
+    expect(rejectionFor([noId])).toContain('A blocking data check needs an explicit `id`');
   });
 
   it('renders the prompt as markdown children', () => {

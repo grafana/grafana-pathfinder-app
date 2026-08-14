@@ -1288,6 +1288,8 @@ function renderParsedElement(
           timeTo={element.props.timeTo}
           requirements={element.props.requirements}
           skippable={element.props.skippable}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
         >
           {renderChildren(element.children)}
         </DatasourceCheckStep>

@@ -1,4 +1,4 @@
-import { filterDatasourcesByType, getDatasourceOptions, toDatasourceOptions } from './datasource-options';
+import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
 
 const mockGetList = jest.fn();
 
@@ -65,15 +65,6 @@ describe('toDatasourceOptions', () => {
   it('values options by name, not uid', () => {
     expect(toDatasourceOptions([LIST[0]!])).toEqual([
       { label: 'Prod metrics', value: 'Prod metrics', description: 'prometheus' },
-    ]);
-  });
-});
-
-describe('getDatasourceOptions', () => {
-  it('filters then maps, so both hosts of the picker agree', () => {
-    expect(getDatasourceOptions('prometheus')).toEqual([
-      { label: 'Prod metrics', value: 'Prod metrics', description: 'prometheus' },
-      { label: 'AWS metrics', value: 'AWS metrics', description: 'grafana-amazonprometheus-datasource' },
     ]);
   });
 });

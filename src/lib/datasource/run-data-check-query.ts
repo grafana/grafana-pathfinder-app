@@ -24,8 +24,12 @@ export interface DataCheckQueryRequest {
   signal?: AbortSignal;
 }
 
+/** `'timeout'` and `'query'` are separate so telemetry can tell "we gave up waiting" from "the backend said no". */
+export type DataCheckFailureKind = 'timeout' | 'query';
+
 export type DataCheckQueryResult =
-  { ok: true; hasData: boolean; seriesCount: number; rowCount: number } | { ok: false; error: string };
+  | { ok: true; hasData: boolean; seriesCount: number; rowCount: number }
+  | { ok: false; error: string; failureKind: DataCheckFailureKind };
 
 /** Shape of the `/api/ds/query` response we actually read. */
 interface DsQueryFrame {
@@ -46,7 +50,9 @@ function buildQueryModel(type: SupportedDatasourceType, query: string): Record<s
     case 'prometheus':
       return { expr: query, instant: true, range: false };
     case 'loki':
-      return { expr: query, queryType: 'range' };
+      // The only type whose result the authored range alone would bound, and
+      // that range is a default rather than a cap.
+      return { expr: query, queryType: 'range', maxLines: DATA_CHECK_QUERY_LIMITS.maxDataPoints };
     case 'tempo':
       return { query, queryType: 'traceql', limit: DATA_CHECK_QUERY_LIMITS.maxDataPoints };
     case 'pyroscope': {
@@ -102,7 +108,7 @@ export async function runDataCheckQuery(request: DataCheckQueryRequest): Promise
   const { datasourceUid, datasourceType, query, from, to, signal } = request;
 
   if (!query.trim()) {
-    return { ok: false, error: 'No query to run.' };
+    return { ok: false, error: 'No query to run.', failureKind: 'query' };
   }
 
   const timeoutController = new AbortController();
@@ -142,17 +148,21 @@ export async function runDataCheckQuery(request: DataCheckQueryRequest): Promise
 
     const result = response.data?.results?.A;
     if (result?.error) {
-      return { ok: false, error: result.error };
+      return { ok: false, error: result.error, failureKind: 'query' };
     }
 
     const { seriesCount, rowCount } = countRows(result?.frames ?? []);
     return { ok: true, hasData: rowCount > 0, seriesCount, rowCount };
   } catch (err) {
     if (timeoutController.signal.aborted && !signal?.aborted) {
-      return { ok: false, error: `Query timed out after ${DATA_CHECK_QUERY_LIMITS.timeoutMs / 1000}s.` };
+      return {
+        ok: false,
+        error: `Query timed out after ${DATA_CHECK_QUERY_LIMITS.timeoutMs / 1000}s.`,
+        failureKind: 'timeout',
+      };
     }
     logger.debug('[runDataCheckQuery] query failed', { datasourceType, error: err });
-    return { ok: false, error: describeError(err) };
+    return { ok: false, error: describeError(err), failureKind: 'query' };
   } finally {
     clearTimeout(timeoutId);
     signal?.removeEventListener('abort', onCallerAbort);

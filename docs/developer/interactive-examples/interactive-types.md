@@ -257,7 +257,7 @@ If you specify `"requirements": ["exists-reftarget"]` on a multistep, also set `
 
 See [guided-interactions.md](./guided-interactions.md) for detailed documentation.
 
-### datasource picker with a data check
+### Data source picker with a data check
 
 - **Purpose**: confirms the data source the user picked actually holds the data the guide teaches against.
 - **Behavior**: the user picks a data source and presses **Run check**. The author's query runs once, on that click, and passes when it returns at least one row. Without `dataCheckBlocking` the result is advisory; with it, the block becomes a tracked step that completes only on a pass.

@@ -119,14 +119,28 @@ it('keeps a pick made while the load was still in flight', async () => {
   await waitFor(() => expect(picker()).toHaveValue('Prometheus'));
 });
 
+// The provider stays mounted across a guide swap, so unmounting and rendering
+// again would clear the state for free and never touch the guard.
 it("does not carry one guide's pick into the next", async () => {
   mockGetForGuide.mockResolvedValue({ myDs: 'Prometheus' });
-  const { unmount } = renderInProvider('guide-1');
+  const { rerender } = renderInProvider('guide-1');
   await waitFor(() => expect(picker()).toHaveValue('Prometheus'));
-  unmount();
 
-  mockGetForGuide.mockResolvedValue({});
-  renderInProvider('guide-2');
-  await waitFor(() => expect(mockGetForGuide).toHaveBeenCalledWith('guide-2'));
+  let release: (value: Record<string, string>) => void = () => {};
+  mockGetForGuide.mockReturnValue(new Promise((resolve) => (release = resolve)));
+  await act(async () => {
+    rerender(
+      <GuideResponseProvider guideId="guide-2">
+        <DatasourceCheckStep stepId="check-1" variableName="myDs" query="up" datasourceFilter="prometheus" />
+      </GuideResponseProvider>
+    );
+  });
+
+  // Cleared on the swap itself, before the second guide's storage resolves.
+  expect(picker()).toHaveValue('');
+
+  await act(async () => {
+    release({});
+  });
   expect(picker()).toHaveValue('');
 });

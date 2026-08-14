@@ -53,12 +53,22 @@ jest.mock('../../global-state/completion-store', () => ({
 }));
 
 // Stateful like the real provider: a write has to re-render, or nothing reading
-// the stored pick would ever see it.
+// the stored pick would ever see it. `mockOtherWriters` stands in for everything
+// else that can own the same variable — a sibling advisory picker, a `{{var}}`
+// write, a guide clear.
+let mockOtherWriters: Array<(value: string | undefined) => void> = [];
+
 jest.mock('../../docs-retrieval', () => {
   const react = require('react');
   return {
     useGuideResponsesOptional: () => {
       const [stored, setStored] = react.useState(() => mockStoredResponse);
+      react.useEffect(() => {
+        mockOtherWriters.push(setStored);
+        return () => {
+          mockOtherWriters = mockOtherWriters.filter((writer) => writer !== setStored);
+        };
+      }, []);
       return {
         getResponse: () => stored,
         setResponse: (key: string, value: string) => {
@@ -108,6 +118,13 @@ async function click(testId: string) {
   });
 }
 
+/** Someone other than this picker writes the variable it reads. */
+async function writeVariableElsewhere(value: string | undefined) {
+  await act(async () => {
+    mockOtherWriters.forEach((writer) => writer(value));
+  });
+}
+
 const hasData = { ok: true, hasData: true, seriesCount: 1, rowCount: 3 };
 const noData = { ok: true, hasData: false, seriesCount: 0, rowCount: 0 };
 
@@ -117,6 +134,7 @@ beforeEach(() => {
   mockStoredCompleted = false;
   mockStoredReason = null;
   mockStoredResponse = undefined;
+  mockOtherWriters = [];
   mockRunQuery.mockResolvedValue(hasData);
 });
 
@@ -365,6 +383,75 @@ describe('changing the data source', () => {
     await pick('Prometheus staging');
     expect(mockResetStep).toHaveBeenCalledWith('check-1', undefined);
   });
+
+  it('tells the section to reset, not just its own store entry', async () => {
+    const onStepReset = jest.fn();
+    renderStep({ onStepComplete: jest.fn(), onStepReset });
+    await pick();
+    await pick('Prometheus staging');
+    expect(onStepReset).toHaveBeenCalledWith('check-1');
+  });
+});
+
+// The pick is shared state. An advisory `input` block on the same
+// `variableName` is exactly the pairing the demo guide ships, so a pass can be
+// invalidated by something this component never hears from directly.
+describe('a data source swapped by someone else', () => {
+  it('retracts a pass a section is counting', async () => {
+    mockStoredResponse = 'Prometheus';
+    const onStepComplete = jest.fn();
+    const onStepReset = jest.fn();
+    renderStep({ onStepComplete, onStepReset });
+    await click(TEST_IDS.run);
+    expect(onStepComplete).toHaveBeenCalledWith('check-1');
+
+    await writeVariableElsewhere('Prometheus staging');
+    expect(onStepReset).toHaveBeenCalledWith('check-1');
+  });
+
+  it('retracts a standalone pass from the completion store', async () => {
+    mockStoredResponse = 'Prometheus';
+    renderStep();
+    await click(TEST_IDS.run);
+    expect(mockMarkStepCompleted).toHaveBeenCalledWith('check-1', undefined, 'manual');
+
+    await writeVariableElsewhere('Prometheus staging');
+    expect(mockResetStep).toHaveBeenCalledWith('check-1', undefined);
+  });
+
+  it('does not leave a failure standing against a data source nobody is looking at', async () => {
+    mockRunQuery.mockResolvedValue(noData);
+    mockStoredResponse = 'Prometheus';
+    renderStep();
+    await click(TEST_IDS.run);
+    await waitFor(() => expect(screen.getByTestId(TEST_IDS.failure)).toBeInTheDocument());
+
+    await writeVariableElsewhere('Prometheus staging');
+    expect(screen.queryByTestId(TEST_IDS.failure)).not.toBeInTheDocument();
+  });
+
+  it('retracts when a guide clear empties the picker', async () => {
+    mockStoredResponse = 'Prometheus';
+    const onStepReset = jest.fn();
+    renderStep({ onStepComplete: jest.fn(), onStepReset });
+    await click(TEST_IDS.run);
+
+    await writeVariableElsewhere(undefined);
+    expect(onStepReset).toHaveBeenCalledWith('check-1');
+  });
+
+  // Hydration arrives the same way a foreign write does. Retracting on it would
+  // wipe a durable pass on every reload.
+  it('leaves a durable pass alone when the stored pick merely arrives late', async () => {
+    mockStoredCompleted = true;
+    mockStoredReason = 'manual';
+    const onStepReset = jest.fn();
+    renderStep({ onStepComplete: jest.fn(), onStepReset });
+
+    await writeVariableElsewhere('Prometheus');
+    expect(onStepReset).not.toHaveBeenCalled();
+    expect(mockResetStep).not.toHaveBeenCalled();
+  });
 });
 
 describe('a section reset', () => {
@@ -424,6 +511,18 @@ describe('skipping', () => {
       renderStep({ skippable: true });
       await pick();
       await click(TEST_IDS.run);
+    });
+
+    it('says so, and refuses a second press until the first lands', () => {
+      expect(screen.getByTestId(TEST_IDS.step)).toHaveAttribute('data-test-step-state', 'executing');
+      expect(screen.getByText('Checking your data…')).toBeInTheDocument();
+      expect(screen.getByTestId(TEST_IDS.run)).toBeDisabled();
+    });
+
+    it('issues exactly one query however many times the button is pressed', async () => {
+      await click(TEST_IDS.run);
+      await click(TEST_IDS.run);
+      expect(mockRunQuery).toHaveBeenCalledTimes(1);
     });
 
     it('aborts the in-flight query', async () => {
