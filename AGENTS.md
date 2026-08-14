@@ -47,7 +47,8 @@ npm run server           # Run Grafana locally with Docker
 npm run test:ci          # Frontend tests, no coverage (agents should use this, not `npm test`)
 npm run test:coverage    # Frontend tests with coverage + thresholds (used by `npm run check`)
 npm run lint:fix         # Lint + autofix
-npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:coverage
+npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:coverage + test:scripts
+npm run test:scripts     # Shell scripts: bash -n, shellcheck, stubbed-curl behavioural suite
 ```
 
 Dev server runs at http://localhost:3000 (admin/admin). Focused Jest runs need `--coverage=false`, or global thresholds report a false failure. For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
