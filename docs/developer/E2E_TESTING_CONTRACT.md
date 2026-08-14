@@ -68,7 +68,9 @@ Unit tests use event emitters to test arbitration and cleanup. Opt-in Chromium t
 
 Context and browser shutdown can emit more than one Playwright event. The first observed stable code is authoritative.
 
-The CDP `Page.crash` test is Chromium-specific. Set `PATHFINDER_RUN_BROWSER_BEHAVIOR_TESTS=true` to run these browser tests.
+The CDP `Page.crash` test runs `GuideTerminationController` inside an isolated Chromium process group.
+
+Set `PATHFINDER_RUN_BROWSER_BEHAVIOR_TESTS=true` to run these browser tests.
 
 ---
 

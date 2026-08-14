@@ -20,7 +20,8 @@ jest.mock('./artifacts', () => ({
   captureFinalScreenshot: jest.fn().mockResolvedValue(undefined),
 }));
 
-import { executeAllSteps, executeStep } from './execution';
+import { executeAllSteps, executeStep, hasAuthoritativeInfrastructureCode } from './execution';
+import type { StepTestResult } from './types';
 import { captureFailureArtifacts } from './artifacts';
 import type { TestableStep } from './types';
 
@@ -73,42 +74,58 @@ describe('infrastructure guide outcome', () => {
       jest.useRealTimers();
     }
   });
-  it('does not convert an infrastructure step failure to MANDATORY_FAILURE', async () => {
-    const locator = {
-      count: jest.fn().mockRejectedValue(new Error('Target crashed')),
-    };
-    const page = {
-      getByTestId: jest.fn(() => locator),
-      on: jest.fn(),
-      off: jest.fn(),
-      url: jest.fn(() => 'http://localhost:3000/'),
-      close: jest.fn().mockResolvedValue(undefined),
-    };
-    const step: TestableStep = {
-      stepId: 'crashed-step',
-      index: 0,
-      skippable: false,
-      hasDoItButton: true,
-      hasShowMeButton: false,
-      isPreCompleted: false,
-      isMultistep: false,
-      internalActionCount: 0,
-      isGuided: false,
-      locator: locator as never,
-    };
+  it.each(['Network panel not found', 'Guide 401 example not found'])(
+    'keeps diagnostic text \"%s\" as a mandatory guide failure',
+    async (errorMessage) => {
+      const locator = {
+        count: jest.fn().mockRejectedValue(new Error(errorMessage)),
+      };
+      const page = {
+        getByTestId: jest.fn(() => locator),
+        on: jest.fn(),
+        off: jest.fn(),
+        url: jest.fn(() => 'http://localhost:3000/'),
+        close: jest.fn().mockResolvedValue(undefined),
+      };
+      const step: TestableStep = {
+        stepId: 'crashed-step',
+        index: 0,
+        skippable: false,
+        hasDoItButton: true,
+        hasShowMeButton: false,
+        isPreCompleted: false,
+        isMultistep: false,
+        internalActionCount: 0,
+        isGuided: false,
+        locator: locator as never,
+      };
 
-    const result = await executeAllSteps(page as never, [step]);
+      const result = await executeAllSteps(page as never, [step]);
 
-    expect(result).toMatchObject({
-      aborted: true,
-      outcome: 'infrastructure_error',
-      errorCode: 'BROWSER_CRASHED',
-    });
-    expect(result.abortReason).toBeUndefined();
-    expect(result.results[0]).toMatchObject({
+      expect(result).toMatchObject({
+        aborted: true,
+        abortReason: 'MANDATORY_FAILURE',
+      });
+      expect(result.results[0]).toMatchObject({
+        status: 'failed',
+        classification: 'infrastructure',
+      });
+      expect(result.results[0].errorCode).toBeUndefined();
+    }
+  );
+
+  it('requires an authoritative code for infrastructure control flow', () => {
+    const diagnosticOnly: StepTestResult = {
+      stepId: 'diagnostic',
       status: 'failed',
+      durationMs: 1,
+      currentUrl: '/',
+      consoleErrors: [],
+      skippable: false,
       classification: 'infrastructure',
-      errorCode: 'BROWSER_CRASHED',
-    });
+    };
+
+    expect(hasAuthoritativeInfrastructureCode(diagnosticOnly)).toBe(false);
+    expect(hasAuthoritativeInfrastructureCode({ ...diagnosticOnly, errorCode: 'BROWSER_CRASHED' })).toBe(true);
   });
 });

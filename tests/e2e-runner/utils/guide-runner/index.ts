@@ -48,7 +48,7 @@ export {
 // ============================================
 // Error Classification
 // ============================================
-export { classifyError, classifyInfrastructureErrorCode } from './classification';
+export { classifyError } from './classification';
 export {
   arbitrateGuideWork,
   createGuideTerminationController,
@@ -104,6 +104,7 @@ export {
   waitForGuidedCommentBoxReady,
   runGuidedSubstepLoop,
   clickSkipButtonAndSync,
+  hasAuthoritativeInfrastructureCode,
   executeStep,
   executeAllSteps,
   logStepResult,

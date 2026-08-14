@@ -395,6 +395,8 @@ On Linux and macOS, the parent starts `npx` as a process-group leader. Each sign
 
 After `SIGKILL`, the watchdog waits for direct-child close. On POSIX, it also waits for process-group disappearance.
 
+If the child wrote a valid result first, `RUNNER_TIMEOUT` replaces its outcome and code but preserves completed steps and diagnostics.
+
 If death cannot be proved, the report uses `RUNNER_CONTAINMENT_FAILED`. The runner preserves its temporary and Playwright output directories.
 
 On Windows, Node sends each signal to the direct child. Process-group proof applies to the Cloud Linux and local macOS runners.
@@ -548,9 +550,11 @@ When a step fails, the runner assigns an error classification to help with triag
 
 Only high-confidence network, authentication, browser-crash, and closed-target failures are auto-classified as `infrastructure`. Selector, action, requirement, and step timeout failures default to `unknown` and require human triage.
 
-Stable error codes are authoritative. Text classification is a fallback for Playwright errors that arrive before an event signal.
+Stable error codes are authoritative. Text classification is diagnostic only and cannot select infrastructure control flow.
 
-An infrastructure-classified step ends the guide with `outcome: infrastructure_error`. It never becomes `MANDATORY_FAILURE`.
+Thus, content text such as `Network panel not found` remains a guide failure without an event code.
+
+A step with an authoritative infrastructure code ends the guide with `outcome: infrastructure_error`. It never becomes `MANDATORY_FAILURE`.
 
 The implemented classifier lives in `tests/e2e-runner/utils/guide-runner/classification.ts`.
 

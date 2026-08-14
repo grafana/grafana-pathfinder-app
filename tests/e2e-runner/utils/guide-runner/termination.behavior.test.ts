@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { spawn } from 'child_process';
+import { join } from 'path';
 import { chromium } from 'playwright';
 
 import { createGuideTerminationController } from './termination';
@@ -60,12 +61,16 @@ describe('guide termination with Chromium', () => {
   browserIt(
     'reports the Chromium Page.crash hook',
     async () => {
+      const terminationModule = join(__dirname, 'termination.ts');
       const script = `
+      require('ts-node/register/transpile-only');
       const { chromium } = require('playwright');
+      const { createGuideTerminationController } = require(${JSON.stringify(terminationModule)});
       (async () => {
         const browser = await chromium.launch({ channel: 'chromium', headless: true });
         const page = await browser.newPage();
-        page.once('crash', () => process.send && process.send({ event: 'crash' }));
+        const controller = createGuideTerminationController(page);
+        controller.termination.then((termination) => process.send && process.send(termination));
         const session = await page.context().newCDPSession(page);
         void session.send('Page.crash').catch(() => {});
       })().catch((error) => process.send && process.send({ error: error.message }));
@@ -73,22 +78,29 @@ describe('guide termination with Chromium', () => {
     `;
       const child = spawn(process.execPath, ['-e', script], {
         detached: process.platform !== 'win32',
+        env: {
+          ...process.env,
+          TS_NODE_COMPILER_OPTIONS: JSON.stringify({ module: 'CommonJS', moduleResolution: 'node' }),
+        },
         stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
       });
       try {
         await expect(
-          new Promise<string>((resolve, reject) => {
+          new Promise<unknown>((resolve, reject) => {
             const timer = setTimeout(() => reject(new Error('Chromium crash event timed out')), 10000);
             child.once('message', (message: unknown) => {
               clearTimeout(timer);
-              if (typeof message === 'object' && message !== null && 'event' in message && message.event === 'crash') {
-                resolve(message.event);
+              if (typeof message === 'object' && message !== null && 'code' in message) {
+                resolve(message);
                 return;
               }
               reject(new Error(`Chromium crash subprocess failed: ${JSON.stringify(message)}`));
             });
           })
-        ).resolves.toBe('crash');
+        ).resolves.toMatchObject({
+          code: 'BROWSER_CRASHED',
+          outcome: 'infrastructure_error',
+        });
       } finally {
         if (process.platform !== 'win32' && child.pid) {
           try {

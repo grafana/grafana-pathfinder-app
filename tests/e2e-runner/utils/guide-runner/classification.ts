@@ -9,26 +9,6 @@
 
 import { AbortReason, ErrorClassification } from './types';
 import { INFRASTRUCTURE_ERROR_PATTERNS } from './constants';
-import type { E2EErrorCode } from '../../../../src/cli/e2e/schemas/e2e-report.schema';
-
-export function classifyInfrastructureErrorCode(error?: string): E2EErrorCode | undefined {
-  if (!error) {
-    return undefined;
-  }
-  if (/target crashed|page.*crashed/i.test(error)) {
-    return 'BROWSER_CRASHED';
-  }
-  if (/browser.*disconnected/i.test(error)) {
-    return 'BROWSER_DISCONNECTED';
-  }
-  if (/context.*closed|context.*destroyed/i.test(error)) {
-    return 'CONTEXT_CLOSED';
-  }
-  if (/target.*closed|page.*closed|browser.*closed/i.test(error)) {
-    return 'PAGE_CLOSED';
-  }
-  return undefined;
-}
 
 /**
  * Classify an error for failure triage (L3-5C).

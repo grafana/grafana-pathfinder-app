@@ -38,7 +38,7 @@ import {
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
   SKIP_SYNC_TIMEOUT_MS,
 } from './constants';
-import { classifyError, classifyInfrastructureErrorCode } from './classification';
+import { classifyError } from './classification';
 import { DeadlineExceededError, runWithDeadline } from './deadline';
 import {
   captureFailureArtifacts,
@@ -91,6 +91,17 @@ export async function scrollStepIntoView(
   if (scrollDelay > 0) {
     await page.waitForTimeout(scrollDelay);
   }
+}
+
+const AUTHORITATIVE_STEP_INFRASTRUCTURE_CODES = new Set([
+  'BROWSER_CRASHED',
+  'BROWSER_DISCONNECTED',
+  'PAGE_CLOSED',
+  'CONTEXT_CLOSED',
+]);
+
+export function hasAuthoritativeInfrastructureCode(result: StepTestResult): boolean {
+  return result.errorCode !== undefined && AUTHORITATIVE_STEP_INFRASTRUCTURE_CODES.has(result.errorCode);
 }
 
 export async function executeStep(
@@ -1394,7 +1405,6 @@ async function executeStepWork(
       currentUrl: page.url(),
       consoleErrors,
       error: errorMsg,
-      errorCode: classifyInfrastructureErrorCode(errorMsg),
       skippable: step.skippable,
       // L3-5C: Classify the error for triage hints
       classification: classifyError(errorMsg),
@@ -1551,7 +1561,7 @@ export async function executeAllSteps(
     // - Skippable steps: if fail for any reason, log and continue (does NOT fail overall test)
     // - Mandatory steps: if fail for any reason, abort and mark remaining as NOT_REACHED
     if (result.status === 'failed') {
-      if (result.classification === 'infrastructure') {
+      if (hasAuthoritativeInfrastructureCode(result)) {
         aborted = true;
         abortMessage = result.error ?? 'The guide stopped after an infrastructure error.';
         for (let j = i + 1; j < steps.length; j++) {

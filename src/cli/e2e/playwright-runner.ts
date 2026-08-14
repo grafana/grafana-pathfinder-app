@@ -41,6 +41,71 @@ function tryFindRunnerRoot(startDir: string): string | undefined {
   }
 }
 
+function isTestResultsData(value: unknown): value is TestResultsData {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  const guide = candidate.guide as Record<string, unknown> | undefined;
+  return (
+    typeof guide === 'object' &&
+    guide !== null &&
+    typeof guide.id === 'string' &&
+    typeof guide.title === 'string' &&
+    typeof guide.path === 'string' &&
+    typeof candidate.timestamp === 'string' &&
+    Number.isFinite(Date.parse(candidate.timestamp)) &&
+    Array.isArray(candidate.results) &&
+    candidate.results.every((result) => {
+      if (typeof result !== 'object' || result === null) {
+        return false;
+      }
+      const step = result as Record<string, unknown>;
+      return (
+        typeof step.stepId === 'string' &&
+        ['passed', 'failed', 'skipped', 'not_reached'].includes(String(step.status)) &&
+        typeof step.durationMs === 'number' &&
+        Number.isFinite(step.durationMs) &&
+        typeof step.currentUrl === 'string' &&
+        Array.isArray(step.consoleErrors) &&
+        step.consoleErrors.every((error) => typeof error === 'string') &&
+        typeof step.skippable === 'boolean'
+      );
+    }) &&
+    typeof candidate.aborted === 'boolean'
+  );
+}
+
+function readResultsData(filePath: string): TestResultsData | undefined {
+  const value = readJsonIfExists<unknown>(filePath);
+  return isTestResultsData(value) ? value : undefined;
+}
+
+function runnerTerminalResult(
+  errorCode: Extract<E2EErrorCode, 'RUNNER_TIMEOUT' | 'RUNNER_CONTAINMENT_FAILED'>,
+  message: string,
+  resultsFilePath: string
+): Pick<PlaywrightResult, 'errorCode' | 'abortMessage' | 'resultsData'> {
+  const published = readResultsData(resultsFilePath);
+  const resultsData = published
+    ? {
+        ...published,
+        endedAt: new Date().toISOString(),
+        outcome: 'infrastructure_error' as const,
+        errorCode,
+        errorMessage: message,
+        aborted: true,
+        abortReason: undefined,
+        abortMessage: message,
+      }
+    : undefined;
+  return {
+    errorCode,
+    abortMessage: message,
+    ...(resultsData ? { resultsData } : {}),
+  };
+}
+
 export function findRunnerRoot(startDir: string): string {
   const fromStart = tryFindRunnerRoot(startDir);
   if (fromStart !== undefined) {
@@ -177,7 +242,7 @@ export function processPlaywrightResults(
   // CLI never hardcodes Playwright's per-test output-dir naming.
   const traceFile = options.trace ? readFileIfExists(filePaths.traceOutputFilePath)?.trim() || undefined : undefined;
 
-  const resultsData = readJsonIfExists<TestResultsData>(filePaths.resultsFilePath);
+  const resultsData = readResultsData(filePaths.resultsFilePath);
   const success = playwrightExitCode === 0 && (!resultsData?.outcome || resultsData.outcome === 'passed');
 
   // An abort file means the runner stopped early (e.g. session expiry).
@@ -280,18 +345,20 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
         resolve(value);
       };
       const runnerTimeout = (): PlaywrightResult => ({
+        ...runnerTerminalResult(
+          'RUNNER_TIMEOUT',
+          'The Playwright child exceeded its runner deadline.',
+          resultsFilePath
+        ),
         success: false,
         exitCode: ExitCode.TEST_FAILURE,
         traceFile: traceEnabled ? readFileIfExists(traceOutputFilePath)?.trim() || undefined : undefined,
-        errorCode: 'RUNNER_TIMEOUT',
-        abortMessage: 'The Playwright child exceeded its runner deadline.',
       });
       const containmentFailure = (message: string): PlaywrightResult => ({
+        ...runnerTerminalResult('RUNNER_CONTAINMENT_FAILED', message, resultsFilePath),
         success: false,
         exitCode: ExitCode.TEST_FAILURE,
         traceFile: traceEnabled ? readFileIfExists(traceOutputFilePath)?.trim() || undefined : undefined,
-        errorCode: 'RUNNER_CONTAINMENT_FAILED',
-        abortMessage: message,
       });
       const proc = spawn('npx', playwrightArgs, {
         cwd: runnerRoot,

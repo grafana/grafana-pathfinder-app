@@ -450,6 +450,74 @@ describe('runPlaywrightTests', () => {
     }
   });
 
+  it('preserves valid child step evidence when RUNNER_TIMEOUT wins', async () => {
+    jest.useFakeTimers();
+    const child = new EventEmitter() as EventEmitter & { kill: jest.Mock };
+    child.kill = jest.fn(() => true);
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    spawnMock.mockImplementation((_command, _args, spawnOptions) => {
+      const env = (spawnOptions as { env?: NodeJS.ProcessEnv }).env;
+      writeFileSync(
+        env?.RESULTS_FILE_PATH as string,
+        JSON.stringify({
+          guide: { id: 'seeded', title: 'Seeded', path: 'seeded.json', targetUrl: 'http://localhost:3000' },
+          timestamp: '2026-01-01T00:00:00.000Z',
+          outcome: 'passed',
+          results: [
+            {
+              stepId: 'completed-step',
+              status: 'passed',
+              durationMs: 42,
+              currentUrl: 'http://localhost:3000/d/example',
+              consoleErrors: ['diagnostic'],
+              skippable: false,
+            },
+          ],
+          aborted: false,
+        })
+      );
+      return child as never;
+    });
+    try {
+      const resultPromise = runPlaywrightTests(
+        { path: 'fixture.json', content: '{}' },
+        {
+          targetUrl: 'http://localhost:3000',
+          verbose: false,
+          trace: false,
+          headed: false,
+          artifacts: 'artifacts',
+          alwaysScreenshot: false,
+          startingLocation: '/',
+        }
+      );
+
+      await jest.advanceTimersByTimeAsync(305000);
+      child.emit('close', 1);
+
+      await expect(resultPromise).resolves.toMatchObject({
+        success: false,
+        errorCode: 'RUNNER_TIMEOUT',
+        resultsData: {
+          outcome: 'infrastructure_error',
+          errorCode: 'RUNNER_TIMEOUT',
+          aborted: true,
+          results: [
+            {
+              stepId: 'completed-step',
+              status: 'passed',
+              durationMs: 42,
+              consoleErrors: ['diagnostic'],
+            },
+          ],
+        },
+      });
+    } finally {
+      errorSpy.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
   it('returns containment failure and preserves diagnostics when child death is unproved', async () => {
     jest.useFakeTimers();
     const child = new EventEmitter() as EventEmitter & { kill: jest.Mock };
