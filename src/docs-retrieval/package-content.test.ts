@@ -566,6 +566,25 @@ describe('resolvePackageMilestones', () => {
     expect(result[2]!.isLocked).toBeUndefined();
   });
 
+  it('surfaces the manifest description as a subtitle when content already has its own title', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'data-sources',
+        contentUrl: 'bundled:data-sources/content.json',
+        manifestUrl: 'bundled:data-sources/manifest.json',
+        repository: 'bundled',
+        content: { id: 'data-sources', title: 'Data sources', blocks: [] },
+        manifest: { id: 'data-sources', description: 'How connections and plugins work.', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['data-sources']);
+    expect(result[0]!.title).toBe('Data sources');
+    expect(result[0]!.description).toBe('How connections and plugins work.');
+  });
+
   it('falls back to description then ID when content title is missing', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockResolvedValue({
@@ -745,6 +764,37 @@ describe('fetchPackageContent path-type enrichment', () => {
 
     expect(result.content).not.toBeNull();
     expect(result.content!.metadata.repository).toBe('app-platform');
+  });
+
+  it('suppresses the legacy Ready to Begin button on the cover, keeping the bottom nav', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+    };
+
+    // The React cover-page TOC (LearningPathTableOfContents) owns the
+    // Start/Resume affordance now; the legacy HTML button always said "Ready
+    // to Begin" and always targeted milestone 1, regardless of progress.
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content!.content).not.toContain('journey-ready-to-begin');
+    expect(result.content!.content).toContain('journey-bottom-navigation');
   });
 
   it('does not add learningJourney for guide-type packages', async () => {

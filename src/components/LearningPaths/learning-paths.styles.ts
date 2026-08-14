@@ -359,6 +359,9 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
     }),
+    guideItemWithDescription: css({
+      alignItems: 'flex-start',
+    }),
     guideIcon: css({
       width: 16,
       height: 16,
@@ -381,6 +384,21 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
     }),
+    guideTextGroup: css({
+      display: 'flex',
+      flexDirection: 'column',
+      minWidth: 0,
+      gap: 2,
+    }),
+    guideDescription: css({
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.disabled,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+    }),
   };
 };
 
@@ -389,6 +407,8 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
 // ============================================================================
 
 export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
+  const colors = getColorPalette(theme);
+
   return {
     container: css({
       margin: `${theme.spacing(2)} 0`,
@@ -397,16 +417,56 @@ export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
       backgroundColor: theme.colors.background.secondary,
       border: `1px solid ${theme.colors.border.weak}`,
     }),
+    header: css({
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: theme.spacing(1),
+      marginBottom: theme.spacing(1.5),
+    }),
     heading: css({
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(1),
-      margin: `0 0 ${theme.spacing(1.5)}`,
+      margin: 0,
       fontSize: theme.typography.h5.fontSize,
       fontWeight: theme.typography.fontWeightMedium,
       color: theme.colors.text.primary,
     }),
     headingIcon: css({
+      color: theme.colors.text.secondary,
+    }),
+    headerActions: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1.5),
+    }),
+    ctaButton: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      padding: `${theme.spacing(0.75)} ${theme.spacing(1.5)}`,
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: colors.pathAccent,
+      color: '#fff',
+      fontSize: theme.typography.bodySmall.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      border: 'none',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      whiteSpace: 'nowrap',
+
+      '&:hover': {
+        filter: 'brightness(1.1)',
+      },
+    }),
+    badgePreview: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      marginBottom: theme.spacing(1.5),
+      fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
   };

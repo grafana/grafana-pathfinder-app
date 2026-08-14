@@ -103,6 +103,8 @@ export interface Milestone {
   isLocked?: boolean;
   /** Canonical website URL for this milestone (e.g., grafana.com/docs/learning-paths/.../milestone-slug/) */
   websiteUrl?: string;
+  /** Short summary shown under the title in the cover-page module list. Package paths only — sourced from the member's manifest description. */
+  description?: string;
   sideJourneys?: SideJourneys;
   relatedJourneys?: RelatedJourneys;
   conclusionImage?: ConclusionImage;

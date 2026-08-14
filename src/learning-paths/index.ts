@@ -22,6 +22,7 @@ export {
   getBadgesToAward,
   getBadgeById,
   getBadgesByTriggerType,
+  getBadgeForPath,
   getEarnedBadgeCount,
   getTotalBadgeCount,
   sortBadgesForDisplay,

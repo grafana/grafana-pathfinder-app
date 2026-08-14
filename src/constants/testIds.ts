@@ -328,6 +328,7 @@ export const testIds = {
     discoverMoreStart: (id: string) => `discover-more-start-${id}`,
     discoverMoreExpand: (id: string) => `discover-more-expand-${id}`,
     tableOfContents: 'learning-paths-toc',
+    tableOfContentsCta: 'learning-paths-toc-cta',
   },
 
   // Live Session
