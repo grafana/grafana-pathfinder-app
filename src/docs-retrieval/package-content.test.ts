@@ -179,6 +179,11 @@ describe('fetchPackageContent', () => {
 // ---------------------------------------------------------------------------
 
 describe('fetchPackageById', () => {
+  // setBackendSrv and config.namespace are module-level singletons, so the two
+  // reuse tests below would otherwise reach every later describe.
+  const originalBackendSrv = getBackendSrv();
+  const originalNamespace = (config as { namespace?: string }).namespace;
+
   afterEach(() => {
     // Reset injected resolver between tests
     setPackageResolver(
@@ -188,6 +193,8 @@ describe('fetchPackageById', () => {
         error: { code: 'not-found', message: 'reset' },
       })
     );
+    setBackendSrv(originalBackendSrv);
+    (config as { namespace?: string }).namespace = originalNamespace;
   });
 
   it('returns error when no resolver has been configured', async () => {
