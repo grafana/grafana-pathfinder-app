@@ -40,6 +40,11 @@ jest.mock('../../lib/telemetry/bridge', () => ({
   registerTelemetryBridge: jest.fn(),
 }));
 
+const resolvePackageNavLinksMock = jest.fn();
+jest.mock('../../docs-retrieval', () => ({
+  resolvePackageNavLinks: (...args: unknown[]) => resolvePackageNavLinksMock(...args),
+}));
+
 const publishMock = jest.fn();
 jest.mock('@grafana/runtime', () => ({
   getAppEvents: () => ({ publish: publishMock }),
@@ -178,6 +183,7 @@ beforeEach(() => {
   );
   mockIsPathCompleted.mockImplementation((id: string) => id === 'path-done');
   mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/learning-paths/path-1/guide-1/');
+  resolvePackageNavLinksMock.mockResolvedValue([]);
 });
 
 describe('MyLearningTab launch flow', () => {
@@ -572,8 +578,48 @@ describe('MyLearningTab — private paths split', () => {
   });
 });
 
+describe('MyLearningTab — online course package cover launch', () => {
+  it('resolves and lands a fresh public/CDN package path on its own cover page', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(0);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      {
+        packageId: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        contentUrl: 'bundled:core-grafana-concepts-lj/content.json',
+      },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['core-grafana-concepts-lj']);
+    expect(prepareMock).toHaveBeenCalledWith('bundled:core-grafana-concepts-lj/content.json', {
+      title: 'Core Grafana concepts',
+      source: 'home_page',
+      packageInfo: {
+        packageId: 'core-grafana-concepts-lj',
+        packageManifest: {
+          type: 'path',
+          milestones: ['core-grafana-concepts-data-sources'],
+          id: 'core-grafana-concepts-lj',
+        },
+      },
+    });
+  });
+});
+
 describe('MyLearningTab — App Platform guide launch', () => {
-  it('launches an App Platform path member with the path manifest as packageInfo (milestone chrome)', async () => {
+  it('lands a fresh App Platform path on its own cover page, same as any other package path', async () => {
     mockPaths = [
       {
         id: 'ap-path',
@@ -582,6 +628,42 @@ describe('MyLearningTab — App Platform guide launch', () => {
         manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
       },
     ];
+    mockGetPathProgress.mockReturnValue(0);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      { packageId: 'ap-path', title: 'Alerting enablement', contentUrl: 'backend-guide:ap-path' },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
+      title: 'Alerting enablement',
+      source: 'home_page',
+      packageInfo: {
+        packageId: 'ap-path',
+        packageManifest: {
+          type: 'path',
+          repository: 'app-platform',
+          milestones: ['fe-alerting-01', 'fe-alerting-02'],
+          id: 'ap-path',
+        },
+      },
+    });
+  });
+
+  it('resumes an in-progress App Platform path on the current member guide (unchanged)', async () => {
+    mockPaths = [
+      {
+        id: 'ap-path',
+        title: 'Alerting enablement',
+        guides: ['fe-alerting-01'],
+        manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(40);
     mockGetPathGuides.mockReturnValue([
       { id: 'fe-alerting-01', title: 'Alerting module 1', completed: false, isCurrent: true },
     ]);

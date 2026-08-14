@@ -12,7 +12,9 @@ import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
 import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
+import { resolvePackageNavLinks } from '../../docs-retrieval';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
+import type { LearningPath } from '../../types/learning-paths.types';
 import { useLearningPaths, useDiscoverMore, BADGES, getPathsData, type DiscoverMoreItem } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { SkeletonLoader } from '../SkeletonLoader';
@@ -148,9 +150,45 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     [onOpenGuide]
   );
 
+  // Manifest-backed (package) paths — App Platform or online packages alike —
+  // have no cover `url` the way URL-based cloud paths do, so a fresh launch
+  // has to resolve the path's own cover contentUrl before opening it. Mirrors
+  // the URL-based branch in handleOpenGuide below, which already has one.
+  const openPathCover = useCallback(
+    async (path: LearningPath) => {
+      const packageInfo: PackageOpenInfo = {
+        packageId: path.id,
+        packageManifest: { ...path.manifest, id: path.id },
+      };
+      const [navLink] = await resolvePackageNavLinks([path.id]);
+      const coverUrl = navLink?.contentUrl ?? '';
+
+      reportAppInteraction(UserInteraction.OpenResourceClick, {
+        content_title: path.title,
+        content_url: coverUrl || `package:${path.id}`,
+        content_type: AnalyticsContentType.LearningJourney,
+        interaction_location: 'my_learning_tab',
+        launch_target: 'cover_page',
+      });
+
+      void launch(coverUrl, path.title, path.id, packageInfo);
+    },
+    [launch]
+  );
+
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
       const parentPath = paths.find((p) => p.id === pathId);
+
+      // Manifest-backed (package) paths — App Platform and public/CDN course
+      // packages alike — land on their own cover page on a fresh launch, same
+      // as URL-based cloud paths below. The rendering pipeline is identical
+      // for every repository (docs/design/package/learning-journeys.md), so
+      // there's no reason to special-case one source over another here.
+      if (parentPath?.manifest && !parentPath.url && getPathProgress(parentPath.id) === 0) {
+        void openPathCover(parentPath);
+        return;
+      }
 
       if (parentPath?.url) {
         const isFreshLaunch = getPathProgress(parentPath.id) === 0;
@@ -220,7 +258,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       void launch(guideUrl, title, pathId, packageInfo);
     },
-    [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
+    [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
 
   const handleDiscoverStart = useCallback(
