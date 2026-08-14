@@ -22,7 +22,19 @@ const SCRIPT_PATH = path.resolve(__dirname, '..', '..', 'scripts', 'upsert-learn
 //
 // Fields the app accepts that the CRD really does not declare. Verified
 // against kinds/interactiveguide.cue; each one is silently dropped on upload.
-const PRUNED_BY_CRD = new Set(['defaultValue']);
+//
+// The `dataCheck*` family landed in #1612 and the backend CUE has not caught up
+// yet, so an `input` block uploaded through the scripts loses its data check
+// entirely — the picker renders, the check does not run. This entry is what made
+// that visible; remove it when `#Block` declares them.
+const PRUNED_BY_CRD = new Set([
+  'defaultValue',
+  'dataCheckQuery',
+  'dataCheckBlocking',
+  'dataCheckFailureMessage',
+  'dataCheckTimeFrom',
+  'dataCheckTimeTo',
+]);
 
 function scriptArray(name: string): Set<string> {
   const source = fs.readFileSync(SCRIPT_PATH, 'utf8');

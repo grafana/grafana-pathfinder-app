@@ -137,13 +137,17 @@ is gone on the next GET. Blocks nested three or more levels deep fall
 under `x-kubernetes-preserve-unknown-fields` and survive; anything
 shallower does not.
 
-The gap is currently one field — `defaultValue` on an `input` block,
-which costs the input its prefilled value. It has been much wider, in
-both directions: at one point the CUE was missing twenty-six fields
-including `autoCollapse`, `targetstate` and the `vm*` family, and the
-transcription in `upsert-learning-path.sh` then fell behind the CUE
-catching up, so `--strict-blocks` briefly rejected content the CRD would
-have accepted.
+The gap is currently the `input` block: `defaultValue`, which costs the
+input its prefilled value, and the whole `dataCheck*` family
+(`dataCheckQuery`, `dataCheckBlocking`, `dataCheckFailureMessage`,
+`dataCheckTimeFrom`, `dataCheckTimeTo`), which lands the picker without
+its data check — it renders, and the check simply never runs.
+
+It has been much wider, and it moves in both directions. At one point
+the CUE was missing twenty-six fields including `autoCollapse`,
+`targetstate` and the `vm*` family; the transcription in
+`upsert-learning-path.sh` then fell behind the CUE catching up, so
+`--strict-blocks` briefly rejected content the CRD would have accepted.
 
 So don't trust an enumeration in this document, including the one above.
 Two things keep it honest instead:
