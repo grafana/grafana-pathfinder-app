@@ -54,13 +54,21 @@ The first event wins and supplies the stable report code. Later events cannot re
 
 Expected Playwright teardown disables the monitor. Thus, normal page closure cannot replace a completed guide result.
 
+Guide work does not write result files. After arbitration, one publisher writes the authoritative result and abort metadata.
+
+If termination wins, the runner closes the page and drains losing work before publication. Cancellation blocks new artifact capture.
+
 Each step has one hard deadline based on its calculated step budget. The deadline includes requirements, actions, polling, artifacts, and cleanup.
 
 If the deadline expires, the controller stops guide work before it closes the page. The report uses `STEP_TIMEOUT`, not a browser-close code.
 
 Browser events use `BROWSER_CRASHED`, `BROWSER_DISCONNECTED`, `PAGE_CLOSED`, or `CONTEXT_CLOSED`. These codes always produce `outcome: infrastructure_error`.
 
-Unit tests use event emitters to test arbitration and cleanup. These tests do not replace behavior tests against a real Playwright browser.
+Unit tests use event emitters to test arbitration and cleanup. Opt-in Chromium tests cover page, context, browser, and CDP crash behavior.
+
+Context and browser shutdown can emit more than one Playwright event. The first observed stable code is authoritative.
+
+The CDP `Page.crash` test is Chromium-specific. Set `PATHFINDER_RUN_BROWSER_BEHAVIOR_TESTS=true` to run these browser tests.
 
 ---
 

@@ -62,6 +62,7 @@ import {
   waitForGuidedCommentBoxReady,
   runGuidedSubstepLoop,
   executeStep,
+  revealGuidedTarget,
   summarizeResults,
 } from './execution';
 import { handleRequirementsWithFix } from './requirements';
@@ -157,6 +158,28 @@ describe('scrollStepIntoView', () => {
     await scrollStepIntoView(page, 'step-1', 0, 1234);
 
     expect(stepElement.scrollIntoViewIfNeeded).toHaveBeenCalledWith({ timeout: 1234 });
+  });
+});
+
+describe('revealGuidedTarget', () => {
+  it('waits for a hidden target after trying its containing panel', async () => {
+    const menuButton = createLocator({ count: jest.fn().mockResolvedValue(0) });
+    (menuButton.first as jest.Mock).mockReturnValue(menuButton);
+    const panel = createLocator({
+      count: jest.fn().mockResolvedValue(1),
+      locator: jest.fn().mockReturnValue(menuButton),
+    });
+    const target = createLocator({
+      isVisible: jest.fn().mockResolvedValue(false),
+      locator: jest.fn().mockReturnValue(panel),
+    });
+    const page = {} as Page;
+
+    await expect(revealGuidedTarget(page, target, 1234)).resolves.toBe(target);
+
+    expect(panel.scrollIntoViewIfNeeded).toHaveBeenCalled();
+    expect(panel.hover).toHaveBeenCalledWith({ timeout: 1234 });
+    expect(target.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 1234 });
   });
 });
 

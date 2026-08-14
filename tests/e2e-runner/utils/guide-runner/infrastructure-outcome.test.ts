@@ -13,8 +13,15 @@ jest.mock('./requirements', () => ({
 jest.mock('./badge-celebrations', () => ({
   dismissBadgeCelebrations: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('./artifacts', () => ({
+  captureFailureArtifacts: jest.fn().mockResolvedValue(undefined),
+  captureSuccessArtifacts: jest.fn().mockResolvedValue(undefined),
+  capturePreStepArtifacts: jest.fn().mockResolvedValue(undefined),
+  captureFinalScreenshot: jest.fn().mockResolvedValue(undefined),
+}));
 
 import { executeAllSteps, executeStep } from './execution';
+import { captureFailureArtifacts } from './artifacts';
 import type { TestableStep } from './types';
 
 describe('infrastructure guide outcome', () => {
@@ -52,7 +59,7 @@ describe('infrastructure guide outcome', () => {
     };
 
     try {
-      const resultPromise = executeStep(page as never, step, { timeout: 100 });
+      const resultPromise = executeStep(page as never, step, { timeout: 100, artifactsDir: '/tmp/artifacts' });
       await jest.advanceTimersByTimeAsync(100);
 
       await expect(resultPromise).resolves.toMatchObject({
@@ -61,6 +68,7 @@ describe('infrastructure guide outcome', () => {
         classification: 'unknown',
       });
       expect(page.close).toHaveBeenCalledWith({ runBeforeUnload: false });
+      expect(captureFailureArtifacts).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }

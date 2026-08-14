@@ -60,18 +60,29 @@ export const GUIDE_INITIAL_TIMEOUT_MS = GUIDE_SETUP_TIMEOUT_MS * 2;
 export const RUNNER_DISCOVERY_WATCHDOG_MS = GUIDE_INITIAL_TIMEOUT_MS * 2 + GUIDE_SETUP_TIMEOUT_MS;
 export const RUNNER_DEADLINE_CLEANUP_GRACE_MS = 15000;
 export const RUNNER_FORCE_KILL_GRACE_MS = 5000;
+export const RUNNER_DEATH_VERIFICATION_MS = 5000;
 export const RUNNER_DEADLINE_POLL_MS = 250;
+export const RUNNER_MAX_GUIDE_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 export interface RunnerDeadlineFile {
   deadlineEpochMs: number;
 }
 
-export function isRunnerDeadlineFile(value: unknown): value is RunnerDeadlineFile {
+export function isRunnerDeadlineFile(
+  value: unknown,
+  now = Date.now(),
+  maxFutureMs = RUNNER_MAX_GUIDE_TIMEOUT_MS
+): value is RunnerDeadlineFile {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
   const deadlineEpochMs = (value as Record<string, unknown>).deadlineEpochMs;
-  return typeof deadlineEpochMs === 'number' && Number.isFinite(deadlineEpochMs) && deadlineEpochMs > 0;
+  return (
+    typeof deadlineEpochMs === 'number' &&
+    Number.isFinite(deadlineEpochMs) &&
+    deadlineEpochMs > now &&
+    deadlineEpochMs - now <= maxFutureMs
+  );
 }
 
 /** Encode a boolean for transport through a string environment variable. */

@@ -31,6 +31,28 @@ export interface GuideTerminationController {
   dispose(): void;
 }
 
+export type GuideWorkOutcome<T> =
+  { kind: 'completed'; value: T } | { kind: 'terminated'; termination: GuideTermination; drained: boolean };
+
+async function settlesWithin(work: Promise<unknown>, timeoutMs: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work.then(
+        () => true,
+        () => true
+      ),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 export function createGuideTerminationController(page: Page): GuideTerminationController {
   const abortController = new AbortController();
   let expectedTeardown = false;
@@ -106,4 +128,26 @@ export async function raceGuideTermination<T>(work: Promise<T>, controller: Guid
       throw new GuideTerminationError(termination);
     }),
   ]);
+}
+
+export async function arbitrateGuideWork<T>(
+  work: Promise<T>,
+  controller: GuideTerminationController,
+  cancel: () => void | Promise<void>,
+  drainTimeoutMs: number
+): Promise<GuideWorkOutcome<T>> {
+  const winner = await Promise.race([
+    work.then((value) => ({ kind: 'completed' as const, value })),
+    controller.termination.then((termination) => ({ kind: 'terminated' as const, termination })),
+  ]);
+  if (winner.kind === 'completed') {
+    controller.markExpectedTeardown();
+    return winner;
+  }
+
+  const drainStartedAt = Date.now();
+  await settlesWithin(Promise.resolve().then(cancel), drainTimeoutMs);
+  const remainingMs = Math.max(0, drainTimeoutMs - (Date.now() - drainStartedAt));
+  const drained = await settlesWithin(work, remainingMs);
+  return { ...winner, drained };
 }

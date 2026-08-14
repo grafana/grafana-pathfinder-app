@@ -158,7 +158,7 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - The runner monitors page crash, page close, context close, and browser disconnect events.
    - The first unexpected terminal event wins.
    - Normal Playwright teardown cannot replace a completed result.
-   - A terminal event stops guide work before the test teardown.
+   - A terminal event cancels and drains guide work before one result publisher runs.
 
 ## Requirements and skip behavior
 
@@ -210,7 +210,7 @@ Use `--output report.json` to generate a structured report:
 
 ```json
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "outcome": "passed",
   "runner": {
     "name": "pathfinder-e2e-runner",
@@ -245,6 +245,7 @@ Key contract fields:
 - `errorCode`: structured failure code present on non-passing reports.
 - Browser termination codes are `BROWSER_CRASHED`, `BROWSER_DISCONNECTED`, `PAGE_CLOSED`, and `CONTEXT_CLOSED`.
 - Deadline codes are `STEP_TIMEOUT` and `RUNNER_TIMEOUT`.
+- `RUNNER_CONTAINMENT_FAILED` means that the watchdog could not prove process-tree death.
 - Other notable codes include `AUTH_EXPIRED`, `NO_CAPACITY`, `REPORT_MISSING`, and `PLAYWRIGHT_SPAWN_FAILED`.
 - `guide.contentDigest`: SHA-256 digest of the exact guide content executed
 - `guide.sourceUrl`: remote package source URL when available
@@ -273,7 +274,11 @@ docker run --rm --entrypoint node ghcr.io/grafana/pathfinder-e2e-runner:commit-<
 
 The emitted schema carries a stable `$id` (`https://grafana.com/schemas/pathfinder/e2e-test-report-<version>.json`) and `x-schema-version`. Pin consumers on the image digest plus `schemaVersion`.
 
-The `e2e-report` and `e2e-multi-report` schemas are **open-world**: the exported JSON Schema does not include `additionalProperties: false`. This means additive optional fields introduced in a newer runner version are non-breaking — an orchestrator validating reports from a newer runner against an older schema copy will not reject the report. Consumers should configure their validators accordingly (for example, ajv's default behavior already allows extra fields unless explicitly set to strict mode). The `guide`, `manifest`, and other non-e2e schemas remain strict.
+Report schema `1.1.0` adds runner termination codes to closed enums. This change is not compatible with a `1.0.0` validator.
+
+The platform must accept and snapshot schema `1.1.0` before this runner image deploys. Deploy paired platform classification before runner rollout.
+
+The report schemas remain open-world for optional fields. Open-world objects do not make closed-enum changes backward compatible.
 
 Runs that execute more than one guide, or execute an explicitly selected path/journey with one milestone, write a multi-guide report with aggregate summary fields plus the individual per-guide reports.
 
@@ -363,7 +368,9 @@ The environment is reset **between dependency chains**, not between every guide.
 
 The calculated step budget is one hard deadline. It includes requirements, actions, polling, artifacts, and cleanup.
 
-Nested operations cannot start a new full step budget. If the deadline wins, the runner aborts the work and closes the terminating page.
+Nested operations cannot start a new full step budget. If the deadline wins, the runner aborts work and closes the terminating page.
+
+The deadline waits for page-close cancellation, with a bounded cancellation drain. Late operation settlement cannot replace `STEP_TIMEOUT`.
 
 Examples:
 
@@ -378,15 +385,21 @@ After discovery, the child writes its absolute guide deadline to the parent. The
 
 The child writes a temporary file and then renames it atomically. The parent ignores malformed, non-finite, and stale deadlines.
 
-An invalid deadline does not replace the 300s fallback.
+The runner supports guide budgets up to two hours. This ceiling matches the deployed worker task limit and stays below Node timer overflow.
+
+Operators must keep the runner ceiling aligned with the worker task limit. An invalid or over-limit deadline does not replace the 300s fallback.
 
 If the child exceeds this deadline, the parent sends `SIGTERM`. If the child remains alive for 5s, the parent sends `SIGKILL`.
 
 On Linux and macOS, the parent starts `npx` as a process-group leader. Each signal targets that group, including Node and Chromium descendants.
 
-On Windows, Node sends each signal to the direct child. The process-group behavior applies to the Cloud Linux and local macOS runners.
+After `SIGKILL`, the watchdog waits for direct-child close. On POSIX, it also waits for process-group disappearance.
 
-The parent clears all watchdog timers and listeners after child close or spawn error. A watchdog expiry always reports `RUNNER_TIMEOUT`.
+If death cannot be proved, the report uses `RUNNER_CONTAINMENT_FAILED`. The runner preserves its temporary and Playwright output directories.
+
+On Windows, Node sends each signal to the direct child. Process-group proof applies to the Cloud Linux and local macOS runners.
+
+The parent clears all watchdog timers and listeners after a terminal watchdog result or a pre-expiry child error.
 
 ## Troubleshooting
 
@@ -518,19 +531,20 @@ For cloud targets, pass `--cloud-instance-admin-token host=ENV_VAR_NAME`; the na
 
 When a step fails, the runner assigns an error classification to help with triage:
 
-| Code                   | Classification   | Notes                                        |
-| ---------------------- | ---------------- | -------------------------------------------- |
-| `SELECTOR_NOT_FOUND`   | `unknown`        | Could be content-drift OR product-regression |
-| `ACTION_FAILED`        | `unknown`        | Needs human triage                           |
-| `REQUIREMENT_FAILED`   | `unknown`        | Could be content-drift OR missing setup      |
-| `TIMEOUT`              | `unknown`        | Could be content, product, or performance    |
-| `NETWORK_ERROR`        | `infrastructure` | Definitely environmental                     |
-| `AUTH_EXPIRED`         | `infrastructure` | Definitely environmental                     |
-| `BROWSER_CRASHED`      | `infrastructure` | Browser or target crash event                |
-| `PAGE_CLOSED`          | `infrastructure` | Unexpected page close                        |
-| `CONTEXT_CLOSED`       | `infrastructure` | Unexpected browser context close             |
-| `BROWSER_DISCONNECTED` | `infrastructure` | Browser process disconnected                 |
-| `RUNNER_TIMEOUT`       | `infrastructure` | Parent watchdog terminated the child         |
+| Code                        | Classification   | Notes                                        |
+| --------------------------- | ---------------- | -------------------------------------------- |
+| `SELECTOR_NOT_FOUND`        | `unknown`        | Could be content-drift OR product-regression |
+| `ACTION_FAILED`             | `unknown`        | Needs human triage                           |
+| `REQUIREMENT_FAILED`        | `unknown`        | Could be content-drift OR missing setup      |
+| `TIMEOUT`                   | `unknown`        | Could be content, product, or performance    |
+| `NETWORK_ERROR`             | `infrastructure` | Definitely environmental                     |
+| `AUTH_EXPIRED`              | `infrastructure` | Definitely environmental                     |
+| `BROWSER_CRASHED`           | `infrastructure` | Browser or target crash event                |
+| `PAGE_CLOSED`               | `infrastructure` | Unexpected page close                        |
+| `CONTEXT_CLOSED`            | `infrastructure` | Unexpected browser context close             |
+| `BROWSER_DISCONNECTED`      | `infrastructure` | Browser process disconnected                 |
+| `RUNNER_TIMEOUT`            | `infrastructure` | Parent watchdog terminated the child         |
+| `RUNNER_CONTAINMENT_FAILED` | `infrastructure` | Process-tree death was not proved            |
 
 Only high-confidence network, authentication, browser-crash, and closed-target failures are auto-classified as `infrastructure`. Selector, action, requirement, and step timeout failures default to `unknown` and require human triage.
 

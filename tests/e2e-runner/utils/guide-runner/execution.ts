@@ -428,7 +428,7 @@ function guidedSelectorLocator(page: Page, selector: string): Locator {
   return parsed.trailingSelector ? matched.locator(parsed.trailingSelector).first() : matched;
 }
 
-async function revealGuidedTarget(page: Page, target: Locator, timeout: number): Promise<Locator> {
+export async function revealGuidedTarget(page: Page, target: Locator, timeout: number): Promise<Locator> {
   if (await target.isVisible()) {
     return target;
   }
@@ -446,7 +446,6 @@ async function revealGuidedTarget(page: Page, target: Locator, timeout: number):
         return menuButton;
       }
     }
-    terminationController?.setActiveStep(undefined);
   }
   await target.waitFor({ state: 'visible', timeout });
   return target;
@@ -709,7 +708,7 @@ export async function runGuidedSubstepLoop(
   const guidedStepCount = step.guidedStepCount ?? 1;
 
   const captureLoopArtifacts = async (context: string) => {
-    if (artifactsDir) {
+    if (artifactsDir && !signal?.aborted) {
       await captureFailureArtifacts(page, step.stepId, [], artifactsDir).catch(() => {});
     }
   };
@@ -896,9 +895,10 @@ async function buildSuccessArtifacts(
   stepId: string,
   artifactsDir: string | undefined,
   alwaysScreenshot: boolean,
-  preScreenshotPath: string | undefined
+  preScreenshotPath: string | undefined,
+  signal?: AbortSignal
 ): Promise<ArtifactPaths | undefined> {
-  if (!artifactsDir || !alwaysScreenshot) {
+  if (!artifactsDir || !alwaysScreenshot || signal?.aborted) {
     return undefined;
   }
   const artifacts = await captureSuccessArtifacts(page, stepId, artifactsDir);
@@ -919,9 +919,10 @@ async function buildFailureArtifacts(
   stepId: string,
   consoleErrors: string[],
   artifactsDir: string | undefined,
-  preScreenshotPath: string | undefined
+  preScreenshotPath: string | undefined,
+  signal?: AbortSignal
 ): Promise<ArtifactPaths | undefined> {
-  if (!artifactsDir) {
+  if (!artifactsDir || signal?.aborted) {
     return undefined;
   }
   const artifacts = await captureFailureArtifacts(page, stepId, consoleErrors, artifactsDir);
@@ -1093,7 +1094,8 @@ async function executeStepWork(
         step.stepId,
         artifactsDir,
         alwaysScreenshot,
-        preScreenshotPath
+        preScreenshotPath,
+        options.signal
       );
       if (verbose) {
         console.log(
@@ -1166,7 +1168,14 @@ async function executeStepWork(
             error: `Step is skippable but Skip sync failed: ${syncErrorMsg}`,
             skippable: step.skippable,
             classification: classifyError(syncErrorMsg),
-            artifacts: await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath),
+            artifacts: await buildFailureArtifacts(
+              page,
+              step.stepId,
+              consoleErrors,
+              artifactsDir,
+              preScreenshotPath,
+              options.signal
+            ),
           };
         }
         if (verbose) {
@@ -1189,7 +1198,14 @@ async function executeStepWork(
         error: errorMsg,
         skippable: false,
         classification: classifyError(errorMsg),
-        artifacts: await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath),
+        artifacts: await buildFailureArtifacts(
+          page,
+          step.stepId,
+          consoleErrors,
+          artifactsDir,
+          preScreenshotPath,
+          options.signal
+        ),
       };
     }
 
@@ -1245,7 +1261,14 @@ async function executeStepWork(
           currentUrl: page.url(),
           consoleErrors,
           skippable: step.skippable,
-          artifacts: await buildSuccessArtifacts(page, step.stepId, artifactsDir, alwaysScreenshot, preScreenshotPath),
+          artifacts: await buildSuccessArtifacts(
+            page,
+            step.stepId,
+            artifactsDir,
+            alwaysScreenshot,
+            preScreenshotPath,
+            options.signal
+          ),
         };
       }
       if (step.skippable) {
@@ -1330,7 +1353,8 @@ async function executeStepWork(
       step.stepId,
       artifactsDir,
       alwaysScreenshot,
-      preScreenshotPath
+      preScreenshotPath,
+      options.signal
     );
     if (verbose && successArtifacts) {
       console.log(`   📸 Success screenshot captured`);
@@ -1351,7 +1375,14 @@ async function executeStepWork(
     const errorMsg = error instanceof Error ? error.message : String(error);
 
     // L3-5D: Capture artifacts on failure
-    const artifacts = await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath);
+    const artifacts = await buildFailureArtifacts(
+      page,
+      step.stepId,
+      consoleErrors,
+      artifactsDir,
+      preScreenshotPath,
+      options.signal
+    );
     if (verbose && artifacts) {
       console.log(`   📸 Artifacts captured to ${artifactsDir}`);
     }
@@ -1565,7 +1596,7 @@ export async function executeAllSteps(
 
   // Capture final screenshot if alwaysScreenshot is enabled
   let finalScreenshot: string | undefined;
-  if (artifactsDir && alwaysScreenshot) {
+  if (artifactsDir && alwaysScreenshot && !terminationController?.signal.aborted) {
     finalScreenshot = await captureFinalScreenshot(page, artifactsDir);
     if (verbose && finalScreenshot) {
       console.log(`\n   📸 Final screenshot captured: ${finalScreenshot}`);

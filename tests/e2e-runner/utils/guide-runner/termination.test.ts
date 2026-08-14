@@ -1,6 +1,11 @@
 import { EventEmitter } from 'events';
 
-import { createGuideTerminationController, GuideTerminationError, raceGuideTermination } from './termination';
+import {
+  arbitrateGuideWork,
+  createGuideTerminationController,
+  GuideTerminationError,
+  raceGuideTermination,
+} from './termination';
 
 function createPage() {
   const browser = new EventEmitter();
@@ -80,6 +85,38 @@ describe('guide termination controller', () => {
     await controller.termination;
 
     expect(controller.lastKnownUrl()).toBe('http://localhost:3000/d/example');
+    controller.dispose();
+  });
+
+  it('waits for cancellation and losing work before terminal publication', async () => {
+    const { page } = createPage();
+    const controller = createGuideTerminationController(page as never);
+    let finishCancel!: () => void;
+    let finishWork!: () => void;
+    const cancellation = new Promise<void>((resolve) => {
+      finishCancel = resolve;
+    });
+    const work = new Promise<void>((resolve) => {
+      finishWork = resolve;
+    });
+    const cancel = jest.fn(() => cancellation);
+
+    page.emit('close');
+    const arbitration = arbitrateGuideWork(work, controller, cancel, 1000);
+    let settled = false;
+    void arbitration.then(() => {
+      settled = true;
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+
+    finishCancel();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finishWork();
+
+    await expect(arbitration).resolves.toMatchObject({ kind: 'terminated', drained: true });
     controller.dispose();
   });
 });

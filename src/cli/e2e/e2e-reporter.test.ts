@@ -276,7 +276,7 @@ describe('writeReport self-validation', () => {
   });
 
   it('still writes a diagnostic report when validation fails', () => {
-    const invalid = { schemaVersion: '1.0.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
+    const invalid = { schemaVersion: '1.1.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
     const out = join(dir, 'report.json');
 
     const schemaValid = writeReport(invalid, out);

@@ -34,11 +34,10 @@ import {
   ensureDocsPanelOpen,
   summarizeResults,
   AllStepsResult,
-  AbortReason,
   StepTestResult,
+  arbitrateGuideWork,
   createGuideTerminationController,
   GuideTerminationError,
-  raceGuideTermination,
 } from './utils/guide-runner';
 import {
   printHeader,
@@ -47,84 +46,15 @@ import {
   printPreflightChecks,
   printDiscoveryResults,
 } from './utils/console-reporter';
-import { contentDigest, type TestResultsData } from '../../src/cli/e2e/e2e-reporter';
+import type { TestResultsData } from '../../src/cli/e2e/e2e-reporter';
 import { countInteractiveBlocks } from './utils/guide-runner/static-analysis';
-import { E2E_ENV, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
-import type { E2EErrorCode } from '../../src/cli/e2e/schemas/e2e-report.schema';
+import { E2E_ENV, RUNNER_MAX_GUIDE_TIMEOUT_MS, isEnvFlagEnabled } from '../../src/cli/e2e/e2e-runner-contract';
+import { publishGuideResult } from './utils/guide-runner/result-publisher';
 import {
   createScopedBearerTokenAuthStrategy,
   installScopedBearerTokenRoute,
   scopedBearerHeaders,
 } from './auth/scoped-bearer-token';
-
-/**
- * Write abort reason to file for CLI to read and determine exit code.
- * This enables the CLI to return exit code 4 for AUTH_EXPIRED (L3-3D).
- *
- * @param abortReason - The reason for aborting (AUTH_EXPIRED, MANDATORY_FAILURE)
- * @param message - Human-readable message
- */
-function writeAbortFile(data: { message: string; abortReason?: AbortReason; errorCode?: E2EErrorCode }): void {
-  const abortFilePath = process.env[E2E_ENV.ABORT_FILE_PATH];
-  if (abortFilePath) {
-    writeFileSync(abortFilePath, JSON.stringify(data), 'utf-8');
-  }
-}
-
-/**
- * Write test results to file for CLI to read and generate JSON report (L3-5B).
- *
- * @param results - The step test results
- * @param guide - Guide metadata
- * @param targetUrl - Resolved Grafana base URL the guide was tested against
- * @param timestamp - ISO timestamp of test start
- * @param allStepsResult - Full execution result including abort info
- */
-function writeResultsFile(
-  results: StepTestResult[],
-  guide: { id: string; title: string; path: string },
-  targetUrl: string,
-  startingLocation: string,
-  timestamp: string,
-  allStepsResult: AllStepsResult,
-  guideContent: string,
-  outcome: TestResultsData['outcome']
-): void {
-  const resultsFilePath = process.env[E2E_ENV.RESULTS_FILE_PATH];
-  if (!resultsFilePath) {
-    return;
-  }
-
-  const data: TestResultsData = {
-    guide: { ...guide, targetUrl, startingLocation, contentDigest: contentDigest(guideContent) },
-    timestamp,
-    startedAt: timestamp,
-    endedAt: new Date().toISOString(),
-    outcome,
-    errorCode: allStepsResult.errorCode ?? allStepsResult.abortReason ?? (outcome === 'failed' ? 'UNKNOWN' : undefined),
-    errorMessage: allStepsResult.abortMessage,
-    results: results.map((r) => ({
-      stepId: r.stepId,
-      status: r.status,
-      durationMs: r.durationMs,
-      currentUrl: r.currentUrl,
-      consoleErrors: r.consoleErrors,
-      error: r.error,
-      errorCode: r.errorCode,
-      skipReason: r.skipReason,
-      skippable: r.skippable,
-      // L3-5C: Include classification for failed or not_reached steps
-      classification: r.classification,
-      // L3-5D: Include artifact paths for failed steps
-      artifacts: r.artifacts,
-    })),
-    aborted: allStepsResult.aborted,
-    abortReason: allStepsResult.abortReason,
-    abortMessage: allStepsResult.abortMessage,
-  };
-
-  writeFileSync(resultsFilePath, JSON.stringify(data), 'utf-8');
-}
 
 function writeDeadlineFile(deadlineEpochMs: number): void {
   const deadlineFilePath = process.env[E2E_ENV.DEADLINE_FILE_PATH];
@@ -147,6 +77,14 @@ function writeTracePathFile(outputDir: string): void {
   }
   writeFileSync(tracePathFile, join(outputDir, 'trace.zip'), 'utf-8');
 }
+
+interface GuideExecutionPayload {
+  allStepsResult: AllStepsResult;
+  outcome: NonNullable<TestResultsData['outcome']>;
+  summarySuccess: boolean;
+}
+
+const GUIDE_TERMINATION_DRAIN_MS = 5000;
 
 test.describe('Guide Runner', () => {
   test('loads and displays guide from JSON', async ({ page }, testInfo) => {
@@ -191,200 +129,174 @@ test.describe('Guide Runner', () => {
     const terminationController = createGuideTerminationController(page);
 
     try {
-      await raceGuideTermination(
-        (async () => {
-          if (bearerToken) {
-            await installScopedBearerTokenRoute(page, targetUrl, bearerToken);
+      const work = (async (): Promise<GuideExecutionPayload> => {
+        terminationController.signal.throwIfAborted();
+        if (bearerToken) {
+          await installScopedBearerTokenRoute(page, targetUrl, bearerToken);
+        }
+        terminationController.signal.throwIfAborted();
+
+        // ============================================
+        // Pre-flight checks: auth and plugin validation
+        // ============================================
+        const preflightResult = await runPlaywrightPreflightChecks(page, targetUrl, {
+          authStrategy: bearerToken ? createScopedBearerTokenAuthStrategy(bearerToken, targetUrl) : undefined,
+          requestHeaders: bearerToken ? scopedBearerHeaders(targetUrl, targetUrl, bearerToken) : undefined,
+        });
+        terminationController.signal.throwIfAborted();
+
+        // Log pre-flight results using console reporter
+        printPreflightChecks(preflightResult.checks);
+
+        // Log detailed results in verbose mode
+        if (isVerbose) {
+          const formattedPreflight = formatPreflightResults(preflightResult, isVerbose);
+          if (formattedPreflight) {
+            console.log(formattedPreflight);
           }
+        }
 
-          // ============================================
-          // Pre-flight checks: auth and plugin validation
-          // ============================================
-          const preflightResult = await runPlaywrightPreflightChecks(page, targetUrl, {
-            authStrategy: bearerToken ? createScopedBearerTokenAuthStrategy(bearerToken, targetUrl) : undefined,
-            requestHeaders: bearerToken ? scopedBearerHeaders(targetUrl, targetUrl, bearerToken) : undefined,
-          });
+        if (!preflightResult.success) {
+          // Determine which check failed for error reporting
+          const failedCheck = preflightResult.checks.find((c) => !c.passed);
+          const checkName = failedCheck?.name ?? 'unknown';
 
-          // Log pre-flight results using console reporter
-          printPreflightChecks(preflightResult.checks);
-
-          // Log detailed results in verbose mode
-          if (isVerbose) {
-            const formattedPreflight = formatPreflightResults(preflightResult, isVerbose);
-            if (formattedPreflight) {
-              console.log(formattedPreflight);
-            }
+          if (checkName === 'auth-valid') {
+            throw new Error(`Pre-flight auth check failed: ${preflightResult.abortReason}`);
+          } else if (checkName === 'plugin-installed') {
+            throw new Error(`Pre-flight plugin check failed: ${preflightResult.abortReason}`);
+          } else {
+            throw new Error(`Pre-flight check failed: ${preflightResult.abortReason}`);
           }
+        }
 
-          if (!preflightResult.success) {
-            // Determine which check failed for error reporting
-            const failedCheck = preflightResult.checks.find((c) => !c.passed);
-            const checkName = failedCheck?.name ?? 'unknown';
+        // ============================================
+        // Guide loading and verification
+        // ============================================
 
-            if (checkName === 'auth-valid') {
-              throw new Error(`Pre-flight auth check failed: ${preflightResult.abortReason}`);
-            } else if (checkName === 'plugin-installed') {
-              throw new Error(`Pre-flight plugin check failed: ${preflightResult.abortReason}`);
-            } else {
-              throw new Error(`Pre-flight check failed: ${preflightResult.abortReason}`);
-            }
-          }
+        await page.goto(startingLocation, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 30000 });
 
-          // ============================================
-          // Guide loading and verification
-          // ============================================
-
-          await page.goto(startingLocation, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 30000 });
-
-          const injectGuide = () =>
-            page.evaluate(
-              ({ key, json }) => {
-                localStorage.setItem(key, json);
-              },
-              { key: StorageKeys.E2E_TEST_GUIDE, json: guideJson }
-            );
-          await injectGuide();
-          await ensureDocsPanelOpen(page, {
-            beforeRetry: async () => {
-              await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
-              await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 10000 });
-              await injectGuide();
+        const injectGuide = () =>
+          page.evaluate(
+            ({ key, json }) => {
+              localStorage.setItem(key, json);
             },
-          });
-
-          // Now dispatch the event to load the specific guide content
-          // The event listener is only active when the docs panel is mounted
-          await page.evaluate(
-            ({ title }) => {
-              document.dispatchEvent(
-                new CustomEvent('pathfinder-auto-open-docs', {
-                  detail: { url: 'bundled:e2e-test', title },
-                })
-              );
-            },
-            { title: guideTitle }
+            { key: StorageKeys.E2E_TEST_GUIDE, json: guideJson }
           );
+        await injectGuide();
+        await ensureDocsPanelOpen(page, {
+          beforeRetry: async () => {
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
+            await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 10000 });
+            await injectGuide();
+          },
+        });
+        terminationController.signal.throwIfAborted();
 
-          // Wait for content to load
-          await page.waitForTimeout(1000);
-
-          if (!hasInteractiveSteps) {
-            printHeader(guideTitle);
-            console.log('   ⊘ No interactive steps — guide is read-only content (0 steps, pass)');
-            const emptyResult: AllStepsResult = { results: [], aborted: false };
-            writeResultsFile(
-              [],
-              guideMetadata,
-              targetUrl,
-              startingLocation,
-              testStartTimestamp,
-              emptyResult,
-              guideJson,
-              'passed'
+        // Now dispatch the event to load the specific guide content
+        // The event listener is only active when the docs panel is mounted
+        await page.evaluate(
+          ({ title }) => {
+            document.dispatchEvent(
+              new CustomEvent('pathfinder-auto-open-docs', {
+                detail: { url: 'bundled:e2e-test', title },
+              })
             );
-            return;
-          }
+          },
+          { title: guideTitle }
+        );
 
-          // Verify guide content loaded (first step visible indicates interactive content rendered)
-          // Use a more general selector since step IDs vary by guide
-          const firstStep = page.locator('[data-testid^="interactive-step-"]').first();
-          await expect(firstStep).toBeVisible({ timeout: 15000 });
+        // Wait for content to load
+        await page.waitForTimeout(1000);
+        terminationController.signal.throwIfAborted();
 
-          // ============================================
-          // Step discovery: DOM-based step enumeration
-          // ============================================
-          const discoveryResult = await discoverStepsFromDOM(page);
-          const guideTimeout = calculateGuideTimeout(discoveryResult.steps);
-          test.setTimeout(guideTimeout);
-          writeDeadlineFile(testStartTimeMs + guideTimeout);
-
-          // Verify step discovery found steps
-          expect(discoveryResult.totalSteps).toBeGreaterThan(0);
-
-          // Steps should be in document order (indices should match)
-          for (let i = 0; i < discoveryResult.steps.length; i++) {
-            expect(discoveryResult.steps[i].index).toBe(i);
-          }
-
-          // ============================================
-          // Print header and discovery using console reporter (L3-5A)
-          // ============================================
+        if (!hasInteractiveSteps) {
           printHeader(guideTitle);
-          printDiscoveryResults(
-            discoveryResult.totalSteps,
-            discoveryResult.preCompletedCount,
-            discoveryResult.noDoItButtonCount,
-            discoveryResult.durationMs
-          );
+          console.log('   ⊘ No interactive steps — guide is read-only content (0 steps, pass)');
+          const emptyResult: AllStepsResult = { results: [], aborted: false };
+          return { allStepsResult: emptyResult, outcome: 'passed', summarySuccess: true };
+        }
 
-          // ============================================
-          // Step execution: Execute all discovered steps
-          // ============================================
-          const executionResult: AllStepsResult = await executeAllSteps(page, discoveryResult.steps, {
-            verbose: isVerbose,
-            stopOnMandatoryFailure: true, // Happy path: stop on first failure
-            sessionCheckInterval: 5, // L3-3D: validate session every 5 steps
-            // L3-5D: Artifacts directory for artifact collection
-            artifactsDir,
-            // Capture screenshots on success and failure
-            alwaysScreenshot,
-            terminationController,
-            // L3-5A: Real-time step progress callback
-            onStepComplete: (result) => {
-              completedResults.push(result);
-              printStepResult(result);
-            },
-          });
+        // Verify guide content loaded (first step visible indicates interactive content rendered)
+        // Use a more general selector since step IDs vary by guide
+        const firstStep = page.locator('[data-testid^="interactive-step-"]').first();
+        await expect(firstStep).toBeVisible({ timeout: 15000 });
 
-          // Get summary for assertions
-          const summary = summarizeResults(executionResult.results);
+        // ============================================
+        // Step discovery: DOM-based step enumeration
+        // ============================================
+        const discoveryResult = await discoverStepsFromDOM(page);
+        terminationController.signal.throwIfAborted();
+        const guideTimeout = Math.min(calculateGuideTimeout(discoveryResult.steps), RUNNER_MAX_GUIDE_TIMEOUT_MS);
+        test.setTimeout(guideTimeout);
+        writeDeadlineFile(testStartTimeMs + guideTimeout);
 
-          // L3-5A: Print summary using console reporter
-          printDetailedSummary(executionResult.results, executionResult, isVerbose);
+        // Verify step discovery found steps
+        expect(discoveryResult.totalSteps).toBeGreaterThan(0);
 
-          // L3-5B: Write results file for CLI to generate JSON report
-          writeResultsFile(
-            executionResult.results,
-            guideMetadata,
-            targetUrl,
-            startingLocation,
-            testStartTimestamp,
-            executionResult,
-            guideJson,
-            executionResult.outcome ??
-              (executionResult.abortReason === 'AUTH_EXPIRED'
-                ? 'aborted'
-                : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
-                  ? 'failed'
-                  : 'passed')
-          );
+        // Steps should be in document order (indices should match)
+        for (let i = 0; i < discoveryResult.steps.length; i++) {
+          expect(discoveryResult.steps[i].index).toBe(i);
+        }
 
-          // L3-3D: Handle session expiry with specific exit code
-          if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {
-            // Write abort file for CLI to read and determine exit code 4 (AUTH_FAILURE)
-            writeAbortFile({
-              abortReason: 'AUTH_EXPIRED',
-              message: executionResult.abortMessage ?? 'Session expired mid-test',
-            });
+        // ============================================
+        // Print header and discovery using console reporter (L3-5A)
+        // ============================================
+        printHeader(guideTitle);
+        printDiscoveryResults(
+          discoveryResult.totalSteps,
+          discoveryResult.preCompletedCount,
+          discoveryResult.noDoItButtonCount,
+          discoveryResult.durationMs
+        );
 
-            // Throw error to fail the test
-            throw new Error(`AUTH_EXPIRED: ${executionResult.abortMessage}`);
-          }
-          if (executionResult.outcome === 'infrastructure_error' && executionResult.errorCode) {
-            writeAbortFile({
-              errorCode: executionResult.errorCode,
-              message: executionResult.abortMessage ?? 'The guide stopped after an infrastructure error.',
-            });
-          }
+        // ============================================
+        // Step execution: Execute all discovered steps
+        // ============================================
+        const executionResult: AllStepsResult = await executeAllSteps(page, discoveryResult.steps, {
+          verbose: isVerbose,
+          stopOnMandatoryFailure: true, // Happy path: stop on first failure
+          sessionCheckInterval: 5, // L3-3D: validate session every 5 steps
+          // L3-5D: Artifacts directory for artifact collection
+          artifactsDir,
+          // Capture screenshots on success and failure
+          alwaysScreenshot,
+          terminationController,
+          // L3-5A: Real-time step progress callback
+          onStepComplete: (result) => {
+            completedResults.push(result);
+            printStepResult(result);
+          },
+        });
 
-          expect(summary.success).toBe(true);
-        })(),
-        terminationController
+        // Get summary for assertions
+        const summary = summarizeResults(executionResult.results);
+
+        // L3-5A: Print summary using console reporter
+        printDetailedSummary(executionResult.results, executionResult, isVerbose);
+
+        const outcome =
+          executionResult.outcome ??
+          (executionResult.abortReason === 'AUTH_EXPIRED'
+            ? 'aborted'
+            : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
+              ? 'failed'
+              : 'passed');
+        return { allStepsResult: executionResult, outcome, summarySuccess: summary.success };
+      })();
+      const arbitration = await arbitrateGuideWork(
+        work,
+        terminationController,
+        () => page.close({ runBeforeUnload: false }).catch(() => undefined),
+        GUIDE_TERMINATION_DRAIN_MS
       );
-    } catch (error) {
-      if (error instanceof GuideTerminationError) {
-        const { termination } = error;
+      let payload: GuideExecutionPayload;
+      let terminalError: GuideTerminationError | undefined;
+      if (arbitration.kind === 'completed') {
+        payload = arbitration.value;
+      } else {
+        const { termination } = arbitration;
         const results = [...completedResults];
         if (termination.stepId && !results.some((result) => result.stepId === termination.stepId)) {
           results.push({
@@ -399,26 +311,39 @@ test.describe('Guide Runner', () => {
             classification: termination.classification,
           });
         }
-        const terminalResult: AllStepsResult = {
-          results,
-          aborted: true,
+        const drainMessage = arbitration.drained
+          ? termination.message
+          : `${termination.message} Guide work did not drain within ${GUIDE_TERMINATION_DRAIN_MS}ms.`;
+        payload = {
+          allStepsResult: {
+            results,
+            aborted: true,
+            outcome: termination.outcome,
+            errorCode: termination.code,
+            abortMessage: drainMessage,
+          },
           outcome: termination.outcome,
-          errorCode: termination.code,
-          abortMessage: termination.message,
+          summarySuccess: false,
         };
-        writeResultsFile(
-          results,
-          guideMetadata,
-          targetUrl,
-          startingLocation,
-          testStartTimestamp,
-          terminalResult,
-          guideJson,
-          termination.outcome
-        );
-        writeAbortFile({ errorCode: termination.code, message: termination.message });
+        terminalError = new GuideTerminationError(termination);
       }
-      throw error;
+      publishGuideResult({
+        results: payload.allStepsResult.results,
+        guide: guideMetadata,
+        targetUrl,
+        startingLocation,
+        timestamp: testStartTimestamp,
+        allStepsResult: payload.allStepsResult,
+        guideContent: guideJson,
+        outcome: payload.outcome,
+      });
+      if (terminalError) {
+        throw terminalError;
+      }
+      if (payload.allStepsResult.abortReason === 'AUTH_EXPIRED') {
+        throw new Error(`AUTH_EXPIRED: ${payload.allStepsResult.abortMessage}`);
+      }
+      expect(payload.summarySuccess).toBe(true);
     } finally {
       terminationController.markExpectedTeardown();
       terminationController.dispose();

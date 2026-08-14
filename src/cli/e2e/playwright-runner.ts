@@ -237,6 +237,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
   const deadlineFilePath = join(tempDir, 'deadline.json');
   const playwrightOutputDir = join(artifactsDir, `playwright-${basename(tempDir)}`);
   const traceEnabled = options.trace && !options.token;
+  let preserveDiagnostics = false;
 
   try {
     const startingPath = resolveStartingPath(options.targetUrl, options.startingLocation);
@@ -285,6 +286,13 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
         errorCode: 'RUNNER_TIMEOUT',
         abortMessage: 'The Playwright child exceeded its runner deadline.',
       });
+      const containmentFailure = (message: string): PlaywrightResult => ({
+        success: false,
+        exitCode: ExitCode.TEST_FAILURE,
+        traceFile: traceEnabled ? readFileIfExists(traceOutputFilePath)?.trim() || undefined : undefined,
+        errorCode: 'RUNNER_CONTAINMENT_FAILED',
+        abortMessage: message,
+      });
       const proc = spawn('npx', playwrightArgs, {
         cwd: runnerRoot,
         detached: process.platform !== 'win32',
@@ -313,12 +321,15 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
           watchdogExpired = true;
           console.error('Playwright runner deadline expired; requesting child termination.');
         },
-        onForceKill: () => settle(runnerTimeout()),
+        onContained: () => settle(runnerTimeout()),
+        onContainmentFailure: (message) => {
+          preserveDiagnostics = true;
+          settle(containmentFailure(message));
+        },
       });
 
       proc.on('close', (code) => {
         if (watchdogExpired) {
-          settle(runnerTimeout());
           return;
         }
         const result = processPlaywrightResults(
@@ -335,7 +346,6 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
 
       proc.on('error', (err) => {
         if (watchdogExpired) {
-          settle(runnerTimeout());
           return;
         }
         console.error(`Failed to spawn Playwright: ${err.message}`);
@@ -390,20 +400,25 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
     }
     return result;
   } finally {
-    if (!traceEnabled) {
+    if (!traceEnabled && !preserveDiagnostics) {
       try {
         rmSync(playwrightOutputDir, { recursive: true, force: true });
       } catch {
         console.warn(`Warning: Failed to clean up Playwright output directory: ${playwrightOutputDir}`);
       }
     }
-    try {
-      rmSync(tempDir, { recursive: true, force: true });
-      if (options.verbose) {
-        console.log(`   🗑️  Cleaned up temp directory: ${tempDir}`);
+    if (preserveDiagnostics) {
+      console.warn(`Preserved runner diagnostics after containment failure: ${tempDir}`);
+      console.warn(`Preserved Playwright output after containment failure: ${playwrightOutputDir}`);
+    } else {
+      try {
+        rmSync(tempDir, { recursive: true, force: true });
+        if (options.verbose) {
+          console.log(`   🗑️  Cleaned up temp directory: ${tempDir}`);
+        }
+      } catch (cleanupError) {
+        console.warn(`Warning: Failed to clean up temp directory: ${tempDir}`);
       }
-    } catch (cleanupError) {
-      console.warn(`Warning: Failed to clean up temp directory: ${tempDir}`);
     }
   }
 }

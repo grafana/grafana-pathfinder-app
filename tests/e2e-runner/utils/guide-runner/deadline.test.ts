@@ -61,4 +61,29 @@ describe('runWithDeadline', () => {
       process.off('unhandledRejection', unhandled);
     }
   });
+
+  it('does not settle the deadline until cancellation finishes', async () => {
+    let finishCancel!: () => void;
+    const cancellation = new Promise<void>((resolve) => {
+      finishCancel = resolve;
+    });
+    const result = runWithDeadline({
+      timeoutMs: 100,
+      cancelTimeoutMs: 1000,
+      message: 'step timed out',
+      operation: () => new Promise<void>(() => undefined),
+      cancel: () => cancellation,
+    });
+    let settled = false;
+    void result.catch(() => {
+      settled = true;
+    });
+
+    await jest.advanceTimersByTimeAsync(100);
+    expect(settled).toBe(false);
+    finishCancel();
+
+    await expect(result).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
+    expect(settled).toBe(true);
+  });
 });

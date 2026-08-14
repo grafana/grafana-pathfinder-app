@@ -6,8 +6,13 @@
 
 import Ajv2020 from 'ajv/dist/2020';
 import { exportSchema, listSchemas } from '../commands/schema';
-import { ExecutionSelectionSchema, MultiGuideReportSchema } from '../e2e/schemas/e2e-report.schema';
-import { generateMultiGuideReport } from '../e2e/e2e-reporter';
+import {
+  E2ETestReportSchema,
+  ExecutionSelectionSchema,
+  MultiGuideReportSchema,
+  type E2EErrorCode,
+} from '../e2e/schemas/e2e-report.schema';
+import { createMinimalResultsData, generateMultiGuideReport, generateReport } from '../e2e/e2e-reporter';
 
 describe('schema command — e2e-report registration', () => {
   it('lists the e2e report schemas', () => {
@@ -15,12 +20,41 @@ describe('schema command — e2e-report registration', () => {
     expect(names).toEqual(expect.arrayContaining(['e2e-report', 'e2e-multi-report']));
   });
 
+  it.each<E2EErrorCode>([
+    'STEP_TIMEOUT',
+    'BROWSER_CRASHED',
+    'BROWSER_DISCONNECTED',
+    'PAGE_CLOSED',
+    'CONTEXT_CLOSED',
+    'RUNNER_TIMEOUT',
+    'RUNNER_CONTAINMENT_FAILED',
+  ])('validates single and multi-guide reports with %s', (errorCode) => {
+    const outcome = errorCode === 'STEP_TIMEOUT' ? 'failed' : 'infrastructure_error';
+    const data = createMinimalResultsData({
+      guide: { id: 'terminal-guide', title: 'Terminal guide', path: 'terminal-guide/content.json' },
+      outcome,
+      errorCode,
+      errorMessage: errorCode,
+    });
+    const single = generateReport(data);
+    const multi = generateMultiGuideReport([data]);
+
+    expect(() => E2ETestReportSchema.parse(single)).not.toThrow();
+    expect(() => MultiGuideReportSchema.parse(multi)).not.toThrow();
+    expect(single).toMatchObject({ schemaVersion: '1.1.0', outcome, errorCode });
+    expect(multi).toMatchObject({
+      schemaVersion: '1.1.0',
+      outcome,
+      reports: [expect.objectContaining({ schemaVersion: '1.1.0', outcome, errorCode })],
+    });
+  });
+
   it('exports a valid JSON Schema with the versioned $id and version metadata', () => {
     const schema = exportSchema('e2e-report', true);
 
     expect(schema).not.toBeNull();
-    expect(String(schema?.$id)).toContain('e2e-test-report-1.0.0');
-    expect(schema?.['x-schema-version']).toBe('1.0.0');
+    expect(String(schema?.$id)).toContain('e2e-test-report-1.1.0');
+    expect(schema?.['x-schema-version']).toBe('1.1.0');
   });
 
   it('exports the multi-guide report schema without throwing', () => {

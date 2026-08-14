@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const E2E_REPORT_SCHEMA_VERSION = '1.0.0' as const;
+export const E2E_REPORT_SCHEMA_VERSION = '1.1.0' as const;
 
 export const E2E_REPORT_SCHEMA_ID =
   `https://grafana.com/schemas/pathfinder/e2e-test-report-${E2E_REPORT_SCHEMA_VERSION}.json` as const;
@@ -29,6 +29,7 @@ export const E2EErrorCodeSchema = z.enum([
   'CONTEXT_CLOSED',
   'STEP_TIMEOUT',
   'RUNNER_TIMEOUT',
+  'RUNNER_CONTAINMENT_FAILED',
   'SKIPPED_PREREQ',
   'TIER_MISMATCH',
   'PROVISIONING_FAILED',

@@ -433,6 +433,7 @@ describe('runPlaywrightTests', () => {
       await jest.advanceTimersByTimeAsync(300000);
       expect(child.kill).toHaveBeenCalledWith('SIGTERM');
       await jest.advanceTimersByTimeAsync(5000);
+      child.emit('close', 1);
 
       await expect(resultPromise).resolves.toMatchObject({
         success: false,
@@ -446,6 +447,61 @@ describe('runPlaywrightTests', () => {
     } finally {
       errorSpy.mockRestore();
       jest.useRealTimers();
+    }
+  });
+
+  it('returns containment failure and preserves diagnostics when child death is unproved', async () => {
+    jest.useFakeTimers();
+    const child = new EventEmitter() as EventEmitter & { kill: jest.Mock };
+    child.kill = jest.fn(() => true);
+    const fsModule = jest.requireActual<typeof import('fs')>('fs');
+    const rmSpy = jest.spyOn(fsModule, 'rmSync');
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    spawnMock.mockImplementation(() => child as never);
+    let tempDir: string | undefined;
+    let outputDir: string | undefined;
+    try {
+      const resultPromise = runPlaywrightTests(
+        { path: 'fixture.json', content: '{}' },
+        {
+          targetUrl: 'http://localhost:3000',
+          verbose: false,
+          trace: false,
+          headed: false,
+          artifacts: 'artifacts',
+          alwaysScreenshot: false,
+          startingLocation: '/',
+        }
+      );
+      const args = spawnMock.mock.calls[0]?.[1] as string[];
+      const spawnOptions = spawnMock.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
+      tempDir = join(spawnOptions.env?.E2E_DEADLINE_FILE_PATH as string, '..');
+      outputDir = args.find((arg) => arg.startsWith('--output='))?.slice('--output='.length);
+
+      await jest.advanceTimersByTimeAsync(310000);
+
+      await expect(resultPromise).resolves.toMatchObject({
+        success: false,
+        errorCode: 'RUNNER_CONTAINMENT_FAILED',
+        resultsData: {
+          outcome: 'infrastructure_error',
+          errorCode: 'RUNNER_CONTAINMENT_FAILED',
+        },
+      });
+      expect(rmSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Preserved runner diagnostics'));
+    } finally {
+      rmSpy.mockRestore();
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+      jest.useRealTimers();
+      if (tempDir) {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+      if (outputDir) {
+        rmSync(outputDir, { recursive: true, force: true });
+      }
     }
   });
 });
