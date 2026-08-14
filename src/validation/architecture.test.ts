@@ -140,7 +140,11 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
  * Phase 4a cleared all 15 original entries by re-exporting from barrels
  * and updating consumer import paths.
  */
-const ALLOWED_BARREL_VIOLATIONS = new Set<string>([]);
+const ALLOWED_BARREL_VIOLATIONS = new Set<string>([
+  // module.tsx is the entry point: the hooks barrel drags every hook — and zod,
+  // via lib/user-storage — into module.js, roughly doubling it.
+  'module.tsx -> hooks/usePathfinderPluginConfig',
+]);
 
 /**
  * Known circular-dependency clusters (strongly-connected components of the
