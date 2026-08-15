@@ -350,6 +350,12 @@ Examples:
 - A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
 - A guided block with 3 substeps gets a 120s timeout (30s base + 3×30s).
 
+The calculated step timeout is a hard deadline for the complete step operation. If the deadline expires, the runner closes the page and fails the guide.
+
+During step execution, the runner also watches for page crash, page close, context close, and browser disconnect events. An unexpected event stops the active work and writes an `infrastructure_error` report with completed prior steps.
+
+These outcomes use report schema `1.0.0`. They do not add new report error codes.
+
 ## Troubleshooting
 
 ### Grafana not reachable (exit code 3)

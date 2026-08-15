@@ -312,6 +312,8 @@ export interface StepTestResult {
 
   /** Error message if status is 'failed' */
   error?: string;
+  /** Whether the runner stopped the step at its hard deadline */
+  deadlineExceeded?: boolean;
 
   /** Reason if status is 'skipped' */
   skipReason?: SkipReason;

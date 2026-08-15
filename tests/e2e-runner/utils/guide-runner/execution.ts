@@ -965,17 +965,102 @@ export async function clickSkipButtonAndSync(
  * @param options - Execution options
  * @returns StepTestResult with execution outcome and diagnostics
  */
+interface StepExecutionOptions {
+  timeout?: number;
+  verbose?: boolean;
+  /** Directory to write artifacts to (L3-5D). If not set, no artifacts captured. */
+  artifactsDir?: string;
+  /** Capture screenshots on success, not just failure. Default: false */
+  alwaysScreenshot?: boolean;
+  onDeadline?(): void;
+}
+
+const STEP_CLOSE_TIMEOUT_MS = 1000;
+const STEP_WORK_DRAIN_TIMEOUT_MS = 1000;
+
+async function settleWithin(work: Promise<unknown>, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      work.then(
+        () => undefined,
+        () => undefined
+      ),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function closePageWithin(page: Page, timeoutMs: number): Promise<void> {
+  await settleWithin(page.close({ runBeforeUnload: false }), timeoutMs);
+}
+
 export async function executeStep(
   page: Page,
   step: TestableStep,
-  options: {
-    timeout?: number;
-    verbose?: boolean;
-    /** Directory to write artifacts to (L3-5D). If not set, no artifacts captured. */
-    artifactsDir?: string;
-    /** Capture screenshots on success, not just failure. Default: false */
-    alwaysScreenshot?: boolean;
-  } = {}
+  options: StepExecutionOptions = {}
+): Promise<StepTestResult> {
+  const timeout = options.timeout ?? calculateStepTimeout(step);
+  const startedAt = Date.now();
+  const work = executeStepWork(page, step, { ...options, timeout });
+
+  return new Promise<StepTestResult>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const currentUrl = page.url();
+      options.onDeadline?.();
+      void (async () => {
+        await closePageWithin(page, STEP_CLOSE_TIMEOUT_MS);
+        await settleWithin(work, STEP_WORK_DRAIN_TIMEOUT_MS);
+        resolve({
+          stepId: step.stepId,
+          status: 'failed',
+          durationMs: Date.now() - startedAt,
+          currentUrl,
+          consoleErrors: [],
+          error: `Step ${step.stepId} exceeded its ${timeout}ms execution deadline`,
+          deadlineExceeded: true,
+          skippable: false,
+          classification: 'unknown',
+        });
+      })();
+    }, timeout);
+
+    work.then(
+      (result) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      },
+      (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+async function executeStepWork(
+  page: Page,
+  step: TestableStep,
+  options: StepExecutionOptions = {}
 ): Promise<StepTestResult> {
   // L3-3C: Calculate appropriate timeout based on step type
   const calculatedTimeout = calculateStepTimeout(step);
@@ -1326,6 +1411,8 @@ export async function executeAllSteps(
     artifactsDir?: string;
     /** Capture screenshots on success, not just failure. Default: false */
     alwaysScreenshot?: boolean;
+    /** Called before a hard step deadline closes the page. */
+    onDeadline?(): void;
   } = {}
 ): Promise<AllStepsResult> {
   const {
@@ -1425,14 +1512,16 @@ export async function executeAllSteps(
     // - Skippable steps: if fail for any reason, log and continue (does NOT fail overall test)
     // - Mandatory steps: if fail for any reason, abort and mark remaining as NOT_REACHED
     if (result.status === 'failed') {
-      if (!step.skippable && stopOnMandatoryFailure) {
+      if (result.deadlineExceeded || (!step.skippable && stopOnMandatoryFailure)) {
         // Mandatory step failed - abort test
         if (verbose) {
           console.log(`   ❌ Mandatory step failed, aborting remaining steps`);
         }
         aborted = true;
         abortReason = 'MANDATORY_FAILURE';
-        abortMessage = `Mandatory step ${step.stepId} failed: ${result.error || 'unknown error'}`;
+        abortMessage = result.deadlineExceeded
+          ? result.error
+          : `Mandatory step ${step.stepId} failed: ${result.error || 'unknown error'}`;
       } else if (step.skippable) {
         // Skippable step failed - log but continue
         if (verbose) {
@@ -1445,7 +1534,7 @@ export async function executeAllSteps(
 
   // Capture final screenshot if alwaysScreenshot is enabled
   let finalScreenshot: string | undefined;
-  if (artifactsDir && alwaysScreenshot) {
+  if (artifactsDir && alwaysScreenshot && !results.some((result) => result.deadlineExceeded) && !page.isClosed()) {
     finalScreenshot = await captureFinalScreenshot(page, artifactsDir);
     if (verbose && finalScreenshot) {
       console.log(`\n   📸 Final screenshot captured: ${finalScreenshot}`);

@@ -48,6 +48,8 @@ export {
 // Error Classification
 // ============================================
 export { classifyError } from './classification';
+export { createBrowserTerminationMonitor } from './termination-monitor';
+export type { BrowserTermination, BrowserTerminationMonitor } from './termination-monitor';
 
 // ============================================
 // Artifact Collection

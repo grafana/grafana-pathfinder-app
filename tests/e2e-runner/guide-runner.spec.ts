@@ -36,6 +36,7 @@ import {
   AllStepsResult,
   AbortReason,
   StepTestResult,
+  createBrowserTerminationMonitor,
 } from './utils/guide-runner';
 import {
   printHeader,
@@ -120,6 +121,24 @@ function writeResultsFile(
   };
 
   writeFileSync(resultsFilePath, JSON.stringify(data), 'utf-8');
+}
+async function settleWithin(work: Promise<unknown>, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      work.then(
+        () => undefined,
+        () => undefined
+      ),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 /**
@@ -299,7 +318,9 @@ test.describe('Guide Runner', () => {
     // ============================================
     // Step execution: Execute all discovered steps
     // ============================================
-    const executionResult: AllStepsResult = await executeAllSteps(page, discoveryResult.steps, {
+    const completedResults: StepTestResult[] = [];
+    const terminationMonitor = createBrowserTerminationMonitor(page);
+    const execution = executeAllSteps(page, discoveryResult.steps, {
       verbose: isVerbose,
       stopOnMandatoryFailure: true, // Happy path: stop on first failure
       sessionCheckInterval: 5, // L3-3D: validate session every 5 steps
@@ -307,11 +328,45 @@ test.describe('Guide Runner', () => {
       artifactsDir,
       // Capture screenshots on success and failure
       alwaysScreenshot,
+      onDeadline: terminationMonitor.expectPageClose,
       // L3-5A: Real-time step progress callback
       onStepComplete: (result) => {
+        completedResults.push(result);
         printStepResult(result);
       },
     });
+    let winner: { kind: 'completed'; result: AllStepsResult } | { kind: 'terminated'; message: string };
+    try {
+      winner = await Promise.race([
+        execution.then((result) => ({ kind: 'completed' as const, result })),
+        terminationMonitor.termination.then(({ message }) => ({ kind: 'terminated' as const, message })),
+      ]);
+    } finally {
+      terminationMonitor.dispose();
+    }
+
+    if (winner.kind === 'terminated') {
+      terminationMonitor.expectPageClose();
+      await settleWithin(page.close({ runBeforeUnload: false }), 1000);
+      await settleWithin(execution, 1000);
+      const terminationResult: AllStepsResult = {
+        results: [...completedResults],
+        aborted: true,
+        abortMessage: winner.message,
+      };
+      writeResultsFile(
+        terminationResult.results,
+        guideMetadata,
+        targetUrl,
+        startingLocation,
+        testStartTimestamp,
+        terminationResult,
+        guideJson,
+        'infrastructure_error'
+      );
+      throw new Error(`RUNNER_TERMINATED: ${winner.message}`);
+    }
+    const executionResult = winner.result;
 
     // Get summary for assertions
     const summary = summarizeResults(executionResult.results);
