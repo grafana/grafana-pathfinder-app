@@ -337,7 +337,7 @@ The output is a D3-compatible JSON object with `nodes`, `edges`, and `metadata`:
 
 ## Build-snippets command
 
-Generates a snippet catalog (`index.json`) from a directory of snippet bodies. Snippet bodies (`<id>.json`) are the source of truth; the catalog is always regenerated, never hand-edited. The catalog is consumed by the snippet engine, which resolves `snippet-ref` blocks by fetching `<id>.json` at parse time.
+Generates a snippet catalog (`index.json`) from a directory of snippet bodies. Snippet bodies (`<id>.json`) are the source of truth; the catalog is always regenerated, never hand-edited. The catalog is consumed by the snippet engine, which resolves `snippet-ref` blocks by fetching `<id>.json` after guide validation and before render.
 
 ### Basic syntax
 
