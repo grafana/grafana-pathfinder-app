@@ -140,6 +140,8 @@ export const ManifestJsonObjectSchema = z.object({
   milestones: z.array(z.string().min(1)).optional(),
 
   description: z.string().optional(),
+  /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
+  estimatedMinutes: z.number().positive().optional(),
   language: z.string().default('en'),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
@@ -202,6 +204,7 @@ const packageMetadataSchemaFields = {
   type: PackageTypeSchema,
   title: z.string().optional(),
   description: z.string().optional(),
+  estimatedMinutes: z.number().positive().optional(),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
   startingLocation: z.string().optional(),

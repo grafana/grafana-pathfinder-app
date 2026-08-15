@@ -78,14 +78,14 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
 
     if (result.status === 'rejected') {
       logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone ${id}`, { reason: result.reason });
-      milestones.push({ number, title: id, duration: '5-10 min', url: '', isActive: false, isLocked: true });
+      milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
       logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone: ${id}`);
-      milestones.push({ number, title: id, duration: '5-10 min', url: '', isActive: false, isLocked: true });
+      milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
@@ -93,14 +93,15 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
     // Only surface the manifest description as a subtitle when it isn't
     // already doing double duty as the title fallback above.
     const description = resolution.content?.title ? resolution.manifest?.description : undefined;
+    const estimatedMinutes = resolution.manifest?.estimatedMinutes;
 
     milestones.push({
       number,
       title,
-      duration: '5-10 min',
       url: resolution.contentUrl,
       isActive: false,
       ...(description != null && { description }),
+      ...(typeof estimatedMinutes === 'number' && { estimatedMinutes }),
       ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
     });
   }

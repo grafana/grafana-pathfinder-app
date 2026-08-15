@@ -92,7 +92,8 @@ export interface SingleDocMetadata {
 export interface Milestone {
   number: number;
   title: string;
-  duration: string;
+  /** Author-provided estimate from the member's own manifest. Absent when not authored — never a guessed default. */
+  estimatedMinutes?: number;
   url: string;
   isActive: boolean;
   /**

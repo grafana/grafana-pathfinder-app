@@ -95,8 +95,8 @@ describe('metadata-extract', () => {
 
   describe('findCurrentMilestoneFromUrl (branches)', () => {
     const milestones: Milestone[] = [
-      { number: 1, title: 'A', duration: '5 min', url: `${JOURNEY_BASE}/first`, isActive: false },
-      { number: 2, title: 'B', duration: '5 min', url: `${JOURNEY_BASE}/second`, isActive: false },
+      { number: 1, title: 'A', url: `${JOURNEY_BASE}/first`, isActive: false },
+      { number: 2, title: 'B', url: `${JOURNEY_BASE}/second`, isActive: false },
     ];
 
     it('returns the milestone number on an exact URL match', () => {
@@ -164,7 +164,9 @@ describe('metadata-extract', () => {
 
       expect(milestones[0]!.title).toBe('Menu only');
       expect(milestones[1]!.title).toBe('Step 2');
-      expect(milestones[0]!.duration).toBe('5-10 min');
+      // No per-guide time estimate exists in a Hugo/Jekyll index.json — left
+      // absent rather than defaulted to a guessed value.
+      expect(milestones[0]!.estimatedMinutes).toBeUndefined();
     });
 
     it('returns an empty array on a non-ok response', async () => {

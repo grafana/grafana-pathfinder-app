@@ -4,7 +4,6 @@ import type { LearningJourneyMetadata, Milestone } from '../../types/content.typ
 const milestone = (number: number, overrides: Partial<Milestone> = {}): Milestone => ({
   number,
   title: `Milestone ${number}`,
-  duration: '5m',
   url: `https://grafana.com/docs/learning-paths/demo/milestone-${number}/`,
   isActive: false,
   ...overrides,

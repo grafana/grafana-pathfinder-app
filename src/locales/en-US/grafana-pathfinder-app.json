@@ -23,7 +23,12 @@
     "tableOfContents": "In this path",
     "getStarted": "Get started",
     "resume": "Resume",
-    "earnsBadge": "Earns {{badge}} badge"
+    "earnsBadge": "Earns {{badge}} badge",
+    "moduleCount_one": "{{count}} module",
+    "moduleCount_other": "{{count}} modules",
+    "estimatedMinutes_one": "{{count}} min",
+    "estimatedMinutes_other": "{{count}} min",
+    "locked": "Locked"
   },
   "docsPanel": {
     "closeTab": "Close {{title}}",

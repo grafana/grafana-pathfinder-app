@@ -125,6 +125,8 @@ export interface PackageMetadataFields {
   type: PackageType;
   title?: string;
   description?: string;
+  /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
+  estimatedMinutes?: number;
   category?: string;
   author?: Author;
   startingLocation?: string;
@@ -153,6 +155,8 @@ export interface ManifestJson {
   milestones?: string[];
 
   description?: string;
+  /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
+  estimatedMinutes?: number;
   language?: string;
   category?: string;
   author?: Author;
