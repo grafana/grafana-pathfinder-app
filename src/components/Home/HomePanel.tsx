@@ -30,7 +30,11 @@ import { guideLaunchStore } from '../../global-state/guide-launch';
 import { linkInterceptionState } from '../../global-state/link-interception';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
-import { AUTO_OPEN_DOCS_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib/event-names';
+import {
+  AUTO_OPEN_DOCS_EVENT,
+  REQUEST_FLOATING_GUIDE_EVENT,
+  REQUEST_FULLSCREEN_GUIDE_EVENT,
+} from '../../lib/event-names';
 import { PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
@@ -141,6 +145,11 @@ export function HomePanelRenderer() {
     panelModeManager.setPendingGuide(pendingGuideFrom(launch));
     panelModeManager.capturePriorPath(window.location.pathname + window.location.search);
     panelModeManager.setModeTransient('fullscreen');
+    // @grafana/scenes caches the full-screen SceneAppPage by pathname only
+    // (ignores ?doc=), so an already-mounted full-screen surface never
+    // remounts to consume this — signal it directly, same as the floating
+    // branch above. Unheard when the surface isn't up yet (mount consumes then).
+    document.dispatchEvent(new CustomEvent(REQUEST_FULLSCREEN_GUIDE_EVENT));
     locationService.push(
       buildFullScreenRouteUrl({
         pluginBaseUrl: PLUGIN_BASE_URL,

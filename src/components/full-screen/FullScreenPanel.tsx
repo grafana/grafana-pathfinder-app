@@ -16,6 +16,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { REQUEST_FULLSCREEN_GUIDE_EVENT } from '../../lib/event-names';
 import { findDocPage } from '../../utils/find-doc-page';
 import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import pluginJson from '../../plugin.json';
@@ -367,6 +368,13 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // host-side handler's `setModePersisted('fullscreen')` is a no-op and the route push
   // doesn't remount us. Consume any pending guide here too so the swap still
   // happens — typically used to replace a journey with the editor or vice versa.
+  //
+  // Also listens for REQUEST_FULLSCREEN_GUIDE_EVENT, dispatched by every
+  // My Learning full-screen launch (HomePanel.openFullScreen): @grafana/scenes
+  // caches this page's SceneAppPage by pathname only (ignores ?doc=), so this
+  // component is reused — not remounted — across every launch after the
+  // session's first one. Without this listener, the mount effect above never
+  // refires and a second launch's pending guide is silently dropped.
   useEffect(() => {
     const handleFullScreenRequest = () => {
       consumePendingGuideOnMount(panel, 'fullscreen_handoff', () => {
@@ -374,8 +382,10 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       });
     };
     document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
+    document.addEventListener(REQUEST_FULLSCREEN_GUIDE_EVENT, handleFullScreenRequest);
     return () => {
       document.removeEventListener('pathfinder-request-full-screen', handleFullScreenRequest);
+      document.removeEventListener(REQUEST_FULLSCREEN_GUIDE_EVENT, handleFullScreenRequest);
     };
   }, [panel]);
 

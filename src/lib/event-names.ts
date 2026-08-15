@@ -15,6 +15,16 @@ export const PANEL_MODE_CHANGE_EVENT = 'pathfinder-panel-mode-change';
 // already-mounted floating panel must be signalled to consume directly.
 export const REQUEST_FLOATING_GUIDE_EVENT = 'pathfinder-request-floating-guide';
 
+// Dispatched by HomePanel's openFullScreen after panelModeManager.setPendingGuide,
+// for the same reason REQUEST_FLOATING_GUIDE_EVENT exists: @grafana/scenes
+// caches the full-screen SceneAppPage by pathname only (it ignores the ?doc=
+// query string), so the full-screen surface's mount effect — which consumes
+// the pending guide — only ever fires once per session. Every launch after
+// the first would otherwise navigate to an already-initialized surface with
+// nobody listening. Consumed by FullScreenPanel's existing already-mounted
+// consume listener (shared with `pathfinder-request-full-screen`).
+export const REQUEST_FULLSCREEN_GUIDE_EVENT = 'pathfinder-request-fullscreen-guide';
+
 // Signals that window.__pathfinderPluginConfig has a new value; carries no
 // payload, because any script sharing the document can dispatch it. Owned by
 // publishPathfinderPluginConfig in hooks/usePathfinderPluginConfig.ts.
