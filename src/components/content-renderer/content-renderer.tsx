@@ -396,10 +396,17 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
   const journey = content.metadata.learningJourney;
   const packageManifestId = content.metadata.packageManifest?.id;
+  const packageManifestDescription = content.metadata.packageManifest?.description;
   const pathId = typeof packageManifestId === 'string' ? packageManifestId : undefined;
+  const pathDescription = typeof packageManifestDescription === 'string' ? packageManifestDescription : undefined;
   const beforeContent =
     isJourneyCoverPage(content) && journey && journey.milestones.length > 0 ? (
-      <LearningPathTableOfContents milestones={journey.milestones} baseUrl={journey.baseUrl} pathId={pathId} />
+      <LearningPathTableOfContents
+        milestones={journey.milestones}
+        baseUrl={journey.baseUrl}
+        pathId={pathId}
+        description={pathDescription}
+      />
     ) : null;
 
   return (

@@ -29,8 +29,8 @@ const getCompletedMock = milestoneCompletionStorage.getCompleted as jest.MockedF
 
 const baseUrl = 'https://grafana.com/docs/learning-paths/demo/';
 const milestones: Milestone[] = [
-  { number: 1, title: 'Set up', duration: '', url: `${baseUrl}set-up/content.json`, isActive: false },
-  { number: 2, title: 'Explore', duration: '', url: `${baseUrl}explore/content.json`, isActive: false },
+  { number: 1, title: 'Set up', url: `${baseUrl}set-up/content.json`, isActive: false },
+  { number: 2, title: 'Explore', url: `${baseUrl}explore/content.json`, isActive: false },
 ];
 
 describe('LearningPathTableOfContents', () => {
@@ -51,12 +51,14 @@ describe('LearningPathTableOfContents', () => {
     );
   });
 
-  it('shows a check for milestones whose slug is in the completed set', async () => {
+  it('shows a check for completed milestones and a play icon for the next (current) one', async () => {
     getCompletedMock.mockResolvedValue(new Set(['set-up']));
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
     await waitFor(() => expect(document.querySelectorAll('[data-icon="check"]')).toHaveLength(1));
-    expect(document.querySelectorAll('[data-icon="circle"]')).toHaveLength(1);
+    // Scoped to the module-list rows — the "Resume" CTA button above also
+    // renders its own play icon, which a document-wide query would double-count.
+    expect(document.querySelectorAll('.guideIcon [data-icon="play"]')).toHaveLength(1);
   });
 
   it('shows a Get started CTA targeting the first milestone, with no progress ring, at 0%', async () => {
@@ -117,5 +119,53 @@ describe('LearningPathTableOfContents', () => {
     await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
     expect(getBadgeForPathMock).not.toHaveBeenCalled();
     expect(screen.queryByText(/Earns .* badge/)).not.toBeInTheDocument();
+  });
+
+  it('shows a hero card with the description and module count when a description is provided', async () => {
+    getCompletedMock.mockResolvedValue(new Set());
+    render(
+      <LearningPathTableOfContents
+        milestones={milestones}
+        baseUrl={baseUrl}
+        description="Learn how Grafana connects to data."
+      />
+    );
+
+    expect(screen.getByTestId('learning-paths-cover-hero')).toBeInTheDocument();
+    expect(screen.getByText('Learn how Grafana connects to data.')).toBeInTheDocument();
+    expect(await screen.findByText('2 modules')).toBeInTheDocument();
+  });
+
+  it('omits the hero card entirely when there is no description and no badge', async () => {
+    getCompletedMock.mockResolvedValue(new Set());
+    getBadgeForPathMock.mockReturnValue(undefined);
+    render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
+
+    await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
+    expect(screen.queryByTestId('learning-paths-cover-hero')).not.toBeInTheDocument();
+  });
+
+  describe('sequential lock/unlock', () => {
+    const threeMilestones: Milestone[] = [
+      { number: 1, title: 'One', url: `${baseUrl}one/content.json`, isActive: false },
+      { number: 2, title: 'Two', url: `${baseUrl}two/content.json`, isActive: false },
+      { number: 3, title: 'Three', url: `${baseUrl}three/content.json`, isActive: false },
+    ];
+
+    it('locks every module after the first, unstarted one', async () => {
+      getCompletedMock.mockResolvedValue(new Set());
+      render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
+
+      await waitFor(() => expect(screen.getAllByText('Locked')).toHaveLength(2));
+      expect(document.querySelectorAll('.guideIcon [data-icon="lock"]')).toHaveLength(2);
+    });
+
+    it('unlocks the next module once the previous one completes, keeping the rest locked', async () => {
+      getCompletedMock.mockResolvedValue(new Set(['one']));
+      render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
+
+      await waitFor(() => expect(screen.getAllByText('Locked')).toHaveLength(1));
+      expect(document.querySelectorAll('.guideIcon [data-icon="play"]')).toHaveLength(1);
+    });
   });
 });

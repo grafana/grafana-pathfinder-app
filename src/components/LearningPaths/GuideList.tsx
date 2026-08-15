@@ -29,22 +29,42 @@ export function GuideList({ guides, isLoading = false, className }: GuideListPro
             className={cx(
               styles.guideItem,
               guide.isCurrent && styles.guideItemCurrent,
+              guide.locked && styles.guideItemLocked,
               guide.description && styles.guideItemWithDescription
             )}
+            // The current row is the only clickable one — data-journey-start is
+            // the same attribute contract the cover page's own CTA button uses,
+            // picked up by the shared global click handler (link-handler.hook.ts).
+            {...(guide.isCurrent && guide.url ? { 'data-journey-start': 'true', 'data-milestone-url': guide.url } : {})}
           >
             <span
               className={cx(
                 styles.guideIcon,
                 guide.completed && styles.guideIconCompleted,
                 guide.isCurrent && styles.guideIconCurrent,
-                !guide.completed && !guide.isCurrent && styles.guideIconPending
+                guide.locked && styles.guideIconLocked,
+                !guide.completed && !guide.isCurrent && !guide.locked && styles.guideIconPending
               )}
             >
-              {guide.completed ? <Icon name="check" size="sm" /> : <Icon name="circle" size="sm" />}
+              {guide.completed ? (
+                <Icon name="check" size="sm" />
+              ) : guide.locked ? (
+                <Icon name="lock" size="sm" />
+              ) : guide.isCurrent ? (
+                <Icon name="play" size="sm" />
+              ) : (
+                <Icon name="circle" size="sm" />
+              )}
             </span>
             <span className={styles.guideTextGroup}>
               <span className={styles.guideTitle}>{guide.title}</span>
               {guide.description && <span className={styles.guideDescription}>{guide.description}</span>}
+            </span>
+            <span className={styles.guideStatus}>
+              {guide.locked
+                ? t('coverPage.locked', 'Locked')
+                : typeof guide.estimatedMinutes === 'number' &&
+                  t('coverPage.estimatedMinutes', '{{count}} min', { count: guide.estimatedMinutes })}
             </span>
           </div>
         ))

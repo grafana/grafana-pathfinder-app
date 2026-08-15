@@ -523,7 +523,6 @@ describe('resolvePackageMilestones', () => {
     expect(result[0]).toEqual({
       number: 1,
       title: 'Title for step-one',
-      duration: '5-10 min',
       url: 'bundled:step-one/content.json',
       isActive: false,
     });
@@ -583,6 +582,30 @@ describe('resolvePackageMilestones', () => {
     const result = await resolvePackageMilestones(['data-sources']);
     expect(result[0]!.title).toBe('Data sources');
     expect(result[0]!.description).toBe('How connections and plugins work.');
+  });
+
+  it("surfaces the manifest's author-provided estimatedMinutes, and omits it when absent", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title for ${id}`, blocks: [] },
+          manifest:
+            id === 'timed'
+              ? { id, type: 'guide', estimatedMinutes: 12 }
+              : { id, type: 'guide' /* no estimatedMinutes authored */ },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['timed', 'untimed']);
+    expect(result[0]!.estimatedMinutes).toBe(12);
+    expect(result[1]!.estimatedMinutes).toBeUndefined();
   });
 
   it('falls back to description then ID when content title is missing', async () => {

@@ -358,6 +358,10 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     guideItemCurrent: css({
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
+      cursor: 'pointer',
+    }),
+    guideItemLocked: css({
+      color: theme.colors.text.disabled,
     }),
     guideItemWithDescription: css({
       alignItems: 'flex-start',
@@ -376,6 +380,9 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     guideIconCurrent: css({
       color: colors.pathAccent,
     }),
+    guideIconLocked: css({
+      color: theme.colors.text.disabled,
+    }),
     guideIconPending: css({
       color: theme.colors.text.disabled,
     }),
@@ -387,6 +394,7 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     guideTextGroup: css({
       display: 'flex',
       flexDirection: 'column',
+      flex: 1,
       minWidth: 0,
       gap: 2,
     }),
@@ -398,6 +406,12 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       display: '-webkit-box',
       WebkitLineClamp: 2,
       WebkitBoxOrient: 'vertical',
+    }),
+    guideStatus: css({
+      flexShrink: 0,
+      whiteSpace: 'nowrap',
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.disabled,
     }),
   };
 };
@@ -461,13 +475,30 @@ export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
         filter: 'brightness(1.1)',
       },
     }),
-    badgePreview: css({
+    hero: css({
+      margin: `${theme.spacing(2)} 0 0`,
+      padding: theme.spacing(2),
+      borderRadius: theme.shape.radius.default,
+      backgroundColor: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.weak}`,
+    }),
+    heroDescription: css({
+      margin: `0 0 ${theme.spacing(1.5)}`,
+      color: theme.colors.text.primary,
+      lineHeight: theme.typography.body.lineHeight,
+    }),
+    heroMeta: css({
       display: 'flex',
       alignItems: 'center',
-      gap: theme.spacing(1),
-      marginBottom: theme.spacing(1.5),
+      flexWrap: 'wrap',
+      gap: theme.spacing(2),
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
+    }),
+    heroMetaItem: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
     }),
   };
 };
