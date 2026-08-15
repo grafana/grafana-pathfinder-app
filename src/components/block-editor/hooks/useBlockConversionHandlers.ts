@@ -18,6 +18,14 @@ import { stepGuidedToMultistep, stepMultistepToGuided } from '../utils/stepField
 import type { NestedBlockEditingState, ConditionalBranchEditingState } from './useBlockFormState';
 import { logger } from '../../../lib/logging';
 
+function notifyConversionFailure(error: unknown): void {
+  logger.error('Failed to convert block type', { error });
+  getAppEvents().publish({
+    type: 'alert-error',
+    payload: ['Conversion failed', 'Could not convert to the selected block type.'],
+  });
+}
+
 /**
  * Minimal interface for editor functionality needed by this hook.
  */
@@ -158,7 +166,6 @@ export function useBlockConversionHandlers(
     closeBlockForm();
   }, [editingBlock, editingNestedBlock, editor, closeBlockForm]);
 
-  // Convert between multistep and guided types
   const handleConvertType = useCallback(
     (newType: 'multistep' | 'guided') => {
       const blockData = editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
@@ -166,32 +173,33 @@ export function useBlockConversionHandlers(
         return;
       }
 
-      const currentBlock = blockData as JsonMultistepBlock | JsonGuidedBlock;
-      const convertedBlock = {
-        ...convertBlockType(currentBlock, newType),
-        steps:
-          newType === 'guided'
-            ? currentBlock.steps.map(stepMultistepToGuided)
-            : currentBlock.steps.map(stepGuidedToMultistep),
-      } as JsonMultistepBlock | JsonGuidedBlock;
+      try {
+        const currentBlock = blockData as JsonMultistepBlock | JsonGuidedBlock;
+        const convertedBlock = {
+          ...convertBlockType(currentBlock, newType),
+          steps:
+            newType === 'guided'
+              ? currentBlock.steps.map(stepMultistepToGuided)
+              : currentBlock.steps.map(stepGuidedToMultistep),
+        } as JsonMultistepBlock | JsonGuidedBlock;
 
-      if (editingConditionalBranchBlock) {
-        editor.updateConditionalBranchBlock(
-          editingConditionalBranchBlock.conditionalId,
-          editingConditionalBranchBlock.branch,
-          editingConditionalBranchBlock.nestedIndex,
-          convertedBlock
-        );
-      } else if (editingNestedBlock) {
-        // Update nested block
-        editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
-      } else if (editingBlock) {
-        // Update root-level block
-        editor.updateBlock(editingBlock.id, convertedBlock);
+        if (editingConditionalBranchBlock) {
+          editor.updateConditionalBranchBlock(
+            editingConditionalBranchBlock.conditionalId,
+            editingConditionalBranchBlock.branch,
+            editingConditionalBranchBlock.nestedIndex,
+            convertedBlock
+          );
+        } else if (editingNestedBlock) {
+          editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
+        } else if (editingBlock) {
+          editor.updateBlock(editingBlock.id, convertedBlock);
+        }
+
+        closeBlockForm();
+      } catch (error) {
+        notifyConversionFailure(error);
       }
-
-      // Close the modal
-      closeBlockForm();
     },
     [editingBlock, editingNestedBlock, editingConditionalBranchBlock, editor, closeBlockForm]
   );
@@ -237,11 +245,7 @@ export function useBlockConversionHandlers(
         // Update block type - triggers form remount via key prop change
         setEditingBlockType(newType);
       } catch (error) {
-        logger.error('Failed to convert block type', { error });
-        getAppEvents().publish({
-          type: 'alert-error',
-          payload: ['Conversion failed', 'Could not convert to the selected block type.'],
-        });
+        notifyConversionFailure(error);
       }
     },
     [
