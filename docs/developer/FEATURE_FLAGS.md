@@ -200,7 +200,7 @@ interface InteractiveLearningBannerConfig {
 | ----------- | ------ | ---------------------------------------------------------------- |
 | `excluded`  | No     | Not in the experiment. Identical to pre-experiment behavior.     |
 | `control`   | No     | In the experiment, no banner. Identical rendering to `excluded`. |
-| `treatment` | Yes    | Dismissible explanatory banner at the top of the context page.   |
+| `treatment` | Yes    | Dismissible banner whose CTA starts a bubble tour of the panel.  |
 
 A rejected payload (not an object, missing `variant`, or an unknown arm) falls back to `excluded`, so a fat-fingered MTFF value enrolls nobody. Rejection sources behave the same way as the highlighted-guide flag (see the table above).
 
@@ -208,9 +208,18 @@ A rejected payload (not an object, missing `variant`, or an unknown arm) falls b
 
 **Dismissal**: persisted per browser under `grafana-pathfinder-interactive-learning-banner-dismissed-{hostname}`. Dismissing hides the banner permanently but does **not** un-enroll the user — they stay in the treatment arm for analysis.
 
-**Behavior events** (in addition to the exposure): `pathfinder_interactive_learning_banner_shown` (once per page load) and `..._banner_dismissed`, both carrying `interaction_location: interactive_learning_banner`.
+**Behavior events** (in addition to the exposure): `pathfinder_interactive_learning_banner_shown` (once per page load) and `..._banner_dismissed` for the banner itself, then `pathfinder_interactive_learning_tour_started` on the CTA and `..._tour_completed` / `..._tour_dismissed` when the tour ends, both carrying `step_index` and `step_total` so per-bubble drop-off is measurable. The tour's hand-off step also reports the ordinary `pathfinder_open_resource_click` with `interaction_location: interactive_learning_banner`, so the guide open sits in the same funnel as every recommendation card.
 
-**Code**: everything except the registry entry lives in [`src/utils/experiments/interactive-learning-banner.ts`](../../src/utils/experiments/interactive-learning-banner.ts) and [`src/components/InteractiveLearningBanner/`](../../src/components/InteractiveLearningBanner/), so retiring the experiment is a directory delete plus the registry entry.
+**The CTA starts a bubble tour, then hands off to a real guide.** Steps 1-6 anchor next/previous bubbles to the context panel and tab bar via [`src/components/BubbleTour/`](../../src/components/BubbleTour/) - the same `NavigationManager.highlightWithComment` bubble guided mode uses. Step 7's primary button opens the platform-appropriate welcome guide (`bundled:welcome-to-grafana` on OSS, `bundled:welcome-to-grafana-cloud` on Cloud), steps 8-9 point at that guide's real "Show me" and "Do it" buttons, and step 9 returns to the recommendations tab so the tour closes where it began.
+
+Four things in that flow are load-bearing:
+
+- **The tour is hosted from the docs-panel root, not from the banner.** The hand-off opens a guide tab, which flips `isRecommendationsTab` false and unmounts the context panel at [`DocsPanelContentArea.tsx:145`](../../src/components/docs-panel/components/DocsPanelContentArea.tsx) - taking the banner, and any tour it owned, down mid-flight. `tour-store.ts` is the seam: the banner's CTA sets a module-level flag and `<InteractiveLearningTour>` on the panel root subscribes via `useSyncExternalStore`.
+- **The guide is platform-branched.** The Cloud guide's nav reftargets do not exist in OSS, and one of them is neither `skippable` nor guarded by `exists-reftarget`, so it hard-blocks a local stack.
+- **The in-guide steps anchor on `.interactive-step-show-btn` / `.interactive-step-do-btn`, not step testids.** Step ids are content hashes (`deriveStepId`), so they shift whenever a guide's blocks are edited or reordered. The class selectors also self-adapt: a step whose requirements have not passed renders neither button, so the first match is always an enabled step.
+- **Private content is covered twice, deliberately.** The context-tab `CustomGuidesSection` step is `optional` - that section is absent whenever the backend aggregation toggle is off or the org has no custom guides, so the step is dropped at mount and the numbering stays truthful. Because that makes it invisible on most stacks, a second non-optional step anchors on the **My learning** icon button (`TabBarActions.tsx:145`, always rendered) and names private learning paths there.
+
+**Code**: [`src/utils/experiments/interactive-learning-banner.ts`](../../src/utils/experiments/interactive-learning-banner.ts) and [`src/components/InteractiveLearningBanner/`](../../src/components/InteractiveLearningBanner/). Retiring the experiment is a directory delete, the registry entry, and the `<InteractiveLearningTour>` line in `docs-panel.tsx`. `src/components/BubbleTour/` outlives it - the block editor's tour uses it too.
 
 **Tracking key**: `interactive_learning_banner_experiment`
 

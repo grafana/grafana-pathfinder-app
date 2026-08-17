@@ -1141,7 +1141,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     <div className={styles.container} data-testid={testIds.contextPanel.container}>
       <div className={styles.content} ref={scrollContainerRef} data-testid={testIds.contextPanel.scrollContainer}>
         <div className={styles.contextSections}>
-          {/* Treatment arm of the interactive-learning banner experiment; renders null otherwise */}
+          {/* Treatment arm of the interactive-learning banner experiment; renders null otherwise.
+              Its tour is hosted from the docs-panel root, which outlives this panel. */}
           <InteractiveLearningBanner />
 
           {/* User profile bar with learning stats and next action */}

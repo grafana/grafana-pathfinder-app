@@ -70,6 +70,7 @@ import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
+import { InteractiveLearningTour } from '../InteractiveLearningBanner';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
 
@@ -1399,6 +1400,12 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       <Suspense fallback={null}>
         <AiFixOrchestrator activeTab={activeTab} onPatchApplied={handleAiFixPatchApplied} />
       </Suspense>
+      {/* Hosted here, not beside the banner: the tour opens a guide tab partway
+          through, which unmounts the context panel the banner lives in. */}
+      <InteractiveLearningTour
+        onOpenGuide={(url, title) => model.openDocsPage(url, title, { source: 'recommender' })}
+        onReturnToContext={() => model.setActiveTab(RECOMMENDATIONS_TAB_ID)}
+      />
       {/* Live session controls - only render when there's session content.
           The component returns null when both flags are off, preserving the
           original surface gate. */}

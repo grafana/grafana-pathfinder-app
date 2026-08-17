@@ -192,7 +192,9 @@ Variant reassignment is the **only** condition where the event auto-refires acro
 
 ## `pathfinder.interactive-learning-banner-experiment`
 
-Tests whether explaining interactive learning up front increases guide engagement. `treatment` renders a dismissible explanatory banner at the top of the context page; `control` and `excluded` render nothing.
+Tests whether explaining interactive learning up front increases guide engagement. `treatment` renders a dismissible banner whose CTA starts a bubble tour; `control` and `excluded` render nothing.
+
+The tour runs on `src/components/BubbleTour/` - the same `NavigationManager` bubble guided mode uses, so it inherits auto-placement, the step counter, progress dots, and scroll-into-view. Steps 1-6 anchor to the context panel and tab bar, step 7's primary button reads **open the guide** and opens the platform-appropriate welcome guide (`bundled:welcome-to-grafana` locally, `bundled:welcome-to-grafana-cloud` on a Cloud stack), steps 8-9 point at that guide's real "Show me" and "Do it" buttons, and step 9's button reads **take me back**, returning to the recommendations tab so step 10 lands on the context panel the tour began on.
 
 ### Treatment
 
@@ -201,7 +203,15 @@ __pathfinderExperiment.setOverride('pathfinder.interactive-learning-banner-exper
 location.reload();
 ```
 
-Open the sidebar. The banner sits above the profile bar, and its only control is the dismiss affordance.
+Open the sidebar. The banner sits above the profile bar, and its CTA starts the tour. Arrow keys navigate, Esc exits.
+
+Three things look like bugs but are not:
+
+- **The "guides from your organization" step is missing locally.** It is `optional`, and `CustomGuidesSection` needs the `aggregation.pathfinderbackend-ext-grafana-app.enabled` toggle that `docker-compose.yaml` does not set. The step is dropped at mount, so the counter reads "of 9" rather than "of 10". Private learning paths are still covered - the My learning step points at them, and that anchor is always present.
+- **Back is disabled on the first in-guide step, and on the last one.** Each of those crosses a tab switch, so the previous step's target no longer exists. Both crossings are deliberately one-way.
+- **The highlight outline fades after a few seconds while the bubble stays.** Pre-existing engine behaviour - the CSS animation completes, and only the auto-remove timer is suppressed for tours.
+
+Worth walking in **floating mode** (pop out) as well as docked: in-panel highlights carry `data-pathfinder-internal`, which is what stops `useHighlightDodge` making the floating panel flee its own highlight.
 
 ### Control
 

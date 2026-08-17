@@ -87,7 +87,33 @@
   },
   "interactiveLearningBanner": {
     "body": "",
-    "title": ""
+    "cta": "",
+    "guideTitle": "",
+    "title": "",
+    "tour": {
+      "backLabel": "",
+      "cardBody": "",
+      "cardTitle": "",
+      "doItBody": "",
+      "doItTitle": "",
+      "finishBody": "",
+      "finishTitle": "",
+      "handoffBody": "",
+      "handoffTitle": "",
+      "myLearningBody": "",
+      "myLearningTitle": "",
+      "openLabel": "",
+      "panelBody": "",
+      "panelTitle": "",
+      "privateBody": "",
+      "privateTitle": "",
+      "progressBody": "",
+      "progressTitle": "",
+      "recommendationsBody": "",
+      "recommendationsTitle": "",
+      "showMeBody": "",
+      "showMeTitle": ""
+    }
   },
   "userProfileBar": {
     "allComplete": "Semua jalur selesai!",

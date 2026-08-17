@@ -2,13 +2,13 @@
  * Interactive-learning banner — treatment arm of
  * `pathfinder.interactive-learning-banner-experiment`.
  *
- * Explains what interactive learning is at the top of the context page. Renders
- * nothing for the control and excluded arms, so control is byte-identical to
- * pre-experiment behaviour.
+ * Explains what interactive learning is at the top of the context page, with a CTA
+ * that starts a bubble tour of the panel. Renders nothing for the control and
+ * excluded arms, so control is byte-identical to pre-experiment behaviour.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, useStyles2 } from '@grafana/ui';
+import { Alert, Button, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { t } from '@grafana/i18n';
@@ -17,6 +17,7 @@ import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { enrollInteractiveLearningBannerExperiment } from '../../utils/experiments/interactive-learning-banner';
 import { StorageKeys } from '../../lib/storage-keys';
 import { testIds } from '../../constants/testIds';
+import { startInteractiveLearningTour } from './tour-store';
 
 const INTERACTION_LOCATION = 'interactive_learning_banner';
 
@@ -68,6 +69,13 @@ export function InteractiveLearningBanner() {
     });
   }, []);
 
+  const handleStartTour = useCallback(() => {
+    reportAppInteraction(UserInteraction.InteractiveLearningTourStarted, {
+      interaction_location: INTERACTION_LOCATION,
+    });
+    startInteractiveLearningTour();
+  }, []);
+
   const isVisible = isTreatment && !dismissed;
 
   useEffect(() => {
@@ -98,6 +106,15 @@ export function InteractiveLearningBanner() {
             'Interactive guides walk you through Grafana one step at a time. "Show me" highlights the control to use, and "Do it" performs the step for you.'
           )}
         </p>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="play"
+          onClick={handleStartTour}
+          data-testid={testIds.contextPanel.interactiveLearningBannerCta}
+        >
+          {t('interactiveLearningBanner.cta', 'Show me around')}
+        </Button>
       </Alert>
     </div>
   );
@@ -111,7 +128,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     marginBottom: 0,
   }),
   body: css({
-    margin: 0,
+    margin: `0 0 ${theme.spacing(1.5)} 0`,
     fontSize: theme.typography.bodySmall.fontSize,
     lineHeight: theme.typography.bodySmall.lineHeight,
   }),

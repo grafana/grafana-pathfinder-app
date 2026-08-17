@@ -58,7 +58,33 @@
   },
   "interactiveLearningBanner": {
     "body": "Interactive guides walk you through Grafana one step at a time. \"Show me\" highlights the control to use, and \"Do it\" performs the step for you.",
-    "title": "Learn by doing"
+    "cta": "Show me around",
+    "guideTitle": "Welcome to Grafana",
+    "title": "Learn by doing",
+    "tour": {
+      "backLabel": "Take me back",
+      "cardBody": "Open one and it runs right here, a step at a time. Your progress is saved if you close the panel partway through.",
+      "cardTitle": "Every card is a guide",
+      "doItBody": "Clicks, navigation, and filling in forms all work this way, so you can watch what happens rather than hunt for it.",
+      "doItTitle": "\"Do it\" performs the step",
+      "finishBody": "Steps can be repeated, and most can be skipped if they do not apply to you, so go at your own pace. Pick a guide whenever you are ready — the one you just opened is still in its own tab.",
+      "finishTitle": "Back where you started",
+      "handoffBody": "Two buttons do all the work, and they are easier to show than to describe. Open a short guide and we will point them out.",
+      "handoffTitle": "Best seen in a real guide",
+      "myLearningBody": "My learning holds every guide you have finished, the badges you have earned, and any learning paths published privately for your organization — including ones not suggested for this page.",
+      "myLearningTitle": "Where the rest of it lives",
+      "openLabel": "Open the guide",
+      "panelBody": "This panel stays open beside Grafana while you work, so you practise in the real interface with your own data.",
+      "panelTitle": "Learning that follows you around",
+      "privateBody": "Guides your organization has published privately appear here, in among the public ones.",
+      "privateTitle": "Guides from your organization",
+      "progressBody": "Your badges and streak sit up here, so you can see how far you have got without leaving the page.",
+      "progressTitle": "Your progress at a glance",
+      "recommendationsBody": "These guides are picked for the page you are on, so the list changes as you move around Grafana.",
+      "recommendationsTitle": "Suggestions for where you are",
+      "showMeBody": "It outlines the exact control the step is talking about and scrolls it into view. Nothing in Grafana changes, so you can look before you act.",
+      "showMeTitle": "\"Show me\" is always safe"
+    }
   },
   "myLearning": {
     "badges": "Badges",

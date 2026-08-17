@@ -86,31 +86,81 @@ describe('BubbleTour', () => {
     await waitFor(() => expect(lastHighlight()[ARG.comment]).toBe('First'));
   });
 
-  it('clears highlights then closes from the last step', async () => {
+  it('clears highlights and reports completion from the last step', async () => {
     const { onClose } = await renderTour({ steps: [STEPS[0]!] });
 
     await act(async () => lastHighlight()[ARG.onNext]());
 
     expect(mockClearAllHighlights).toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith({ reason: 'completed', stepIndex: 0, stepTotal: 1 });
   });
 
-  it('closes when the bubble is cancelled', async () => {
+  it('reports a dismissal with the step it ended on', async () => {
     const { onClose } = await renderTour();
+    await act(async () => lastHighlight()[ARG.onNext]());
+    await waitFor(() => expect(lastHighlight()[ARG.comment]).toBe('Second'));
 
     await act(async () => lastHighlight()[ARG.onCancel]());
 
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith({ reason: 'dismissed', stepIndex: 1, stepTotal: 3 });
   });
 
-  it('applies finalStepLabel only to the last step', async () => {
-    await renderTour({ steps: [STEPS[0]!, STEPS[1]!], finalStepLabel: 'Start creating' });
+  describe('next label', () => {
+    it('applies finalStepLabel only to the last step', async () => {
+      await renderTour({ steps: [STEPS[0]!, STEPS[1]!], finalStepLabel: 'Start creating' });
 
-    expect(lastHighlight()[ARG.options].nextLabel).toBeUndefined();
+      expect(lastHighlight()[ARG.options].nextLabel).toBeUndefined();
 
-    await act(async () => lastHighlight()[ARG.onNext]());
+      await act(async () => lastHighlight()[ARG.onNext]());
 
-    await waitFor(() => expect(lastHighlight()[ARG.options].nextLabel).toBe('Start creating'));
+      await waitFor(() => expect(lastHighlight()[ARG.options].nextLabel).toBe('Start creating'));
+    });
+
+    it("prefers a step's own label", async () => {
+      await renderTour({ steps: [{ ...STEPS[0]!, nextLabel: 'Open the guide' }] });
+
+      expect(lastHighlight()[ARG.options].nextLabel).toBe('Open the guide');
+    });
+  });
+
+  describe('step behaviour flags', () => {
+    it('runs onAdvance when the step is advanced', async () => {
+      const onAdvance = jest.fn();
+      await renderTour({ steps: [{ ...STEPS[0]!, onAdvance }, STEPS[1]!] });
+
+      await act(async () => lastHighlight()[ARG.onNext]());
+
+      expect(onAdvance).toHaveBeenCalledTimes(1);
+    });
+
+    it('withholds the previous callback on a disableBack step', async () => {
+      await renderTour({ steps: [STEPS[0]!, { ...STEPS[1]!, disableBack: true }] });
+
+      await act(async () => lastHighlight()[ARG.onNext]());
+
+      await waitFor(() => expect(lastHighlight()[ARG.comment]).toBe('Second'));
+      expect(lastHighlight()[ARG.onPrevious]).toBeUndefined();
+    });
+
+    it('drops an optional step whose target is absent and adjusts the total', async () => {
+      await renderTour({ steps: [STEPS[0]!, { target: '#absent', title: 'Gone', content: 'Gone', optional: true }] });
+
+      expect(lastHighlight()[ARG.stepInfo]).toEqual({ current: 0, total: 1, completedSteps: [] });
+    });
+
+    it('keeps an optional step whose target is present', async () => {
+      const present = document.createElement('div');
+      present.id = 'present';
+      document.body.appendChild(present);
+
+      await renderTour({
+        steps: [STEPS[0]!, { target: '#present', title: 'Here', content: 'Here', optional: true }],
+      });
+
+      expect(lastHighlight()[ARG.stepInfo]).toEqual({ current: 0, total: 2, completedSteps: [] });
+
+      present.remove();
+    });
   });
 
   describe('unresolvable targets', () => {
@@ -158,14 +208,14 @@ describe('BubbleTour', () => {
       await waitFor(() => expect(lastHighlight()[ARG.comment]).toBe('First'));
     });
 
-    it('closes on Escape', async () => {
+    it('dismisses on Escape', async () => {
       const { onClose } = await renderTour();
 
       await act(async () => {
         fireEvent.keyDown(document, { key: 'Escape' });
       });
 
-      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledWith({ reason: 'dismissed', stepIndex: 0, stepTotal: 3 });
     });
 
     it('ignores Enter so it cannot double as next', async () => {

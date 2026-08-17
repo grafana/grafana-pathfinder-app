@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { InteractiveLearningBanner, clearBannerImpressionCache } from './InteractiveLearningBanner';
+import { isInteractiveLearningTourOpen, stopInteractiveLearningTour } from './tour-store';
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
 import { UserInteraction } from '../../lib/analytics';
@@ -24,6 +25,7 @@ describe('InteractiveLearningBanner', () => {
     localStorage.clear();
     jest.clearAllMocks();
     clearBannerImpressionCache();
+    stopInteractiveLearningTour();
     mockEnroll.mockReturnValue({ variant: 'treatment' });
   });
 
@@ -39,6 +41,7 @@ describe('InteractiveLearningBanner', () => {
     render(<InteractiveLearningBanner />);
 
     expect(screen.getByTestId(testIds.contextPanel.interactiveLearningBanner)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.contextPanel.interactiveLearningBannerCta)).toBeInTheDocument();
     expect(mockReportAppInteraction).toHaveBeenCalledWith(UserInteraction.InteractiveLearningBannerShown, {
       interaction_location: 'interactive_learning_banner',
     });
@@ -71,6 +74,19 @@ describe('InteractiveLearningBanner', () => {
     expect(mockReportAppInteraction).toHaveBeenCalledWith(UserInteraction.InteractiveLearningBannerDismissed, {
       interaction_location: 'interactive_learning_banner',
     });
+  });
+
+  it('starts the tour through the store, so it survives the banner unmounting', () => {
+    const view = render(<InteractiveLearningBanner />);
+    fireEvent.click(screen.getByTestId(testIds.contextPanel.interactiveLearningBannerCta));
+
+    expect(isInteractiveLearningTourOpen()).toBe(true);
+    expect(mockReportAppInteraction).toHaveBeenCalledWith(UserInteraction.InteractiveLearningTourStarted, {
+      interaction_location: 'interactive_learning_banner',
+    });
+
+    view.unmount();
+    expect(isInteractiveLearningTourOpen()).toBe(true);
   });
 
   it('degrades to a visible banner when localStorage is unavailable', () => {

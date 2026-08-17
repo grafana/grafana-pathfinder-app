@@ -10,11 +10,21 @@ export interface BubbleTourStep {
   target: string;
   title: string;
   content: string;
+  nextLabel?: string;
+  onAdvance?: () => void;
+  optional?: boolean;
+  disableBack?: boolean;
+}
+
+export interface BubbleTourOutcome {
+  reason: 'completed' | 'dismissed';
+  stepIndex: number;
+  stepTotal: number;
 }
 
 export interface BubbleTourProps {
   steps: BubbleTourStep[];
-  onClose: () => void;
+  onClose: (outcome: BubbleTourOutcome) => void;
   finalStepLabel?: string;
 }
 
@@ -31,15 +41,27 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
 
   const navigationManager = useMemo(() => new NavigationManager(), []);
 
-  const totalSteps = steps.length;
-  const step = steps[currentStep];
+  // Optional steps whose target is absent are dropped once, so step numbering stays truthful.
+  const effectiveSteps = useMemo(
+    () => steps.filter((step) => !step.optional || document.querySelector(step.target)),
+    [steps]
+  );
 
-  const close = useCallback(() => {
-    navigationManager.clearAllHighlights();
-    onClose();
-  }, [navigationManager, onClose]);
+  const totalSteps = effectiveSteps.length;
+  const step = effectiveSteps[currentStep];
+
+  const finish = useCallback(
+    (reason: BubbleTourOutcome['reason']) => {
+      navigationManager.clearAllHighlights();
+      onClose({ reason, stepIndex: currentStep, stepTotal: totalSteps });
+    },
+    [navigationManager, onClose, currentStep, totalSteps]
+  );
+
+  const dismiss = useCallback(() => finish('dismissed'), [finish]);
 
   const goToNext = useCallback(() => {
+    step?.onAdvance?.();
     setStepsReached((prev) => Math.max(prev, currentStep + 1));
 
     if (currentStep < totalSteps - 1) {
@@ -47,8 +69,8 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
       return;
     }
 
-    close();
-  }, [currentStep, totalSteps, close]);
+    finish('completed');
+  }, [step, currentStep, totalSteps, finish]);
 
   const goToPrevious = useCallback(() => setCurrentStep((prev) => Math.max(0, prev - 1)), []);
 
@@ -64,13 +86,13 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
       total: totalSteps,
       completedSteps: Array.from({ length: stepsReached }, (_, i) => i),
     };
-    const onPrevious = currentStep > 0 ? goToPrevious : undefined;
+    const onPrevious = currentStep > 0 && !step.disableBack ? goToPrevious : undefined;
     const isLastStep = currentStep === totalSteps - 1;
     const options = {
       showKeyboardHint: true,
       skipAnimations: currentStep > 0,
       stepTitle: step.title,
-      nextLabel: isLastStep ? finalStepLabel : undefined,
+      nextLabel: step.nextLabel ?? (isLastStep ? finalStepLabel : undefined),
     };
 
     resolveWithRetry(step.target, 'highlight').then((resolved) => {
@@ -85,7 +107,7 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
           false,
           stepInfo,
           undefined,
-          close,
+          dismiss,
           goToNext,
           onPrevious,
           options
@@ -96,7 +118,7 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
       navigationManager.showCenteredComment(
         `${step.content}<br><br><em>${MISSING_TARGET_NOTE}</em>`,
         stepInfo,
-        close,
+        dismiss,
         goToNext,
         onPrevious,
         options
@@ -106,7 +128,7 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
     return () => {
       cancelled = true;
     };
-  }, [step, currentStep, totalSteps, stepsReached, finalStepLabel, navigationManager, close, goToNext, goToPrevious]);
+  }, [step, currentStep, totalSteps, stepsReached, finalStepLabel, navigationManager, dismiss, goToNext, goToPrevious]);
 
   useEffect(() => () => navigationManager.clearAllHighlights(), [navigationManager]);
 
@@ -119,7 +141,7 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
       if (e.key === 'Escape') {
         // FloatingPanel also minimizes on Escape unless the event is already defaultPrevented.
         safeEventHandler(e, { preventDefault: true });
-        close();
+        dismiss();
       } else if (e.key === 'ArrowRight') {
         safeEventHandler(e, { preventDefault: true });
         goToNext();
@@ -131,7 +153,7 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [currentStep, close, goToNext, goToPrevious]);
+  }, [currentStep, dismiss, goToNext, goToPrevious]);
 
   return null;
 }
