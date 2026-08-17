@@ -32,6 +32,13 @@ export interface DiscoverMoreItem {
   contentUrl: string;
   /** Milestone count from the inlined manifest, when available. */
   milestoneCount?: number;
+  /**
+   * The package's inlined manifest, when available. Threaded into launch as
+   * `packageInfo` — without it, the loader falls through to plain
+   * `fetchContent` and the item renders as a bare document with no cover,
+   * milestone toolbar, or next/prev navigation.
+   */
+  manifest?: Record<string, unknown>;
 }
 
 export interface UseDiscoverMoreOptions {
@@ -62,6 +69,7 @@ function toDiscoverItem(entry: OnlinePackageEntry, baseUrl: string): DiscoverMor
     description: entry.description,
     contentUrl,
     milestoneCount: milestoneCountOf(entry),
+    manifest: entry.manifest,
   };
 }
 

@@ -9,6 +9,8 @@ import { DocsPluginConfig } from './constants';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
 import { publishPathfinderPluginConfig, refreshPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
+import { setPackageResolver } from './docs-retrieval';
+import { createCompositeResolver } from './package-engine';
 import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
@@ -146,6 +148,17 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // the deep-link and link-interception listeners needed to exist.
   const config = publishPathfinderPluginConfig(meta?.jsonData || {});
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
+
+  // Wire the package resolver here, not just in CombinedLearningJourneyPanel's
+  // constructor (docs-panel.tsx): a launch can fetch and classify package
+  // content (My Learning, Discover More) before any docs-panel/sidebar/
+  // full-screen instance has ever mounted this session. Without an early
+  // resolver, that fetch's milestone resolution silently no-ops — the cover
+  // page renders with no "In this path" list, no lock/play icons, no real
+  // module count, because it never learns the content is a multi-milestone
+  // package at all (#1637). The panel's own call stays as a harmless re-set
+  // for whichever config that specific surface was constructed with.
+  setPackageResolver(createCompositeResolver(config));
 
   // `meta.jsonData` can lag a recent save. Re-publish from the authoritative
   // read when it lands; subscribers pick it up via the config-updated event.

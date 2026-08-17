@@ -61,6 +61,7 @@ describe('useDiscoverMore', () => {
         description: 'first',
         contentUrl: 'https://cdn.example/base/packages/a/content.json',
         milestoneCount: 2,
+        manifest: { milestones: ['m1', 'm2'] },
       },
       {
         id: 'b',
@@ -68,8 +69,20 @@ describe('useDiscoverMore', () => {
         description: undefined,
         contentUrl: 'https://cdn.example/base/packages/b/content.json',
         milestoneCount: undefined,
+        manifest: undefined,
       },
     ]);
+  });
+
+  // Regression for #1637: without the inlined manifest threaded through as
+  // packageInfo, Discover More launches fall through to plain fetchContent
+  // and never render a cover, milestone toolbar, or next/prev nav.
+  it('threads the inlined manifest through so launch can build packageInfo from it', async () => {
+    const { result } = renderHook(() => useDiscoverMore());
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.items.find((i) => i.id === 'a')?.manifest).toEqual({ milestones: ['m1', 'm2'] });
   });
 
   it('excludes items whose title is already shown elsewhere', async () => {

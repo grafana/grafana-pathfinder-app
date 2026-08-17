@@ -230,7 +230,16 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         content_type: AnalyticsContentType.LearningJourney,
         interaction_location: 'my_learning_discover_more',
       });
-      void launch(item.contentUrl, item.title, item.id);
+
+      // Without packageInfo, the loader falls through to plain fetchContent
+      // and the item renders as a bare document — no cover, no milestone
+      // toolbar, no next/prev nav (#1637). Mirrors the packageInfo threading
+      // already done for My Courses / App Platform guides above.
+      const packageInfo: PackageOpenInfo | undefined = item.manifest
+        ? { packageId: item.id, packageManifest: { ...item.manifest, id: item.id } }
+        : undefined;
+
+      void launch(item.contentUrl, item.title, item.id, packageInfo);
     },
     [launch]
   );
