@@ -395,7 +395,12 @@ export function createGrafanaUiMock() {
 
 /** Factory for `jest.mock('../../constants', ...)`. */
 export function createConstantsMock() {
+  // Partial, not total: `src/constants` is a barrel, and replacing it wholesale
+  // breaks any module the tree happens to reach that reads a different export
+  // from it — telemetry's tracked-hostname sets, for one. Only the config read
+  // needs stubbing.
   return {
+    ...jest.requireActual('../constants'),
     getConfigWithDefaults: jest.fn(() => ({})),
   };
 }

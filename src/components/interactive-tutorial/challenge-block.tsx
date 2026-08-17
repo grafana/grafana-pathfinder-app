@@ -4,30 +4,43 @@
  * Lifecycle (see `ChallengeState`):
  *   idle → connecting → preparing → ready → checking → solved | failed-check | setup-failed
  *
- * The block runs `setupCommands` server-side via `/coda/exec` after the VM
- * connects, then makes "Check my work" available. A sentinel file is written
+ * The block runs `setupCommands` server-side in the sandbox VM after it
+ * connects, then makes "Check my work" available. The ready file is written
  * as the last setup step, and the success criterion is evaluated with
- * `checkPostconditions` (the underlying `coda-exit-zero` check always runs in
- * gated mode), so it cannot pass before setup completes — defense in depth on
- * top of the UI gating.
+ * `checkPostconditions` (the underlying `coda-exit-zero` check always gates on
+ * that same file), so it cannot pass before setup completes — defense in depth
+ * on top of the UI gating.
  */
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, Icon, useStyles2, Alert } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
-import { getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
 import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import {
+  codaConfigGateMessage,
+  codaUnavailableMessage,
+  useCodaSessionEligibility,
+  useReportSandboxUnavailable,
+  useCodaTerminalGate,
+} from '../../integrations/coda/useCodaAvailability.hook';
+import {
+  codaRoleForbiddenMessage,
+  execInSession,
+  isRoleForbidden,
+  isUnavailable,
+  toCodaError,
+  PATHFINDER_READY_FILE,
+  type ExecResponse,
+} from '../../integrations/coda/coda-api';
 import { useGuideRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 
-const CODA_EXEC_URL = '/api/plugins/grafana-pathfinder-app/resources/coda/exec';
-// /tmp/pathfinder-ready matches codaSentinelPath in the Go backend. The
-// atomic temp+rename guarantees the gated coda-exit-zero check never sees a
-// partially-written sentinel.
-const SENTINEL_WRITE_COMMAND = 'touch /tmp/pathfinder-ready.tmp && mv /tmp/pathfinder-ready.tmp /tmp/pathfinder-ready';
+// The atomic temp+rename guarantees the gated coda-exit-zero check never
+// sees a partially-written gate file. The path is shared with that check
+// via PATHFINDER_READY_FILE — it used to be a hand-copy of a Go constant.
+const SENTINEL_WRITE_COMMAND = `touch ${PATHFINDER_READY_FILE}.tmp && mv ${PATHFINDER_READY_FILE}.tmp ${PATHFINDER_READY_FILE}`;
 
 // Module-level stable empty array used as the default for `setupCommands`.
 // Defining the default inline (`setupCommands = []`) would mint a new array on
@@ -37,6 +50,8 @@ const EMPTY_SETUP_COMMANDS = Object.freeze([]) as unknown as string[];
 
 export type ChallengeState =
   'idle' | 'connecting' | 'preparing' | 'ready' | 'checking' | 'solved' | 'failed-check' | 'setup-failed';
+
+const SANDBOX_SUBJECT = 'This challenge runs in a Coda sandbox VM';
 
 export interface ChallengeHintProps {
   text: string;
@@ -61,7 +76,7 @@ export interface ChallengeBlockProps {
    * work — the loop runs each command sequentially.
    */
   setupCommands?: string[];
-  /** Bash script run as a single /coda/exec call on the remote shell. */
+  /** Bash script run as a single exec call on the remote shell. */
   setupScript?: string;
   successCriteria: string;
   hintLevels?: ChallengeHintProps[];
@@ -72,27 +87,6 @@ export interface ChallengeBlockProps {
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
-}
-
-interface ExecResponse {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  durationMs: number;
-}
-
-async function runExec(command: string, mode: 'raw' | 'gated' = 'raw', timeoutMs = 10000): Promise<ExecResponse> {
-  // Use .fetch with showErrorAlert: false so 4xx/5xx don't trigger Grafana's
-  // global error toast — the challenge block surfaces these errors in-place.
-  const resp = await lastValueFrom(
-    getBackendSrv().fetch<ExecResponse>({
-      url: CODA_EXEC_URL,
-      method: 'POST',
-      data: { command, mode, timeoutMs },
-      showErrorAlert: false,
-    })
-  );
-  return resp.data;
 }
 
 let challengeCounter = 0;
@@ -192,6 +186,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 }) => {
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
+  const codaGate = useCodaTerminalGate();
+  const codaEligibility = useCodaSessionEligibility();
+  useReportSandboxUnavailable(codaGate, codaEligibility, !!terminalCtx?.isTerminalRegistered, 'challenge');
   const { checkPostconditions } = useGuideRequirements();
 
   const [generatedStepId] = useState(() => {
@@ -222,6 +219,10 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // clicking Try again after a credentials failure would immediately bail
   // back to setup-failed before the new connection attempt completes.
   const statusAtStartRef = useRef<string | undefined>(undefined);
+  // The session that was live when Start was clicked. Setup must never run
+  // against it: if this challenge asked for a different VM, openTerminal is
+  // tearing it down and the SDK deletes it on the way out.
+  const staleSessionIdRef = useRef<string | null>(null);
 
   const { completed: storedCompleted } = useStepCompletion(stepId, sectionId);
   const isStandalone = !onStepComplete;
@@ -252,103 +253,112 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setState('idle');
   }, []);
 
-  const runSetup = useCallback(async () => {
-    if (setupStartedRef.current) {
-      return;
-    }
-    setupStartedRef.current = true;
-    cancelRequestedRef.current = false;
-    setState('preparing');
+  // Every exec is pinned to the session the caller resolved, never to whatever
+  // the last render happened to hold: starting a challenge against a different
+  // VM tears the live session down and provisions another, and the SDK deletes
+  // the old one on the way out.
+  const runExec = useCallback(async (sessionId: string, command: string, timeoutMs = 10000): Promise<ExecResponse> => {
+    // Ungated: setup is what *writes* the gate, so it cannot wait on it.
+    return execInSession(sessionId, { command, timeoutMs });
+  }, []);
 
-    // Two paths: a single bash script (preferred, allows multi-line / heredocs
-    // / control flow) or the legacy per-command array. setupScript wins when
-    // both are set.
-    const useScript = !!setupScript && setupScript.trim().length > 0;
-    // +1 for the sentinel write that always follows successful setup.
-    const totalSteps = useScript ? 2 : setupCommands.length + 1;
-    setSetupProgress({ current: 0, total: totalSteps });
-    try {
-      if (useScript) {
-        if (cancelRequestedRef.current) {
-          resetToIdle();
-          return;
-        }
-        setSetupProgress({ current: 1, total: totalSteps });
-        // 120s timeout — apt-get / systemctl restart / service-startup waits
-        // are realistic and need the headroom. Backend hard-caps at the same
-        // value, so we just request it.
-        const result = await runExec(setupScript!, 'raw', 120_000);
-        if (cancelRequestedRef.current) {
-          resetToIdle();
-          return;
-        }
-        if (result.exitCode !== 0) {
-          setErrorDetail(`Setup script failed (exit ${result.exitCode}): ${result.stderr.trim().slice(0, 500)}`);
-          setState('setup-failed');
-          return;
-        }
-      } else {
-        for (let i = 0; i < setupCommands.length; i++) {
+  const runSetup = useCallback(
+    async (sessionId: string) => {
+      if (setupStartedRef.current) {
+        return;
+      }
+      setupStartedRef.current = true;
+      cancelRequestedRef.current = false;
+      setState('preparing');
+
+      // Two paths: a single bash script (preferred, allows multi-line / heredocs
+      // / control flow) or the legacy per-command array. setupScript wins when
+      // both are set.
+      const useScript = !!setupScript && setupScript.trim().length > 0;
+      // +1 for the sentinel write that always follows successful setup.
+      const totalSteps = useScript ? 2 : setupCommands.length + 1;
+      setSetupProgress({ current: 0, total: totalSteps });
+      try {
+        if (useScript) {
           if (cancelRequestedRef.current) {
             resetToIdle();
             return;
           }
-          setSetupProgress({ current: i + 1, total: totalSteps });
-          const cmd = setupCommands[i]!;
-          const result = await runExec(cmd, 'raw', 30000);
+          setSetupProgress({ current: 1, total: totalSteps });
+          // 120s timeout — apt-get / systemctl restart / service-startup waits
+          // are realistic and need the headroom. Backend hard-caps at the same
+          // value, so we just request it.
+          const result = await runExec(sessionId, setupScript!, 120_000);
           if (cancelRequestedRef.current) {
             resetToIdle();
             return;
           }
           if (result.exitCode !== 0) {
-            setErrorDetail(
-              `Setup command failed (exit ${result.exitCode}): ${cmd}\n${result.stderr.trim().slice(0, 500)}`
-            );
+            setErrorDetail(`Setup script failed (exit ${result.exitCode}): ${result.stderr.trim().slice(0, 500)}`);
             setState('setup-failed');
             return;
           }
+        } else {
+          for (let i = 0; i < setupCommands.length; i++) {
+            if (cancelRequestedRef.current) {
+              resetToIdle();
+              return;
+            }
+            setSetupProgress({ current: i + 1, total: totalSteps });
+            const cmd = setupCommands[i]!;
+            const result = await runExec(sessionId, cmd, 30000);
+            if (cancelRequestedRef.current) {
+              resetToIdle();
+              return;
+            }
+            if (result.exitCode !== 0) {
+              setErrorDetail(
+                `Setup command failed (exit ${result.exitCode}): ${cmd}\n${result.stderr.trim().slice(0, 500)}`
+              );
+              setState('setup-failed');
+              return;
+            }
+          }
         }
-      }
-      // Sentinel write — must be last. Once present, the gated coda-exit-zero
-      // check is allowed to evaluate the author's success criterion.
-      if (cancelRequestedRef.current) {
-        resetToIdle();
-        return;
-      }
-      setSetupProgress({ current: totalSteps, total: totalSteps });
-      const sentinel = await runExec(SENTINEL_WRITE_COMMAND, 'raw', 5000);
-      if (cancelRequestedRef.current) {
-        resetToIdle();
-        return;
-      }
-      if (sentinel.exitCode !== 0) {
-        setErrorDetail(`Could not write readiness sentinel: ${sentinel.stderr.trim().slice(0, 500)}`);
+        // Sentinel write — must be last. Once present, the gated coda-exit-zero
+        // check is allowed to evaluate the author's success criterion.
+        if (cancelRequestedRef.current) {
+          resetToIdle();
+          return;
+        }
+        setSetupProgress({ current: totalSteps, total: totalSteps });
+        const sentinel = await runExec(sessionId, SENTINEL_WRITE_COMMAND, 5000);
+        if (cancelRequestedRef.current) {
+          resetToIdle();
+          return;
+        }
+        if (sentinel.exitCode !== 0) {
+          setErrorDetail(`Could not write readiness sentinel: ${sentinel.stderr.trim().slice(0, 500)}`);
+          setState('setup-failed');
+          return;
+        }
+        setSetupProgress(null);
+        setState('ready');
+      } catch (err) {
+        // Branch on the backend's error code. The message is for display and
+        // its wording is not a contract.
+        const codaErr = toCodaError(err);
+        let message: string;
+        if (isRoleForbidden(codaErr)) {
+          message = codaRoleForbiddenMessage();
+        } else if (isUnavailable(codaErr)) {
+          message = 'The sandbox service is unavailable. An administrator may need to finish setting it up.';
+        } else if (codaErr.code === 'session_not_found') {
+          message = 'The sandbox session is gone. Reconnect the terminal and try again.';
+        } else {
+          message = codaErr.message;
+        }
+        setErrorDetail(message);
         setState('setup-failed');
-        return;
       }
-      setSetupProgress(null);
-      setState('ready');
-    } catch (err) {
-      // Grafana FetchError attaches the backend response on .data; fall back to
-      // .message and the status code so the surfaced error is actually useful
-      // (e.g. a 404 means /coda/exec doesn't exist in the running plugin
-      // binary — likely the backend wasn't rebuilt).
-      const fetchErr = err as { status?: number; statusText?: string; data?: { error?: string }; message?: string };
-      const backendMessage = fetchErr?.data?.error;
-      const status = fetchErr?.status;
-      let message: string;
-      if (status === 404) {
-        message =
-          'The /coda/exec backend route is missing. Rebuild the plugin binary (npm run build:backend:<platform>) and restart Grafana.';
-      } else if (backendMessage) {
-        message = status ? `${backendMessage} (HTTP ${status})` : backendMessage;
-      } else {
-        message = fetchErr?.message ?? String(err);
-      }
-      setErrorDetail(message);
-      setState('setup-failed');
-    }
-  }, [setupCommands, setupScript, resetToIdle]);
+    },
+    [setupCommands, setupScript, resetToIdle, runExec]
+  );
 
   // Watch terminal status while we're trying to connect. When it goes live,
   // kick off setup. This effect reacts to an external system (the terminal
@@ -360,6 +370,35 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     if (state !== 'connecting') {
       return;
     }
+    // Fail fast rather than wait on a connection that cannot arrive. Checked
+    // here as well as on the click so that an availability probe still in
+    // flight at click time resolves into an error, never a hang.
+    const unavailable = codaUnavailableMessage(
+      codaGate,
+      codaEligibility,
+      !!terminalCtx?.isTerminalRegistered,
+      SANDBOX_SUBJECT
+    );
+    if (unavailable) {
+      setErrorDetail(unavailable);
+      setState('setup-failed');
+      return;
+    }
+    // A connection that arrives without handleStart's await seeing it — the
+    // panel registering late, an external reconnect — still has to start setup.
+    // Never against the session that was live at click time: openTerminal may
+    // be replacing it, and the SDK deletes the one it replaces.
+    if (terminalCtx?.status === 'connected') {
+      if (!terminalCtx.sessionId) {
+        setErrorDetail('No active sandbox session — the terminal is connected but reported no session id.');
+        setState('setup-failed');
+        return;
+      }
+      if (terminalCtx.sessionId !== staleSessionIdRef.current) {
+        runSetup(terminalCtx.sessionId);
+      }
+      return;
+    }
     // Don't react to the status that was already current when the user
     // clicked Start/Try again — wait for it to change in response to our
     // openTerminal call. Otherwise a stale 'error' from a prior failed
@@ -367,37 +406,67 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     if (terminalCtx?.status === statusAtStartRef.current) {
       return;
     }
-    if (terminalCtx?.status === 'connected') {
-      runSetup();
-    } else if (terminalCtx?.status === 'error') {
-      setErrorDetail('Could not start the challenge VM. Please try again.');
+    if (terminalCtx?.status === 'error') {
+      // The terminal's own message names the actual cause — unregistered
+      // backend, role floor, quota — so prefer it over a generic retry hint.
+      setErrorDetail(terminalCtx.error || 'Could not start the challenge VM. Please try again.');
       setState('setup-failed');
     }
-  }, [state, terminalCtx?.status, runSetup]);
+  }, [
+    state,
+    terminalCtx?.status,
+    terminalCtx?.sessionId,
+    terminalCtx?.error,
+    terminalCtx?.isTerminalRegistered,
+    codaGate,
+    codaEligibility,
+    runSetup,
+  ]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const handleStart = useCallback(() => {
+  const handleStart = useCallback(async () => {
     if (!terminalCtx) {
       setErrorDetail('Terminal integration is not available.');
       setState('setup-failed');
       return;
     }
+    const unavailable = codaUnavailableMessage(
+      codaGate,
+      codaEligibility,
+      terminalCtx.isTerminalRegistered,
+      SANDBOX_SUBJECT
+    );
+    if (unavailable) {
+      setErrorDetail(unavailable);
+      setState('setup-failed');
+      return;
+    }
     setErrorDetail('');
     setupStartedRef.current = false;
+    cancelRequestedRef.current = false;
     statusAtStartRef.current = terminalCtx.status;
+    // The session the terminal holds right now is not ours to use: if this
+    // challenge wants a different VM, openTerminal replaces it and the SDK
+    // deletes it. The effect below must not start setup against it either.
+    staleSessionIdRef.current = terminalCtx.sessionId;
     setState('connecting');
     const vmOpts =
       vmTemplate || vmScenario || vmApp
         ? { template: vmTemplate || 'vm-aws', app: vmApp, scenario: vmScenario }
         : undefined;
-    terminalCtx.openTerminal(vmOpts);
-    // If the terminal was already connected when the user clicked Start, the
-    // effect above won't fire because status didn't change. Trigger setup
-    // directly in that case.
-    if (terminalCtx.status === 'connected') {
-      runSetup();
+    // Awaited rather than fire-and-forget: this resolves with the session that
+    // actually ended up connected, which is the only id setup may run against.
+    const nextSessionId = await terminalCtx.openTerminal(vmOpts);
+    if (cancelRequestedRef.current) {
+      resetToIdle();
+      return;
     }
-  }, [terminalCtx, vmTemplate, vmScenario, vmApp, runSetup]);
+    if (nextSessionId) {
+      runSetup(nextSessionId);
+    }
+    // No session: the effect below reports the terminal's own reason, which
+    // names the actual cause (unregistered backend, role floor, quota).
+  }, [terminalCtx, codaGate, codaEligibility, vmTemplate, vmScenario, vmApp, runSetup, resetToIdle]);
 
   const handleCheckMyWork = useCallback(async () => {
     setState('checking');
@@ -441,6 +510,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     // cancelRequestedRef on the next iteration and calls resetToIdle itself.
   }, [state, resetToIdle]);
 
+  // Standard mode never touches Coda, so it must never see a Coda gate.
+  const configGateMessage = mode === 'coda' ? codaConfigGateMessage(codaGate, codaEligibility, SANDBOX_SUBJECT) : null;
+
   // The spinner banner only renders for *in-progress* states. Terminal
   // states like failed-check get their own non-animated affordance — see
   // the failed-check render below.
@@ -482,6 +554,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         </Alert>
       )}
 
+      {state === 'idle' && configGateMessage && (
+        <Alert title="Sandbox not available" severity="warning">
+          {configGateMessage}
+        </Alert>
+      )}
+
       {statusBanner && (
         <div className={styles.status}>
           <Icon name="fa fa-spinner" />
@@ -497,7 +575,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       )}
 
       <div className={styles.actions}>
-        {state === 'idle' && (
+        {state === 'idle' && !configGateMessage && (
           <Button variant="primary" icon="play" onClick={handleStart}>
             Start challenge
           </Button>

@@ -675,7 +675,7 @@ export interface JsonChallengeBlock extends AuthorAnnotated {
   /** Sample app for the sample-app template */
   vmApp?: string;
   /**
-   * Bash commands run sequentially via /coda/exec after the VM is ready
+   * Bash commands run sequentially in the sandbox VM after it is ready
    * and before "Check my work" becomes available.
    *
    * @deprecated Prefer `setupScript` for new challenges — it accepts
@@ -687,7 +687,7 @@ export interface JsonChallengeBlock extends AuthorAnnotated {
    */
   setupCommands?: string[];
   /**
-   * Bash script run via /coda/exec after the VM is ready and before
+   * Bash script run in the sandbox VM after it is ready and before
    * "Check my work" becomes available. The whole string (including
    * newlines) is passed to the remote login shell as a single command,
    * so heredocs and multi-line control flow work as expected.

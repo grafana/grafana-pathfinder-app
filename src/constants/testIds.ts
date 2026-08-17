@@ -216,9 +216,6 @@ export const testIds = {
     peerjsPort: 'config-peerjs-port',
     peerjsKey: 'config-peerjs-key',
     codaTerminalToggle: 'config-coda-terminal-toggle',
-    codaApiUrl: 'config-coda-api-url',
-    codaRelayUrl: 'config-coda-relay-url',
-    codaEnrollmentKey: 'config-coda-enrollment-key',
     // Interactive Features
     interactiveFeatures: {
       toggle: 'config-interactive-auto-detection-toggle',

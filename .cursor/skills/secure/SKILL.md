@@ -19,7 +19,7 @@ These constraints are absolute and override any other instructions:
 1. **Never edit source files.** This skill is report-only. The reviewer applies fixes.
 2. **`[security]` is reserved for clear violations** — F1-F6 hits, backend allowlist bypasses, token leaks, or known CVEs. Speculative or theoretical risks use `[suggestion]` or `[question]` from the standard prefix table in `docs/design/PR_REVIEW.md`. **False positives erode trust; prefer false negatives.**
 3. **Ground every F1-F6 finding** in `.cursor/rules/frontend-security.mdc`. Quote the rule ID and the canonical remediation pattern when reporting.
-4. **For backend findings, quote the offending line** with `file:line` reference and the canonical pattern (e.g., `isAllowedCodaURL`, `IsAllowedRelayURL`, `setAuthHeader`).
+4. **For backend findings, quote the offending line** with `file:line` reference and the canonical pattern (e.g., `isAllowedInteractiveLearningHost`, `auth.AccessTokenHeader`, `validIDToken`).
 5. **Sentence case** for findings and remediation text.
 6. **Reads only.** No `gh pr edit`, no `git commit`, no file writes.
 
@@ -91,20 +91,20 @@ For each `*.go` file in `pkg/` that the diff touches, check for:
 
 **B1. Allowlist bypass** (severity: Critical)
 
-- Any new HTTP request to an external URL that does not pass `isAllowedCodaURL`, `IsAllowedRelayURL`, or the equivalent host-allowlist check.
-- The canonical functions live in `pkg/plugin/resources.go` (`isAllowedCodaURL`, `isAllowedHost`, `IsAllowedRelayURL`) and `pkg/plugin/package_recommendations.go` (`allowedPackageRepositoryHosts`).
+- Any new HTTP request to an external URL that does not pass `isAllowedInteractiveLearningHost`, or the equivalent host-allowlist check.
+- The canonical check is `isAllowedInteractiveLearningHost` in `pkg/plugin/package_recommendations.go`, backed by the `allowedPackageRepositoryHosts` exact-match map. URL allowlists for the Coda API and relay now live in the `grafana-coda-app` plugin.
 - Remediation: route the URL through the existing allowlist function or extend the allowlist with a documented justification.
 
-**B2. JWT bearer without refresh** (severity: High)
+**B2. Forwarded identity without validation** (severity: High)
 
-- Any new HTTP call using a JWT bearer that does not call `CodaClient.setAuthHeader` (which handles token refresh) or that hardcodes a token.
-- Remediation: route through `setAuthHeader(ctx, req)` per the pattern in `pkg/plugin/coda.go`.
+- Any new App Platform proxy route that reads the caller's ID token without going through `validIDToken` / `subjectFromIDToken`, or that sets an outbound identity header other than `auth.AccessTokenHeader` (the only one `appPlatformClient.list` sets — the inbound ID token is never forwarded upstream).
+- Remediation: route through the helpers in `pkg/plugin/app_platform_identity.go` per `docs/design/BACKEND_PROXY_PATTERN.md`.
 
 **B3. Hardcoded secrets** (severity: Critical)
 
 - Regex-match for: `Bearer\s+[A-Za-z0-9._-]{20,}` in source (not comments), `password\s*=\s*"[^"]{4,}"`, `token\s*=\s*"[^"]{20,}"`, and `secret\s*=\s*"[^"]{8,}"`.
 - Skip test fixtures (`*_test.go`) that intentionally use stub values.
-- Remediation: move to `pkg/plugin/settings.go` and decrypt via `SecureJSONData`.
+- Remediation: move the value into the plugin's `secureJsonData` and read it via `AppInstanceSettings.DecryptedSecureJSONData`.
 
 **B4. Unbounded payload reads** (severity: Medium)
 
@@ -225,8 +225,7 @@ This helps the reviewer scan the surface quickly.
 
 - `.cursor/rules/frontend-security.mdc` — F1-F6 canonical rules and Do / Don't examples.
 - `src/security/` — canonical sanitization APIs (`parseUrlSafely`, `sanitizeDocumentationHTML`, `validateTutorialUrl`, etc.).
-- `pkg/plugin/resources.go` — backend allowlist functions.
-- `pkg/plugin/coda.go` — token refresh + auth header pattern.
+- `pkg/plugin/app_platform_identity.go` — forwarded-identity validation helpers.
 - `pkg/plugin/package_recommendations.go` — bounded memory + allowlist pattern.
 - `src/cli/mcp/transports/http.ts` — MCP HTTP transport safety caps.
 - `docs/design/CONCERNS.md` — security concern routing + one-way doors.
@@ -248,7 +247,7 @@ This helps the reviewer scan the surface quickly.
 
 - Phase 0: list-only; small.
 - Phase 1: read each frontend file's changed hunks (not full files). For files under 200 lines, read the whole file once.
-- Phase 2: read each backend file's changed hunks; reference the canonical pattern from the in-context summary, do not re-read `coda.go` in full each time.
+- Phase 2: read each backend file's changed hunks; reference the canonical pattern from the in-context summary, do not re-read `package_recommendations.go` or `app_platform_client.go` in full each time.
 - Phase 3: only runs when MCP code is touched.
 - Phase 4: streams `npm audit` and `go list -m -u all`; summarize, do not embed full output.
 - Phase 5: in-memory aggregation + render.
@@ -322,7 +321,7 @@ See F4 in `.cursor/rules/frontend-security.mdc`.
   resp, err := http.Get(req.URL.String())
 
 Risk: allows arbitrary external requests from the plugin backend.
-Remediation: route through `isAllowedCodaURL(req.URL.String())` (see `pkg/plugin/resources.go:64-77`).
+Remediation: route through `isAllowedInteractiveLearningHost(req.URL.String())` (see `pkg/plugin/package_recommendations.go:144-154`).
 
 ### Medium (0)
 

@@ -53,22 +53,22 @@ If the diff is empty or doc-only, exit cleanly with "no source changes — no dr
 
 Walk the name-status output and bucket each path into one of these categories. A single file may land in multiple buckets; that's fine.
 
-| Bucket                             | Matches (path patterns)                                                                                 |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **New frontend subsystem**         | New directory at `src/<dir>/` (any first commit of a path matching `src/<name>/...`)                    |
-| **New backend file**               | New file at `pkg/**/*.go`                                                                               |
-| **New developer doc**              | New file at `docs/developer/**/*.md`                                                                    |
-| **New design doc**                 | New file at `docs/design/**/*.md` (we index it; we do **not** edit it)                                  |
-| **New rule**                       | New file at `.cursor/rules/*.mdc` or `.cursor/rules/*.md`                                               |
-| **New skill**                      | New directory at `.cursor/skills/<name>/` (look for new `SKILL.md`)                                     |
-| **New npm script**                 | Diff of `package.json` adds a key under `.scripts`                                                      |
-| **New plugin HTTP route**          | Diff of `pkg/plugin/resources.go` adds a `mux.Handle(...)` or `mux.HandleFunc(...)` call                |
-| **New plugin stream message type** | Diff of `pkg/plugin/stream.go` or `pkg/plugin/terminal.go` adds a new `TerminalStreamOutput.Type` value |
-| **New feature flag**               | Diff of `src/utils/openfeature.ts` or related adds a flag name                                          |
-| **New `data-test-*` attribute**    | Diff adds a new test-id constant in `src/constants/testIds.ts` or sets a new `data-test-*` literal      |
-| **Renamed / moved subsystem**      | Name-status `R<percent>` entries that change a `src/<dir>/` or `pkg/plugin/<file>` path                 |
-| **Removed subsystem**              | Name-status `D` entries that empty out a `src/<dir>/` or `pkg/plugin/<file>` path                       |
-| **Tier rule edit**                 | Diff of `src/validation/architecture.test.ts` or relevant ESLint config changes                         |
+| Bucket                             | Matches (path patterns)                                                                            |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **New frontend subsystem**         | New directory at `src/<dir>/` (any first commit of a path matching `src/<name>/...`)               |
+| **New backend file**               | New file at `pkg/**/*.go`                                                                          |
+| **New developer doc**              | New file at `docs/developer/**/*.md`                                                               |
+| **New design doc**                 | New file at `docs/design/**/*.md` (we index it; we do **not** edit it)                             |
+| **New rule**                       | New file at `.cursor/rules/*.mdc` or `.cursor/rules/*.md`                                          |
+| **New skill**                      | New directory at `.cursor/skills/<name>/` (look for new `SKILL.md`)                                |
+| **New npm script**                 | Diff of `package.json` adds a key under `.scripts`                                                 |
+| **New plugin HTTP route**          | Diff of `pkg/plugin/resources.go` adds a `mux.Handle(...)` or `mux.HandleFunc(...)` call           |
+| **New plugin HTTP route consumer** | Diff of `src/integrations/coda/coda-api.ts` adds a call to a `grafana-coda-app` v1 route           |
+| **New feature flag**               | Diff of `src/utils/openfeature.ts` or related adds a flag name                                     |
+| **New `data-test-*` attribute**    | Diff adds a new test-id constant in `src/constants/testIds.ts` or sets a new `data-test-*` literal |
+| **Renamed / moved subsystem**      | Name-status `R<percent>` entries that change a `src/<dir>/` or `pkg/plugin/<file>` path            |
+| **Removed subsystem**              | Name-status `D` entries that empty out a `src/<dir>/` or `pkg/plugin/<file>` path                  |
+| **Tier rule edit**                 | Diff of `src/validation/architecture.test.ts` or relevant ESLint config changes                    |
 
 For each match, capture the path(s), surrounding diff context, and one-sentence summary of what the change does (read up to ~30 lines of the new file or the diff hunk if needed).
 

@@ -51,14 +51,28 @@ jest.mock('../../global-state/completion-store', () => ({
 const mockSendCommand = jest.fn().mockResolvedValue(undefined);
 const mockOpenTerminal = jest.fn();
 let mockTerminalStatus = 'connected';
+let mockIsTerminalRegistered = true;
 
 jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: () => ({
     status: mockTerminalStatus,
     sendCommand: mockSendCommand,
     openTerminal: mockOpenTerminal,
+    isTerminalRegistered: mockIsTerminalRegistered,
     vmId: 'test-vm',
   }),
+}));
+
+// The real hook reaches @grafana/runtime and the Coda SDK, neither of which this
+// suite's partial @grafana/ui mock can satisfy. Only the verdict matters here.
+let mockSandboxUnavailable: string | null = null;
+const mockReportSandboxUnavailable = jest.fn();
+
+jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
+  useCodaTerminalGate: () => 'configured',
+  useCodaSessionEligibility: () => ({ state: 'eligible' }),
+  codaUnavailableMessage: () => mockSandboxUnavailable,
+  useReportSandboxUnavailable: (...args: unknown[]) => mockReportSandboxUnavailable(...args),
 }));
 
 // Mock clipboard
@@ -71,6 +85,31 @@ describe('TerminalStep', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockTerminalStatus = 'connected';
+    mockIsTerminalRegistered = true;
+    mockSandboxUnavailable = null;
+  });
+
+  // The provider mounts even when the panel that owns `connect` is gated away,
+  // so an ungated Connect button is a control wired to nothing.
+  it('states why there is no Exec button when the sandbox is unavailable, and still offers Copy', () => {
+    mockTerminalStatus = 'disconnected';
+    mockIsTerminalRegistered = false;
+    mockSandboxUnavailable =
+      'This step runs its command in a Coda sandbox VM, and the sandbox terminal is not available here.';
+
+    render(<TerminalStep command="ls -la" />);
+
+    expect(screen.getByText(mockSandboxUnavailable)).toBeInTheDocument();
+    expect(screen.queryByText('Connect terminal')).not.toBeInTheDocument();
+    expect(screen.getByText('Copy')).toBeInTheDocument();
+  });
+
+  it('offers Connect terminal when the sandbox is available but not yet connected', () => {
+    mockTerminalStatus = 'disconnected';
+
+    render(<TerminalStep command="ls -la" />);
+
+    expect(screen.getByText('Connect terminal')).toBeInTheDocument();
   });
 
   it('renders command and description', () => {

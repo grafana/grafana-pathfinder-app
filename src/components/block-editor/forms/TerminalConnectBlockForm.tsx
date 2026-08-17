@@ -7,20 +7,13 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Field, Input, Combobox, TextArea, useStyles2, type ComboboxOption } from '@grafana/ui';
+import { Button, Field, Input, Combobox, TextArea, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
-import { useCodaOptions } from './useCodaOptions';
+import { useCodaOptions, useCodaTemplateOptions } from './useCodaOptions';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonTerminalConnectBlock } from '../../../types/json-guide.types';
-import { PLUGIN_BACKEND_URL } from '../../../constants';
-
-const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
-  { label: 'Default (vm-aws)', value: '' },
-  { label: 'Sample app (vm-aws-sample-app)', value: 'vm-aws-sample-app' },
-  { label: 'Alloy scenario (vm-aws-alloy-scenario)', value: 'vm-aws-alloy-scenario' },
-];
 
 function isTerminalConnectBlock(block: JsonBlock): block is JsonTerminalConnectBlock {
   return block.type === 'terminal-connect';
@@ -45,16 +38,17 @@ export function TerminalConnectBlockForm({
 
   const isSampleApp = vmTemplate === 'vm-aws-sample-app';
   const isAlloyScenario = vmTemplate === 'vm-aws-alloy-scenario';
-  const { options: sampleAppOptions, isLoading: isLoadingApps } = useCodaOptions(
-    isSampleApp,
-    `${PLUGIN_BACKEND_URL}/sample-apps`,
-    'apps'
-  );
-  const { options: scenarioOptions, isLoading: isLoadingScenarios } = useCodaOptions(
-    isAlloyScenario,
-    `${PLUGIN_BACKEND_URL}/alloy-scenarios`,
-    'scenarios'
-  );
+  const {
+    options: sampleAppOptions,
+    isLoading: isLoadingApps,
+    unavailable: appsUnavailable,
+  } = useCodaOptions(isSampleApp, 'sampleApps');
+  const {
+    options: scenarioOptions,
+    isLoading: isLoadingScenarios,
+    unavailable: scenariosUnavailable,
+  } = useCodaOptions(isAlloyScenario, 'alloyScenarios');
+  const { options: templateOptions, isLoading: templatesLoading } = useCodaTemplateOptions(vmTemplate);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -97,7 +91,8 @@ export function TerminalConnectBlockForm({
 
       <Field label="VM template" description="VM template to provision (defaults to vm-aws)">
         <Combobox
-          options={VM_TEMPLATE_OPTIONS}
+          options={templateOptions}
+          loading={templatesLoading}
           value={vmTemplate}
           onChange={(opt) => {
             setVmTemplate(opt.value);
@@ -119,7 +114,7 @@ export function TerminalConnectBlockForm({
             onChange={(opt) => setVmApp(opt?.value ?? '')}
             loading={isLoadingApps}
             createCustomValue
-            placeholder="Select a sample app..."
+            placeholder={appsUnavailable ? 'Coda unavailable — type an app id' : 'Select a sample app...'}
             isClearable
           />
         </Field>
@@ -133,7 +128,7 @@ export function TerminalConnectBlockForm({
             onChange={(opt) => setVmScenario(opt?.value ?? '')}
             loading={isLoadingScenarios}
             createCustomValue
-            placeholder="Select a scenario..."
+            placeholder={scenariosUnavailable ? 'Coda unavailable — type a scenario id' : 'Select a scenario...'}
             isClearable
           />
         </Field>

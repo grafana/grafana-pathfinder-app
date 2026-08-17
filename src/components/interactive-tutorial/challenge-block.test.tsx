@@ -1,15 +1,23 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { from } from 'rxjs';
 
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
 import { resetInteractiveCounters } from './interactive-section';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import { useCodaSessionEligibility, useCodaTerminalGate } from '../../integrations/coda/useCodaAvailability.hook';
+import { execInSession } from '../../integrations/coda/coda-api';
 import { checkPostconditions } from '../../requirements-manager';
-import { getBackendSrv } from '@grafana/runtime';
 
 jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: jest.fn(),
+}));
+
+// Only the two hooks are mocked. The message builders stay real, so every
+// refusal sentence asserted below is the one a learner would read.
+jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
+  ...jest.requireActual('../../integrations/coda/useCodaAvailability.hook'),
+  useCodaTerminalGate: jest.fn(),
+  useCodaSessionEligibility: jest.fn(),
 }));
 
 jest.mock('../../requirements-manager', () => {
@@ -20,8 +28,11 @@ jest.mock('../../requirements-manager', () => {
   };
 });
 
-jest.mock('@grafana/runtime', () => ({
-  getBackendSrv: jest.fn(),
+// Only the request is mocked; toCodaError and the error classification are
+// real, so the messages asserted below are the ones a learner would see.
+jest.mock('../../integrations/coda/coda-api', () => ({
+  ...jest.requireActual('../../integrations/coda/coda-api'),
+  execInSession: jest.fn(),
 }));
 
 jest.mock('../../global-state/completion-store', () => ({
@@ -32,31 +43,42 @@ jest.mock('../../global-state/completion-store', () => ({
 }));
 
 const mockedUseTerminalContext = useTerminalContext as jest.MockedFunction<typeof useTerminalContext>;
+const mockedUseCodaTerminalGate = useCodaTerminalGate as jest.MockedFunction<typeof useCodaTerminalGate>;
+const mockedUseCodaSessionEligibility = useCodaSessionEligibility as jest.MockedFunction<
+  typeof useCodaSessionEligibility
+>;
+const mockedExecInSession = execInSession as jest.MockedFunction<typeof execInSession>;
 const mockedCheckPostconditions = checkPostconditions as jest.MockedFunction<typeof checkPostconditions>;
-const mockedGetBackendSrv = getBackendSrv as jest.MockedFunction<typeof getBackendSrv>;
+
+const SESSION_ID = 's_0123456789abcdef0123456789abcdef';
 
 /**
- * The challenge block calls getBackendSrv().fetch(...) which returns an
- * Observable. The test mock translates a plain "post-like" mock function
- * (taking url, body → resolved response) into the Observable shape so that
- * existing .mockResolvedValue / .mockResolvedValueOnce calls keep working.
+ * Routes execInSession through a plain "post-like" mock taking
+ * (sessionId, request) so assertions on the request body stay at arg index 1.
  */
 function setBackend(post: jest.Mock): void {
-  const fetch = jest.fn((opts: { url: string; data?: unknown }) => {
-    return from(Promise.resolve(post(opts.url, opts.data)).then((result) => ({ data: result })));
-  });
-  mockedGetBackendSrv.mockReturnValue({ fetch } as unknown as ReturnType<typeof getBackendSrv>);
+  mockedExecInSession.mockImplementation((sessionId, req) => Promise.resolve(post(sessionId, req)));
 }
 
 interface MockCtxOverrides {
   status?: 'disconnected' | 'connecting' | 'connected' | 'error';
   openTerminal?: jest.Mock;
+  sessionId?: string | null;
+  error?: string | null;
+  isTerminalRegistered?: boolean;
 }
 
 function mockTerminalCtx(overrides: MockCtxOverrides = {}): { openTerminal: jest.Mock } {
-  const openTerminal = overrides.openTerminal ?? jest.fn();
+  // openTerminal resolves with the session the caller may use — the contract
+  // that keeps setup off a session being torn down.
+  const openTerminal =
+    overrides.openTerminal ??
+    jest.fn().mockResolvedValue(overrides.sessionId === undefined ? SESSION_ID : overrides.sessionId);
   mockedUseTerminalContext.mockReturnValue({
     status: overrides.status ?? 'disconnected',
+    sessionId: overrides.sessionId === undefined ? SESSION_ID : overrides.sessionId,
+    error: overrides.error ?? null,
+    isTerminalRegistered: overrides.isTerminalRegistered ?? true,
     connect: jest.fn(),
     disconnect: jest.fn(),
     sendCommand: jest.fn(),
@@ -78,6 +100,8 @@ const baseProps = {
 beforeEach(() => {
   jest.clearAllMocks();
   resetChallengeCounter();
+  mockedUseCodaTerminalGate.mockReturnValue('configured');
+  mockedUseCodaSessionEligibility.mockReturnValue({ state: 'eligible' });
 });
 
 describe('ChallengeBlock', () => {
@@ -119,11 +143,10 @@ describe('ChallengeBlock', () => {
     await waitFor(() => {
       expect(post).toHaveBeenCalledTimes(3);
     });
-    expect(post.mock.calls[0]![1]).toMatchObject({ command: 'echo one', mode: 'raw' });
-    expect(post.mock.calls[1]![1]).toMatchObject({ command: 'echo two', mode: 'raw' });
+    expect(post.mock.calls[0]![1]).toMatchObject({ command: 'echo one' });
+    expect(post.mock.calls[1]![1]).toMatchObject({ command: 'echo two' });
     expect(post.mock.calls[2]![1]).toMatchObject({
       command: expect.stringContaining('/tmp/pathfinder-ready'),
-      mode: 'raw',
     });
 
     await waitFor(() => {
@@ -144,10 +167,9 @@ describe('ChallengeBlock', () => {
     await waitFor(() => {
       expect(post).toHaveBeenCalledTimes(2);
     });
-    expect(post.mock.calls[0]![1]).toMatchObject({ command: script, mode: 'raw', timeoutMs: 120_000 });
+    expect(post.mock.calls[0]![1]).toMatchObject({ command: script, timeoutMs: 120_000 });
     expect(post.mock.calls[1]![1]).toMatchObject({
       command: expect.stringContaining('/tmp/pathfinder-ready'),
-      mode: 'raw',
     });
 
     await waitFor(() => {
@@ -216,6 +238,64 @@ describe('ChallengeBlock', () => {
     });
     expect(screen.getByText(/permission denied/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+  });
+
+  // The terminal can report "connected" a beat before the session id lands. Setup
+  // must fail loudly rather than exec against a missing session.
+  it('runs setup against the session openTerminal resolved, not the one that was live at click time', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+
+    // Challenge A is connected on a different VM. Starting this one replaces
+    // that session, and the SDK deletes the session it replaces — so every exec
+    // has to go to the id openTerminal hands back, never to OLD_SESSION.
+    const OLD_SESSION = 's_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const NEW_SESSION = 's_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const openTerminal = jest.fn().mockResolvedValue(NEW_SESSION);
+    mockTerminalCtx({ status: 'connected', sessionId: OLD_SESSION, openTerminal });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={['echo one']} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await waitFor(() => {
+      expect(post).toHaveBeenCalledTimes(2);
+    });
+    const sessionsUsed = post.mock.calls.map((call) => call[0]);
+    expect(sessionsUsed).toEqual([NEW_SESSION, NEW_SESSION]);
+    expect(sessionsUsed).not.toContain(OLD_SESSION);
+  });
+
+  it('does not start setup when the requested session never arrives', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+
+    // Cancelled, or a connect that failed: openTerminal resolves with no
+    // session. Running setup anyway is what would hit a deleted VM.
+    const openTerminal = jest.fn().mockResolvedValue(null);
+    mockTerminalCtx({ status: 'disconnected', sessionId: null, openTerminal });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={['echo one']} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await waitFor(() => {
+      expect(openTerminal).toHaveBeenCalled();
+    });
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('fails setup when the terminal is connected but there is no session id', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected', sessionId: null });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={['echo one']} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/could not start the challenge/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/no active sandbox session/i)).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('marks complete and dispatches interactive-action-completed when the success criterion passes', async () => {
@@ -416,6 +496,129 @@ describe('ChallengeBlock', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  // Issue #1541: TerminalProvider mounts unconditionally while TerminalPanel —
+  // which registers the real connect — is gated, so a coda-mode challenge used
+  // to sit on "Provisioning challenge VM…" forever with only a Cancel button.
+  describe('Coda availability gating', () => {
+    it('says why instead of offering Start when the sandbox terminal is turned off', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('disabled');
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByText(/sandbox terminal is turned off/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    it('says why instead of offering Start when the Coda app plugin is absent', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('plugin-missing');
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByText(/coda app plugin is not installed/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    // Before `caller.canCreateSessions`, the only way to learn the role floor
+    // was a reactive 403 after a Start click had already spent a session
+    // request and a VM connect attempt.
+    it('says why instead of offering Start when the backend says the role is too low', () => {
+      mockedUseCodaSessionEligibility.mockReturnValue({ state: 'role_forbidden', minimumSessionRole: 'Editor' });
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByText(/needs Editor or above/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    it('names the floor the backend reported rather than assuming Editor', () => {
+      mockedUseCodaSessionEligibility.mockReturnValue({ state: 'role_forbidden', minimumSessionRole: 'Admin' });
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByText(/needs Admin or above/i)).toBeInTheDocument();
+    });
+
+    // A Coda plugin older than the field cannot answer, and the probe is async.
+    // Neither may hide the sandbox from a learner who is entitled to it — the
+    // reactive 403 path still covers being wrong.
+    it.each([
+      ['the backend cannot answer', { state: 'unknown' } as const],
+      ['the probe has not resolved', { state: 'checking' } as const],
+      ['the caller is eligible', { state: 'eligible' } as const],
+    ])('still offers Start when %s', (_name, eligibility) => {
+      mockedUseCodaSessionEligibility.mockReturnValue(eligibility);
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} />);
+
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    it('leaves standard mode alone when Coda is unavailable', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('plugin-missing');
+      mockTerminalCtx();
+
+      render(<ChallengeBlock {...baseProps} mode="standard" successCriteria="has-dashboard-named:X" />);
+
+      expect(screen.queryByText(/sandbox not available/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+
+    it('fails fast rather than hanging when the context is present but no panel registered', async () => {
+      const { openTerminal } = mockTerminalCtx({ isTerminalRegistered: false });
+
+      render(<ChallengeBlock {...baseProps} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/sandbox terminal is not available here/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/provisioning challenge vm/i)).not.toBeInTheDocument();
+      expect(openTerminal).not.toHaveBeenCalled();
+    });
+
+    it('fails once an in-flight availability probe resolves to unavailable', async () => {
+      mockedUseCodaTerminalGate.mockReturnValue('checking');
+      mockTerminalCtx({ isTerminalRegistered: false });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      // Still probing: the block waits rather than guessing.
+      expect(screen.getByText(/provisioning challenge vm/i)).toBeInTheDocument();
+
+      mockedUseCodaTerminalGate.mockReturnValue('plugin-missing');
+      mockTerminalCtx({ isTerminalRegistered: false });
+      rerender(<ChallengeBlock {...baseProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/coda app plugin is not installed/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/provisioning challenge vm/i)).not.toBeInTheDocument();
+    });
+
+    it('surfaces the terminal’s own error instead of a generic retry hint', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({
+        status: 'error',
+        error: 'Coda is not registered. An administrator must complete registration.',
+      });
+      rerender(<ChallengeBlock {...baseProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/coda is not registered/i)).toBeInTheDocument();
       });
     });
   });
