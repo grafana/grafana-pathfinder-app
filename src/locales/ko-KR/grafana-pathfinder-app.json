@@ -85,6 +85,10 @@
       "toggleViewMode": "보기 모드 전환"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "모든 경로 완료!",
     "allCompleteTooltip": "모든 학습 경로를 완료했습니다 — 수고하셨습니다!",

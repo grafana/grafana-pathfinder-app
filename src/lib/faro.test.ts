@@ -87,7 +87,10 @@ jest.mock('./hash.util', () => ({ hashUserData: (...args: [string, string]) => m
 // Dynamically imported by initFaro's cohort stamping; the mock keeps the
 // OpenFeature SDK out of these tests.
 const mockGetActiveExperiments = jest.fn((): Array<Record<string, unknown>> => []);
-jest.mock('../utils/openfeature', () => ({ getActiveExperiments: () => mockGetActiveExperiments() }));
+jest.mock('./analytics', () => ({
+  ...jest.requireActual('./analytics'),
+  getBoundActiveExperiments: () => mockGetActiveExperiments(),
+}));
 
 // A stable object reference, not a fresh literal per require: `freshFaro()`
 // resets the module registry (so the telemetry adapter's init/instance state

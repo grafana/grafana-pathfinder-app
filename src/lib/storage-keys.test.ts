@@ -39,6 +39,7 @@ describe('StorageKeys — stable string contract', () => {
       EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
       HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
       HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
+      INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',
       FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
 
       // UI / panel state

@@ -38,10 +38,11 @@ document.addEventListener('pathfinder-suggest', earlySuggestListener);
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
 // Uses dynamic import so the SDK stays out of the entry-point bundle
 try {
-  const { initializeOpenFeature, getActiveExperiments } = await import('./utils/openfeature');
+  const { initializeOpenFeature } = await import('./utils/openfeature');
   await initializeOpenFeature();
 
   // Late-bind the active-experiments provider to analytics (breaks the static import chain)
+  const { getActiveExperiments } = await import('./utils/experiments/active-experiments');
   const { bindExperimentsProvider } = await import('./lib/analytics');
   bindExperimentsProvider(getActiveExperiments);
 } catch (e) {
@@ -50,8 +51,12 @@ try {
 
 // Highlighted-guide experiment + config-driven auto-open (dynamic imports keep
 // zod/user-storage out of module.js).
-const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHighlightedGuideAutoOpen } =
-  await import('./utils/experiments');
+const {
+  createExperimentDebugger,
+  enrollInteractiveLearningBannerExperiment,
+  initializeHighlightedGuideExperiment,
+  setupHighlightedGuideAutoOpen,
+} = await import('./utils/experiments');
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
 const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
@@ -328,6 +333,15 @@ if (pathfinderEnabled) {
         // The docked sidebar opens via Grafana's extension bus, not setMode —
         // this mount is the only reliable "sidebar is active" signal.
         reportPathfinderSurface('sidebar');
+
+        // Enrollment is deliberately here and not at boot: reading the flag emits the
+        // exposure event, so this seam is what makes it mean "first sidebar open".
+        // The Faro session was stamped at initFaro, before any arm was known, so
+        // re-stamp to add this cohort. Dynamic import keeps faro-adapter out of module.js.
+        enrollInteractiveLearningBannerExperiment();
+        void import('./lib/telemetry/session')
+          .then(({ stampSessionExperiments }) => stampSessionExperiments())
+          .catch((e) => logger.exception(e, { source: 'Session experiment re-stamp' }));
 
         // Track sidebar open via component mount
         // consumePendingOpenSource() returns { source, action } set before opening

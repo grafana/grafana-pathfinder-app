@@ -178,6 +178,42 @@ Either way the plugin logs a `warn` naming the source and a low-cardinality reas
 
 **Launch source**: Guide tabs opened by this flag are tagged with the `highlighted_guide_experiment` `LaunchSource` (aligned-by-construction — no alignment prompt is shown, since the operator already targeted the page).
 
+### `pathfinder.interactive-learning-banner-experiment`
+
+**Purpose**: A/B test whether an explanatory banner at the top of the context page increases engagement with interactive guides.
+
+**Type**: `object` (experiment flag — object-valued so it emits exposure events)
+
+**Default**: `{ variant: 'excluded' }`
+
+**Shape**: variant-only. Unlike the highlighted-guide flag there is no `pages` targeting — the banner explains Pathfinder itself, not the underlying Grafana page.
+
+```typescript
+interface InteractiveLearningBannerConfig {
+  variant: 'excluded' | 'control' | 'treatment';
+}
+```
+
+**Variant behavior**:
+
+| Variant     | Banner | Notes                                                            |
+| ----------- | ------ | ---------------------------------------------------------------- |
+| `excluded`  | No     | Not in the experiment. Identical to pre-experiment behavior.     |
+| `control`   | No     | In the experiment, no banner. Identical rendering to `excluded`. |
+| `treatment` | Yes    | Dismissible explanatory banner at the top of the context page.   |
+
+A rejected payload (not an object, missing `variant`, or an unknown arm) falls back to `excluded`, so a fat-fingered MTFF value enrolls nobody. Rejection sources behave the same way as the highlighted-guide flag (see the table above).
+
+**Exposure timing — this flag differs from the others.** Every other flag is read at boot in `src/module.tsx`, so its exposure fires on page load. This one is read lazily by `enrollInteractiveLearningBannerExperiment` when a Pathfinder panel first opens, because "entered the experiment" should mean "had the chance to see the banner". Evaluating the flag is what emits the exposure, so the call site is the timing contract — `src/validation`'s sibling test `src/utils/experiments/enrollment-boundary.test.ts` pins the allowed call sites for that reason. `getActiveExperiments` reads the memoised arm rather than evaluating, so analytics enrichment can never enroll a user who has not opened Pathfinder.
+
+**Dismissal**: persisted per browser under `grafana-pathfinder-interactive-learning-banner-dismissed-{hostname}`. Dismissing hides the banner permanently but does **not** un-enroll the user — they stay in the treatment arm for analysis.
+
+**Behavior events** (in addition to the exposure): `pathfinder_interactive_learning_banner_shown` (once per page load) and `..._banner_dismissed`, both carrying `interaction_location: interactive_learning_banner`.
+
+**Code**: everything except the registry entry lives in [`src/utils/experiments/interactive-learning-banner.ts`](../../src/utils/experiments/interactive-learning-banner.ts) and [`src/components/InteractiveLearningBanner/`](../../src/components/InteractiveLearningBanner/), so retiring the experiment is a directory delete plus the registry entry.
+
+**Tracking key**: `interactive_learning_banner_experiment`
+
 ---
 
 ## Backend aggregation toggles (not MTFF)

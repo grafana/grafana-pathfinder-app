@@ -121,6 +121,11 @@ export enum UserInteraction {
   AiFixAccepted = 'ai_fix_accepted',
   AiFixApplied = 'ai_fix_applied',
   AiFixFailed = 'ai_fix_failed',
+
+  // Interactive-learning banner experiment (treatment arm only). The CTA reports
+  // OpenResourceClick like every other guide open, so it lands in the same funnel.
+  InteractiveLearningBannerShown = 'interactive_learning_banner_shown',
+  InteractiveLearningBannerDismissed = 'interactive_learning_banner_dismissed',
 }
 
 // ============================================================================
@@ -168,6 +173,19 @@ function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The enrolled experiment arms, via the provider bound in module.tsx.
+ *
+ * Exported so the Faro session stamper reads cohorts from here rather than
+ * importing utils/experiments directly — that edge would pull the experiments
+ * modules into the telemetry import cycle.
+ *
+ * @returns The enrolled arms, or an empty array before the provider is bound
+ */
+export function getBoundActiveExperiments(): ExperimentAnalyticsEntry[] {
+  return getExperimentsForAnalytics() ?? [];
 }
 
 function rollUpVariant(experiments: ExperimentAnalyticsEntry[]): ExperimentConfig['variant'] {

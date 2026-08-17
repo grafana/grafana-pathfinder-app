@@ -89,6 +89,10 @@
       "toggleViewMode": "Alternar modo de vista"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "¡Todas las rutas completadas!",
     "allCompleteTooltip": "Has completado todas las rutas de aprendizaje. ¡Buen trabajo!",
