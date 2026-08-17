@@ -147,6 +147,7 @@ const REQUIRED_DEFAULTS: Record<BlockType, Record<string, unknown> | null> = {
   'terminal-connect': { content: 'Connect to terminal' },
   challenge: {
     title: 'Untitled challenge',
+    brief: 'Complete this challenge',
     successCriteria: 'coda-exit-zero:true',
   },
   'code-block': { reftarget: "div[data-testid='data-testid Code editor container']", code: '// Your code here' },
