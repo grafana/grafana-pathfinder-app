@@ -904,6 +904,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       stepId,
       targetComment,
+      openGuide,
       revalidate,
     ]);
 
