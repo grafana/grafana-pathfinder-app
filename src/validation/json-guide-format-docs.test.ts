@@ -11,11 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import {
-  JsonBlockSchema,
-  JsonChallengeBlockSchema,
-  JsonSnippetRefBlockSchema,
-} from '../types/json-guide.schema';
+import { JsonBlockSchema, JsonChallengeBlockSchema, JsonSnippetRefBlockSchema } from '../types/json-guide.schema';
 
 const DOC_RELATIVE_PATH = 'docs/developer/interactive-examples/json-guide-format.md';
 const DOC_PATH = path.resolve(__dirname, '../..', DOC_RELATIVE_PATH);

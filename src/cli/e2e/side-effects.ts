@@ -197,7 +197,11 @@ function classifyBlock(block: JsonBlock, path: string): SideEffectClassification
     return reason('unknown', path, `${block.type} block can have side effects outside static guide analysis`);
   }
   if (isSnippetRefBlock(block)) {
-    return reason('unknown', path, 'Snippet content is resolved after validation and must be classified after expansion');
+    return reason(
+      'unknown',
+      path,
+      'Snippet content is resolved after validation and must be classified after expansion'
+    );
   }
   return reason('unknown', path, 'Unknown block type');
 }
