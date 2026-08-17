@@ -32,6 +32,8 @@ export interface LearningPath {
   icon?: string;
   /** Remote docs URL for paths backed by a learning journey. When set, guides are fetched from {url}index.json */
   url?: string;
+  /** Namespace-scoped path from the org's own App Platform catalogue, not a curated Grafana one */
+  isPrivate?: boolean;
   /**
    * Package manifest for App Platform paths/journeys (no `url`). Threaded into
    * the launch as packageInfo so members render with milestone chrome instead

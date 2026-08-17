@@ -36,6 +36,7 @@ import { getMyLearningStyles } from './MyLearningTab.styles';
 import { BadgeDetailCard } from './BadgeDetailCard';
 import { HeroStats } from './sections/HeroStats';
 import { MyCoursesSection } from './sections/MyCoursesSection';
+import { PrivatePathsSection } from './sections/PrivatePathsSection';
 import { BadgesSection } from './sections/BadgesSection';
 import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
 import { CompletedSection } from './sections/CompletedSection';
@@ -79,17 +80,20 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     isLoading,
   } = useLearningPaths();
 
-  const courses = useMemo(() => {
+  const inProgress = useMemo(() => {
     return paths
       .filter((path) => getPathProgress(path.id) < 100)
       .sort((a, b) => getPathProgress(b.id) - getPathProgress(a.id));
   }, [paths, getPathProgress]);
 
+  const privatePaths = useMemo(() => inProgress.filter((path) => path.isPrivate), [inProgress]);
+  const courses = useMemo(() => inProgress.filter((path) => !path.isPrivate), [inProgress]);
+
   const completedPaths = useMemo(() => paths.filter((path) => isPathCompleted(path.id)), [paths, isPathCompleted]);
 
   const excludeTitles = useMemo(
-    () => new Set([...courses, ...completedPaths].map((path) => path.title)),
-    [courses, completedPaths]
+    () => new Set([...inProgress, ...completedPaths].map((path) => path.title)),
+    [inProgress, completedPaths]
   );
   const { items: discoverItems, isLoading: discoverLoading } = useDiscoverMore({ excludeTitles });
 
@@ -322,6 +326,17 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         guidesCompleted={totalGuidesCompleted}
         badgesEarned={totalBadgesEarned}
         streakDays={streakInfo.days}
+        styles={styles}
+      />
+
+      <PrivatePathsSection
+        paths={privatePaths}
+        getPathGuides={getPathGuides}
+        getPathProgress={getPathProgress}
+        onContinue={handleOpenGuide}
+        onReset={resetPath}
+        launchingPathId={launchingId}
+        launchDisabled={launchingId !== null}
         styles={styles}
       />
 

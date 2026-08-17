@@ -85,6 +85,8 @@
     "myCoursesDescription": "Paths to explore and continue",
     "myCoursesEmpty": "No learning paths available yet",
     "pathsDescription": "Structured guides to help you master Grafana step by step",
+    "privatePaths": "Private paths",
+    "privatePathsDescription": "Paths published for your organization",
     "subtitle": "Track your progress, earn badges, and master Grafana"
   },
   "userProfileBar": {

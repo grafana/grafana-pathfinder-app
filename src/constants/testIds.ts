@@ -321,6 +321,7 @@ export const testIds = {
     badgeToast: 'learning-paths-badge-toast',
     badgeToastDismiss: 'learning-paths-badge-toast-dismiss',
     myCoursesSection: 'my-learning-courses-section',
+    privatePathsSection: 'my-learning-private-paths-section',
     badgesSection: 'my-learning-badges-section',
     discoverMoreSection: 'my-learning-discover-section',
     completedSection: 'my-learning-completed-section',
