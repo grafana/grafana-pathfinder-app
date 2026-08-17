@@ -1,7 +1,7 @@
 /**
  * Tools that produce a fresh artifact:
  *   - `pathfinder_create_package` opens a blank artifact for the standard
- *     authoring loop (then mutate via add_block / add_step / ...).
+ *     authoring loop (then mutate via pathfinder_manage_block / ...).
  *   - `pathfinder_create_guide_template` returns a pre-populated starter
  *     guide (markdown intro + one `section` placeholder) — the
  *     "scaffolded" alternative for agents that want a non-empty seed.

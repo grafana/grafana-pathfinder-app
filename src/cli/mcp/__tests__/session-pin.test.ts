@@ -73,7 +73,9 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       const token = await mintSession(store, 'transport-session-A');
       expect(await store.readMcpSessionPin(token)).toBe('transport-session-A');
 
-      const r = await callTool(store, 'transport-session-A', 'pathfinder_add_block', {
+      const r = await callTool(store, 'transport-session-A', 'pathfinder_manage_block', {
+        operation: 'add',
+        resource: 'block',
         sessionToken: token,
         type: 'markdown',
         fields: { content: 'hello' },
@@ -87,7 +89,8 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       // Bind a pin with trailing whitespace as a proxy/CDN might.
       const token = await mintSession(store, 'transport-session-A');
       // Inbound header has trailing whitespace — should still match.
-      const r = await callTool(store, '  transport-session-A  ', 'pathfinder_list_blocks', {
+      const r = await callTool(store, '  transport-session-A  ', 'pathfinder_read_session', {
+        operation: 'list_blocks',
         sessionToken: token,
       });
       expect(r.status).toBe('ok');
@@ -97,7 +100,8 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       const store = new InMemorySessionStore();
       const token = await mintSession(store, 'transport-session-A');
 
-      const r = await callTool(store, 'transport-session-A', 'pathfinder_list_blocks', {
+      const r = await callTool(store, 'transport-session-A', 'pathfinder_read_session', {
+        operation: 'list_blocks',
         sessionToken: token,
       });
       expect(r.status).toBe('ok');
@@ -109,7 +113,9 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       const store = new InMemorySessionStore();
       const token = await mintSession(store, 'transport-session-A');
 
-      const r = await callTool(store, 'transport-session-B', 'pathfinder_add_block', {
+      const r = await callTool(store, 'transport-session-B', 'pathfinder_manage_block', {
+        operation: 'add',
+        resource: 'block',
         sessionToken: token,
         type: 'markdown',
         fields: { content: 'hello' },
@@ -123,7 +129,8 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       const store = new InMemorySessionStore();
       const token = await mintSession(store, 'transport-session-A');
 
-      const r = await callTool(store, 'transport-session-B', 'pathfinder_get_manifest_session', {
+      const r = await callTool(store, 'transport-session-B', 'pathfinder_read_session', {
+        operation: 'get_manifest',
         sessionToken: token,
       });
       expect(r.code).toBe('SESSION_NOT_FOUND');
@@ -164,7 +171,9 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       // Pre-WR-01 this bypassed the pin entirely. Under
       // --allow-unauthenticated the token IS the credential, so an
       // HTTP request against a pinned session must carry the header.
-      const r = await callTool(store, undefined, 'pathfinder_add_block', {
+      const r = await callTool(store, undefined, 'pathfinder_manage_block', {
+        operation: 'add',
+        resource: 'block',
         sessionToken: token,
         type: 'markdown',
         fields: { content: 'hello' },
@@ -183,7 +192,8 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       // Subsequent call with a header still succeeds — no pin to enforce.
       // Design choice: we do NOT lazily bind the pin on first-with-header
       // access. Otherwise a bystander could claim a stdio-minted session.
-      const r = await callTool(store, 'transport-session-A', 'pathfinder_list_blocks', {
+      const r = await callTool(store, 'transport-session-A', 'pathfinder_read_session', {
+        operation: 'list_blocks',
         sessionToken: token,
       });
       expect(r.status).toBe('ok');

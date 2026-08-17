@@ -36,7 +36,7 @@ export interface AccessLogEntry {
   rpcMethod?: string;
   /**
    * For `tools/call` requests, the `params.name` value (e.g.
-   * "pathfinder_add_block"). Lets us break token spend down by tool, which
+   * "pathfinder_manage_block"). Lets us break token spend down by tool, which
    * the HTTP-level `path` field cannot — every tool call hits `/mcp`.
    */
   rpcToolName?: string;

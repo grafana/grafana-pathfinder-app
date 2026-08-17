@@ -117,7 +117,7 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 ## Tool surface
 
-21 tools, registered in `src/cli/mcp/tools/`:
+13 tools, registered in `src/cli/mcp/tools/`:
 
 | Tool                                   | Module                  | Wraps                                                                                              |
 | -------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
@@ -125,21 +125,13 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 | `pathfinder_help`                      | `help.ts`               | `formatHelpAsJson` over the CLI commands                                                           |
 | `pathfinder_create_package`            | `artifact-tools.ts`     | `runCreate` — mints a sessionToken + returns the seed artifact (P7)                                |
 | `pathfinder_create_guide_template`     | `artifact-tools.ts`     | `newPackageState` + pre-populated starter blocks; round-tripped through `runValidate` (P7)         |
-| `pathfinder_add_block`                 | `mutation-tools.ts`     | `runAddBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                                      |
-| `pathfinder_add_step`                  | `mutation-tools.ts`     | `runAddStep` — accepts `{artifact}` OR `{sessionToken}` (P7)                                       |
-| `pathfinder_add_choice`                | `mutation-tools.ts`     | `runAddChoice` — accepts `{artifact}` OR `{sessionToken}` (P7)                                     |
-| `pathfinder_edit_block`                | `mutation-tools.ts`     | `runEditBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                                     |
-| `pathfinder_remove_block`              | `mutation-tools.ts`     | `runRemoveBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                                   |
+| `pathfinder_manage_block`              | `mutation-tools.ts`     | Tree writes via `operation: add\|edit\|remove` × `resource: block\|step\|choice`                   |
 | `pathfinder_set_manifest`              | `mutation-tools.ts`     | `runSetManifest` — accepts `{artifact}` OR `{sessionToken}` (P7)                                   |
 | `pathfinder_inspect`                   | `inspection-tools.ts`   | `runInspect` — accepts `{artifact}` OR `{sessionToken}` (P7)                                       |
 | `pathfinder_validate`                  | `inspection-tools.ts`   | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7)                                      |
-| `pathfinder_list_blocks`               | `session-read-tools.ts` | Cheap tree summary for a session token (P7)                                                        |
-| `pathfinder_get_block`                 | `session-read-tools.ts` | One block by id from a session token (P7)                                                          |
-| `pathfinder_get_manifest_session`      | `session-read-tools.ts` | Session-stored manifest (distinct from the P6 CDN `pathfinder_get_manifest`) (P7)                  |
+| `pathfinder_read_session`              | `session-read-tools.ts` | Cheap session reads via `operation: list_blocks\|get_block\|get_manifest`                          |
 | `pathfinder_finalize_for_app_platform` | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7) |
-| `pathfinder_list_packages`             | `repository-tools.ts`   | CDN `repository.json` + filters (P6)                                                               |
-| `pathfinder_get_package`               | `repository-tools.ts`   | CDN `content.json` + `manifest.json` for one id                                                    |
-| `pathfinder_get_manifest`              | `repository-tools.ts`   | CDN `manifest.json` only (cheaper variant)                                                         |
+| `pathfinder_repository`                | `repository-tools.ts`   | CDN reads via `operation: list\|get\|get_manifest` (P6)                                            |
 | `pathfinder_launch_package`            | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                         |
 | `pathfinder_get_schema`                | `schema-tools.ts`       | `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts`              |
 
@@ -147,7 +139,7 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 ### Repository tools (P6)
 
-The four `repository-tools.ts` tools are read-only against a public package CDN. They are stateless (no artifact in/out) and need no auth.
+The `repository-tools.ts` surface is read-only against a public package CDN (`pathfinder_repository` + `pathfinder_launch_package`). They are stateless (no artifact in/out) and need no auth.
 
 - **Default repository**: `https://interactive-learning.grafana.net/packages/`.
 - **Override**: set `PATHFINDER_REPOSITORY_URL` (trailing slash optional) on the process. The HTTP transport's deploy passes this through unchanged; for stdio clients, set it on the `npx pathfinder-cli mcp` invocation.
