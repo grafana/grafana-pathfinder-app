@@ -31,6 +31,7 @@ import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
+import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -718,7 +719,17 @@ export const InteractiveStep = forwardRef<
           phase: 'show',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
+          action: {
+            ...toCrossTabInternalAction({
+              targetAction,
+              refTarget,
+              targetValue: currentTargetValue,
+              targetState,
+              targetComment,
+              openGuide,
+            }),
+            refTarget,
+          },
         });
         if (!doIt) {
           // Simple controller steps complete optimistically because no live acknowledgement is available.
@@ -833,7 +844,17 @@ export const InteractiveStep = forwardRef<
           phase: 'do',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
+          action: {
+            ...toCrossTabInternalAction({
+              targetAction,
+              refTarget,
+              targetValue: currentTargetValue,
+              targetState,
+              targetComment,
+              openGuide,
+            }),
+            refTarget,
+          },
         });
         // Simple controller steps complete optimistically because no live acknowledgement is available.
         persistCompletion();

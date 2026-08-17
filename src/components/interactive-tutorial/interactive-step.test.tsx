@@ -352,18 +352,28 @@ describe('InteractiveStep: controller mode emits over the channel instead of exe
     const transport = makeTransport();
     await renderPairedController(
       transport,
-      <InteractiveStep targetAction="button" refTarget="button[type='submit']" stepId="ctrl-do">
+      <InteractiveStep
+        targetAction="navigate"
+        refTarget="/dashboards"
+        openGuide="bundled:destination-guide"
+        stepId="ctrl-do"
+      >
         Step
       </InteractiveStep>
     );
 
-    const button = await screen.findByRole('button', { name: /do it/i });
+    const button = await screen.findByRole('button', { name: /go there/i });
     await waitFor(() => expect(button).not.toBeDisabled());
     fireEvent.click(button);
 
     await waitFor(() =>
       expect(transport.post).toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'step-command', phase: 'do', stepId: 'ctrl-do' })
+        expect.objectContaining({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 'ctrl-do',
+          action: expect.objectContaining({ openGuide: 'bundled:destination-guide' }),
+        })
       )
     );
   });
