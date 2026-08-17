@@ -76,7 +76,7 @@ describe('useDiscoverMore', () => {
 
   // Regression for #1637: without the inlined manifest threaded through as
   // packageInfo, Discover More launches fall through to plain fetchContent
-  // and never render a cover, milestone toolbar, or next/prev nav.
+  // and never resolve a milestone toolbar, progress chrome, or next/prev nav.
   it('threads the inlined manifest through so launch can build packageInfo from it', async () => {
     const { result } = renderHook(() => useDiscoverMore());
 

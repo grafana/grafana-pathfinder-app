@@ -153,11 +153,12 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // constructor (docs-panel.tsx): a launch can fetch and classify package
   // content (My Learning, Discover More) before any docs-panel/sidebar/
   // full-screen instance has ever mounted this session. Without an early
-  // resolver, that fetch's milestone resolution silently no-ops — the cover
-  // page renders with no "In this path" list, no lock/play icons, no real
-  // module count, because it never learns the content is a multi-milestone
-  // package at all (#1637). The panel's own call stays as a harmless re-set
-  // for whichever config that specific surface was constructed with.
+  // resolver, that fetch's milestone resolution silently no-ops — the launch
+  // renders as a bare, standalone document with no milestone toolbar, no
+  // progress chrome, no next/prev navigation, because it never learns the
+  // content is a multi-milestone package at all (#1637). The panel's own
+  // call stays as a harmless re-set for whichever config that specific
+  // surface was constructed with.
   setPackageResolver(createCompositeResolver(config));
 
   // `meta.jsonData` can lag a recent save. Re-publish from the authoritative

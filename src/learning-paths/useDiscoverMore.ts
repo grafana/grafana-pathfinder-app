@@ -35,8 +35,8 @@ export interface DiscoverMoreItem {
   /**
    * The package's inlined manifest, when available. Threaded into launch as
    * `packageInfo` — without it, the loader falls through to plain
-   * `fetchContent` and the item renders as a bare document with no cover,
-   * milestone toolbar, or next/prev navigation.
+   * `fetchContent` and the item renders as a bare document with no milestone
+   * toolbar, progress chrome, or next/prev navigation.
    */
   manifest?: Record<string, unknown>;
 }
