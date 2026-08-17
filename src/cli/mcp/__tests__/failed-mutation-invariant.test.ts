@@ -93,7 +93,9 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
   });
 
   it('add_block with an unknown block type leaves the store untouched', async () => {
-    const r = await h.call('pathfinder_add_block', {
+    const r = await h.call('pathfinder_manage_block', {
+      operation: 'add',
+      resource: 'block',
       sessionToken: token,
       type: 'markdown', // server-accepted type
       // Empty fields fails the per-type Zod validation in the CLI.
@@ -105,7 +107,9 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
   });
 
   it('edit_block targeting a nonexistent block leaves the store untouched', async () => {
-    const r = await h.call('pathfinder_edit_block', {
+    const r = await h.call('pathfinder_manage_block', {
+      operation: 'edit',
+      resource: 'block',
       sessionToken: token,
       id: 'does-not-exist',
       fields: { content: 'updated' },
@@ -115,7 +119,9 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
   });
 
   it('remove_block targeting a nonexistent block leaves the store untouched', async () => {
-    const r = await h.call('pathfinder_remove_block', {
+    const r = await h.call('pathfinder_manage_block', {
+      operation: 'remove',
+      resource: 'block',
       sessionToken: token,
       id: 'does-not-exist',
     });
@@ -123,9 +129,11 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
     expect(await snapshot(h.store, token)).toBe(initialSnapshot);
   });
 
-  it('add_step targeting a non-multistep block leaves the store untouched', async () => {
+  it('add+step targeting a non-multistep block leaves the store untouched', async () => {
     // Add a markdown block to provide a non-multistep target.
-    const added = await h.call('pathfinder_add_block', {
+    const added = await h.call('pathfinder_manage_block', {
+      operation: 'add',
+      resource: 'block',
       sessionToken: token,
       type: 'markdown',
       explicitId: 'md-1',
@@ -135,7 +143,9 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
     const afterAdd = await snapshot(h.store, token);
 
     // add_step against a markdown parent must fail.
-    const r = await h.call('pathfinder_add_step', {
+    const r = await h.call('pathfinder_manage_block', {
+      operation: 'add',
+      resource: 'step',
       sessionToken: token,
       parentId: 'md-1',
       fields: { title: 'should-fail', instruction: 'wont-land' },
@@ -146,7 +156,9 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
 
   it('a successful mutation followed by a failed mutation leaves the store at the successful generation', async () => {
     // Land a real change so the generation moves past the seed.
-    const ok = await h.call('pathfinder_add_block', {
+    const ok = await h.call('pathfinder_manage_block', {
+      operation: 'add',
+      resource: 'block',
       sessionToken: token,
       type: 'markdown',
       fields: { content: 'this lands' },
@@ -156,7 +168,9 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
     const afterSuccess = await snapshot(h.store, token);
 
     // Try a failing edit.
-    const fail = await h.call('pathfinder_edit_block', {
+    const fail = await h.call('pathfinder_manage_block', {
+      operation: 'edit',
+      resource: 'block',
       sessionToken: token,
       id: 'never-existed',
       fields: { content: 'will not land' },
@@ -171,7 +185,9 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
 
   it('many sequential failures do not silently drift the generation', async () => {
     for (let i = 0; i < 5; i++) {
-      const r = await h.call('pathfinder_edit_block', {
+      const r = await h.call('pathfinder_manage_block', {
+        operation: 'edit',
+        resource: 'block',
         sessionToken: token,
         id: `phantom-${i}`,
         fields: { content: 'x' },

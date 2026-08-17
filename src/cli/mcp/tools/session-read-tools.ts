@@ -1,19 +1,18 @@
 /**
  * Fine-grained read tools — session-scoped, lightweight.
  *
- * These three tools exist so the agent can read specific facets of a
- * session-stored artifact WITHOUT pulling the full artifact into
- * context. They are the primary "what does the guide look like right
- * now?" surface in session-mode; the full-artifact escape hatch is
- * pathfinder_inspect({sessionToken}).
+ * `pathfinder_read_session` collapses the former list_blocks / get_block /
+ * get_manifest_session trio into one tool with an operation flag so agents
+ * pay a single tool slot for cheap session reads. The full-artifact escape
+ * hatch remains `pathfinder_inspect({sessionToken})`.
  *
- *   - pathfinder_list_blocks      — top-level structure (block ids + types)
- *   - pathfinder_get_block        — one block by id
- *   - pathfinder_get_manifest_session — the manifest only
+ * Operations:
+ *   - list_blocks  — top-level structure (block ids + types)
+ *   - get_block    — one block by id
+ *   - get_manifest — the session-stored manifest only
  *
- * Naming note: pathfinder_get_manifest is taken by the CDN repository
- * tools, so the session-scoped variant carries an explicit `_session`
- * suffix to avoid the collision.
+ * CDN package metadata lives under `pathfinder_repository` — different
+ * data source, different tool.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -25,6 +24,9 @@ import type { LoadedSession, AuthoringSessionStore } from '../lib/session-store'
 import { readOnly } from './annotations';
 import { resolveAndPinToken } from './read-input';
 import { sessionNotFoundResult, textResult, withToolErrorEnvelope } from './result';
+
+const READ_SESSION_OPERATIONS = ['list_blocks', 'get_block', 'get_manifest'] as const;
+type ReadSessionOperation = (typeof READ_SESSION_OPERATIONS)[number];
 
 const SessionTokenInput = {
   sessionToken: z.string().describe('Session token returned by pathfinder_create_package or a previous mutation ack.'),
@@ -38,7 +40,7 @@ type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: bo
  * errors. The render callback returns:
  *   - a plain payload object — wrapped as `textResult(JSON.stringify(...))`.
  *   - a `ToolResult` directly — passed through verbatim (for in-band error
- *     branches like "block id not found" in `pathfinder_get_block`).
+ *     branches like "block id not found" in get_block).
  */
 async function withLoadedSession(
   store: AuthoringSessionStore,
@@ -69,6 +71,18 @@ function isToolResult(value: ToolResult | Record<string, unknown>): value is Too
   return Array.isArray((value as ToolResult).content);
 }
 
+function invalidInput(message: string, sessionToken?: string): ToolResult {
+  return textResult(
+    renderMachineJson({
+      status: 'error',
+      code: 'INVALID_INPUT',
+      message,
+      ...(sessionToken ? { sessionToken } : {}),
+    }),
+    /* isError */ true
+  );
+}
+
 export function registerSessionReadTools(
   server: McpServer,
   options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
@@ -76,71 +90,75 @@ export function registerSessionReadTools(
   const { sessionStore, mcpSessionId } = options;
 
   server.registerTool(
-    'pathfinder_list_blocks',
+    'pathfinder_read_session',
     {
       description:
-        "Use this tool to enumerate the block structure of a session-stored Pathfinder artifact — block ids and types only, no field content. Cheap. Pair with pathfinder_get_block to drill into a specific block. This is the agent's primary 'what does the guide look like right now?' surface in session-mode; the full-artifact escape hatch is pathfinder_inspect.",
-      annotations: readOnly('List Pathfinder blocks (session)'),
-      inputSchema: { ...SessionTokenInput },
+        'Use this tool to read facets of a session-stored Pathfinder artifact without pulling the full artifact into context. Pass `operation: "list_blocks" | "get_block" | "get_manifest"`. Cheap; use freely for navigation. For the full artifact body use pathfinder_inspect. CDN / published package reads use pathfinder_repository instead.',
+      annotations: readOnly('Read Pathfinder session'),
+      inputSchema: {
+        ...SessionTokenInput,
+        operation: z
+          .enum(READ_SESSION_OPERATIONS)
+          .describe(
+            'Read to perform: "list_blocks" returns ids/types only, "get_block" returns one block by id (requires blockId), "get_manifest" returns the session-stored manifest (or null).'
+          ),
+        blockId: z.string().optional().describe('Required for operation "get_block". Block id to fetch.'),
+      },
     },
-    async ({ sessionToken }) =>
-      withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'list_blocks', (loaded, token) => ({
+    async ({ sessionToken, operation, blockId }) => {
+      if (operation === 'get_block' && (!blockId || blockId.trim() === '')) {
+        return invalidInput('operation "get_block" requires `blockId`.', sessionToken);
+      }
+
+      return withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'read_session', (loaded, token) =>
+        renderReadSession(operation, loaded, token, blockId)
+      );
+    }
+  );
+}
+
+function renderReadSession(
+  operation: ReadSessionOperation,
+  loaded: LoadedSession,
+  token: string,
+  blockId: string | undefined
+): ToolResult | Record<string, unknown> {
+  switch (operation) {
+    case 'list_blocks':
+      return {
         status: 'ok',
         sessionToken: token,
         generation: loaded.generation,
         blocks: buildArtifactSummary(loaded.artifact.content),
-      }))
-  );
-
-  server.registerTool(
-    'pathfinder_get_block',
-    {
-      description:
-        'Use this tool to read a single block by id from a session-stored Pathfinder artifact. Returns the block object verbatim (the same shape pathfinder_add_block / pathfinder_edit_block produce). Pair with pathfinder_list_blocks to find ids.',
-      annotations: readOnly('Get Pathfinder block (session)'),
-      inputSchema: {
-        ...SessionTokenInput,
-        blockId: z.string().describe('Block id to fetch.'),
-      },
-    },
-    async ({ sessionToken, blockId }) =>
-      withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'get_block', (loaded, token) => {
-        const block = findBlockById(loaded.artifact.content, blockId);
-        if (!block) {
-          return textResult(
-            renderMachineJson({
-              status: 'error',
-              code: 'NOT_FOUND',
-              message: `No block with id "${blockId}" in this session.`,
-              sessionToken: token,
-              generation: loaded.generation,
-            }),
-            /* isError */ true
-          );
-        }
-        return {
-          status: 'ok',
-          sessionToken: token,
-          generation: loaded.generation,
-          block,
-        };
-      })
-  );
-
-  server.registerTool(
-    'pathfinder_get_manifest_session',
-    {
-      description:
-        'Use this tool to read the manifest of a session-stored Pathfinder artifact — separate from pathfinder_get_manifest, which reads from the CDN repository. Returns the manifest object or null if no manifest is authored on this session.',
-      annotations: readOnly('Get Pathfinder manifest (session)'),
-      inputSchema: { ...SessionTokenInput },
-    },
-    async ({ sessionToken }) =>
-      withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'get_manifest_session', (loaded, token) => ({
+      };
+    case 'get_block': {
+      const id = blockId!;
+      const block = findBlockById(loaded.artifact.content, id);
+      if (!block) {
+        return textResult(
+          renderMachineJson({
+            status: 'error',
+            code: 'NOT_FOUND',
+            message: `No block with id "${id}" in this session.`,
+            sessionToken: token,
+            generation: loaded.generation,
+          }),
+          /* isError */ true
+        );
+      }
+      return {
+        status: 'ok',
+        sessionToken: token,
+        generation: loaded.generation,
+        block,
+      };
+    }
+    case 'get_manifest':
+      return {
         status: 'ok',
         sessionToken: token,
         generation: loaded.generation,
         manifest: loaded.artifact.manifest ?? null,
-      }))
-  );
+      };
+  }
 }

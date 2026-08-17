@@ -35,8 +35,8 @@ const AUTHORING_CONTEXT = {
   domains: [...PATHFINDER_DOMAINS],
   workflow: [
     '1. Call pathfinder_create_package with a title. The response carries BOTH a sessionToken (use this for subsequent calls) AND a seed artifact (ignore unless you are running in stateless fallback mode).',
-    '2. Add blocks via pathfinder_add_block (and pathfinder_add_step / pathfinder_add_choice for container children) passing {sessionToken}. Each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact. The artifact lives in the server-side session store.',
-    '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_list_blocks, pathfinder_get_block, or pathfinder_get_manifest_session with {sessionToken}. They are cheap; use them freely instead of re-reading the full artifact.',
+    '2. Mutate the guide tree via pathfinder_manage_block with operation "add" | "edit" | "remove" and resource "block" | "step" | "choice" passing {sessionToken}. Live today: add/edit/remove on block; add on step and choice. edit/remove on step or choice return UNSUPPORTED_OPERATION — cascade-remove the parent block and re-add children instead. Each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact. The artifact lives in the server-side session store.',
+    '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_read_session with operation "list_blocks" | "get_block" | "get_manifest" and {sessionToken}. Cheap; use freely instead of re-reading the full artifact.',
     '4. When you need the full artifact body in your context (rare — e.g. for a wholesale review before finalize), call pathfinder_inspect with {sessionToken}. This is the explicit "pull the artifact" escape hatch.',
     '5. Call pathfinder_validate with {sessionToken} before finalize.',
     '6. Call pathfinder_finalize_for_app_platform with {sessionToken} to receive the publish handoff (path templates, viewer link, localExport fallback). The full artifact returns here. The server deletes the session on success — the sessionToken is single-use through finalize.',
@@ -92,10 +92,9 @@ const AUTHORING_CONTEXT = {
   ],
   discovery: [
     'pathfinder_help — returns the structured CLI help surface, equivalent to `pathfinder-cli <cmd> --help --format json`. Use this when you need exact flag names or block-type field schemas.',
-    'pathfinder_list_blocks — given a sessionToken, returns the tree summary without the block bodies. Cheap; use freely.',
-    'pathfinder_get_block — given a sessionToken and block id, returns one block. Cheap targeted read.',
-    'pathfinder_get_manifest_session — given a sessionToken, returns the session-stored manifest. Distinct from pathfinder_get_manifest (which reads from the CDN repository).',
+    'pathfinder_read_session — given a sessionToken and operation list_blocks | get_block | get_manifest, returns a cheap facet of the session artifact. Use freely.',
     'pathfinder_inspect — escape hatch. Given a sessionToken (or artifact), returns the full artifact plus a tree summary.',
+    'pathfinder_repository — discover/inspect published CDN packages via operation list | get | get_manifest.',
   ],
 };
 

@@ -92,7 +92,9 @@ describe('pathfinder_create_package — session mint', () => {
       const created = await call('pathfinder_create_package', { title: 'Chained' });
       expect(created.sessionToken).toBeDefined();
 
-      const added = await call('pathfinder_add_block', {
+      const added = await call('pathfinder_manage_block', {
+        operation: 'add',
+        resource: 'block',
         sessionToken: created.sessionToken,
         type: 'markdown',
         fields: { content: 'Hello' },

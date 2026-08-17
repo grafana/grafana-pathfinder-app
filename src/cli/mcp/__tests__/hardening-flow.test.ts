@@ -87,7 +87,9 @@ describe('MCP hardening — end-to-end composition', () => {
 
       // -------- Control: a markdown block emits no hardening warnings —
       // confirms the warning channel doesn't false-fire on unrelated calls.
-      const markdownAdd = await callTool(client, 'pathfinder_add_block', {
+      const markdownAdd = await callTool(client, 'pathfinder_manage_block', {
+        operation: 'add',
+        resource: 'block',
         artifact,
         type: 'markdown',
         fields: { content: 'Intro' },
@@ -99,7 +101,9 @@ describe('MCP hardening — end-to-end composition', () => {
       // -------- Issue #8: adding a multistep block fires the composition hint
       // at outcome-time so the agent gets a reinforcing nudge even if it
       // ignored the same rule in `_start.compositionRules`.
-      const multistepAdd = await callTool(client, 'pathfinder_add_block', {
+      const multistepAdd = await callTool(client, 'pathfinder_manage_block', {
+        operation: 'add',
+        resource: 'block',
         artifact,
         type: 'multistep',
         explicitId: 'walk-1',
@@ -113,7 +117,9 @@ describe('MCP hardening — end-to-end composition', () => {
       // -------- Issue #3: adding a step with a `reftarget` fires the
       // unverified-selector signal at outcome-time. The path carries the
       // position so a reviewer can grep for the exact step that took the risk.
-      const stepAdd = await callTool(client, 'pathfinder_add_step', {
+      const stepAdd = await callTool(client, 'pathfinder_manage_block', {
+        operation: 'add',
+        resource: 'step',
         artifact,
         parentId: 'walk-1',
         fields: { action: 'button', reftarget: '[data-testid="save"]', description: 'Click Save' },
@@ -143,7 +149,9 @@ describe('MCP hardening — end-to-end composition', () => {
       // -------- Slice 2 / Issue #2: a YouTube watch URL is auto-normalized
       // to the embed form. The agent gets an INPUT_NORMALIZED warning, the
       // call succeeds, and the persisted block carries the embed URL.
-      const videoAdd = await callTool(client, 'pathfinder_add_block', {
+      const videoAdd = await callTool(client, 'pathfinder_manage_block', {
+        operation: 'add',
+        resource: 'block',
         artifact,
         type: 'video',
         fields: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
@@ -168,7 +176,9 @@ describe('MCP hardening — end-to-end composition', () => {
         // Keep the stale __etag from before the mutation — that's what the
         // agent would echo if it forgot to round-trip cleanly.
       };
-      const mutated = await callTool(client, 'pathfinder_add_block', {
+      const mutated = await callTool(client, 'pathfinder_manage_block', {
+        operation: 'add',
+        resource: 'block',
         artifact: corrupted,
         type: 'markdown',
         fields: { content: 'should not be appended' },

@@ -329,11 +329,11 @@ describe('HTTP transport', () => {
           jsonrpc: '2.0',
           id: 'call',
           method: 'tools/call',
-          params: { name: 'pathfinder_list_blocks', arguments: { sessionToken: token } },
+          params: { name: 'pathfinder_read_session', arguments: { sessionToken: token, operation: 'list_blocks' } },
         }),
       });
       const entry = h.logs.at(-1)!;
-      expect(entry.rpcToolName).toBe('pathfinder_list_blocks');
+      expect(entry.rpcToolName).toBe('pathfinder_read_session');
       expect(entry.sessionTokenPrefix).toBe('abcdefghjkmn');
       expect(typeof entry.sessionTokenHash).toBe('string');
       // Raw token never appears anywhere in the log entry.
