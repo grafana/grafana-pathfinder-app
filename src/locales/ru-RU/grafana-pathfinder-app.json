@@ -93,6 +93,10 @@
       "toggleViewMode": "Переключить режим просмотра"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "Все пути пройдены!",
     "allCompleteTooltip": "Вы прошли все пути обучения — отличная работа!",

@@ -85,6 +85,10 @@
       "toggleViewMode": "Weergavemodus wisselen"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "Alle leerpaden voltooid!",
     "allCompleteTooltip": "U heeft elk leerpad voltooid — goed gedaan!",
