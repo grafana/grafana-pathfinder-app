@@ -358,6 +358,8 @@ export interface AllStepsResult {
 
   /** Human-readable abort message */
   abortMessage?: string;
+  /** Whether runner execution stopped because its hard backstop expired */
+  infrastructureError?: boolean;
 
   /** Path to final screenshot (only when alwaysScreenshot is enabled) */
   finalScreenshot?: string;

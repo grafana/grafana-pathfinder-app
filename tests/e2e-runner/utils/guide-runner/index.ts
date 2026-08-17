@@ -85,9 +85,12 @@ export {
 // Execution
 // ============================================
 export type { GuidedCommentBoxWaitOutcome } from './execution';
+export type { BoundedSettlement } from './execution';
 export {
+  STEP_DEADLINE_CLEANUP_GRACE_MS,
   scrollStepIntoView,
   calculateGuideTimeout,
+  calculateStepDeadline,
   calculateStepTimeout,
   determineUnmetRequirementOutcome,
   parseNthMatchSelector,
@@ -104,4 +107,5 @@ export {
   summarizeResults,
   skippableFailuresAffectSuccess,
   logExecutionSummary,
+  settleWithin,
 } from './execution';

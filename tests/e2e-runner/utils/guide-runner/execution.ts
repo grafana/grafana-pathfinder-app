@@ -58,6 +58,9 @@ import type {
 } from './types';
 import { resolveSelector } from '../selector-resolver';
 import type { Locator } from '@playwright/test';
+const STEP_CLOSE_TIMEOUT_MS = 1000;
+const STEP_WORK_DRAIN_TIMEOUT_MS = 1000;
+export const STEP_DEADLINE_CLEANUP_GRACE_MS = STEP_CLOSE_TIMEOUT_MS + STEP_WORK_DRAIN_TIMEOUT_MS + 1000;
 
 // ============================================
 // Utility Functions
@@ -111,10 +114,15 @@ export function calculateStepTimeout(step: TestableStep): number {
   return DEFAULT_STEP_TIMEOUT_MS;
 }
 
+export function calculateStepDeadline(step: TestableStep, stepTimeout = calculateStepTimeout(step)): number {
+  return stepTimeout * 2 + STEP_OVERHEAD_TIMEOUT_MS;
+}
+
 export function calculateGuideTimeout(steps: TestableStep[]): number {
   return (
     GUIDE_INITIAL_TIMEOUT_MS +
-    steps.reduce((total, step) => total + calculateStepTimeout(step) + STEP_OVERHEAD_TIMEOUT_MS, 0)
+    steps.reduce((total, step) => total + calculateStepDeadline(step), 0) +
+    (steps.length > 0 ? STEP_DEADLINE_CLEANUP_GRACE_MS : 0)
   );
 }
 
@@ -935,38 +943,9 @@ export async function clickSkipButtonAndSync(
   }
 }
 
-/**
- * Execute a single step in the guide (L3-3C enhanced).
- *
- * This function implements step execution with proper timing:
- * 1. Handle pre-completed steps (skip with logging)
- * 2. Handle steps without "Do it" buttons (skip with logging)
- * 3. Scroll step into view with settle delay
- * 4. Check for objective-based auto-completion before clicking
- * 5. Wait for "Do it" button to be enabled (sequential dependencies)
- * 6. Click "Do it" button with post-click settle delay
- * 7. Wait for completion with objective polling
- * 8. Return result with diagnostics
- * 9. Capture artifacts on failure if artifactsDir is specified (L3-5D)
- *
- * Timing enhancements (L3-3C):
- * - Sequential dependencies: 10s timeout for button enable
- * - Multisteps: Dynamic timeout (30s base + 5s per internal action)
- * - Objective completion: Polling during wait to detect auto-completion
- * - Settle delays: Post-scroll and post-click delays for reactive system
- *
- * Artifact collection (L3-5D):
- * - Screenshots and DOM snapshots captured only on failure
- * - Console errors written to JSON file
- * - Artifacts saved to artifactsDir if specified
- *
- * @param page - Playwright Page object
- * @param step - The testable step to execute
- * @param options - Execution options
- * @returns StepTestResult with execution outcome and diagnostics
- */
 interface StepExecutionOptions {
   timeout?: number;
+  deadlineMs?: number;
   verbose?: boolean;
   /** Directory to write artifacts to (L3-5D). If not set, no artifacts captured. */
   artifactsDir?: string;
@@ -975,19 +954,25 @@ interface StepExecutionOptions {
   onDeadline?(): void;
 }
 
-const STEP_CLOSE_TIMEOUT_MS = 1000;
-const STEP_WORK_DRAIN_TIMEOUT_MS = 1000;
+interface AllStepsOptions extends StepExecutionOptions {
+  stopOnMandatoryFailure?: boolean;
+  sessionCheckInterval?: number;
+  onStepComplete?: OnStepCompleteCallback;
+}
 
-async function settleWithin(work: Promise<unknown>, timeoutMs: number): Promise<void> {
+export type BoundedSettlement<T> =
+  { status: 'fulfilled'; value: T } | { status: 'rejected'; reason: unknown } | { status: 'timed_out' };
+
+export async function settleWithin<T>(work: Promise<T>, timeoutMs: number): Promise<BoundedSettlement<T>> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([
+    return await Promise.race([
       work.then(
-        () => undefined,
-        () => undefined
+        (value): BoundedSettlement<T> => ({ status: 'fulfilled', value }),
+        (reason): BoundedSettlement<T> => ({ status: 'rejected', reason })
       ),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, timeoutMs);
+      new Promise<BoundedSettlement<T>>((resolve) => {
+        timer = setTimeout(() => resolve({ status: 'timed_out' }), timeoutMs);
       }),
     ]);
   } finally {
@@ -1007,6 +992,7 @@ export async function executeStep(
   options: StepExecutionOptions = {}
 ): Promise<StepTestResult> {
   const timeout = options.timeout ?? calculateStepTimeout(step);
+  const deadlineMs = options.deadlineMs ?? calculateStepDeadline(step, timeout);
   const startedAt = Date.now();
   const work = executeStepWork(page, step, { ...options, timeout });
 
@@ -1021,20 +1007,22 @@ export async function executeStep(
       options.onDeadline?.();
       void (async () => {
         await closePageWithin(page, STEP_CLOSE_TIMEOUT_MS);
-        await settleWithin(work, STEP_WORK_DRAIN_TIMEOUT_MS);
+        const drained = await settleWithin(work, STEP_WORK_DRAIN_TIMEOUT_MS);
+        const evidence = drained.status === 'fulfilled' ? drained.value : undefined;
         resolve({
           stepId: step.stepId,
           status: 'failed',
           durationMs: Date.now() - startedAt,
-          currentUrl,
-          consoleErrors: [],
-          error: `Step ${step.stepId} exceeded its ${timeout}ms execution deadline`,
+          currentUrl: evidence?.currentUrl ?? currentUrl,
+          consoleErrors: evidence?.consoleErrors ?? [],
+          error: `Step ${step.stepId} exceeded its ${deadlineMs}ms runner deadline`,
           deadlineExceeded: true,
-          skippable: false,
-          classification: 'unknown',
+          skippable: step.skippable,
+          classification: 'infrastructure',
+          artifacts: evidence?.artifacts,
         });
       })();
-    }, timeout);
+    }, deadlineMs);
 
     work.then(
       (result) => {
@@ -1060,11 +1048,9 @@ export async function executeStep(
 async function executeStepWork(
   page: Page,
   step: TestableStep,
-  options: StepExecutionOptions = {}
+  options: StepExecutionOptions & { timeout: number }
 ): Promise<StepTestResult> {
-  // L3-3C: Calculate appropriate timeout based on step type
-  const calculatedTimeout = calculateStepTimeout(step);
-  const { timeout = calculatedTimeout, verbose = false, artifactsDir, alwaysScreenshot = false } = options;
+  const { timeout, verbose = false, artifactsDir, alwaysScreenshot = false } = options;
   const startTime = Date.now();
   const consoleErrors: string[] = [];
 
@@ -1399,21 +1385,7 @@ async function executeStepWork(
 export async function executeAllSteps(
   page: Page,
   steps: TestableStep[],
-  options: {
-    timeout?: number;
-    verbose?: boolean;
-    stopOnMandatoryFailure?: boolean;
-    /** Session check interval in steps (L3-3D). Default: 5 */
-    sessionCheckInterval?: number;
-    /** Callback for real-time step progress (L3-5A). Called after each step completes. */
-    onStepComplete?: OnStepCompleteCallback;
-    /** Directory for artifacts (L3-5D). If not set, no artifacts captured. */
-    artifactsDir?: string;
-    /** Capture screenshots on success, not just failure. Default: false */
-    alwaysScreenshot?: boolean;
-    /** Called before a hard step deadline closes the page. */
-    onDeadline?(): void;
-  } = {}
+  options: AllStepsOptions = {}
 ): Promise<AllStepsResult> {
   const {
     verbose = false,
@@ -1427,6 +1399,7 @@ export async function executeAllSteps(
   let aborted = false;
   let abortReason: AbortReason | undefined;
   let abortMessage: string | undefined;
+  let infrastructureError = false;
 
   if (verbose) {
     console.log(`\n🚀 Executing ${steps.length} steps...`);
@@ -1512,16 +1485,18 @@ export async function executeAllSteps(
     // - Skippable steps: if fail for any reason, log and continue (does NOT fail overall test)
     // - Mandatory steps: if fail for any reason, abort and mark remaining as NOT_REACHED
     if (result.status === 'failed') {
-      if (result.deadlineExceeded || (!step.skippable && stopOnMandatoryFailure)) {
+      if (result.deadlineExceeded) {
+        aborted = true;
+        infrastructureError = true;
+        abortMessage = result.error;
+      } else if (!step.skippable && stopOnMandatoryFailure) {
         // Mandatory step failed - abort test
         if (verbose) {
           console.log(`   ❌ Mandatory step failed, aborting remaining steps`);
         }
         aborted = true;
         abortReason = 'MANDATORY_FAILURE';
-        abortMessage = result.deadlineExceeded
-          ? result.error
-          : `Mandatory step ${step.stepId} failed: ${result.error || 'unknown error'}`;
+        abortMessage = `Mandatory step ${step.stepId} failed: ${result.error || 'unknown error'}`;
       } else if (step.skippable) {
         // Skippable step failed - log but continue
         if (verbose) {
@@ -1546,6 +1521,7 @@ export async function executeAllSteps(
     aborted,
     abortReason,
     abortMessage,
+    infrastructureError,
     finalScreenshot,
   };
 }
@@ -1581,7 +1557,11 @@ export function logStepResult(result: StepTestResult): void {
 
   // L3-4C: Show skippable indicator for failed steps
   if (result.status === 'failed') {
-    message += result.skippable ? ' [skippable - test continues]' : ' [mandatory - test stops]';
+    message += result.deadlineExceeded
+      ? ' [runner deadline - guide stops]'
+      : result.skippable
+        ? ' [skippable - test continues]'
+        : ' [mandatory - test stops]';
   }
 
   if (result.skipReason) {

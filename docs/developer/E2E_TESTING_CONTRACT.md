@@ -523,7 +523,9 @@ Guided steps run a substep loop driven by the comment box. The runner uses only 
 
 Completion is standardized on `data-test-step-state="completed"` for all step types (single, multistep, guided).
 
-The runner applies the calculated timeout to the complete step operation. If the deadline expires, it closes the page and reports a guide failure.
+The calculated step timeout remains the inner operation budget. A separate wall-clock backstop uses twice this budget plus 20 seconds.
+
+If the backstop expires, the runner closes the page and reports an infrastructure outcome. Normal step failures retain their evidence and skippable behavior.
 
 During active step execution, an unexpected page, context, or browser termination produces an infrastructure outcome. The runner retains results from steps that completed before the termination.
 

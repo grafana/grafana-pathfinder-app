@@ -22,7 +22,7 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 - `src/cli/e2e/e2e-targets.ts` — manifest `testEnvironment` to concrete target URL or skip reason.
 - `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
 - `tests/e2e-runner/guide-runner.spec.ts` — browser-side guide loading, pre-flight checks, DOM discovery, step execution, and result file writing.
-- `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, requirement fixing, artifact capture, and failure classification.
+- `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, browser-termination monitoring, requirement fixing, artifact capture, and failure classification.
 - `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
 
 ## Quick start
@@ -242,7 +242,7 @@ Key contract fields:
 
 The runner always attempts to write a report, even when self-validation fails, so a diagnostic artifact is not lost. A failed validation logs the schema error, writes the original object, and exits with code 2. Consumers must validate the report against the schema matching the producing runner before processing it.
 
-Catchable setup, preflight, provisioning, and Playwright spawn failures still write zero-step reports that validate against the schema. OOM, SIGKILL, and corrupt or missing output remain the worker's responsibility.
+Catchable setup, preflight, provisioning, and Playwright spawn failures still write zero-step reports that validate against the schema. Observable browser termination during step execution produces a runner report. A container OOM or SIGKILL that prevents report creation remains the worker's responsibility.
 
 Consumers that need a language-agnostic contract can extract the JSON Schema from the CLI, so the artifact always matches the binary that produced the report:
 
@@ -336,6 +336,8 @@ The environment is reset **between dependency chains**, not between every guide.
 | Base step timeout          | 30s              | Maximum time for a single step                                                              |
 | Multistep bonus            | +5s per action   | Added for each internal action in multisteps                                                |
 | Guided substep bonus       | +30s per substep | Added for each substep in guided blocks                                                     |
+| Runner step backstop       | 2× step + 20s    | Wall-clock limit after normal step operation budgets                                        |
+| Backstop cleanup grace     | 3s per guide     | Page close, inner-work drain, and result publication after a backstop                       |
 | Button enable wait         | 10s              | Wait for sequential dependencies                                                            |
 | Fix button timeout         | 10s              | Per fix operation                                                                           |
 | Max fix attempts           | 3                | Retry limit before giving up                                                                |
@@ -350,7 +352,9 @@ Examples:
 - A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
 - A guided block with 3 substeps gets a 120s timeout (30s base + 3×30s).
 
-The calculated step timeout is a hard deadline for the complete step operation. If the deadline expires, the runner closes the page and fails the guide.
+The calculated step timeout remains the operation budget for normal completion and artifact collection. The runner backstop is twice this budget plus 20 seconds.
+
+If the backstop expires, the runner closes the page and reports an infrastructure error. Normal skippable and mandatory timeout behavior remains unchanged.
 
 During step execution, the runner also watches for page crash, page close, context close, and browser disconnect events. An unexpected event stops the active work and writes an `infrastructure_error` report with completed prior steps.
 

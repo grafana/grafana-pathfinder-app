@@ -37,6 +37,7 @@ import {
   AbortReason,
   StepTestResult,
   createBrowserTerminationMonitor,
+  settleWithin,
 } from './utils/guide-runner';
 import {
   printHeader,
@@ -99,7 +100,7 @@ function writeResultsFile(
     startedAt: timestamp,
     endedAt: new Date().toISOString(),
     outcome,
-    errorCode: allStepsResult.abortReason ?? (outcome === 'failed' ? 'UNKNOWN' : undefined),
+    errorCode: allStepsResult.abortReason ?? (outcome === 'passed' ? undefined : 'UNKNOWN'),
     errorMessage: allStepsResult.abortMessage,
     results: results.map((r) => ({
       stepId: r.stepId,
@@ -121,24 +122,6 @@ function writeResultsFile(
   };
 
   writeFileSync(resultsFilePath, JSON.stringify(data), 'utf-8');
-}
-async function settleWithin(work: Promise<unknown>, timeoutMs: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      work.then(
-        () => undefined,
-        () => undefined
-      ),
-      new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
 }
 
 /**
@@ -346,13 +329,15 @@ test.describe('Guide Runner', () => {
     }
 
     if (winner.kind === 'terminated') {
+      const resultsAtTermination = [...completedResults];
       terminationMonitor.expectPageClose();
       await settleWithin(page.close({ runBeforeUnload: false }), 1000);
-      await settleWithin(execution, 1000);
+      const drained = await settleWithin(execution, 1000);
       const terminationResult: AllStepsResult = {
-        results: [...completedResults],
+        results: drained.status === 'fulfilled' ? drained.value.results : resultsAtTermination,
         aborted: true,
         abortMessage: winner.message,
+        infrastructureError: true,
       };
       writeResultsFile(
         terminationResult.results,
@@ -383,12 +368,17 @@ test.describe('Guide Runner', () => {
       testStartTimestamp,
       executionResult,
       guideJson,
-      executionResult.abortReason === 'AUTH_EXPIRED'
-        ? 'aborted'
-        : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
-          ? 'failed'
-          : 'passed'
+      executionResult.infrastructureError
+        ? 'infrastructure_error'
+        : executionResult.abortReason === 'AUTH_EXPIRED'
+          ? 'aborted'
+          : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
+            ? 'failed'
+            : 'passed'
     );
+    if (executionResult.infrastructureError) {
+      throw new Error(`RUNNER_TERMINATED: ${executionResult.abortMessage}`);
+    }
 
     // L3-3D: Handle session expiry with specific exit code
     if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {
