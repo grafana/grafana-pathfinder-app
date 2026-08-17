@@ -5,11 +5,12 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { of } from 'rxjs';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { getBackendSrv } from '@grafana/runtime';
 
 import { ChallengeBlockForm } from './ChallengeBlockForm';
+import { loadCodaCapabilities, useCodaTerminalGate } from '../../../integrations/coda/useCodaAvailability.hook';
+import type { CodaCapabilities } from '../../../integrations/coda/coda-api';
 import type { JsonChallengeBlock } from '../../../types/json-guide.types';
 import type { JsonBlock } from '../types';
 
@@ -17,38 +18,32 @@ jest.mock('@grafana/runtime', () => ({
   getBackendSrv: jest.fn(),
 }));
 
+jest.mock('../../../integrations/coda/useCodaAvailability.hook', () => ({
+  useCodaTerminalGate: jest.fn(),
+  loadCodaCapabilities: jest.fn(),
+}));
+
 const mockedGetBackendSrv = getBackendSrv as jest.MockedFunction<typeof getBackendSrv>;
+const mockedUseCodaTerminalGate = useCodaTerminalGate as jest.MockedFunction<typeof useCodaTerminalGate>;
+const mockedLoadCodaCapabilities = loadCodaCapabilities as jest.MockedFunction<typeof loadCodaCapabilities>;
 
 /**
- * Wire the backendSrv so /sample-apps and /alloy-scenarios respond with a
- * deterministic catalog. Spies on the fetch call so individual tests can
- * assert it was hit with the right URL.
+ * Both catalogues ride on `/v1/capabilities`, which the SDK already fetches
+ * once per page load, so the form has no catalogue request of its own to mock.
  */
-function mockBackend(): jest.Mock {
-  const fetch = jest.fn((opts: { url: string }) => {
-    if (opts.url.endsWith('/sample-apps')) {
-      return of({
-        data: {
-          apps: [
-            { id: 'linux-node', name: 'Linux Node', description: 'Node exporter + Alloy', status: 'validated' },
-            { id: 'nginx', name: 'Nginx', description: 'Nginx + exporter + Alloy', status: 'validated' },
-          ],
-        },
-      });
-    }
-    if (opts.url.endsWith('/alloy-scenarios')) {
-      return of({
-        data: {
-          scenarios: [
-            { id: 'broken-scrape', name: 'Broken scrape', description: 'Misconfigured Alloy', status: 'available' },
-          ],
-        },
-      });
-    }
-    return of({ data: {} });
-  });
-  mockedGetBackendSrv.mockReturnValue({ fetch } as unknown as ReturnType<typeof getBackendSrv>);
-  return fetch;
+function codaCapabilities(): CodaCapabilities {
+  return {
+    registered: true,
+    templates: [],
+    sampleApps: [
+      { id: 'linux-node', name: 'Linux Node', description: 'Node exporter + Alloy', status: 'validated' },
+      { id: 'nginx', name: 'Nginx', description: 'Nginx + exporter + Alloy', status: 'validated' },
+    ],
+    alloyScenarios: [
+      { id: 'broken-scrape', name: 'Broken scrape', description: 'Misconfigured Alloy', status: 'experimental' },
+    ],
+    limits: { maxVMsPerUser: 3, maxExecTimeoutMs: 120_000, maxOutputBytes: 32_768 },
+  };
 }
 
 function renderForm(initial?: Partial<JsonChallengeBlock>, onSubmit: (b: JsonBlock) => void = jest.fn()) {
@@ -79,7 +74,9 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockBackend();
+  mockedGetBackendSrv.mockReturnValue({ fetch: jest.fn() } as unknown as ReturnType<typeof getBackendSrv>);
+  mockedLoadCodaCapabilities.mockResolvedValue(codaCapabilities());
+  mockedUseCodaTerminalGate.mockReturnValue('configured');
 });
 
 describe('ChallengeBlockForm', () => {
@@ -106,27 +103,46 @@ describe('ChallengeBlockForm', () => {
   });
 
   describe('dynamic pickers', () => {
-    it('fetches /sample-apps when template is vm-aws-sample-app', () => {
-      const fetch = mockBackend();
+    it('reads sample apps from capabilities when template is vm-aws-sample-app', async () => {
       renderForm({ vmTemplate: 'vm-aws-sample-app' });
-      const sampleAppsCall = fetch.mock.calls.find((c) => c[0].url.endsWith('/sample-apps'));
-      expect(sampleAppsCall).toBeDefined();
+      expect(mockedLoadCodaCapabilities).toHaveBeenCalled();
+      await waitFor(() => expect(screen.getByPlaceholderText('Select a sample app...')).toBeInTheDocument());
     });
 
-    it('fetches /alloy-scenarios when template is vm-aws-alloy-scenario', () => {
-      const fetch = mockBackend();
+    it('reads Alloy scenarios from capabilities when template is vm-aws-alloy-scenario', async () => {
       renderForm({ vmTemplate: 'vm-aws-alloy-scenario' });
-      const scenariosCall = fetch.mock.calls.find((c) => c[0].url.endsWith('/alloy-scenarios'));
-      expect(scenariosCall).toBeDefined();
+      expect(mockedLoadCodaCapabilities).toHaveBeenCalled();
+      await waitFor(() => expect(screen.getByPlaceholderText('Select a scenario...')).toBeInTheDocument());
     });
 
-    it('does NOT fetch either catalog for the default template', () => {
-      const fetch = mockBackend();
+    // Issue #1539: a hand-rolled fetch let Grafana's global handler read a Coda
+    // 401 as the caller's own session expiring and fire a spurious
+    // /api/login/ping plus a replayed request. The SDK's own request sets both
+    // `retry: 1` and `showErrorAlert: false`, so the guard is that the form
+    // never issues a catalogue request itself.
+    it('issues no catalogue request of its own', () => {
+      renderForm({ vmTemplate: 'vm-aws-sample-app' });
+      expect(mockedGetBackendSrv).not.toHaveBeenCalled();
+    });
+
+    // The template list itself now comes from capabilities.templates, since a
+    // hardcoded list cannot show a template the provider added and goes on
+    // offering ones it removed. loadCodaCapabilities is cached per page load, so
+    // this is one request whichever pickers a form happens to show.
+    it('reads the template list from capabilities even with no template chosen', () => {
       renderForm(); // no vmTemplate → defaults to ''
-      const catalogCalls = fetch.mock.calls.filter(
-        (c) => c[0].url.endsWith('/sample-apps') || c[0].url.endsWith('/alloy-scenarios')
-      );
-      expect(catalogCalls).toHaveLength(0);
+      expect(mockedLoadCodaCapabilities).toHaveBeenCalled();
+    });
+
+    it('keeps an authored template in the list when the backend no longer offers it', async () => {
+      renderForm({ vmTemplate: 'vm-aws-retired' });
+      await waitFor(() => expect(screen.getByDisplayValue('vm-aws-retired')).toBeInTheDocument());
+    });
+
+    it('tells the author to type an id when Coda cannot be reached', async () => {
+      mockedLoadCodaCapabilities.mockResolvedValue(null);
+      renderForm({ vmTemplate: 'vm-aws-sample-app' });
+      await waitFor(() => expect(screen.getByPlaceholderText('Coda unavailable — type an app id')).toBeInTheDocument());
     });
   });
 
@@ -389,6 +405,32 @@ describe('ChallengeBlockForm', () => {
       expect(submitted.vmTemplate).toBeUndefined();
       expect(submitted.vmApp).toBeUndefined();
       expect(submitted.setupScript).toBeUndefined();
+    });
+  });
+
+  // Issue #1541: an author whose own stack cannot run Coda needs to know their
+  // preview will not start. Annotated rather than disabled — a guide is often
+  // authored on a stack without Coda for learners on a stack with it.
+  describe('Coda availability annotation', () => {
+    it('warns in the mode description when Coda cannot run here', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('plugin-missing');
+      renderForm({ mode: 'coda' } as Partial<JsonChallengeBlock>);
+
+      expect(screen.getByText(/this grafana cannot run coda challenges/i)).toBeInTheDocument();
+    });
+
+    it('keeps the Coda VM option selectable so cross-stack authoring still works', () => {
+      mockedUseCodaTerminalGate.mockReturnValue('disabled');
+      renderForm({ mode: 'standard' } as Partial<JsonChallengeBlock>);
+
+      const codaRadio = screen.getByRole('radio', { name: /coda vm/i });
+      expect(codaRadio).not.toBeDisabled();
+    });
+
+    it('says nothing when Coda is configured', () => {
+      renderForm({ mode: 'coda' } as Partial<JsonChallengeBlock>);
+
+      expect(screen.queryByText(/this grafana cannot run coda challenges/i)).not.toBeInTheDocument();
     });
   });
 });

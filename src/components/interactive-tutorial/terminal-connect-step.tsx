@@ -12,6 +12,12 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import {
+  codaUnavailableMessage,
+  useCodaSessionEligibility,
+  useReportSandboxUnavailable,
+  useCodaTerminalGate,
+} from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 
@@ -77,7 +83,13 @@ const getStyles = (theme: GrafanaTheme2) => ({
   connectedText: css({
     color: theme.colors.success.text,
   }),
+  unavailable: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
 });
+
+const SANDBOX_SUBJECT = 'This step connects to a Coda sandbox VM';
 
 export const TerminalConnectStep = forwardRef<
   { executeStep: () => Promise<boolean>; markSkipped?: () => void },
@@ -108,6 +120,9 @@ export const TerminalConnectStep = forwardRef<
   ) => {
     const styles = useStyles2(getStyles);
     const terminalCtx = useTerminalContext();
+    const codaGate = useCodaTerminalGate();
+    const codaEligibility = useCodaSessionEligibility();
+    useReportSandboxUnavailable(codaGate, codaEligibility, !!terminalCtx?.isTerminalRegistered, 'terminal-connect');
 
     const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
@@ -184,6 +199,14 @@ export const TerminalConnectStep = forwardRef<
     const isTerminalConnected = terminalCtx?.status === 'connected';
     const isTerminalConnecting = isConnecting || terminalCtx?.status === 'connecting';
     const isEnabled = !disabled && terminalCtx !== null;
+    // The provider mounts even when the panel that owns `connect` is gated
+    // away, so without this the button is enabled and does nothing.
+    const sandboxUnavailable = codaUnavailableMessage(
+      codaGate,
+      codaEligibility,
+      !!terminalCtx?.isTerminalRegistered,
+      SANDBOX_SUBJECT
+    );
 
     let stepState: StepStateValue = STEP_STATES.IDLE;
     if (isCompleted) {
@@ -212,7 +235,11 @@ export const TerminalConnectStep = forwardRef<
       >
         {children && <div className={styles.content}>{children}</div>}
 
-        {isEnabled && !isCompleted && (
+        {isEnabled && !isCompleted && !isTerminalConnected && sandboxUnavailable && (
+          <div className={styles.unavailable}>{sandboxUnavailable}</div>
+        )}
+
+        {isEnabled && !isCompleted && !(sandboxUnavailable && !isTerminalConnected) && (
           <div className={styles.actions}>
             {isTerminalConnected ? (
               <>

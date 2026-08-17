@@ -109,11 +109,32 @@ the fixed internal aggregator.
   confused-deputy shape.
 - **Never replay the inbound `Authorization` header.** Grafana strips it before plugin resource
   handlers, so replaying it forwards an absent header — dead code that reads as load-bearing.
-- Write down the trust assumption **once**, in `docs/developer/CODA.md`, identically for all
-  proxies: structural (non-signature) JWT validation is defensible _only_ because requests reach
-  the plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend
-  is not independently reachable with a client-set `X-Grafana-Id`. Name JWKS verification via
-  `github.com/grafana/authlib` as the single future-hardening item; do not re-argue it per PR.
+
+### The identity trust boundary — canonical statement
+
+This subsection is the single authoritative statement for **all** App Platform proxies. Do not
+re-argue this trade-off per PR; link here instead. (It previously lived in
+`docs/developer/CODA.md`, which was correct only by accident — it moved here when the Coda backend
+was extracted into the `grafana-coda-app` plugin and `CODA.md` became a consumer guide.)
+
+The `/completion-records/*` and `/custom-guide-repository` routes authenticate callers by
+**structural (non-signature) validation** of the Grafana-forwarded ID token (`X-Grafana-Id`, via the
+SDK constant `backend.GrafanaUserSignInTokenHeaderName`): well-formed JWT, `exp` present and
+unexpired, with the `sub` claim extracted verbatim only on routes that serve per-user data
+(`pkg/plugin/app_platform_identity.go`).
+
+This is defensible **only** because requests reach the plugin exclusively via Grafana's trusted
+server→plugin forwarding, and the plugin backend is not independently reachable with a client-set
+`X-Grafana-Id`.
+
+Outbound, the ID token is **not** forwarded as a credential. It is exchanged for a short-lived
+on-behalf-of access token sent on `X-Access-Token`, per the outbound bullets above — never the
+caller's `Cookie`, and never a replay of the inbound `Authorization` header.
+
+The single future-hardening item is cryptographic verification of the inbound ID token against
+Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime
+key-endpoint configuration. (`authlib` is already a direct dependency for the outbound token
+exchange; this is about the inbound check.)
 
 ## 4. Cache
 
@@ -333,8 +354,8 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 
 - Extract shared plumbing: identity helpers, toggle constant, paginated LIST client, URL builder,
   single-flight/cache scaffolding (§8)
-- Document the unsigned-JWT trust boundary once in `docs/developer/CODA.md`, identically; name
-  authlib/JWKS as the future-hardening item (§3)
+- Document the unsigned-JWT trust boundary once, identically — it now lives in §3 of this document;
+  name authlib/JWKS as the future-hardening item (§3)
 - First-request credential diagnostics log (§9)
 - Runtime smoke procedure in the PR body, gating dependent work and the final outbound header set
   (§3, §10)

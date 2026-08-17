@@ -3,10 +3,16 @@
 process.env.TZ = 'UTC';
 
 const baseConfig = require('./.config/jest.config');
+const { grafanaESModules, nodeModulesToTransform } = require('./.config/jest/utils');
 
 module.exports = {
   // Jest configuration provided by Grafana scaffolding
   ...baseConfig,
+
+  // @grafana/coda-client ships ESM-only (no CJS build), so it needs the same
+  // treatment as the packages the scaffolding already knows about.
+  // .config/README.md#esm-errors-with-jest
+  transformIgnorePatterns: [nodeModulesToTransform([...grafanaESModules, '@grafana/coda-client'])],
 
   // Polyfill jsdom-only globals before the scaffolded setup runs so test
   // files can opt into `@jest-environment node` without breaking the

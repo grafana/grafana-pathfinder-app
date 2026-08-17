@@ -109,3 +109,22 @@ export function recordPanelReady(durationMs: number, surface: string): void {
 export function recordCustomGuideCatalogueUnavailable(reason: string): void {
   pushFaroEvent(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason });
 }
+
+/**
+ * A sandbox-backed block could not run, with the rung of the ladder that
+ * stopped it. Emitted once per block that had to degrade, not per render.
+ *
+ * `grafana-coda-app` is a separate plugin, so there are several ordinary ways
+ * for the sandbox to be absent and they are operationally different problems.
+ * Without this, "nobody uses the terminal" and "every terminal block is broken
+ * for everyone on this stack" produce identical telemetry.
+ *
+ * A closed set of rungs, no ids, commands, URLs or guide content — the reason a
+ * capability was unavailable, nothing about what the learner was doing.
+ */
+export type SandboxUnavailableReason =
+  'terminal-disabled' | 'plugin-missing' | 'role-forbidden' | 'panel-not-registered';
+
+export function recordSandboxUnavailable(reason: SandboxUnavailableReason, blockType: string): void {
+  pushFaroEvent(TELEMETRY_EVENTS.sandboxUnavailable, { reason, blockType });
+}

@@ -1,19 +1,11 @@
 package plugin
 
 import (
-	"encoding/json"
-
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
 // Settings contains the plugin configuration from Grafana.
 type Settings struct {
-	CodaRegistered bool   `json:"codaRegistered"`
-	CodaAPIURL     string `json:"codaApiUrl"`
-	CodaRelayURL   string `json:"codaRelayUrl"`
-	EnrollmentKey  string `json:"-"`
-	RefreshToken   string `json:"-"`
-
 	// OBOToken is the per-stack Cloud Access Policy token provisioned by
 	// stack-state-service into secureJsonData.accessToken. The App Platform proxy
 	// routes exchange it for a short-lived on-behalf-of access token; the exchange
@@ -23,23 +15,16 @@ type Settings struct {
 }
 
 // ParseSettings parses the plugin settings from Grafana's AppInstanceSettings.
+//
+// jsonData is deliberately not unmarshalled: every field the backend reads lives
+// in secureJsonData, and Settings maps nothing from JSON. Unmarshalling it anyway
+// meant a malformed blob — written by the frontend config page, which owns that
+// object — failed here and disabled the App Platform proxies over a value nothing
+// reads. Restore the unmarshal if a field ever needs it, and tolerate a parse
+// error rather than propagating it.
 func ParseSettings(appSettings backend.AppInstanceSettings) (*Settings, error) {
 	settings := &Settings{}
 
-	// Parse JSON settings
-	if len(appSettings.JSONData) > 0 {
-		if err := json.Unmarshal(appSettings.JSONData, settings); err != nil {
-			return nil, err
-		}
-	}
-
-	// Get secure settings (enrollment key, refresh token)
-	if enrollmentKey, ok := appSettings.DecryptedSecureJSONData["codaEnrollmentKey"]; ok {
-		settings.EnrollmentKey = enrollmentKey
-	}
-	if refreshToken, ok := appSettings.DecryptedSecureJSONData["codaRefreshToken"]; ok {
-		settings.RefreshToken = refreshToken
-	}
 	if oboToken, ok := appSettings.DecryptedSecureJSONData["accessToken"]; ok {
 		settings.OBOToken = oboToken
 	}

@@ -69,6 +69,19 @@ Notes:
 - Default credentials: `admin` / `admin`.
 - The sidebar **Help** icon opens the docs panel.
 
+### Sandbox terminals
+
+Terminal, terminal-connect and challenge blocks need the separate
+`grafana-coda-app` plugin, which the base stack deliberately does not include —
+Pathfinder treats it as optional and detects it at runtime, and CI must not mount
+it. Opt in with the `docker-compose.coda.yaml` overlay; its header has the
+two-line `.env` recipe and the build commands.
+
+Mounting the plugin is not the whole of setup: registration is a manual step an
+administrator performs once, entering an enrollment key on the Coda plugin's own
+configuration page. Nothing in this repo can do it for you. See
+[`CODA.md`](CODA.md) for the two-plugin setup end to end.
+
 ## Testing against Grafana Cloud (Graft)
 
 Some contributors test their local `dist/` build against a live Grafana Cloud stack instead of (or alongside) the Docker Grafana above, using [Graft](https://github.com/grafana/plugin-graft) — an internal, Grafanista-only browser-extension + local-server tool that intercepts Cloud requests and serves your local build with hot reload. See [`GRAFT_TESTING.md`](GRAFT_TESTING.md) for what this means when debugging or reviewing changes.

@@ -172,7 +172,9 @@ You can configure a custom CDN URL for the kiosk rules JSON and supply an HTML b
 
 When enabled, Coda gives a guide direct access to a 30-minute sandbox VM through a terminal panel inside the docs panel. This is useful for guides that walk through Linux configuration, Alloy scenarios, or sample-app setup.
 
-To enable the terminal, your administrator must register the plugin with a Coda enrollment key. See the [Coda VM system](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/CODA.md) developer reference for the registration flow. Once registered, toggle **Enable Coda terminal** in plugin settings to expose the terminal block types in the block editor and the terminal panel in the docs panel.
+The terminal requires the separate **Coda app plugin** (`grafana-coda-app`) to be installed, enabled, and registered with a Coda enrollment key. Registration happens on that plugin's own configuration page, not this one. Once it is registered, toggle **Enable Coda terminal** in Interactive learning's settings to expose the terminal block types in the block editor and the terminal panel in the docs panel.
+
+While the Coda app plugin is missing or unregistered, Interactive learning hides the terminal panel and the terminal block types, and the configuration page reports which step is outstanding. See the [Coda terminal integration](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/CODA.md) developer reference for details.
 
 ### Live sessions (experimental)
 
