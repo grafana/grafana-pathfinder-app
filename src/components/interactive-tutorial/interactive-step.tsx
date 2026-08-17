@@ -488,6 +488,7 @@ export const InteractiveStep = forwardRef<
           targetValue: currentTargetValue,
           targetState,
           targetComment,
+          openGuide,
           buttonType: 'do',
         });
         if (actionOutcome === 'error') {
@@ -557,6 +558,7 @@ export const InteractiveStep = forwardRef<
       currentTargetValue,
       targetState,
       targetComment,
+      openGuide,
       postVerify,
       verifyStepResult,
       executeInteractiveAction,
@@ -744,6 +746,7 @@ export const InteractiveStep = forwardRef<
               targetValue: currentTargetValue,
               targetState,
               targetComment,
+              openGuide,
               buttonType: 'show',
             });
             return outcome !== 'error';
@@ -777,6 +780,7 @@ export const InteractiveStep = forwardRef<
       currentTargetValue,
       targetState,
       targetComment,
+      openGuide,
       doIt,
       disabled,
       isShowRunning,

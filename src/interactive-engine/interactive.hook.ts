@@ -390,7 +390,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    */
   const executeInteractiveAction = useCallback(
     async (request: InteractiveActionRequest): Promise<StepOutcome> => {
-      const { targetAction, refTarget = '', targetValue, targetState, targetComment, buttonType = 'do' } = request;
+      const { targetAction, refTarget = '', targetValue, targetState, targetComment, openGuide, buttonType = 'do' } = request;
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
         refTarget: refTarget,
@@ -398,6 +398,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         targetValue: targetValue,
         targetState: targetState,
         targetComment: targetComment,
+        openGuide: openGuide,
         requirements: undefined,
         tagName: 'button', // Simulated for React components
         textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,
