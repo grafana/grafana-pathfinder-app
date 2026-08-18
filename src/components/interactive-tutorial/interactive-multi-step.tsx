@@ -25,6 +25,7 @@ import { useInteractiveMode } from '../../global-state/interactive-mode-context'
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 let anonymousMultiStepCounter = 0;
 
@@ -772,6 +773,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         className={`interactive-step${className ? ` ${className}` : ''}${
           uiState === STEP_STATES.COMPLETED ? ' completed' : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
+        {...getTrackedStepRootAttributes('multistep', stepId || renderedStepId)}
         data-targetaction="multistep"
         data-reftarget={renderedStepId}
         data-internal-actions={JSON.stringify(internalActions)}

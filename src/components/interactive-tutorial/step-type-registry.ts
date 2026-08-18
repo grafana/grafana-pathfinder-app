@@ -17,18 +17,19 @@
  */
 
 import type { StepInfo } from '../../types/component-props.types';
+export const STEP_TYPE_KIND_KEYS = [
+  'plain',
+  'multistep',
+  'guided',
+  'quiz',
+  'terminal',
+  'terminal-connect',
+  'codeblock',
+  'challenge',
+  'datasource-check',
+] as const;
 
-/** Discriminant for the tracked step component types. */
-export type StepTypeKind =
-  | 'plain'
-  | 'multistep'
-  | 'guided'
-  | 'quiz'
-  | 'terminal'
-  | 'terminal-connect'
-  | 'codeblock'
-  | 'challenge'
-  | 'datasource-check';
+export type StepTypeKind = (typeof STEP_TYPE_KIND_KEYS)[number];
 
 /** Where the cloneElement `ref` callback for this type should be
  *  stored on the section. `'none'` means no ref is attached. */
@@ -338,23 +339,6 @@ export const STEP_TYPE_SCHEMAS: readonly StepTypeSchema[] = [
   CHALLENGE_BLOCK_SCHEMA,
   DATASOURCE_CHECK_STEP_SCHEMA,
 ];
-
-/**
- * The `kind` value of every registered step schema, as a `const`-asserted
- * tuple so TypeScript flags additions and removals via the
- * `step-type-registry.tripwire.test.ts` parity check.
- */
-export const STEP_TYPE_KIND_KEYS = [
-  'plain',
-  'multistep',
-  'guided',
-  'quiz',
-  'terminal',
-  'terminal-connect',
-  'codeblock',
-  'challenge',
-  'datasource-check',
-] as const;
 
 /** Parse-time keys derived from the registry. Phase 1 substitutes this
  *  set for the duplicated `INTERACTIVE_STEP_TYPES` / `SECTION_TRACKED_STEP_TYPES`
