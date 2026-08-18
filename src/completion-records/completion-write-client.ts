@@ -3,7 +3,6 @@ import { lastValueFrom, timeout, TimeoutError } from 'rxjs';
 
 import { PLUGIN_BACKEND_URL } from '../constants';
 import { extractFetchErrorStatus } from '../lib/fetch-error';
-import { logger } from '../lib/logging';
 import { currentPlatform, type GrafanaPlatform } from '../lib/platform';
 
 import type { CompletionCategory, CompletionSource } from './types';
@@ -46,10 +45,7 @@ export interface CompletionWriteBody {
 /**
  * The outcome of a write attempt, mirroring the Layer A response contract:
  *   - created:       successful backend response, durable — remove from queue.
- *   - terminal:      4xx (not 401/408/429) — the write can never succeed; drop it.
- *                    Includes 403: an identity-scoped authorization failure that
- *                    is not expected to recover, so it is dropped and logged at a
- *                    Faro-visible level rather than retried.
+ *   - terminal:      4xx (not 401/403/408/429) — the write can never succeed; drop it.
  *   - transient:     401 / 408 / 429 / 5xx / network — retry with exponential
  *                    backoff (401 = expired session or forwarded token, which
  *                    recovers after re-auth; 408 = request-timeout ambiguity the
@@ -62,9 +58,19 @@ export interface CompletionWriteBody {
  *                    but KEEP persisting later facts: they survive reload and
  *                    drain on the next arm once the route exists. Never a
  *                    per-item terminal drop.
+ *   - forbidden:     403 — the caller's identity holds no grant for this route.
+ *                    Environmental like route-missing, not a defect in the
+ *                    record, so it takes the same disarm-and-keep path rather
+ *                    than dropping: a grant added later drains the backlog.
+ *                    Reported under its own reason so a stack whose grant never
+ *                    arrives is distinguishable from one missing the route.
  */
 export type WriteOutcome =
-  { kind: 'created' } | { kind: 'terminal' } | { kind: 'transient' } | { kind: 'route-missing' };
+  | { kind: 'created' }
+  | { kind: 'terminal' }
+  | { kind: 'transient' }
+  | { kind: 'route-missing' }
+  | { kind: 'forbidden' };
 
 /**
  * POST one completion fact. Never throws — returns a classified WriteOutcome.
@@ -114,12 +120,12 @@ function classifyWriteError(err: unknown): WriteOutcome {
   if (status === 404) {
     return { kind: 'route-missing' };
   }
-  // 403 is a terminal identity/authorization failure — not expected to be
-  // transient. Surface it at a Faro-visible level so a mis-scoped rollout is
-  // observable, then drop it (the queue would otherwise log the drop at debug).
+  // 403 says the caller's identity holds no grant for this route — a condition
+  // of the environment, not of the record. Dropping would destroy a completion
+  // that a later grant would have accepted, so it joins the disarm-and-keep
+  // path; the queue owns the log and telemetry when that path engages.
   if (status === 403) {
-    logger.warn('completion write: forbidden (403) — dropping record, identity not authorized for this route');
-    return { kind: 'terminal' };
+    return { kind: 'forbidden' };
   }
   if (status !== undefined && status >= 400 && status < 500 && status !== 401 && status !== 408 && status !== 429) {
     return { kind: 'terminal' };

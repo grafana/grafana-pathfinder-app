@@ -62,12 +62,16 @@ describe('postCompletionRecord — outcome classification', () => {
     await expect(postCompletionRecord(body(), 'k')).resolves.toEqual({ kind: 'terminal' });
   });
 
-  it('terminal on 403 (identity-scoped) and logs at a Faro-visible level', async () => {
+  it('forbidden on 403 — an absent grant is environmental, never a per-record drop', async () => {
+    fetchMock.mockReturnValue(throwError(() => ({ status: 403 })));
+    await expect(postCompletionRecord(body(), 'k')).resolves.toEqual({ kind: 'forbidden' });
+  });
+
+  it('does not log on 403 — the queue owns the log when the keep-path engages', async () => {
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
     fetchMock.mockReturnValue(throwError(() => ({ status: 403 })));
-    await expect(postCompletionRecord(body(), 'k')).resolves.toEqual({ kind: 'terminal' });
-    // Not debug: a mis-scoped rollout must be observable in Faro (warn/error).
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('403'));
+    await postCompletionRecord(body(), 'k');
+    expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 

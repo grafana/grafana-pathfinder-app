@@ -16,6 +16,7 @@ const mockPushFaroEvent = pushFaroEvent as jest.Mock;
 
 const REASONS: CompletionWriteDegradation[] = [
   'route-missing',
+  'forbidden-hold',
   'terminal-drop',
   'eviction',
   'expired-drop',

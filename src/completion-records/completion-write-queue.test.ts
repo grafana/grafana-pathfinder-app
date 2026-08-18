@@ -4,9 +4,14 @@
  * directly with no real time or network. `import type` keeps the @grafana/runtime
  * client module out of this suite entirely.
  */
+jest.mock('./completion-write-telemetry', () => ({ reportCompletionWriteDegradation: jest.fn() }));
+
 import { createWriteQueue as createRawWriteQueue, type WriteQueueDeps } from './completion-write-queue';
 import type { CompletionWriteBody, WriteOutcome } from './completion-write-client';
 import type { CompletionWriteStorage, QueuedWrite } from './completion-write-storage';
+import { reportCompletionWriteDegradation } from './completion-write-telemetry';
+
+const degradationMock = reportCompletionWriteDegradation as jest.Mock;
 
 function body(overrides: Partial<CompletionWriteBody> = {}): CompletionWriteBody {
   return {
@@ -201,6 +206,64 @@ describe('write queue — retry/backoff/terminal/disarm', () => {
     // All three items survive for a later session's startup drain.
     expect(memory.storage.list()).toHaveLength(3);
     // Network stays off: no further send this session.
+    expect(s.calls).toHaveLength(1);
+  });
+
+  it('forbidden (403) retains the record instead of dropping it, and disarms the session', async () => {
+    // The regression: 403 used to classify as terminal, so the first attempt
+    // destroyed a completion that a later grant would have accepted.
+    const memory = makeStorage();
+    const s = makeSender([{ kind: 'forbidden' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, storage: memory.storage });
+    q.enqueue(body({ guideId: 'a' }));
+    q.enqueue(body({ guideId: 'b' }));
+
+    const r = await q.processDue();
+
+    expect(r.disarmed).toBe(true);
+    expect(q.isDisarmed()).toBe(true);
+    // Nothing dropped: both survive for a later session, once the grant lands.
+    expect(q.size()).toBe(2);
+    expect(memory.storage.list()).toHaveLength(2);
+    expect(s.calls).toHaveLength(1);
+  });
+
+  it('reports forbidden-hold, not route-missing, so an ungranted stack is discoverable', async () => {
+    // The keep-path is silent growth unless it says which condition engaged it.
+    degradationMock.mockClear();
+    const s = makeSender([{ kind: 'forbidden' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, storage: makeStorage().storage });
+    q.enqueue(body());
+
+    await q.processDue();
+
+    expect(degradationMock).toHaveBeenCalledWith('forbidden-hold');
+    expect(degradationMock).not.toHaveBeenCalledWith('route-missing');
+    expect(degradationMock).not.toHaveBeenCalledWith('terminal-drop');
+  });
+
+  it('still reports route-missing for a 404, keeping the two conditions apart', async () => {
+    degradationMock.mockClear();
+    const s = makeSender([{ kind: 'route-missing' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, storage: makeStorage().storage });
+    q.enqueue(body());
+
+    await q.processDue();
+
+    expect(degradationMock).toHaveBeenCalledWith('route-missing');
+    expect(degradationMock).not.toHaveBeenCalledWith('forbidden-hold');
+  });
+
+  it('forbidden keeps persisting later facts, exactly as route-missing does', async () => {
+    const memory = makeStorage();
+    const s = makeSender([{ kind: 'forbidden' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, storage: memory.storage });
+    q.enqueue(body({ guideId: 'a' }));
+    await q.processDue();
+
+    q.enqueue(body({ guideId: 'c' }));
+
+    expect(memory.storage.list()).toHaveLength(2);
     expect(s.calls).toHaveLength(1);
   });
 

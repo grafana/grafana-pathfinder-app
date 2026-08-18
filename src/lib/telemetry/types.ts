@@ -23,7 +23,13 @@ export type ContentFetchOutcome = 'ok' | 'error';
 // Low-cardinality reason enum for the durable completion-write path degrading.
 // Aggregate classes only — never a guide id/title, user id, URL, or raw error.
 export type CompletionWriteDegradation =
-  'route-missing' | 'terminal-drop' | 'eviction' | 'expired-drop' | 'enqueue-failed' | 'drain-failed';
+  | 'route-missing'
+  | 'forbidden-hold'
+  | 'terminal-drop'
+  | 'eviction'
+  | 'expired-drop'
+  | 'enqueue-failed'
+  | 'drain-failed';
 
 export const TELEMETRY_EVENTS = {
   recommenderFallback: 'pathfinder_recommender_fallback',

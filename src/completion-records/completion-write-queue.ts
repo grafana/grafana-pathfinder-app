@@ -210,12 +210,21 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         remove(item);
         continue;
       }
-      if (outcome.kind === 'route-missing') {
-        // Session-only disarm: items stay persisted so the next app load can
-        // drain them once the route exists (deployment skew is transient).
+      if (outcome.kind === 'route-missing' || outcome.kind === 'forbidden') {
+        // Both are conditions of the environment, not of the record: the route
+        // is not served here (404), or this identity holds no grant for it
+        // (403). Session-only disarm — items stay persisted so a later load
+        // drains them once the route exists or the grant lands. They report
+        // distinct reasons so an ungranted stack, which would otherwise just
+        // accumulate silently, is distinguishable from a stack missing the route.
         disarmed = true;
-        logger.warn('completion write: route missing, feature unavailable this session');
-        reportCompletionWriteDegradation('route-missing');
+        if (outcome.kind === 'forbidden') {
+          logger.warn('completion write: forbidden (403) — retaining records, identity not granted this route');
+          reportCompletionWriteDegradation('forbidden-hold');
+        } else {
+          logger.warn('completion write: route missing, feature unavailable this session');
+          reportCompletionWriteDegradation('route-missing');
+        }
         return { nextDelayMs: null, disarmed: true };
       }
       if (outcome.kind === 'terminal') {
