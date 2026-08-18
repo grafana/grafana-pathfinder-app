@@ -235,7 +235,8 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
     typeof action.refTarget !== 'string' ||
     typeof action.targetAction !== 'string' ||
     !KNOWN_TARGET_ACTIONS.has(action.targetAction) ||
-    !isOptionalTargetState(action.targetState)
+    !isOptionalTargetState(action.targetState) ||
+    !isOptionalString(action.openGuide)
   ) {
     return false;
   }
@@ -254,6 +255,7 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
           isOptionalString(sub.refTarget) &&
           isOptionalString(sub.targetValue) &&
           isOptionalString(sub.targetComment) &&
+          isOptionalString(sub.openGuide) &&
           isOptionalTargetState(sub.targetState)
       )
     );

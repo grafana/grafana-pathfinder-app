@@ -395,11 +395,23 @@ export const InteractiveStep = forwardRef<
     // ============================================================================
 
     // Resolve the target element for monitoring
-    const formTargetElement = useMemo(() => {
+    const [formTargetElement, setFormTargetElement] = useState<HTMLElement | null>(null);
+
+    useEffect(() => {
       if (targetAction !== 'formfill' || !refTarget) {
-        return null;
+        setFormTargetElement(null);
+        return;
       }
-      return resolveTargetElement({ targetAction, refTarget, targetValue: currentTargetValue });
+
+      const resolveFormTarget = () => {
+        const nextElement = resolveTargetElement({ targetAction, refTarget, targetValue: currentTargetValue });
+        setFormTargetElement((previousElement) => (previousElement === nextElement ? previousElement : nextElement));
+      };
+
+      resolveFormTarget();
+      const observer = new MutationObserver(resolveFormTarget);
+      observer.observe(document.body, { childList: true, subtree: true });
+      return () => observer.disconnect();
     }, [targetAction, refTarget, currentTargetValue]);
 
     // Handle form validation completion
