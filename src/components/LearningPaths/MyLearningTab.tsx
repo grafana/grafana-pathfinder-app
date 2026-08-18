@@ -233,8 +233,8 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       // Without packageInfo, the loader falls through to plain fetchContent
       // and the item renders as a bare document — no milestone toolbar, no
-      // progress chrome, no next/prev nav (#1637). Mirrors the packageInfo
-      // threading already done for My Courses / App Platform guides above.
+      // progress chrome, no next/prev nav. Mirrors the packageInfo threading
+      // already done for My Courses / App Platform guides above.
       const packageInfo: PackageOpenInfo | undefined = item.manifest
         ? { packageId: item.id, packageManifest: { ...item.manifest, id: item.id } }
         : undefined;

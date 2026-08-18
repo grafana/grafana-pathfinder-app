@@ -498,9 +498,9 @@ describe('MyLearningTab launch flow', () => {
     );
   });
 
-  // Regression for #1637: without packageInfo, the loader falls through to
-  // plain fetchContent and the item renders as a bare document — no
-  // milestone toolbar, progress chrome, or next/prev nav.
+  // Without packageInfo, the loader falls through to plain fetchContent and
+  // the item renders as a bare document — no milestone toolbar, progress
+  // chrome, or next/prev nav.
   it('threads the inlined manifest through as packageInfo so the item resolves its milestone context', async () => {
     mockDiscoverItems = [
       {

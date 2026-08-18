@@ -234,7 +234,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     // Wire the composite PackageResolver into docs-retrieval so that
     // fetchPackageContent() and fetchPackageById() can resolve bundled and
-    // remote packages. This is the Tier 3/4 injection point described in Phase 4g.
+    // remote packages — the Tier 3/4 injection point.
     //
     // The resolver is one app-wide singleton, not one per surface, so it must
     // always be seeded from the one authoritative config source — the global

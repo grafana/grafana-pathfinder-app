@@ -156,7 +156,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // resolver, that fetch's milestone resolution silently no-ops — the launch
   // renders as a bare, standalone document with no milestone toolbar, no
   // progress chrome, no next/prev navigation, because it never learns the
-  // content is a multi-milestone package at all (#1637). The panel's own
+  // content is a multi-milestone package at all. The panel's own
   // call stays as a harmless re-set for whichever config that specific
   // surface was constructed with.
   setPackageResolver(createCompositeResolver(config));
