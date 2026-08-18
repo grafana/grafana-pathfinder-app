@@ -372,12 +372,7 @@ if (pathfinderEnabled) {
 
         // Enrollment is deliberately here and not at boot: reading the flag emits the
         // exposure event, so this seam is what makes it mean "first sidebar open".
-        // The Faro session was stamped at initFaro, before any arm was known, so
-        // re-stamp to add this cohort. Dynamic import keeps faro-adapter out of module.js.
         enrollInteractiveLearningBannerExperiment();
-        void import('./lib/telemetry/session')
-          .then(({ stampSessionExperiments }) => stampSessionExperiments())
-          .catch((e) => logger.exception(e, { source: 'Session experiment re-stamp' }));
 
         // Track sidebar open via component mount
         // consumePendingOpenSource() returns { source, action } set before opening

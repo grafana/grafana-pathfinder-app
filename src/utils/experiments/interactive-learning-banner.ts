@@ -79,7 +79,19 @@ function readConfig(): InteractiveLearningBannerConfig {
  * @returns The enrolled arm
  */
 export function enrollInteractiveLearningBannerExperiment(): InteractiveLearningBannerConfig {
-  enrolledConfig ??= readConfig();
+  if (enrolledConfig) {
+    return enrolledConfig;
+  }
+  enrolledConfig = readConfig();
+
+  // initFaro stamped the session cohorts before any arm was known, so the stamp has
+  // to be redone here rather than at a panel-open seam: only this point is ordered
+  // after the arm resolves, and it covers every surface. Dynamic import keeps the
+  // Faro adapter out of this chunk.
+  void import('../../lib/telemetry/session')
+    .then(({ stampSessionExperiments }) => stampSessionExperiments())
+    .catch((error) => logger.error('[OpenFeature] Session experiment re-stamp failed', { error }));
+
   return enrolledConfig;
 }
 

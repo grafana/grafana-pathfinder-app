@@ -22,6 +22,11 @@ jest.mock('../../lib/analytics', () => ({
   UserInteraction: { FeatureFlagEvaluated: 'feature_flag_evaluated' },
 }));
 
+const mockStampSessionExperiments = jest.fn();
+jest.mock('../../lib/telemetry/session', () => ({
+  stampSessionExperiments: () => mockStampSessionExperiments(),
+}));
+
 import { createIsolatedReactSdkMock, createIsolatedWebSdkMock } from '../../test-utils/openfeature-mock';
 
 const FLAG = 'pathfinder.interactive-learning-banner-experiment';
@@ -40,6 +45,7 @@ describe('interactive-learning banner experiment', () => {
   beforeEach(() => {
     localStorage.clear();
     mockReportFeatureFlagExposure.mockClear();
+    mockStampSessionExperiments.mockReset();
   });
 
   it('does not evaluate the flag until enrollment is requested', () => {
@@ -114,6 +120,65 @@ describe('interactive-learning banner experiment', () => {
       expect(enrollInteractiveLearningBannerExperiment()).toEqual({ variant: 'excluded' });
 
       consoleSpy.mockRestore();
+    });
+  });
+
+  it('enrolls nobody when no provider answers for the flag', () => {
+    jest.isolateModules(() => {
+      const mockOF = createIsolatedWebSdkMock();
+      // What OpenFeature's no-op provider does: hand back the default it was given.
+      // This is OSS, a failed MTFF init, and an MTFF stack with no value configured.
+      mockOF.mockClient.getObjectValue.mockImplementation((_flagName: string, defaultValue: unknown) => defaultValue);
+      jest.doMock('@openfeature/web-sdk', () => mockOF);
+      jest.doMock('@openfeature/react-sdk', () => createIsolatedReactSdkMock());
+
+      const {
+        enrollInteractiveLearningBannerExperiment,
+        DEFAULT_INTERACTIVE_LEARNING_BANNER_CONFIG,
+      } = require('./interactive-learning-banner');
+
+      expect(DEFAULT_INTERACTIVE_LEARNING_BANNER_CONFIG).toEqual({ variant: 'excluded' });
+      expect(enrollInteractiveLearningBannerExperiment()).toEqual({ variant: 'excluded' });
+    });
+  });
+
+  it('declares the same default in the flag registry as it falls back to', () => {
+    jest.isolateModules(() => {
+      setup({ variant: 'treatment' });
+
+      const { pathfinderFeatureFlags } = require('../openfeature');
+      const { DEFAULT_INTERACTIVE_LEARNING_BANNER_CONFIG } = require('./interactive-learning-banner');
+
+      // Two declarations of one default: readConfig() hands its own constant to
+      // getObjectValue, while getFeatureFlagValue/evaluateFeatureFlag read the
+      // registry's. If they drift, one code path enrolls people the other excludes.
+      expect(pathfinderFeatureFlags[FLAG].defaultValue).toEqual(DEFAULT_INTERACTIVE_LEARNING_BANNER_CONFIG);
+    });
+  });
+
+  it('re-stamps the Faro session cohorts once, after the arm is memoised', async () => {
+    await jest.isolateModulesAsync(async () => {
+      setup({ variant: 'treatment' });
+
+      const {
+        enrollInteractiveLearningBannerExperiment,
+        getEnrolledInteractiveLearningBannerConfig,
+      } = require('./interactive-learning-banner');
+
+      // initFaro stamps before any arm is known, so enrollment owns the re-stamp.
+      // Reading the memo from inside the stamp is what pins the ordering: a stamp
+      // that ran first would see null and re-publish the pre-enrollment cohorts.
+      let armAtStampTime: unknown = 'stamp-never-ran';
+      mockStampSessionExperiments.mockImplementation(() => {
+        armAtStampTime = getEnrolledInteractiveLearningBannerConfig();
+      });
+
+      enrollInteractiveLearningBannerExperiment();
+      enrollInteractiveLearningBannerExperiment();
+      await new Promise(process.nextTick);
+
+      expect(mockStampSessionExperiments).toHaveBeenCalledTimes(1);
+      expect(armAtStampTime).toEqual({ variant: 'treatment' });
     });
   });
 
