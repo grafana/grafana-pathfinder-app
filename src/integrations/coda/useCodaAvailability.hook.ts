@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePluginContext } from '@grafana/data';
-import { isAppPluginEnabled } from '@grafana/runtime';
+import { isAppPluginEnabled, isAppPluginInstalled } from '@grafana/runtime';
 import { getConfigWithDefaults } from '../../constants';
 import { recordSandboxUnavailable, type SandboxUnavailableReason } from '../../lib/telemetry/facade';
 import {
@@ -60,11 +60,31 @@ function capabilitiesOnce(): Promise<CodaCapabilities | null> {
   return cachedCapabilities;
 }
 
+function probeEnabled(): Promise<boolean> {
+  return isCodaProbeSupported()
+    ? isAppPluginEnabled(CODA_PLUGIN_ID).catch(() => false)
+    : capabilitiesOnce().then((capabilities) => capabilities !== null);
+}
+
+/**
+ * `isAppPluginEnabled` fetches the plugin's *settings*, so an absent Coda answers
+ * 404 — which core logs twice and pushes into its own error tracking, reporting
+ * the normal state of an optional plugin as a fault. `isAppPluginInstalled` answers
+ * from boot data at no cost, so it goes first, and only a definite "not installed"
+ * short-circuits: it shares the 13.1 floor and does not itself check *enabled*.
+ *
+ * Keep that branch synchronous — an `await` here defers `capabilitiesOnce` past
+ * `loadCodaCapabilities`, costing the pre-13.1 path a second request.
+ */
 export function isCodaPluginAvailable(): Promise<boolean> {
   if (!cached) {
-    cached = isCodaProbeSupported()
-      ? isAppPluginEnabled(CODA_PLUGIN_ID).catch(() => false)
-      : capabilitiesOnce().then((capabilities) => capabilities !== null);
+    cached =
+      typeof isAppPluginInstalled === 'function'
+        ? isAppPluginInstalled(CODA_PLUGIN_ID).then(
+            (installed) => (installed ? probeEnabled() : false),
+            () => probeEnabled()
+          )
+        : probeEnabled();
   }
   return cached;
 }
@@ -75,7 +95,8 @@ export function resetCodaAvailabilityCache(): void {
 }
 
 /**
- * `checking` on first paint, because the probe is async.
+ * `checking` on first paint, because the probe is async, and for as long as
+ * `shouldProbe` is false, because then it was never asked.
  *
  * Distinct from the boolean below: a caller that renders "Coda is unavailable"
  * needs to know the difference between "not installed" and "not asked yet", or
@@ -83,10 +104,17 @@ export function resetCodaAvailabilityCache(): void {
  */
 export type CodaPluginAvailability = 'checking' | 'available' | 'unavailable';
 
-export function useCodaPluginAvailability(): CodaPluginAvailability {
+/**
+ * `shouldProbe` is the caller's own gate: an installation that never turned the
+ * terminal on must ask nothing about Coda.
+ */
+export function useCodaPluginAvailability(shouldProbe = true): CodaPluginAvailability {
   const [availability, setAvailability] = useState<CodaPluginAvailability>('checking');
 
   useEffect(() => {
+    if (!shouldProbe) {
+      return;
+    }
     let cancelled = false;
     isCodaPluginAvailable().then((result) => {
       if (!cancelled) {
@@ -96,13 +124,13 @@ export function useCodaPluginAvailability(): CodaPluginAvailability {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [shouldProbe]);
 
   return availability;
 }
 
-export function useCodaPluginAvailable(): boolean {
-  return useCodaPluginAvailability() === 'available';
+export function useCodaPluginAvailable(shouldProbe = true): boolean {
+  return useCodaPluginAvailability(shouldProbe) === 'available';
 }
 
 /**
@@ -123,7 +151,7 @@ export function useCodaTerminalGate(): CodaTerminalGate {
     () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableCodaTerminal,
     [pluginContext?.meta?.jsonData]
   );
-  const availability = useCodaPluginAvailability();
+  const availability = useCodaPluginAvailability(enabled);
 
   if (!enabled) {
     return 'disabled';

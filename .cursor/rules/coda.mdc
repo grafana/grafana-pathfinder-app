@@ -91,13 +91,25 @@ is resolved at runtime:
 | Gate | Where |
 |------|-------|
 | `jsonData.enableCodaTerminal` | Pathfinder's own setting (default `false`) |
-| `useCodaPluginAvailable()` | `isAppPluginEnabled('grafana-coda-app')`, cached per page load |
+| `useCodaPluginAvailable()` | `isAppPluginInstalled('grafana-coda-app')` from boot data, then `isAppPluginEnabled` — cached per page load |
 | `isDevMode` | terminal panel only |
 
 `docs-panel.tsx` needs all three; `BlockPalette.tsx` needs the first two. `useCodaTerminalGate()`
 bundles the first two as one verdict (`checking` / `disabled` / `plugin-missing` / `configured`) for
 callers that need to *say* which one is unmet. Never assume the plugin is present — every failure path
 must degrade quietly.
+
+**The first gate is enforced before the probe, not just around its consumer.** `enableCodaTerminal`
+is off by default, so an installation that never turned the terminal on must ask nothing about Coda at
+all: `useCodaPluginAvailability(shouldProbe)` takes the caller's own gate, and `useCodaTerminalGate()`
+passes `enabled` into it. A probe that fires anyway is the bug — it 404s on every page load of every
+stack without Coda.
+
+**Absence is not a fault, and must not be reported as one.** `isAppPluginEnabled` fetches the plugin's
+*settings*, and core logs that 404 twice through `console.error` and pushes it into its own error
+tracking. `isAppPluginInstalled` answers the same question from boot data with no request, so it runs
+first and only a definite "not installed" short-circuits — missing helper, rejection, or `true` all
+fall through, since it does not itself check *enabled*.
 
 **The terminal needs Grafana 13.1**, and only because of that second gate: `isAppPluginEnabled` is
 served by core's own `@grafana/runtime` and does not exist before 13.1, where it throws synchronously

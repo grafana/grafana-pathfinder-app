@@ -111,16 +111,25 @@ Timeouts default to 5 s and are capped at 120 s (the cap accommodates `setupScri
 The terminal is optional, so `grafana-coda-app` is **not** a declared plugin dependency. Three gates
 must all pass for the panel to render:
 
-| Gate                              | Source                                                                |
-| --------------------------------- | --------------------------------------------------------------------- |
-| `isDevMode`                       | `isDevModeEnabled(pluginConfig, userId)`                              |
-| `jsonData.enableCodaTerminal`     | Pathfinder's own setting (default `false`)                            |
-| Coda plugin installed and enabled | `useCodaPluginAvailable()` → `isAppPluginEnabled('grafana-coda-app')` |
+| Gate                              | Source                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| `isDevMode`                       | `isDevModeEnabled(pluginConfig, userId)`                                      |
+| `jsonData.enableCodaTerminal`     | Pathfinder's own setting (default `false`)                                    |
+| Coda plugin installed and enabled | `useCodaPluginAvailable()` → `isAppPluginInstalled` then `isAppPluginEnabled` |
 
 The block editor palette needs the latter two. `CodaBackendStatus` on the configuration page reports
 which gate is unmet and links to `/plugins/grafana-coda-app`.
 
-**Minimum Grafana version: 13.1 — for the terminal only.** The third gate calls `isAppPluginEnabled`,
+**The probe is gated on the setting, not merely its consumer.** `useCodaPluginAvailability(shouldProbe)`
+takes the caller's own gate — `useCodaTerminalGate()` passes `enableCodaTerminal`, `docs-panel.tsx`
+passes `isDevMode && enableCodaTerminal` — so a default installation asks nothing about Coda. And the
+question it asks when it does probe is "is the plugin installed", answered from boot data by
+`isAppPluginInstalled` with no request; only then does it ask `isAppPluginEnabled`, whose settings fetch
+is what 404s. Core logs that 404 twice to the console and pushes it into its own error tracking, which
+is why an absent optional plugin must never reach it.
+
+**Minimum Grafana version: 13.1 — for the terminal only.** The third gate calls `isAppPluginEnabled`
+(and `isAppPluginInstalled`, which shares that floor),
 which core's `@grafana/runtime` did not export before 13.1 and which throws synchronously rather than
 rejecting when absent. Nothing else on the path needs it: `@grafana/coda-client` uses only
 `getBackendSrv().fetch` and `getGrafanaLiveSrv`, and `grafana-coda-app` itself declares
@@ -230,9 +239,10 @@ reason `CODA_PLUGIN_DIST` is **required with no default**: a wrong default would
 directory, Grafana would find no `plugin.json`, and the provisioning entry would then be fatal.
 Failing fast on an unset variable beats debugging a Grafana that never comes up.
 
-Running without the overlay is a supported case, not a broken one: `isAppPluginEnabled` returns
-false, `CodaBackendStatus` says the plugin is absent, and the terminal stays hidden. Worth
-exercising deliberately, since that is what most users see.
+Running without the overlay is a supported case, not a broken one, and it costs no request: boot data
+carries no `grafana-coda-app`, `CodaBackendStatus` says the plugin is absent, and the terminal stays
+hidden. Worth exercising deliberately, since that is what most users see — a console error or a
+`/api/plugins/grafana-coda-app/*` request in this state is a regression.
 
 Rebuilding the Coda **frontend** needs only a page reload; rebuilding its **backend** needs the
 plugin process to restart, so recreate the container. A change to its `plugin.json` needs a full

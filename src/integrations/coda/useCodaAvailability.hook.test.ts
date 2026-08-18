@@ -8,13 +8,27 @@
  */
 
 import { renderHook, waitFor } from '@testing-library/react';
-import { isAppPluginEnabled } from '@grafana/runtime';
+import { usePluginContext } from '@grafana/data';
+import { isAppPluginEnabled, isAppPluginInstalled } from '@grafana/runtime';
 
-import { getCapabilities, type CodaCapabilities } from './coda-api';
-import { resetCodaAvailabilityCache, useCodaSessionEligibility } from './useCodaAvailability.hook';
+import { CODA_PLUGIN_ID, getCapabilities, type CodaCapabilities } from './coda-api';
+import {
+  isCodaPluginAvailable,
+  resetCodaAvailabilityCache,
+  useCodaSessionEligibility,
+  useCodaTerminalGate,
+} from './useCodaAvailability.hook';
 
 jest.mock('@grafana/runtime', () => ({
   isAppPluginEnabled: jest.fn(),
+  isAppPluginInstalled: jest.fn(),
+  // getConfigWithDefaults warns to the console when it cannot read buildInfo.
+  config: { bootData: { settings: { buildInfo: { versionString: 'Grafana v13.1.0' } } } },
+}));
+
+jest.mock('@grafana/data', () => ({
+  ...jest.requireActual('@grafana/data'),
+  usePluginContext: jest.fn(),
 }));
 
 jest.mock('./coda-api', () => ({
@@ -23,6 +37,8 @@ jest.mock('./coda-api', () => ({
 }));
 
 const mockedIsAppPluginEnabled = isAppPluginEnabled as jest.MockedFunction<typeof isAppPluginEnabled>;
+const mockedIsAppPluginInstalled = isAppPluginInstalled as jest.MockedFunction<typeof isAppPluginInstalled>;
+const mockedUsePluginContext = usePluginContext as jest.MockedFunction<typeof usePluginContext>;
 const mockedGetCapabilities = getCapabilities as jest.MockedFunction<typeof getCapabilities>;
 
 function capabilities(overrides: Partial<CodaCapabilities> = {}): CodaCapabilities {
@@ -40,6 +56,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   resetCodaAvailabilityCache();
   mockedIsAppPluginEnabled.mockResolvedValue(true);
+  mockedIsAppPluginInstalled.mockResolvedValue(true);
 });
 
 describe('useCodaSessionEligibility', () => {
@@ -101,6 +118,21 @@ describe('useCodaSessionEligibility', () => {
 });
 
 describe('isCodaPluginAvailable', () => {
+  it('never asks for the plugin’s settings when boot data says it is not installed', async () => {
+    mockedIsAppPluginInstalled.mockResolvedValue(false);
+
+    await expect(isCodaPluginAvailable()).resolves.toBe(false);
+    // The settings fetch is the 404; the verdict alone would not catch its return.
+    expect(mockedIsAppPluginEnabled).not.toHaveBeenCalled();
+  });
+
+  it('still asks whether the plugin is enabled when the installed probe fails', async () => {
+    mockedIsAppPluginInstalled.mockRejectedValue(new Error('boom'));
+
+    await expect(isCodaPluginAvailable()).resolves.toBe(true);
+    expect(mockedIsAppPluginEnabled).toHaveBeenCalledWith(CODA_PLUGIN_ID);
+  });
+
   // isAppPluginEnabled is served by Grafana core's own @grafana/runtime at
   // runtime, not bundled with this plugin, and is absent on core versions
   // older than ~13.1. Calling it there throws synchronously rather than
@@ -109,18 +141,33 @@ describe('isCodaPluginAvailable', () => {
   // Its absence must not read as "the plugin is missing" either: the terminal
   // works across the whole grafanaDependency range, so on those versions the
   // provider is asked directly instead.
-  function withoutCoreProbe<T>(read: () => T): T {
+  function withRuntime<T>(runtime: Record<string, unknown>, read: () => T): T {
     let value!: T;
     // @grafana/runtime is already cached (with isAppPluginEnabled present) from
     // this file's static import above — reset the registry first, or doMock
     // below is silently ignored and the module keeps the wrong mock.
     jest.resetModules();
     jest.isolateModules(() => {
-      jest.doMock('@grafana/runtime', () => ({}));
+      jest.doMock('@grafana/runtime', () => runtime);
       value = read();
     });
     return value;
   }
+
+  function withoutCoreProbe<T>(read: () => T): T {
+    return withRuntime({}, read);
+  }
+
+  it('asks whether the plugin is enabled on a core without the installed probe', async () => {
+    const enabled = jest.fn().mockResolvedValue(true);
+    const result = withRuntime({ isAppPluginEnabled: enabled }, () => {
+      const { isCodaPluginAvailable: probe } = require('./useCodaAvailability.hook');
+      return probe() as Promise<boolean>;
+    });
+
+    await expect(result).resolves.toBe(true);
+    expect(enabled).toHaveBeenCalledWith(CODA_PLUGIN_ID);
+  });
 
   it('does not throw when the running Grafana core predates isAppPluginEnabled', async () => {
     const result = withoutCoreProbe(() => {
@@ -164,5 +211,36 @@ describe('isCodaPluginAvailable', () => {
 
     await expect(available).resolves.toEqual([true, capabilities()]);
     expect(calls).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useCodaTerminalGate', () => {
+  function withTerminalSetting(enableCodaTerminal: boolean) {
+    mockedUsePluginContext.mockReturnValue({ meta: { jsonData: { enableCodaTerminal } } } as never);
+  }
+
+  it('asks nothing about Coda when the operator has not enabled the terminal', () => {
+    withTerminalSetting(false);
+    const { result } = renderHook(() => useCodaTerminalGate());
+
+    expect(result.current).toBe('disabled');
+    expect(mockedIsAppPluginInstalled).not.toHaveBeenCalled();
+    expect(mockedIsAppPluginEnabled).not.toHaveBeenCalled();
+  });
+
+  it('reports plugin-missing without a settings fetch when boot data has no Coda', async () => {
+    mockedIsAppPluginInstalled.mockResolvedValue(false);
+    withTerminalSetting(true);
+    const { result } = renderHook(() => useCodaTerminalGate());
+
+    await waitFor(() => expect(result.current).toBe('plugin-missing'));
+    expect(mockedIsAppPluginEnabled).not.toHaveBeenCalled();
+  });
+
+  it('reports configured when both operator gates pass', async () => {
+    withTerminalSetting(true);
+    const { result } = renderHook(() => useCodaTerminalGate());
+
+    await waitFor(() => expect(result.current).toBe('configured'));
   });
 });
