@@ -152,11 +152,13 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const config = publishPathfinderPluginConfig(meta?.jsonData || {});
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
 
-  // Deferred: constructing the resolver eagerly would pull its dependencies into the entry bundle.
+  // Deferred: setPackageResolverFactory only stores this thunk, so the dynamic
+  // import — and its zod/CDN/etc. dependencies — isn't fetched until something
+  // actually calls getPackageResolver(), not on every page load. No
+  // webpackPrefetch here: by the time it's read, it's needed promptly (inside
+  // fetchPackageContent's Promise.all), not at idle-time priority.
   setPackageResolverFactory(() =>
-    import(/* webpackPrefetch: true */ './package-engine/composite-resolver').then((m) =>
-      m.createCompositeResolver(config)
-    )
+    import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(config))
   );
 
   // `meta.jsonData` can lag a recent save. Re-publish from the authoritative
@@ -167,9 +169,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
       // Skip re-registering when nothing changed — avoids a redundant resolver rebuild.
       if (refreshed !== config) {
         setPackageResolverFactory(() =>
-          import(/* webpackPrefetch: true */ './package-engine/composite-resolver').then((m) =>
-            m.createCompositeResolver(refreshed)
-          )
+          import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(refreshed))
         );
       }
     }

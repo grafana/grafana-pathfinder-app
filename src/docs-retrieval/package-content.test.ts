@@ -347,6 +347,14 @@ describe('setPackageResolverFactory', () => {
     setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
   });
 
+  it('does not invoke the factory until the resolver is actually read', () => {
+    const factory = jest.fn().mockResolvedValue(makeResolver(makeSuccessResolution({ id: 'm1' })));
+
+    setPackageResolverFactory(factory);
+
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   it('resolves milestones once the factory-registered resolver is available', async () => {
     setPackageResolverFactory(() => Promise.resolve(makeResolver(makeSuccessResolution({ id: 'm1' }))));
 

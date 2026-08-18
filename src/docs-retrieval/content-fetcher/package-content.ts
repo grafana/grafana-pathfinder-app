@@ -237,16 +237,19 @@ export async function fetchPackageContent(
   const shouldResolveMilestones =
     needsMilestones && (!preResolvedMilestones || preResolvedMilestones.length === 0) && milestoneIds.length > 0;
 
-  const resolver = await getPackageResolver();
-
   // Run content fetch, milestone resolution, and baseUrl resolution in
   // parallel. These are independent: the page body doesn't need milestones
-  // and milestones don't need the page body.
+  // and milestones don't need the page body. The baseUrl branch awaits
+  // getPackageResolver() itself (rather than a resolver fetched ahead of this
+  // array) so a cold resolver's chunk fetch overlaps fetchContent(contentUrl)
+  // instead of serializing in front of it.
   const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
-    manifestId && resolver
-      ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined)
+    manifestId
+      ? getPackageResolver().then((resolver) =>
+          resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
+        )
       : Promise.resolve(undefined),
   ]);
 
