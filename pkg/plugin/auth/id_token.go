@@ -18,10 +18,7 @@ const SigningKeysPath = "/api/signing-keys/keys"
 
 // signingKeysFetchTimeout bounds one JWKS fetch. authlib's key retriever
 // defaults to http.DefaultClient, which has no timeout, and the fetch runs
-// inline in the identity gate of every proxy route. It also bounds Verify's
-// detached context, which is a different thing: the client timeout covers one
-// HTTP round trip, the deadline covers the whole wait including another
-// caller's in-flight fetch.
+// inline in the identity gate of every proxy route.
 const signingKeysFetchTimeout = 5 * time.Second
 
 // ErrMissingExpiry rejects an ID token carrying no `exp` claim. go-jose
@@ -30,8 +27,7 @@ const signingKeysFetchTimeout = 5 * time.Second
 var ErrMissingExpiry = errors.New("id token has no exp claim")
 
 // IDTokenVerifier cryptographically verifies inbound Grafana ID tokens
-// (X-Grafana-Id) against the issuing stack's published signing keys, so a
-// client-set header cannot name a subject the proxy routes then trust.
+// (X-Grafana-Id) against the issuing stack's published signing keys.
 //
 // Safe for concurrent use. Authlib caches fetched keys for the lifetime of this
 // verifier, so callers must reuse it across requests but replace it on a bounded
@@ -40,13 +36,9 @@ type IDTokenVerifier struct {
 	verifier *authn.IDTokenVerifier
 }
 
-// NewIDTokenVerifier builds a verifier that fetches signing keys from appURL —
-// the stack's own front door, which is both the issuer of the forwarded ID
-// tokens and the origin the proxy routes already LIST against.
-//
-// Audience is deliberately not validated: an ID token's `aud` is `org:<orgID>`,
-// which tells a plugin nothing it can act on. This mirrors Grafana's own
-// ExtendedJWT client (grafana/pkg/services/authn/clients/ext_jwt.go).
+// NewIDTokenVerifier builds a verifier against the signing keys appURL
+// publishes. Audience is deliberately not validated (see the trust boundary in
+// docs/design/BACKEND_PROXY_PATTERN.md §3).
 func NewIDTokenVerifier(appURL string) (*IDTokenVerifier, error) {
 	keysURL, err := signingKeysURL(appURL)
 	if err != nil {
@@ -55,7 +47,17 @@ func NewIDTokenVerifier(appURL string) (*IDTokenVerifier, error) {
 
 	keys := authn.NewKeyRetriever(
 		authn.KeyRetrieverConfig{SigningKeysURL: keysURL},
-		authn.WithHTTPClientKeyRetrieverOpt(&http.Client{Timeout: signingKeysFetchTimeout}),
+		authn.WithHTTPClientKeyRetrieverOpt(&http.Client{
+			Timeout: signingKeysFetchTimeout,
+			// A redirect off the stack's host would hand key selection to whatever
+			// origin it lands on, which forges any `sub` the proxies then trust.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if req.URL.Hostname() != via[0].URL.Hostname() {
+					return fmt.Errorf("signing-keys redirect left the stack host: %s", req.URL.Hostname())
+				}
+				return nil
+			},
+		}),
 	)
 	return &IDTokenVerifier{verifier: authn.NewIDTokenVerifier(authn.VerifierConfig{}, keys)}, nil
 }
@@ -75,7 +77,7 @@ func signingKeysURL(appURL string) (string, error) {
 // claim VERBATIM, typed prefix included (e.g. "user:abc123"). A verified token
 // may legitimately carry no subject, so ("", nil) is a success.
 func (v *IDTokenVerifier) Verify(ctx context.Context, token string) (string, error) {
-	// Detach from the caller's cancellation, bounded so detached never means
+	// Detached from the caller's cancellation, bounded so detached never means
 	// unkillable: authlib singleflights the key fetch across concurrent callers,
 	// so the leader's canceled request would otherwise fail every waiter with a
 	// spurious signing-keys outage. The key fetch is Verify's only I/O.
@@ -93,14 +95,9 @@ func (v *IDTokenVerifier) Verify(ctx context.Context, token string) (string, err
 }
 
 // SigningKeysUnavailable reports whether a Verify error means the key set could
-// not be fetched, as opposed to the token being unacceptable (bad signature,
-// unrecognized key, expired, wrong type, no `exp`). Both fail closed, but only
-// this one is an operational fault, and conflating them makes a JWKS outage look
-// like a crowd of unauthenticated callers.
-//
-// Deliberately the narrow half of the split: an error this does not recognize
-// counts as a bad token, so a new authlib rejection can never be mistaken for an
-// outage the operator is expected to fix.
+// not be fetched, rather than the token being unacceptable. Deliberately the
+// narrow half of the split: an error it does not recognize counts as a bad
+// token, so a new authlib rejection can never be mistaken for an outage.
 func SigningKeysUnavailable(err error) bool {
 	return errors.Is(err, authn.ErrFetchingSigningKey)
 }
