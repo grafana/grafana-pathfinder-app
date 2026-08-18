@@ -1,6 +1,7 @@
 import { getAppEvents } from '@grafana/runtime';
+import { t } from '@grafana/i18n';
 import { StorageKeys } from '../lib/storage-keys';
-import { PANEL_MODE_CHANGE_EVENT } from '../lib/event-names';
+import { PANEL_MODE_CHANGE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
 // Surgical import (not the ../lib/telemetry barrel): panel-mode is
 // entry-eager, and the barrel would pull the telemetry package into module.js.
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
@@ -314,3 +315,22 @@ class PanelModeManager {
 }
 
 export const panelModeManager = new PanelModeManager();
+
+/**
+ * Full screen has no live Grafana UI behind it, so Grafana-driving content
+ * encountered there can't actually be acted on. Signal FullScreenPanel to
+ * hand off to the sidebar (reusing its existing handleExitToSidebar) instead.
+ *
+ * Called two ways: proactively, the moment a newly-loaded milestone turns out
+ * to require the Grafana UI, before the user has clicked anything — see
+ * `loadDocsTabContent` in docs-panel.tsx, the sole caller. Surface is a
+ * property of which milestone the user navigated to, decided once at that
+ * point; nothing about an individual step's action reopens this decision.
+ */
+export function requestSidebarHandoff(): void {
+  document.dispatchEvent(new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT));
+  getAppEvents().publish({
+    type: 'alert-info',
+    payload: [t('panelMode.sidebarHandoffTitle', 'Switched to the sidebar so you can complete this step')],
+  });
+}
