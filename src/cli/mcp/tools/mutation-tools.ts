@@ -22,11 +22,11 @@ import { runAddStep } from '../../commands/add-step';
 import { runEditBlock } from '../../commands/edit-block';
 import { runRemoveBlock } from '../../commands/remove-block';
 import { runSetManifest } from '../../commands/set-manifest';
-import { BLOCK_SCHEMA_MAP, type BlockType } from '../../utils/block-registry';
+import { BLOCK_SCHEMA_MAP, CONTAINER_BLOCK_TYPES, type BlockType } from '../../utils/block-registry';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
 import type { AuthoringSessionStore } from '../lib/session-store';
-import { writeDestructive } from './annotations';
+import { writeAppend, writeDestructive } from './annotations';
 import { resolveAndPinToken } from './read-input';
 import {
   concurrentModificationResult,
@@ -105,9 +105,99 @@ function verifyArtifactEtag(artifact: {
 
 const FlagValuesSchema = z
   .record(z.string(), z.unknown())
-  .describe('Block field values keyed by field name (e.g. content, action, target). The CLI is the sole validator.');
+  .describe('Payload fields keyed by name (e.g. content, action, reftarget). The CLI is the sole validator.');
 
-const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as BlockType[];
+const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as [BlockType, ...BlockType[]];
+
+// Containers need an author-supplied id so later calls can target them as
+// `parentId`. Derived from the CLI registry rather than hand-listed, so the
+// agent-facing copy can't drift from the CONTAINER_REQUIRES_ID check.
+const CONTAINER_TYPES_TEXT = BlockTypeEnum.filter((type) => CONTAINER_BLOCK_TYPES.has(type)).join(', ');
+
+/**
+ * Single source of truth for pathfinder_manage_block args. Resource selection
+ * happens at the tool boundary; only the add/edit/remove block matrix remains.
+ */
+const ManageBlockInputSchema = z
+  .object({
+    ...ArtifactInputSchema,
+    operation: z.enum(['add', 'edit', 'remove']).describe('Block mutation to perform.'),
+    type: z
+      .enum(BlockTypeEnum)
+      .optional()
+      .describe(`[add] Required block type. Container types (${CONTAINER_TYPES_TEXT}) must also be given an \`id\`.`),
+    parentId: z.string().optional().describe('[add] Optional parent container id. Omit to append at the guide root.'),
+    branch: z
+      .enum(['true', 'false'])
+      .optional()
+      .describe(
+        '[add] Required when `parentId` is a conditional — destination arm (`whenTrue` / `whenFalse`). Omit otherwise.'
+      ),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        `[add] Create-time id; required for containers (${CONTAINER_TYPES_TEXT}), auto-minted for leaves. [edit|remove] Required target block id.`
+      ),
+    fields: FlagValuesSchema.optional().describe(
+      '[add] Optional block payload (CLI validates). [edit] Required non-empty fields to overwrite.'
+    ),
+    cascade: z
+      .boolean()
+      .default(false)
+      .describe(
+        '[remove] When true, also delete children. Required for a non-empty container (else CONTAINER_HAS_CHILDREN). Default false.'
+      ),
+  })
+  .superRefine((args, ctx) => {
+    const requireString = (field: 'type' | 'parentId' | 'id', message: string): void => {
+      if (typeof args[field] !== 'string' || args[field].trim() === '') {
+        ctx.addIssue({ code: 'custom', path: [field], message });
+      }
+    };
+    const requireFields = (message: string): void => {
+      if (!args.fields || Object.keys(args.fields).length === 0) {
+        ctx.addIssue({ code: 'custom', path: ['fields'], message });
+      }
+    };
+
+    if (args.operation === 'add') {
+      requireString('type', 'Adding a block requires `type`.');
+      // The CLI rejects an id-less container with CONTAINER_REQUIRES_ID. Catch it
+      // at the schema boundary instead so the agent gets the rule stated in MCP
+      // terms (`id`, not the CLI's `--id`) before any session mutation is attempted.
+      if (typeof args.type === 'string' && CONTAINER_BLOCK_TYPES.has(args.type)) {
+        requireString(
+          'id',
+          `add+block with type "${args.type}" requires \`id\` — container blocks must be addressable so later calls can pass them as \`parentId\`.`
+        );
+      }
+    } else if (args.operation === 'edit') {
+      requireString('id', 'Editing a block requires `id`.');
+      requireFields('Editing a block requires non-empty `fields`.');
+    } else if (args.operation === 'remove') {
+      requireString('id', 'Removing a block requires `id`.');
+    }
+  });
+
+/** Post-parse manage_block args (cascade always present via `.default(false)`). */
+type ManageBlockInput = z.infer<typeof ManageBlockInputSchema>;
+
+const AddStepInputSchema = z.object({
+  ...ArtifactInputSchema,
+  parentId: z.string().min(1).describe('Parent multistep or guided block id.'),
+  fields: FlagValuesSchema.refine((fields) => Object.keys(fields).length > 0, {
+    message: 'Adding a step requires at least one field.',
+  }).describe('Step fields such as action, description, reftarget, and requirements.'),
+});
+
+const AddChoiceInputSchema = z.object({
+  ...ArtifactInputSchema,
+  parentId: z.string().min(1).describe('Parent quiz block id.'),
+  fields: FlagValuesSchema.refine((fields) => Object.keys(fields).length > 0, {
+    message: 'Adding a choice requires at least one field.',
+  }).describe('Choice fields such as id, text, correct, and feedback.'),
+});
 
 /**
  * Shared dispatch for every mutation tool's two-mode input. Validates
@@ -174,134 +264,32 @@ async function dispatchMutation(
   });
 }
 
-const NonEmptyFlagValuesSchema = FlagValuesSchema.refine((fields) => Object.keys(fields).length > 0, {
-  message: 'At least one field is required.',
-});
-
 /**
- * Validation contract with one object schema (so MCP discovery stays
- * flat and readable) plus conditional Zod refinement for the operation × resource matrix.
- */
-const ManageBlockInputSchema = z
-  .object({
-    ...ArtifactInputSchema,
-    operation: z.enum(['add', 'edit', 'remove']).describe('Mutation verb.'),
-    resource: z
-      .enum(['block', 'step', 'choice'])
-      .describe('Resource to mutate. Blocks support add/edit/remove; steps and choices currently support add only.'),
-    type: z
-      .enum(BlockTypeEnum as [string, ...string[]])
-      .optional()
-      .describe('Required for add+block. Block type discriminator.'),
-    parentId: z.string().optional().describe('Optional for add+block; required for add+step and add+choice.'),
-    branch: z.enum(['true', 'false']).optional().describe('For add+block with a conditional parent.'),
-    ifAbsent: z.boolean().optional().describe('For add+block, skip when a matching id already exists.'),
-    explicitId: z.string().optional().describe('For add+block. Required for containers; auto-minted for leaves.'),
-    before: z.string().optional().describe('For add+block, insert before this block id.'),
-    after: z.string().optional().describe('For add+block, insert after this block id.'),
-    position: z.number().int().nonnegative().optional().describe('For add+block, insert at this zero-based index.'),
-    fields: FlagValuesSchema.optional().describe(
-      'Block, step, or choice fields. Required and non-empty for edit+block, add+step, and add+choice.'
-    ),
-    id: z.string().optional().describe('Required for edit+block and remove+block.'),
-    cascade: z.boolean().default(false).describe('For remove+block, also remove children.'),
-    orphanChildren: z.boolean().optional().describe("For remove+block, hoist children to the removed block's parent."),
-  })
-  .superRefine((args, ctx) => {
-    const requireString = (field: 'type' | 'parentId' | 'id', message: string): void => {
-      if (typeof args[field] !== 'string' || args[field].trim() === '') {
-        ctx.addIssue({ code: 'custom', path: [field], message });
-      }
-    };
-    const requireFields = (message: string): void => {
-      const parsed = NonEmptyFlagValuesSchema.safeParse(args.fields);
-      if (!parsed.success) {
-        ctx.addIssue({ code: 'custom', path: ['fields'], message });
-      }
-    };
-
-    if (args.operation === 'add' && args.resource === 'block') {
-      requireString('type', 'add+block requires `type`.');
-    } else if (args.operation === 'add' && (args.resource === 'step' || args.resource === 'choice')) {
-      requireString('parentId', `add+${args.resource} requires \`parentId\`.`);
-      requireFields(`add+${args.resource} requires non-empty \`fields\`.`);
-    } else if (args.operation === 'edit' && args.resource === 'block') {
-      requireString('id', 'edit+block requires `id`.');
-      requireFields('edit+block requires non-empty `fields`.');
-    } else if (args.operation === 'remove' && args.resource === 'block') {
-      requireString('id', 'remove+block requires `id`.');
-    }
-    // edit/remove × step/choice are valid reserved calls. They proceed
-    // through two-mode/session checks and return UNSUPPORTED_OPERATION.
-  });
-
-type ManageBlockInput = z.infer<typeof ManageBlockInputSchema>;
-
-const UNSUPPORTED_CHILD_MUTATION: CommandOutcome = {
-  status: 'error',
-  code: 'UNSUPPORTED_OPERATION',
-  message:
-    'edit/remove of step and choice are not available yet (steps/choices are not individually addressable — see OQ2 in MCP-AGENT-UX-HARDENING). Workaround: pathfinder_manage_block with operation "remove", resource "block", cascade true on the parent multistep/guided/quiz, then re-add children with operation "add".',
-};
-
-function invalidManageInput(message: string): CommandOutcome {
-  return { status: 'error', code: 'INVALID_INPUT', message };
-}
-
-/**
- * Map a Zod-validated operation × resource call to its existing CLI runner.
- * Supported calls cannot reach this function without their required fields.
+ * Map a Zod-validated block operation to its existing CLI runner.
  */
 function manageBlockRunner(args: ManageBlockInput): (dir: string) => Promise<CommandOutcome> | CommandOutcome {
-  const { operation, resource } = args;
-
-  // Conditional topology will coalesce once edit and remove exist for steps and choices.
-  // Pending future addition of addressability for steps and choices, see OQ2 in MCP-AGENT-UX-HARDENING.
-  if ((operation === 'edit' || operation === 'remove') && (resource === 'step' || resource === 'choice')) {
-    return () => UNSUPPORTED_CHILD_MUTATION;
+  switch (args.operation) {
+    case 'add':
+      return (dir) =>
+        runAddBlock({
+          dir,
+          // superRefine requires type before the handler runs.
+          type: args.type!,
+          parentId: args.parentId,
+          branch: args.branch,
+          explicitId: args.id,
+          flagValues: args.fields ?? {},
+        });
+    case 'edit':
+      return (dir) => runEditBlock({ dir, id: args.id!, flagValues: args.fields! });
+    case 'remove':
+      return (dir) =>
+        runRemoveBlock({
+          dir,
+          id: args.id!,
+          cascade: args.cascade,
+        });
   }
-
-  if (resource === 'block') {
-    switch (operation) {
-      case 'add': {
-        return (dir) =>
-          runAddBlock({
-            dir,
-            type: args.type as BlockType,
-            parentId: args.parentId,
-            branch: args.branch,
-            ifAbsent: args.ifAbsent,
-            explicitId: args.explicitId,
-            before: args.before,
-            after: args.after,
-            position: args.position,
-            flagValues: args.fields ?? {},
-          });
-      }
-      case 'edit': {
-        return (dir) => runEditBlock({ dir, id: args.id!, flagValues: args.fields! });
-      }
-      case 'remove': {
-        return (dir) =>
-          runRemoveBlock({
-            dir,
-            id: args.id!,
-            cascade: args.cascade,
-            orphanChildren: args.orphanChildren,
-          });
-      }
-    }
-  }
-
-  // resource === 'step' | 'choice' — only add is live (edit/remove stubbed above).
-  if (operation === 'add') {
-    if (resource === 'step') {
-      return (dir) => runAddStep({ dir, parentId: args.parentId!, flagValues: args.fields! });
-    }
-    return (dir) => runAddChoice({ dir, parentId: args.parentId!, flagValues: args.fields! });
-  }
-
-  return () => invalidManageInput(`Unsupported operation/resource pair: ${operation}/${resource}.`);
 }
 
 export function registerMutationTools(
@@ -310,15 +298,19 @@ export function registerMutationTools(
 ): void {
   const { sessionStore, mcpSessionId } = options;
 
-  // One MCP tool for the whole guide-tree write enablement: operation ×
-  // resource. CLI runners stay verb-shaped; this is an MCP-only adapter so
-  // agents pay one tool slot for mutating the tree. edit/remove of step and
-  // choice are stubbed (UNSUPPORTED_OPERATION) until OQ2 lands.
+  // Block mutations share one resource-focused tool. Steps and choices remain
+  // separate append tools because they are child members with different parent
+  // and payload contracts, not addressable blocks.
   server.registerTool(
     'pathfinder_manage_block',
     {
-      description:
-        'Use this tool when the user wants to mutate the block tree of a Pathfinder guide. Pass `operation: "add" | "edit" | "remove"` and `resource: "block" | "step" | "choice"`. Supported today: add/edit/remove on block; add on step (inside multistep/guided) and choice (inside quiz). edit/remove on step or choice return UNSUPPORTED_OPERATION — workaround: remove the parent block with cascade and re-add children. Field schemas mirror the CLI — call `pathfinder_help` with command "add-block", "edit-block", "remove-block", "add-step", or "add-choice". Returns the updated artifact (or a session ack).',
+      description: [
+        'Use this tool when the user wants to add, edit, or remove a block in a Pathfinder guide.',
+        'Adds append under the parent (reorder = remove + re-add). Duplicate ids → DUPLICATE_ID.',
+        'Field schemas: pathfinder_help with command "add-block" (subcommand=<type>), "edit-block", or "remove-block" matching `operation`.',
+        'CLI flag names (e.g. --content, --action) become keys in `fields`; addressing flags map to tool args (`--parent`→`parentId`, `--id`→`id`, `--branch`→`branch`).',
+        'Returns updated artifact (stateless) or session ack (sessionToken).',
+      ].join(' '),
       // Conservative: the tool can remove/overwrite, so clients that respect
       // destructiveHint treat the whole surface as confirmation-worthy.
       annotations: writeDestructive('Manage Pathfinder block'),
@@ -334,14 +326,44 @@ export function registerMutationTools(
   );
 
   server.registerTool(
+    'pathfinder_add_step',
+    {
+      description:
+        'Use this tool when the user wants to append a step to a multistep or guided block. Pass `parentId` and step `fields`. Field schemas: pathfinder_help(command="add-step"). CLI flags become `fields` keys (`--action`→`fields.action`); `--parent` is the tool arg `parentId`.',
+      annotations: writeAppend('Add Pathfinder step'),
+      inputSchema: AddStepInputSchema,
+    },
+    async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
+      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
+        runAddStep({ dir, parentId, flagValues: fields })
+      )
+  );
+
+  server.registerTool(
+    'pathfinder_add_choice',
+    {
+      description:
+        'Use this tool when the user wants to append a choice to a quiz block. Pass `parentId` and choice `fields`. Field schemas: pathfinder_help(command="add-choice"). CLI flags become `fields` keys (`--text`→`fields.text`); `--parent` is the tool arg `parentId`.',
+      annotations: writeAppend('Add Pathfinder choice'),
+      inputSchema: AddChoiceInputSchema,
+    },
+    async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
+      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
+        runAddChoice({ dir, parentId, flagValues: fields })
+      )
+  );
+
+  server.registerTool(
     'pathfinder_set_manifest',
     {
       description:
-        'Use this tool when the user wants to set or update top-level Pathfinder guide metadata (description, category, language, etc.) on the package manifest. Returns the updated artifact.',
+        'Use this tool when the user wants to set or update top-level Pathfinder guide metadata (description, category, language, etc.) on the package manifest. Field schemas: pathfinder_help(command="set-manifest"). Returns the updated artifact.',
       annotations: writeDestructive('Set Pathfinder manifest', /* idempotent */ true),
       inputSchema: {
         ...ArtifactInputSchema,
-        fields: FlagValuesSchema.describe('Manifest fields to set (description, category, language, etc.).'),
+        fields: FlagValuesSchema.describe(
+          'Manifest fields to set. Discover names via pathfinder_help(command="set-manifest"); CLI flag names become keys here.'
+        ),
       },
     },
     async ({ artifact, sessionToken, expectedGeneration, fields }) =>

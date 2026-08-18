@@ -75,7 +75,6 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
 
       const r = await callTool(store, 'transport-session-A', 'pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: token,
         type: 'markdown',
         fields: { content: 'hello' },
@@ -115,7 +114,6 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
 
       const r = await callTool(store, 'transport-session-B', 'pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: token,
         type: 'markdown',
         fields: { content: 'hello' },
@@ -173,7 +171,6 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       // HTTP request against a pinned session must carry the header.
       const r = await callTool(store, undefined, 'pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: token,
         type: 'markdown',
         fields: { content: 'hello' },

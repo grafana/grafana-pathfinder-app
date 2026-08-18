@@ -117,21 +117,22 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 ## Tool surface
 
-13 tools, registered in `src/cli/mcp/tools/`:
+14 tools, registered in `src/cli/mcp/tools/`:
 
 | Tool                                   | Module                  | Wraps                                                                                              |
 | -------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
 | `pathfinder_authoring_start`           | `authoring-start.ts`    | (static context block)                                                                             |
 | `pathfinder_help`                      | `help.ts`               | `formatHelpAsJson` over the CLI commands                                                           |
 | `pathfinder_create_package`            | `artifact-tools.ts`     | `runCreate` — mints a sessionToken + returns the seed artifact (P7)                                |
-| `pathfinder_create_guide_template`     | `artifact-tools.ts`     | `newPackageState` + pre-populated starter blocks; round-tripped through `runValidate` (P7)         |
-| `pathfinder_manage_block`              | `mutation-tools.ts`     | Tree writes via `operation: add\|edit\|remove` × `resource: block\|step\|choice`                   |
+| `pathfinder_manage_block`              | `mutation-tools.ts`     | Block writes via `operation: add\|edit\|remove` (append-only adds; unified `id`)                   |
+| `pathfinder_add_step`                  | `mutation-tools.ts`     | `runAddStep` — appends a child to a multistep or guided block                                      |
+| `pathfinder_add_choice`                | `mutation-tools.ts`     | `runAddChoice` — appends a child to a quiz block                                                   |
 | `pathfinder_set_manifest`              | `mutation-tools.ts`     | `runSetManifest` — accepts `{artifact}` OR `{sessionToken}` (P7)                                   |
 | `pathfinder_inspect`                   | `inspection-tools.ts`   | `runInspect` — accepts `{artifact}` OR `{sessionToken}` (P7)                                       |
 | `pathfinder_validate`                  | `inspection-tools.ts`   | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7)                                      |
 | `pathfinder_read_session`              | `session-read-tools.ts` | Cheap session reads via `operation: list_blocks\|get_block\|get_manifest`                          |
 | `pathfinder_finalize_for_app_platform` | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7) |
-| `pathfinder_repository`                | `repository-tools.ts`   | CDN reads via `operation: list\|get\|get_manifest` (P6)                                            |
+| `pathfinder_read_repository`           | `repository-tools.ts`   | CDN reads via `operation: list\|get\|get_manifest` (P6)                                            |
 | `pathfinder_launch_package`            | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                         |
 | `pathfinder_get_schema`                | `schema-tools.ts`       | `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts`              |
 
@@ -139,7 +140,7 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 ### Repository tools (P6)
 
-The `repository-tools.ts` surface is read-only against a public package CDN (`pathfinder_repository` + `pathfinder_launch_package`). They are stateless (no artifact in/out) and need no auth.
+The `repository-tools.ts` surface is read-only against a public package CDN (`pathfinder_read_repository` + `pathfinder_launch_package`). They are stateless (no artifact in/out) and need no auth.
 
 - **Default repository**: `https://interactive-learning.grafana.net/packages/`.
 - **Override**: set `PATHFINDER_REPOSITORY_URL` (trailing slash optional) on the process. The HTTP transport's deploy passes this through unchanged; for stdio clients, set it on the `npx pathfinder-cli mcp` invocation.
@@ -149,7 +150,7 @@ The `repository-tools.ts` surface is read-only against a public package CDN (`pa
 - **`pathfinder_launch_package`** returns a relative `launchPath` always; an absolute `launchUrl` when `instanceUrl` is provided. Pass `panelMode: "floating"` to append `&panelMode=floating`. The link is consumed by the existing `?doc=<interactive-learning.grafana.net URL>` path in `src/utils/find-doc-page.ts:60-86` (`isInteractiveLearningUrl` allowlist).
 - **`pathfinder_launch_package` ships PARTIAL** — see [#855][p6-launch-bug]. The URL it builds resolves to the Pathfinder plugin but does not currently load the targeted CDN guide as an interactive tutorial; it opens to a generic docs view instead. Every successful response carries a `warning: { status: "partial", message, tracking }` field so agents and clients see the limitation at runtime. The bug is in the app-side `auto-launch-tutorial` handler (`src/components/docs-panel/docs-panel.tsx`), which calls `openDocsPage(url, title)` without the `packageInfo` argument the recommendations panel passes — so the package-aware content pipeline never engages. The MCP tool will keep working as-is once the app-side fix lands.
 
-> Naming note: P7 ships a session-scoped manifest read as `pathfinder_get_manifest_session` (not `pathfinder_get_manifest`), per the resolved [P7 decision log entry](../design/phases/ai-authoring-7-gcs-sessions.md#2026-05-20--pathfinder_get_manifest_session-keeps-the-_session-suffix). The two tools read different data sources (public CDN vs. session store) and serve different mental models.
+> Naming note: session-scoped and CDN manifest reads used to be separate tools (`pathfinder_get_manifest_session` vs `pathfinder_get_manifest`). They are now collapsed into enablement tools that share an operation name but different data sources: `pathfinder_read_session` with `operation: "get_manifest"` (session store) vs `pathfinder_read_repository` with `operation: "get_manifest"` (public CDN).
 
 ### Go MCP endpoint
 
@@ -160,7 +161,7 @@ The Go MCP at `pkg/plugin/mcp.go` was retired under [MH5](../design/phases/mcp-h
 P7 layered server-side authoring sessions on top of the stateless transport. Every mutation, inspection, and finalize tool now accepts EITHER mode:
 
 - **Stateless `{artifact}`** (the historical contract) — the agent threads the full `{content, manifest}` artifact through every call. No server-side state.
-- **Session-mode `{sessionToken}`** (the recommended contract) — `pathfinder_create_package` mints an opaque 22-char Crockford base32 token and persists the seed artifact server-side. Every subsequent call passes only `{sessionToken}` and receives back an **ack** (`{sessionToken, generation, summary, outcome}`) — the full artifact never returns to the agent's context. Cheap explicit reads (`pathfinder_list_blocks` / `pathfinder_get_block` / `pathfinder_get_manifest_session` / `pathfinder_inspect`) are the read surface. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session.
+- **Session-mode `{sessionToken}`** (the recommended contract) — `pathfinder_create_package` mints an opaque 22-char Crockford base32 token and persists the seed artifact server-side. Every subsequent call passes only `{sessionToken}` and receives back an **ack** (`{sessionToken, generation, summary, outcome}`) — the full artifact never returns to the agent's context. Cheap explicit reads (`pathfinder_read_session` with `operation: "list_blocks" | "get_block" | "get_manifest"`, plus `pathfinder_inspect` for the full body) are the read surface. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session.
 
 Picking a mode is per-call; never mix on a single call (returns `INPUT_MODE_AMBIGUOUS`).
 

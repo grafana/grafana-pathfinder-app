@@ -97,10 +97,10 @@ beforeEach(() => {
   global.fetch = fetchMock as unknown as typeof fetch;
 });
 
-describe('pathfinder_repository', () => {
+describe('pathfinder_read_repository', () => {
   it('returns all packages from the index when no filters are supplied', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'list',
     });
     expect(payload.baseUrl).toBe('https://interactive-learning.grafana.net/packages/');
@@ -110,7 +110,7 @@ describe('pathfinder_repository', () => {
 
   it('filters by type', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'list',
       type: 'journey',
     });
@@ -120,7 +120,7 @@ describe('pathfinder_repository', () => {
 
   it('filters by category', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'list',
       category: 'onboarding',
     });
@@ -130,7 +130,7 @@ describe('pathfinder_repository', () => {
 
   it('matches q against title and description, case-insensitive', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'list',
       q: 'TOUR',
     });
@@ -141,7 +141,7 @@ describe('pathfinder_repository', () => {
 
   it('surfaces network errors from the index fetch', async () => {
     fetchMock.mockRejectedValueOnce(new Error('connection refused'));
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'list',
     });
     expect(payload.status).toBe('error');
@@ -149,12 +149,12 @@ describe('pathfinder_repository', () => {
   });
 });
 
-describe('pathfinder_repository', () => {
+describe('pathfinder_read_repository', () => {
   it('returns content + manifest with validation reports on the happy path', async () => {
     mockFetchJsonOnce(sampleIndex);
     mockFetchJsonOnce(sampleContent);
     mockFetchJsonOnce(sampleManifest);
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'get',
       id: 'business-value',
     });
@@ -174,7 +174,7 @@ describe('pathfinder_repository', () => {
     const driftedContent = { ...sampleContent, blocks: 'not an array' };
     mockFetchJsonOnce(driftedContent);
     mockFetchJsonOnce(sampleManifest);
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'get',
       id: 'business-value',
     });
@@ -186,7 +186,7 @@ describe('pathfinder_repository', () => {
 
   it('returns NOT_FOUND for an unknown id', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'get',
       id: 'does-not-exist',
     });
@@ -195,11 +195,11 @@ describe('pathfinder_repository', () => {
   });
 });
 
-describe('pathfinder_repository', () => {
+describe('pathfinder_read_repository', () => {
   it('returns manifest only on the happy path', async () => {
     mockFetchJsonOnce(sampleIndex);
     mockFetchJsonOnce(sampleManifest);
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'get_manifest',
       id: 'business-value',
     });
@@ -211,7 +211,7 @@ describe('pathfinder_repository', () => {
 
   it('returns NOT_FOUND for an unknown id', async () => {
     mockFetchJsonOnce(sampleIndex);
-    const payload = await callTool('pathfinder_repository', {
+    const payload = await callTool('pathfinder_read_repository', {
       operation: 'get_manifest',
       id: 'nope',
     });

@@ -61,10 +61,9 @@ async function seedWithOneBlock(
   }
   const added = await call('pathfinder_manage_block', {
     operation: 'add',
-    resource: 'block',
     sessionToken: created.sessionToken,
     type: 'markdown',
-    explicitId: 'md-1',
+    id: 'md-1',
     fields: { content: 'Hello world' },
   });
   if (added.status !== 'ok') {

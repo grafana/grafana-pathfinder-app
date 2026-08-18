@@ -3,7 +3,7 @@
  *
  * One entry per MCP tool. Each tool is a thin dispatcher to a CLI `runX`
  * function — the CLI is the sole validator. The tool list intentionally
- * mirrors the CLI command surface plus three MCP-specific tools
+ * mirrors the CLI command surface plus MCP-specific tools
  * (`pathfinder_authoring_start`, `pathfinder_help`,
  * `pathfinder_finalize_for_app_platform`).
  */
