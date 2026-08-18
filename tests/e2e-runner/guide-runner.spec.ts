@@ -36,6 +36,10 @@ import {
   AllStepsResult,
   AbortReason,
   StepTestResult,
+  StepCoverage,
+  withExecutedCoverage,
+  CURRENT_STEP_SELECTOR,
+  LEGACY_STEP_SELECTOR,
 } from './utils/guide-runner';
 import {
   printHeader,
@@ -85,7 +89,8 @@ function writeResultsFile(
   timestamp: string,
   allStepsResult: AllStepsResult,
   guideContent: string,
-  outcome: TestResultsData['outcome']
+  outcome: TestResultsData['outcome'],
+  coverage?: StepCoverage
 ): void {
   const resultsFilePath = process.env[E2E_ENV.RESULTS_FILE_PATH];
   if (!resultsFilePath) {
@@ -102,6 +107,7 @@ function writeResultsFile(
     errorMessage: allStepsResult.abortMessage,
     results: results.map((r) => ({
       stepId: r.stepId,
+      stepKind: r.stepKind,
       status: r.status,
       durationMs: r.durationMs,
       currentUrl: r.currentUrl,
@@ -117,6 +123,7 @@ function writeResultsFile(
     aborted: allStepsResult.aborted,
     abortReason: allStepsResult.abortReason,
     abortMessage: allStepsResult.abortMessage,
+    coverage,
   };
 
   writeFileSync(resultsFilePath, JSON.stringify(data), 'utf-8');
@@ -268,7 +275,7 @@ test.describe('Guide Runner', () => {
 
     // Verify guide content loaded (first step visible indicates interactive content rendered)
     // Use a more general selector since step IDs vary by guide
-    const firstStep = page.locator('[data-testid^="interactive-step-"]').first();
+    const firstStep = page.locator(`${CURRENT_STEP_SELECTOR}, ${LEGACY_STEP_SELECTOR}`).first();
     await expect(firstStep).toBeVisible({ timeout: 15000 });
 
     // ============================================
@@ -277,8 +284,7 @@ test.describe('Guide Runner', () => {
     const discoveryResult = await discoverStepsFromDOM(page);
     test.setTimeout(calculateGuideTimeout(discoveryResult.steps));
 
-    // Verify step discovery found steps
-    expect(discoveryResult.totalSteps).toBeGreaterThan(0);
+    expect(discoveryResult.coverage.rendered).toBeGreaterThan(0);
 
     // Steps should be in document order (indices should match)
     for (let i = 0; i < discoveryResult.steps.length; i++) {
@@ -293,7 +299,8 @@ test.describe('Guide Runner', () => {
       discoveryResult.totalSteps,
       discoveryResult.preCompletedCount,
       discoveryResult.noDoItButtonCount,
-      discoveryResult.durationMs
+      discoveryResult.durationMs,
+      discoveryResult.coverage.contractSource
     );
 
     // ============================================
@@ -332,7 +339,8 @@ test.describe('Guide Runner', () => {
         ? 'aborted'
         : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
           ? 'failed'
-          : 'passed'
+          : 'passed',
+      withExecutedCoverage(discoveryResult.coverage, executionResult.results)
     );
 
     // L3-3D: Handle session expiry with specific exit code

@@ -135,8 +135,10 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - Plugin loads guide via `bundled:e2e-test` pattern
 
 3. **Step discovery**
-   - Runner scans DOM for interactive step elements
-   - Collects metadata: step IDs, skip buttons, Do it buttons, multistep status
+   - The runner scans for `[data-test-step-kind][data-test-step-id]` roots.
+   - If current roots are absent, the runner uses the documented legacy selector.
+   - The driver registry collects metadata and identifies supported steps.
+   - Unsupported roots remain in coverage, but the runner does not operate their controls.
 
 4. **Sequential execution**
    - For each step:
@@ -224,7 +226,25 @@ Use `--output report.json` to generate a structured report:
     "mandatoryFailed": 1,
     "skippableFailed": 0
   },
-  "steps": [...]
+  "steps": [
+    {
+      "stepId": "section-1-step-1",
+      "stepKind": "plain",
+      "index": 0,
+      "status": "passed",
+      "duration": 1000,
+      "currentUrl": "http://localhost:3000/",
+      "consoleErrors": []
+    }
+  ],
+  "coverage": {
+    "contractSource": "current",
+    "rendered": 2,
+    "supported": 1,
+    "executed": 1,
+    "unsupported": 1,
+    "unsupportedSteps": [{ "stepKind": "quiz", "stepId": "section-1-quiz-1" }]
+  }
 }
 ```
 
@@ -237,6 +257,17 @@ Key contract fields:
 - `guide.contentDigest`: SHA-256 digest of the exact guide content executed
 - `guide.sourceUrl`: remote package source URL when available
 - `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
+- `steps[].stepKind`: optional registered driver kind for a reported step
+- `coverage.contractSource`: `current` for tracked roots, or `legacy` for the compatibility selector
+- `coverage.rendered`: number of tracked roots in the rendered DOM
+- `coverage.supported`: number of rendered roots with supported drivers
+- `coverage.executed`: number of supported roots that reached a terminal runner result
+- `coverage.unsupported`: number of rendered roots without supported drivers
+- `coverage.unsupportedSteps`: unsupported kind and step ID pairs
+
+Coverage fields are optional and additive. Unsupported coverage does not change outcomes, exit codes, skip behavior, or runner action semantics.
+
+Multi-guide reports keep coverage inside each individual guide report. The aggregate outcome and step summary use the existing rules.
 
 ### Report validation
 

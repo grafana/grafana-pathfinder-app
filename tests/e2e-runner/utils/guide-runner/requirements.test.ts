@@ -42,6 +42,7 @@ function requirementWaits(waitForTimeout: jest.Mock): number[] {
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
+    stepKind: 'plain',
     stepId: STEP_ID,
     index: 0,
     skippable: false,

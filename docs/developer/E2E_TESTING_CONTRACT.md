@@ -49,10 +49,23 @@ The registered kind values are:
 
 The registry owns the set of kind values. Each component owns its stable root and stable test step ID.
 
-PR 0 only publishes this additive product DOM contract. A later runner change will consume the contract.
 The plain, multistep, and guided roots keep the existing `data-step-id` runtime attribute. The other tracked roots do not add this runtime attribute.
 
-The new attributes do not change existing test IDs or state values. They do not change runner discovery, runner execution, or report outcomes.
+The guide runner discovers current roots with `[data-test-step-kind][data-test-step-id]`. It records `current` as the contract source.
+
+If current roots are absent, the runner uses the legacy `interactive-step-*` test IDs. It records `legacy` as the contract source.
+
+The legacy selector excludes `interactive-step-completed-*` badges. These badges share the old step test ID prefix.
+
+One `StepDriver` registry owns metadata inspection, product controls, execution, skip behavior, and completion rules. The registry uses `data-test-step-kind` keys.
+
+The runner supports `plain`, `multistep`, and `guided`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
+
+Unsupported coverage does not change guide outcomes in this release. The runner reports each unsupported kind and step ID.
+
+Browser actions use only rendered DOM state. Raw guide JSON can identify authored interactive content, but it cannot control browser actions.
+
+These runner changes do not change root ownership, existing test IDs, state values, or product completion behavior.
 
 ---
 

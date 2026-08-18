@@ -8,6 +8,7 @@
  */
 
 import { StepTestResult, AllStepsResult, summarizeResults, skippableFailuresAffectSuccess } from './guide-runner';
+import type { StepContractSource } from './guide-runner';
 
 // ============================================
 // Constants
@@ -394,11 +395,15 @@ export function printDiscoveryResults(
   totalSteps: number,
   preCompletedCount: number,
   noDoItButtonCount: number,
-  durationMs: number
+  durationMs: number,
+  contractSource?: StepContractSource
 ): void {
   const duration = formatDuration(durationMs);
   console.log();
   console.log(`📋 Discovered ${totalSteps} steps ${duration}`);
+  if (contractSource) {
+    console.log(`   Contract: ${contractSource}`);
+  }
   if (preCompletedCount > 0 || noDoItButtonCount > 0) {
     console.log(`   (${preCompletedCount} pre-completed, ${noDoItButtonCount} without "Do it" button)`);
   }
