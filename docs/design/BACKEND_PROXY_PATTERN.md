@@ -93,8 +93,9 @@ the fixed internal aggregator.
   them. Route them from one shared decision (`identityStatus` in
   `pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way:
   - no token, or one the stack will not accept → soft-200 `identity-unavailable`;
-  - **no signing-keys URL resolvable at all** (no Grafana config, no app URL) → soft-200
-    `identity-unverifiable`, because verification can never succeed on this stack;
+  - **no signing-keys URL resolvable at all** (no app URL in the Grafana config, which is also what
+    a request carrying no config at all resolves to) → soft-200 `identity-unverifiable`, because
+    verification can never succeed on this stack;
   - **the URL resolved but the JWKS fetch failed** (5xx, timeout, refused) → §7's transient
     **503 + `Retry-After`**. This one is retryable, and the front-end caches an empty
     capability=false result without retrying, so an envelope would darken the surface past the
@@ -146,11 +147,13 @@ additionally required here, because go-jose validates expiry only when the claim
 `exp`-less token would otherwise verify as non-expiring. The `sub` claim is extracted verbatim
 only on routes that serve per-user data (`pkg/plugin/app_platform_identity.go`).
 
-Because the signature is checked, none of this depends on Grafana's server→plugin forwarding to
-keep the header honest — which matters, since `X-Grafana-Id` is **not** on
+Because the signature is checked, the header's **authenticity** no longer depends on Grafana's
+server→plugin forwarding — which matters, since `X-Grafana-Id` is **not** on
 `ClearAuthHeadersMiddleware`'s strip-list and `ForwardIDMiddleware` overwrites rather than
 deletes, so a client-set value can survive to the plugin whenever the authenticated requester has
-no ID token of its own (#1568).
+no ID token of its own (#1568). Verification proves the token was **issued** by this stack, not
+that the caller presenting it is its subject: a copied, still-unexpired token replayed on a
+per-user route still verifies. Binding the token to its presenter is tracked separately.
 
 Verification failures always fail **closed**, under the three outcomes listed in the inbound
 bullets above, all decided by one shared `identityStatus`
@@ -159,10 +162,12 @@ bullets above, all decided by one shared `identityStatus`
 Authlib caches fetched keys for the lifetime of one verifier. Pathfinder reuses that verifier for
 at most **five minutes**, then rebuilds it against the same signing-keys URL, so steady-state
 verification avoids per-request network calls while a key removed from JWKS remains trusted for
-no more than five minutes. Unknown `kid`s still trigger authlib's immediate re-fetch, so a newly
-published key need not wait for that interval; that re-fetch merges into the current verifier's
-cached set rather than replacing it, so it never prunes a retired key and the five-minute rebuild
-stays the revocation bound. The fetch itself is detached from the caller's cancellation and
+no more than five minutes. The **first** request bearing an unknown `kid` triggers an immediate
+re-fetch, so a newly published key need not wait for that interval; if the key is still unpublished
+at that moment, authlib negative-caches the `kid` and later requests carrying it are rejected
+without re-fetching until the rebuild. That re-fetch merges into the current verifier's cached set
+rather than replacing it, so it never prunes a retired key and the five-minute rebuild stays the
+revocation bound. The fetch itself is detached from the caller's cancellation and
 separately deadlined, because authlib dedupes it across concurrent callers with singleflight: one
 canceled request would otherwise fail every waiter with a spurious outage.
 
@@ -173,7 +178,8 @@ caller's `Cookie`, and never a replay of the inbound `Authorization` header.
 One deliberate omission: `aud` is not validated, because an ID token's audience is `org:<orgID>`,
 which tells a plugin nothing it can act on. This mirrors Grafana's own ExtendedJWT client. Binding
 the token's `namespace` claim to the plugin-context namespace is tracked separately and is not
-required for the signature to make `sub` unforgeable.
+required for the signature to make `sub` unforgeable — though unforgeable is not the same as bound
+to the presenter; see the replay caveat above.
 
 ## 4. Cache
 
