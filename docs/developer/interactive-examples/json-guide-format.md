@@ -590,7 +590,7 @@ needs:
 }
 ```
 
-#### Guided Block
+#### Guided block
 
 Highlights elements and **waits for user** to perform actions.
 
@@ -616,21 +616,33 @@ Highlights elements and **waits for user** to perform actions.
 }
 ```
 
-| Field           | Type       | Required | Description                              |
-| --------------- | ---------- | -------- | ---------------------------------------- |
-| `content`       | string     | ✅       | Description shown to user                |
-| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform    |
-| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)  |
-| `completeEarly` | boolean    | ❌       | Complete when user performs action early |
-| `requirements`  | string[]   | ❌       | Requirements for the block               |
-| `objectives`    | string[]   | ❌       | Objectives tracked                       |
-| `skippable`     | boolean    | ❌       | Allow skipping                           |
+| Field           | Type       | Required | Description                                     |
+| --------------- | ---------- | -------- | ----------------------------------------------- |
+| `content`       | string     | ✅       | Description shown to user                       |
+| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform           |
+| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)         |
+| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal |
+| `requirements`  | string[]   | ❌       | Requirements for the block                      |
+| `objectives`    | string[]   | ❌       | Objectives tracked                              |
+| `skippable`     | boolean    | ❌       | Allow skipping                                  |
 
 Steps accept `targetstate` here too, with the meaning adjusted for a step the
 user performs: a control already in the requested state completes immediately
 instead of asking the user to click it. Without that, the guide would tell
 someone to click a toggle that is already correct, and their click would move it
 the wrong way.
+
+`completeEarly` does not skip guided actions or complete the block before its
+final action. For a final `button` or `highlight` action, click activation stores
+completion during capture. Activation can match the target or its proximity
+fallback. The application click handler runs after capture-phase completion work.
+A final action without click activation stores completion after its result. This
+rule includes a satisfied `targetstate`. Cancellation, timeout, or error does not
+store completion.
+
+`InteractiveGuided` owns the idempotent completion write and completion
+callbacks. `GuidedHandler` owns listeners, timeouts, connectivity intervals, the
+overlay, click ordering, and cleanup.
 
 #### Quiz Block
 
@@ -760,8 +772,18 @@ Collects user responses that can be stored as variables and used elsewhere in th
 | `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                    |
 | `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                           |
 | `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType |
-| `requirements`      | string[]                                  | ❌       | —       | Requirements that must be met for this input                                         |
+| `requirements`      | string[]                                  | ❌       | —       | Honoured only on a blocking data check; inert on every other input (see below)       |
 | `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                    |
+
+Data check fields, all for `"datasource"` inputType only. `dataCheckQuery` is what enables the check; the rest are rejected without it.
+
+| Field                     | Type    | Required | Default  | Description                                                              |
+| ------------------------- | ------- | -------- | -------- | ------------------------------------------------------------------------ |
+| `dataCheckQuery`          | string  | ❌       | —        | Query run against the picked data source. Its presence enables the check |
+| `dataCheckFailureMessage` | string  | ❌       | —        | Message shown when the check finds no data                               |
+| `dataCheckTimeFrom`       | string  | ❌       | `now-1h` | Check query range start                                                  |
+| `dataCheckTimeTo`         | string  | ❌       | `now`    | Check query range end                                                    |
+| `dataCheckBlocking`       | boolean | ❌       | `false`  | Make a failing check hold the section up                                 |
 
 **Text Input Example:**
 
@@ -804,7 +826,48 @@ Collects user responses that can be stored as variables and used elsewhere in th
 }
 ```
 
-When `inputType` is `"datasource"`, the block renders a datasource picker dropdown. The `datasourceFilter` property limits the list to datasources of a specific type.
+When `inputType` is `"datasource"`, the block renders a datasource picker dropdown. The `datasourceFilter` property limits the list to datasources of a specific type. The stored value is the data source **name**, not its uid, which is what `{{variable}}` substitution and reftarget selectors match against.
+
+**Data check:**
+
+A guide can teach "build a panel showing container CPU", the user can follow every step against an instance with no container metrics, and end with an empty panel and no idea why. Adding `dataCheckQuery` to a datasource picker lets the user confirm up front that the data is really there:
+
+```json
+{
+  "type": "input",
+  "id": "check-container-metrics",
+  "prompt": "Pick the data source holding your container metrics.",
+  "inputType": "datasource",
+  "variableName": "metricsDatasource",
+  "datasourceFilter": "prometheus",
+  "dataCheckQuery": "container_cpu_usage_seconds_total",
+  "dataCheckFailureMessage": "No container CPU metrics here. Pick a data source scraping cAdvisor or kubelet.",
+  "dataCheckTimeFrom": "now-6h",
+  "dataCheckBlocking": true,
+  "skippable": true
+}
+```
+
+The check runs **only when the user presses the button** — never on a polling cadence. A requirements token would be re-evaluated by several independent timers, which on a metered backend is billable.
+
+`dataCheckBlocking` is the one thing that changes the block's behaviour in a guide:
+
+| `dataCheckBlocking` | The block is                | A failing check                                                    |
+| ------------------- | --------------------------- | ------------------------------------------------------------------ |
+| unset (default)     | passive, like any input     | reports what it found; the user carries on                         |
+| `true`              | a tracked, completable step | holds the section up until it passes, or is skipped if `skippable` |
+
+Turn blocking on deliberately. It makes the block count toward the section's step total, so an author who cannot guarantee the data exists on every instance should pair it with `skippable`.
+
+Only Prometheus, Loki, Tempo, and Pyroscope can be queried. If the user picks a data source of any other type, the block says so instead of offering the button rather than silently passing. Pyroscope queries are written as `<profileTypeId>|<labelSelector>`.
+
+Every check aborts after 15 seconds. Result size is capped at 100 wherever the query type honours it — Tempo's `limit`, Loki's `maxLines` — but a Prometheus instant query takes no `step`, so its cost is series cardinality, which nothing here caps. Keep the query selective: `{__name__=~".+"}` is one unbounded high-cardinality query against whatever tenant the user picked. `dataCheckTimeFrom` / `dataCheckTimeTo` are defaults, not bounds; nothing rejects `now-10y`.
+
+`dataCheckFailureMessage` is shown **only** when the query ran and came back empty. A timeout, a permissions error, or a broken data source reports the underlying error instead — a user told their metric is missing might go looking for the wrong problem, or skip a blocking step believing the data is genuinely absent. Write the message for the empty-result case and let the error path speak for itself.
+
+A blocking check **must** carry an explicit `id`, and **must not** carry a `defaultValue`; validation rejects either. A gating check writes durable completion, so the data source has to be one the user chose — a seeded pick could complete a step against a data source they never saw. An advisory check honours `defaultValue` as usual. The id becomes the step id that completion is stored against, so a generated one would orphan a user's progress the next time the guide is edited. An advisory check needs no id — it is not a tracked step.
+
+`requirements` on an input block is honoured **only** when `dataCheckBlocking` is set. On every other input — text, boolean, and an advisory datasource picker — the field validates, parses, and then does nothing: the block always renders and always accepts a response. Do not use it to gate a plain input.
 
 **Using Variables:**
 

@@ -29,10 +29,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { testIds } from '../../constants/testIds';
 const moduleSource = fs.readFileSync(path.join(__dirname, '..', '..', 'module.tsx'), 'utf-8');
+const configHookSource = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'hooks', 'usePathfinderPluginConfig.ts'),
+  'utf-8'
+);
 
 describe('E2E Contract: Docs panel bootstrap signals', () => {
   it('exposes Pathfinder plugin readiness', () => {
-    expect(moduleSource).toContain('__pathfinderPluginConfig');
+    expect(configHookSource).toContain('__pathfinderPluginConfig');
+  });
+
+  // The runner waits for the readiness global before clicking Grafana's Help
+  // control, so `init` must publish it without awaiting anything.
+  it('publishes readiness synchronously from plugin.init', () => {
+    expect(moduleSource).toContain('plugin.init = function');
+    expect(moduleSource).toContain('publishPathfinderPluginConfig(meta?.jsonData || {})');
   });
 
   it('publishes the sidebar-mounted event', () => {
@@ -268,7 +279,7 @@ describe('E2E Contract: Scroll-restoration DOM id', () => {
  * update the owner path here in the same commit that moves the source.
  */
 const WINDOW_GLOBAL_OWNERS: Array<{ global: string; ownerFile: string }> = [
-  { global: '__pathfinderPluginConfig', ownerFile: 'docs-panel.tsx' },
+  { global: '__pathfinderPluginConfig', ownerFile: '../../hooks/usePathfinderPluginConfig.ts' },
   { global: '__DocsPluginActiveTabId', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
   { global: '__DocsPluginActiveTabUrl', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
 ];

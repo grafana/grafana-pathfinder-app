@@ -62,15 +62,15 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
-  const { status, connect, disconnect, resize, sendCommand, error } = useTerminalLive({
+  const { status, connect, disconnect, resize, sendCommand, error, sessionId } = useTerminalLive({
     terminalRef: terminalInstanceRef,
   });
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
   useEffect(() => {
-    terminalCtx?._register({ status, connect, disconnect, sendCommand });
-  }, [terminalCtx, status, connect, disconnect, sendCommand]);
+    terminalCtx?._register({ status, sessionId, error, connect, disconnect, sendCommand });
+  }, [terminalCtx, status, sessionId, error, connect, disconnect, sendCommand]);
 
   // Sync: when something calls context.openTerminal, the context sets its
   // isExpanded flag. Mirror that into the panel's local state so we actually
@@ -442,13 +442,15 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
                 )}
                 <span>{getStatusText(status)}</span>
               </div>
-              <IconButton
-                name="angle-up"
-                size="sm"
-                aria-label="Expand"
-                tooltip="Expand terminal"
-                data-testid={testIds.codaTerminal.expandButton}
-              />
+              <span data-testid={testIds.codaTerminal.pathfinderExpand}>
+                <IconButton
+                  name="angle-up"
+                  size="sm"
+                  aria-label="Expand terminal"
+                  tooltip="Expand terminal"
+                  data-testid={testIds.codaTerminal.expandButton}
+                />
+              </span>
             </div>
           </div>
         </div>

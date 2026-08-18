@@ -10,6 +10,7 @@
  * - setPackageResolver injection and resolver-not-configured error
  */
 import { config, getBackendSrv, setBackendSrv, type BackendSrv } from '@grafana/runtime';
+import { of } from 'rxjs';
 import {
   fetchPackageContent,
   fetchPackageById,
@@ -178,6 +179,11 @@ describe('fetchPackageContent', () => {
 // ---------------------------------------------------------------------------
 
 describe('fetchPackageById', () => {
+  // setBackendSrv and config.namespace are module-level singletons, so the two
+  // reuse tests below would otherwise reach every later describe.
+  const originalBackendSrv = getBackendSrv();
+  const originalNamespace = (config as { namespace?: string }).namespace;
+
   afterEach(() => {
     // Reset injected resolver between tests
     setPackageResolver(
@@ -187,6 +193,8 @@ describe('fetchPackageById', () => {
         error: { code: 'not-found', message: 'reset' },
       })
     );
+    setBackendSrv(originalBackendSrv);
+    (config as { namespace?: string }).namespace = originalNamespace;
   });
 
   it('returns error when no resolver has been configured', async () => {
@@ -250,7 +258,58 @@ describe('fetchPackageById', () => {
     setPackageResolver(resolver);
 
     await fetchPackageById('alerting-101');
-    expect(resolver.resolve).toHaveBeenCalledWith('alerting-101', { loadContent: false });
+    expect(resolver.resolve).toHaveBeenCalledWith('alerting-101', { loadContent: false, verifyPublished: true });
+  });
+
+  // The publish-status probe already GET the resource. Building content from it
+  // is what keeps the gated path at one upstream request instead of two.
+  it('builds content from the probed resource without re-fetching it', async () => {
+    const fetchSpy = jest.fn();
+    setBackendSrv({ fetch: fetchSpy } as unknown as BackendSrv);
+    setPackageResolver(
+      makeResolver({
+        ok: true,
+        id: 'probed-guide',
+        contentUrl: 'backend-guide:probed-guide',
+        manifestUrl: 'app-platform:ns/probed-guide',
+        repository: 'app-platform',
+        probedResource: {
+          metadata: { name: 'probed-guide' },
+          spec: { id: 'probed-guide', title: 'Probed guide', schemaVersion: '1.0', blocks: [] },
+        },
+      })
+    );
+
+    const result = await fetchPackageById('probed-guide');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.content?.metadata.title).toBe('Probed guide');
+  });
+
+  it('still fetches when the resolution carries no probed resource', async () => {
+    (config as { namespace?: string }).namespace = 'stacks-123';
+    setPackageResolver(
+      makeResolver({
+        ok: true,
+        id: 'unprobed-guide',
+        contentUrl: 'backend-guide:unprobed-guide',
+        manifestUrl: 'app-platform:ns/unprobed-guide',
+        repository: 'app-platform',
+      })
+    );
+    const fetchSpy = jest.fn().mockReturnValue(
+      of({
+        data: {
+          metadata: { name: 'unprobed-guide' },
+          spec: { id: 'unprobed-guide', title: 'Unprobed guide', schemaVersion: '1.0', blocks: [] },
+        },
+      })
+    );
+    setBackendSrv({ fetch: fetchSpy } as unknown as BackendSrv);
+
+    await fetchPackageById('unprobed-guide');
+
+    expect(fetchSpy).toHaveBeenCalled();
   });
 });
 
@@ -340,7 +399,7 @@ describe('fetchPackageById with resolved content', () => {
 
     const result = await fetchPackageById('first-dashboard', manifest);
 
-    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false });
+    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false, verifyPublished: true });
     if (result.content) {
       expect(result.content.metadata.packageManifest).toEqual(manifest);
       expect(result.content.type).toBe('interactive');
@@ -586,6 +645,37 @@ describe('fetchPackageContent path-type enrichment', () => {
       expect(result.content.type).toBe('learning-journey');
       expect(result.content.metadata.learningJourney).toBeUndefined();
     }
+  });
+
+  it('resolves the baseUrl hydration call as URL-only, without the verify-published probe (#1561 scope)', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+    };
+
+    await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    // The baseUrl hydration resolve() runs on every milestone package-content
+    // fetch — a network round-trip probe here (like fetchPackageById's) would
+    // be a real perf regression, so it stays URL-only.
+    expect(resolver.resolve).toHaveBeenCalledWith('test-path', { loadContent: false });
+    expect(resolver.resolve).not.toHaveBeenCalledWith('test-path', expect.objectContaining({ verifyPublished: true }));
   });
 
   it('preserves packageManifest alongside learningJourney', async () => {

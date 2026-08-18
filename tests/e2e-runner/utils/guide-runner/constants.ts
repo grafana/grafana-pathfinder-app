@@ -98,6 +98,13 @@ export const GUIDED_HOVER_DWELL_MS = 500;
 export const GUIDED_SKIP_AFTER_TIMEOUT_FRACTION = 0.8;
 
 /**
+ * Timeout for a guided action's page-load wait after a detected reload/navigation
+ * (URL change or a `framenavigated` event). Bounded so a stuck reload fails fast
+ * instead of hanging the whole step.
+ */
+export const GUIDED_RELOAD_LOAD_TIMEOUT_MS = 15000;
+
+/**
  * Timeout for waiting for "Do it" button to become enabled.
  * Sequential dependencies (isEligibleForChecking) may disable buttons.
  */
@@ -121,6 +128,20 @@ export const SCROLL_SETTLE_DELAY_MS = 300;
  * Allows the reactive system to settle (debounced rechecks: 500ms context, 1200ms DOM).
  */
 export const POST_CLICK_SETTLE_DELAY_MS = 500;
+
+/**
+ * Timeout for scrolling a step into view.
+ * Kept short: a step that is completing or detaching around this point in
+ * execution should not block the whole run on an unbounded scroll wait.
+ */
+export const SCROLL_INTO_VIEW_TIMEOUT_MS = 5000;
+
+/**
+ * Timeout for the late-completion/detachment attribute read performed
+ * immediately before scrolling a step into view. Kept short so a step that
+ * detaches mid-read can't stall on an otherwise-unbounded locator read.
+ */
+export const LATE_COMPLETION_CHECK_TIMEOUT_MS = 2000;
 
 /**
  * Polling interval for checking completion during wait.
@@ -159,6 +180,18 @@ export const REQUIREMENTS_CHECK_TIMEOUT_MS = 10000;
  */
 export const REQUIREMENTS_POLL_INTERVAL_MS = 200;
 
+/**
+ * Maximum time to poll for a settled requirements state before treating
+ * an unmet read (with or without a Fix button) as genuinely terminal,
+ * rather than a transient DOM state.
+ *
+ * The plugin's requirement check can be mid-transition right after the
+ * initial check or right after a Fix button click: a step can read as
+ * unmet even though it settles to met (or to showing a Fix button)
+ * moments later.
+ */
+export const REQUIREMENTS_SETTLE_TIMEOUT_MS = 1000;
+
 // ============================================
 // Fix Button Execution Constants (L3-4B)
 // ============================================
@@ -174,6 +207,12 @@ export const FIX_BUTTON_TIMEOUT_MS = 10000;
  * Per design doc: 3 attempts (reduced from original 10 for faster failure).
  */
 export const MAX_FIX_ATTEMPTS = 3;
+
+/**
+ * Timeout for a skippable step's Skip control to take effect after a click:
+ * bounds the wait for the step to leave the `requirements-unmet` state.
+ */
+export const SKIP_SYNC_TIMEOUT_MS = 5000;
 
 /**
  * Delay after fix button click to allow the fix action to complete.

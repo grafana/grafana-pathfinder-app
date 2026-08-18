@@ -1083,11 +1083,6 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const currentUserId = config.bootData.user?.id;
   const devModeEnabled = isDevModeEnabled(configWithDefaults, currentUserId);
 
-  // REACT HOOKS v7: Set global config in useEffect to avoid modifying globals during render
-  useEffect(() => {
-    (window as any).__pathfinderPluginConfig = configWithDefaults;
-  }, [configWithDefaults]);
-
   // Use the simplified context hook
   const {
     contextData,

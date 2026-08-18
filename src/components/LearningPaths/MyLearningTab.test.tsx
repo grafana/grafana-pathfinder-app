@@ -15,11 +15,21 @@ import React from 'react';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
+import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { testIds } from '../../constants/testIds';
 import { milestoneCompletionStorage } from '../../lib/user-storage';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
+}));
+
+// Not mocking `lib/logging`: the assertion below is about what the real
+// logger-to-Faro bridge emits, so only the bridge sink is replaced.
+jest.mock('../../lib/telemetry/bridge', () => ({
+  pushFaroError: jest.fn(),
+  pushFaroLog: jest.fn(),
+  pushFaroUserAction: jest.fn(),
+  registerTelemetryBridge: jest.fn(),
 }));
 
 const publishMock = jest.fn();
@@ -98,6 +108,7 @@ jest.mock('../../lib/user-storage', () => ({
 jest.mock('../../global-state/completion-store', () => ({ evictAllContentCaches: jest.fn() }));
 
 const prepareMock = prepareGuideLaunch as jest.MockedFunction<typeof prepareGuideLaunch>;
+const pushFaroLogMock = pushFaroLog as jest.Mock;
 
 function deferred() {
   let resolve!: (r: PrepareGuideLaunchResult) => void;
@@ -196,15 +207,59 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it('surfaces a failed prepare as an error alert without opening a guide', async () => {
-    prepareMock.mockResolvedValue({ ok: false, error: 'Failed to load content' });
+    prepareMock.mockResolvedValue({ ok: false, error: 'Failed to load content', errorCode: 'fetch-failed' });
     const onOpenGuide = jest.fn();
 
     render(<MyLearningTab onOpenGuide={onOpenGuide} />);
-    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+    const continueButton = screen.getByTestId(testIds.learningPaths.continueButton('path-1'));
+    fireEvent.click(continueButton);
 
     await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
     expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'alert-error' }));
     expect(onOpenGuide).not.toHaveBeenCalled();
+    // The alert replaces the pending pill: a dead click that only cleared the
+    // pending state is the failure this path exists to rule out.
+    expect(continueButton).not.toBeDisabled();
+    expect(continueButton).not.toHaveTextContent('Opening…');
+  });
+
+  it('keeps launch-URL secrets and forwarded error text out of logger and Faro context', async () => {
+    mockGetGuideUrlForPath.mockReturnValue(
+      'https://grafana.com/docs/learning-paths/path-1/guide-1/?token=url-secret#fragment-secret'
+    );
+    // Shaped like the fetch tier's forwarded Zod message (content-fetcher's
+    // `Invalid guide: ${message}`), which interpolates the authored token.
+    prepareMock.mockResolvedValue({
+      ok: false,
+      error:
+        'Invalid guide: Unknown requirement "authored-token-secret". See https://grafana.com/docs/x?leak=free-text-secret',
+      errorCode: 'fetch-failed',
+    });
+    const consoleError = jest.spyOn(console, 'error').mockImplementation();
+
+    try {
+      render(<MyLearningTab onOpenGuide={jest.fn()} />);
+      fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('path-1')));
+
+      await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
+      const expectedContext = {
+        content_url: 'grafana.com/docs/learning-paths/path-1/guide-1/',
+        error_code: 'fetch-failed',
+      };
+      expect(consoleError).toHaveBeenCalledWith('[MyLearning] Guide launch preparation failed', expectedContext);
+      expect(pushFaroLogMock).toHaveBeenCalledWith(
+        'error',
+        '[MyLearning] Guide launch preparation failed',
+        expectedContext
+      );
+      const emittedContext = JSON.stringify({ console: consoleError.mock.calls, faro: pushFaroLogMock.mock.calls });
+      expect(emittedContext).not.toContain('url-secret');
+      expect(emittedContext).not.toContain('fragment-secret');
+      expect(emittedContext).not.toContain('authored-token-secret');
+      expect(emittedContext).not.toContain('free-text-secret');
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it('keeps every not-yet-complete path in My Courses and only 100% in Completed', () => {
@@ -440,6 +495,45 @@ describe('MyLearningTab launch flow', () => {
       'https://cdn.example/pkg-1/content.json',
       expect.objectContaining({ title: 'Package one' })
     );
+  });
+});
+
+describe('MyLearningTab — private paths split', () => {
+  const privatePath = { id: 'ap-path', title: 'Alerting enablement', guides: ['fe-alerting-01'], isPrivate: true };
+
+  it('omits the Private paths section entirely when the namespace has none', () => {
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.queryByTestId(testIds.learningPaths.privatePathsSection)).not.toBeInTheDocument();
+  });
+
+  it('routes an in-progress private path to Private paths and out of My paths', () => {
+    mockPaths = [...mockPaths, privatePath];
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    const privateSection = screen.getByTestId(testIds.learningPaths.privatePathsSection);
+    expect(privateSection).toHaveTextContent('Alerting enablement');
+    expect(privateSection).toHaveTextContent('Paths published for your organization');
+
+    const myCourses = screen.getByTestId(testIds.learningPaths.myCoursesSection);
+    expect(myCourses).not.toHaveTextContent('Alerting enablement');
+    expect(myCourses).toHaveTextContent('Started path');
+
+    // Still suppressed from Discover more — the split must not reopen the
+    // double-listing the exclude set exists to prevent.
+    expect(mockDiscoverExcludeTitles).toContain('Alerting enablement');
+  });
+
+  it('moves a completed private path to Completed rather than keeping it in Private paths', () => {
+    mockPaths = [...mockPaths, privatePath];
+    mockGetPathProgress.mockImplementation((id: string) => (id === 'ap-path' || id === 'path-done' ? 100 : 0));
+    mockIsPathCompleted.mockImplementation((id: string) => id === 'ap-path' || id === 'path-done');
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+
+    expect(screen.queryByTestId(testIds.learningPaths.privatePathsSection)).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.learningPaths.completedSection)).toHaveTextContent('Alerting enablement');
   });
 });
 

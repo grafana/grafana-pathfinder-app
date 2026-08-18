@@ -10,6 +10,7 @@ import type { PackageResolver } from '../../types';
 import type { ResolvedNavLink } from '../../types/context.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
+import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
 
@@ -230,7 +231,8 @@ export function ensureNonEmptyCoverContent(jsonContent: string): string {
 export async function fetchPackageContent(
   contentUrl: string,
   packageManifest?: Record<string, unknown>,
-  preResolvedMilestones?: Milestone[]
+  preResolvedMilestones?: Milestone[],
+  preFetchedContent?: ContentFetchResult
 ): Promise<ContentFetchResult> {
   const renderType = getPackageRenderType(packageManifest);
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
@@ -250,7 +252,7 @@ export async function fetchPackageContent(
   // parallel. These are independent: the page body doesn't need milestones
   // and milestones don't need the page body.
   const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
-    fetchContent(contentUrl),
+    preFetchedContent ?? fetchContent(contentUrl),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
     manifestId && _packageResolver
       ? _packageResolver.resolve(manifestId, { loadContent: false }).catch(() => undefined)
@@ -331,7 +333,12 @@ export async function fetchPackageById(
     };
   }
 
-  const resolution = await _packageResolver.resolve(packageId, { loadContent: false });
+  // verifyPublished: the content fetch that follows has no publish-status gate
+  // of its own (backend-guide.ts serves drafts on purpose, for share links and
+  // tab restore), so a draft opened by bare id is only caught here. The baseUrl
+  // hydration resolve() in fetchPackageContent stays unverified — it runs on
+  // every milestone fetch and its id is already known-good.
+  const resolution = await _packageResolver.resolve(packageId, { loadContent: false, verifyPublished: true });
 
   if (!resolution.ok) {
     return {
@@ -341,5 +348,11 @@ export async function fetchPackageById(
     };
   }
 
-  return fetchPackageContent(resolution.contentUrl, packageManifest);
+  // The probe already GET the resource to read its status; build content from
+  // it rather than re-issuing the identical request.
+  const preFetched = resolution.probedResource
+    ? buildBackendGuideContent(resolution.probedResource as BackendGuideResource, resolution.contentUrl, packageId)
+    : undefined;
+
+  return fetchPackageContent(resolution.contentUrl, packageManifest, undefined, preFetched);
 }

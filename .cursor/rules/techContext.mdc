@@ -45,10 +45,11 @@ globs:
 - `@emotion/css` (11.13.5) for styling
 - `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` for drag-and-drop
 
-**Backend Runtime** (Go):
-- `grafana-plugin-sdk-go` (v0.290.0) - Grafana plugin SDK
-- `gorilla/websocket` (v1.5.3) - WebSocket connections
-- `golang.org/x/crypto` - SSH/crypto utilities
+**Backend Runtime** (Go) — the only two direct requires in `go.mod`:
+- `grafana-plugin-sdk-go` (v0.296.1) - Grafana plugin SDK
+- `grafana/authlib` - on-behalf-of access-token exchange for the App Platform proxies
+
+There is no WebSocket, SSH or crypto dependency: sandbox VMs and terminal streaming live in the separate `grafana-coda-app` plugin. See `.cursor/rules/systemPatterns.mdc` ("What is deliberately NOT here").
 
 **Development**:
 - `typescript` (5.9.3), `webpack` (5.102.1) + loaders, `jest` (30.2.0) + testing utilities

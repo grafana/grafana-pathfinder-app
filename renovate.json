@@ -14,7 +14,7 @@
   "packageRules": [
     {
       "groupName": "grafana",
-      "matchPackageNames": ["/^@grafana/"],
+      "matchPackageNames": ["/^@grafana\\//"],
       "minimumReleaseAge": null
     },
     {
@@ -59,6 +59,11 @@
       "matchManagers": ["gomod"],
       "matchDepTypes": ["indirect"],
       "enabled": false
+    },
+    {
+      "description": "The Coda sandbox client is not a first-party @grafana package yet: it is published under @grafana-coda and consumed through an npm alias, so neither its real name nor its alias may inherit the @grafana release-age waiver above. Drop this rule once the package moves into the @grafana scope.",
+      "matchPackageNames": ["@grafana-coda/sandbox-client", "@grafana/coda-client"],
+      "minimumReleaseAge": "14 days"
     }
   ],
   "prConcurrentLimit": 10,

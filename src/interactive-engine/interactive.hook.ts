@@ -8,7 +8,7 @@ import { createInteractionName, UserInteraction } from '../lib/analytics';
 import type { SequenceRunResult, StepOutcome } from '../lib/telemetry';
 import { outcomeFromSequenceRun } from './outcome-classifier';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
-import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
+import { useGuideRequirements, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
 import { InteractiveActionRequest, InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
@@ -56,6 +56,7 @@ function isValidInteractiveElement(data: InteractiveElementData): boolean {
 
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
   const { containerRef } = options;
+  const { checkRequirements, checkPostconditions } = useGuideRequirements();
 
   // Get current theme for CSS custom property updates
   const theme = useTheme2();
@@ -254,7 +255,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         })),
       };
     },
-    []
+    [checkRequirements]
   );
 
   /**
@@ -292,7 +293,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         })),
       };
     },
-    [waitForActionToSettle]
+    [checkPostconditions, waitForActionToSettle]
   );
 
   // SequenceManager instance - moved here to be available for interactiveSequence

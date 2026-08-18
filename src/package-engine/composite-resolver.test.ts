@@ -240,6 +240,32 @@ describe('CompositePackageResolver', () => {
       expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
     });
 
+    it('does not let a same-tick unverified call satisfy a verified call for the same id (#1561)', async () => {
+      const DRAFT_FAILURE: PackageResolution = {
+        ok: false,
+        id: 'fe-draft',
+        error: { code: 'not-found', message: 'draft' },
+        repository: 'app-platform',
+      };
+      (mockBundledResolver.resolve as jest.Mock).mockImplementation(async (id: string, options?: ResolveOptions) =>
+        options?.verifyPublished ? DRAFT_FAILURE : SUCCESS_APP_PLATFORM
+      );
+
+      const composite = new CompositePackageResolver([mockBundledResolver]);
+
+      // Fire both synchronously in the same tick, unverified first — this is
+      // the ordering that used to land in the cache before the verified call's
+      // own cache lookup ran, silently reusing the unverified success.
+      const unverified = composite.resolve('fe-draft', { loadContent: false });
+      const verified = composite.resolve('fe-draft', { loadContent: false, verifyPublished: true });
+
+      const [unverifiedResult, verifiedResult] = await Promise.all([unverified, verified]);
+
+      expect(unverifiedResult.ok).toBe(true);
+      expect(verifiedResult.ok).toBe(false);
+      expect(mockBundledResolver.resolve).toHaveBeenCalledTimes(2);
+    });
+
     it('truly concurrent calls still share one in-flight resolution (dedup preserved)', async () => {
       let resolveFn!: (value: PackageResolution) => void;
       (mockBundledResolver.resolve as jest.Mock).mockReturnValue(

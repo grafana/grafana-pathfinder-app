@@ -133,14 +133,9 @@ export interface DocsPluginConfig {
   peerjsPort?: number;
   peerjsKey?: string;
   peerjsSecure?: boolean;
-  // Coda Terminal (Experimental dev feature for interactive sandbox)
+  // Coda terminal UI. The VM backend and its credentials live in the separate
+  // grafana-coda-app plugin, which owns its own settings.
   enableCodaTerminal?: boolean;
-  // Coda registration status
-  codaRegistered?: boolean;
-  // Coda API URL for VM provisioning
-  codaApiUrl?: string;
-  // Coda Relay URL for SSH connections
-  codaRelayUrl?: string;
   // Kiosk Mode (dev feature for presenting guide catalogs)
   enableKioskMode?: boolean;
   kioskRulesUrl?: string;
@@ -184,11 +179,6 @@ export const getConfigWithDefaults = (
   peerjsSecure: config.peerjsSecure ?? DEFAULT_PEERJS_SECURE,
   // Coda Terminal
   enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
-  // Coda registration
-  codaRegistered: config.codaRegistered ?? false,
-  // Coda URLs (required for registration)
-  codaApiUrl: config.codaApiUrl ?? '',
-  codaRelayUrl: config.codaRelayUrl ?? '',
   // Kiosk Mode
   enableKioskMode: config.enableKioskMode ?? DEFAULT_ENABLE_KIOSK_MODE,
   kioskRulesUrl: config.kioskRulesUrl ?? DEFAULT_KIOSK_RULES_URL,

@@ -68,6 +68,23 @@ A My learning layout or selector refactor must preserve these values or update t
 
 ---
 
+## Badge celebration runner contract
+
+After a guide completes, Pathfinder can show a full-screen badge celebration before the runner starts the next action.
+
+The runner and plugin share these stable test IDs:
+
+- **`learning-paths-badge-toast`** (`testIds.learningPaths.badgeToast`): identifies the visible badge dialog.
+- **`learning-paths-badge-toast-dismiss`** (`testIds.learningPaths.badgeToastDismiss`): identifies the dismiss action inside the current dialog.
+
+The runner uses only these selectors. It does not close generic Grafana modals.
+
+If a refactor changes these values, update `BadgeUnlockedToast.tsx`, the guide runner, the contract test, and this document in the same change.
+
+The source-level tripwire lives in `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts`.
+
+---
+
 ## Design Principles
 
 ### 1. Semantic Over Syntactic
@@ -399,9 +416,13 @@ React components derive attributes from existing UI state:
 />
 ```
 
-For guided and multi-step components, `executing` takes precedence over `completed`. This keeps the active substep observable when `completeEarly` persists completion before the remaining actions settle.
+For multi-step components, `executing` takes precedence over `completed`. A multi-step `completeEarly` write can occur before its automated actions settle.
 
-After composite execution settles, genuine objectives completion is authoritative and suppresses stale local error or cancellation state. A `completeEarly` write alone does not receive this exception, so failures remain recoverable through Retry or Skip.
+For guided components, `executing` also takes precedence during a narrower final-action window. Final click activation can persist while the application handler and guided cleanup settle.
+
+After composite execution settles, genuine objectives completion is authoritative. It suppresses stale local error or cancellation state.
+
+For multi-step execution, a `completeEarly` write alone does not suppress an error. For guided execution, callback failure becomes an error before completion wins. Successful final-action persistence keeps the completed outcome if later setup or cleanup fails.
 
 `InteractiveStep` also prioritizes active execution, but after execution settles it lets `completed` override a stale local error because completed rendering suppresses its error affordances. The `cancelled` state applies only to guided execution.
 
@@ -420,6 +441,7 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 - `src/components/interactive-tutorial/data-attributes.contract.test.tsx` - React component attributes
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
 - `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
+- `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
 
 ### Pattern: Dual Assertion
 
@@ -538,6 +560,30 @@ if (requirementsState === 'unmet') {
     await page.waitForSelector('[data-test-requirements-state="met"]');
   }
 }
+```
+
+---
+
+### Skip controls and runner synchronization
+
+The plugin renders two Skip controls that both call the same underlying `markSkipped()` action:
+
+- **`interactive-skip-${stepId}`** (`testIds.interactive.skipButton`): the step's always-available Skip button. It renders whenever the step is skippable, is not a noop action, and is not already completed, regardless of requirements state. Step discovery uses this control to determine `step.skippable`.
+- **`interactive-requirement-skip-${stepId}`** (`testIds.interactive.requirementSkipButton`): a narrower Skip button rendered only inside the requirements-explanation banner when requirements have failed. `detectRequirements()` reports this control's presence as `hasSkipButton`.
+
+A test or runner that needs to skip a step should prefer the step-level control and fall back to the requirement-scoped one only when the step-level control is not rendered, so it supports whichever shape the plugin actually renders instead of assuming one fixed control.
+
+Clicking either control does not skip the step immediately from the runner's point of view. The runner must wait for `data-test-step-state` to reach a terminal value, `completed`, or for the step element to detach, before treating the step as skipped. A transient value such as `checking` is not a terminal state; a runner that stops polling on the first non-`requirements-unmet` value can record a false skip while the plugin is still mid-transition.
+
+```typescript
+// Prefer the step-level Skip control; fall back to the requirement-scoped one.
+const stepSkip = page.getByTestId(testIds.interactive.skipButton(stepId));
+const requirementSkip = page.getByTestId(testIds.interactive.requirementSkipButton(stepId));
+const skipButton = (await stepSkip.count()) > 0 ? stepSkip : requirementSkip;
+await skipButton.click();
+
+// Wait for a terminal state before treating the step as skipped.
+await page.waitForSelector('[data-step-id="my-step"][data-test-step-state="completed"]');
 ```
 
 ---

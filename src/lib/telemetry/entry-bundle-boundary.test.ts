@@ -8,9 +8,21 @@ const ENTRY_EAGER_FILES = ['lib/analytics.ts', 'lib/logging.ts', 'global-state/p
 
 const BARREL_IMPORT_RE = /(?:from\s+['"]|require\(['"])[^'"]*\/telemetry['"]/;
 
+// The same rule for the hooks barrel: it re-exports useGuideProgressState, whose
+// chain reaches lib/user-storage and zod. Importing it from module.tsx roughly
+// doubled module.js (113 KB -> 224 KB raw) before this was pinned.
+const HOOKS_BARREL_IMPORT_RE = /(?:from\s+['"]|require\(['"])\.{1,2}(?:\/\.\.)*\/hooks['"]/;
+
 describe('telemetry entry-bundle import discipline', () => {
   it.each(ENTRY_EAGER_FILES)('%s does not import the telemetry barrel', (relativePath) => {
     const source = fs.readFileSync(path.join(__dirname, '../../', relativePath), 'utf8');
     expect(source).not.toMatch(BARREL_IMPORT_RE);
+  });
+});
+
+describe('hooks entry-bundle import discipline', () => {
+  it('module.tsx does not import the hooks barrel', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../../module.tsx'), 'utf8');
+    expect(source).not.toMatch(HOOKS_BARREL_IMPORT_RE);
   });
 });

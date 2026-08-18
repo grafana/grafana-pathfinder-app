@@ -33,6 +33,7 @@ import {
   InteractiveQuiz,
   InteractiveConditional,
   InputBlock,
+  DatasourceCheckStep,
   TerminalStep,
   TerminalConnectStep,
   CodeBlockStep,
@@ -44,7 +45,7 @@ import {
   DEFAULT_INTERACTIVE_SECTION_TITLE,
 } from '../interactive-tutorial';
 import { STEP_TYPE_PARSE_KEYS } from '../interactive-tutorial/step-type-registry';
-import { SequentialRequirementsManager } from '../../requirements-manager';
+import { GuideRequirementsProvider, SequentialRequirementsManager } from '../../requirements-manager';
 import { isInteractiveLearningUrl } from '../../security';
 import {
   useTextSelection,
@@ -56,6 +57,7 @@ import {
 } from '../../integrations/assistant-integration';
 import { substituteVariables } from '../../utils/variable-substitution';
 import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
+import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 
@@ -389,14 +391,8 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     }
   }, [content.url]);
 
-  // Expose guide ID globally for requirements checker to access
-  useEffect(() => {
-    try {
-      (window as any).__DocsPluginGuideId = guideId;
-    } catch {
-      // no-op
-    }
-  }, [guideId]);
+  // Mirror this guide for compatibility callers outside the scoped provider.
+  useLayoutEffect(() => registerCompatibilityGuideId(guideId), [guideId]);
 
   const journey = content.metadata.learningJourney;
   const beforeContent =
@@ -406,19 +402,21 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
   return (
     <GuideResponseProvider guideId={guideId}>
-      <ContentWithVariables
-        processedContent={processedContent}
-        contentType={content.type}
-        baseUrl={content.url}
-        title={content.metadata.title}
-        isNativeJson={content.isNativeJson ?? false}
-        onContentReady={onContentReady}
-        activeRef={activeRef}
-        className={className}
-        selectionState={selectionState}
-        documentContext={documentContext}
-        beforeContent={beforeContent}
-      />
+      <GuideRequirementsProvider guideId={guideId}>
+        <ContentWithVariables
+          processedContent={processedContent}
+          contentType={content.type}
+          baseUrl={content.url}
+          title={content.metadata.title}
+          isNativeJson={content.isNativeJson ?? false}
+          onContentReady={onContentReady}
+          activeRef={activeRef}
+          className={className}
+          selectionState={selectionState}
+          documentContext={documentContext}
+          beforeContent={beforeContent}
+        />
+      </GuideRequirementsProvider>
     </GuideResponseProvider>
   );
 });
@@ -926,6 +924,8 @@ interface StandaloneStepPosition {
  *
  * Note: input-block is intentionally excluded — it doesn't track completion
  * and would inflate the total step count, making 100% completion impossible.
+ * An `input` block emits `datasource-check-step` instead when its author asked
+ * a failing data check to block, and only that form is tracked here.
  *
  * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 2. Adding a new interactive step
  * component type requires updates in 2 places:
@@ -1266,9 +1266,33 @@ function renderParsedElement(
           requirements={element.props.requirements}
           skippable={element.props.skippable}
           datasourceFilter={element.props.datasourceFilter}
+          dataCheckQuery={element.props.dataCheckQuery}
+          dataCheckFailureMessage={sub(element.props.dataCheckFailureMessage)}
+          dataCheckTimeFrom={element.props.dataCheckTimeFrom}
+          dataCheckTimeTo={element.props.dataCheckTimeTo}
         >
           {renderChildren(element.children)}
         </InputBlock>
+      );
+    case 'datasource-check-step':
+      return (
+        <DatasourceCheckStep
+          key={key}
+          stepId={element.props.stepId}
+          variableName={element.props.variableName}
+          query={element.props.query}
+          datasourceFilter={element.props.datasourceFilter}
+          placeholder={sub(element.props.placeholder)}
+          failureMessage={sub(element.props.failureMessage)}
+          timeFrom={element.props.timeFrom}
+          timeTo={element.props.timeTo}
+          requirements={element.props.requirements}
+          skippable={element.props.skippable}
+          stepIndex={standaloneStepPosition?.stepIndex}
+          totalSteps={standaloneStepPosition?.totalSteps}
+        >
+          {renderChildren(element.children)}
+        </DatasourceCheckStep>
       );
     case 'video':
       return (
