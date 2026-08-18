@@ -19,22 +19,22 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/']",
-          "requirements": ["navmenu-open"],
+          "reftarget": "{grafana:components.NavMenu.item}[href='/'], {grafana:components.NavMenu.Menu} {grafana:components.Breadcrumbs.breadcrumb:Home}",
+          "requirements": ["navmenu-open", "exists-reftarget"],
           "content": "First, let's visit the **Home** page - your starting point in Grafana.",
           "tooltip": "The **Home** page is your Grafana dashboard. It shows recent dashboards, starred dashboards, and quick access to common tasks. Think of it as your *mission control center*!"
         },
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/dashboards']",
+          "reftarget": "{grafana:components.NavMenu.item}[href='/dashboards']",
           "content": "Next, **Dashboards** - where you'll create and manage your visualizations.",
           "tooltip": "**Dashboards** are collections of panels that display your data visualizations. You can create `time series charts`, `bar graphs`, `tables`, and more. Each dashboard can pull data from multiple data sources!"
         },
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/explore']",
+          "reftarget": "{grafana:components.NavMenu.item}[href='/explore']",
           "skippable": true,
           "content": "Then **Explore** - perfect for ad-hoc queries and data exploration.",
           "tooltip": "**Explore** is your data investigation tool! Write `PromQL` queries, search logs with `LogQL`, and analyze traces. Perfect for troubleshooting incidents and *exploring your data* without creating dashboards."
@@ -42,14 +42,14 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/alerting']",
+          "reftarget": "{grafana:components.NavMenu.item}[href='/alerting']",
           "content": "**Alerting** - where you'll set up notifications when things go wrong.",
           "tooltip": "Set up smart **Alerting** rules that monitor your metrics and logs continuously. Get notified via `email`, `Slack`, `PagerDuty`, or webhooks when thresholds are breached. *Be proactive, not reactive!*"
         },
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/connections']",
+          "reftarget": "{grafana:components.NavMenu.item}[href='/connections']",
           "requirements": ["is-admin"],
           "skippable": true,
           "hint": "Connections requires data source permissions to access",
@@ -59,7 +59,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/admin']",
+          "reftarget": "{grafana:components.NavMenu.item}[href='/admin']",
           "skippable": true,
           "content": "Finally, **Administration** - for managing users, plugins, and system settings.",
           "tooltip": "The **Administration** section is your control center. Manage user accounts, install `plugins`, configure `authentication`, monitor system health, and adjust global settings. *Admin power at your fingertips!*"
@@ -67,7 +67,7 @@
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "a[data-testid='data-testid Nav menu item'][href='/admin/plugins']",
+          "reftarget": "{grafana:components.NavMenu.item}[href='/admin/plugins']",
           "requirements": ["exists-reftarget"],
           "skippable": true,
           "content": "Plugins extend Grafana by adding capabilities that are not available by default. For example, you can install plugins that add the ability to import data from diverse sources, that bundle data sources and panels, or that provide new visualization types for use in dashboards.",
