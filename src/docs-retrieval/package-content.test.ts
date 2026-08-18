@@ -15,6 +15,7 @@ import {
   fetchPackageContent,
   fetchPackageById,
   setPackageResolver,
+  setPackageResolverFactory,
   resolvePackageMilestones,
   resolvePackageNavLinks,
   ensureNonEmptyCoverContent,
@@ -338,6 +339,42 @@ describe('setPackageResolver', () => {
     setPackageResolver(secondResolver);
     await fetchPackageById('any-id');
     expect(secondResolver.resolve).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('setPackageResolverFactory', () => {
+  afterEach(() => {
+    setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
+  });
+
+  it('resolves milestones once the factory-registered resolver is available', async () => {
+    setPackageResolverFactory(() => Promise.resolve(makeResolver(makeSuccessResolution({ id: 'm1' }))));
+
+    const milestones = await resolvePackageMilestones(['m1']);
+
+    expect(milestones).not.toEqual([]);
+  });
+
+  it('invokes the factory only once across repeated reads', async () => {
+    const resolver = makeResolver(makeSuccessResolution({ id: 'm1' }));
+    const factory = jest.fn().mockResolvedValue(resolver);
+    setPackageResolverFactory(factory);
+
+    await resolvePackageMilestones(['m1']);
+    await resolvePackageMilestones(['m1']);
+
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it('a later setPackageResolver call overrides a pending factory registration', async () => {
+    setPackageResolverFactory(() =>
+      Promise.resolve(makeResolver({ ok: false, id: 'x', error: { code: 'not-found', message: 'factory' } }))
+    );
+    setPackageResolver(makeResolver(makeSuccessResolution({ id: 'm1' })));
+
+    const milestones = await resolvePackageMilestones(['m1']);
+
+    expect(milestones).not.toEqual([]);
   });
 });
 

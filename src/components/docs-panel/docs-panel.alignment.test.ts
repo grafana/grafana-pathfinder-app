@@ -821,3 +821,28 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     });
   });
 });
+
+describe('CombinedLearningJourneyPanel — package resolver config source', () => {
+  afterEach(() => {
+    delete (window as any).__pathfinderPluginConfig;
+  });
+
+  it('seeds the resolver from the published global, not the constructor pluginConfig', () => {
+    const globalConfig = { acceptedTermsAndConditions: true } as any;
+    (window as any).__pathfinderPluginConfig = globalConfig;
+    const constructorConfig = { acceptedTermsAndConditions: false } as any;
+
+    new CombinedLearningJourneyPanel(constructorConfig);
+
+    expect(jest.requireMock('../../package-engine').createCompositeResolver).toHaveBeenCalledWith(globalConfig);
+  });
+
+  it('falls back to the constructor pluginConfig when the global is not set', () => {
+    delete (window as any).__pathfinderPluginConfig;
+    const constructorConfig = { acceptedTermsAndConditions: true } as any;
+
+    new CombinedLearningJourneyPanel(constructorConfig);
+
+    expect(jest.requireMock('../../package-engine').createCompositeResolver).toHaveBeenCalledWith(constructorConfig);
+  });
+});

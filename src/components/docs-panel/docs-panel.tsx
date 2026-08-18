@@ -236,15 +236,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // fetchPackageContent() and fetchPackageById() can resolve bundled and
     // remote packages — the Tier 3/4 injection point.
     //
-    // The resolver is one app-wide singleton, not one per surface, so it must
-    // always be seeded from the one authoritative config source — the global
-    // usePathfinderPluginConfig publishes — rather than whichever pluginConfig
-    // this particular surface happened to be constructed with. Sidebar builds
-    // its pluginConfig from Grafana's usePluginContext() snapshot, which can
-    // lag a settings save independently of the published global; using it here
-    // would silently re-stale the resolver on every sidebar (re)mount, undoing
-    // module.tsx's post-refresh re-wire. Falls back to pluginConfig when the
-    // global isn't set (e.g. unit tests constructing this class directly).
+    // Seed from the published global, not this surface's snapshot — the resolver is one app-wide singleton.
     const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: DocsPluginConfig })
       .__pathfinderPluginConfig;
     setPackageResolver(createCompositeResolver(resolverConfig ?? pluginConfig));

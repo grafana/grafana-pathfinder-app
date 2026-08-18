@@ -9,8 +9,11 @@ import { DocsPluginConfig } from './constants';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
 import { publishPathfinderPluginConfig, refreshPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
-import { setPackageResolver } from './docs-retrieval';
-import { createCompositeResolver } from './package-engine';
+// Direct file import, not the ./docs-retrieval barrel: the barrel statically
+// imports the whole content-fetcher orchestrator (zod, dompurify, the bundled
+// guide index), which would land in module.js. createCompositeResolver is
+// deferred behind a dynamic import below for the same reason.
+import { setPackageResolverFactory } from './docs-retrieval/content-fetcher/package-resolver-registry';
 import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
@@ -149,28 +152,26 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const config = publishPathfinderPluginConfig(meta?.jsonData || {});
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
 
-  // Wire the package resolver here, not just in CombinedLearningJourneyPanel's
-  // constructor (docs-panel.tsx): a launch can fetch and classify package
-  // content (My Learning, Discover More) before any docs-panel/sidebar/
-  // full-screen instance has ever mounted this session. Without an early
-  // resolver, that fetch's milestone resolution silently no-ops — the launch
-  // renders as a bare, standalone document with no milestone toolbar, no
-  // progress chrome, no next/prev navigation, because it never learns the
-  // content is a multi-milestone package at all. The panel's own
-  // call stays as a harmless re-set for whichever config that specific
-  // surface was constructed with.
-  setPackageResolver(createCompositeResolver(config));
+  // Deferred: constructing the resolver eagerly would pull its dependencies into the entry bundle.
+  setPackageResolverFactory(() =>
+    import(/* webpackPrefetch: true */ './package-engine/composite-resolver').then((m) =>
+      m.createCompositeResolver(config)
+    )
+  );
 
   // `meta.jsonData` can lag a recent save. Re-publish from the authoritative
   // read when it lands; subscribers pick it up via the config-updated event.
-  // Re-wire the resolver too: if the authoritative config flips the
-  // recommender-enabled flag relative to the possibly-stale snapshot above,
-  // a launch that races ahead of any panel mount would otherwise keep
-  // resolving through the wrong chain until some panel re-sets it itself.
   void refreshPathfinderPluginConfig().then((refreshed) => {
     if (refreshed) {
       linkInterceptionState.setInterceptionEnabled(refreshed.interceptGlobalDocsLinks);
-      setPackageResolver(createCompositeResolver(refreshed));
+      // Skip re-registering when nothing changed — avoids a redundant resolver rebuild.
+      if (refreshed !== config) {
+        setPackageResolverFactory(() =>
+          import(/* webpackPrefetch: true */ './package-engine/composite-resolver').then((m) =>
+            m.createCompositeResolver(refreshed)
+          )
+        );
+      }
     }
   });
 
