@@ -115,38 +115,46 @@ const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as [BlockType, ...BlockType[
 const CONTAINER_TYPES_TEXT = BlockTypeEnum.filter((type) => CONTAINER_BLOCK_TYPES.has(type)).join(', ');
 
 /**
- * Single source of truth for pathfinder_manage_block args. Resource selection
- * happens at the tool boundary; only the add/edit/remove block matrix remains.
+ * Single source of truth for pathfinder_manage_block args. `operation` uses the
+ * CLI command name so help/traceability stay 1:1 (`pathfinder_help` command =
+ * this enum value).
  */
 const ManageBlockInputSchema = z
   .object({
     ...ArtifactInputSchema,
-    operation: z.enum(['add', 'edit', 'remove']).describe('Block mutation to perform.'),
+    operation: z
+      .enum(['add-block', 'edit-block', 'remove-block'])
+      .describe('CLI command to run: "add-block" | "edit-block" | "remove-block".'),
     type: z
       .enum(BlockTypeEnum)
       .optional()
-      .describe(`[add] Required block type. Container types (${CONTAINER_TYPES_TEXT}) must also be given an \`id\`.`),
-    parentId: z.string().optional().describe('[add] Optional parent container id. Omit to append at the guide root.'),
+      .describe(
+        `[add-block] Required block type. Container types (${CONTAINER_TYPES_TEXT}) must also be given an \`id\`.`
+      ),
+    parentId: z
+      .string()
+      .optional()
+      .describe('[add-block] Optional parent container id. Omit to append at the guide root.'),
     branch: z
       .enum(['true', 'false'])
       .optional()
       .describe(
-        '[add] Required when `parentId` is a conditional — destination arm (`whenTrue` / `whenFalse`). Omit otherwise.'
+        '[add-block] Required when `parentId` is a conditional — destination arm (`whenTrue` / `whenFalse`). Omit otherwise.'
       ),
     id: z
       .string()
       .optional()
       .describe(
-        `[add] Create-time id; required for containers (${CONTAINER_TYPES_TEXT}), auto-minted for leaves. [edit|remove] Required target block id.`
+        `[add-block] Create-time id; required for containers (${CONTAINER_TYPES_TEXT}), auto-minted for leaves. [edit-block|remove-block] Required target block id.`
       ),
     fields: FlagValuesSchema.optional().describe(
-      '[add] Optional block payload (CLI validates). [edit] Required non-empty fields to overwrite.'
+      '[add-block] Optional block payload (CLI validates). [edit-block] Required non-empty fields to overwrite.'
     ),
     cascade: z
       .boolean()
       .default(false)
       .describe(
-        '[remove] When true, also delete children. Required for a non-empty container (else CONTAINER_HAS_CHILDREN). Default false.'
+        '[remove-block] When true, also delete children. Required for a non-empty container (else CONTAINER_HAS_CHILDREN). Default false.'
       ),
   })
   .superRefine((args, ctx) => {
@@ -161,22 +169,22 @@ const ManageBlockInputSchema = z
       }
     };
 
-    if (args.operation === 'add') {
-      requireString('type', 'Adding a block requires `type`.');
+    if (args.operation === 'add-block') {
+      requireString('type', 'add-block requires `type`.');
       // The CLI rejects an id-less container with CONTAINER_REQUIRES_ID. Catch it
       // at the schema boundary instead so the agent gets the rule stated in MCP
       // terms (`id`, not the CLI's `--id`) before any session mutation is attempted.
       if (typeof args.type === 'string' && CONTAINER_BLOCK_TYPES.has(args.type)) {
         requireString(
           'id',
-          `add+block with type "${args.type}" requires \`id\` — container blocks must be addressable so later calls can pass them as \`parentId\`.`
+          `add-block with type "${args.type}" requires \`id\` — container blocks must be addressable so later calls can pass them as \`parentId\`.`
         );
       }
-    } else if (args.operation === 'edit') {
-      requireString('id', 'Editing a block requires `id`.');
-      requireFields('Editing a block requires non-empty `fields`.');
-    } else if (args.operation === 'remove') {
-      requireString('id', 'Removing a block requires `id`.');
+    } else if (args.operation === 'edit-block') {
+      requireString('id', 'edit-block requires `id`.');
+      requireFields('edit-block requires non-empty `fields`.');
+    } else if (args.operation === 'remove-block') {
+      requireString('id', 'remove-block requires `id`.');
     }
   });
 
@@ -269,7 +277,7 @@ async function dispatchMutation(
  */
 function manageBlockRunner(args: ManageBlockInput): (dir: string) => Promise<CommandOutcome> | CommandOutcome {
   switch (args.operation) {
-    case 'add':
+    case 'add-block':
       return (dir) =>
         runAddBlock({
           dir,
@@ -280,9 +288,9 @@ function manageBlockRunner(args: ManageBlockInput): (dir: string) => Promise<Com
           explicitId: args.id,
           flagValues: args.fields ?? {},
         });
-    case 'edit':
+    case 'edit-block':
       return (dir) => runEditBlock({ dir, id: args.id!, flagValues: args.fields! });
-    case 'remove':
+    case 'remove-block':
       return (dir) =>
         runRemoveBlock({
           dir,
@@ -306,8 +314,9 @@ export function registerMutationTools(
     {
       description: [
         'Use this tool when the user wants to add, edit, or remove a block in a Pathfinder guide.',
-        'Adds append under the parent (reorder = remove + re-add). Duplicate ids → DUPLICATE_ID.',
-        'Field schemas: pathfinder_help with command "add-block" (subcommand=<type>), "edit-block", or "remove-block" matching `operation`.',
+        'Pass `operation` as the CLI command name: "add-block" | "edit-block" | "remove-block".',
+        'Adds append under the parent (reorder = remove-block + add-block). Duplicate ids → DUPLICATE_ID.',
+        'Field schemas: pathfinder_help({ command: <operation>, subcommand: <type> }) for add-block; pathfinder_help({ command: <operation> }) for edit-block / remove-block.',
         'CLI flag names (e.g. --content, --action) become keys in `fields`; addressing flags map to tool args (`--parent`→`parentId`, `--id`→`id`, `--branch`→`branch`).',
         'Returns updated artifact (stateless) or session ack (sessionToken).',
       ].join(' '),

@@ -2,7 +2,7 @@
  * CDN repository client for the Pathfinder authoring MCP.
  *
  * Read-only fetcher for the public Pathfinder package CDN. Used by the
- * `pathfinder_read_repository` (list/get/get_manifest) /
+ * `pathfinder_read_repository` (list-packages/get-package/get-manifest) /
  * `pathfinder_launch_package` tools (P6 in
  * `docs/design/AI-AUTHORING-IMPLEMENTATION.md`).
  *

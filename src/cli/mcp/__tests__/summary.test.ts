@@ -66,7 +66,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
       let artifact = created.artifact!;
 
       const added = await call(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'markdown',
         fields: { content: 'Hello' },
@@ -79,7 +79,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
       artifact = added.artifact!;
 
       const sectioned = await call(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'section',
         id: 'intro',
@@ -101,7 +101,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
       let artifact = created.artifact!;
 
       const sectioned = await call(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'section',
         id: 'intro',
@@ -110,7 +110,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
       artifact = sectioned.artifact!;
 
       const nested = await call(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'markdown',
         parentId: 'intro',
@@ -136,7 +136,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
 
       artifact = (
         await call(client, 'pathfinder_manage_block', {
-          operation: 'add',
+          operation: 'add-block',
           artifact,
           type: 'section',
           id: 'intro',
@@ -145,7 +145,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
       ).artifact!;
       artifact = (
         await call(client, 'pathfinder_manage_block', {
-          operation: 'add',
+          operation: 'add-block',
           artifact,
           type: 'markdown',
           parentId: 'intro',
@@ -154,7 +154,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
       ).artifact!;
 
       const removed = await call(client, 'pathfinder_manage_block', {
-        operation: 'remove',
+        operation: 'remove-block',
         artifact,
         id: 'intro',
         cascade: true,
@@ -176,7 +176,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
       // mutation fails but the agent still benefits from receiving the
       // pre-mutation summary.
       const result = await call(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'conditional',
         id: 'cond-1',

@@ -95,7 +95,7 @@ describe('mutation tools — session-mode dispatch', () => {
   describe('input mode validation', () => {
     it('errors INPUT_MODE_MISSING when neither artifact nor sessionToken is provided', async () => {
       const r = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         type: 'markdown',
         fields: { content: 'x' },
       });
@@ -105,7 +105,7 @@ describe('mutation tools — session-mode dispatch', () => {
     it('errors INPUT_MODE_AMBIGUOUS when both are provided', async () => {
       await seedSession(h.store, TOKEN);
       const r = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         sessionToken: TOKEN,
         artifact: { content: { id: 'x', title: 'x', blocks: [] } },
         type: 'markdown',
@@ -116,7 +116,7 @@ describe('mutation tools — session-mode dispatch', () => {
 
     it('errors INVALID_SESSION_TOKEN when sessionToken is malformed', async () => {
       const r = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         sessionToken: 'not-a-token',
         type: 'markdown',
         fields: { content: 'x' },
@@ -129,7 +129,7 @@ describe('mutation tools — session-mode dispatch', () => {
     it('add_block: appends, returns ack with sessionToken + generation, no artifact echo', async () => {
       await seedSession(h.store, TOKEN);
       const r = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         sessionToken: TOKEN,
         type: 'markdown',
         fields: { content: 'Hello' },
@@ -148,7 +148,7 @@ describe('mutation tools — session-mode dispatch', () => {
 
     it('add_block: returns SESSION_NOT_FOUND for an unknown token', async () => {
       const r = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         sessionToken: TOKEN,
         type: 'markdown',
         fields: { content: 'x' },
@@ -174,7 +174,7 @@ describe('mutation tools — session-mode dispatch', () => {
       await seedSession(h.store, TOKEN);
       // Add
       const added = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         sessionToken: TOKEN,
         type: 'markdown',
         id: 'md-1',
@@ -185,7 +185,7 @@ describe('mutation tools — session-mode dispatch', () => {
 
       // Edit
       const edited = await h.call('pathfinder_manage_block', {
-        operation: 'edit',
+        operation: 'edit-block',
         sessionToken: TOKEN,
         id: 'md-1',
         fields: { content: 'rewritten' },
@@ -199,7 +199,7 @@ describe('mutation tools — session-mode dispatch', () => {
 
       // Remove
       const removed = await h.call('pathfinder_manage_block', {
-        operation: 'remove',
+        operation: 'remove-block',
         sessionToken: TOKEN,
         id: 'md-1',
       });
@@ -214,7 +214,7 @@ describe('mutation tools — session-mode dispatch', () => {
     it('proceeds when expectedGeneration matches', async () => {
       await seedSession(h.store, TOKEN);
       const r = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         sessionToken: TOKEN,
         expectedGeneration: 1,
         type: 'markdown',
@@ -234,7 +234,7 @@ describe('mutation tools — session-mode dispatch', () => {
       await h.store.save(TOKEN, cur.artifact, cur.generation); // -> gen=2
 
       const r = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         sessionToken: TOKEN,
         expectedGeneration: 1, // stale
         type: 'markdown',
@@ -250,7 +250,7 @@ describe('mutation tools — session-mode dispatch', () => {
       // Seed an unrelated session so we can verify the store stays untouched.
       await seedSession(h.store, TOKEN);
       const r = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact: { content: { id: 'inline', title: 'Inline', blocks: [] } },
         type: 'markdown',
         fields: { content: 'inline-mode' },

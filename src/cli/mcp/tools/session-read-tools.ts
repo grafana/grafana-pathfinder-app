@@ -6,13 +6,15 @@
  * pay a single tool slot for cheap session reads. The full-artifact escape
  * hatch remains `pathfinder_inspect({sessionToken})`.
  *
- * Operations:
- *   - list_blocks  — top-level structure (block ids + types)
- *   - get_block    — one block by id
- *   - get_manifest — the session-stored manifest only
+ * Operations use kebab-case capability names (same style as CLI command
+ * names). There is no CLI twin for these reads — they are MCP-only facets
+ * of the session store:
+ *   - list-blocks  — top-level structure (block ids + types)
+ *   - get-block    — one block by id
+ *   - get-manifest — the session-stored manifest only
  *
  * CDN package metadata lives under `pathfinder_read_repository` — different
- * data source, different tool.
+ * data source, different tool (shares the `get-manifest` operation name).
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -25,7 +27,7 @@ import { readOnly } from './annotations';
 import { resolveAndPinToken } from './read-input';
 import { sessionNotFoundResult, textResult, withToolErrorEnvelope } from './result';
 
-const READ_SESSION_OPERATIONS = ['list_blocks', 'get_block', 'get_manifest'] as const;
+const READ_SESSION_OPERATIONS = ['list-blocks', 'get-block', 'get-manifest'] as const;
 
 /**
  * Single source of truth for pathfinder_read_session args. Published schema
@@ -39,17 +41,17 @@ const ReadSessionInputSchema = z
     operation: z
       .enum(READ_SESSION_OPERATIONS)
       .describe(
-        'Read to perform: "list_blocks" returns ids/types only, "get_block" returns one block by id (requires blockId), "get_manifest" returns the session-stored manifest (or null).'
+        'Read to perform: "list-blocks" returns ids/types only, "get-block" returns one block by id (requires blockId), "get-manifest" returns the session-stored manifest (or null).'
       ),
-    blockId: z.string().optional().describe('[get_block] Required block id to fetch.'),
+    blockId: z.string().optional().describe('[get-block] Required block id to fetch.'),
   })
   .superRefine((args, ctx) => {
-    if (args.operation === 'get_block') {
+    if (args.operation === 'get-block') {
       if (typeof args.blockId !== 'string' || args.blockId.trim() === '') {
         ctx.addIssue({
           code: 'custom',
           path: ['blockId'],
-          message: 'operation "get_block" requires `blockId`.',
+          message: 'operation "get-block" requires `blockId`.',
         });
       }
     }
@@ -65,7 +67,7 @@ type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: bo
  * errors. The render callback returns:
  *   - a plain payload object — wrapped as `textResult(JSON.stringify(...))`.
  *   - a `ToolResult` directly — passed through verbatim (for in-band error
- *     branches like "block id not found" in get_block).
+ *     branches like "block id not found" in get-block).
  */
 async function withLoadedSession(
   store: AuthoringSessionStore,
@@ -106,7 +108,7 @@ export function registerSessionReadTools(
     'pathfinder_read_session',
     {
       description:
-        'Use this tool to read facets of a session-stored Pathfinder artifact without pulling the full artifact into context. Pass `operation: "list_blocks" | "get_block" | "get_manifest"`. Cheap; use freely for navigation. For the full artifact body use pathfinder_inspect. CDN / published package reads use pathfinder_read_repository instead.',
+        'Use this tool to read facets of a session-stored Pathfinder artifact without pulling the full artifact into context. Pass `operation: "list-blocks" | "get-block" | "get-manifest"` (kebab-case capability names; MCP-only — no CLI twins). Cheap; use freely for navigation. For the full artifact body use pathfinder_inspect. CDN / published package reads use pathfinder_read_repository instead.',
       annotations: readOnly('Read Pathfinder session'),
       // Flat object + superRefine so operation-required fields fail at the MCP
       // schema boundary (same contract as pathfinder_manage_block).
@@ -125,14 +127,14 @@ function renderReadSession(
   token: string
 ): ToolResult | Record<string, unknown> {
   switch (args.operation) {
-    case 'list_blocks':
+    case 'list-blocks':
       return {
         status: 'ok',
         sessionToken: token,
         generation: loaded.generation,
         blocks: buildArtifactSummary(loaded.artifact.content),
       };
-    case 'get_block': {
+    case 'get-block': {
       const id = args.blockId!;
       const block = findBlockById(loaded.artifact.content, id);
       if (!block) {
@@ -154,7 +156,7 @@ function renderReadSession(
         block,
       };
     }
-    case 'get_manifest':
+    case 'get-manifest':
       return {
         status: 'ok',
         sessionToken: token,

@@ -92,7 +92,7 @@ describe('pathfinder_create_package — session mint', () => {
       expect(created.sessionToken).toBeDefined();
 
       const added = await call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         sessionToken: created.sessionToken,
         type: 'markdown',
         fields: { content: 'Hello' },
