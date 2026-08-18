@@ -208,6 +208,8 @@ export const testIds = {
     apiKey: 'config-api-key',
     apiUrl: 'config-api-url',
     devModeToggle: 'config-dev-mode-toggle',
+    /** Pathfinder tutorial anchor for #dev-mode (do not rename without Pathfinder squad). */
+    pathfinderDevMode: 'pathfinder-dev-mode',
     assistantDevModeToggle: 'config-assistant-dev-mode-toggle',
     globalLinkInterception: 'config-global-link-interception',
     openPanelOnLaunch: 'config-open-panel-on-launch',
@@ -370,6 +372,8 @@ export const testIds = {
     panel: 'coda-terminal-panel',
     collapsedBar: 'coda-terminal-collapsed-bar',
     expandButton: 'coda-terminal-expand',
+    /** Pathfinder tutorial anchor for Expand terminal (do not rename without Pathfinder squad). */
+    pathfinderExpand: 'pathfinder-expand-terminal',
     collapseButton: 'coda-terminal-collapse',
     closeButton: 'coda-terminal-close',
     resizeHandle: 'coda-terminal-resize-handle',
