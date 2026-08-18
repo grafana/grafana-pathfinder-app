@@ -501,16 +501,14 @@ describe('convertBlockType', () => {
      * Sources with no `CONTENT_FIELDS` entry — `image`, `video`, `collapsible`,
      * `assistant` and `snippet-ref` — carry no text into a target whose required
      * text field has no `REQUIRED_DEFAULTS` fallback, so the conversion throws.
-     * Pinned here rather than fixed, so a fix has to move this list deliberately;
-     * the `image`/`video` symptom is tracked as
-     * https://github.com/grafana/grafana-pathfinder-app/issues/1575.
+     * Pinned here so adding a fallback moves this list deliberately.
      */
     const CONTENTLESS_SOURCE_FAILURES: Partial<Record<BlockType, readonly BlockType[]>> = {
-      image: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
-      video: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
-      collapsible: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
-      assistant: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
-      'snippet-ref': ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'challenge'],
+      image: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
+      video: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
+      collapsible: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
+      assistant: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
+      'snippet-ref': ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
     };
 
     it('samples every convertible source type', () => {
@@ -532,6 +530,17 @@ describe('convertBlockType', () => {
           expect(convertBlockType(source, target).type).toBe(target);
         }
       }
+    });
+
+    it.each([
+      ['image', { type: 'image', src: 'https://example.com/img.png', alt: 'alt text' }],
+      ['video', { type: 'video', src: 'https://example.com/vid.mp4' }],
+      ['empty markdown', { type: 'markdown', content: '' }],
+    ] satisfies Array<[string, JsonBlock]>)('should convert %s to challenge with a default brief', (_label, source) => {
+      const result = convertBlockType(source, 'challenge');
+
+      expect(result.type).toBe('challenge');
+      expect((result as { brief: string }).brief).toBe('Complete this challenge');
     });
 
     it('should convert image to terminal-connect without throwing (regression #619)', () => {

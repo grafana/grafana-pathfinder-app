@@ -442,13 +442,15 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
                 )}
                 <span>{getStatusText(status)}</span>
               </div>
-              <IconButton
-                name="angle-up"
-                size="sm"
-                aria-label="Expand"
-                tooltip="Expand terminal"
-                data-testid={testIds.codaTerminal.expandButton}
-              />
+              <span data-testid={testIds.codaTerminal.pathfinderExpand}>
+                <IconButton
+                  name="angle-up"
+                  size="sm"
+                  aria-label="Expand terminal"
+                  tooltip="Expand terminal"
+                  data-testid={testIds.codaTerminal.expandButton}
+                />
+              </span>
             </div>
           </div>
         </div>

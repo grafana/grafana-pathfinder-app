@@ -101,6 +101,20 @@ function reportCatalogueFetchFailure(err: unknown): void {
   }
 }
 
+interface CatalogueResult {
+  entries: CustomGuideRepositoryEntry[];
+  cacheable: boolean;
+}
+
+// Bounded token, same closed vocabulary as the reasons above (TELEMETRY.md).
+const MALFORMED_REASON = 'malformed-response';
+
+// `null` is absent, not malformed: the proxy is Go, and json.Marshal of a nil
+// []guide emits `null`, so an empty catalogue legitimately sends exactly that.
+function isMalformedGuides(guides: unknown): boolean {
+  return guides !== undefined && guides !== null && !Array.isArray(guides);
+}
+
 function narrowPackageType(type: string | undefined): PackageType | undefined {
   const parsed = PackageTypeSchema.safeParse(type);
   return parsed.success ? parsed.data : undefined;
@@ -126,7 +140,7 @@ function shapeEntry(entry: WireEntry): CustomGuideRepositoryEntry {
   };
 }
 
-async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
+async function requestCatalogue(): Promise<CatalogueResult> {
   const response = await getBackendSrv().get<CustomGuideRepositoryResponse>(
     CUSTOM_GUIDE_REPOSITORY_URL,
     undefined,
@@ -141,10 +155,17 @@ async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
     const reason = response?.capability?.reason ?? 'unknown';
     logger.warn('[custom-guides] catalogue unavailable', { reason });
     recordCustomGuideCatalogueUnavailable(reason);
-    return [];
+    return { entries: [], cacheable: true };
+  }
+  if (isMalformedGuides(response.guides)) {
+    // Schema drift between the Go proxy and this client would otherwise render
+    // as "no guides authored", with the metric at zero and a silent console.
+    logger.warn('[custom-guides] catalogue malformed', { reason: MALFORMED_REASON });
+    recordCustomGuideCatalogueUnavailable(MALFORMED_REASON);
+    return { entries: [], cacheable: false };
   }
   const guides = Array.isArray(response.guides) ? response.guides : [];
-  return guides.map(shapeEntry);
+  return { entries: guides.map(shapeEntry), cacheable: true };
 }
 
 /**
@@ -155,7 +176,8 @@ async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
  * reports itself unavailable, or the request fails — a best-effort listing, not
  * a hard dependency (mirrors fetchBackendGuides). Successful results are cached
  * per namespace for CACHE_TTL_MS with in-flight de-duplication so concurrent
- * callers share a single upstream drain; failures are not cached.
+ * callers share a single upstream drain; failures and malformed responses are
+ * not cached.
  */
 export async function fetchCustomGuideRepository(namespace: string): Promise<CustomGuideRepositoryEntry[]> {
   if (!isBackendApiAvailable() || !namespace) {
@@ -173,8 +195,12 @@ export async function fetchCustomGuideRepository(namespace: string): Promise<Cus
   }
 
   const request = requestCatalogue()
-    .then((entries) => {
-      cache.set(namespace, { entries, at: Date.now() });
+    .then(({ entries, cacheable }) => {
+      // Drift may be fixed by the next deploy; caching it would keep the
+      // surface empty for the whole TTL after the backend recovered.
+      if (cacheable) {
+        cache.set(namespace, { entries, at: Date.now() });
+      }
       return entries;
     })
     // Best-effort: never surface a listing failure to callers, and don't cache

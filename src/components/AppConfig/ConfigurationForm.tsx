@@ -311,7 +311,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
               description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments. Requires admin permissions to change. Only visible to the user who enabled it."
               className={s.marginTop}
             >
-              <div className={s.devModeField}>
+              <div className={s.devModeField} data-testid={testIds.appConfig.pathfinderDevMode}>
                 <Input
                   type="checkbox"
                   id="dev-mode"
