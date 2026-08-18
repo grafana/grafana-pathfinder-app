@@ -140,7 +140,7 @@ export const TerminalStep = forwardRef<
     const styles = useStyles2(getStyles);
     const terminalCtx = useTerminalContext();
     const codaGate = useCodaTerminalGate();
-    const codaEligibility = useCodaSessionEligibility();
+    const codaEligibility = useCodaSessionEligibility(codaGate !== 'disabled');
     useReportSandboxUnavailable(codaGate, codaEligibility, !!terminalCtx?.isTerminalRegistered, 'terminal');
 
     const generatedStepIdRef = useRef<string | undefined>(undefined);

@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { type ComboboxOption } from '@grafana/ui';
-import { loadCodaCapabilities } from '../../../integrations/coda/useCodaAvailability.hook';
+import { loadCodaCapabilities, useCodaTerminalGate } from '../../../integrations/coda/useCodaAvailability.hook';
 import type { CatalogueItem } from '../../../integrations/coda/coda-api';
 
 /** Keys of `CodaCapabilities` that hold an author-selectable catalogue. */
@@ -33,9 +33,13 @@ function toOption(item: CatalogueItem): ComboboxOption<string> {
 }
 
 export function useCodaOptions(
-  enabled: boolean,
+  wanted: boolean,
   catalogue: CodaCatalogue
 ): { options: Array<ComboboxOption<string>>; isLoading: boolean; unavailable: boolean } {
+  // A form open on a stack with the terminal switched off reads no catalogue —
+  // the gate belongs here rather than at five call sites.
+  const gate = useCodaTerminalGate();
+  const enabled = wanted && gate !== 'disabled';
   const [options, setOptions] = useState<Array<ComboboxOption<string>>>([]);
   const [unavailable, setUnavailable] = useState(false);
   const [done, setDone] = useState(false);
