@@ -18,6 +18,7 @@ import { useStepChecker, validateInteractiveRequirements } from '../../requireme
 import { DataCheckControls } from './data-check-controls';
 import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
 import { STEP_STATES, type StepStateValue } from './step-states';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 import { useDataCheck } from './use-data-check';
 
 export interface DatasourceCheckStepProps {
@@ -347,6 +348,7 @@ export function DatasourceCheckStep({
   return (
     <div
       className={containerClasses}
+      {...getTrackedStepRootAttributes('datasource-check', renderedStepId)}
       data-test-step-state={stepState}
       data-testid={testIds.dataCheck.step(renderedStepId)}
     >

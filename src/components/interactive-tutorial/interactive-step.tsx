@@ -31,6 +31,7 @@ import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 /**
  * Result type for lazy scroll execution wrapper
@@ -964,6 +965,7 @@ export const InteractiveStep = forwardRef<
     return (
       <div
         className={`interactive-step${className ? ` ${className}` : ''}${completedClass}${isCurrentlyExecuting ? ' executing' : ''}`}
+        {...getTrackedStepRootAttributes('plain', stepId || renderedStepId)}
         data-targetaction={targetAction}
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}

@@ -20,9 +20,39 @@ See: [`docs/developer/interactive-examples/json-guide-format.md`](./interactive-
 
 Used by E2E tests to observe the current state of the interactive system. These are **declarative** - they describe what state the component is in.
 
-Examples: `data-test-step-state`, `data-test-substep-index`, `data-test-action`
+Examples: `data-test-step-kind`, `data-test-step-id`, `data-test-step-state`, `data-test-substep-index`, `data-test-action`
 
 **This document describes the E2E testing contract attributes.**
+
+---
+
+## Tracked step root contract
+
+Each tracked step component exposes these attributes on its stable root:
+
+- `data-test-step-kind`: The registered kind of the tracked step.
+- `data-test-step-id`: The stable test step ID from the guide, or the generated ID for a standalone component.
+
+The registered kind values are:
+
+- `plain`
+- `multistep`
+- `guided`
+- `quiz`
+- `terminal`
+- `terminal-connect`
+- `codeblock`
+- `challenge`
+- `datasource-check`
+
+`getTrackedStepRootAttributes()` is the sole writer of `data-test-step-kind` and `data-test-step-id`. `StepTypeKind` is derived from `STEP_TYPE_KIND_KEYS`.
+
+The registry owns the set of kind values. Each component owns its stable root and stable test step ID.
+
+PR 0 only publishes this additive product DOM contract. A later runner change will consume the contract.
+The plain, multistep, and guided roots keep the existing `data-step-id` runtime attribute. The other tracked roots do not add this runtime attribute.
+
+The new attributes do not change existing test IDs or state values. They do not change runner discovery, runner execution, or report outcomes.
 
 ---
 
@@ -439,6 +469,7 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 ### Location
 
 - `src/components/interactive-tutorial/data-attributes.contract.test.tsx` - React component attributes
+- `src/components/interactive-tutorial/tracked-step-root.contract.test.ts` - Tracked step root attributes and registry parity
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
 - `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
 - `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
@@ -478,16 +509,18 @@ npm test -- data-attributes.contract  # Run specific contract tests
 
 ## E2E Test Integration
 
-### Selector Patterns
+### Selector patterns
 
-**Recommended**: Use attribute selectors for stable queries
+Use attribute selectors for stable queries.
+For tracked roots, use the [tracked step root contract](#tracked-step-root-contract).
 
 ```typescript
 // ✅ Good - semantic state selector
 await page.waitForSelector('[data-test-step-state="completed"]');
-
-// ✅ Good - combine with step ID for specificity
-await page.waitForSelector('[data-step-id="create-dashboard"][data-test-step-state="idle"]');
+// ✅ Good - combine the tracked kind, test step ID, and state
+await page.waitForSelector(
+  '[data-test-step-kind="guided"][data-test-step-id="create-dashboard"][data-test-step-state="idle"]'
+);
 
 // ❌ Bad - fragile to UI changes
 await page.waitForSelector('.interactive-step.completed');

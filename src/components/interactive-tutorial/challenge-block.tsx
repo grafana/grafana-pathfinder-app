@@ -36,6 +36,7 @@ import {
 } from '../../integrations/coda/coda-api';
 import { useGuideRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 // The atomic temp+rename guarantees the gated coda-exit-zero check never
 // sees a partially-written gate file. The path is shared with that check
@@ -533,7 +534,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 
   if (isCompleted) {
     return (
-      <div className={styles.container} data-test-step-state="completed" data-testid={`challenge-block-${stepId}`}>
+      <div
+        className={styles.container}
+        {...getTrackedStepRootAttributes('challenge', stepId)}
+        data-test-step-state="completed"
+        data-testid={`challenge-block-${stepId}`}
+      >
         <h4 className={styles.title}>{title}</h4>
         <div className={styles.brief}>{brief}</div>
         <div className={styles.solved}>
@@ -544,7 +550,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   }
 
   return (
-    <div className={styles.container} data-test-step-state={state} data-testid={`challenge-block-${stepId}`}>
+    <div
+      className={styles.container}
+      {...getTrackedStepRootAttributes('challenge', stepId)}
+      data-test-step-state={state}
+      data-testid={`challenge-block-${stepId}`}
+    >
       <h4 className={styles.title}>{title}</h4>
       <div className={styles.brief}>{brief}</div>
 
