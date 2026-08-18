@@ -62,6 +62,11 @@ export interface RequirementsCheckOptions {
   lazyRender?: boolean;
   /** CSS selector for scroll container when lazyRender is enabled */
   scrollContainer?: string;
+  /** Resolve a lazy target during this check instead of returning a fix hint. */
+  discoverLazyTarget?: boolean;
+  /** Absolute deadline for lazy target discovery. */
+  deadlineMs?: number;
+  signal?: AbortSignal;
 }
 
 type CheckMode = 'pre' | 'post';
@@ -74,6 +79,11 @@ interface CheckContext {
   lazyRender?: boolean;
   /** CSS selector for scroll container when lazyRender is enabled */
   scrollContainer?: string;
+  /** Resolve a lazy target during this check instead of returning a fix hint. */
+  discoverLazyTarget?: boolean;
+  /** Absolute deadline for lazy target discovery. */
+  deadlineMs?: number;
+  signal?: AbortSignal;
 }
 
 interface CheckHandler {
@@ -93,6 +103,9 @@ const CHECK_HANDLERS: readonly CheckHandler[] = [
       reftargetExistsCheck(ctx.refTarget ?? '', ctx.targetAction ?? 'button', {
         lazyRender: ctx.lazyRender,
         scrollContainer: ctx.scrollContainer,
+        discoverLazyTarget: ctx.discoverLazyTarget,
+        deadlineMs: ctx.deadlineMs,
+        signal: ctx.signal,
       }),
   },
   { id: 'navmenu-open', match: (c) => c === 'navmenu-open', run: () => navmenuOpenCheck() },
@@ -199,6 +212,9 @@ async function executeChecksWithRetry(
     maxRetries = INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     lazyRender,
     scrollContainer,
+    discoverLazyTarget,
+    deadlineMs,
+    signal,
   } = options;
 
   if (!requirements) {
@@ -219,6 +235,9 @@ async function executeChecksWithRetry(
       refTarget,
       lazyRender,
       scrollContainer,
+      discoverLazyTarget,
+      deadlineMs,
+      signal,
     });
 
     // If the check passes, return success

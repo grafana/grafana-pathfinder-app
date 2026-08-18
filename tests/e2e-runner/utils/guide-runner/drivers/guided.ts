@@ -1,5 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
+import { GUIDED_SUBSTEP_SETTLED_EVENT } from '../../../../../src/constants/interactive-config';
 
+import { isGuidedActionType } from '../../../../../src/types/interactive-actions.types';
 import { testIds } from '../../../../../src/constants/testIds';
 import { resolveSelector } from '../../selector-resolver';
 import { captureFailureArtifacts } from '../artifacts';
@@ -13,20 +15,112 @@ import {
   GUIDED_FORMFILL_VALID_TIMEOUT_MS,
   GUIDED_HOVER_DWELL_MS,
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
-  GUIDED_SKIP_AFTER_TIMEOUT_FRACTION,
   GUIDED_SUBSTEP_ADVANCE_POLL_MS,
   GUIDED_TARGET_RESOLUTION_TIMEOUT_MS,
-  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
 } from '../constants';
-import type { TestableStep } from '../types';
+import type { GuidedSubstepResult, TestableStep } from '../types';
 import { startStepAction, waitForCompletion } from './shared';
-import type { StepDriverExecutionContext, StepDriverExecutionResult } from './types';
+import { StepDriverExecutionError, type StepDriverExecutionContext, type StepDriverExecutionResult } from './types';
 
 // ============================================
 // Guided Step Execution (Phase 3)
 // ============================================
 
 const GUIDED_WAIT_EXECUTING_MS = 5000;
+const GUIDED_EVIDENCE_BINDING = '__pathfinderRecordGuidedSubstep';
+
+interface GuidedEvidencePageState {
+  bindingReady: boolean;
+  active: Map<string, Map<number, GuidedSubstepResult>>;
+}
+
+interface GuidedEvidenceForwarderOptions {
+  bindingName: string;
+  eventName: string;
+}
+
+export interface GuidedEvidenceCollector {
+  read(): Promise<GuidedSubstepResult[]>;
+  dispose(): Promise<void>;
+}
+
+const guidedEvidencePages = new WeakMap<Page, GuidedEvidencePageState>();
+
+export function installGuidedEvidenceForwarder({ bindingName, eventName }: GuidedEvidenceForwarderOptions): void {
+  const evidenceWindow = window as typeof window & {
+    __pathfinderGuidedEvidenceForwarderInstalled?: boolean;
+    [key: string]: unknown;
+  };
+  if (evidenceWindow.__pathfinderGuidedEvidenceForwarderInstalled) {
+    return;
+  }
+  evidenceWindow.__pathfinderGuidedEvidenceForwarderInstalled = true;
+  document.addEventListener(eventName, (event) => {
+    const binding = evidenceWindow[bindingName];
+    if (typeof binding === 'function') {
+      void (binding as (value: unknown) => Promise<void>)((event as CustomEvent).detail);
+    }
+  });
+}
+
+function isGuidedSubstepResult(value: unknown): value is GuidedSubstepResult & { stepId: string } {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const result = value as Record<string, unknown>;
+  return (
+    typeof result.stepId === 'string' &&
+    typeof result.index === 'number' &&
+    Number.isInteger(result.index) &&
+    result.index >= 0 &&
+    isGuidedActionType(result.action) &&
+    (result.outcome === 'passed' || result.outcome === 'skipped')
+  );
+}
+
+export async function startGuidedEvidenceCollector(page: Page, stepId: string): Promise<GuidedEvidenceCollector> {
+  let state = guidedEvidencePages.get(page);
+  if (!state) {
+    state = { bindingReady: false, active: new Map() };
+    guidedEvidencePages.set(page, state);
+  }
+  if (!state.bindingReady) {
+    await page.exposeBinding(GUIDED_EVIDENCE_BINDING, (_source, detail: unknown) => {
+      if (!isGuidedSubstepResult(detail)) {
+        return;
+      }
+      state!.active.get(detail.stepId)?.set(detail.index, {
+        index: detail.index,
+        action: detail.action,
+        outcome: detail.outcome,
+      });
+    });
+    const forwarderOptions = {
+      bindingName: GUIDED_EVIDENCE_BINDING,
+      eventName: GUIDED_SUBSTEP_SETTLED_EVENT,
+    };
+    await page.addInitScript(installGuidedEvidenceForwarder, forwarderOptions);
+    await page.evaluate(installGuidedEvidenceForwarder, forwarderOptions);
+    page.once('close', () => {
+      state!.active.clear();
+      guidedEvidencePages.delete(page);
+    });
+    state.bindingReady = true;
+  }
+
+  const results = new Map<number, GuidedSubstepResult>();
+  state.active.set(stepId, results);
+
+  return {
+    read: async () => {
+      await page.waitForTimeout(0).catch(() => undefined);
+      return [...results.values()].sort((a, b) => a.index - b.index);
+    },
+    dispose: async () => {
+      state!.active.delete(stepId);
+    },
+  };
+}
 
 export async function waitForGuidedExecutionStart(
   page: Page,
@@ -128,12 +222,9 @@ async function waitForSubstepAdvance(
   page: Page,
   stepLocator: Locator,
   previousSubstepIndex: number,
-  timeoutMs: number,
-  options: { commentBox?: Locator } = {}
+  timeoutMs: number
 ): Promise<void> {
-  const { commentBox } = options;
   const deadline = Date.now() + timeoutMs;
-  const skipAfterMs = Math.floor(timeoutMs * GUIDED_SKIP_AFTER_TIMEOUT_FRACTION);
   let lastState: string | null = null;
   let lastIndex: string | null = null;
 
@@ -167,16 +258,6 @@ async function waitForSubstepAdvance(
     }
     if (lastState === 'completed' && lastIndex === null) {
       return;
-    }
-
-    const elapsed = Date.now() - (deadline - timeoutMs);
-    if (commentBox && elapsed >= skipAfterMs) {
-      const skipBtn = commentBox.getByRole('button', { name: /^Skip$/ });
-      const count = await skipBtn.count();
-      if (count > 0) {
-        await dismissBadgeCelebrations(page);
-        await skipBtn.click().catch(() => {});
-      }
     }
 
     await page.waitForTimeout(GUIDED_SUBSTEP_ADVANCE_POLL_MS);
@@ -306,11 +387,12 @@ export async function runGuidedSubstepLoop(
     verbose?: boolean;
     artifactsDir?: string;
   }
-): Promise<{ completed: boolean }> {
+): Promise<{ completed: boolean; guidedSubsteps: GuidedSubstepResult[] }> {
   let stepLocator = options.stepLocator;
   const { perSubstepTimeoutMs, verbose = false, artifactsDir } = options;
   const commentBoxDeadlineMs = options.commentBoxDeadlineMs ?? Date.now() + GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS;
   const guidedStepCount = step.guidedStepCount ?? 1;
+  const guidedSubsteps: GuidedSubstepResult[] = [];
 
   const captureLoopArtifacts = async (context: string) => {
     if (artifactsDir) {
@@ -331,12 +413,12 @@ export async function runGuidedSubstepLoop(
 
   while (true) {
     if (await stepDetached()) {
-      return { completed: true };
+      return { completed: true, guidedSubsteps };
     }
 
     const state = await stepLocator.getAttribute('data-test-step-state');
     if (state === 'completed') {
-      return { completed: true };
+      return { completed: true, guidedSubsteps };
     }
     if (state === 'error') {
       await captureLoopArtifacts('error-state');
@@ -355,7 +437,7 @@ export async function runGuidedSubstepLoop(
     const currentIndex = indexStr != null ? parseInt(indexStr, 10) : 0;
     const safeIndex = Number.isNaN(currentIndex) ? 0 : currentIndex;
     if (safeIndex >= guidedStepCount) {
-      return { completed: false };
+      return { completed: false, guidedSubsteps };
     }
 
     const commentBox = page.locator('.interactive-comment-box').first();
@@ -372,12 +454,20 @@ export async function runGuidedSubstepLoop(
       throw err;
     }
     if (commentBoxOutcome === 'completed' || commentBoxOutcome === 'detached') {
-      return { completed: true };
+      return { completed: true, guidedSubsteps };
+    }
+    const refreshedIndex = Number.parseInt(
+      (await stepLocator.getAttribute('data-test-substep-index')) ?? String(safeIndex),
+      10
+    );
+    if (Number.isFinite(refreshedIndex) && refreshedIndex > safeIndex) {
+      continue;
     }
 
     const action = await commentBox.getAttribute('data-test-action');
     const reftarget = await commentBox.getAttribute('data-test-reftarget');
     const targetValue = await commentBox.getAttribute('data-test-target-value');
+    const skippable = (await commentBox.getAttribute('data-test-skippable')) === 'true';
 
     if (verbose) {
       console.log(`   📍 Guided substep ${safeIndex + 1}/${guidedStepCount} action=${action}`);
@@ -438,36 +528,52 @@ export async function runGuidedSubstepLoop(
         throw new Error(`Guided step: unknown data-test-action "${action}"`);
       }
     } catch (err) {
-      await captureLoopArtifacts(`substep-${safeIndex}-${action}`);
-      throw err;
+      if (!skippable) {
+        await captureLoopArtifacts(`substep-${safeIndex}-${action}`);
+        throw err;
+      }
+      const skipButton = commentBox.getByRole('button', { name: /^Skip$/ });
+      if ((await skipButton.count()) === 0) {
+        await captureLoopArtifacts(`substep-${safeIndex}-${action}-skip-missing`);
+        throw err;
+      }
+      await dismissBadgeCelebrations(page);
+      await skipButton.click();
     }
 
     if (await stepDetached()) {
-      return { completed: true };
+      return { completed: true, guidedSubsteps };
     }
 
-    await waitForSubstepAdvance(page, stepLocator, safeIndex, perSubstepTimeoutMs, { commentBox });
+    await waitForSubstepAdvance(page, stepLocator, safeIndex, perSubstepTimeoutMs);
     await page.waitForTimeout(GUIDED_BETWEEN_SUBSTEP_DELAY_MS);
   }
 }
 
 export async function executeGuidedStep(context: StepDriverExecutionContext): Promise<StepDriverExecutionResult> {
-  const action = await startStepAction(context);
-  if (action.outcome !== 'started') {
-    return { outcome: action.outcome };
-  }
+  const collector = await startGuidedEvidenceCollector(context.page, context.step.stepId);
+  try {
+    const action = await startStepAction(context);
+    if (action.outcome !== 'started') {
+      return { outcome: action.outcome };
+    }
 
-  const stepLocator = context.page.getByTestId(testIds.interactive.step(context.step.stepId));
-  await waitForGuidedExecutionStart(context.page, stepLocator);
-  const { completed } = await runGuidedSubstepLoop(context.page, context.step, {
-    stepLocator,
-    perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
-    commentBoxDeadlineMs: Date.now() + context.timeout,
-    verbose: context.verbose,
-    artifactsDir: context.artifactsDir,
-  });
-  if (!completed) {
-    await waitForCompletion(context.page, context.step.stepId, context.timeout);
+    const stepLocator = context.page.getByTestId(testIds.interactive.step(context.step.stepId));
+    await waitForGuidedExecutionStart(context.page, stepLocator);
+    const { completed } = await runGuidedSubstepLoop(context.page, context.step, {
+      stepLocator,
+      perSubstepTimeoutMs: context.step.guidedStepTimeoutMs ?? context.timeout,
+      commentBoxDeadlineMs: Date.now() + context.timeout,
+      verbose: context.verbose,
+      artifactsDir: context.artifactsDir,
+    });
+    if (!completed) {
+      await waitForCompletion(context.page, context.step.stepId, context.timeout);
+    }
+    return { outcome: 'completed', guidedSubsteps: await collector.read() };
+  } catch (error) {
+    throw new StepDriverExecutionError(error, await collector.read());
+  } finally {
+    await collector.dispose();
   }
-  return { outcome: 'completed' };
 }

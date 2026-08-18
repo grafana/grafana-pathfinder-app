@@ -194,11 +194,18 @@ export function getInteractiveConfig(pluginConfig?: DocsPluginConfig) {
  */
 export const INTERACTIVE_CONFIG = INTERACTIVE_CONFIG_DEFAULTS;
 
+export function normalizeGuidedStepTimeout(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value > 0
+    ? value
+    : INTERACTIVE_CONFIG.guided.stepTimeout;
+}
+
 /**
  * Clear command constant for form fill operations
  * Use @@CLEAR@@ at the start of targetvalue to clear before filling
  */
 export const CLEAR_COMMAND = '@@CLEAR@@' as const;
+export const GUIDED_SUBSTEP_SETTLED_EVENT = 'pathfinder:guided-substep-settled' as const;
 
 /**
  * Type-safe access to configuration values

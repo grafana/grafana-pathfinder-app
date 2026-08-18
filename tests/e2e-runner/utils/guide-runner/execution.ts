@@ -28,7 +28,12 @@ import {
   captureFinalScreenshot,
 } from './artifacts';
 import { validateSession, handleRequirementsWithFix } from './requirements';
-import { getStepDriver, selectStepAction as selectDriverAction, stepTimeout } from './drivers';
+import {
+  getStepDriver,
+  selectStepAction as selectDriverAction,
+  StepDriverExecutionError,
+  stepTimeout,
+} from './drivers';
 import type {
   TestableStep,
   SkipReason,
@@ -482,10 +487,12 @@ async function executeStepCore(
       consoleErrors,
       skippable: step.skippable,
       artifacts: successArtifacts,
+      guidedSubsteps: execution.guidedSubsteps,
     };
   } catch (error) {
     // Return failure result with error details
     const errorMsg = error instanceof Error ? error.message : String(error);
+    const guidedSubsteps = error instanceof StepDriverExecutionError ? error.guidedSubsteps : undefined;
 
     // L3-5D: Capture artifacts on failure
     const artifacts = await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath);
@@ -505,6 +512,7 @@ async function executeStepCore(
       classification: classifyError(errorMsg),
       // L3-5D: Include artifact paths
       artifacts,
+      guidedSubsteps,
     };
   } finally {
     // REACT: cleanup subscription (R1) - Clean up console handler to prevent memory leaks

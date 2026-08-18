@@ -154,6 +154,11 @@ export interface ReftargetExistsOptions {
   lazyRender?: boolean;
   /** CSS selector for scroll container when lazyRender is enabled */
   scrollContainer?: string;
+  /** Resolve a lazy target now instead of returning a fix hint. */
+  discoverLazyTarget?: boolean;
+  /** Absolute deadline for target discovery. */
+  deadlineMs?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -261,6 +266,19 @@ export async function reftargetExistsCheck(
 
   // If lazyRender is enabled, return a fixable error that allows scroll discovery
   if (options?.lazyRender) {
+    if (options.discoverLazyTarget) {
+      const element = await scrollUntilElementFound(reftarget, {
+        scrollContainerSelector: options.scrollContainer,
+        deadlineMs: options.deadlineMs,
+        signal: options.signal,
+      });
+      if (element) {
+        return {
+          requirement: 'exists-reftarget',
+          pass: true,
+        };
+      }
+    }
     return {
       requirement: 'exists-reftarget',
       pass: false,
@@ -307,6 +325,8 @@ export interface LazyScrollOptions {
   maxScrollAttempts?: number;
   scrollIncrement?: number;
   waitTime?: number;
+  deadlineMs?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -326,6 +346,8 @@ export async function scrollUntilElementFound(
     maxScrollAttempts = 15, // More attempts since we scroll smaller increments
     scrollIncrement = 400, // Smaller increments for smoother scrolling
     waitTime = 350, // Longer wait to allow smooth scroll animation to complete
+    deadlineMs,
+    signal,
   } = options;
 
   // Find the scroll container
@@ -346,11 +368,21 @@ export async function scrollUntilElementFound(
   }
 
   for (let attempt = 0; attempt < maxScrollAttempts; attempt++) {
+    if (signal?.aborted) {
+      return null;
+    }
+    const remaining = deadlineMs === undefined ? Number.POSITIVE_INFINITY : deadlineMs - Date.now();
+    if (remaining <= 0) {
+      return null;
+    }
     // Scroll down with smooth animation for better UX
     scrollContainer.scrollBy({ top: scrollIncrement, behavior: 'smooth' });
 
     // Wait for smooth scroll animation + lazy render to kick in
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
+    await new Promise((resolve) => setTimeout(resolve, Math.min(waitTime, remaining)));
+    if (signal?.aborted) {
+      return null;
+    }
 
     // Check if element now exists using enhanced selector
     const result = querySelectorAllEnhanced(resolvedSelector);

@@ -13,8 +13,8 @@ import {
 } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
-import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
-import { getInteractiveConfig } from '../../constants/interactive-config';
+import { useGuideRequirements, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
+import { getInteractiveConfig, normalizeGuidedStepTimeout } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
 import { GuidedAction } from '../../types/interactive-actions.types';
@@ -30,6 +30,7 @@ import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
+import { useGuideResponsesOptional } from '../../docs-retrieval';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -177,7 +178,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       onComplete,
       skippable = false,
       completeEarly = false, // Default to false - only mark early if explicitly set
-      stepTimeout = 120000, // 2 minute default timeout per step
+      stepTimeout,
       resetTrigger,
       stepIndex,
       totalSteps,
@@ -205,6 +206,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Local UI state
     const mode = useInteractiveMode();
     const controllerChannel = useControllerChannel();
+    const guideResponses = useGuideResponsesOptional();
+    const guideId = guideResponses?.guideId;
     const [isExecuting, setIsExecuting] = useState(false);
     // Set when the user cancels a controller-mode run, so the awaiting branch
     // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
@@ -248,13 +251,20 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       const config = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
       return getInteractiveConfig(config);
     }, [pluginContext?.meta?.jsonData]);
+    const effectiveStepTimeout = normalizeGuidedStepTimeout(stepTimeout);
+    const { checkRequirements: checkGuidedRequirements } = useGuideRequirements();
 
     // Create guided handler instance
     const guidedHandler = useMemo(() => {
       const stateManager = new InteractiveStateManager();
       const navigationManager = new NavigationManager();
-      return new GuidedHandler(stateManager, navigationManager, waitForReactUpdates);
-    }, []);
+      return new GuidedHandler(
+        stateManager,
+        navigationManager,
+        waitForReactUpdates,
+        ({ guideId: _guideId, ...options }) => checkGuidedRequirements(options)
+      );
+    }, [checkGuidedRequirements]);
 
     // Cleanup on unmount: cancel any running guided interaction and clear highlights
     // guidedHandler.cancel() already calls cleanupListeners(true) which clears highlights
@@ -360,6 +370,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       };
 
       try {
+        guidedHandler.resetProgress();
         for (let i = 0; i < internalActions.length; i++) {
           const action = internalActions[i];
           setCurrentStepIndex(i);
@@ -371,8 +382,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             action!,
             i,
             internalActions.length,
-            stepTimeout,
-            completeBeforeActionEffect
+            effectiveStepTimeout,
+            completeBeforeActionEffect,
+            { parentStepId: renderedStepId, guideId }
           );
 
           if (result === 'completed' || result === 'skipped') {
@@ -415,11 +427,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       stepId,
       internalActions,
       guidedHandler,
-      stepTimeout,
+      effectiveStepTimeout,
       onStepComplete,
       onComplete,
       persistCompletion,
       checker.completionReason,
+      renderedStepId,
+      guideId,
     ]);
 
     // Expose execute method for parent (section execution)
@@ -625,6 +639,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             targetAction: 'guided',
             refTarget: '',
             internalActions: internalActions.map(toCrossTabInternalAction),
+            guideId,
+            guidedStepTimeoutMs: effectiveStepTimeout,
           },
         });
         try {
@@ -669,6 +685,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       onStepComplete,
       onComplete,
       stepId,
+      guideId,
+      effectiveStepTimeout,
     ]);
 
     // Handle step reset (redo functionality)
@@ -760,6 +778,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-test-step-state={uiState}
         data-test-substep-index={isExecuting ? currentStepIndex : undefined}
         data-test-substep-total={internalActions.length}
+        data-test-substep-timeout-ms={effectiveStepTimeout}
         data-test-requirements-state={
           checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }

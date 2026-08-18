@@ -1,4 +1,4 @@
-import { validateCrossTabMessage, type RemoteRequirementError } from './cross-tab.types';
+import { toCrossTabInternalAction, validateCrossTabMessage, type RemoteRequirementError } from './cross-tab.types';
 import type { CheckResultError } from './requirements.types';
 
 function envelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -6,6 +6,43 @@ function envelope(overrides: Record<string, unknown> = {}): Record<string, unkno
 }
 
 describe('validateCrossTabMessage', () => {
+  it('preserves every declared guided action field in the wire converter', () => {
+    const action = {
+      targetAction: 'formfill' as const,
+      refTarget: '#field',
+      targetValue: 'value',
+      requirements: 'var-ready:true',
+      isSkippable: true,
+      formHint: 'Enter a value',
+      validateInput: true,
+      lazyRender: true,
+      scrollContainer: '.dashboard-scroll',
+    };
+
+    expect(toCrossTabInternalAction(action)).toEqual(action);
+  });
+
+  it('accepts a well-formed guided-substep-settled reply', () => {
+    const message = envelope({
+      kind: 'guided-substep-settled',
+      stepId: 's1',
+      runId: 'run-1',
+      index: 2,
+      action: 'formfill',
+      outcome: 'skipped',
+    });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([
+    ['missing runId', { stepId: 's1', index: 0, action: 'button', outcome: 'passed' }],
+    ['negative index', { stepId: 's1', runId: 'r1', index: -1, action: 'button', outcome: 'passed' }],
+    ['fractional index', { stepId: 's1', runId: 'r1', index: 1.5, action: 'button', outcome: 'passed' }],
+    ['invalid action', { stepId: 's1', runId: 'r1', index: 0, action: 'navigate', outcome: 'passed' }],
+    ['invalid outcome', { stepId: 's1', runId: 'r1', index: 0, action: 'button', outcome: 'failed' }],
+  ])('rejects malformed guided-substep-settled: %s', (_label, fields) => {
+    expect(validateCrossTabMessage(envelope({ kind: 'guided-substep-settled', ...fields }))).toBeNull();
+  });
   it('accepts a well-formed step-command', () => {
     const message = envelope({
       kind: 'step-command',
@@ -15,6 +52,82 @@ describe('validateCrossTabMessage', () => {
       action: { targetAction: 'button', refTarget: 'Save' },
     });
     expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it.each([30000, 45000, 60000, 120000])(
+    'accepts every guided optional field with a %ims timeout',
+    (guidedStepTimeoutMs) => {
+      const message = envelope({
+        kind: 'step-command',
+        phase: 'do',
+        stepId: 'guided-1',
+        runId: 'run-guided-1',
+        action: {
+          targetAction: 'guided',
+          refTarget: '',
+          guideId: 'guide-scope',
+          guidedStepTimeoutMs,
+          internalActions: [
+            {
+              targetAction: 'formfill',
+              refTarget: '#field',
+              targetValue: 'value',
+              requirements: 'var-ready:true',
+              isSkippable: true,
+              formHint: 'Enter a value',
+              validateInput: true,
+              lazyRender: true,
+              scrollContainer: '.dashboard-scroll',
+            },
+            { targetAction: 'noop', requirements: 'section-completed:intro', isSkippable: false },
+          ],
+        },
+      });
+
+      expect(validateCrossTabMessage(message)).toBe(message);
+    }
+  );
+
+  it.each([
+    ['requirements', 1],
+    ['isSkippable', 'true'],
+    ['formHint', false],
+    ['validateInput', 'true'],
+    ['lazyRender', 'true'],
+    ['scrollContainer', 4],
+  ])('rejects a guided internal action with invalid %s', (field, value) => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-1',
+      runId: 'run-guided-1',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [{ targetAction: 'highlight', refTarget: '#target', [field]: value }],
+      },
+    });
+
+    expect(validateCrossTabMessage(message)).toBeNull();
+  });
+
+  it.each([
+    ['guideId', 7],
+    ['guidedStepTimeoutMs', 0],
+    ['guidedStepTimeoutMs', -1],
+    ['guidedStepTimeoutMs', 1.5],
+    ['guidedStepTimeoutMs', Number.NaN],
+    ['guidedStepTimeoutMs', '30000'],
+  ])('rejects invalid guided root field %s', (field, value) => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-1',
+      runId: 'run-guided-1',
+      action: { targetAction: 'guided', refTarget: '', internalActions: [], [field]: value },
+    });
+
+    expect(validateCrossTabMessage(message)).toBeNull();
   });
 
   it('accepts a well-formed heartbeat', () => {

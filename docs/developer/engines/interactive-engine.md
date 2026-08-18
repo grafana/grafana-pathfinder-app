@@ -288,6 +288,14 @@ Custom DOM event `interactive-action-completed` dispatched with:
 }
 ```
 
+`GuidedHandler` also dispatches `pathfinder:guided-substep-settled`.
+
+The event fires once for each passed or skipped substep. It fires before completion side effects can detach the guided root.
+
+The detail contains the parent step ID, substep index, action kind, and outcome.
+
+`GUIDED_ACTION_TYPES` is the only guided action vocabulary. Runtime, runner, wire validation, and report tests use this tuple.
+
 ### User Action Events (Auto-completion)
 
 Custom DOM event `user-action-detected` dispatched with:
@@ -389,6 +397,10 @@ Located in `src/constants/interactive-config.ts`:
 - **Retries**: Maximum retry attempts for sequence steps (default: 3)
 - **Modal Detection**: Polling interval and debounce settings for modal state detection
 - **Position Tracking**: Drift detection threshold and check interval for guided mode highlights
+- **Guided timeout**: A positive integer in milliseconds. Invalid programmatic values use 120000ms.
+- **Guided cancellation**: One AbortSignal owns navigation, lazy scroll, target preparation, and highlight creation.
+
+Target retry checks this signal before each lookup. Cancellation also interrupts the retry delay and prevents completion-listener setup.
 
 ## Design intent
 
@@ -403,6 +415,7 @@ Located in `src/constants/interactive-config.ts`:
 - Hover state is intentionally persisted until explicit cleanup — subsequent actions may need to interact with hover-revealed elements (from code comment in `hover-handler.ts`)
 - An emergency unblock method must always be available — if the interaction blocker enters an invalid state, users must have an escape hatch (from [Interactive State Manager](#interactive-state-manager) and [Global Interaction Blocker](#global-interaction-blocker) above)
 - External URLs in the navigate handler must be validated via `parseUrlSafely` to block `javascript:` and `data:` scheme injection (from [Handler Types](#handler-types) above)
+- A guided deadline or cancel action must invalidate its run before cleanup. Late async work must not recreate navigation or overlay state.
 
 **Non-goals**:
 

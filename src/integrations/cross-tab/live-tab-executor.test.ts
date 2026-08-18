@@ -146,6 +146,50 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
+  it.each([30000, 45000, 60000, 120000])(
+    'carries every guided field, guide scope, and the %ims timeout to GuidedHandler',
+    async (guidedStepTimeoutMs) => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+      const action = {
+        targetAction: 'formfill',
+        refTarget: '#field',
+        targetValue: 'value',
+        requirements: 'var-ready:true',
+        isSkippable: true,
+        formHint: 'Enter a value',
+        validateInput: true,
+        lazyRender: true,
+        scrollContainer: '.dashboard-scroll',
+      };
+
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'controller',
+        timestamp: 0,
+        kind: 'step-command',
+        phase: 'do',
+        stepId: 'guided-fields',
+        runId: `run-${guidedStepTimeoutMs}`,
+        action: {
+          targetAction: 'guided',
+          refTarget: '',
+          guideId: 'guide-scope',
+          guidedStepTimeoutMs,
+          internalActions: [action],
+        },
+      });
+
+      const executeGuidedStep = (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
+      await waitFor(() => expect(executeGuidedStep).toHaveBeenCalled());
+      expect(executeGuidedStep).toHaveBeenCalledWith(action, 0, 1, guidedStepTimeoutMs, undefined, {
+        parentStepId: 'guided-fields',
+        guideId: 'guide-scope',
+      });
+      uninstall();
+    }
+  );
+
   it('routes a "show" command to the handler with click=false', async () => {
     const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
@@ -270,7 +314,10 @@ describe('installLiveTabExecutor', () => {
     expect(executeGuidedStep).toHaveBeenCalledWith(
       expect.objectContaining({ targetState: 'aria-expanded:true' }),
       0,
-      1
+      1,
+      120000,
+      undefined,
+      { parentStepId: 'g-toggle', guideId: undefined }
     );
     uninstall();
   });
@@ -327,11 +374,67 @@ describe('installLiveTabExecutor', () => {
     // Guided waits for the user — it must NOT auto-perform via the action handlers.
     expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
     expect(executeOf(ButtonHandler)).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(transport.postedMessages).toEqual(
+        expect.arrayContaining([
+          {
+            kind: 'guided-substep-settled',
+            stepId: 'g1',
+            runId: 'run-g1',
+            index: 0,
+            action: 'highlight',
+            outcome: 'passed',
+          },
+          {
+            kind: 'guided-substep-settled',
+            stepId: 'g1',
+            runId: 'run-g1',
+            index: 1,
+            action: 'button',
+            outcome: 'passed',
+          },
+        ])
+      )
+    );
     // And it reports completion so the controller doesn't mark the step done early.
     await waitFor(() =>
       expect(transport.postedMessages).toContainEqual(
         expect.objectContaining({ kind: 'step-complete', stepId: 'g1', runId: 'run-g1', ok: true })
       )
+    );
+    uninstall();
+  });
+
+  it('relays a skipped guided outcome', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    const executeGuidedStep = (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
+    executeGuidedStep.mockResolvedValueOnce('skipped');
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'g-skip',
+      runId: 'run-g-skip',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [{ targetAction: 'noop', isSkippable: true }],
+      },
+    });
+
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual({
+        kind: 'guided-substep-settled',
+        stepId: 'g-skip',
+        runId: 'run-g-skip',
+        index: 0,
+        action: 'noop',
+        outcome: 'skipped',
+      })
     );
     uninstall();
   });

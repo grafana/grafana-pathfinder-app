@@ -135,6 +135,89 @@ describe('json-parser — field-name alias acceptance', () => {
     expect(actions[1]!.targetState).toBe('data-state:open');
     expect(actions[2]!.targetState).toBeUndefined();
   });
+
+  it('guided block preserves substep lazy discovery fields', () => {
+    const guide: JsonGuide = {
+      id: 'guided-lazy-fields',
+      title: 'Guided lazy fields',
+      blocks: [
+        {
+          type: 'guided',
+          content: 'Find a lazy target',
+          steps: [
+            {
+              action: 'highlight',
+              reftarget: '.lazy-panel',
+              lazyRender: true,
+              scrollContainer: '.dashboard-scroll',
+            },
+          ],
+        },
+      ],
+    };
+
+    const block = parseJsonGuide(guide).data!.elements.find((element) => element.type === 'interactive-guided');
+    const action = (block!.props as { internalActions: Array<Record<string, unknown>> }).internalActions[0];
+
+    expect(action).toMatchObject({
+      lazyRender: true,
+      scrollContainer: '.dashboard-scroll',
+    });
+  });
+
+  it.each([30000, 45000, 60000])('guided block preserves an explicit %ims substep timeout', (stepTimeout) => {
+    const guide: JsonGuide = {
+      id: `guided-timeout-${stepTimeout}`,
+      title: 'Guided timeout',
+      blocks: [
+        {
+          type: 'guided',
+          content: 'Use the authored timeout',
+          stepTimeout,
+          steps: [{ action: 'noop' }],
+        },
+      ],
+    };
+
+    const block = parseJsonGuide(guide).data!.elements.find((element) => element.type === 'interactive-guided');
+
+    expect(block!.props.stepTimeout).toBe(stepTimeout);
+  });
+
+  it('leaves the guided timeout unset for the runtime default owner', () => {
+    const guide: JsonGuide = {
+      id: 'guided-default-timeout',
+      title: 'Guided default timeout',
+      blocks: [
+        {
+          type: 'guided',
+          content: 'Use the runtime timeout',
+          steps: [{ action: 'noop' }],
+        },
+      ],
+    };
+
+    const block = parseJsonGuide(guide).data!.elements.find((element) => element.type === 'interactive-guided');
+
+    expect(block!.props.stepTimeout).toBeUndefined();
+  });
+
+  it.each([0, -1, 1.5, Number.NaN])('rejects invalid guided timeout %s', (stepTimeout) => {
+    const guide = {
+      id: `guided-invalid-timeout-${stepTimeout}`,
+      title: 'Guided invalid timeout',
+      blocks: [
+        {
+          type: 'guided',
+          content: 'Reject the timeout',
+          stepTimeout,
+          steps: [{ action: 'noop' }],
+        },
+      ],
+    } as JsonGuide;
+
+    expect(parseJsonGuide(guide).isValid).toBe(false);
+  });
 });
 
 describe('json-parser — stable derived stepIds (closes #8 standalone instability)', () => {

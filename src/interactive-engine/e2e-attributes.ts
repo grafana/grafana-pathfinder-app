@@ -26,10 +26,13 @@ export interface E2ECommentBoxAttributeOptions {
 
   /**
    * Selector string for the current target element (E2E contract).
-   * Exposed as data-test-refTarget so the runner can drive actions from the DOM only.
+   * Exposed as data-test-reftarget so the runner can drive actions from the DOM only.
    * Omit for noop (no target).
    */
   refTarget?: string;
+
+  /** Whether the current guided substep can be skipped. */
+  skippable?: boolean;
 }
 
 /**
@@ -68,6 +71,10 @@ export function applyE2ECommentBoxAttributes(commentBox: HTMLElement, options?: 
 
   // E2E: current target selector (absent for noop)
   if (options.refTarget) {
-    commentBox.setAttribute('data-test-refTarget', options.refTarget);
+    commentBox.setAttribute('data-test-reftarget', options.refTarget);
+  }
+
+  if (options.skippable !== undefined) {
+    commentBox.setAttribute('data-test-skippable', String(options.skippable));
   }
 }

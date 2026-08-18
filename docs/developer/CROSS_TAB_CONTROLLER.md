@@ -59,13 +59,14 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 (`source: 'pathfinder'`, a per-tab `senderId` used to drop self-echoes, and a
 `timestamp`):
 
-- `step-command` — `{ phase: 'show' | 'do', stepId, runId, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, internalActions? } }`.
+- `step-command` — `{ phase: 'show' | 'do', stepId, runId, action }`.
   `targetState` carries an authored `targetstate` through to the live tab so
   toggle actions converge on the requested state instead of clicking blindly.
-  Composite steps carry their ordered sub-actions in `internalActions`; the
-  wire shape is derived from `InternalAction` and omits only `requirements`,
-  which the controller gates separately. A
-  `multistep` replays with staged pacing (see [Replay pacing](#replay-pacing));
+  Composite steps carry their ordered sub-actions in `internalActions`. Guided
+  actions also carry `requirements`, `isSkippable`, `formHint`, `validateInput`,
+  `lazyRender`, and `scrollContainer`. The guided root carries `guideId` and
+  `guidedStepTimeoutMs`.
+  A `multistep` replays with staged pacing (see [Replay pacing](#replay-pacing));
   a `guided` step runs through the live tab's `GuidedHandler` instead — it
   highlights each target and waits for the user.
 - `step-complete` — `{ stepId, runId, ok }`, live → controller, signals a
@@ -74,6 +75,9 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
   internal action a composite is replaying so the controller can animate per-step
   progress while it runs on the live tab. `runId` prevents a late reply from a
   previous run of the same step from settling or updating the current run.
+- `guided-substep-settled` — `{ stepId, runId, index, action, outcome }`, live → controller.
+  The controller accepts it only for the active guided run. It dispatches
+  `pathfinder:guided-substep-settled` on the controller document.
 - `heartbeat` — `{ role: 'controller' | 'live' }`
 - `pairing-challenge` / `pairing-accept` — the authenticated launch handshake
   that binds the controller session to one live tab.
@@ -161,7 +165,7 @@ Defense in depth on top of authentication:
 
 **Replies are unauthenticated (by design).** Authentication covers the
 controller→live **command** direction. The reverse direction — `requirement-result`,
-`fix-result`, `step-progress`, `step-complete`, and the `live` heartbeat — is
+`fix-result`, `step-progress`, `step-complete`, `guided-substep-settled`, and the `live` heartbeat — is
 **not** signed. The controller trusts replies whose `senderId` matches its paired
 tab (see [Tab pairing](#tab-pairing)), but `senderId` is a forgeable plaintext
 field, so a same-origin script can spoof reply _content_ — telling the controller
@@ -173,6 +177,13 @@ is deliberately out of scope: it would require the live tab to mint and the
 controller to verify a second keypair, to defend against an attacker who — by
 assumption — already has same-origin code execution and strictly more direct
 targets (session cookies, the Grafana API).
+
+`guided-substep-settled` is report evidence only. It cannot drive a command,
+parent completion, or persisted progress. The controller discards it unless the
+paired sender, `stepId`, and `runId` match the active guided run.
+
+Heartbeat loss, cancellation, completion, unmount, and other failed-run teardown
+clear the active guided run. Late settlement replies are then ignored.
 
 **No post-accept revoke affordance.** There is no on-demand "disconnect" API for
 an already-accepted controller. This is intentional: authority is the controller
@@ -199,7 +210,8 @@ against an already-compromised origin.
 A controller binds only after it verifies the first valid `pairing-accept` for
 its launch and records that message's `senderId` as the `liveTabId`
 (`controller-channel.tsx`). It then ignores heartbeats and replies —
-`requirement-result`, `fix-result`, `step-progress`, `step-complete` — from any
+`requirement-result`, `fix-result`, `step-progress`, `step-complete`,
+`guided-substep-settled` — from any
 other tab, so a second Grafana tab can't answer a requirement check with a
 different DOM state. Commands are broadcast at the transport layer, but each is
 signed for that `liveTabId`; the executor's authentication gate rejects it in
@@ -216,9 +228,12 @@ inter-step pause — so the user watches the same staged sequence in the live ta
 rather than an instant burst. Pacing constants come from
 `INTERACTIVE_CONFIG.delays.multiStep` and are injectable for tests. A `guided`
 step is **not** auto-replayed: the executor runs each action through
-`GuidedHandler` so the user performs it on the live tab. Either way the executor
-posts `step-complete` when the sequence finishes, and the controller waits for
-that before marking the step done (so a guided step isn't completed on click).
+`GuidedHandler` so the user performs it on the live tab. The handler checks each
+substep requirement with the controller guide ID. It also uses the effective
+block timeout for each substep.
+After each substep, the live executor posts `guided-substep-settled`. The
+controller converts this reply to the same local event that in-tab execution uses.
+The executor posts `step-complete` when the sequence finishes. The controller waits for this message before it completes the step.
 For both simple and composite commands, the executor copies `targetState` into
 the interactive-engine request; guided actions can therefore skip an instruction
 that is already satisfied, while automated actions click only when needed.
@@ -245,6 +260,10 @@ Controller (useStepChecker, controller mode)        Live tab (installLiveTabExec
   controller evaluates them itself, in parallel with the round-trip of the
   remaining tokens, and ANDs the two verdicts — see
   [Guide identity for `var-*` checks](engines/requirements-manager.md#guide-identity-for-var-checks).
+- Guided substep requirements are different from the parent entry gate. The
+  complete substep requirement string crosses with the guided action. The
+  controller also sends its guide ID, so `var-*` checks use the same scope on
+  the live tab.
 - The reply is a plain `RequirementsCheckResult`; it flows through the **same**
   `createRequirementsState` path the in-tab checker uses, so the warning and
   "Fix this" affordance render identically — no controller-specific UI.
@@ -300,5 +319,4 @@ badge.
 2. If the action shape differs (e.g. `internalActions` for multi-step / guided),
    extend `CrossTabAction` / `CrossTabMessage` and handle the new shape in
    `live-tab-executor.ts`. Build nested wire actions with
-   `toCrossTabInternalAction()`; it preserves fields such as `targetState` while
-   removing the requirements already evaluated by the controller.
+   `toCrossTabInternalAction()`; it preserves all declared action fields.

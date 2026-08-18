@@ -4,7 +4,8 @@ import {
   STEP_TYPE_KIND_KEYS,
   type StepTypeKind,
 } from '../../../../../src/components/interactive-tutorial/step-type-registry';
-import { DEFAULT_STEP_TIMEOUT_MS, TIMEOUT_PER_GUIDED_SUBSTEP_MS, TIMEOUT_PER_MULTISTEP_ACTION_MS } from '../constants';
+import { INTERACTIVE_CONFIG } from '../../../../../src/constants/interactive-config';
+import { DEFAULT_STEP_TIMEOUT_MS, TIMEOUT_PER_MULTISTEP_ACTION_MS } from '../constants';
 import type { TestableStep } from '../types';
 import { clickSkipButtonAndSync, executeStandardStep, inspectCommonStep, isStepComplete } from './shared';
 import { executeGuidedStep } from './guided';
@@ -43,12 +44,18 @@ async function inspectGuided(page: Page, root: Locator, stepId: string): Promise
   const common = await inspectCommonStep(page, root, stepId);
   const rawTotal = await root.getAttribute('data-test-substep-total');
   const parsedTotal = rawTotal ? Number.parseInt(rawTotal, 10) : Number.NaN;
+  const rawTimeout = await root.getAttribute('data-test-substep-timeout-ms');
+  const parsedTimeout = rawTimeout ? Number(rawTimeout) : Number.NaN;
   return {
     ...common,
     isMultistep: false,
     internalActionCount: 0,
     isGuided: true,
     guidedStepCount: Number.isFinite(parsedTotal) && parsedTotal >= 1 ? parsedTotal : 1,
+    guidedStepTimeoutMs:
+      Number.isFinite(parsedTimeout) && Number.isInteger(parsedTimeout) && parsedTimeout > 0
+        ? parsedTimeout
+        : INTERACTIVE_CONFIG.guided.stepTimeout,
   };
 }
 
@@ -99,7 +106,9 @@ const drivers = [
     inspectGuided,
     (step) =>
       DEFAULT_STEP_TIMEOUT_MS +
-      (step.guidedStepCount && step.guidedStepCount > 0 ? step.guidedStepCount * TIMEOUT_PER_GUIDED_SUBSTEP_MS : 0),
+      (step.guidedStepCount && step.guidedStepCount > 0
+        ? step.guidedStepCount * (step.guidedStepTimeoutMs ?? INTERACTIVE_CONFIG.guided.stepTimeout)
+        : 0),
     executeGuidedStep
   ),
   unsupportedDriver('quiz'),

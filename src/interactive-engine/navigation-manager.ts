@@ -19,6 +19,7 @@ export interface NavigationOptions {
   checkContext?: boolean;
   logWarnings?: boolean;
   ensureDocked?: boolean;
+  signal?: AbortSignal;
 }
 
 const NAV_ITEM_SELECTOR = 'a[data-testid="data-testid Nav menu item"]';
@@ -507,7 +508,10 @@ export class NavigationManager {
    * // Element is now visible and centered in viewport
    * ```
    */
-  async ensureElementVisible(element: HTMLElement): Promise<void> {
+  async ensureElementVisible(element: HTMLElement, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      return;
+    }
     // 1. Check if element is visible in DOM (not hidden by CSS)
     if (!isElementVisible(element)) {
       logger.warn('Element is hidden or not visible', { element: describeElement(element) });
@@ -534,11 +538,18 @@ export class NavigationManager {
 
     // 4. Set scroll-padding-top on container (modern CSS solution)
     const originalScrollPadding = scrollContainer.style.scrollPaddingTop;
+    if (signal?.aborted) {
+      return;
+    }
     if (stickyOffset > 0) {
       scrollContainer.style.scrollPaddingTop = `${stickyOffset + 10}px`; // +10px padding
     }
 
     // 5. Scroll into view with smooth animation
+    if (signal?.aborted) {
+      scrollContainer.style.scrollPaddingTop = originalScrollPadding;
+      return;
+    }
     element.scrollIntoView({
       behavior: 'smooth', // Smooth animation looks better
       block: 'start', // Position at top (below sticky headers due to scroll-padding-top)
@@ -648,12 +659,17 @@ export class NavigationManager {
       actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
       targetValue?: string;
       refTarget?: string; // E2E contract: selector for current target
+      skippable?: boolean;
+      signal?: AbortSignal;
     }
   ): Promise<HTMLElement> {
     // First, ensure navigation is open and element is visible
     // Keep old highlight visible during this async work for smooth transitions
-    await this.ensureNavigationOpen(element);
-    await this.ensureElementVisible(element);
+    await this.ensureNavigationOpen(element, options?.signal);
+    await this.ensureElementVisible(element, options?.signal);
+    if (options?.signal?.aborted) {
+      return element;
+    }
 
     // No DOM settling delay needed - scrollend event ensures scroll is complete
     // and DOM is stable. Highlight immediately for better responsiveness!
@@ -710,6 +726,9 @@ export class NavigationManager {
     }
 
     // Clear old highlights RIGHT BEFORE adding new one for seamless transition
+    if (options?.signal?.aborted) {
+      return element;
+    }
     this.clearAllHighlights();
 
     document.body.appendChild(highlightElement);
@@ -727,6 +746,10 @@ export class NavigationManager {
       // Calculate highlight rect in viewport coordinates (position:fixed)
       const highlightRect = this.calculateHighlightRect(rect, useDotIndicator);
 
+      if (options?.signal?.aborted) {
+        highlightElement.remove();
+        return element;
+      }
       commentBox = this.createCommentBox(
         effectiveComment || '',
         rect,
@@ -825,6 +848,7 @@ export class NavigationManager {
       actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
       targetValue?: string;
       refTarget?: string; // E2E contract: selector for current target
+      skippable?: boolean;
     }
   ): HTMLElement {
     const commentBox = document.createElement('div');
@@ -835,6 +859,7 @@ export class NavigationManager {
       actionType: options?.actionType,
       targetValue: options?.targetValue,
       refTarget: options?.refTarget,
+      skippable: options?.skippable,
     });
 
     // We'll calculate position after building the content so we can measure actual height
@@ -1268,11 +1293,12 @@ export class NavigationManager {
    * // Navigation menu is now open and docked if needed
    * ```
    */
-  async ensureNavigationOpen(element: HTMLElement): Promise<void> {
+  async ensureNavigationOpen(element: HTMLElement, signal?: AbortSignal): Promise<void> {
     return this.openAndDockNavigation(element, {
       checkContext: true, // Only run if element is inside the mega menu
       logWarnings: false, // Silent operation
       ensureDocked: true, // Always dock if open
+      signal,
     });
   }
 
@@ -1303,39 +1329,54 @@ export class NavigationManager {
    * Attempt to expand parent navigation sections for nested menu items
    * This function analyzes the target href to determine the parent section and expands it
    */
-  async expandParentNavigationSection(targetHref: string): Promise<boolean> {
+  async expandParentNavigationSection(targetHref: string, signal?: AbortSignal): Promise<boolean> {
     try {
+      if (signal?.aborted) {
+        return false;
+      }
       if (this.findNavItemByHref(targetHref)) {
         return true;
       }
 
-      await this.openAndDockNavigation(undefined, { ensureDocked: true });
+      await this.openAndDockNavigation(undefined, { ensureDocked: true, signal });
+      if (signal?.aborted) {
+        return false;
+      }
 
-      const polled = await this.pollForNavItem(targetHref);
+      const polled = await this.pollForNavItem(targetHref, signal);
       if (polled) {
         return true;
       }
 
       if (targetHref.includes('/a/')) {
-        return this.expandAllNavigationSections();
+        return this.expandAllNavigationSections(signal);
       }
 
       const parentPath = this.getParentPathFromHref(targetHref);
       if (!parentPath) {
-        return this.expandAllNavigationSections();
+        return this.expandAllNavigationSections(signal);
       }
 
       const parentExpandButton = this.findParentExpandButton(parentPath);
       if (!parentExpandButton) {
-        return this.expandAllNavigationSections();
+        return this.expandAllNavigationSections(signal);
       }
 
       if (this.isParentSectionExpanded(parentExpandButton)) {
         return true;
       }
 
+      if (signal?.aborted) {
+        return false;
+      }
       parentExpandButton.click();
       await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.expansionAnimationMs));
+      if (signal?.aborted) {
+        if (this.isParentSectionExpanded(parentExpandButton)) {
+          parentExpandButton.click();
+        }
+        return false;
+      }
 
       return true;
     } catch (error) {
@@ -1375,9 +1416,12 @@ export class NavigationManager {
    * Poll the DOM for a nav item matching the given href, retrying at short intervals.
    * Returns the element if found within the timeout, or null.
    */
-  private async pollForNavItem(href: string): Promise<Element | null> {
+  private async pollForNavItem(href: string, signal?: AbortSignal): Promise<Element | null> {
     const { pollMaxAttempts, pollIntervalMs } = INTERACTIVE_CONFIG.delays.navigation;
     for (let i = 0; i < pollMaxAttempts; i++) {
+      if (signal?.aborted) {
+        return null;
+      }
       const el = this.findNavItemByHref(href);
       if (el) {
         return el;
@@ -1455,8 +1499,11 @@ export class NavigationManager {
    * Expand all collapsible navigation sections
    * This is used as a fallback when we can't determine the specific parent section
    */
-  async expandAllNavigationSections(): Promise<boolean> {
+  async expandAllNavigationSections(signal?: AbortSignal): Promise<boolean> {
     try {
+      if (signal?.aborted) {
+        return false;
+      }
       // Find all expand buttons in the navigation
       const expandButtons = document.querySelectorAll(
         'button[aria-label*="Expand section"]'
@@ -1467,11 +1514,17 @@ export class NavigationManager {
       }
 
       let expandedAny = false;
+      const expandedButtons: HTMLButtonElement[] = [];
 
       // Click all expand buttons that are currently collapsed
       for (const button of expandButtons) {
+        if (signal?.aborted) {
+          expandedButtons.forEach((expandedButton) => expandedButton.click());
+          return false;
+        }
         if (!this.isParentSectionExpanded(button)) {
           button.click();
+          expandedButtons.push(button);
           expandedAny = true;
         }
       }
@@ -1481,6 +1534,14 @@ export class NavigationManager {
         await new Promise((resolve) =>
           setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.allExpansionAnimationMs)
         );
+        if (signal?.aborted) {
+          expandedButtons.forEach((button) => {
+            if (this.isParentSectionExpanded(button)) {
+              button.click();
+            }
+          });
+          return false;
+        }
       }
 
       return true;
@@ -1501,7 +1562,10 @@ export class NavigationManager {
    * @returns Promise that resolves when navigation is properly configured
    */
   async openAndDockNavigation(element?: HTMLElement, options: NavigationOptions = {}): Promise<void> {
-    const { checkContext = false, logWarnings = true, ensureDocked = true } = options;
+    const { checkContext = false, logWarnings = true, ensureDocked = true, signal } = options;
+    if (signal?.aborted) {
+      return;
+    }
 
     // Only the mega menu counts as "navigation" — Grafana renders page toolbars and
     // breadcrumbs as <nav> too, so a looser ancestor test opens the sidebar for
@@ -1524,30 +1588,48 @@ export class NavigationManager {
     const navItemsVisible = document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0;
     if (navItemsVisible) {
       if (ensureDocked) {
-        await this.dockIfInOverlay();
+        await this.dockIfInOverlay(signal);
       }
       return;
     }
 
+    if (signal?.aborted) {
+      return;
+    }
     megaMenuToggle.click();
     await waitForReactUpdates();
+    if (signal?.aborted) {
+      if (megaMenuToggle.isConnected) {
+        megaMenuToggle.click();
+      }
+      return;
+    }
 
     // After the toggle click, the sidebar may have opened directly as docked
     // (if the user's localStorage preference was already set). In that case
     // nav items are already visible and clicking the dock button would UNDOCK it.
     if (document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0) {
       if (ensureDocked) {
-        await this.dockIfInOverlay();
+        await this.dockIfInOverlay(signal);
       }
       return;
     }
 
     if (ensureDocked) {
-      const dockMenuButton = await this.pollForDockButton();
+      const dockMenuButton = await this.pollForDockButton(signal);
       if (dockMenuButton) {
+        if (signal?.aborted) {
+          return;
+        }
         dockMenuButton.click();
         await waitForReactUpdates();
-        await this.pollForNavItems();
+        if (signal?.aborted) {
+          if (dockMenuButton.isConnected) {
+            dockMenuButton.click();
+          }
+          return;
+        }
+        await this.pollForNavItems(signal);
       } else if (logWarnings) {
         logger.warn('Dock menu button not found after polling, navigation will remain in modal mode');
       }
@@ -1561,12 +1643,21 @@ export class NavigationManager {
    * nav, what we want); in docked it reads "Undock menu" (clicking would undock,
    * which would regress the intent of #709). The aria-label is the discriminator.
    */
-  private async dockIfInOverlay(): Promise<void> {
+  private async dockIfInOverlay(signal?: AbortSignal): Promise<void> {
     const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement | null;
     if (dockMenuButton?.getAttribute('aria-label') === 'Dock menu') {
+      if (signal?.aborted) {
+        return;
+      }
       dockMenuButton.click();
       await waitForReactUpdates();
-      await this.pollForNavItems();
+      if (signal?.aborted) {
+        if (dockMenuButton.isConnected) {
+          dockMenuButton.click();
+        }
+        return;
+      }
+      await this.pollForNavItems(signal);
     }
   }
 
@@ -1575,9 +1666,12 @@ export class NavigationManager {
    * The overlay needs time to fully render after the mega-menu toggle click
    * before the dock button is available.
    */
-  private async pollForDockButton(): Promise<HTMLButtonElement | null> {
+  private async pollForDockButton(signal?: AbortSignal): Promise<HTMLButtonElement | null> {
     const { pollMaxAttempts, pollIntervalMs } = INTERACTIVE_CONFIG.delays.navigation;
     for (let i = 0; i < pollMaxAttempts; i++) {
+      if (signal?.aborted) {
+        return null;
+      }
       const btn = document.querySelector('#dock-menu-button') as HTMLButtonElement;
       if (btn) {
         return btn;
@@ -1591,9 +1685,12 @@ export class NavigationManager {
    * Poll until at least one nav menu item is present in the DOM.
    * Used after docking to wait for the sidebar's nav tree to finish mounting.
    */
-  private async pollForNavItems(): Promise<boolean> {
+  private async pollForNavItems(signal?: AbortSignal): Promise<boolean> {
     const { pollMaxAttempts, pollIntervalMs } = INTERACTIVE_CONFIG.delays.navigation;
     for (let i = 0; i < pollMaxAttempts; i++) {
+      if (signal?.aborted) {
+        return false;
+      }
       if (document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0) {
         return true;
       }

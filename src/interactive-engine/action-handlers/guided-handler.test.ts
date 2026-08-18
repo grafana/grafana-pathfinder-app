@@ -1,8 +1,9 @@
 import { GuidedHandler } from './guided-handler';
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
-import { querySelectorAllEnhanced } from '../../lib/dom';
+import { querySelectorAllEnhanced, scrollUntilElementFound } from '../../lib/dom';
 import { withFaroUserAction } from '../../lib/faro';
+import { GUIDED_SUBSTEP_SETTLED_EVENT } from '../../constants/interactive-config';
 
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
@@ -17,6 +18,7 @@ jest.mock('../../lib/dom', () => ({
   findButtonByText: jest.fn().mockReturnValue([]),
   isElementVisible: jest.fn().mockReturnValue(true),
   resolveSelector: jest.fn((selector: string) => selector),
+  scrollUntilElementFound: jest.fn().mockResolvedValue(null),
 }));
 jest.mock('../../lib/dom/selector-detector', () => ({
   isCssSelector: jest.fn().mockReturnValue(false),
@@ -27,6 +29,7 @@ describe('GuidedHandler', () => {
   let mockStateManager: jest.Mocked<InteractiveStateManager>;
   let mockNavigationManager: jest.Mocked<NavigationManager>;
   let mockWaitForReactUpdates: jest.Mock;
+  let mockCheckRequirements: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -43,8 +46,14 @@ describe('GuidedHandler', () => {
     mockNavigationManager.clearAllHighlights = jest.fn();
 
     mockWaitForReactUpdates = jest.fn().mockResolvedValue(undefined);
+    mockCheckRequirements = jest.fn().mockResolvedValue({ pass: true });
 
-    guidedHandler = new GuidedHandler(mockStateManager, mockNavigationManager, mockWaitForReactUpdates);
+    guidedHandler = new GuidedHandler(
+      mockStateManager,
+      mockNavigationManager,
+      mockWaitForReactUpdates,
+      mockCheckRequirements
+    );
   });
 
   afterEach(() => {
@@ -65,6 +74,53 @@ describe('GuidedHandler', () => {
 
       expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'running');
       expect(mockStateManager.setState).toHaveBeenCalledWith(data, 'completed');
+    });
+
+    it('publishes every consecutive requirement-driven skip exactly once', async () => {
+      mockCheckRequirements.mockResolvedValue({ pass: false });
+      const settled: Array<CustomEvent['detail']> = [];
+      const root = document.createElement('div');
+      root.id = 'guided-parent';
+      document.body.appendChild(root);
+      const listener = (event: Event) => {
+        const detail = (event as CustomEvent).detail;
+        settled.push(detail);
+        if (detail.index === 3) {
+          root.remove();
+        }
+      };
+      document.addEventListener(GUIDED_SUBSTEP_SETTLED_EVENT, listener);
+      guidedHandler.resetProgress();
+
+      for (let index = 0; index < 4; index++) {
+        await expect(
+          guidedHandler.executeGuidedStep(
+            {
+              targetAction: 'highlight',
+              refTarget: `#missing-${index}`,
+              requirements: `var-step-${index}:true`,
+              isSkippable: true,
+            },
+            index,
+            4,
+            30000,
+            undefined,
+            { parentStepId: 'guided-parent', guideId: 'guide-scope' }
+          )
+        ).resolves.toBe('skipped');
+      }
+
+      document.removeEventListener(GUIDED_SUBSTEP_SETTLED_EVENT, listener);
+      expect(settled).toEqual([
+        { stepId: 'guided-parent', index: 0, action: 'highlight', outcome: 'skipped' },
+        { stepId: 'guided-parent', index: 1, action: 'highlight', outcome: 'skipped' },
+        { stepId: 'guided-parent', index: 2, action: 'highlight', outcome: 'skipped' },
+        { stepId: 'guided-parent', index: 3, action: 'highlight', outcome: 'skipped' },
+      ]);
+      expect(mockCheckRequirements).toHaveBeenLastCalledWith(
+        expect.objectContaining({ guideId: 'guide-scope', maxRetries: 0 })
+      );
+      expect(document.getElementById('guided-parent')).toBeNull();
     });
 
     it('should call waitForReactUpdates when performGuided is false', async () => {
@@ -91,6 +147,287 @@ describe('GuidedHandler', () => {
   });
 
   describe('executeGuidedStep', () => {
+    it('forwards all authored requirement entries to the shared checker before target resolution', async () => {
+      const requirementShapes = [
+        'exists-reftarget',
+        'navmenu-open',
+        'has-datasources',
+        'is-admin',
+        'is-logged-in',
+        'is-editor',
+        'dashboard-exists',
+        'form-valid',
+        'is-terminal-active',
+        'has-permission:dashboards.create',
+        'has-permission:datasources.read',
+        'has-role:admin',
+        'has-role:editor',
+        'has-datasource:prometheus',
+        'has-datasource:loki',
+        'datasource-configured:prometheus',
+        'datasource-configured:loki',
+        'has-plugin:grafana-clock-panel',
+        'has-plugin:grafana-pyroscope-app',
+        'plugin-enabled:grafana-clock-panel',
+        'plugin-enabled:grafana-pyroscope-app',
+        'has-dashboard-named:Node Exporter Full',
+        'has-dashboard-named:Welcome',
+        'on-page:/dashboards',
+        'on-page:/explore',
+        'has-feature:publicDashboards',
+        'has-feature:accessControlOnCall',
+        'in-environment:cloud',
+        'in-environment:oss',
+        'min-version:10.4.0',
+        'min-version:11.0.0',
+        'section-completed:intro',
+        'section-completed:setup',
+        'var-policyAccepted:true',
+        'var-region:us-east-1',
+        'renderer:pathfinder',
+        'renderer:website',
+        'coda-exit-zero:test -f /etc/myapp.conf',
+        'coda-exit-zero:curl -sf localhost:9090/-/healthy',
+        'has-permission:folders.read',
+        'has-role:viewer',
+        'has-datasource:tempo',
+        'datasource-configured:tempo',
+        'has-plugin:grafana-oncall-app',
+        'plugin-enabled:grafana-oncall-app',
+        'has-dashboard-named:Kubernetes',
+        'on-page:/alerting/list',
+        'has-feature:alerting',
+        'in-environment:enterprise',
+        'min-version:12.0.0',
+        'section-completed:finish',
+        'var-completed:true',
+        'coda-exit-zero:systemctl is-active grafana-server',
+      ];
+      const requirements = requirementShapes.join(',');
+      mockCheckRequirements.mockResolvedValue({ pass: false });
+
+      const result = await guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#target',
+          requirements,
+          isSkippable: true,
+          lazyRender: true,
+          scrollContainer: '.dashboard-scroll',
+        },
+        0,
+        1,
+        100
+      );
+
+      expect(requirementShapes).toHaveLength(53);
+      expect(result).toBe('skipped');
+      expect(mockCheckRequirements).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requirements,
+          targetAction: 'highlight',
+          refTarget: '#target',
+          targetValue: undefined,
+          stepId: 'guided-substep-0',
+          lazyRender: true,
+          scrollContainer: '.dashboard-scroll',
+          discoverLazyTarget: true,
+          guideId: undefined,
+          maxRetries: 0,
+          deadlineMs: expect.any(Number),
+        })
+      );
+      expect(querySelectorAllEnhanced).not.toHaveBeenCalled();
+    });
+
+    it('uses the shared scroll discovery function before retrying a lazy target', async () => {
+      const button = document.createElement('button');
+      button.id = 'lazy-target';
+      document.body.appendChild(button);
+      (querySelectorAllEnhanced as jest.Mock)
+        .mockReturnValueOnce({ elements: [], usedFallback: false })
+        .mockReturnValue({ elements: [button], usedFallback: false });
+      (scrollUntilElementFound as jest.Mock).mockResolvedValue(button);
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        button.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#lazy-target',
+          lazyRender: true,
+          scrollContainer: '.dashboard-scroll',
+        },
+        0,
+        1,
+        100
+      );
+
+      expect(result).toBe('completed');
+      expect(scrollUntilElementFound).toHaveBeenCalledWith(
+        '#lazy-target',
+        expect.objectContaining({
+          scrollContainerSelector: '.dashboard-scroll',
+          deadlineMs: expect.any(Number),
+        })
+      );
+    });
+
+    it('prevents a navigation expansion from mutating after timeout', async () => {
+      jest.useFakeTimers();
+      try {
+        const navButton = document.createElement('button');
+        const refTarget = "a[data-testid='data-testid Nav menu item'][href='/alerting/list']";
+        mockNavigationManager.expandParentNavigationSection = jest.fn(
+          (_href: string, signal?: AbortSignal) =>
+            new Promise<boolean>((resolve) => {
+              setTimeout(() => {
+                if (!signal?.aborted) {
+                  navButton.click();
+                }
+                resolve(!signal?.aborted);
+              }, 50);
+            })
+        );
+        const clickSpy = jest.spyOn(navButton, 'click');
+
+        const execution = guidedHandler.executeGuidedStep({ targetAction: 'highlight', refTarget }, 0, 1, 10);
+        await jest.advanceTimersByTimeAsync(10);
+        await expect(execution).resolves.toBe('timeout');
+        await jest.advanceTimersByTimeAsync(50);
+
+        expect(clickSpy).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('settles cancelled immediately during target retry without pending work', async () => {
+      jest.useFakeTimers();
+      try {
+        (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [], usedFallback: false });
+        const execution = guidedHandler.executeGuidedStep(
+          { targetAction: 'highlight', refTarget: '#missing-target' },
+          0,
+          1,
+          30000
+        );
+        for (let i = 0; i < 5; i++) {
+          await Promise.resolve();
+        }
+        expect(querySelectorAllEnhanced).toHaveBeenCalled();
+        guidedHandler.cancel();
+
+        await expect(execution).resolves.toBe('cancelled');
+        expect(jest.getTimerCount()).toBe(0);
+        expect((guidedHandler as any).activeListeners).toHaveLength(0);
+        expect((guidedHandler as any).pendingTimeouts).toHaveLength(0);
+        expect((guidedHandler as any).pendingIntervals).toHaveLength(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('removes a comment box and active class created after timeout', async () => {
+      jest.useFakeTimers();
+      try {
+        const target = document.createElement('button');
+        document.body.appendChild(target);
+        (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [target], usedFallback: false });
+        mockNavigationManager.clearAllHighlights = jest.fn(() => {
+          document.querySelectorAll('.interactive-comment-box').forEach((element) => element.remove());
+        });
+        mockNavigationManager.highlightWithComment = jest.fn(
+          (_element: HTMLElement) =>
+            new Promise<HTMLElement>((resolve) => {
+              setTimeout(() => {
+                const commentBox = document.createElement('div');
+                commentBox.className = 'interactive-comment-box';
+                document.body.appendChild(commentBox);
+                target.classList.add('interactive-guided-active');
+                resolve(target);
+              }, 50);
+            })
+        );
+
+        const execution = guidedHandler.executeGuidedStep(
+          { targetAction: 'highlight', refTarget: '#late-target' },
+          0,
+          1,
+          10
+        );
+        await jest.advanceTimersByTimeAsync(10);
+        await expect(execution).resolves.toBe('timeout');
+        await jest.advanceTimersByTimeAsync(50);
+
+        expect(document.querySelector('.interactive-comment-box')).toBeNull();
+        expect(target).not.toHaveClass('interactive-guided-active');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it.each(['button', 'highlight'] as const)('preserves successful %s behavior', async (targetAction) => {
+      const button = document.createElement('button');
+      button.id = `${targetAction}-target`;
+      document.body.appendChild(button);
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        button.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction, refTarget: `#${targetAction}-target` },
+        0,
+        1,
+        100
+      );
+
+      expect(result).toBe('completed');
+    });
+
+    it('preserves successful hover behavior', async () => {
+      const target = document.createElement('div');
+      document.body.appendChild(target);
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [target], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        target.dispatchEvent(new MouseEvent('mouseenter'));
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'hover', refTarget: '#hover-target' },
+        0,
+        1,
+        1000
+      );
+
+      expect(result).toBe('completed');
+    });
+
+    it('preserves successful formfill behavior', async () => {
+      const input = document.createElement('input');
+      input.value = 'ready';
+      document.body.appendChild(input);
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [input], usedFallback: false });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'formfill', refTarget: '#form-target' },
+        0,
+        1,
+        2000
+      );
+
+      expect(result).toBe('completed');
+    });
+
+    it('preserves successful noop behavior', async () => {
+      const execution = guidedHandler.executeGuidedStep({ targetAction: 'noop' }, 0, 1, 1000);
+      await Promise.resolve();
+      document.dispatchEvent(new CustomEvent('guided-noop-continue', { detail: { stepIndex: 0 } }));
+
+      await expect(execution).resolves.toBe('completed');
+    });
     it('should expand parent navigation before resolving a nested guided nav target', async () => {
       const refTarget = "a[data-testid='data-testid Nav menu item'][href='/alerting/list']";
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -135,13 +472,19 @@ describe('GuidedHandler', () => {
       );
 
       expect(result).toBe('completed');
-      expect(mockNavigationManager.expandParentNavigationSection).toHaveBeenCalledWith('/alerting/list');
+      expect(mockNavigationManager.expandParentNavigationSection).toHaveBeenCalledWith(
+        '/alerting/list',
+        expect.anything()
+      );
       expect(document.querySelector('button[aria-label="Expand section: Alerting"]')).toHaveAttribute(
         'aria-expanded',
         'true'
       );
       expect(document.querySelector(refTarget)).toBeInTheDocument();
-      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(document.querySelector(refTarget));
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(
+        document.querySelector(refTarget),
+        expect.anything()
+      );
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(
         document.querySelector(refTarget),
         'Click Alert rules in the Alerting menu.',
@@ -430,7 +773,12 @@ describe('GuidedHandler', () => {
     it('should use EventTarget type for listener cleanup', () => {
       // This is a compile-time test - if the types are wrong, TypeScript will fail
       // We verify the handler can be created and cancelled without type errors
-      const handler = new GuidedHandler(mockStateManager, mockNavigationManager, mockWaitForReactUpdates);
+      const handler = new GuidedHandler(
+        mockStateManager,
+        mockNavigationManager,
+        mockWaitForReactUpdates,
+        mockCheckRequirements
+      );
       handler.cancel();
       expect(handler).toBeDefined();
     });

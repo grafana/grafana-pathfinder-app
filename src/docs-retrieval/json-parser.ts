@@ -759,6 +759,8 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
     isSkippable: step.skippable ?? false,
     formHint: step.formHint, // Pass form hint for formfill validation feedback
     validateInput: step.validateInput, // Pass validation toggle for formfill
+    lazyRender: step.lazyRender ?? false,
+    scrollContainer: step.scrollContainer,
   }));
 
   // Parse content as markdown for children
@@ -782,7 +784,7 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
       props: {
         internalActions,
         ...(stepId ? { stepId } : {}),
-        stepTimeout: block.stepTimeout ?? 120000,
+        stepTimeout: block.stepTimeout,
         requirements,
         objectives,
         skippable: block.skippable ?? false,

@@ -50,12 +50,6 @@ export const STEP_OVERHEAD_TIMEOUT_MS = 20000;
 export const TIMEOUT_PER_MULTISTEP_ACTION_MS = 5000;
 
 /**
- * Additional timeout per guided substep (Phase 3).
- * Guided steps run a substep loop; total step timeout = base + guidedStepCount * this.
- */
-export const TIMEOUT_PER_GUIDED_SUBSTEP_MS = 30000;
-
-/**
  * Timeout for comment box to become visible during guided execution.
  */
 export const GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS = 5000;
@@ -94,11 +88,6 @@ export const GUIDED_FORMFILL_INVALID_PERSIST_MS = 3000;
  * Minimal dwell after hover before waiting for substep advance (Phase 4.2).
  */
 export const GUIDED_HOVER_DWELL_MS = 500;
-
-/**
- * Fraction of per-substep timeout after which we try Skip button if present (Phase 4.3). 0.8 = 80%.
- */
-export const GUIDED_SKIP_AFTER_TIMEOUT_FRACTION = 0.8;
 
 /**
  * Timeout for a guided action's page-load wait after a detected reload/navigation

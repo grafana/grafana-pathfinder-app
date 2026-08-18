@@ -27,7 +27,6 @@ import {
   DEFAULT_STEP_TIMEOUT_MS,
   GUIDE_INITIAL_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
-  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
 } from './guide-runner';
 import { printDetailedSummary } from './console-reporter';
 import type { AllStepsResult, StepTestResult, TestableStep } from './guide-runner';
@@ -144,11 +143,12 @@ describe('calculateStepTimeout', () => {
     const step = createTestableStep({
       isGuided: true,
       guidedStepCount: 3,
+      guidedStepTimeoutMs: 45000,
     });
 
     const timeout = calculateStepTimeout(step);
 
-    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 3 * TIMEOUT_PER_GUIDED_SUBSTEP_MS);
+    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 3 * 45000);
   });
 
   it('returns default timeout for guided step with zero guidedStepCount', () => {
@@ -179,11 +179,12 @@ describe('calculateStepTimeout', () => {
       internalActionCount: 2,
       isGuided: true,
       guidedStepCount: 4,
+      guidedStepTimeoutMs: 60000,
     });
 
     const timeout = calculateStepTimeout(step);
 
-    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 4 * TIMEOUT_PER_GUIDED_SUBSTEP_MS);
+    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 4 * 60000);
   });
 });
 
@@ -266,9 +267,12 @@ describe('calculateGuideTimeout', () => {
 
   it('includes guided substep budgets', () => {
     const simple = calculateGuideTimeout([createTestableStep()]);
-    const guided = calculateGuideTimeout([createTestableStep({ isGuided: true, guidedStepCount: 3 })]);
+    const guided = calculateGuideTimeout([
+      createTestableStep({ isGuided: true, guidedStepCount: 3, guidedStepTimeoutMs: 45000 }),
+    ]);
 
     expect(guided).toBeGreaterThan(simple);
+    expect(guided - simple).toBe(3 * 45000);
   });
 });
 

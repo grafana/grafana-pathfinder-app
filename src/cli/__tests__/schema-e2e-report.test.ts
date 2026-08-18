@@ -23,6 +23,7 @@ describe('schema command — e2e-report registration', () => {
     expect(schema?.['x-schema-version']).toBe('1.0.0');
     expect(JSON.stringify(schema)).toContain('"coverage"');
     expect(JSON.stringify(schema)).toContain('"stepKind"');
+    expect(JSON.stringify(schema)).toContain('"guidedSubsteps"');
   });
 
   it('exports the multi-guide report schema without throwing', () => {

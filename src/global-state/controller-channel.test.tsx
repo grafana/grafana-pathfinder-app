@@ -4,6 +4,7 @@ import { ControllerChannelProvider, useControllerChannel, useControllerConnected
 import { FakeCrossTabTransport, TEST_PAIRING } from '../test-utils/fake-cross-tab-transport';
 import { createPairingAcceptProof } from '../lib/pairing-manager';
 import type { CrossTabMessage } from '../types/cross-tab.types';
+import { GUIDED_SUBSTEP_SETTLED_EVENT } from '../constants/interactive-config';
 
 function liveHeartbeat(): CrossTabMessage {
   return { source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' };
@@ -29,6 +30,25 @@ function Probe() {
       </button>
       <span data-testid="connected">{String(connected)}</span>
     </div>
+  );
+}
+
+function GuidedProbe() {
+  const channel = useControllerChannel();
+  return (
+    <button
+      onClick={() =>
+        channel?.post({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: 'guided-step',
+          runId: 'guided-run',
+          action: { targetAction: 'guided', refTarget: '', internalActions: [] },
+        })
+      }
+    >
+      guided
+    </button>
   );
 }
 
@@ -76,6 +96,7 @@ async function pairWithLive(transport: FakeCrossTabTransport, liveId = 'live'): 
     sessionId: challenge.sessionId,
     liveTabId: liveId,
   });
+
   act(() =>
     transport.emit({
       source: 'pathfinder',
@@ -542,6 +563,110 @@ describe('ControllerChannelProvider', () => {
       })
     );
     await waitFor(() => expect(screen.getByTestId('done2')).toHaveTextContent('ok:true'));
+  });
+
+  it('relays an active paired guided settlement as the local DOM event', async () => {
+    const transport = new FakeCrossTabTransport();
+    render(
+      <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+        <GuidedProbe />
+      </ControllerChannelProvider>
+    );
+    await pairWithLive(transport, 'live-A');
+    const details: unknown[] = [];
+    const listener = (event: Event) => details.push((event as CustomEvent).detail);
+    document.addEventListener(GUIDED_SUBSTEP_SETTLED_EVENT, listener);
+    fireEvent.click(screen.getByText('guided'));
+
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'guided-substep-settled',
+        stepId: 'guided-step',
+        runId: 'stale-run',
+        index: 0,
+        action: 'button',
+        outcome: 'passed',
+      })
+    );
+    act(() =>
+      transport.emit({
+        source: 'pathfinder',
+        senderId: 'live-A',
+        timestamp: 0,
+        kind: 'guided-substep-settled',
+        stepId: 'guided-step',
+        runId: 'guided-run',
+        index: 1,
+        action: 'formfill',
+        outcome: 'skipped',
+      })
+    );
+
+    expect(details).toEqual([{ stepId: 'guided-step', index: 1, action: 'formfill', outcome: 'skipped' }]);
+    document.removeEventListener(GUIDED_SUBSTEP_SETTLED_EVENT, listener);
+  });
+
+  it('drops guided settlement evidence after heartbeat loss clears the active run', async () => {
+    let heartbeatTick: (() => void) | undefined;
+    const realSetInterval = global.setInterval;
+    const intervalSpy = jest.spyOn(global, 'setInterval').mockImplementation(((
+      callback: TimerHandler,
+      delay?: number,
+      ...args: unknown[]
+    ) => {
+      if (delay === 2000) {
+        heartbeatTick = callback as () => void;
+      }
+      return realSetInterval(callback, delay, ...args);
+    }) as typeof setInterval);
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1000);
+    try {
+      const transport = new FakeCrossTabTransport();
+      render(
+        <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+          <GuidedProbe />
+        </ControllerChannelProvider>
+      );
+      await pairWithLive(transport, 'live-A');
+      act(() =>
+        transport.emit({
+          source: 'pathfinder',
+          senderId: 'live-A',
+          timestamp: 0,
+          kind: 'heartbeat',
+          role: 'live',
+        })
+      );
+      fireEvent.click(screen.getByText('guided'));
+      const details: unknown[] = [];
+      const listener = (event: Event) => details.push((event as CustomEvent).detail);
+      document.addEventListener(GUIDED_SUBSTEP_SETTLED_EVENT, listener);
+
+      nowSpy.mockReturnValue(7000);
+      act(() => heartbeatTick?.());
+      act(() =>
+        transport.emit({
+          source: 'pathfinder',
+          senderId: 'live-A',
+          timestamp: 0,
+          kind: 'guided-substep-settled',
+          stepId: 'guided-step',
+          runId: 'guided-run',
+          index: 0,
+          action: 'button',
+          outcome: 'passed',
+        })
+      );
+
+      expect(details).toEqual([]);
+      document.removeEventListener(GUIDED_SUBSTEP_SETTLED_EVENT, listener);
+    } finally {
+      intervalSpy.mockRestore();
+      nowSpy.mockRestore();
+    }
   });
 
   it('forwards step-progress to an onStepProgress subscriber', async () => {
