@@ -172,6 +172,19 @@ describe('report outcome classification', () => {
     expect(isReportSuccess(report)).toBe(false);
   });
 
+  it('assigns UNKNOWN when an infrastructure report has no specific code', () => {
+    const report = generateReport({
+      guide: { id: 'browser-closed', title: 'browser-closed', path: 'browser-closed/content.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'infrastructure_error',
+      errorMessage: 'The browser disconnected during step execution.',
+      results: [],
+      aborted: true,
+    });
+
+    expect(report.errorCode).toBe('UNKNOWN');
+  });
+
   it('keeps auth-expired reports out of the passed multi-guide count', () => {
     const report = generateMultiGuideReport([
       {

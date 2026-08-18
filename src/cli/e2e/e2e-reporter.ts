@@ -184,7 +184,7 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
   const errorCode =
     data.errorCode ??
     (data.abortReason as E2EErrorCode | undefined) ??
-    (outcome === 'failed' ? 'MANDATORY_FAILURE' : undefined);
+    (outcome === 'failed' ? 'MANDATORY_FAILURE' : outcome === 'passed' ? undefined : 'UNKNOWN');
   const targetUrl = data.guide.targetUrl ?? 'unknown://target';
 
   const report: E2ETestReport = {
