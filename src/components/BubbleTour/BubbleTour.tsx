@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { NavigationManager } from '../../interactive-engine';
 import { resolveWithRetry } from '../../lib/dom';
+import { logger } from '../../lib/logging';
 import { safeEventHandler } from '../../utils/safe-event-handler.util';
 
 const MISSING_TARGET_NOTE = "This part of the interface isn't on screen right now.";
@@ -30,6 +31,7 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
   const [stepsReached, setStepsReached] = useState(0);
 
   const navigationManager = useMemo(() => new NavigationManager(), []);
+  const paintQueue = useRef<Promise<unknown>>(Promise.resolve());
 
   const totalSteps = steps.length;
   const step = steps[currentStep];
@@ -43,14 +45,19 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
     setStepsReached((prev) => Math.max(prev, currentStep + 1));
 
     if (currentStep < totalSteps - 1) {
-      setCurrentStep((prev) => prev + 1);
+      // A bubble outlives its step while the next target resolves, so a click on that
+      // stale bubble must not advance past the step already loading.
+      setCurrentStep((prev) => (prev === currentStep ? prev + 1 : prev));
       return;
     }
 
     close();
   }, [currentStep, totalSteps, close]);
 
-  const goToPrevious = useCallback(() => setCurrentStep((prev) => Math.max(0, prev - 1)), []);
+  const goToPrevious = useCallback(
+    () => setCurrentStep((prev) => (prev === currentStep ? Math.max(0, prev - 1) : prev)),
+    [currentStep]
+  );
 
   useEffect(() => {
     if (!step) {
@@ -73,34 +80,42 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
       nextLabel: isLastStep ? finalStepLabel : undefined,
     };
 
-    resolveWithRetry(step.target, 'highlight').then((resolved) => {
-      if (cancelled) {
-        return;
-      }
+    void resolveWithRetry(step.target, 'highlight').then((resolved) => {
+      const paint = () => {
+        if (cancelled) {
+          return;
+        }
 
-      if (resolved) {
-        void navigationManager.highlightWithComment(
-          resolved.element,
-          step.content,
-          false,
+        if (resolved) {
+          return navigationManager.highlightWithComment(
+            resolved.element,
+            step.content,
+            false,
+            stepInfo,
+            undefined,
+            close,
+            goToNext,
+            onPrevious,
+            options
+          );
+        }
+
+        navigationManager.showCenteredComment(
+          `${step.content}<br><br><em>${MISSING_TARGET_NOTE}</em>`,
           stepInfo,
-          undefined,
           close,
           goToNext,
           onPrevious,
           options
         );
         return;
-      }
+      };
 
-      navigationManager.showCenteredComment(
-        `${step.content}<br><br><em>${MISSING_TARGET_NOTE}</em>`,
-        stepInfo,
-        close,
-        goToNext,
-        onPrevious,
-        options
-      );
+      // highlightWithComment awaits a scroll before it paints, so concurrent paints can
+      // finish out of order and leave an earlier step's bubble on top of a later one.
+      paintQueue.current = paintQueue.current.then(paint).catch((error) => {
+        logger.warn('BubbleTour failed to paint a step', { error });
+      });
     });
 
     return () => {
@@ -112,15 +127,20 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape is handled ahead of the text-field guard: FloatingPanel minimizes on Escape
+      // unless the event is already defaultPrevented, so bailing out here would minimize
+      // the panel and leave the tour running.
+      if (e.key === 'Escape') {
+        safeEventHandler(e, { preventDefault: true });
+        close();
+        return;
+      }
+
       if (isTextEditable(e.target)) {
         return;
       }
 
-      if (e.key === 'Escape') {
-        // FloatingPanel also minimizes on Escape unless the event is already defaultPrevented.
-        safeEventHandler(e, { preventDefault: true });
-        close();
-      } else if (e.key === 'ArrowRight') {
+      if (e.key === 'ArrowRight') {
         safeEventHandler(e, { preventDefault: true });
         goToNext();
       } else if (e.key === 'ArrowLeft' && currentStep > 0) {

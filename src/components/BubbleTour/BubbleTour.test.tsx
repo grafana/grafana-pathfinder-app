@@ -86,6 +86,39 @@ describe('BubbleTour', () => {
     await waitFor(() => expect(lastHighlight()[ARG.comment]).toBe('First'));
   });
 
+  describe('a bubble that outlives its step', () => {
+    it('ignores next from a bubble whose step has already advanced', async () => {
+      await renderTour();
+      const staleNext = lastHighlight()[ARG.onNext];
+
+      await act(async () => staleNext());
+      await waitFor(() => expect(lastHighlight()[ARG.comment]).toBe('Second'));
+
+      await act(async () => staleNext());
+
+      expect(mockHighlightWithComment.mock.calls.map((call) => call[ARG.comment])).not.toContain('Third');
+      expect(lastHighlight()[ARG.stepInfo]).toEqual({ current: 1, total: 3, completedSteps: [0] });
+    });
+
+    it('waits for a slow paint before painting the next step', async () => {
+      let releaseFirst: () => void = () => {};
+      mockHighlightWithComment.mockImplementation((_element: unknown, comment: string) =>
+        comment === 'First' ? new Promise<void>((resolve) => (releaseFirst = resolve)) : Promise.resolve()
+      );
+
+      render(<BubbleTour steps={STEPS} onClose={jest.fn()} />);
+      await waitFor(() => expect(mockHighlightWithComment).toHaveBeenCalledTimes(1));
+
+      await act(async () => lastHighlight()[ARG.onNext]());
+
+      expect(mockHighlightWithComment).toHaveBeenCalledTimes(1);
+
+      await act(async () => releaseFirst());
+
+      await waitFor(() => expect(lastHighlight()[ARG.comment]).toBe('Second'));
+    });
+  });
+
   it('clears highlights then closes from the last step', async () => {
     const { onClose } = await renderTour({ steps: [STEPS[0]!] });
 
@@ -188,6 +221,21 @@ describe('BubbleTour', () => {
       });
 
       expect(lastHighlight()[ARG.comment]).toBe('First');
+      field.remove();
+    });
+
+    it('closes on Escape even while a text field has focus', async () => {
+      const { onClose } = await renderTour();
+      const field = document.createElement('input');
+      document.body.appendChild(field);
+
+      const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
+      await act(async () => {
+        field.dispatchEvent(event);
+      });
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(event.defaultPrevented).toBe(true);
       field.remove();
     });
 
