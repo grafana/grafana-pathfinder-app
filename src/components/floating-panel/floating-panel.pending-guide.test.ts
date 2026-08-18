@@ -21,23 +21,13 @@ import * as path from 'path';
 
 const src = fs.readFileSync(path.resolve(__dirname, 'FloatingPanelManager.tsx'), 'utf-8');
 
-describe('FloatingPanelInner consumes the pending guide on mount', () => {
-  it('calls the shared consume step (consume → in-flight → route)', () => {
-    expect(src).toContain('consumePendingGuideOnMount(panel,');
+describe('FloatingPanelInner initializes pending guides on mount', () => {
+  it('calls the shared ordered initialization step (restore → route)', () => {
+    expect(src).toContain('initializePanelTabsOnMount(panel,');
   });
 
-  it('consumes before the tab-restoration effect runs', () => {
-    // Effects run in declaration order; consumption must be declared first
-    // so the restoration gate sees the just-opened tab. Anchor on the call
-    // site `(panel,` — a bare name match would hit the import statement and
-    // pass regardless of effect order.
-    expect(src.indexOf('consumePendingGuideOnMount(panel,')).toBeLessThan(src.indexOf('restoreTabsAsync'));
-  });
-
-  it('gates restoration on LIVE model tabs, not the render snapshot', () => {
-    // The pending-guide open mutates panel.state.tabs synchronously in the
-    // same commit; a closure'd snapshot would restore on top of it.
-    expect(src).toMatch(/const liveTabs = panel\.state\.tabs/);
+  it('reuses one initialization promise across StrictMode effect replay', () => {
+    expect(src).toContain('initializationRef.current ??= initializePanelTabsOnMount');
   });
 });
 

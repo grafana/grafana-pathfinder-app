@@ -1,11 +1,14 @@
-import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints, usePluginContext } from '@grafana/data';
-import React, { lazy, Suspense, useEffect, useMemo } from 'react';
+import { AppPlugin, AppPluginMeta, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { LoadingPlaceholder } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { logger } from './lib/logging';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { getConfigWithDefaults, DocsPluginConfig } from './constants';
+import { DocsPluginConfig } from './constants';
+// Direct file import, not the ./hooks barrel: the barrel would pull every hook
+// (and zod, via user-storage) into module.js.
+import { publishPathfinderPluginConfig, refreshPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
 import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
@@ -138,6 +141,11 @@ const plugin = new AppPlugin<{}>()
 
 // Override init() to handle auto-open when plugin loads
 plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
+  // Everything here must stay synchronous. `AppPlugin.init` is typed `void` and
+  // Grafana never awaits it, so work behind an await would run after first paint
+  // — after scene construction has already read the published config, and after
+  // the deep-link and link-interception listeners needed to exist.
+
   // Arm the durable completion-write hook from the universal plugin bootstrap
   // rather than only the root App page: plugin.init fires once per session for
   // every entry surface (sidebar, floating, full-screen, controller), so a guide
@@ -145,12 +153,16 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // user/org identity — see armCompletionWriteHook.
   armCompletionWriteHook();
 
-  const jsonData = meta?.jsonData || {};
-  const config = getConfigWithDefaults(jsonData);
+  const config = publishPathfinderPluginConfig(meta?.jsonData || {});
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
 
-  // Set global config immediately so other code can use it
-  (window as any).__pathfinderPluginConfig = config;
+  // `meta.jsonData` can lag a recent save. Re-publish from the authoritative
+  // read when it lands; subscribers pick it up via the config-updated event.
+  void refreshPathfinderPluginConfig().then((refreshed) => {
+    if (refreshed) {
+      linkInterceptionState.setInterceptionEnabled(refreshed.interceptGlobalDocsLinks);
+    }
+  });
 
   // Snapshotted before handlePathfinderDeepLink strips it from the URL.
   const { doc: docsParam, controller: controllerParam } = parsePathfinderDeepLink(window.location.search);
@@ -319,20 +331,6 @@ if (pathfinderEnabled) {
     title: 'Interactive learning',
     description: 'Opens Interactive learning',
     component: function ContextSidebar() {
-      // Get plugin configuration
-      const pluginContext = usePluginContext();
-      const config = useMemo(() => {
-        const rawJsonData = pluginContext?.meta?.jsonData || {};
-        const configWithDefaults = getConfigWithDefaults(rawJsonData);
-
-        return configWithDefaults;
-      }, [pluginContext?.meta?.jsonData]);
-
-      // Set global config for utility functions (including auto-open logic)
-      useEffect(() => {
-        (window as any).__pathfinderPluginConfig = config;
-      }, [config]);
-
       // Process queued docs links when sidebar mounts
       useEffect(() => {
         sidebarState.setIsSidebarMounted(true);

@@ -117,13 +117,13 @@ Embed YouTube or native HTML5 video.
 }
 ```
 
-| Field      | Type                      | Required | Description                           |
-| ---------- | ------------------------- | -------- | ------------------------------------- |
-| `src`      | string                    | ✅       | Video URL (embed URL for YouTube)     |
-| `provider` | `"youtube"` \| `"native"` | ❌       | Video provider (default: `"youtube"`) |
-| `title`    | string                    | ❌       | Video title for accessibility         |
-| `start`    | number                    | ❌       | Start time in seconds                 |
-| `end`      | number                    | ❌       | End time in seconds                   |
+| Field      | Type                                   | Required | Description                       |
+| ---------- | -------------------------------------- | -------- | --------------------------------- |
+| `src`      | string                                 | ✅       | Video URL (embed URL for YouTube) |
+| `provider` | `"youtube"` \| `"native"` \| `"vimeo"` | ❌       | Video provider hint               |
+| `title`    | string                                 | ❌       | Video title for accessibility     |
+| `start`    | number                                 | ❌       | Start time in seconds             |
+| `end`      | number                                 | ❌       | End time in seconds               |
 
 **YouTube Example:**
 
@@ -590,7 +590,7 @@ needs:
 }
 ```
 
-#### Guided Block
+#### Guided block
 
 Highlights elements and **waits for user** to perform actions.
 
@@ -616,21 +616,33 @@ Highlights elements and **waits for user** to perform actions.
 }
 ```
 
-| Field           | Type       | Required | Description                              |
-| --------------- | ---------- | -------- | ---------------------------------------- |
-| `content`       | string     | ✅       | Description shown to user                |
-| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform    |
-| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)  |
-| `completeEarly` | boolean    | ❌       | Complete when user performs action early |
-| `requirements`  | string[]   | ❌       | Requirements for the block               |
-| `objectives`    | string[]   | ❌       | Objectives tracked                       |
-| `skippable`     | boolean    | ❌       | Allow skipping                           |
+| Field           | Type       | Required | Description                                     |
+| --------------- | ---------- | -------- | ----------------------------------------------- |
+| `content`       | string     | ✅       | Description shown to user                       |
+| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform           |
+| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)         |
+| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal |
+| `requirements`  | string[]   | ❌       | Requirements for the block                      |
+| `objectives`    | string[]   | ❌       | Objectives tracked                              |
+| `skippable`     | boolean    | ❌       | Allow skipping                                  |
 
 Steps accept `targetstate` here too, with the meaning adjusted for a step the
 user performs: a control already in the requested state completes immediately
 instead of asking the user to click it. Without that, the guide would tell
 someone to click a toggle that is already correct, and their click would move it
 the wrong way.
+
+`completeEarly` does not skip guided actions or complete the block before its
+final action. For a final `button` or `highlight` action, click activation stores
+completion during capture. Activation can match the target or its proximity
+fallback. The application click handler runs after capture-phase completion work.
+A final action without click activation stores completion after its result. This
+rule includes a satisfied `targetstate`. Cancellation, timeout, or error does not
+store completion.
+
+`InteractiveGuided` owns the idempotent completion write and completion
+callbacks. `GuidedHandler` owns listeners, timeouts, connectivity intervals, the
+overlay, click ordering, and cleanup.
 
 #### Quiz Block
 
@@ -760,8 +772,18 @@ Collects user responses that can be stored as variables and used elsewhere in th
 | `pattern`           | string                                    | ❌       | —       | Regex pattern for text validation                                                    |
 | `validationMessage` | string                                    | ❌       | —       | Custom message shown when validation fails                                           |
 | `datasourceFilter`  | string                                    | ❌       | —       | Filter datasources by type (e.g., `"prometheus"`). Only for `"datasource"` inputType |
-| `requirements`      | string[]                                  | ❌       | —       | Requirements that must be met for this input                                         |
+| `requirements`      | string[]                                  | ❌       | —       | Honoured only on a blocking data check; inert on every other input (see below)       |
 | `skippable`         | boolean                                   | ❌       | `false` | Whether this input can be skipped                                                    |
+
+Data check fields, all for `"datasource"` inputType only. `dataCheckQuery` is what enables the check; the rest are rejected without it.
+
+| Field                     | Type    | Required | Default  | Description                                                              |
+| ------------------------- | ------- | -------- | -------- | ------------------------------------------------------------------------ |
+| `dataCheckQuery`          | string  | ❌       | —        | Query run against the picked data source. Its presence enables the check |
+| `dataCheckFailureMessage` | string  | ❌       | —        | Message shown when the check finds no data                               |
+| `dataCheckTimeFrom`       | string  | ❌       | `now-1h` | Check query range start                                                  |
+| `dataCheckTimeTo`         | string  | ❌       | `now`    | Check query range end                                                    |
+| `dataCheckBlocking`       | boolean | ❌       | `false`  | Make a failing check hold the section up                                 |
 
 **Text Input Example:**
 
@@ -804,7 +826,48 @@ Collects user responses that can be stored as variables and used elsewhere in th
 }
 ```
 
-When `inputType` is `"datasource"`, the block renders a datasource picker dropdown. The `datasourceFilter` property limits the list to datasources of a specific type.
+When `inputType` is `"datasource"`, the block renders a datasource picker dropdown. The `datasourceFilter` property limits the list to datasources of a specific type. The stored value is the data source **name**, not its uid, which is what `{{variable}}` substitution and reftarget selectors match against.
+
+**Data check:**
+
+A guide can teach "build a panel showing container CPU", the user can follow every step against an instance with no container metrics, and end with an empty panel and no idea why. Adding `dataCheckQuery` to a datasource picker lets the user confirm up front that the data is really there:
+
+```json
+{
+  "type": "input",
+  "id": "check-container-metrics",
+  "prompt": "Pick the data source holding your container metrics.",
+  "inputType": "datasource",
+  "variableName": "metricsDatasource",
+  "datasourceFilter": "prometheus",
+  "dataCheckQuery": "container_cpu_usage_seconds_total",
+  "dataCheckFailureMessage": "No container CPU metrics here. Pick a data source scraping cAdvisor or kubelet.",
+  "dataCheckTimeFrom": "now-6h",
+  "dataCheckBlocking": true,
+  "skippable": true
+}
+```
+
+The check runs **only when the user presses the button** — never on a polling cadence. A requirements token would be re-evaluated by several independent timers, which on a metered backend is billable.
+
+`dataCheckBlocking` is the one thing that changes the block's behaviour in a guide:
+
+| `dataCheckBlocking` | The block is                | A failing check                                                    |
+| ------------------- | --------------------------- | ------------------------------------------------------------------ |
+| unset (default)     | passive, like any input     | reports what it found; the user carries on                         |
+| `true`              | a tracked, completable step | holds the section up until it passes, or is skipped if `skippable` |
+
+Turn blocking on deliberately. It makes the block count toward the section's step total, so an author who cannot guarantee the data exists on every instance should pair it with `skippable`.
+
+Only Prometheus, Loki, Tempo, and Pyroscope can be queried. If the user picks a data source of any other type, the block says so instead of offering the button rather than silently passing. Pyroscope queries are written as `<profileTypeId>|<labelSelector>`.
+
+Every check aborts after 15 seconds. Result size is capped at 100 wherever the query type honours it — Tempo's `limit`, Loki's `maxLines` — but a Prometheus instant query takes no `step`, so its cost is series cardinality, which nothing here caps. Keep the query selective: `{__name__=~".+"}` is one unbounded high-cardinality query against whatever tenant the user picked. `dataCheckTimeFrom` / `dataCheckTimeTo` are defaults, not bounds; nothing rejects `now-10y`.
+
+`dataCheckFailureMessage` is shown **only** when the query ran and came back empty. A timeout, a permissions error, or a broken data source reports the underlying error instead — a user told their metric is missing might go looking for the wrong problem, or skip a blocking step believing the data is genuinely absent. Write the message for the empty-result case and let the error path speak for itself.
+
+A blocking check **must** carry an explicit `id`, and **must not** carry a `defaultValue`; validation rejects either. A gating check writes durable completion, so the data source has to be one the user chose — a seeded pick could complete a step against a data source they never saw. An advisory check honours `defaultValue` as usual. The id becomes the step id that completion is stored against, so a generated one would orphan a user's progress the next time the guide is edited. An advisory check needs no id — it is not a tracked step.
+
+`requirements` on an input block is honoured **only** when `dataCheckBlocking` is set. On every other input — text, boolean, and an advisory datasource picker — the field validates, parses, and then does nothing: the block always renders and always accepts a response. Do not use it to gate a plain input.
 
 **Using Variables:**
 
@@ -906,7 +969,6 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
   "content": "Try this PromQL query:",
   "code": "rate(http_requests_total[5m])",
   "language": "promql",
-  "filename": "example.promql",
   "reftarget": "textarea.inputarea"
 }
 ```
@@ -916,8 +978,7 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
 | `content`      | string   | ❌       | Markdown description shown above the code block                        |
 | `code`         | string   | ✅       | The code snippet                                                       |
 | `language`     | string   | ❌       | Syntax highlighting language (e.g., `promql`, `logql`, `yaml`, `json`) |
-| `filename`     | string   | ❌       | Filename label shown above the code (purely informational)             |
-| `reftarget`    | string   | ❌       | CSS selector of a Monaco editor — when set, an Insert button appears   |
+| `reftarget`    | string   | ✅       | Verified CSS selector of the target Monaco editor                      |
 | `requirements` | string[] | ❌       | Conditions that must be met for this step                              |
 | `objectives`   | string[] | ❌       | Objectives marked complete after this step                             |
 | `skippable`    | boolean  | ❌       | Allow skipping                                                         |
@@ -936,7 +997,7 @@ A shell command shown with copy-to-clipboard and an "Execute" button that runs t
 
 | Field          | Type     | Required | Description                                                 |
 | -------------- | -------- | -------- | ----------------------------------------------------------- |
-| `content`      | string   | ❌       | Markdown description shown above the command                |
+| `content`      | string   | ✅       | Markdown description shown above the command                |
 | `command`      | string   | ✅       | The shell command                                           |
 | `requirements` | string[] | ❌       | Conditions that must be met (commonly `is-terminal-active`) |
 | `skippable`    | boolean  | ❌       | Allow skipping                                              |
@@ -967,7 +1028,7 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 
 See [`CODA.md`](../CODA.md) for the full VM template catalog and lifecycle details.
 
-#### Grot Guide Block
+#### Grot Guide block
 
 A choose-your-own-adventure decision tree where each screen offers options that branch to other screens.
 
@@ -975,43 +1036,46 @@ A choose-your-own-adventure decision tree where each screen offers options that 
 {
   "type": "grot-guide",
   "id": "intro-tree",
-  "title": "Choose your path",
+  "welcome": {
+    "title": "Choose your path",
+    "body": "Pick the path that best matches your goal.",
+    "ctas": [{ "text": "Start", "screenId": "start" }]
+  },
   "screens": [
     {
+      "type": "question",
       "id": "start",
       "title": "What do you want to do?",
-      "body": "Pick the path that best matches your goal.",
       "options": [
-        { "label": "Set up Prometheus", "next": "prometheus" },
-        { "label": "Set up Loki", "next": "loki" }
+        { "text": "Set up Prometheus", "screenId": "prometheus" },
+        { "text": "Set up Loki", "screenId": "loki" }
       ]
     },
     {
+      "type": "result",
       "id": "prometheus",
       "title": "Set up Prometheus",
       "body": "Open the connections page to add a Prometheus data source.",
-      "options": [{ "label": "Done", "next": "end" }]
+      "links": []
     },
     {
+      "type": "result",
       "id": "loki",
       "title": "Set up Loki",
       "body": "Open the connections page to add a Loki data source.",
-      "options": [{ "label": "Done", "next": "end" }]
-    },
-    { "id": "end", "title": "All set", "body": "You're ready to start querying." }
-  ],
-  "startScreen": "start"
+      "links": []
+    }
+  ]
 }
 ```
 
-| Field         | Type           | Required | Description                                          |
-| ------------- | -------------- | -------- | ---------------------------------------------------- |
-| `id`          | string         | ❌       | Block ID                                             |
-| `title`       | string         | ❌       | Title shown above the screen                         |
-| `screens`     | `GrotScreen[]` | ✅       | The decision-tree screens (see below)                |
-| `startScreen` | string         | ❌       | ID of the first screen (defaults to the first entry) |
+| Field     | Type                | Required | Description                       |
+| --------- | ------------------- | -------- | --------------------------------- |
+| `id`      | string              | ❌       | Block ID                          |
+| `welcome` | `GrotGuideWelcome`  | ✅       | Welcome copy and entry-point CTAs |
+| `screens` | `GrotGuideScreen[]` | ✅       | Question and result screens       |
 
-Each screen has `id`, `title`, `body` (markdown), and an `options[]` array. Each option has a `label` and a `next` screen ID. A screen with no `options` ends the tree. The block editor includes a YAML import flow for converting Grot Guide YAML directly into JSON.
+Welcome CTAs and question options use `{ "text", "screenId" }`; every `screenId` must resolve to a screen. A question screen has `type: "question"` and an `options` array. A result screen has `type: "result"`, markdown `body`, and optional links. The block editor includes a YAML import flow for converting Grot Guide YAML directly into JSON.
 
 #### Challenge block
 
@@ -1121,8 +1185,8 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 | `markdown`         | Content     | Formatted text with headings, lists, code, tables                               |
 | `html`             | Content     | Raw HTML for migration/custom content                                           |
 | `image`            | Content     | Embedded images with optional dimensions                                        |
-| `video`            | Content     | YouTube or native HTML5 video embeds                                            |
-| `code-block`       | Content     | Code snippet with copy and optional Monaco-editor insert                        |
+| `video`            | Content     | YouTube, Vimeo, or native HTML5 video embeds                                    |
+| `code-block`       | Content     | Code snippet with copy and Monaco-editor insert                                 |
 | `section`          | Structure   | Container for grouped interactive steps with "Do Section"                       |
 | `collapsible`      | Structure   | Hides nested content behind a toggle                                            |
 | `conditional`      | Structure   | Shows different content based on runtime conditions                             |
@@ -1363,7 +1427,6 @@ All types are exported from `src/types/json-guide.types.ts`:
 import {
   // Root structure
   JsonGuide,
-  JsonMatchMetadata,
 
   // Block union
   JsonBlock,
@@ -1376,6 +1439,7 @@ import {
 
   // Structural blocks
   JsonSectionBlock,
+  JsonCollapsibleBlock,
   JsonConditionalBlock,
   ConditionalDisplayMode,
   ConditionalSectionConfig,
@@ -1393,6 +1457,12 @@ import {
   JsonQuizBlock,
   JsonQuizChoice,
   JsonInputBlock,
+  JsonTerminalBlock,
+  JsonTerminalConnectBlock,
+  JsonChallengeBlock,
+  JsonCodeBlockBlock,
+  JsonGrotGuideBlock,
+  JsonSnippetRefBlock,
 } from '../types/json-guide.types';
 ```
 
@@ -1405,6 +1475,7 @@ import {
   isImageBlock,
   isVideoBlock,
   isSectionBlock,
+  isCollapsibleBlock,
   isConditionalBlock,
   isAssistantBlock,
   isInteractiveBlock,
@@ -1412,6 +1483,12 @@ import {
   isGuidedBlock,
   isQuizBlock,
   isInputBlock,
+  isTerminalBlock,
+  isTerminalConnectBlock,
+  isChallengeBlock,
+  isCodeBlockBlock,
+  isGrotGuideBlock,
+  isSnippetRefBlock,
   hasAssistantEnabled,
 } from '../types/json-guide.types';
 ```
@@ -1428,6 +1505,8 @@ import {
   CURRENT_SCHEMA_VERSION,
 } from '../types/json-guide.schema';
 ```
+
+The prescriptive coupling checklist and the limits of the automated drift checks are documented in [schema-type coupling rules](../../../.cursor/rules/schema-coupling.mdc). The recursive JSON guide schemas rely on manual paired review plus focused tests; unlike several non-recursive package schemas, they are not declared with `satisfies z.ZodType<T>`.
 
 ## See also
 

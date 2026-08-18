@@ -35,7 +35,16 @@ export class CompositePackageResolver implements PackageResolver {
   }
 
   async resolve(packageId: string, options?: ResolveOptions): Promise<PackageResolution> {
-    const cacheKey = `${packageId}:${options?.loadContent ?? false}`;
+    // verifyPublished must be part of the key: two same-tick calls for the same
+    // id and loadContent but different verifyPublished would otherwise collide,
+    // and whichever resolve() lands in the cache first would satisfy both —
+    // silently skipping the publish-status probe for the caller that asked for
+    // it (#1561). Only when loadContent is falsy, though: the content paths
+    // probe unconditionally, so splitting there would double a full content
+    // load for two semantically identical calls.
+    const loadContent = options?.loadContent ?? false;
+    const verifyPublished = loadContent ? false : (options?.verifyPublished ?? false);
+    const cacheKey = `${packageId}:${loadContent}:${verifyPublished}`;
     const cached = this.cache.get(cacheKey);
     if (cached) {
       return cached;
@@ -51,18 +60,20 @@ export class CompositePackageResolver implements PackageResolver {
     // `repository`; static-tier failures don't, so their negative caching is
     // preserved). Evict right after it settles: truly concurrent callers still
     // share this in-flight promise (dedup preserved), but the next call
-    // re-fetches fresh. The `.catch()` only silences this derived promise — a
-    // thrown/rejected `promise` still propagates normally to whoever awaits the
-    // `resolve()` call itself.
-    promise
-      .then((result) => {
+    // re-fetches fresh. Both handlers go to one `.then`, so each eviction
+    // registers on this promise's own first-hop reaction rather than on a
+    // derived promise a microtask later, and cannot be outrun by a caller
+    // reacting to the same rejection. Handling the rejection here only silences
+    // the derived promise; a rejected `promise` still propagates to whoever
+    // awaits the `resolve()` call itself.
+    promise.then(
+      (result) => {
         if (result.repository && UNCACHEABLE_REPOSITORIES.has(result.repository)) {
           this.cache.delete(cacheKey);
         }
-      })
-      // A rejected resolve() must not linger as a permanently-cached rejected
-      // promise — evict so the next call retries instead of replaying it.
-      .catch(() => this.cache.delete(cacheKey));
+      },
+      () => this.cache.delete(cacheKey)
+    );
 
     return promise;
   }

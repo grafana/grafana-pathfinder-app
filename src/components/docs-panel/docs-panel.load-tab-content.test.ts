@@ -184,6 +184,7 @@ jest.mock('./utils', () => ({
   getTranslatedTitle: jest.fn((t: string) => t),
   restoreTabsFromStorage: jest.fn(),
   restoreActiveTabFromStorage: jest.fn(),
+  mergeRestoredTabsWithExisting: jest.requireActual('./utils/tab-storage-restore').mergeRestoredTabsWithExisting,
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: jest.fn(),

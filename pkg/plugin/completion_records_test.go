@@ -565,6 +565,36 @@ func TestErrors_IdentityScopedFailureNotCachedShared(t *testing.T) {
 	}
 }
 
+// A failed on-behalf-of token mint is caller-scoped too — auth-api can reject
+// one caller's subject token while serving others — so it must not enter the
+// shared negative cache either, even though it carries no HTTP status.
+func TestErrors_MintFailureNotCachedShared(t *testing.T) {
+	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := &fakeLister{respond: func(token string) (*completionRecordPage, error) {
+		return nil, fmt.Errorf("%w: exchange refused", errAccessTokenMintFailed)
+	}}
+	withLister(t, l)
+
+	// A mint failure is transient (no upstream status), so caller A gets a 503
+	// hiccup rather than capability=false.
+	rr, _ := doMyCompletions(t, "/completion-records/my", "user:a")
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("caller A: expected 503 for a transient mint failure, got %d", rr.Code)
+	}
+	if l.callCount() != 1 {
+		t.Fatalf("expected 1 upstream LIST, got %d", l.callCount())
+	}
+
+	advance(time.Second)
+	rr, _ = doMyCompletions(t, "/completion-records/my", "user:b")
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("caller B: expected 503, got %d", rr.Code)
+	}
+	if l.callCount() != 2 {
+		t.Fatalf("mint failure must not be cached shared: expected a fresh probe for caller B, got %d LIST calls", l.callCount())
+	}
+}
+
 func TestErrors_WarmStaleOutageThrottledByCooldown(t *testing.T) {
 	advance := withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	var fail atomic.Bool
@@ -679,6 +709,27 @@ func TestMyCompletions_NoAppURLStructurallyUnavailable(t *testing.T) {
 	}
 	if l.callCount() != 0 {
 		t.Fatalf("structural unavailability must not hit upstream, got %d calls", l.callCount())
+	}
+}
+
+// An unprovisioned stack has no way to authenticate as the caller upstream, so
+// the read route reports itself unavailable rather than attempting a call that
+// can only 401. No lister override here: that override short-circuits ahead of
+// the exchanger gate, so this is the real resolve path.
+func TestMyCompletions_NoOBOCredentialsStructurallyUnavailable(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	resetCompletionRecordsCache()
+	t.Cleanup(resetCompletionRecordsCache)
+
+	rr, body := doMyCompletionsReq(t, completionRequest(t, "/completion-records/my", "user:1"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if body.Capability.Available || body.Capability.Reason != reasonOBOUnavailable {
+		t.Fatalf("expected capability=false %q without provisioned credentials, got %+v", reasonOBOUnavailable, body.Capability)
+	}
+	if len(body.Completions) != 0 {
+		t.Errorf("expected no completions, got %d", len(body.Completions))
 	}
 }
 

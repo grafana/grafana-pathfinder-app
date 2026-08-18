@@ -1,8 +1,9 @@
 /**
  * Module-owned staging area for prepared (one-fetch) launch payloads.
  *
- * `prepareGuideLaunch` produces trusted, already-validated content. The
- * launch handoff sometimes has to cross PUBLIC channels — the
+ * `prepareGuideLaunch` produces content it fetched through the validated fetch
+ * pipeline and then schema-checked itself, so what is staged here is trusted.
+ * The launch handoff sometimes has to cross PUBLIC channels — the
  * `pathfinder-auto-open-docs` CustomEvent and the cold-sidebar link queue —
  * that any same-page script can also write to. The payload itself must never
  * ride those channels: a forged `preparedContent` would bypass the fetch

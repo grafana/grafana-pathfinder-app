@@ -2,6 +2,7 @@ import React from 'react';
 
 import { ChallengeBlock } from './challenge-block';
 import { CodeBlockStep } from './code-block-step';
+import { DatasourceCheckStep } from './datasource-check-step';
 import { InteractiveGuided } from './interactive-guided';
 import { InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveQuiz } from './interactive-quiz';
@@ -38,6 +39,7 @@ export const INTERACTIVE_STEP_COMPONENT_TYPES: ReadonlySet<unknown> = new Set<un
   TerminalConnectStep,
   CodeBlockStep,
   ChallengeBlock,
+  DatasourceCheckStep,
 ]);
 
 /**

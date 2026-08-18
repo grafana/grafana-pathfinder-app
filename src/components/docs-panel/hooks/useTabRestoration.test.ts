@@ -30,7 +30,7 @@ describe('useTabRestoration', () => {
     expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
   });
 
-  it('calls restoreTabsAsync when only the editor tab is open (handoff-safe)', () => {
+  it('does NOT restore when an editor tab is already in the strip', () => {
     const model = makeModel();
     renderHook(() =>
       useTabRestoration({
@@ -39,7 +39,7 @@ describe('useTabRestoration', () => {
         tabs: [tab('recommendations', 'recommendations'), tab('editor', 'editor')],
       })
     );
-    expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
+    expect(model.restoreTabsAsync).not.toHaveBeenCalled();
   });
 
   it('does NOT restore when a user-opened guide tab is present', () => {
@@ -62,7 +62,7 @@ describe('useTabRestoration', () => {
     expect(model.restoreTabsAsync).not.toHaveBeenCalled();
   });
 
-  it('re-fires when panelMode transitions away from fullscreen', () => {
+  it('force-refreshes the sidebar model when returning from fullscreen', () => {
     const model = makeModel();
     const { rerender } = renderHook(
       (props: { panelMode: PanelMode; tabs: any[] }) =>
@@ -72,7 +72,32 @@ describe('useTabRestoration', () => {
     expect(model.restoreTabsAsync).not.toHaveBeenCalled();
 
     rerender({ panelMode: 'sidebar', tabs: [tab('recommendations', 'recommendations')] });
-    expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
+    expect(model.restoreTabsAsync).toHaveBeenCalledWith({ force: true });
+  });
+
+  it('force-refreshes over a populated strip, so fullscreen tab work is not dropped', () => {
+    const model = makeModel();
+    const tabs = [tab('recommendations', 'recommendations'), tab('user-guide-1')];
+    const { rerender } = renderHook(
+      ({ panelMode }: { panelMode: PanelMode }) => useTabRestoration({ model, panelMode, tabs }),
+      { initialProps: { panelMode: 'fullscreen' as PanelMode } }
+    );
+
+    rerender({ panelMode: 'sidebar' });
+    expect(model.restoreTabsAsync).toHaveBeenCalledWith({ force: true });
+  });
+
+  it('force-refreshes the sidebar model when returning from floating mode', () => {
+    const model = makeModel();
+    const tabs = [tab('recommendations', 'recommendations'), tab('editor', 'editor')];
+    const { rerender } = renderHook(
+      ({ panelMode }: { panelMode: PanelMode }) => useTabRestoration({ model, panelMode, tabs }),
+      { initialProps: { panelMode: 'floating' as PanelMode } }
+    );
+    expect(model.restoreTabsAsync).not.toHaveBeenCalled();
+
+    rerender({ panelMode: 'sidebar' });
+    expect(model.restoreTabsAsync).toHaveBeenCalledWith({ force: true });
   });
 
   it('does NOT re-fire on tab or model changes when panelMode is unchanged (preserves [panelMode]-only dep array)', () => {

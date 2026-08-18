@@ -7,6 +7,15 @@
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
 
+const SCROLL_FADE_HEIGHT = 40;
+// Deliberately shorter than the fade band: the padding keeps the last item
+// legible once fully scrolled, while the uncovered remainder lets the next item
+// peek through the gradient so "there is more below" stays visible.
+const SCROLL_FADE_PADDING = 12;
+// Height cap for the My paths / Badges columns, and for the Discover more list.
+const COLUMN_MAX_HEIGHT = 440;
+const DISCOVER_LIST_MAX_HEIGHT = 352;
+
 export const getMyLearningStyles = (theme: GrafanaTheme2) => {
   const isDark = theme.isDark;
   const accentColor = isDark ? '#8B7CF6' : '#6C63FF';
@@ -42,12 +51,51 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       overflowY: 'auto',
     }),
 
-    // auto-fit + minmax sizes off the row's own width, not the viewport, so the row stacks in the docked sidebar and splits when floating.
+    // Query context for the two-column row. Deliberately scoped to this wrapper
+    // rather than the page container: `container-type` implies layout
+    // containment, which would make the container a containing block for
+    // `position: fixed` descendants and trap the BadgeDetailCard overlay inside
+    // the panel instead of covering the viewport.
+    columnsContainer: css({
+      containerType: 'inline-size',
+    }),
+
+    // 7:5 of the design's 12-column grid. The query resolves against the
+    // wrapper's own width, not the viewport, so the row stacks in the docked
+    // sidebar and splits when floating.
     columnsRow: css({
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
+      gridTemplateColumns: '1fr',
       gap: theme.spacing(2),
       alignItems: 'stretch',
+      '@container (min-width: 640px)': {
+        gridTemplateColumns: '7fr 5fr',
+      },
+    }),
+
+    // Fills the leftover height of its section so the region's bottom edge is
+    // the panel's bottom edge — that keeps the fade pinned to the panel rather
+    // than floating above it when a stretched sibling column is taller.
+    // `flexShrink: 0` on the children is load-bearing: without it a bounded
+    // height squashes every card to fit instead of scrolling.
+    // The bottom padding lives here rather than alongside the mask so that
+    // toggling the fade cannot change scrollHeight: padding counts toward
+    // scrollHeight, so a fade that added its own padding would keep its own
+    // overflow condition true and latch on.
+    scrollRegion: css({
+      overflowY: 'auto',
+      flex: 1,
+      minHeight: 0,
+      paddingBottom: SCROLL_FADE_PADDING,
+      scrollbarWidth: 'thin',
+      '& > *': {
+        flexShrink: 0,
+      },
+    }),
+    // Applied only while the region actually overflows. Unconditionally masking
+    // would dim the last item of a list that already fits.
+    scrollRegionFaded: css({
+      maskImage: `linear-gradient(to bottom, #000 calc(100% - ${SCROLL_FADE_HEIGHT}px), transparent 100%)`,
     }),
 
     // Hero Section
@@ -110,6 +158,12 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       color: theme.colors.text.primary,
       fontVariantNumeric: 'tabular-nums',
     }),
+    statValueBadges: css({
+      fontSize: theme.typography.h5.fontSize,
+      fontWeight: theme.typography.fontWeightBold,
+      color: accentColor,
+      fontVariantNumeric: 'tabular-nums',
+    }),
     statValueStreak: css({
       fontSize: theme.typography.h5.fontSize,
       fontWeight: theme.typography.fontWeightBold,
@@ -145,10 +199,23 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
 
     // Sections
     section: css({
+      display: 'flex',
+      flexDirection: 'column',
+      minWidth: 0,
       backgroundColor: theme.colors.background.secondary,
       borderRadius: theme.shape.radius.default,
       padding: theme.spacing(2),
       border: `1px solid ${theme.colors.border.weak}`,
+    }),
+    // Caps the two side-by-side columns so a long list scrolls in place instead
+    // of stretching the row. Both columns hit the same cap, so their bottom
+    // edges — and their fades — line up. Only while side by side: stacked in the
+    // docked sidebar, capping would nest a scroller inside the scrolling page
+    // for no alignment benefit.
+    columnSection: css({
+      '@container (min-width: 640px)': {
+        maxHeight: COLUMN_MAX_HEIGHT,
+      },
     }),
     sectionHeader: css({
       display: 'flex',
@@ -172,23 +239,6 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
-    expandButton: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(0.5),
-      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-      borderRadius: theme.shape.radius.default,
-      backgroundColor: 'transparent',
-      color: theme.colors.text.link,
-      fontSize: theme.typography.bodySmall.fontSize,
-      border: 'none',
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-      '&:hover': {
-        backgroundColor: theme.colors.action.hover,
-      },
-    }),
-
     // Empty-state message shared by sections with no items yet
     emptyMessage: css({
       display: 'flex',
@@ -212,18 +262,15 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(1.5),
     }),
 
-    // Badges Grid - centered-icon tiles
+    // Badges Grid - centered-icon tiles.
+    // `min-content` rows are load-bearing: as a flex child the grid gets a
+    // definite height, and default auto rows would then compress below their
+    // intrinsic size and clamp two-line badge names to one line.
     badgesGrid: css({
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))',
+      gridTemplateColumns: 'repeat(3, 1fr)',
+      gridAutoRows: 'min-content',
       gap: theme.spacing(1),
-      maxHeight: '260px',
-      overflow: 'hidden',
-      transition: 'max-height 0.3s ease-out',
-    }),
-    badgesGridExpanded: css({
-      maxHeight: '1200px',
-      overflow: 'visible',
     }),
     badgeTile: css({
       display: 'flex',
@@ -373,73 +420,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       flexDirection: 'column',
       gap: theme.spacing(1.5),
-    }),
-    discoverCard: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(1.5),
-      padding: theme.spacing(1.5),
-      borderRadius: theme.shape.radius.default,
-      backgroundColor: theme.colors.background.primary,
-      border: `1px solid ${theme.colors.border.weak}`,
-      transition: 'all 0.2s ease',
-      '&:hover': {
-        borderColor: accentColor,
-      },
-    }),
-    discoverIcon: css({
-      flexShrink: 0,
-      width: 36,
-      height: 36,
-      borderRadius: '50%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: accentLight,
-      color: accentColor,
-    }),
-    discoverBody: css({
-      flex: 1,
-      minWidth: 0,
-    }),
-    discoverTitle: css({
-      margin: 0,
-      fontSize: theme.typography.body.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.primary,
-      whiteSpace: 'nowrap',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-    }),
-    discoverMeta: css({
-      margin: 0,
-      fontSize: theme.typography.bodySmall.fontSize,
-      color: theme.colors.text.secondary,
-      whiteSpace: 'nowrap',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-    }),
-    discoverStartButton: css({
-      flexShrink: 0,
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(0.5),
-      padding: `${theme.spacing(0.5)} ${theme.spacing(1.5)}`,
-      borderRadius: theme.shape.radius.default,
-      backgroundColor: theme.colors.primary.main,
-      color: theme.colors.primary.contrastText,
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      border: 'none',
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-      '&:hover:not(:disabled)': {
-        backgroundColor: theme.colors.primary.shade,
-      },
-      '&:disabled': {
-        opacity: 0.6,
-        cursor: 'not-allowed',
-      },
+      maxHeight: DISCOVER_LIST_MAX_HEIGHT,
     }),
 
     // Completed list

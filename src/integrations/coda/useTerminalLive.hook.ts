@@ -1,24 +1,28 @@
 /**
  * Grafana Live terminal connection hook
  *
- * Bidirectional terminal I/O over a single Grafana Live WebSocket:
- * - Output (SSH → frontend): RunStream sends frames via sender.SendFrame
- * - Input (frontend → SSH): Frontend publishes via liveSrv.publish → PublishStream
+ * Bidirectional terminal I/O over a single Grafana Live WebSocket, driven by
+ * `@grafana/coda-client`'s `CodaSession`: it owns the channel address, frame
+ * validation, the mandatory `{ useSocket: true }` publish and its own idle
+ * timer. This hook keeps only what's Pathfinder-specific — the progress bar,
+ * banner text and xterm wiring — hung off `CodaSession`'s handlers.
+ *
+ * Two things the hand-rolled version had that the class doesn't expose:
+ * - the transient "Waiting for SSH handshake..." line, printed on the raw
+ *   Live channel's own connect event before any backend frame arrives;
+ * - immediate detection of the underlying WebSocket dropping. `CodaSession`
+ *   only reports a dead connection via its own idle timer (silence beyond
+ *   ~12 heartbeats, floored at 35s), not the instant a socket-level
+ *   disconnect event fires.
+ * Both are covered, with a delay, by the connecting banner and the idle
+ * timer's `terminal_disconnected` respectively.
  */
 
 import { useCallback, useEffect, useRef, useState, RefObject } from 'react';
-import { getGrafanaLiveSrv, type GrafanaLiveSrv } from '@grafana/runtime';
-import {
-  LiveChannelScope,
-  LiveChannelAddress,
-  LiveChannelEvent,
-  isLiveChannelMessageEvent,
-  isLiveChannelStatusEvent,
-  LiveChannelConnectionState,
-} from '@grafana/data';
-import { Subscription } from 'rxjs';
 import type { Terminal } from '@xterm/xterm';
+import type { CodaSession } from '@grafana/coda-client';
 import { logger } from '../../lib/logging';
+import { codaErrorCodeMessage, createSession, toCodaError, type TerminalVMOptions } from './coda-api';
 
 interface ConnectionLog {
   error: (message: string, error?: unknown, data?: Record<string, unknown>) => void;
@@ -42,22 +46,16 @@ function createConnectionLog(): ConnectionLog {
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
-/** Plugin ID for constructing API paths */
-const PLUGIN_ID = 'grafana-pathfinder-app';
+export type { TerminalVMOptions };
+
+function codaSessionErrorMessage(err: unknown): string {
+  const codaErr = toCodaError(err);
+  return codaErrorCodeMessage(codaErr.code, codaErr.message);
+}
 
 interface UseTerminalLiveOptions {
   /** Terminal instance ref - accessed in callbacks, not during render */
   terminalRef: RefObject<Terminal | null>;
-}
-
-/** Options for connecting to a specific VM template */
-export interface TerminalVMOptions {
-  /** VM template (defaults to "vm-aws") */
-  template?: string;
-  /** App name for sample-app templates */
-  app?: string;
-  /** Scenario name for alloy-scenario templates */
-  scenario?: string;
 }
 
 interface UseTerminalLiveReturn {
@@ -73,16 +71,8 @@ interface UseTerminalLiveReturn {
   sendCommand: (command: string) => Promise<void>;
   /** Error message if status is 'error' */
   error: string | null;
-}
-
-/** Terminal stream output message (sent from backend via SendJSON) */
-interface TerminalStreamOutput {
-  type: 'output' | 'error' | 'connected' | 'disconnected' | 'status' | 'heartbeat';
-  data?: string;
-  error?: string;
-  state?: string; // VM state for 'status' type: 'pending', 'provisioning', 'active'
-  message?: string; // Human-readable status message
-  vmId?: string; // Actual VM ID being used (sent by backend with 'connected' and 'status')
+  /** Active Coda session id, or null when disconnected. Needed to run exec calls. */
+  sessionId: string | null;
 }
 
 // ─── Provision progress bar ──────────────────────────────────────────────────
@@ -105,36 +95,20 @@ function renderProvisionProgress(label: string, elapsedMs: number, complete = fa
   return `\x1b[${color}m   │  ${icon} ${label.padEnd(16)} [${'█'.repeat(filled)}${'░'.repeat(empty)}] ${String(pct).padStart(3)}% (${secs}s)\x1b[0m`;
 }
 
-/**
- * Terminal connection hook using Grafana Live streaming
- *
- * This connects to the plugin backend which:
- * 1. Provisions a VM via Coda (or reuses existing one for this user)
- * 2. Establishes SSH connection to the VM
- * 3. Streams terminal I/O via Grafana Live
- *
- * The backend handles all VM lifecycle decisions:
- * - Tracks active VMs per user and reuses them
- * - Auto-provisions if user has no active VM
- * - Retries SSH with fresh VM on auth failures
- * - Pushes status updates via the stream
- */
 export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTerminalLiveReturn {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   const connectionLogRef = useRef<ConnectionLog>(createConnectionLog());
 
-  // REACT: refs for subscriptions and cleanup (R1)
-  const subscriptionRef = useRef<Subscription | null>(null);
+  // The one live session object; owns the channel, frame validation and the
+  // idle timer. Replaces the subscription/address/liveSrv refs the hand-rolled
+  // version needed.
+  const sessionRef = useRef<CodaSession | null>(null);
   // currentVmIdRef tracks the VM ID for the current session (used in logging)
   const currentVmIdRef = useRef<string | null>(null);
   const inputDisposerRef = useRef<{ dispose: () => void } | null>(null);
-  const handshakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Grafana Live publish refs: populated in connectLiveStream, read by sendInput/sendResize
-  const liveSrvRef = useRef<GrafanaLiveSrv | undefined>(undefined);
-  const addressRef = useRef<LiveChannelAddress | null>(null);
 
   // Provision progress bar state (animated bar during pending/provisioning)
   const provisionProgressRef = useRef<{
@@ -144,28 +118,40 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   } | null>(null);
   // Dedup guard for non-progress-bar status lines
   const lastStatusLineRef = useRef('');
+  // Set right before onClosed would otherwise print its own "session ended"
+  // banner — user-initiated disconnect prints its own message instead.
+  const suppressClosedBannerRef = useRef(false);
+  // onClosed always fires after onError (CodaSession.finish() calls both), so
+  // this stops it from printing a second, contradictory banner.
+  const hadErrorRef = useRef(false);
+  // Bumped by every teardown. connect() reads it before awaiting createSession
+  // and compares after, so a Cancel or unmount during that window abandons the
+  // session it lost the race to instead of installing it anyway.
+  const connectGenerationRef = useRef(0);
 
-  // Cleanup function
+  // Tearing the session down invalidates its id: exec is session-scoped, so a
+  // retained id would be spent on a session the backend has forgotten. Every
+  // terminating path must either call this or clear the id itself.
   const cleanup = useCallback(() => {
-    if (subscriptionRef.current) {
-      subscriptionRef.current.unsubscribe();
-      subscriptionRef.current = null;
+    connectGenerationRef.current += 1;
+    setSessionId(null);
+    const session = sessionRef.current;
+    sessionRef.current = null;
+    if (session) {
+      // finish()'s side effects (unsubscribe, onError/onClosed) run
+      // synchronously; close() itself is fire-and-forget and never rejects. It
+      // releases the terminal only — the VM keeps its quota slot until expiry.
+      void session.close();
     }
     if (inputDisposerRef.current) {
       inputDisposerRef.current.dispose();
       inputDisposerRef.current = null;
-    }
-    if (handshakeTimeoutRef.current) {
-      clearTimeout(handshakeTimeoutRef.current);
-      handshakeTimeoutRef.current = null;
     }
     if (provisionProgressRef.current) {
       clearInterval(provisionProgressRef.current.intervalId);
       provisionProgressRef.current = null;
     }
     lastStatusLineRef.current = '';
-    liveSrvRef.current = undefined;
-    addressRef.current = null;
   }, []);
 
   // REACT: cleanup on unmount (R1)
@@ -174,374 +160,165 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
   }, [cleanup]);
 
   /**
-   * Publish over the WebSocket rather than HTTP POST.
-   *
-   * GrafanaLiveService.publish() accepts an undeclared third `options` arg.
-   * Passing `{ useSocket: true }` routes the message through the existing
-   * Centrifuge WebSocket instead of `POST /api/live/publish`. This is
-   * critical in multi-node deployments (e.g. Grafana Cloud) where HTTP
-   * requests are load-balanced and may hit a node that isn't running the
-   * stream, causing a 404.
-   */
-  const publishOverSocket = useCallback(
-    (address: LiveChannelAddress, data: unknown) =>
-      (liveSrvRef.current as any)?.publish(address, data, { useSocket: true }),
-    []
-  );
-
-  /**
-   * Send input to the terminal via Grafana Live publish.
-   * Publishes a plain object to the same channel used by RunStream/SubscribeStream.
-   */
-  const sendInput = useCallback(
-    async (inputData: string) => {
-      const address = addressRef.current;
-      if (!liveSrvRef.current || !address) {
-        return;
-      }
-
-      try {
-        await publishOverSocket(address, { type: 'input', data: inputData });
-      } catch {
-        // Input publish failures are transient; ignore silently
-      }
-    },
-    [publishOverSocket]
-  );
-
-  /**
-   * Send resize event to the terminal via Grafana Live publish.
-   */
-  const sendResize = useCallback(
-    async (rows: number, cols: number) => {
-      const address = addressRef.current;
-      if (!liveSrvRef.current || !address) {
-        return;
-      }
-
-      try {
-        await publishOverSocket(address, { type: 'resize', rows, cols });
-      } catch {
-        // Resize publish failures are transient; ignore silently
-      }
-    },
-    [publishOverSocket]
-  );
-
-  /**
-   * Parse terminal output from a Grafana Live message.
-   * With SendJSON, messages arrive as raw JSON objects (not wrapped in DataFrame).
-   */
-  const parseTerminalOutput = useCallback((message: unknown): TerminalStreamOutput | null => {
-    try {
-      // Direct JSON object (from SendJSON)
-      if (message && typeof message === 'object') {
-        const msg = message as Record<string, unknown>;
-        if (typeof msg.type === 'string') {
-          return message as TerminalStreamOutput;
-        }
-
-        // DataFrame format (from SendFrame): extract JSON string from data.values[0][0]
-        const df = msg as { data?: { values?: unknown[][] }; schema?: unknown };
-        if (df.data?.values?.[0]?.[0]) {
-          const raw = df.data.values[0][0];
-          if (typeof raw === 'string') {
-            return JSON.parse(raw) as TerminalStreamOutput;
-          }
-        }
-      }
-
-      if (typeof message === 'string') {
-        return JSON.parse(message) as TerminalStreamOutput;
-      }
-    } catch {
-      // Parse failures are non-fatal; the stream will deliver subsequent messages
-    }
-    return null;
-  }, []);
-
-  /**
-   * Connect to Grafana Live stream for terminal I/O
+   * Subscribe a fresh session to its Live channel, wiring Pathfinder's
+   * terminal UI onto CodaSession's handlers.
    */
   const connectLiveStream = useCallback(
-    (id: string, terminal: Terminal, vmOpts?: TerminalVMOptions) => {
-      const liveSrv = getGrafanaLiveSrv();
-      if (!liveSrv) {
-        setError('Grafana Live service not available');
-        setStatus('error');
-        return;
-      }
+    (session: CodaSession, terminal: Terminal) => {
+      currentVmIdRef.current = session.vmID ?? null;
 
-      // Append a unique nonce so Grafana Live always starts a fresh RunStream,
-      // even when reconnecting to the same VM. Without this, resubscribing to
-      // the same channel path while the old RunStream is tearing down can cause
-      // the backend to never invoke a new RunStream, leaving us stuck.
-      const nonce = Date.now();
-      // Encode optional template and app as additional path segments:
-      //   terminal/{id}/{nonce}                         → default (vm-aws)
-      //   terminal/{id}/{nonce}/{template}/{app}         → custom template with app
-      let channelPathStr = `terminal/${id}/${nonce}`;
-      if (vmOpts?.template && vmOpts.template !== 'vm-aws') {
-        channelPathStr += `/${vmOpts.template}`;
-        if (vmOpts.template === 'vm-aws-alloy-scenario' && vmOpts.scenario) {
-          channelPathStr += `/${vmOpts.scenario}`;
-        } else if (vmOpts.app) {
-          channelPathStr += `/${vmOpts.app}`;
-        }
-      }
-      const address: LiveChannelAddress = {
-        scope: LiveChannelScope.Plugin,
-        stream: PLUGIN_ID,
-        path: channelPathStr,
-      };
+      session.subscribe({
+        onOutput: (data) => {
+          terminal.write(data);
+        },
 
-      currentVmIdRef.current = id;
-
-      // Store refs so sendInput/sendResize can publish to this channel
-      liveSrvRef.current = liveSrv;
-      addressRef.current = address;
-
-      // Safety-net timeout: if the backend stops sending messages, surface an
-      // error instead of hanging forever. Reset on every backend status message
-      // so that VM provisioning (which can take 1-3 min) doesn't trip the timer.
-      const SSH_HANDSHAKE_TIMEOUT_MS = 35_000;
-      const startHandshakeTimeout = () => {
-        if (handshakeTimeoutRef.current) {
-          clearTimeout(handshakeTimeoutRef.current);
-        }
-        handshakeTimeoutRef.current = setTimeout(() => {
-          handshakeTimeoutRef.current = null;
-          cleanup();
-          setError('SSH handshake timed out');
-          setStatus('error');
-          terminal.writeln('\r\n\x1b[31m✖ SSH handshake timed out — the VM may be unreachable.\x1b[0m');
-          terminal.writeln('\x1b[90m  Press "Connect" to try again.\x1b[0m');
-        }, SSH_HANDSHAKE_TIMEOUT_MS);
-      };
-      startHandshakeTimeout();
-
-      const stream = liveSrv.getStream<unknown>(address);
-      subscriptionRef.current = stream.subscribe({
-        next: (event: LiveChannelEvent<unknown>) => {
-          if (isLiveChannelMessageEvent(event)) {
-            const msg = parseTerminalOutput(event.message);
-            if (msg) {
-              switch (msg.type) {
-                case 'status':
-                  // Backend is alive and making progress -- reset the safety-net
-                  // timeout so VM provisioning (1-3 min) doesn't trip the timer.
-                  startHandshakeTimeout();
-
-                  if (msg.vmId && msg.vmId !== currentVmIdRef.current) {
-                    currentVmIdRef.current = msg.vmId;
-                  }
-
-                  if (msg.state === 'pending' || msg.state === 'provisioning') {
-                    const label = msg.state === 'pending' ? 'Waiting in queue' : 'Booting VM';
-                    if (!provisionProgressRef.current) {
-                      const startTime = Date.now();
-                      terminal.write(renderProvisionProgress(label, 0));
-                      const intervalId = setInterval(() => {
-                        const cur = provisionProgressRef.current;
-                        if (!cur) {
-                          return;
-                        }
-                        const elapsed = Date.now() - cur.startTime;
-                        terminal.write('\r' + renderProvisionProgress(cur.stateLabel, elapsed));
-                      }, PROGRESS_UPDATE_INTERVAL_MS);
-                      provisionProgressRef.current = { intervalId, startTime, stateLabel: label };
-                    } else {
-                      provisionProgressRef.current.stateLabel = label;
-                    }
-                  } else {
-                    // Finish progress bar when leaving pending/provisioning
-                    const hadProgressBar = provisionProgressRef.current !== null;
-                    if (provisionProgressRef.current) {
-                      const elapsed = Date.now() - provisionProgressRef.current.startTime;
-                      clearInterval(provisionProgressRef.current.intervalId);
-                      if (msg.state === 'active') {
-                        terminal.write('\r' + renderProvisionProgress('VM is ready', elapsed, true));
-                      }
-                      terminal.writeln('');
-                      provisionProgressRef.current = null;
-                    }
-
-                    if (msg.state === 'active') {
-                      if (!hadProgressBar) {
-                        const line = `\x1b[90m   │  ✓ ${msg.message || 'VM is ready'}\x1b[0m`;
-                        if (line !== lastStatusLineRef.current) {
-                          lastStatusLineRef.current = line;
-                          terminal.writeln(line);
-                        }
-                      }
-                    } else if (msg.state === 'retrying') {
-                      terminal.writeln(`\x1b[33m   │  ⚠ ${msg.message || 'Retrying...'}\x1b[0m`);
-                    } else {
-                      const line = `\x1b[90m   │  ${msg.message || `Status: ${msg.state}`}\x1b[0m`;
-                      if (line !== lastStatusLineRef.current) {
-                        lastStatusLineRef.current = line;
-                        terminal.writeln(line);
-                      }
-                    }
-                  }
-                  break;
-
-                case 'output':
-                  if (msg.data) {
-                    terminal.write(msg.data);
-                  }
-                  break;
-
-                case 'error':
-                  connectionLogRef.current.error('Backend error received', null, {
-                    vmId: id,
-                    backendError: msg.error,
-                    category: 'backend_error',
-                  });
-
-                  // Tear down the subscription immediately so Grafana Live
-                  // doesn't auto-reconnect and create a retry loop.
-                  cleanup();
-
-                  terminal.writeln('\r\n');
-                  terminal.writeln(`\x1b[31m✖ Error: ${msg.error}\x1b[0m`);
-
-                  setError(msg.error || 'Unknown error');
-                  setStatus('error');
-                  break;
-
-                case 'connected':
-                  if (handshakeTimeoutRef.current) {
-                    clearTimeout(handshakeTimeoutRef.current);
-                    handshakeTimeoutRef.current = null;
-                  }
-
-                  // Update current VM ID ref from backend
-                  if (msg.vmId) {
-                    currentVmIdRef.current = msg.vmId;
-                  }
-
-                  setStatus('connected');
-                  terminal.writeln('');
-                  terminal.writeln('\x1b[32m✓ SSH connection established\x1b[0m');
-                  terminal.writeln('');
-                  terminal.writeln('\x1b[36m┌──────────────────────────────────────────────────────────────┐\x1b[0m');
-                  terminal.writeln(
-                    '\x1b[36m│\x1b[0m  \x1b[1;33mGrafana Pathfinder Sandbox\x1b[0m                                 \x1b[36m│\x1b[0m'
-                  );
-                  terminal.writeln(
-                    '\x1b[36m│\x1b[0m                                                              \x1b[36m│\x1b[0m'
-                  );
-                  terminal.writeln(
-                    '\x1b[36m│\x1b[0m  \x1b[90mThis is a temporary sandbox VM for learning Grafana.\x1b[0m       \x1b[36m│\x1b[0m'
-                  );
-                  terminal.writeln(
-                    '\x1b[36m│\x1b[0m  \x1b[90mVM will auto-terminate after inactivity.\x1b[0m                   \x1b[36m│\x1b[0m'
-                  );
-                  terminal.writeln('\x1b[36m└──────────────────────────────────────────────────────────────┘\x1b[0m');
-                  terminal.writeln('');
-
-                  if (inputDisposerRef.current) {
-                    inputDisposerRef.current.dispose();
-                  }
-                  inputDisposerRef.current = terminal.onData((inputData) => {
-                    sendInput(inputData);
-                  });
-
-                  sendResize(terminal.rows, terminal.cols);
-
-                  // Send a blank newline after a short delay to force the shell
-                  // to print a fresh prompt. Without this, broadcast messages
-                  // (e.g. shutdown warnings) or SSH reconnections can leave the
-                  // terminal on a blank line with no visible prompt.
-                  setTimeout(() => sendInput('\n'), 300);
-                  break;
-
-                case 'disconnected':
-                  cleanup();
-                  setStatus('disconnected');
-                  terminal.writeln('\r\n');
-                  terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
-                  terminal.writeln('\x1b[33m  Session ended - VM disconnected\x1b[0m');
-                  terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
-                  break;
-
-                case 'heartbeat':
-                  // Silently ignore - backend sends these every 3s to keep stream alive
-                  break;
-              }
-            }
+        onStatus: ({ state, message, vmId }) => {
+          if (vmId && vmId !== currentVmIdRef.current) {
+            currentVmIdRef.current = vmId;
           }
 
-          if (isLiveChannelStatusEvent(event)) {
-            if (event.state === LiveChannelConnectionState.Connected) {
-              terminal.writeln('\x1b[90m       Waiting for SSH handshake...\x1b[0m');
-            } else if (event.state === LiveChannelConnectionState.Disconnected) {
-              connectionLogRef.current.warn('LiveStream disconnected', {
-                vmId: id,
-                category: 'live_channel_disconnected',
-              });
-              if (inputDisposerRef.current) {
-                inputDisposerRef.current.dispose();
-                inputDisposerRef.current = null;
-              }
-              setStatus((prev) => {
-                if (prev === 'connected') {
-                  terminal.writeln('\r\n\x1b[33m⚠ Connection lost\x1b[0m');
-                  return 'disconnected';
+          if (state === 'pending' || state === 'provisioning') {
+            const label = state === 'pending' ? 'Waiting in queue' : 'Booting VM';
+            if (!provisionProgressRef.current) {
+              const startTime = Date.now();
+              terminal.write(renderProvisionProgress(label, 0));
+              const intervalId = setInterval(() => {
+                const cur = provisionProgressRef.current;
+                if (!cur) {
+                  return;
                 }
-                return prev;
-              });
+                const elapsed = Date.now() - cur.startTime;
+                terminal.write('\r' + renderProvisionProgress(cur.stateLabel, elapsed));
+              }, PROGRESS_UPDATE_INTERVAL_MS);
+              provisionProgressRef.current = { intervalId, startTime, stateLabel: label };
+            } else {
+              provisionProgressRef.current.stateLabel = label;
+            }
+            return;
+          }
+
+          // Finish progress bar when leaving pending/provisioning
+          const hadProgressBar = provisionProgressRef.current !== null;
+          if (provisionProgressRef.current) {
+            const elapsed = Date.now() - provisionProgressRef.current.startTime;
+            clearInterval(provisionProgressRef.current.intervalId);
+            if (state === 'active') {
+              terminal.write('\r' + renderProvisionProgress('VM is ready', elapsed, true));
+            }
+            terminal.writeln('');
+            provisionProgressRef.current = null;
+          }
+
+          if (state === 'active') {
+            if (!hadProgressBar) {
+              const line = `\x1b[90m   │  ✓ ${message || 'VM is ready'}\x1b[0m`;
+              if (line !== lastStatusLineRef.current) {
+                lastStatusLineRef.current = line;
+                terminal.writeln(line);
+              }
+            }
+          } else if (state === 'retrying') {
+            terminal.writeln(`\x1b[33m   │  ⚠ ${message || 'Retrying...'}\x1b[0m`);
+          } else {
+            const line = `\x1b[90m   │  ${message || `Status: ${state}`}\x1b[0m`;
+            if (line !== lastStatusLineRef.current) {
+              lastStatusLineRef.current = line;
+              terminal.writeln(line);
             }
           }
         },
-        error: (err) => {
-          if (handshakeTimeoutRef.current) {
-            clearTimeout(handshakeTimeoutRef.current);
-            handshakeTimeoutRef.current = null;
+
+        onConnected: (vmId) => {
+          if (vmId) {
+            currentVmIdRef.current = vmId;
           }
+
+          setStatus('connected');
+          terminal.writeln('');
+          terminal.writeln('\x1b[32m✓ SSH connection established\x1b[0m');
+          terminal.writeln('');
+          terminal.writeln('\x1b[36m┌──────────────────────────────────────────────────────────────┐\x1b[0m');
+          terminal.writeln(
+            '\x1b[36m│\x1b[0m  \x1b[1;33mGrafana Pathfinder Sandbox\x1b[0m                                 \x1b[36m│\x1b[0m'
+          );
+          terminal.writeln(
+            '\x1b[36m│\x1b[0m                                                              \x1b[36m│\x1b[0m'
+          );
+          terminal.writeln(
+            '\x1b[36m│\x1b[0m  \x1b[90mThis is a temporary sandbox VM for learning Grafana.\x1b[0m       \x1b[36m│\x1b[0m'
+          );
+          terminal.writeln(
+            '\x1b[36m│\x1b[0m  \x1b[90mVM will auto-terminate after inactivity.\x1b[0m                   \x1b[36m│\x1b[0m'
+          );
+          terminal.writeln('\x1b[36m└──────────────────────────────────────────────────────────────┘\x1b[0m');
+          terminal.writeln('');
+
           if (inputDisposerRef.current) {
             inputDisposerRef.current.dispose();
-            inputDisposerRef.current = null;
           }
-          connectionLogRef.current.error('LiveStream subscription error', err, {
-            vmId: id,
-            category: 'live_stream_error',
+          inputDisposerRef.current = terminal.onData((inputData) => {
+            sessionRef.current?.write(inputData);
           });
-          setError('Stream connection failed');
-          setStatus('error');
-          terminal.writeln(`\r\n\x1b[31mStream error: ${err?.message || 'Unknown error'}\x1b[0m`);
+
+          session.resize(terminal.rows, terminal.cols);
+
+          // Send a blank newline after a short delay to force the shell
+          // to print a fresh prompt. Without this, broadcast messages
+          // (e.g. shutdown warnings) or SSH reconnections can leave the
+          // terminal on a blank line with no visible prompt.
+          setTimeout(() => sessionRef.current?.write('\n'), 300);
         },
-        complete: () => {
-          if (handshakeTimeoutRef.current) {
-            clearTimeout(handshakeTimeoutRef.current);
-            handshakeTimeoutRef.current = null;
+
+        onError: (err) => {
+          hadErrorRef.current = true;
+          const codaErr = toCodaError(err);
+          connectionLogRef.current.error('Backend error received', err, {
+            sessionId: session.sessionId,
+            backendErrorCode: codaErr.code,
+            category: 'backend_error',
+          });
+
+          cleanup();
+
+          const message = codaSessionErrorMessage(err);
+          terminal.writeln('\r\n');
+          terminal.writeln(`\x1b[31m✖ Error: ${message}\x1b[0m`);
+
+          setError(message);
+          setStatus('error');
+        },
+
+        onClosed: () => {
+          if (hadErrorRef.current) {
+            hadErrorRef.current = false;
+            return;
           }
-          if (inputDisposerRef.current) {
-            inputDisposerRef.current.dispose();
-            inputDisposerRef.current = null;
+          if (suppressClosedBannerRef.current) {
+            suppressClosedBannerRef.current = false;
+            return;
           }
-          setStatus((prev) => {
-            if (prev === 'connected') {
-              terminal.writeln('\r\n\x1b[33mStream ended\x1b[0m');
-              return 'disconnected';
-            }
-            return prev;
+
+          cleanup();
+          setStatus('disconnected');
+          terminal.writeln('\r\n');
+          terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+          terminal.writeln('\x1b[33m  Session ended - VM disconnected\x1b[0m');
+          terminal.writeln('\x1b[33m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m');
+        },
+
+        onProtocolError: ({ detail, sessionId: sid, vmId }) => {
+          connectionLogRef.current.warn('Coda protocol mismatch', {
+            detail,
+            sessionId: sid,
+            vmId,
+            category: 'protocol_error',
           });
         },
       });
     },
-    [cleanup, parseTerminalOutput, sendInput, sendResize]
+    [cleanup]
   );
 
-  /**
-   * Connect to the terminal
-   *
-   * The backend handles all VM lifecycle decisions:
-   * - Backend tracks active VMs per user and reuses them automatically
-   * - If user has no active VM, backend provisions a fresh one
-   * - Backend pushes status updates via the stream
-   */
   const connect = useCallback(
     async (vmOpts?: TerminalVMOptions) => {
       const terminal = terminalRef.current;
@@ -558,6 +335,7 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       setStatus('connecting');
       setError(null);
       cleanup();
+      const generation = connectGenerationRef.current;
 
       currentVmIdRef.current = null;
 
@@ -577,16 +355,38 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
       terminal.writeln('\x1b[90m   ├─ Backend will assign your VM...\x1b[0m');
       terminal.writeln('\x1b[90m   └─ Establishing connection...\x1b[0m');
 
-      connectLiveStream('new', terminal, vmOpts);
+      let session: CodaSession;
+      try {
+        session = await createSession(vmOpts);
+      } catch (err) {
+        if (generation !== connectGenerationRef.current) {
+          return;
+        }
+        const message = codaSessionErrorMessage(err);
+        connectionLogRef.current.error('Could not create Coda session', err, { category: 'session_create' });
+        setError(message);
+        setStatus('error');
+        terminal.writeln(`\r\n\x1b[31m✖ ${message}\x1b[0m`);
+        return;
+      }
+
+      if (generation !== connectGenerationRef.current) {
+        void session.close();
+        return;
+      }
+
+      sessionRef.current = session;
+      setSessionId(session.sessionId);
+      connectLiveStream(session, terminal);
     },
     [terminalRef, cleanup, connectLiveStream]
   );
 
-  /**
-   * Disconnect from the terminal
-   * Note: We keep vmId so we can reconnect to the same VM if it's still active
-   */
   const disconnect = useCallback(() => {
+    // Only latch when a session is actually open to emit the banner we are
+    // suppressing; onClosed never fires otherwise and the flag would survive
+    // into the next session and swallow its first genuine close.
+    suppressClosedBannerRef.current = sessionRef.current !== null;
     cleanup();
     currentVmIdRef.current = null;
     setStatus('disconnected');
@@ -601,29 +401,17 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     }
   }, [cleanup, terminalRef]);
 
-  /**
-   * Send resize event to backend via Grafana Live publish
-   */
-  const resize = useCallback(
-    (rows: number, cols: number) => {
-      sendResize(rows, cols);
-    },
-    [sendResize]
-  );
+  const resize = useCallback((rows: number, cols: number) => {
+    sessionRef.current?.resize(rows, cols);
+  }, []);
 
-  /**
-   * Send a command to the terminal (appends newline to execute)
-   */
-  const sendCommand = useCallback(
-    async (command: string) => {
-      if (!addressRef.current) {
-        connectionLogRef.current.warn('Cannot send command: not connected');
-        return;
-      }
-      await sendInput(command + '\n');
-    },
-    [sendInput]
-  );
+  const sendCommand = useCallback(async (command: string) => {
+    if (!sessionRef.current) {
+      connectionLogRef.current.warn('Cannot send command: not connected');
+      return;
+    }
+    sessionRef.current.write(command + '\n');
+  }, []);
 
   return {
     status,
@@ -632,5 +420,6 @@ export function useTerminalLive({ terminalRef }: UseTerminalLiveOptions): UseTer
     resize,
     sendCommand,
     error,
+    sessionId,
   };
 }

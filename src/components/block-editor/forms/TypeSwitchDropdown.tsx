@@ -11,6 +11,7 @@ import { Button, Menu, Dropdown, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA } from '../constants';
+import { CODA_BLOCK_TYPES, useCodaBlockTypesAvailable } from '../coda-block-types';
 import { getAvailableConversions, getConversionWarning, ConversionWarning } from '../utils/block-conversion';
 import type { BlockType, JsonBlock } from '../types';
 
@@ -41,8 +42,17 @@ export interface TypeSwitchDropdownProps {
 export function TypeSwitchDropdown({ currentType, onSwitch, blockData }: TypeSwitchDropdownProps) {
   const styles = useStyles2(getStyles);
 
-  // Get available target types for the current block type
-  const availableTypes = useMemo(() => getAvailableConversions(currentType), [currentType]);
+  // Conversion targets, minus the sandbox-backed types when there is no sandbox
+  // — the palette hides those, and a switch that still produces one hands the
+  // author a block the editor just said cannot exist here.
+  const codaBlocksAvailable = useCodaBlockTypesAvailable();
+  const availableTypes = useMemo(() => {
+    const conversions = getAvailableConversions(currentType);
+    if (codaBlocksAvailable) {
+      return conversions;
+    }
+    return conversions.filter((type) => !CODA_BLOCK_TYPES.includes(type));
+  }, [currentType, codaBlocksAvailable]);
 
   // Handle menu item click - compute warning and pass to parent
   const handleSelect = useCallback(

@@ -72,7 +72,10 @@ export async function fetchPathGuides(pathUrl: string, signal?: AbortSignal): Pr
     const validItems = data.filter((item) => !item.params?.grafana?.skip);
 
     const guides: string[] = [];
-    const guideMetadata: Record<string, GuideMetadataEntry> = {};
+    // Null-prototype: slugs are remote-authored, and consumers look this up by
+    // arbitrary guide id, so `constructor`/`toString` must miss rather than
+    // resolve through Object.prototype.
+    const guideMetadata: Record<string, GuideMetadataEntry> = Object.create(null);
 
     for (const item of validItems) {
       const relpermalink: string = item.relpermalink || '';

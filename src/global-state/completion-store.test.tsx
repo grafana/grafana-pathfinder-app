@@ -185,6 +185,23 @@ describe('completion-store', () => {
     expect(screen.getByTestId('reason').textContent).toBe('skipped');
   });
 
+  it('does not relabel a skipped step as one the user completed', async () => {
+    // A skipping step writes `'skipped'` through the checker's bridge, and its
+    // section then reports the same step complete with the generic `'manual'`.
+    // Taking that second write would tell the user their skipped check passed.
+    render(<StepProbe stepId="step-1" sectionId="section-x" />);
+    await flushMicrotasks();
+    act(() => markStepCompleted('step-1', 'section-x', 'skipped'));
+
+    act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+    expect(screen.getByTestId('reason').textContent).toBe('skipped');
+
+    // A reset clears the entry, so the next genuine pass is recorded plainly.
+    act(() => resetStep('step-1', 'section-x'));
+    act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+    expect(screen.getByTestId('reason').textContent).toBe('manual');
+  });
+
   it('getGuideProgress returns 0% when total is unknown and nothing has been completed', () => {
     mockTotalDocumentSteps = 0;
     expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 0, percentage: 0 });

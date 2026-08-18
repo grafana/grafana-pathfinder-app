@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -161,6 +163,44 @@ func TestAppPlatformListClient_UpstreamErrorClassification(t *testing.T) {
 	}
 }
 
+// Failure scope (may this be shared across callers?) is orthogonal to
+// transient/terminal, and is an allow-list: only positively recognized
+// namespace-global shapes are shareable.
+func TestAppPlatformListClient_FailureScopeClassification(t *testing.T) {
+	mintFailure := fmt.Errorf("%w: %w", errAccessTokenMintFailed, errors.New("exchange refused"))
+
+	cases := []struct {
+		name            string
+		err             error
+		namespaceGlobal bool
+		terminal        bool
+	}{
+		{"503 upstream", &appPlatformUpstreamError{status: http.StatusServiceUnavailable}, true, false},
+		{"404 upstream", &appPlatformUpstreamError{status: http.StatusNotFound}, true, true},
+		{"401 upstream", &appPlatformUpstreamError{status: http.StatusUnauthorized}, false, true},
+		{"403 upstream", &appPlatformUpstreamError{status: http.StatusForbidden}, false, true},
+		{"mint failure", mintFailure, false, false},
+		{"network failure", &url.Error{Op: "Get", Err: errors.New("connection refused")}, true, false},
+		{"aggregate deadline", fmt.Errorf("app platform list: %w", context.DeadlineExceeded), true, false},
+		{"decode failure", errors.New("app platform list: decode: unexpected token"), false, false},
+	}
+	for _, tt := range cases {
+		if got := isNamespaceGlobalUpstreamError(tt.err); got != tt.namespaceGlobal {
+			t.Errorf("%s: isNamespaceGlobalUpstreamError = %v, want %v", tt.name, got, tt.namespaceGlobal)
+		}
+		if got := isTerminalUpstreamError(tt.err); got != tt.terminal {
+			t.Errorf("%s: isTerminalUpstreamError = %v, want %v", tt.name, got, tt.terminal)
+		}
+	}
+
+	// A mint failure caused by an unreachable auth-api is transport-shaped, so
+	// the sentinel must win over the network-error branch.
+	oboNetworkFailure := fmt.Errorf("%w: %w", errAccessTokenMintFailed, &url.Error{Op: "Post", Err: errors.New("connection refused")})
+	if isNamespaceGlobalUpstreamError(oboNetworkFailure) {
+		t.Error("a mint failure wrapping a network error must still be caller-scoped")
+	}
+}
+
 // Each proxy must gate on the aggregation toggle for ITS OWN API group — the Go
 // mirror of the toggle derivation in src/utils/interactive-guides-api.ts (group,
 // dots→dashes). Regression-guards the shared test fixture that enables both
@@ -189,5 +229,13 @@ func TestAggregationToggleMatchesGroup(t *testing.T) {
 	// The two routes are on different groups and must not collapse to one toggle.
 	if customGuideAggregationToggle == pathfinderBackendAggregationToggle {
 		t.Error("custom-guide and completion-records must gate on distinct aggregation toggles")
+	}
+
+	// The cases above derive the expected toggle FROM the Go group constants, so
+	// editing a group would move both sides together and stay green while the TS
+	// literal (APP_PLATFORM_API_VERSION, src/utils/interactive-guides-api.ts)
+	// kept pinning the old group. Pin the Go side to the same literal.
+	if customGuideGroupVersion != "pathfinderbackend.ext.grafana.app/v1alpha1" {
+		t.Errorf("customGuideGroupVersion = %q, but src/utils/interactive-guides-api.ts pins pathfinderbackend.ext.grafana.app/v1alpha1", customGuideGroupVersion)
 	}
 }

@@ -122,6 +122,35 @@ describe('useBlockPersistence — debounced auto-save', () => {
   });
 });
 
+describe('useBlockPersistence — unmount flush', () => {
+  it('writes the pending draft when the editor unmounts mid-debounce', () => {
+    const { rerender, unmount } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
+      initialProps: { g: guide('a') },
+    });
+
+    rerender({ g: guide('edited') });
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+
+    unmount();
+
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).guide.title).toBe('edited');
+  });
+
+  it('writes nothing on unmount when no save is pending', () => {
+    const { unmount } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
+      initialProps: { g: guide('a') },
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    localStorage.clear();
+    unmount();
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});
+
 describe('useBlockPersistence — mount-time restore via onLoad', () => {
   it('calls onLoad with stored guide AND blockIds when both are present', () => {
     localStorage.setItem(
@@ -162,6 +191,21 @@ describe('useBlockPersistence — mount-time restore via onLoad', () => {
 });
 
 describe('useBlockPersistence — clear()', () => {
+  it('cancels a pending write so it cannot resurrect the cleared guide', () => {
+    const { result, rerender, unmount } = renderHook(({ g }) => useBlockPersistence({ guide: g }), {
+      initialProps: { g: guide('a') },
+    });
+
+    rerender({ g: guide('edited') });
+    act(() => result.current.clear());
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    unmount();
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
   it('clear() removes the storage key, and a subsequent mount finds nothing to restore', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ guide: guide('a'), savedAt: '', version: 2 }));
     const { result } = renderHook(() => useBlockPersistence({ guide: guide('a') }));

@@ -6,6 +6,7 @@
 
 import { StorageKeys } from '../../lib/storage-keys';
 
+import { DEFAULT_GUIDE_TITLE } from './editor-chrome-status';
 import type { BlockType, BlockTypeMetadata } from './types';
 
 /**
@@ -229,7 +230,7 @@ export const BACKEND_TRACKING_STORAGE_KEY = StorageKeys.BLOCK_EDITOR_BACKEND_TRA
  */
 export const DEFAULT_GUIDE_METADATA = {
   id: 'new-guide',
-  title: 'New guide',
+  title: DEFAULT_GUIDE_TITLE,
 };
 
 /**

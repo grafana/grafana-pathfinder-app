@@ -9,6 +9,8 @@
  * - Manifest metadata passthrough via fetchPackageContent
  * - setPackageResolver injection and resolver-not-configured error
  */
+import { config, getBackendSrv, setBackendSrv, type BackendSrv } from '@grafana/runtime';
+import { of } from 'rxjs';
 import {
   fetchPackageContent,
   fetchPackageById,
@@ -18,6 +20,10 @@ import {
   ensureNonEmptyCoverContent,
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
+import {
+  fetchCustomGuideRepository,
+  invalidateCustomGuideRepositoryCache,
+} from '../lib/custom-guide-repository-client';
 import type { PackageResolver, PackageResolution } from '../types';
 
 // Mock AbortSignal.timeout for Node environments
@@ -173,6 +179,11 @@ describe('fetchPackageContent', () => {
 // ---------------------------------------------------------------------------
 
 describe('fetchPackageById', () => {
+  // setBackendSrv and config.namespace are module-level singletons, so the two
+  // reuse tests below would otherwise reach every later describe.
+  const originalBackendSrv = getBackendSrv();
+  const originalNamespace = (config as { namespace?: string }).namespace;
+
   afterEach(() => {
     // Reset injected resolver between tests
     setPackageResolver(
@@ -182,6 +193,8 @@ describe('fetchPackageById', () => {
         error: { code: 'not-found', message: 'reset' },
       })
     );
+    setBackendSrv(originalBackendSrv);
+    (config as { namespace?: string }).namespace = originalNamespace;
   });
 
   it('returns error when no resolver has been configured', async () => {
@@ -245,7 +258,58 @@ describe('fetchPackageById', () => {
     setPackageResolver(resolver);
 
     await fetchPackageById('alerting-101');
-    expect(resolver.resolve).toHaveBeenCalledWith('alerting-101', { loadContent: false });
+    expect(resolver.resolve).toHaveBeenCalledWith('alerting-101', { loadContent: false, verifyPublished: true });
+  });
+
+  // The publish-status probe already GET the resource. Building content from it
+  // is what keeps the gated path at one upstream request instead of two.
+  it('builds content from the probed resource without re-fetching it', async () => {
+    const fetchSpy = jest.fn();
+    setBackendSrv({ fetch: fetchSpy } as unknown as BackendSrv);
+    setPackageResolver(
+      makeResolver({
+        ok: true,
+        id: 'probed-guide',
+        contentUrl: 'backend-guide:probed-guide',
+        manifestUrl: 'app-platform:ns/probed-guide',
+        repository: 'app-platform',
+        probedResource: {
+          metadata: { name: 'probed-guide' },
+          spec: { id: 'probed-guide', title: 'Probed guide', schemaVersion: '1.0', blocks: [] },
+        },
+      })
+    );
+
+    const result = await fetchPackageById('probed-guide');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.content?.metadata.title).toBe('Probed guide');
+  });
+
+  it('still fetches when the resolution carries no probed resource', async () => {
+    (config as { namespace?: string }).namespace = 'stacks-123';
+    setPackageResolver(
+      makeResolver({
+        ok: true,
+        id: 'unprobed-guide',
+        contentUrl: 'backend-guide:unprobed-guide',
+        manifestUrl: 'app-platform:ns/unprobed-guide',
+        repository: 'app-platform',
+      })
+    );
+    const fetchSpy = jest.fn().mockReturnValue(
+      of({
+        data: {
+          metadata: { name: 'unprobed-guide' },
+          spec: { id: 'unprobed-guide', title: 'Unprobed guide', schemaVersion: '1.0', blocks: [] },
+        },
+      })
+    );
+    setBackendSrv({ fetch: fetchSpy } as unknown as BackendSrv);
+
+    await fetchPackageById('unprobed-guide');
+
+    expect(fetchSpy).toHaveBeenCalled();
   });
 });
 
@@ -335,7 +399,7 @@ describe('fetchPackageById with resolved content', () => {
 
     const result = await fetchPackageById('first-dashboard', manifest);
 
-    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false });
+    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false, verifyPublished: true });
     if (result.content) {
       expect(result.content.metadata.packageManifest).toEqual(manifest);
       expect(result.content.type).toBe('interactive');
@@ -583,6 +647,37 @@ describe('fetchPackageContent path-type enrichment', () => {
     }
   });
 
+  it('resolves the baseUrl hydration call as URL-only, without the verify-published probe (#1561 scope)', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+    };
+
+    await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    // The baseUrl hydration resolve() runs on every milestone package-content
+    // fetch — a network round-trip probe here (like fetchPackageById's) would
+    // be a real perf regression, so it stays URL-only.
+    expect(resolver.resolve).toHaveBeenCalledWith('test-path', { loadContent: false });
+    expect(resolver.resolve).not.toHaveBeenCalledWith('test-path', expect.objectContaining({ verifyPublished: true }));
+  });
+
   it('preserves packageManifest alongside learningJourney', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockResolvedValue({
@@ -609,6 +704,75 @@ describe('fetchPackageContent path-type enrichment', () => {
       expect(result.content.metadata.packageManifest).toEqual(manifest);
       expect(result.content.metadata.learningJourney).toBeDefined();
     }
+  });
+});
+
+// The realistically-broken catalogue inputs: the CR manifest leaves
+// `repository` omitempty, and the CLI authoring tooling stamps the CDN default
+// `interactive-tutorials`. Both reach the launch surfaces through the catalogue
+// client, so the suppression gate is only sound if that client normalizes them.
+describe('fetchPackageContent — no public websiteUrl for catalogue-launched private paths', () => {
+  const GAP_TOGGLE = 'aggregation.pathfinderbackend-ext-grafana-app.enabled';
+  const featureToggles = config.featureToggles as Record<string, boolean>;
+  // setBackendSrv writes a module-level singleton, so the fake below outlives
+  // this block and reaches every later describe unless afterEach puts it back.
+  const originalBackendSrv = getBackendSrv();
+
+  async function launchManifestFromCatalogue(manifest: Record<string, unknown>): Promise<Record<string, unknown>> {
+    featureToggles[GAP_TOGGLE] = true;
+    invalidateCustomGuideRepositoryCache();
+    setBackendSrv({
+      get: async () => ({ capability: { available: true }, guides: [{ id: 'fe-alerting-path', manifest }] }),
+    } as unknown as BackendSrv);
+
+    const [entry] = await fetchCustomGuideRepository('stacks-123');
+    return { ...entry!.manifest, id: entry!.id };
+  }
+
+  beforeEach(() => {
+    setPackageResolver({
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'app-platform',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    });
+  });
+
+  afterEach(() => {
+    setBackendSrv(originalBackendSrv);
+    delete featureToggles[GAP_TOGGLE];
+    invalidateCustomGuideRepositoryCache();
+    setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
+  });
+
+  it.each([
+    ['omits repository entirely', undefined],
+    ["carries the CLI's interactive-tutorials default", 'interactive-tutorials'],
+  ])('synthesizes no learning-paths URL when the catalogue manifest %s', async (_label, repository) => {
+    const manifest = await launchManifestFromCatalogue({
+      type: 'path',
+      // Shares the derived path slug's prefix, so an un-suppressed slug WOULD
+      // build both the cover and the per-milestone URL.
+      milestones: ['fe-alerting-path-01'],
+      ...(repository != null && { repository }),
+    });
+    expect(manifest.repository).toBe('app-platform');
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    const learningJourney = result.content!.metadata.learningJourney!;
+    expect(learningJourney.milestones).toHaveLength(1);
+    expect(learningJourney.websiteUrl).toBeUndefined();
+    expect(learningJourney.milestones[0]!.websiteUrl).toBeUndefined();
+    // Catches the injected cover copy too, not just the metadata fields.
+    expect(JSON.stringify(result)).not.toContain('grafana.com/docs/learning-paths');
   });
 });
 

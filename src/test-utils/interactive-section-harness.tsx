@@ -242,6 +242,9 @@ export function createTerminalConnectStepMock() {
 export function createCodeBlockStepMock() {
   return { CodeBlockStep: () => null, resetCodeBlockStepCounter: jest.fn() };
 }
+export function createDatasourceCheckStepMock() {
+  return { DatasourceCheckStep: () => null, resetDatasourceCheckStepCounter: jest.fn() };
+}
 export function createInteractiveConditionalMock() {
   // Mirror production: the real component self-tags as skip-numbering.
   return { InteractiveConditional: markSkipsSectionNumbering(() => null) };
@@ -392,7 +395,12 @@ export function createGrafanaUiMock() {
 
 /** Factory for `jest.mock('../../constants', ...)`. */
 export function createConstantsMock() {
+  // Partial, not total: `src/constants` is a barrel, and replacing it wholesale
+  // breaks any module the tree happens to reach that reads a different export
+  // from it — telemetry's tracked-hostname sets, for one. Only the config read
+  // needs stubbing.
   return {
+    ...jest.requireActual('../constants'),
     getConfigWithDefaults: jest.fn(() => ({})),
   };
 }

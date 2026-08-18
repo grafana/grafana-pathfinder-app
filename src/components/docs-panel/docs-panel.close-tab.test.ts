@@ -1,10 +1,9 @@
 /**
  * Tests for CombinedLearningJourneyPanel.closeTab focus adjacency.
  *
- * The panel's `tabs` array is wider than the rendered strip: Dev Tools lives in
- * tab state for routing but claims no strip slot. Adjacency must therefore walk
- * strip-visible tabs, otherwise closing a guide can hand focus to Dev Tools and
- * leave no visible tab marked active.
+ * Recommendations uses the left-rail icon (not a strip slot). Adjacency walks
+ * strip-visible tabs via getGuideStripTabs, otherwise focus can land on a tab
+ * with no visible active marker.
  */
 
 // ---------------------------------------------------------------------------
@@ -189,6 +188,7 @@ jest.mock('./utils', () => ({
   getTranslatedTitle: jest.fn((t: string) => t),
   restoreTabsFromStorage: jest.fn(),
   restoreActiveTabFromStorage: jest.fn(),
+  mergeRestoredTabsWithExisting: jest.requireActual('./utils/tab-storage-restore').mergeRestoredTabsWithExisting,
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: jest.fn(),
@@ -272,21 +272,29 @@ describe('CombinedLearningJourneyPanel.closeTab — focus adjacency', () => {
     jest.clearAllMocks();
   });
 
-  it('skips Dev Tools when inheriting focus from the tab on the right', () => {
+  it('inherits the strip tab on the right, including Dev Tools', () => {
     // Open order: guide, Dev Tools, editor.
     const panel = panelWith([RECOMMENDATIONS, tab('guide-1', 'learning-journey'), DEVTOOLS, EDITOR], 'guide-1');
 
     panel.closeTab('guide-1');
 
-    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools', 'editor'], activeTabId: 'editor' });
+    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools', 'editor'], activeTabId: 'devtools' });
   });
 
-  it('falls back to recommendations when the last strip tab closes while Dev Tools remains', () => {
+  it('inherits the previous strip tab when the last guide closes and Dev Tools remains', () => {
     const panel = panelWith([RECOMMENDATIONS, DEVTOOLS, tab('guide-1', 'learning-journey')], 'guide-1');
 
     panel.closeTab('guide-1');
 
-    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools'], activeTabId: 'recommendations' });
+    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools'], activeTabId: 'devtools' });
+  });
+
+  it('falls back to recommendations when the last strip tab closes', () => {
+    const panel = panelWith([RECOMMENDATIONS, tab('guide-1', 'learning-journey')], 'guide-1');
+
+    panel.closeTab('guide-1');
+
+    expect(stateOf(panel)).toEqual({ tabIds: ['recommendations'], activeTabId: 'recommendations' });
   });
 
   it('leaves focus alone when a background tab closes', () => {
@@ -299,7 +307,7 @@ describe('CombinedLearningJourneyPanel.closeTab — focus adjacency', () => {
     expect(stateOf(panel)).toEqual({ tabIds: ['recommendations', 'devtools'], activeTabId: 'devtools' });
   });
 
-  it('inherits the last strip tab when the active strip-excluded tab is closed via Ctrl+W', () => {
+  it('inherits the previous strip tab when the active last strip tab closes', () => {
     const panel = panelWith(
       [RECOMMENDATIONS, tab('guide-1', 'learning-journey'), tab('guide-2', 'learning-journey'), DEVTOOLS],
       'devtools'

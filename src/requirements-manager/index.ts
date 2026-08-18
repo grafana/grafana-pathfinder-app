@@ -18,6 +18,8 @@ export {
   useRequirementsManager,
   useIsInsideRequirementsProvider,
 } from './requirements-context';
+export { GuideRequirementsProvider, useGuideRequirements } from './guide-requirements-context';
+export type { GuideRequirementsCheckOptions } from './guide-requirements-context';
 
 // Step checker hook (unified requirements + objectives)
 export { useStepChecker } from './step-checker.hook';

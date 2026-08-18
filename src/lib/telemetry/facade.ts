@@ -107,12 +107,32 @@ export function recordCompletionWriteDegradation(reason: CompletionWriteDegradat
   pushFaroEvent(TELEMETRY_EVENTS.completionWriteDegraded, { reason });
 }
 
-// The custom-guide catalogue reported itself unavailable (a soft-200 with a
-// machine `reason`), so the surface renders empty. This is the countable,
+// The custom-guide catalogue could not be listed — a soft-200 reporting itself
+// unavailable with a machine `reason`, or a rejected request (`http-<status>` /
+// `transport-error`) — so the surface renders empty. This is the countable,
 // alertable signal the capability-degradation ladder needs — a log alone can't
 // distinguish "no guides authored" from "OBO unavailable on this stack", which
 // is exactly how a recent incident stayed invisible. `reason` is Faro-only
 // (never RudderStack): it includes open-ended `upstream-<status>` values.
 export function recordCustomGuideCatalogueUnavailable(reason: string): void {
   pushFaroEvent(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason });
+}
+
+/**
+ * A sandbox-backed block could not run, with the rung of the ladder that
+ * stopped it. Emitted once per block that had to degrade, not per render.
+ *
+ * `grafana-coda-app` is a separate plugin, so there are several ordinary ways
+ * for the sandbox to be absent and they are operationally different problems.
+ * Without this, "nobody uses the terminal" and "every terminal block is broken
+ * for everyone on this stack" produce identical telemetry.
+ *
+ * A closed set of rungs, no ids, commands, URLs or guide content — the reason a
+ * capability was unavailable, nothing about what the learner was doing.
+ */
+export type SandboxUnavailableReason =
+  'terminal-disabled' | 'plugin-missing' | 'role-forbidden' | 'panel-not-registered';
+
+export function recordSandboxUnavailable(reason: SandboxUnavailableReason, blockType: string): void {
+  pushFaroEvent(TELEMETRY_EVENTS.sandboxUnavailable, { reason, blockType });
 }

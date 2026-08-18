@@ -175,6 +175,13 @@ Requirements met? → Execute step
 
 **Skippable steps** (those with a Skip button) allow the test to continue when requirements cannot be met. **Mandatory steps** cause the test to abort on failure, marking remaining steps as `not_reached`.
 
+An unmet read without a Fix button gets a short settle window before the runner treats it as terminal. A visible Fix button is already an actionable settled state. See `Requirements settle window` in the timing table below.
+
+The plugin's requirement check can be mid-transition right after the initial check, or right after a Fix button click. The runner polls briefly for the state to settle, instead of failing on one transient read.
+Skipping a step is a two-part handshake, not just a runner-side decision. The runner clicks the plugin's Skip control (the step's always-available Skip button, or the narrower Skip button inside the requirements-explanation banner, whichever the plugin rendered) and waits for the step to reach a terminal state: `completed`, or a successful detach. Only then does the runner record the step as `SKIPPED`. If the plugin never reaches that terminal state, for example no Skip control is found, the click fails, or it stays `requirements-unmet`, the runner records `FAILED` instead of a false `SKIPPED`. A false skip would leave the plugin gated on "Complete previous step" for every step that follows.
+
+A no-op or objective-based step can complete, or its element can detach, between discovery and this point in execution, before the runner even scrolls to it. The runner rechecks for this right before scrolling and records `PASSED`, the same outcome it records when it observes a step completing via objectives right before clicking "Do it". This keeps one DOM state, attached and `completed`, mapped to one outcome, no matter which check in the runner happens to observe it first.
+
 Overall success requires zero mandatory failures and either at least one verified pass or zero failed steps. A run where every step is skipped cleanly succeeds; a run with no verified pass and any failed skippable step fails.
 
 ## Artifacts and reporting
@@ -324,14 +331,19 @@ The environment is reset **between dependency chains**, not between every guide.
 
 ## Timing and timeouts
 
-| Constant             | Value            | Purpose                                      |
-| -------------------- | ---------------- | -------------------------------------------- |
-| Base step timeout    | 30s              | Maximum time for a single step               |
-| Multistep bonus      | +5s per action   | Added for each internal action in multisteps |
-| Guided substep bonus | +30s per substep | Added for each substep in guided blocks      |
-| Button enable wait   | 10s              | Wait for sequential dependencies             |
-| Fix button timeout   | 10s              | Per fix operation                            |
-| Max fix attempts     | 3                | Retry limit before giving up                 |
+| Constant                   | Value            | Purpose                                                                                     |
+| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------- |
+| Base step timeout          | 30s              | Maximum time for a single step                                                              |
+| Multistep bonus            | +5s per action   | Added for each internal action in multisteps                                                |
+| Guided substep bonus       | +30s per substep | Added for each substep in guided blocks                                                     |
+| Button enable wait         | 10s              | Wait for sequential dependencies                                                            |
+| Fix button timeout         | 10s              | Per fix operation                                                                           |
+| Max fix attempts           | 3                | Retry limit before giving up                                                                |
+| Requirements settle window | 1s               | Poll budget before an unmet read with no Fix button counts as terminal                      |
+| Scroll into view           | 5s               | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
+| Late completion check      | 2s               | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
+| Skip sync                  | 5s               | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |
+| Guided reload wait         | 15s              | Bounds waiting for `domcontentloaded` after a detected reload or navigation mid-guided-step |
 
 Examples:
 

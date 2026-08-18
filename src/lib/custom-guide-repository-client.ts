@@ -16,16 +16,21 @@ import { PLUGIN_BACKEND_URL } from '../constants';
 import { isBackendApiAvailable } from '../utils/fetchBackendGuides';
 import { logger } from './logging';
 import { recordCustomGuideCatalogueUnavailable } from './telemetry/facade';
-import type { Author, DependencyList, PackageType } from '../types/package.types';
+import { PackageTypeSchema } from '../types/package.schema';
+import type { Author, PackageType } from '../types/package.types';
 
+/**
+ * `type` is optional because the Go proxy forwards the stored string verbatim
+ * with no validation and no omitempty — `requestCatalogue` drops anything that
+ * isn't a PackageType rather than let the declaration overclaim the wire.
+ */
 export interface CustomGuideManifest {
-  type: PackageType;
+  type?: PackageType;
   repository?: string;
   description?: string;
   milestones?: string[];
   category?: string;
   author?: Author;
-  depends?: DependencyList;
 }
 
 export interface CustomGuideRepositoryEntry {
@@ -49,9 +54,12 @@ interface CustomGuideCapability {
   reason?: string;
 }
 
+type WireManifest = Omit<CustomGuideManifest, 'type'> & { type?: string };
+type WireEntry = Omit<CustomGuideRepositoryEntry, 'manifest'> & { manifest?: WireManifest };
+
 interface CustomGuideRepositoryResponse {
   capability: CustomGuideCapability;
-  guides: CustomGuideRepositoryEntry[];
+  guides: WireEntry[];
   asOf?: string;
 }
 
@@ -69,7 +77,70 @@ const CACHE_TTL_MS = 30_000;
 const cache = new Map<string, { entries: CustomGuideRepositoryEntry[]; at: number }>();
 const inflight = new Map<string, Promise<CustomGuideRepositoryEntry[]>>();
 
-async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
+// Bounded token, never the error text — it lands on a Faro event attribute,
+// which must stay low-cardinality (docs/developer/TELEMETRY.md). `data.statusCode`
+// is body-derived, so the integer bound is what keeps the vocabulary finite.
+function classifyRequestFailure(err: unknown): string {
+  const status =
+    (err as { status?: number })?.status ??
+    (err as { statusCode?: number })?.statusCode ??
+    (err as { data?: { statusCode?: number } })?.data?.statusCode;
+  const bounded = typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599;
+  return bounded ? `http-${status}` : 'transport-error';
+}
+
+function reportCatalogueFetchFailure(err: unknown): void {
+  try {
+    const reason = classifyRequestFailure(err);
+    // The log context bridges to Faro too (logging.ts sanitizes it, it does not
+    // strip it), so it carries the same bounded token — never `err.message`.
+    logger.warn('[custom-guides] catalogue fetch failed', { reason });
+    recordCustomGuideCatalogueUnavailable(reason);
+  } catch {
+    // Observability must not turn a swallowed listing failure into a rejection.
+  }
+}
+
+interface CatalogueResult {
+  entries: CustomGuideRepositoryEntry[];
+  cacheable: boolean;
+}
+
+// Bounded token, same closed vocabulary as the reasons above (TELEMETRY.md).
+const MALFORMED_REASON = 'malformed-response';
+
+// `null` is absent, not malformed: the proxy is Go, and json.Marshal of a nil
+// []guide emits `null`, so an empty catalogue legitimately sends exactly that.
+function isMalformedGuides(guides: unknown): boolean {
+  return guides !== undefined && guides !== null && !Array.isArray(guides);
+}
+
+function narrowPackageType(type: string | undefined): PackageType | undefined {
+  const parsed = PackageTypeSchema.safeParse(type);
+  return parsed.success ? parsed.data : undefined;
+}
+
+// Every entry from this proxy is an App Platform package, but the CR manifest
+// leaves `repository` omitempty (and authoring tooling may stamp the CDN
+// default). Force it here — the launch surfaces thread this manifest into
+// packageInfo, and a missing/wrong value fails the `app-platform` gate in
+// package-content.ts (fabricated public websiteUrl) and mislabels the durable
+// completion source (completion-identity.ts guideSource). `type` is narrowed in
+// the same pass: the proxy forwards it unvalidated, so anything that isn't a
+// PackageType becomes undefined, which the `'path'`/`'journey'` comparisons
+// downstream already treat as "not a path".
+function shapeEntry(entry: WireEntry): CustomGuideRepositoryEntry {
+  const { manifest, ...rest } = entry;
+  if (!manifest) {
+    return rest;
+  }
+  return {
+    ...rest,
+    manifest: { ...manifest, type: narrowPackageType(manifest.type), repository: APP_PLATFORM_REPOSITORY },
+  };
+}
+
+async function requestCatalogue(): Promise<CatalogueResult> {
   const response = await getBackendSrv().get<CustomGuideRepositoryResponse>(
     CUSTOM_GUIDE_REPOSITORY_URL,
     undefined,
@@ -84,18 +155,17 @@ async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
     const reason = response?.capability?.reason ?? 'unknown';
     logger.warn('[custom-guides] catalogue unavailable', { reason });
     recordCustomGuideCatalogueUnavailable(reason);
-    return [];
+    return { entries: [], cacheable: true };
+  }
+  if (isMalformedGuides(response.guides)) {
+    // Schema drift between the Go proxy and this client would otherwise render
+    // as "no guides authored", with the metric at zero and a silent console.
+    logger.warn('[custom-guides] catalogue malformed', { reason: MALFORMED_REASON });
+    recordCustomGuideCatalogueUnavailable(MALFORMED_REASON);
+    return { entries: [], cacheable: false };
   }
   const guides = Array.isArray(response.guides) ? response.guides : [];
-  // Every entry from this proxy is an App Platform package, but the CR manifest
-  // leaves `repository` omitempty (and authoring tooling may stamp the CDN
-  // default). Force it here — the launch surfaces thread this manifest into
-  // packageInfo, and a missing/wrong value fails the `app-platform` gate in
-  // package-content.ts (fabricated public websiteUrl) and mislabels the durable
-  // completion source (completion-identity.ts guideSource).
-  return guides.map((entry) =>
-    entry.manifest ? { ...entry, manifest: { ...entry.manifest, repository: APP_PLATFORM_REPOSITORY } } : entry
-  );
+  return { entries: guides.map(shapeEntry), cacheable: true };
 }
 
 /**
@@ -106,7 +176,8 @@ async function requestCatalogue(): Promise<CustomGuideRepositoryEntry[]> {
  * reports itself unavailable, or the request fails — a best-effort listing, not
  * a hard dependency (mirrors fetchBackendGuides). Successful results are cached
  * per namespace for CACHE_TTL_MS with in-flight de-duplication so concurrent
- * callers share a single upstream drain; failures are not cached.
+ * callers share a single upstream drain; failures and malformed responses are
+ * not cached.
  */
 export async function fetchCustomGuideRepository(namespace: string): Promise<CustomGuideRepositoryEntry[]> {
   if (!isBackendApiAvailable() || !namespace) {
@@ -124,13 +195,21 @@ export async function fetchCustomGuideRepository(namespace: string): Promise<Cus
   }
 
   const request = requestCatalogue()
-    .then((entries) => {
-      cache.set(namespace, { entries, at: Date.now() });
+    .then(({ entries, cacheable }) => {
+      // Drift may be fixed by the next deploy; caching it would keep the
+      // surface empty for the whole TTL after the backend recovered.
+      if (cacheable) {
+        cache.set(namespace, { entries, at: Date.now() });
+      }
       return entries;
     })
-    // Best-effort: never surface a listing failure, and don't cache it so a
-    // transient error doesn't stick for the whole TTL.
-    .catch(() => [] as CustomGuideRepositoryEntry[])
+    // Best-effort: never surface a listing failure to callers, and don't cache
+    // it so a transient error doesn't stick for the whole TTL. Still counted —
+    // `showErrorAlert: false` makes this otherwise invisible from the browser.
+    .catch((err: unknown) => {
+      reportCatalogueFetchFailure(err);
+      return [] as CustomGuideRepositoryEntry[];
+    })
     .finally(() => {
       inflight.delete(namespace);
     });
