@@ -22,7 +22,7 @@ import {
 jest.mock('@grafana/runtime', () => ({
   isAppPluginEnabled: jest.fn(),
   isAppPluginInstalled: jest.fn(),
-  // getConfigWithDefaults warns to the console when it cannot read buildInfo.
+  // Silences getConfigWithDefaults' platform-detection warning.
   config: { bootData: { settings: { buildInfo: { versionString: 'Grafana v13.1.0' } } } },
 }));
 
@@ -122,7 +122,6 @@ describe('isCodaPluginAvailable', () => {
     mockedIsAppPluginInstalled.mockResolvedValue(false);
 
     await expect(isCodaPluginAvailable()).resolves.toBe(false);
-    // The settings fetch is the 404; the verdict alone would not catch its return.
     expect(mockedIsAppPluginEnabled).not.toHaveBeenCalled();
   });
 

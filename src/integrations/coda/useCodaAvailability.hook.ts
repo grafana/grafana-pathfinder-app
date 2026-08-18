@@ -67,14 +67,10 @@ function probeEnabled(): Promise<boolean> {
 }
 
 /**
- * `isAppPluginEnabled` fetches the plugin's *settings*, so an absent Coda answers
- * 404 — which core logs twice and pushes into its own error tracking, reporting
- * the normal state of an optional plugin as a fault. `isAppPluginInstalled` answers
- * from boot data at no cost, so it goes first, and only a definite "not installed"
- * short-circuits: it shares the 13.1 floor and does not itself check *enabled*.
- *
- * Keep that branch synchronous — an `await` here defers `capabilitiesOnce` past
- * `loadCodaCapabilities`, costing the pre-13.1 path a second request.
+ * `isAppPluginEnabled` fetches the plugin's settings, so an absent Coda 404s and
+ * core logs it as a fault; boot data answers for free. Anything short of a definite
+ * "not installed" still asks. Keep the branch synchronous — an `await` defers
+ * `capabilitiesOnce` past `loadCodaCapabilities` and costs a second request.
  */
 export function isCodaPluginAvailable(): Promise<boolean> {
   if (!cached) {
@@ -95,8 +91,8 @@ export function resetCodaAvailabilityCache(): void {
 }
 
 /**
- * `checking` on first paint, because the probe is async, and for as long as
- * `shouldProbe` is false, because then it was never asked.
+ * `checking` on first paint, because the probe is async, and while `shouldProbe`
+ * is false, because then it was never asked.
  *
  * Distinct from the boolean below: a caller that renders "Coda is unavailable"
  * needs to know the difference between "not installed" and "not asked yet", or
@@ -104,10 +100,6 @@ export function resetCodaAvailabilityCache(): void {
  */
 export type CodaPluginAvailability = 'checking' | 'available' | 'unavailable';
 
-/**
- * `shouldProbe` is the caller's own gate: an installation that never turned the
- * terminal on must ask nothing about Coda.
- */
 export function useCodaPluginAvailability(shouldProbe = true): CodaPluginAvailability {
   const [availability, setAvailability] = useState<CodaPluginAvailability>('checking');
 
