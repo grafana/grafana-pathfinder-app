@@ -37,7 +37,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, INTERACTIVE_ACTIONS } from '../constants';
+import { BLOCK_TYPE_METADATA, INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import type { BlockType, JsonBlock, JsonInteractiveAction, BlockFormProps } from '../types';
 import {
