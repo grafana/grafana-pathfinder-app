@@ -321,11 +321,11 @@ export const panelModeManager = new PanelModeManager();
  * encountered there can't actually be acted on. Signal FullScreenPanel to
  * hand off to the sidebar (reusing its existing handleExitToSidebar) instead.
  *
- * Called two ways: proactively, the moment a newly-loaded milestone turns out
- * to require the Grafana UI, before the user has clicked anything — see
- * `loadDocsTabContent` in docs-panel.tsx, the sole caller. Surface is a
+ * Called proactively, the moment a newly-loaded milestone turns out to
+ * require the Grafana UI — before the user has clicked anything. See
+ * `loadDocsTabContent` in docs-panel.tsx, the sole caller: surface is a
  * property of which milestone the user navigated to, decided once at that
- * point; nothing about an individual step's action reopens this decision.
+ * point, not of any individual step's action.
  */
 export function requestSidebarHandoff(): void {
   document.dispatchEvent(new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT));
