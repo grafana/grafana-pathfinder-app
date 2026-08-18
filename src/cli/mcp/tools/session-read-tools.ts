@@ -11,7 +11,7 @@
  *   - get_block    — one block by id
  *   - get_manifest — the session-stored manifest only
  *
- * CDN package metadata lives under `pathfinder_repository` — different
+ * CDN package metadata lives under `pathfinder_read_repository` — different
  * data source, different tool.
  */
 
@@ -26,11 +26,36 @@ import { resolveAndPinToken } from './read-input';
 import { sessionNotFoundResult, textResult, withToolErrorEnvelope } from './result';
 
 const READ_SESSION_OPERATIONS = ['list_blocks', 'get_block', 'get_manifest'] as const;
-type ReadSessionOperation = (typeof READ_SESSION_OPERATIONS)[number];
 
-const SessionTokenInput = {
-  sessionToken: z.string().describe('Session token returned by pathfinder_create_package or a previous mutation ack.'),
-};
+/**
+ * Single source of truth for pathfinder_read_session args. Published schema
+ * and renderReadSession both derive from this (same pattern as manage_block).
+ */
+const ReadSessionInputSchema = z
+  .object({
+    sessionToken: z
+      .string()
+      .describe('Session token returned by pathfinder_create_package or a previous mutation ack.'),
+    operation: z
+      .enum(READ_SESSION_OPERATIONS)
+      .describe(
+        'Read to perform: "list_blocks" returns ids/types only, "get_block" returns one block by id (requires blockId), "get_manifest" returns the session-stored manifest (or null).'
+      ),
+    blockId: z.string().optional().describe('[get_block] Required block id to fetch.'),
+  })
+  .superRefine((args, ctx) => {
+    if (args.operation === 'get_block') {
+      if (typeof args.blockId !== 'string' || args.blockId.trim() === '') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['blockId'],
+          message: 'operation "get_block" requires `blockId`.',
+        });
+      }
+    }
+  });
+
+type ReadSessionInput = z.infer<typeof ReadSessionInputSchema>;
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
@@ -71,18 +96,6 @@ function isToolResult(value: ToolResult | Record<string, unknown>): value is Too
   return Array.isArray((value as ToolResult).content);
 }
 
-function invalidInput(message: string, sessionToken?: string): ToolResult {
-  return textResult(
-    renderMachineJson({
-      status: 'error',
-      code: 'INVALID_INPUT',
-      message,
-      ...(sessionToken ? { sessionToken } : {}),
-    }),
-    /* isError */ true
-  );
-}
-
 export function registerSessionReadTools(
   server: McpServer,
   options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
@@ -93,37 +106,25 @@ export function registerSessionReadTools(
     'pathfinder_read_session',
     {
       description:
-        'Use this tool to read facets of a session-stored Pathfinder artifact without pulling the full artifact into context. Pass `operation: "list_blocks" | "get_block" | "get_manifest"`. Cheap; use freely for navigation. For the full artifact body use pathfinder_inspect. CDN / published package reads use pathfinder_repository instead.',
+        'Use this tool to read facets of a session-stored Pathfinder artifact without pulling the full artifact into context. Pass `operation: "list_blocks" | "get_block" | "get_manifest"`. Cheap; use freely for navigation. For the full artifact body use pathfinder_inspect. CDN / published package reads use pathfinder_read_repository instead.',
       annotations: readOnly('Read Pathfinder session'),
-      inputSchema: {
-        ...SessionTokenInput,
-        operation: z
-          .enum(READ_SESSION_OPERATIONS)
-          .describe(
-            'Read to perform: "list_blocks" returns ids/types only, "get_block" returns one block by id (requires blockId), "get_manifest" returns the session-stored manifest (or null).'
-          ),
-        blockId: z.string().optional().describe('Required for operation "get_block". Block id to fetch.'),
-      },
+      // Flat object + superRefine so operation-required fields fail at the MCP
+      // schema boundary (same contract as pathfinder_manage_block).
+      inputSchema: ReadSessionInputSchema,
     },
-    async ({ sessionToken, operation, blockId }) => {
-      if (operation === 'get_block' && (!blockId || blockId.trim() === '')) {
-        return invalidInput('operation "get_block" requires `blockId`.', sessionToken);
-      }
-
-      return withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'read_session', (loaded, token) =>
-        renderReadSession(operation, loaded, token, blockId)
-      );
-    }
+    async ({ sessionToken, operation, blockId }) =>
+      withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'read_session', (loaded, token) =>
+        renderReadSession({ operation, blockId }, loaded, token)
+      )
   );
 }
 
 function renderReadSession(
-  operation: ReadSessionOperation,
+  args: Pick<ReadSessionInput, 'operation' | 'blockId'>,
   loaded: LoadedSession,
-  token: string,
-  blockId: string | undefined
+  token: string
 ): ToolResult | Record<string, unknown> {
-  switch (operation) {
+  switch (args.operation) {
     case 'list_blocks':
       return {
         status: 'ok',
@@ -132,7 +133,7 @@ function renderReadSession(
         blocks: buildArtifactSummary(loaded.artifact.content),
       };
     case 'get_block': {
-      const id = blockId!;
+      const id = args.blockId!;
       const block = findBlockById(loaded.artifact.content, id);
       if (!block) {
         return textResult(

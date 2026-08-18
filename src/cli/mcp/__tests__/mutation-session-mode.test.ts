@@ -96,7 +96,6 @@ describe('mutation tools — session-mode dispatch', () => {
     it('errors INPUT_MODE_MISSING when neither artifact nor sessionToken is provided', async () => {
       const r = await h.call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         type: 'markdown',
         fields: { content: 'x' },
       });
@@ -107,7 +106,6 @@ describe('mutation tools — session-mode dispatch', () => {
       await seedSession(h.store, TOKEN);
       const r = await h.call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: TOKEN,
         artifact: { content: { id: 'x', title: 'x', blocks: [] } },
         type: 'markdown',
@@ -119,7 +117,6 @@ describe('mutation tools — session-mode dispatch', () => {
     it('errors INVALID_SESSION_TOKEN when sessionToken is malformed', async () => {
       const r = await h.call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: 'not-a-token',
         type: 'markdown',
         fields: { content: 'x' },
@@ -133,7 +130,6 @@ describe('mutation tools — session-mode dispatch', () => {
       await seedSession(h.store, TOKEN);
       const r = await h.call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: TOKEN,
         type: 'markdown',
         fields: { content: 'Hello' },
@@ -153,7 +149,6 @@ describe('mutation tools — session-mode dispatch', () => {
     it('add_block: returns SESSION_NOT_FOUND for an unknown token', async () => {
       const r = await h.call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: TOKEN,
         type: 'markdown',
         fields: { content: 'x' },
@@ -180,10 +175,9 @@ describe('mutation tools — session-mode dispatch', () => {
       // Add
       const added = await h.call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: TOKEN,
         type: 'markdown',
-        explicitId: 'md-1',
+        id: 'md-1',
         fields: { content: 'original' },
       });
       expect(added.status).toBe('ok');
@@ -192,7 +186,6 @@ describe('mutation tools — session-mode dispatch', () => {
       // Edit
       const edited = await h.call('pathfinder_manage_block', {
         operation: 'edit',
-        resource: 'block',
         sessionToken: TOKEN,
         id: 'md-1',
         fields: { content: 'rewritten' },
@@ -207,7 +200,6 @@ describe('mutation tools — session-mode dispatch', () => {
       // Remove
       const removed = await h.call('pathfinder_manage_block', {
         operation: 'remove',
-        resource: 'block',
         sessionToken: TOKEN,
         id: 'md-1',
       });
@@ -223,7 +215,6 @@ describe('mutation tools — session-mode dispatch', () => {
       await seedSession(h.store, TOKEN);
       const r = await h.call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: TOKEN,
         expectedGeneration: 1,
         type: 'markdown',
@@ -244,7 +235,6 @@ describe('mutation tools — session-mode dispatch', () => {
 
       const r = await h.call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: TOKEN,
         expectedGeneration: 1, // stale
         type: 'markdown',
@@ -261,7 +251,6 @@ describe('mutation tools — session-mode dispatch', () => {
       await seedSession(h.store, TOKEN);
       const r = await h.call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         artifact: { content: { id: 'inline', title: 'Inline', blocks: [] } },
         type: 'markdown',
         fields: { content: 'inline-mode' },

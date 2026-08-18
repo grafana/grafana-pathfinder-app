@@ -1,7 +1,7 @@
 /**
  * Read-only tools that read the public Pathfinder package CDN repository.
  *
- * `pathfinder_repository` collapses list_packages / get_package / get_manifest
+ * `pathfinder_read_repository` collapses list_packages / get_package / get_manifest
  * into one tool with an operation flag. `pathfinder_launch_package` stays
  * separate — different output contract and currently PARTIAL (see #855).
  *
@@ -31,7 +31,36 @@ import { readOnly } from './annotations';
 import { textResult } from './result';
 
 const REPOSITORY_OPERATIONS = ['list', 'get', 'get_manifest'] as const;
-type RepositoryOperation = (typeof REPOSITORY_OPERATIONS)[number];
+
+/**
+ * Single source of truth for pathfinder_read_repository args. Published schema and
+ * handleRepository both derive from this (same pattern as manage_block).
+ */
+const RepositoryInputSchema = z
+  .object({
+    operation: z
+      .enum(REPOSITORY_OPERATIONS)
+      .describe(
+        'Repository read: "list" browses/filters the index, "get" fetches content.json + manifest.json by id, "get_manifest" fetches metadata only (cheaper when blocks are not needed).'
+      ),
+    type: z.enum(['guide', 'path', 'journey']).optional().describe('[list] Filter by package type.'),
+    category: z.string().optional().describe('[list] Filter by category (exact match).'),
+    q: z.string().optional().describe('[list] Case-insensitive substring on title and description.'),
+    id: z.string().min(1).optional().describe('[get|get_manifest] Required package id (kebab-case).'),
+  })
+  .superRefine((args, ctx) => {
+    if (args.operation === 'get' || args.operation === 'get_manifest') {
+      if (typeof args.id !== 'string' || args.id.trim() === '') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['id'],
+          message: `operation "${args.operation}" requires \`id\` (package id).`,
+        });
+      }
+    }
+  });
+
+type RepositoryInput = z.infer<typeof RepositoryInputSchema>;
 
 export function registerRepositoryTools(server: McpServer): void {
   registerRepository(server);
@@ -40,43 +69,21 @@ export function registerRepositoryTools(server: McpServer): void {
 
 function registerRepository(server: McpServer): void {
   server.registerTool(
-    'pathfinder_repository',
+    'pathfinder_read_repository',
     {
       description:
-        'Use this tool when the user wants to discover or inspect published Pathfinder packages from the public Grafana package repository (or a custom one via PATHFINDER_REPOSITORY_URL). Pass `operation: "list" | "get" | "get_manifest"`. For shareable deep links use pathfinder_launch_package. For session-stored authoring reads use pathfinder_read_session.',
-      annotations: readOnly('Pathfinder repository', /* openWorld */ true),
-      inputSchema: {
-        operation: z
-          .enum(REPOSITORY_OPERATIONS)
-          .describe(
-            'Repository read: "list" browses/filters the index, "get" fetches content.json + manifest.json by id, "get_manifest" fetches metadata only (cheaper when blocks are not needed).'
-          ),
-        // list filters
-        type: z.enum(['guide', 'path', 'journey']).optional().describe('For operation "list": filter by package type.'),
-        category: z.string().optional().describe('For operation "list": filter by category (exact match).'),
-        q: z.string().optional().describe('For operation "list": case-insensitive substring on title and description.'),
-        // get / get_manifest
-        id: z
-          .string()
-          .min(1)
-          .optional()
-          .describe('Required for operation "get" and "get_manifest". Package id (kebab-case).'),
-      },
+        'Use this tool to discover or inspect published Pathfinder packages from the public Grafana package repository (or a custom one via PATHFINDER_REPOSITORY_URL). Pass `operation: "list" | "get" | "get_manifest"`. For shareable deep links use pathfinder_launch_package. For session-stored authoring reads use pathfinder_read_session.',
+      annotations: readOnly('Read Pathfinder repository', /* openWorld */ true),
+      // Flat object + superRefine so operation-required fields fail at the MCP
+      // schema boundary (same contract as pathfinder_manage_block).
+      inputSchema: RepositoryInputSchema,
     },
-    async ({ operation, type, category, q, id }) => handleRepository(operation, { type, category, q, id })
+    async (args) => handleRepository(args)
   );
 }
 
-async function handleRepository(
-  operation: RepositoryOperation,
-  args: {
-    type?: 'guide' | 'path' | 'journey';
-    category?: string;
-    q?: string;
-    id?: string;
-  }
-): Promise<ReturnType<typeof textResult>> {
-  switch (operation) {
+async function handleRepository(args: RepositoryInput): Promise<ReturnType<typeof textResult>> {
+  switch (args.operation) {
     case 'list': {
       const index = await fetchRepositoryIndex();
       if (!index.ok) {
@@ -96,10 +103,8 @@ async function handleRepository(
       });
     }
     case 'get': {
-      if (!args.id) {
-        return invalidInput('operation "get" requires `id` (package id).');
-      }
-      const [content, manifest] = await Promise.all([fetchPackageContent(args.id), fetchPackageManifest(args.id)]);
+      const id = args.id!;
+      const [content, manifest] = await Promise.all([fetchPackageContent(id), fetchPackageManifest(id)]);
       if (!content.ok) {
         return errorResult(content);
       }
@@ -107,7 +112,7 @@ async function handleRepository(
         return errorResult(manifest);
       }
       return jsonResult({
-        id: args.id,
+        id,
         content: {
           url: content.url,
           raw: content.raw,
@@ -121,15 +126,13 @@ async function handleRepository(
       });
     }
     case 'get_manifest': {
-      if (!args.id) {
-        return invalidInput('operation "get_manifest" requires `id` (package id).');
-      }
-      const manifest = await fetchPackageManifest(args.id);
+      const id = args.id!;
+      const manifest = await fetchPackageManifest(id);
       if (!manifest.ok) {
         return errorResult(manifest);
       }
       return jsonResult({
-        id: args.id,
+        id,
         manifest: {
           url: manifest.url,
           raw: manifest.raw,
@@ -151,7 +154,7 @@ function registerLaunchPackage(server: McpServer): void {
       description:
         'Use this tool when the user wants a shareable deep-link URL to a published Pathfinder guide. **PARTIAL — see ' +
         LAUNCH_PACKAGE_BUG_URL +
-        "**: the URL shape is correct and resolves to the Pathfinder plugin, but the targeted CDN guide does NOT currently load as an interactive tutorial — it opens to a generic docs view. The bug is in the app-side auto-launch handler, not in this tool. Until that fix lands, prefer pathfinder_repository (operation get / get_manifest) for inspecting CDN content; only call this tool when you specifically need the URL shape (e.g., to share a link in a chat) and warn the user about the limitation. Always returns a relative launchPath that the user appends to their own Grafana instance origin. If you already know the user's instance origin (e.g. you are an agent running inside Grafana), pass it as instanceUrl to also receive an absolute launchUrl. If you do not know the instance, omit instanceUrl — do not invent or guess a hostname.",
+        "**: the URL shape is correct and resolves to the Pathfinder plugin, but the targeted CDN guide does NOT currently load as an interactive tutorial — it opens to a generic docs view. The bug is in the app-side auto-launch handler, not in this tool. Until that fix lands, prefer pathfinder_read_repository (operation get / get_manifest) for inspecting CDN content; only call this tool when you specifically need the URL shape (e.g., to share a link in a chat) and warn the user about the limitation. Always returns a relative launchPath that the user appends to their own Grafana instance origin. If you already know the user's instance origin (e.g. you are an agent running inside Grafana), pass it as instanceUrl to also receive an absolute launchUrl. If you do not know the instance, omit instanceUrl — do not invent or guess a hostname.",
       annotations: readOnly('Launch Pathfinder package', /* openWorld */ true),
       inputSchema: {
         id: z.string().min(1).describe('Package id (kebab-case).'),
@@ -195,7 +198,7 @@ function registerLaunchPackage(server: McpServer): void {
         warning: {
           status: 'partial',
           message:
-            'The launchPath/launchUrl resolves to the Pathfinder plugin but does NOT currently load the targeted CDN guide as an interactive tutorial — it opens to a generic docs view. This is an app-side bug being tracked separately. When surfacing this URL to a user, include a heads-up that the interactive launch is not yet wired up for CDN packages. For inspecting content, prefer pathfinder_repository (operation get or get_manifest).',
+            'The launchPath/launchUrl resolves to the Pathfinder plugin but does NOT currently load the targeted CDN guide as an interactive tutorial — it opens to a generic docs view. This is an app-side bug being tracked separately. When surfacing this URL to a user, include a heads-up that the interactive launch is not yet wired up for CDN packages. For inspecting content, prefer pathfinder_read_repository (operation get or get_manifest).',
           tracking: LAUNCH_PACKAGE_BUG_URL,
         },
       };
@@ -238,10 +241,6 @@ function summarizeEntry(p: RepositoryPackage): Record<string, unknown> {
 
 function jsonResult(payload: unknown): ReturnType<typeof textResult> {
   return textResult(renderMachineJson(payload));
-}
-
-function invalidInput(message: string): ReturnType<typeof textResult> {
-  return textResult(renderMachineJson({ status: 'error', code: 'INVALID_INPUT', message }), true);
 }
 
 function errorResult(err: RepositoryClientError): ReturnType<typeof textResult> {

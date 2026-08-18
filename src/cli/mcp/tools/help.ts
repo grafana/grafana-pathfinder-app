@@ -17,13 +17,15 @@ export function registerHelpTool(server: McpServer): void {
     'pathfinder_help',
     {
       description:
-        'Use this tool when you need exact flag names, per-block-type field schemas, or the full CLI command list while authoring a Pathfinder guide. Returns the structured help surface for a CLI command, equivalent to `pathfinder-cli <command> --help --format json`. Pass an empty command for the list of commands.',
+        'Use this tool when you need exact flag names, per-block-type field schemas, or the full CLI command list while authoring a Pathfinder guide. Returns the structured help surface for a CLI command, equivalent to `pathfinder-cli <command> --help --format json`. Pass CLI command names (not MCP tool names): "add-block", "edit-block", "remove-block", "add-step", "add-choice", "set-manifest", etc. Omit command for the list.',
       annotations: readOnly('Show Pathfinder help'),
       inputSchema: {
         command: z
           .string()
           .optional()
-          .describe('CLI command name (e.g. "create", "add-block"). Omit for the top-level command list.'),
+          .describe(
+            'CLI command name (e.g. "add-block", "add-step", "add-choice", "edit-block", "remove-block", "set-manifest"). Omit for the top-level command list. Do not pass MCP tool names like "pathfinder_manage_block".'
+          ),
         subcommand: z
           .string()
           .optional()

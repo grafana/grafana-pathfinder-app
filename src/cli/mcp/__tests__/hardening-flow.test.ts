@@ -89,7 +89,6 @@ describe('MCP hardening — end-to-end composition', () => {
       // confirms the warning channel doesn't false-fire on unrelated calls.
       const markdownAdd = await callTool(client, 'pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         artifact,
         type: 'markdown',
         fields: { content: 'Intro' },
@@ -103,10 +102,9 @@ describe('MCP hardening — end-to-end composition', () => {
       // ignored the same rule in `_start.compositionRules`.
       const multistepAdd = await callTool(client, 'pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         artifact,
         type: 'multistep',
-        explicitId: 'walk-1',
+        id: 'walk-1',
         fields: { content: 'walkthrough heading' },
       });
       expect(multistepAdd.status).toBe('ok');
@@ -117,9 +115,7 @@ describe('MCP hardening — end-to-end composition', () => {
       // -------- Issue #3: adding a step with a `reftarget` fires the
       // unverified-selector signal at outcome-time. The path carries the
       // position so a reviewer can grep for the exact step that took the risk.
-      const stepAdd = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
-        resource: 'step',
+      const stepAdd = await callTool(client, 'pathfinder_add_step', {
         artifact,
         parentId: 'walk-1',
         fields: { action: 'button', reftarget: '[data-testid="save"]', description: 'Click Save' },
@@ -151,7 +147,6 @@ describe('MCP hardening — end-to-end composition', () => {
       // call succeeds, and the persisted block carries the embed URL.
       const videoAdd = await callTool(client, 'pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         artifact,
         type: 'video',
         fields: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
@@ -178,7 +173,6 @@ describe('MCP hardening — end-to-end composition', () => {
       };
       const mutated = await callTool(client, 'pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         artifact: corrupted,
         type: 'markdown',
         fields: { content: 'should not be appended' },

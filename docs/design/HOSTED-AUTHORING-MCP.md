@@ -69,12 +69,12 @@ The service does not own:
 
 ## Validation strategy
 
-The MCP server **performs no schema validation of its own**. All validation lives in the `pathfinder-cli` command functions, which the MCP server imports directly from the same source tree (see [Agent authoring CLI — Distribution](./AGENT-AUTHORING.md#distribution)). The CLI's exported `runX` functions (in place since P1 — see [`phases/ai-authoring-1-cli-foundation.md`](./phases/ai-authoring-1-cli-foundation.md)) are designed to be importable and are exercised by the CLI test suite without subprocess invocation. The MCP server composes against the same surface.
+The MCP server **performs no schema validation of its own**. All validation lives in the `pathfinder-cli` command functions, which the MCP server imports directly from the same source tree (see [Agent authoring CLI — Distribution](./AGENT-AUTHORING.md#distribution)). The CLI's exported `runX` functions (in place since P1 — see [`phases/ai-authoring-1-cli-foundation.md`](./phases/ai-authoring-1-cli-foundation.md)) are designed to be importable and are exercised by the CLI test suite without subprocess invocation. The MCP server composes against the same surface. MCP input schemas validate only the tool-level contract, not per-block-type guide fields.
 
 Each authoring tool call follows this pattern:
 
-1. The MCP server receives the tool call with the in-flight artifact and mutation arguments.
-2. The MCP tool dispatcher maps the call to the corresponding CLI command function (`create`, `add-block`, `edit-block`, `inspect`, etc.) and invokes it directly against the in-flight artifact.
+1. The MCP server receives the tool call with the in-flight artifact or session token and mutation arguments.
+2. The MCP tool dispatcher validates its tool-level contract, maps the call to the corresponding CLI command function (`create`, `add-block`, `edit-block`, `inspect`, etc.), and invokes it directly against the in-flight artifact.
 3. The CLI command applies the mutation, validates the full package, and returns either the updated artifact or structured validation errors.
 4. The MCP server returns the response to the caller.
 
@@ -97,26 +97,28 @@ The two modes are mutually exclusive per call (mixing returns `INPUT_MODE_AMBIGU
 
 ### Core tools
 
-| Tool                                   | Purpose                                                                                                                                        |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pathfinder_authoring_start`           | **First tool.** Returns domain framing, workflow, discovery hints, block-type names, and a happy-path tutorial                                 |
-| `pathfinder_help`                      | Returns CLI help for any command/subcommand by passing through `pathfinder-cli <cmd> [<sub>] --help --format json`                             |
-| `pathfinder_create_package`            | Returns a new authoring artifact with `content.json` and `manifest.json` initialized                                                           |
-| `pathfinder_manage_block`              | Mutate the guide tree via `operation: "add" \| "edit" \| "remove"` and `resource: "block" \| "step" \| "choice"`; returns the updated artifact |
-| `pathfinder_set_manifest`              | Updates manifest fields on the artifact; returns the updated artifact                                                                          |
-| `pathfinder_read_session`              | Cheap session reads via `operation: "list_blocks" \| "get_block" \| "get_manifest"`                                                            |
-| `pathfinder_repository`                | CDN package discovery/inspection via `operation: "list" \| "get" \| "get_manifest"`                                                            |
-| `pathfinder_launch_package`            | Builds a shareable `?doc=` deep link for a published package (**partial** — see #855)                                                          |
-| `pathfinder_inspect`                   | Reads artifact summary, block tree, or a specific block                                                                                        |
-| `pathfinder_validate`                  | Runs full package validation against an artifact and returns structured issues                                                                 |
-| `pathfinder_finalize_for_app_platform` | Returns an `InteractiveGuide` resource payload, publish instructions, viewer link fields, and `localExport` fallback                           |
+| Tool                                   | Purpose                                                                                                              |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `pathfinder_authoring_start`           | **First tool.** Returns domain framing, workflow, discovery hints, and block-type names                              |
+| `pathfinder_help`                      | Returns CLI help for any command/subcommand by passing through `pathfinder-cli <cmd> [<sub>] --help --format json`   |
+| `pathfinder_create_package`            | Returns a new authoring artifact with `content.json` and `manifest.json` initialized                                 |
+| `pathfinder_manage_block`              | Add, edit, or remove addressable blocks via `operation: "add" \| "edit" \| "remove"`                                 |
+| `pathfinder_add_step`                  | Append a step to a multistep or guided block                                                                         |
+| `pathfinder_add_choice`                | Append a choice to a quiz block                                                                                      |
+| `pathfinder_set_manifest`              | Updates manifest fields on the artifact; returns the updated artifact                                                |
+| `pathfinder_read_session`              | Cheap session reads via `operation: "list_blocks" \| "get_block" \| "get_manifest"`                                  |
+| `pathfinder_read_repository`           | CDN package discovery/inspection via `operation: "list" \| "get" \| "get_manifest"`                                  |
+| `pathfinder_launch_package`            | Builds a shareable `?doc=` deep link for a published package (**partial** — see #855)                                |
+| `pathfinder_inspect`                   | Reads artifact summary, block tree, or a specific block                                                              |
+| `pathfinder_validate`                  | Runs full package validation against an artifact and returns structured issues                                       |
+| `pathfinder_finalize_for_app_platform` | Returns an `InteractiveGuide` resource payload, publish instructions, viewer link fields, and `localExport` fallback |
 
 `pathfinder_set_manifest` is included in the MVP tool surface so AI authoring produces correctly-shaped manifest data inside the artifact. **For the MVP, manifest data is artifact-local and is stripped on the way to the App Platform CRD** — the `InteractiveGuide` resource only persists content-shaped fields, which is a CRD limitation that affects all custom guides (block-editor and AI alike), not an AI-authoring design choice. Round-trip persistence of manifest data is a future improvement that requires extending the CRD; see [Grafana App Platform publish handoff — Fields dropped at publish](./APP-PLATFORM-PUBLISH-HANDOFF.md#fields-dropped-at-publish-mvp).
 
 #### Tool-surface design notes
 
-- **`pathfinder_manage_block` is intentionally permissive.** Its input schema declares `operation` (`add` | `edit` | `remove`) and `resource` (`block` | `step` | `choice`) but accepts arbitrary additional fields. The MCP forwards everything to the imported CLI command (`runAddBlock` / `runEditBlock` / `runRemoveBlock` / `runAddStep` / `runAddChoice`), which is the sole validator. Per-block-type MCP tools were considered and rejected: they would re-introduce schema knowledge into the MCP layer (or require a Zod-to-JSONSchema generator at MCP startup), violating the design's core "CLI owns guide correctness" boundary. Any new block type that the CLI learns about is automatically supported by the MCP without code changes. Collapsing tree writes into one tool is an MCP-only adapter for agent tool-list weight; the CLI verbs remain unchanged. `edit`/`remove` on `step`/`choice` return `UNSUPPORTED_OPERATION` until child addressability (OQ2) lands — the call shape is reserved so that slice can flip the stub to a real runner without renaming the tool.
-- **`pathfinder_help` is the discovery surface.** Agents call it with a command name (and optional subcommand) to get the field-level contract for any operation, mirroring the CLI's progressive-disclosure help. The MCP composes the same help surface the CLI exposes via `pathfinder-cli <cmd> [<sub>] --help --format json` — since the MCP imports the CLI module directly, this is a function call, not a shell-out. Promoting `--help --format json` to a stability contract is what makes this tool work; see [Agent authoring CLI — `--help --format json` is a stability contract](./AGENT-AUTHORING.md#--help---format-json-is-a-stability-contract).
+- **Tree writes are grouped by resource capability.** `pathfinder_manage_block` combines add/edit/remove because blocks are individually addressable and support all three operations. Its shape is stable across those operations: recognized but irrelevant fields are accepted and ignored, so callers do not need to prune a reusable argument object. Steps and choices are append-only child members with distinct parent and payload contracts, so `pathfinder_add_step` and `pathfinder_add_choice` expose those capabilities directly without an operation/resource matrix or unsupported combinations. Payloads remain opaque `fields` bags validated by the CLI; this does not create per-block-type schema knowledge in the MCP layer. **Agent procedure is append-only:** new blocks, steps, and choices always append to their parent; there is no MCP `move` / insert-index / `orphanChildren` surface (CLI `--before`/`--after`/`--position`, `move-block`, and `--orphan-children` stay human/CLI power tools). To reorder or reshape, remove the addressable parent (with `cascade` when needed) and rebuild in display order. A single block `id` field covers create-time ids (add) and target ids (edit/remove); duplicate ids fail with `DUPLICATE_ID` (no MCP `--if-absent`).
+- **`pathfinder_help` is the discovery surface.** Agents call it with a CLI command name (and optional subcommand) to get the field-level contract for any mutation payload, mirroring the CLI's progressive-disclosure help. Map MCP tools to CLI help as: `pathfinder_manage_block` → `add-block` / `edit-block` / `remove-block` (for add, pass `subcommand=<type>`); `pathfinder_add_step` → `add-step`; `pathfinder_add_choice` → `add-choice`; `pathfinder_set_manifest` → `set-manifest`. Help flag names become `fields` keys; addressing flags map to tool args (`--parent` → `parentId`, `--id` → `id`). The MCP composes the same help surface the CLI exposes via `pathfinder-cli <cmd> [<sub>] --help --format json` — since the MCP imports the CLI module directly, this is a function call, not a shell-out. Promoting `--help --format json` to a stability contract is what makes this tool work; see [Agent authoring CLI — `--help --format json` is a stability contract](./AGENT-AUTHORING.md#--help---format-json-is-a-stability-contract).
 
 ### Optional tools
 
@@ -129,7 +131,7 @@ The two modes are mutually exclusive per call (mixing returns `INPUT_MODE_AMBIGU
 
 `pathfinder_authoring_start` is **the first tool an agent calls**. Its tool description in the MCP listing makes that role obvious (e.g., "Always call this first before authoring a Pathfinder guide"). It returns the few lines of context an agent needs to be useful, plus the discovery hints to learn anything else from the CLI on demand.
 
-The response includes both human-readable instructions and structured fields:
+The response includes both human-readable instructions and structured fields. The following is an illustrative authoring flow, not the literal response shape:
 
 ```json
 {
@@ -139,13 +141,17 @@ The response includes both human-readable instructions and structured fields:
   "domain": "You are authoring a Pathfinder interactive guide — a structured, schema-governed package of blocks (markdown, interactive steps, quizzes, etc.) that runs inside Grafana to teach a user how to accomplish something.",
   "workflow": [
     "Call pathfinder_create_package with a title (an ID will be auto-generated).",
-    "Call pathfinder_manage_block with operation \"add\" and resource \"block\" one block at a time, in display order. Use pathfinder_help to discover fields per block type.",
+    "Call pathfinder_manage_block with operation \"add\" one block at a time, in display order. Use pathfinder_add_step and pathfinder_add_choice for child members, and pathfinder_help to discover payload fields.",
     "Call pathfinder_inspect after each section to confirm state. Use pathfinder_validate before finalizing.",
     "Call pathfinder_finalize_for_app_platform to produce the publish handoff.",
     "Ask the user whether to save as draft or publish, then write to the App Platform endpoint or fall back to localExport."
   ],
   "discovery": {
-    "fieldHelpForAnyCommand": "pathfinder_help(command='add-block', subcommand='<block-type>')",
+    "fieldHelpForBlockAdd": "pathfinder_help(command='add-block', subcommand='<block-type>')",
+    "fieldHelpForBlockEdit": "pathfinder_help(command='edit-block')",
+    "fieldHelpForBlockRemove": "pathfinder_help(command='remove-block')",
+    "fieldHelpForStep": "pathfinder_help(command='add-step')",
+    "fieldHelpForChoice": "pathfinder_help(command='add-choice')",
     "verifyArtifactState": "pathfinder_inspect",
     "checkBeforeFinalizing": "pathfinder_validate"
   },
@@ -170,33 +176,33 @@ The response includes both human-readable instructions and structured fields:
     "summary": "A minimal 3-block guide: an intro markdown, an interactive navigation step, and a quiz to check understanding.",
     "steps": [
       "pathfinder_create_package(title='Getting started with Loki')",
-      "pathfinder_manage_block(operation='add', resource='block', type='markdown', parent=null, content='Welcome — in this guide you will...')",
-      "pathfinder_manage_block(operation='add', resource='block', type='interactive', action='navigate', reftarget='[data-testid=\"nav-item-connections\"]', content='Open Connections.')",
-      "pathfinder_manage_block(operation='add', resource='block', type='quiz', id='check', question='Which query language does Loki use?')",
-      "pathfinder_manage_block(operation='add', resource='choice', parentId='check', fields={text:'LogQL', correct:true})",
-      "pathfinder_validate(artifact=...)",
-      "pathfinder_finalize_for_app_platform(artifact=..., status='draft')"
+      "pathfinder_manage_block(operation='add', type='markdown', sessionToken=…, fields={content:'Welcome — in this guide you will...'})",
+      "pathfinder_manage_block(operation='add', type='interactive', sessionToken=…, fields={action:'navigate', reftarget:'[data-testid=\"nav-item-connections\"]', content:'Open Connections.'})",
+      "pathfinder_manage_block(operation='add', type='quiz', id='check', sessionToken=…, fields={question:'Which query language does Loki use?'})",
+      "pathfinder_add_choice(parentId='check', sessionToken=…, fields={id:'a', text:'LogQL', correct:true})",
+      "pathfinder_validate(sessionToken=…)",
+      "pathfinder_finalize_for_app_platform(sessionToken=…, status='draft')"
     ]
   },
-  "instructions": "Use Pathfinder MCP tools to author guides. The artifact is passed in to and returned from every mutation call. Do not write raw guide JSON. When you don't know what fields a block type accepts, call pathfinder_help — never guess. Validate before finalizing."
+  "instructions": "Use Pathfinder MCP tools to author guides. Prefer sessionToken mode: mint a token on create_package, echo it on every call, and treat mutation responses as acks (not full artifacts). Do not write raw guide JSON. When you don't know what fields a block type accepts, call pathfinder_help — never guess. Validate before finalizing."
 }
 ```
 
-This tool does not allocate a session — it returns context only. The client begins authoring by calling `pathfinder_create_package` with desired metadata; the response is the initial artifact, which the client then carries forward into subsequent tool calls.
+The literal live shape is defined by `AUTHORING_CONTEXT` in `src/cli/mcp/tools/authoring-start.ts`; it does not contain a `tutorial` field. This tool does not allocate a session — it returns context only. The client begins authoring by calling `pathfinder_create_package`, which mints a `sessionToken` and also returns a seed artifact for the stateless fallback. Prefer `{sessionToken}` on subsequent calls; use `{artifact}` only when sessions are unavailable.
 
-Clients should prefer the workflow and tutorial returned by `pathfinder_authoring_start` over any locally cached skill instructions, so authoring guidance evolves on the cadence of plugin releases without forcing client churn.
+Clients should prefer the workflow returned by `pathfinder_authoring_start` over any locally cached skill instructions, so authoring guidance evolves on the cadence of plugin releases without forcing client churn.
 
 ## Relationship to the CLI
 
-There is no separate "MCP authoring engine." The CLI **is** the engine. The MCP server is a thin tool dispatcher: it maps each MCP tool call to the corresponding CLI command function and returns the CLI's structured output. There is no parallel schema, no parallel validation, no parallel block catalog.
+There is no separate "MCP authoring engine." The CLI **is** the engine. The MCP server is a tool adapter: it maps each MCP tool call to one or more corresponding CLI command functions and returns the CLI's structured output. There is no parallel guide schema, validation, or block catalog.
 
 When the schema evolves in `src/types/`:
 
 - The CLI gains the new fields automatically through schema-driven option generation.
-- The MCP picks up the change in the same build (it imports the CLI module).
-- No additional edits are required.
+- MCP mutation tools accept those fields through their opaque `fields` bags, while `pathfinder_help` exposes the corresponding CLI field contract.
+- No per-block-type MCP schema edits are required.
 
-The CLI and the MCP ship as a single npm package — they cannot drift, because they share a process and a Zod schema instance.
+The adapter may group CLI commands under one MCP tool (`pathfinder_manage_block` maps add/edit/remove operations to their respective runners) or expose an MCP-only read surface. The CLI and the MCP still ship as a single npm package and cannot drift on guide schema, because they share a process and a Zod schema instance.
 
 ## Relationship to existing plugin MCP tools
 
@@ -204,7 +210,7 @@ The Pathfinder plugin's Go backend previously exposed a small MCP endpoint at `/
 
 Earlier drafts of this document framed `launch_guide` and the pending-launch queue as having "a genuine reason to remain in-process indefinitely" because they were coupled to per-instance frontend polling in `src/hooks/usePendingGuideLaunch.ts`. That framing is obsolete: the architecture pivoted to a single centrally hosted TS MCP on Cloud Run, the polling hook is gone, and the "open the published guide" leg is now served by `pathfinder_finalize_for_app_platform`'s viewer deep link plus the Assistant repo's `pathfinder_manage_guide_drafts` / `pathfinder_publish_guide` web-surface tools.
 
-The authoring tools described in this document live exclusively in the TS MCP server, as do the CDN repository tools added under P6 (`pathfinder_repository`, `pathfinder_repository`, `pathfinder_get_manifest`, `pathfinder_launch_package`; see [`AI-AUTHORING-IMPLEMENTATION.md` — P6](./AI-AUTHORING-IMPLEMENTATION.md#p6--cdn-repository-tools-ts-mcp)).
+The authoring tools described in this document live exclusively in the TS MCP server, as do the CDN repository tools added under P6 (`pathfinder_read_repository` with `operation: "list" | "get" | "get_manifest"`, plus `pathfinder_launch_package`; see [`AI-AUTHORING-IMPLEMENTATION.md` — P6](./AI-AUTHORING-IMPLEMENTATION.md#p6--cdn-repository-tools-ts-mcp)).
 
 ## Failure behavior
 

@@ -1,8 +1,7 @@
 /**
  * @jest-environment node
  *
- * Tests for the P7 session-minting branch of pathfinder_create_package
- * (and the same wiring on pathfinder_create_guide_template).
+ * Tests for the P7 session-minting branch of pathfinder_create_package.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -94,7 +93,6 @@ describe('pathfinder_create_package — session mint', () => {
 
       const added = await call('pathfinder_manage_block', {
         operation: 'add',
-        resource: 'block',
         sessionToken: created.sessionToken,
         type: 'markdown',
         fields: { content: 'Hello' },
@@ -117,25 +115,6 @@ describe('pathfinder_create_package — session mint', () => {
       expect(r.code).toBe('INVALID_TITLE');
       // No sessionToken on errors — sessionToken only appears on success.
       expect(r.sessionToken).toBeUndefined();
-    });
-  });
-});
-
-describe('pathfinder_create_guide_template — session mint', () => {
-  it('mints a session containing the pre-populated template', async () => {
-    await withHarness(async (call, store) => {
-      const r = await call('pathfinder_create_guide_template', {
-        id: 'starter-pack',
-        title: 'Starter Pack',
-      });
-      expect(r.status).toBe('ok');
-      expect(isValidSessionToken(r.sessionToken!)).toBe(true);
-      expect(r.generation).toBe(1);
-      expect(r.artifact?.content.blocks.length).toBeGreaterThan(0);
-      const loaded = await store.load(r.sessionToken!);
-      expect((loaded?.artifact.content.blocks as unknown[]).length).toBe(
-        (r.artifact?.content.blocks as unknown[]).length
-      );
     });
   });
 });
