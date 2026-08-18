@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePluginContext } from '@grafana/data';
-import { isAppPluginEnabled } from '@grafana/runtime';
+import { isAppPluginEnabled, isAppPluginInstalled } from '@grafana/runtime';
 import { getConfigWithDefaults } from '../../constants';
 import { recordSandboxUnavailable, type SandboxUnavailableReason } from '../../lib/telemetry/facade';
 import {
@@ -60,11 +60,27 @@ function capabilitiesOnce(): Promise<CodaCapabilities | null> {
   return cachedCapabilities;
 }
 
+function probeEnabled(): Promise<boolean> {
+  return isCodaProbeSupported()
+    ? isAppPluginEnabled(CODA_PLUGIN_ID).catch(() => false)
+    : capabilitiesOnce().then((capabilities) => capabilities !== null);
+}
+
+/**
+ * `isAppPluginEnabled` fetches the plugin's settings, so an absent Coda 404s and
+ * core logs it as a fault; boot data answers for free. Anything short of a definite
+ * "not installed" still asks. Keep the branch synchronous — an `await` defers
+ * `capabilitiesOnce` past `loadCodaCapabilities` and costs a second request.
+ */
 export function isCodaPluginAvailable(): Promise<boolean> {
   if (!cached) {
-    cached = isCodaProbeSupported()
-      ? isAppPluginEnabled(CODA_PLUGIN_ID).catch(() => false)
-      : capabilitiesOnce().then((capabilities) => capabilities !== null);
+    cached =
+      typeof isAppPluginInstalled === 'function'
+        ? isAppPluginInstalled(CODA_PLUGIN_ID).then(
+            (installed) => (installed ? probeEnabled() : false),
+            () => probeEnabled()
+          )
+        : probeEnabled();
   }
   return cached;
 }
@@ -75,7 +91,8 @@ export function resetCodaAvailabilityCache(): void {
 }
 
 /**
- * `checking` on first paint, because the probe is async.
+ * `checking` on first paint, because the probe is async, and while `shouldProbe`
+ * is false, because then it was never asked.
  *
  * Distinct from the boolean below: a caller that renders "Coda is unavailable"
  * needs to know the difference between "not installed" and "not asked yet", or
@@ -83,10 +100,13 @@ export function resetCodaAvailabilityCache(): void {
  */
 export type CodaPluginAvailability = 'checking' | 'available' | 'unavailable';
 
-export function useCodaPluginAvailability(): CodaPluginAvailability {
+export function useCodaPluginAvailability(shouldProbe: boolean): CodaPluginAvailability {
   const [availability, setAvailability] = useState<CodaPluginAvailability>('checking');
 
   useEffect(() => {
+    if (!shouldProbe) {
+      return;
+    }
     let cancelled = false;
     isCodaPluginAvailable().then((result) => {
       if (!cancelled) {
@@ -96,13 +116,15 @@ export function useCodaPluginAvailability(): CodaPluginAvailability {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [shouldProbe]);
 
-  return availability;
+  // Derived, not reset: a gate that shuts reads `checking` again rather than
+  // serving the verdict it happened to catch while it was open.
+  return shouldProbe ? availability : 'checking';
 }
 
-export function useCodaPluginAvailable(): boolean {
-  return useCodaPluginAvailability() === 'available';
+export function useCodaPluginAvailable(shouldProbe: boolean): boolean {
+  return useCodaPluginAvailability(shouldProbe) === 'available';
 }
 
 /**
@@ -123,7 +145,7 @@ export function useCodaTerminalGate(): CodaTerminalGate {
     () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableCodaTerminal,
     [pluginContext?.meta?.jsonData]
   );
-  const availability = useCodaPluginAvailability();
+  const availability = useCodaPluginAvailability(enabled);
 
   if (!enabled) {
     return 'disabled';
@@ -164,6 +186,8 @@ export type CodaSandboxEligibility =
   | { state: 'unknown' }
   | { state: 'role_forbidden'; minimumSessionRole: CodaSessionRole };
 
+const CHECKING: CodaSandboxEligibility = { state: 'checking' };
+
 function readEligibility(capabilities: CodaCapabilities | null): CodaSandboxEligibility {
   if (!capabilities) {
     return { state: 'unknown' };
@@ -180,10 +204,13 @@ function readEligibility(capabilities: CodaCapabilities | null): CodaSandboxElig
   return { state: 'unknown' };
 }
 
-export function useCodaSessionEligibility(): CodaSandboxEligibility {
-  const [eligibility, setEligibility] = useState<CodaSandboxEligibility>({ state: 'checking' });
+export function useCodaSessionEligibility(shouldLoad: boolean): CodaSandboxEligibility {
+  const [eligibility, setEligibility] = useState<CodaSandboxEligibility>(CHECKING);
 
   useEffect(() => {
+    if (!shouldLoad) {
+      return;
+    }
     let cancelled = false;
     loadCodaCapabilities().then((capabilities) => {
       if (!cancelled) {
@@ -193,9 +220,9 @@ export function useCodaSessionEligibility(): CodaSandboxEligibility {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [shouldLoad]);
 
-  return eligibility;
+  return shouldLoad ? eligibility : CHECKING;
 }
 
 /**
