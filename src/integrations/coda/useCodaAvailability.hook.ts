@@ -100,7 +100,7 @@ export function resetCodaAvailabilityCache(): void {
  */
 export type CodaPluginAvailability = 'checking' | 'available' | 'unavailable';
 
-export function useCodaPluginAvailability(shouldProbe = true): CodaPluginAvailability {
+export function useCodaPluginAvailability(shouldProbe: boolean): CodaPluginAvailability {
   const [availability, setAvailability] = useState<CodaPluginAvailability>('checking');
 
   useEffect(() => {
@@ -118,10 +118,12 @@ export function useCodaPluginAvailability(shouldProbe = true): CodaPluginAvailab
     };
   }, [shouldProbe]);
 
-  return availability;
+  // Derived, not reset: a gate that shuts reads `checking` again rather than
+  // serving the verdict it happened to catch while it was open.
+  return shouldProbe ? availability : 'checking';
 }
 
-export function useCodaPluginAvailable(shouldProbe = true): boolean {
+export function useCodaPluginAvailable(shouldProbe: boolean): boolean {
   return useCodaPluginAvailability(shouldProbe) === 'available';
 }
 
@@ -184,6 +186,8 @@ export type CodaSandboxEligibility =
   | { state: 'unknown' }
   | { state: 'role_forbidden'; minimumSessionRole: CodaSessionRole };
 
+const CHECKING: CodaSandboxEligibility = { state: 'checking' };
+
 function readEligibility(capabilities: CodaCapabilities | null): CodaSandboxEligibility {
   if (!capabilities) {
     return { state: 'unknown' };
@@ -200,10 +204,13 @@ function readEligibility(capabilities: CodaCapabilities | null): CodaSandboxElig
   return { state: 'unknown' };
 }
 
-export function useCodaSessionEligibility(): CodaSandboxEligibility {
-  const [eligibility, setEligibility] = useState<CodaSandboxEligibility>({ state: 'checking' });
+export function useCodaSessionEligibility(shouldLoad: boolean): CodaSandboxEligibility {
+  const [eligibility, setEligibility] = useState<CodaSandboxEligibility>(CHECKING);
 
   useEffect(() => {
+    if (!shouldLoad) {
+      return;
+    }
     let cancelled = false;
     loadCodaCapabilities().then((capabilities) => {
       if (!cancelled) {
@@ -213,9 +220,9 @@ export function useCodaSessionEligibility(): CodaSandboxEligibility {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [shouldLoad]);
 
-  return eligibility;
+  return shouldLoad ? eligibility : CHECKING;
 }
 
 /**

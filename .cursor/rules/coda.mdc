@@ -100,16 +100,19 @@ callers that need to *say* which one is unmet. Never assume the plugin is presen
 must degrade quietly.
 
 **The first gate is enforced before the probe, not just around its consumer.** `enableCodaTerminal`
-is off by default, so an installation that never turned the terminal on must ask nothing about Coda at
-all: `useCodaPluginAvailability(shouldProbe)` takes the caller's own gate, and `useCodaTerminalGate()`
-passes `enabled` into it. A probe that fires anyway is the bug — it 404s on every page load of every
-stack without Coda.
+is off by default, so an installation that never turned the terminal on asks nothing about Coda at all.
+`useCodaPluginAvailability(shouldProbe)` and `useCodaSessionEligibility(shouldLoad)` take the caller's
+own gate — both parameters are **required**, so a new call site cannot reintroduce an ungated probe by
+omission — and `useCodaTerminalGate()` feeds `enabled` into the first. `useCodaOptions` reads the gate
+itself, covering every block-editor form. A probe that fires anyway is the bug: it 404s on every page
+load of every stack without Coda.
 
 **Absence is not a fault, and must not be reported as one.** `isAppPluginEnabled` fetches the plugin's
 *settings*, and core logs that 404 twice through `console.error` and pushes it into its own error
-tracking. `isAppPluginInstalled` answers the same question from boot data with no request, so it runs
-first and only a definite "not installed" short-circuits — missing helper, rejection, or `true` all
-fall through, since it does not itself check *enabled*.
+tracking. `isAppPluginInstalled` answers the same question without ever touching
+`/api/plugins/grafana-coda-app/*` — from boot data, or from core's own plugin LIST under
+`pluginsUseMTPlugins` — so it runs first and only a definite "not installed" short-circuits. Missing
+helper, rejection, or `true` all fall through, since it does not itself check *enabled*.
 
 **The terminal needs Grafana 13.1**, and only because of that second gate: `isAppPluginEnabled` is
 served by core's own `@grafana/runtime` and does not exist before 13.1, where it throws synchronously

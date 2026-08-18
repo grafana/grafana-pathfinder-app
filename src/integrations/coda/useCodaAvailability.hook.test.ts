@@ -62,7 +62,7 @@ beforeEach(() => {
 describe('useCodaSessionEligibility', () => {
   it('starts at checking so first paint never renders a guess', () => {
     mockedGetCapabilities.mockResolvedValue(capabilities());
-    const { result } = renderHook(() => useCodaSessionEligibility());
+    const { result } = renderHook(() => useCodaSessionEligibility(true));
     expect(result.current).toEqual({ state: 'checking' });
   });
 
@@ -70,7 +70,7 @@ describe('useCodaSessionEligibility', () => {
     mockedGetCapabilities.mockResolvedValue(
       capabilities({ caller: { canCreateSessions: false, minimumSessionRole: 'Admin' } })
     );
-    const { result } = renderHook(() => useCodaSessionEligibility());
+    const { result } = renderHook(() => useCodaSessionEligibility(true));
 
     await waitFor(() => expect(result.current).toEqual({ state: 'role_forbidden', minimumSessionRole: 'Admin' }));
   });
@@ -79,37 +79,46 @@ describe('useCodaSessionEligibility', () => {
     mockedGetCapabilities.mockResolvedValue(
       capabilities({ caller: { canCreateSessions: true, minimumSessionRole: 'Editor' } })
     );
-    const { result } = renderHook(() => useCodaSessionEligibility());
+    const { result } = renderHook(() => useCodaSessionEligibility(true));
 
     await waitFor(() => expect(result.current).toEqual({ state: 'eligible' }));
   });
 
   it('reports unknown against a Coda plugin that does not send caller', async () => {
     mockedGetCapabilities.mockResolvedValue(capabilities());
-    const { result } = renderHook(() => useCodaSessionEligibility());
+    const { result } = renderHook(() => useCodaSessionEligibility(true));
 
     await waitFor(() => expect(result.current).toEqual({ state: 'unknown' }));
   });
 
   it('reports unknown when capabilities cannot be read at all', async () => {
     mockedGetCapabilities.mockRejectedValue(new Error('boom'));
-    const { result } = renderHook(() => useCodaSessionEligibility());
+    const { result } = renderHook(() => useCodaSessionEligibility(true));
 
     await waitFor(() => expect(result.current).toEqual({ state: 'unknown' }));
   });
 
   it('does not ask the Coda plugin for capabilities when it is not installed', async () => {
     mockedIsAppPluginEnabled.mockResolvedValue(false);
-    const { result } = renderHook(() => useCodaSessionEligibility());
+    const { result } = renderHook(() => useCodaSessionEligibility(true));
 
     await waitFor(() => expect(result.current).toEqual({ state: 'unknown' }));
     expect(mockedGetCapabilities).not.toHaveBeenCalled();
   });
 
+  it('reads no capabilities when the caller’s gate is shut', async () => {
+    mockedGetCapabilities.mockResolvedValue(capabilities());
+    const { result } = renderHook(() => useCodaSessionEligibility(false));
+
+    expect(result.current).toEqual({ state: 'checking' });
+    expect(mockedGetCapabilities).not.toHaveBeenCalled();
+    expect(mockedIsAppPluginInstalled).not.toHaveBeenCalled();
+  });
+
   it('costs one request per page load however many blocks ask', async () => {
     mockedGetCapabilities.mockResolvedValue(capabilities());
-    const first = renderHook(() => useCodaSessionEligibility());
-    const second = renderHook(() => useCodaSessionEligibility());
+    const first = renderHook(() => useCodaSessionEligibility(true));
+    const second = renderHook(() => useCodaSessionEligibility(true));
 
     await waitFor(() => expect(first.result.current).toEqual({ state: 'unknown' }));
     await waitFor(() => expect(second.result.current).toEqual({ state: 'unknown' }));

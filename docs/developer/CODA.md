@@ -122,10 +122,12 @@ which gate is unmet and links to `/plugins/grafana-coda-app`.
 
 **The probe is gated on the setting, not merely its consumer.** `useCodaPluginAvailability(shouldProbe)`
 takes the caller's own gate — `useCodaTerminalGate()` passes `enableCodaTerminal`, `docs-panel.tsx`
-passes `isDevMode && enableCodaTerminal` — so a default installation asks nothing about Coda. And the
-question it asks when it does probe is "is the plugin installed", answered from boot data by
-`isAppPluginInstalled` with no request; only then does it ask `isAppPluginEnabled`, whose settings fetch
-is what 404s. Core logs that 404 twice to the console and pushes it into its own error tracking, which
+passes `isDevMode && enableCodaTerminal`, `useCodaSessionEligibility(shouldLoad)` and `useCodaOptions`
+take the same gate — so a default installation asks nothing about Coda. And the question it asks when it
+does probe is "is the plugin installed", answered by `isAppPluginInstalled`: from boot data with no
+request, or from core's own plugin LIST when `pluginsUseMTPlugins` is on — either way cached once per
+page load and never a request to `/api/plugins/grafana-coda-app/*`. Only then does it ask
+`isAppPluginEnabled`, whose settings fetch is what 404s. Core logs that 404 twice to the console and pushes it into its own error tracking, which
 is why an absent optional plugin must never reach it.
 
 **Minimum Grafana version: 13.1 — for the terminal only.** The third gate calls `isAppPluginEnabled`
