@@ -163,9 +163,14 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
 
   // `meta.jsonData` can lag a recent save. Re-publish from the authoritative
   // read when it lands; subscribers pick it up via the config-updated event.
+  // Re-wire the resolver too: if the authoritative config flips the
+  // recommender-enabled flag relative to the possibly-stale snapshot above,
+  // a launch that races ahead of any panel mount would otherwise keep
+  // resolving through the wrong chain until some panel re-sets it itself.
   void refreshPathfinderPluginConfig().then((refreshed) => {
     if (refreshed) {
       linkInterceptionState.setInterceptionEnabled(refreshed.interceptGlobalDocsLinks);
+      setPackageResolver(createCompositeResolver(refreshed));
     }
   });
 
