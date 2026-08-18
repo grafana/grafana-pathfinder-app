@@ -24,7 +24,6 @@ import {
   logStepResult,
   logExecutionSummary,
   parseNthMatchSelector,
-  resolveEffectiveSkippable,
   selectStepAction,
   DEFAULT_STEP_TIMEOUT_MS,
   GUIDE_INITIAL_TIMEOUT_MS,
@@ -46,6 +45,7 @@ import type { AllStepsResult, StepTestResult, TestableStep } from './guide-runne
  */
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
+    stepKind: overrides.stepKind ?? (overrides.isGuided ? 'guided' : overrides.isMultistep ? 'multistep' : 'plain'),
     stepId: 'test-step-1',
     index: 0,
     skippable: false,
@@ -236,16 +236,6 @@ describe('determineUnmetRequirementOutcome', () => {
 
   it('fails mandatory steps', () => {
     expect(determineUnmetRequirementOutcome(false)).toBe('fail');
-  });
-});
-
-describe('resolveEffectiveSkippable', () => {
-  it('does not make guided steps skippable unless the UI exposes Skip', () => {
-    expect(resolveEffectiveSkippable(false, true)).toBe(false);
-  });
-
-  it('preserves explicit skippability for guided steps', () => {
-    expect(resolveEffectiveSkippable(true, true)).toBe(true);
   });
 });
 

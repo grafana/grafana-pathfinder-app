@@ -1,10 +1,3 @@
-/**
- * Unit tests for guide-runner discovery (Phase 5).
- *
- * Covers guided step detection: when the DOM has data-targetaction="guided"
- * and data-test-substep-total, discovered metadata has isGuided and guidedStepCount.
- */
-
 jest.mock('@playwright/test', () => ({
   Page: jest.fn(),
   Locator: jest.fn(),
@@ -12,91 +5,151 @@ jest.mock('@playwright/test', () => ({
   test: jest.fn(),
 }));
 
-import type { Locator } from '@playwright/test';
-import { extractGuidedInfo } from './discovery';
+import type { Locator, Page } from '@playwright/test';
 
-function createMockLocator(attributes: Record<string, string | null>): Locator {
+import { CURRENT_STEP_SELECTOR, LEGACY_STEP_SELECTOR } from './constants';
+import { discoverStepsFromDOM, withExecutedCoverage } from './discovery';
+
+function root(attributes: Record<string, string | null>): Locator {
   return {
-    getAttribute: jest.fn().mockImplementation((name: string) => Promise.resolve(attributes[name] ?? null)),
+    getAttribute: jest.fn((name: string) => Promise.resolve(attributes[name] ?? null)),
+    scrollIntoViewIfNeeded: jest.fn().mockResolvedValue(undefined),
+    evaluate: jest.fn().mockResolvedValue(undefined),
   } as unknown as Locator;
 }
 
-describe('extractGuidedInfo', () => {
-  it('returns isGuided: true and guidedStepCount from data-test-substep-total when targetAction is guided', async () => {
-    const stepElement = createMockLocator({
-      'data-test-substep-total': '3',
+function pageWithRoots(current: Locator[], legacy: Locator[] = []): Page {
+  const control = (count: number) => ({
+    count: jest.fn().mockResolvedValue(count),
+    isVisible: jest.fn().mockResolvedValue(false),
+    getAttribute: jest.fn().mockResolvedValue('idle'),
+  });
+  return {
+    locator: jest.fn((selector: string) => ({
+      all: jest.fn().mockResolvedValue(selector === CURRENT_STEP_SELECTOR ? current : legacy),
+    })),
+    getByTestId: jest.fn((testId: string) => {
+      if (testId.startsWith('interactive-step-completed-')) {
+        return control(1);
+      }
+      if (testId.startsWith('interactive-do-it-')) {
+        return control(1);
+      }
+      return control(0);
+    }),
+  } as unknown as Page;
+}
+
+describe('discoverStepsFromDOM', () => {
+  it('uses the current tracked-root contract and reports unsupported roots', async () => {
+    const page = pageWithRoots([
+      root({
+        'data-test-step-kind': 'plain',
+        'data-test-step-id': 'plain-1',
+        'data-targetaction': 'button',
+      }),
+      root({
+        'data-test-step-kind': 'quiz',
+        'data-test-step-id': 'quiz-1',
+      }),
+    ]);
+
+    const result = await discoverStepsFromDOM(page);
+
+    expect(result.steps).toHaveLength(1);
+    expect(result.steps[0]).toMatchObject({ stepKind: 'plain', stepId: 'plain-1', index: 0 });
+    expect(result.coverage).toEqual({
+      contractSource: 'current',
+      rendered: 2,
+      supported: 1,
+      executed: 0,
+      unsupported: 1,
+      unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
     });
-
-    const result = await extractGuidedInfo(stepElement, 'guided');
-
-    expect(result).toEqual({ isGuided: true, guidedStepCount: 3 });
   });
 
-  it('returns isGuided: false and guidedStepCount 1 when targetAction is not guided', async () => {
-    const stepElement = createMockLocator({
-      'data-test-substep-total': '5',
-    });
+  it('uses the legacy fallback when current roots are absent', async () => {
+    const page = pageWithRoots(
+      [],
+      [
+        root({ 'data-testid': 'interactive-step-plain-1', 'data-targetaction': 'button' }),
+        root({
+          'data-testid': 'interactive-step-multi-1',
+          'data-targetaction': 'multistep',
+          'data-internal-actions': '[{},{}]',
+        }),
+        root({
+          'data-testid': 'interactive-step-guided-1',
+          'data-test-substep-total': '3',
+        }),
+      ]
+    );
 
-    const result = await extractGuidedInfo(stepElement, 'button');
+    const result = await discoverStepsFromDOM(page);
 
-    expect(result).toEqual({ isGuided: false, guidedStepCount: 1 });
+    expect(result.coverage.contractSource).toBe('legacy');
+    expect(result.steps.map(({ stepKind, stepId }) => ({ stepKind, stepId }))).toEqual([
+      { stepKind: 'plain', stepId: 'plain-1' },
+      { stepKind: 'multistep', stepId: 'multi-1' },
+      { stepKind: 'guided', stepId: 'guided-1' },
+    ]);
   });
 
-  it('returns isGuided: false for multistep targetAction', async () => {
-    const stepElement = createMockLocator({
-      'data-test-substep-total': '2',
-    });
+  it('uses the current contract when both contract generations are present', async () => {
+    const page = pageWithRoots(
+      [root({ 'data-test-step-kind': 'plain', 'data-test-step-id': 'current-1' })],
+      [root({ 'data-testid': 'interactive-step-legacy-1' })]
+    );
 
-    const result = await extractGuidedInfo(stepElement, 'multistep');
+    const result = await discoverStepsFromDOM(page);
 
-    expect(result).toEqual({ isGuided: false, guidedStepCount: 1 });
+    expect(result.coverage.contractSource).toBe('current');
+    expect(result.steps.map((step) => step.stepId)).toEqual(['current-1']);
   });
 
-  it('returns isGuided: true when targetAction is undefined but data-test-substep-total present (InteractiveGuided)', async () => {
-    const stepElement = createMockLocator({
-      'data-test-substep-total': '2',
-    });
+  it('uses a legacy selector that excludes completed badges', async () => {
+    const page = pageWithRoots([]);
 
-    const result = await extractGuidedInfo(stepElement, undefined);
+    await discoverStepsFromDOM(page);
 
-    expect(result).toEqual({ isGuided: true, guidedStepCount: 2 });
+    expect(LEGACY_STEP_SELECTOR).toContain(':not([data-testid^="interactive-step-completed-"])');
+    expect(page.locator).toHaveBeenCalledWith(LEGACY_STEP_SELECTOR);
   });
+});
 
-  it('falls back to guidedStepCount 1 when data-test-substep-total is missing for guided', async () => {
-    const stepElement = createMockLocator({});
+describe('withExecutedCoverage', () => {
+  it('counts reached supported steps without changing unsupported coverage', () => {
+    const coverage = withExecutedCoverage(
+      {
+        contractSource: 'current',
+        rendered: 3,
+        supported: 2,
+        executed: 0,
+        unsupported: 1,
+        unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+      },
+      [
+        {
+          stepId: 'plain-1',
+          stepKind: 'plain',
+          status: 'passed',
+          durationMs: 1,
+          currentUrl: '/',
+          consoleErrors: [],
+          skippable: false,
+        },
+        {
+          stepId: 'guided-1',
+          stepKind: 'guided',
+          status: 'not_reached',
+          durationMs: 0,
+          currentUrl: '/',
+          consoleErrors: [],
+          skippable: false,
+        },
+      ]
+    );
 
-    const result = await extractGuidedInfo(stepElement, 'guided');
-
-    expect(result).toEqual({ isGuided: true, guidedStepCount: 1 });
-  });
-
-  it('falls back to guidedStepCount 1 when data-test-substep-total is invalid for guided', async () => {
-    const stepElement = createMockLocator({
-      'data-test-substep-total': 'not-a-number',
-    });
-
-    const result = await extractGuidedInfo(stepElement, 'guided');
-
-    expect(result).toEqual({ isGuided: true, guidedStepCount: 1 });
-  });
-
-  it('falls back to guidedStepCount 1 when data-test-substep-total is zero for guided', async () => {
-    const stepElement = createMockLocator({
-      'data-test-substep-total': '0',
-    });
-
-    const result = await extractGuidedInfo(stepElement, 'guided');
-
-    expect(result).toEqual({ isGuided: true, guidedStepCount: 1 });
-  });
-
-  it('parses data-test-substep-total as integer for guided', async () => {
-    const stepElement = createMockLocator({
-      'data-test-substep-total': '7',
-    });
-
-    const result = await extractGuidedInfo(stepElement, 'guided');
-
-    expect(result).toEqual({ isGuided: true, guidedStepCount: 7 });
+    expect(coverage).toMatchObject({ rendered: 3, supported: 2, executed: 1, unsupported: 1 });
   });
 });
