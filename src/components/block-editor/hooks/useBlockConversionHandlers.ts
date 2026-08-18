@@ -18,6 +18,14 @@ import { stepGuidedToMultistep, stepMultistepToGuided } from '../utils/stepField
 import type { NestedBlockEditingState, ConditionalBranchEditingState } from './useBlockFormState';
 import { logger } from '../../../lib/logging';
 
+function notifyConversionFailure(error: unknown): void {
+  logger.error('Failed to convert block type', { error });
+  getAppEvents().publish({
+    type: 'alert-error',
+    payload: ['Conversion failed', 'Could not convert to the selected block type.'],
+  });
+}
+
 /**
  * Minimal interface for editor functionality needed by this hook.
  */
@@ -158,49 +166,42 @@ export function useBlockConversionHandlers(
     closeBlockForm();
   }, [editingBlock, editingNestedBlock, editor, closeBlockForm]);
 
-  // Convert between multistep and guided types
   const handleConvertType = useCallback(
     (newType: 'multistep' | 'guided') => {
-      const blockData = editingNestedBlock?.block ?? editingBlock?.block;
+      const blockData = editingConditionalBranchBlock?.block ?? editingNestedBlock?.block ?? editingBlock?.block;
       if (!blockData || (blockData.type !== 'multistep' && blockData.type !== 'guided')) {
         return;
       }
 
-      const currentBlock = blockData as JsonMultistepBlock | JsonGuidedBlock;
-      let convertedBlock: JsonMultistepBlock | JsonGuidedBlock;
+      try {
+        const currentBlock = blockData as JsonMultistepBlock | JsonGuidedBlock;
+        const convertedBlock = {
+          ...convertBlockType(currentBlock, newType),
+          steps:
+            newType === 'guided'
+              ? currentBlock.steps.map(stepMultistepToGuided)
+              : currentBlock.steps.map(stepGuidedToMultistep),
+        } as JsonMultistepBlock | JsonGuidedBlock;
 
-      if (newType === 'guided') {
-        convertedBlock = {
-          type: 'guided',
-          content: currentBlock.content,
-          steps: currentBlock.steps.map(stepMultistepToGuided),
-          ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
-          ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
-          ...(currentBlock.skippable && { skippable: currentBlock.skippable }),
-        };
-      } else {
-        convertedBlock = {
-          type: 'multistep',
-          content: currentBlock.content,
-          steps: currentBlock.steps.map(stepGuidedToMultistep),
-          ...(currentBlock.requirements && { requirements: currentBlock.requirements }),
-          ...(currentBlock.objectives && { objectives: currentBlock.objectives }),
-          ...(currentBlock.skippable && { skippable: currentBlock.skippable }),
-        };
+        if (editingConditionalBranchBlock) {
+          editor.updateConditionalBranchBlock(
+            editingConditionalBranchBlock.conditionalId,
+            editingConditionalBranchBlock.branch,
+            editingConditionalBranchBlock.nestedIndex,
+            convertedBlock
+          );
+        } else if (editingNestedBlock) {
+          editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
+        } else if (editingBlock) {
+          editor.updateBlock(editingBlock.id, convertedBlock);
+        }
+
+        closeBlockForm();
+      } catch (error) {
+        notifyConversionFailure(error);
       }
-
-      if (editingNestedBlock) {
-        // Update nested block
-        editor.updateNestedBlock(editingNestedBlock.sectionId, editingNestedBlock.nestedIndex, convertedBlock);
-      } else if (editingBlock) {
-        // Update root-level block
-        editor.updateBlock(editingBlock.id, convertedBlock);
-      }
-
-      // Close the modal
-      closeBlockForm();
     },
-    [editingBlock, editingNestedBlock, editor, closeBlockForm]
+    [editingBlock, editingNestedBlock, editingConditionalBranchBlock, editor, closeBlockForm]
   );
 
   // Switch any block to a different type
@@ -244,11 +245,7 @@ export function useBlockConversionHandlers(
         // Update block type - triggers form remount via key prop change
         setEditingBlockType(newType);
       } catch (error) {
-        logger.error('Failed to convert block type', { error });
-        getAppEvents().publish({
-          type: 'alert-error',
-          payload: ['Conversion failed', 'Could not convert to the selected block type.'],
-        });
+        notifyConversionFailure(error);
       }
     },
     [

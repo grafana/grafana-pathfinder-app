@@ -81,12 +81,9 @@ The root application component that initializes the plugin, handles error bounda
 ```typescript
 function App(props: AppRootProps) {
   const scene = useMemo(() => getSceneApp(), []);
-  const config = useMemo(() => getConfigWithDefaults(props.meta.jsonData || {}), [props.meta.jsonData]);
 
-  // Set global config for module-level utilities
-  useEffect(() => {
-    (window as any).__pathfinderPluginConfig = config;
-  }, [config]);
+  // `window.__pathfinderPluginConfig` is published by `plugin.init` via
+  // `publishPathfinderPluginConfig`, which is its only writer.
 
   // Initialize plugin lifecycle
   useEffect(() => {

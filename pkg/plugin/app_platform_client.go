@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -77,6 +78,11 @@ type accessTokenMinter interface {
 	Mint(ctx context.Context, namespace, idToken string) (string, error)
 }
 
+// errAccessTokenMintFailed marks a failure to mint the caller's on-behalf-of
+// access token. It is caller-scoped (auth-api can reject one subject token
+// while serving others) and carries no HTTP status, so it stays transient.
+var errAccessTokenMintFailed = errors.New("mint access token")
+
 // tokenExchangeError marks a failure to MINT the outbound on-behalf-of
 // credential, as distinct from a failure of the upstream call itself. It
 // carries no HTTP status, so the shared classifier already treats it as
@@ -89,8 +95,12 @@ type accessTokenMinter interface {
 // nil exchanger and report reasonOBOUnavailable instead.
 type tokenExchangeError struct{ err error }
 
-func (e *tokenExchangeError) Error() string { return "mint access token: " + e.err.Error() }
-func (e *tokenExchangeError) Unwrap() error { return e.err }
+func (e *tokenExchangeError) Error() string { return errAccessTokenMintFailed.Error() + ": " + e.err.Error() }
+
+// Unwrap yields the sentinel alongside the cause so errors.Is finds
+// errAccessTokenMintFailed — the marker the failure-scope classifier keys on to
+// keep a mint failure out of any shared negative cache.
+func (e *tokenExchangeError) Unwrap() []error { return []error{errAccessTokenMintFailed, e.err} }
 
 // isTokenExchangeError reports whether a failure came from the token exchange
 // rather than from the upstream App Platform call.
@@ -153,8 +163,8 @@ var credentialDiagOnce sync.Once
 var createDiagOnce sync.Once
 
 // listPage fetches one page of a namespace LIST. The body is bounded by
-// maxBytes; errors carry the upstream status for transient/terminal/
-// identity-scoped classification.
+// maxBytes; upstream HTTP failures carry the status for retryability and scope
+// classification, and a mint failure carries errAccessTokenMintFailed instead.
 func (c *appPlatformListClient) listPage(ctx context.Context, groupVersion, namespace, resource, continueToken string, pageSize int, maxBytes int64) (*appPlatformListPage, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("app platform list: empty namespace")
@@ -358,13 +368,25 @@ func isTerminalUpstreamError(err error) bool {
 	return false
 }
 
-// isIdentityScopedUpstreamError reports whether an upstream failure means the
-// aggregator rejected this caller's forwarded identity (401/403). Error-level
-// companion to isIdentityScopedUpstreamStatus, shared by every proxy route.
-func isIdentityScopedUpstreamError(err error) bool {
+// isNamespaceGlobalUpstreamError reports whether an upstream failure is a
+// property of the namespace rather than of one caller's identity, and may
+// therefore be shared across callers through a negative cache (§4, §5).
+//
+// This is an allow-list, not a deny-list on the identity-scoped statuses: any
+// failure shape we cannot positively place — including future statusless ones —
+// stays unshared, which costs re-probes but never replays one caller's error to
+// another. Scope is orthogonal to transient/terminal: a mint failure is
+// caller-scoped AND transient.
+func isNamespaceGlobalUpstreamError(err error) bool {
+	// Ordering matters: the mint hop is itself an HTTP call to auth-api, so its
+	// failures also satisfy the net.Error check below.
+	if errors.Is(err, errAccessTokenMintFailed) {
+		return false
+	}
 	var ue *appPlatformUpstreamError
 	if errors.As(err, &ue) {
-		return isIdentityScopedUpstreamStatus(ue.status)
+		return !isIdentityScopedUpstreamStatus(ue.status)
 	}
-	return false
+	var netErr net.Error
+	return errors.As(err, &netErr) || errors.Is(err, context.DeadlineExceeded)
 }

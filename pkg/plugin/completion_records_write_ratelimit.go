@@ -1,9 +1,58 @@
 package plugin
 
 import (
+	"math"
 	"sync"
 	"time"
 )
+
+// tokenBucket is a single-user token bucket. Thread-safe.
+type tokenBucket struct {
+	mu           sync.Mutex
+	tokens       float64
+	maxTokens    float64
+	refillPerSec float64
+	lastRefill   time.Time
+}
+
+func newTokenBucket(burst, refillPerSec float64, now time.Time) *tokenBucket {
+	return &tokenBucket{
+		tokens:       burst,
+		maxTokens:    burst,
+		refillPerSec: refillPerSec,
+		lastRefill:   now,
+	}
+}
+
+// take attempts to consume one token. Returns true if successful, false if
+// the bucket is empty (request should be rejected).
+func (b *tokenBucket) take(now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	elapsed := now.Sub(b.lastRefill).Seconds()
+	if elapsed > 0 {
+		b.tokens = math.Min(b.maxTokens, b.tokens+elapsed*b.refillPerSec)
+		b.lastRefill = now
+	}
+	if b.tokens >= 1 {
+		b.tokens--
+		return true
+	}
+	return false
+}
+
+// retryAfter returns how long the caller should wait before the bucket has at
+// least one token. Should only be called when take() returned false.
+func (b *tokenBucket) retryAfter() time.Duration {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	deficit := 1 - b.tokens
+	if deficit <= 0 {
+		return 0
+	}
+	seconds := deficit / b.refillPerSec
+	return time.Duration(math.Ceil(seconds*1000)) * time.Millisecond
+}
 
 // Per-user rate limit for POST /completion-records (RFC §9 flood guard).
 //
@@ -11,9 +60,7 @@ import (
 // misbehaving (or hostile, running with a valid Grafana session) client from
 // hammering the write path in a tight loop. Sized generously for a legitimate
 // burst — an offline retry queue draining several buffered completions on
-// reconnect — while still capping sustained abuse. Mirrors the token-bucket
-// shape of execRateLimiter (coda_exec_ratelimit.go), kept as a separate limiter
-// so completion-write tuning stays independent of /coda/exec.
+// reconnect — while still capping sustained abuse.
 const (
 	completionWriteRateRefillPerSec = 1.0  // sustained writes per second per user
 	completionWriteRateBurst        = 20.0 // buffered completions drainable at once

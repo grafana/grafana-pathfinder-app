@@ -4,27 +4,33 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 
 ## File listing
 
-| File                            | Purpose                                                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `index.ts`                      | Public API barrel export                                                                                |
-| `paths-data.ts`                 | Runtime platform selection (OSS vs Grafana Cloud)                                                       |
-| `paths.json`                    | OSS path definitions (static, bundled guide IDs)                                                        |
-| `paths-cloud.json`              | Grafana Cloud path definitions (superset of OSS; includes URL-based paths)                              |
-| `badges.ts`                     | 12 badge definitions, trigger types, and earning logic                                                  |
-| `learning-paths.hook.ts`        | Main `useLearningPaths()` hook — unified state management                                               |
-| `streak-tracker.ts`             | Streak calculation, milestones, and display helpers                                                     |
-| `fetch-path-guides.ts`          | Fetches guide lists from remote `index.json` for URL-based paths                                        |
-| `app-platform-paths.ts`         | Synthesizes `LearningPath` entries from the namespace's App Platform custom-guide catalogue             |
-| `useNextLearningAction.ts`      | `useNextLearningAction()` hook and pure `computeNextAction()` for the UserProfileBar                    |
-| `useDiscoverMore.ts`            | `useDiscoverMore()` hook — surfaces external learning paths for the My Learning "Discover more" section |
-| `learning-paths.test.ts`        | Tests for the main hook                                                                                 |
-| `fetch-path-guides.test.ts`     | Tests for remote guide fetching                                                                         |
-| `useNextLearningAction.test.ts` | Tests for next-action computation                                                                       |
-| `useDiscoverMore.test.ts`       | Tests for the Discover more hook                                                                        |
+| File                                           | Purpose                                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `index.ts`                                     | Public API barrel export                                                                                |
+| `paths-data.ts`                                | Runtime platform selection (OSS vs Grafana Cloud)                                                       |
+| `paths.json`                                   | OSS path definitions (static, bundled guide IDs)                                                        |
+| `paths-cloud.json`                             | Grafana Cloud path definitions (superset of OSS; includes URL-based paths)                              |
+| `app-platform-paths.ts`                        | Adapts published App Platform path and journey packages into learning paths                             |
+| `badge-coordinator.ts`                         | Orchestrates guide completion, badge awarding, streak updates, analytics, and progress events           |
+| `badges.ts`                                    | 12 badge definitions, trigger types, and earning logic                                                  |
+| `learning-paths.hook.ts`                       | Main `useLearningPaths()` hook — unified state management                                               |
+| `streak-tracker.ts`                            | Streak calculation, milestones, and display helpers                                                     |
+| `fetch-path-guides.ts`                         | Fetches guide lists from remote `index.json` for URL-based paths                                        |
+| `useNextLearningAction.ts`                     | `useNextLearningAction()` hook and pure `computeNextAction()` for the UserProfileBar                    |
+| `useDiscoverMore.ts`                           | `useDiscoverMore()` hook — surfaces external learning paths for the My Learning "Discover more" section |
+| `learning-paths.test.ts`                       | Data-integrity tests for path, badge, and guide metadata definitions                                    |
+| `fetch-path-guides.test.ts`                    | Tests for remote guide fetching                                                                         |
+| `app-platform-paths.test.ts`                   | Tests for App Platform catalogue adaptation                                                             |
+| `badge-coordinator.test.ts`                    | Tests for guide-completion orchestration                                                                |
+| `learning-paths.hook.test.ts`                  | Tests for hook fetching, metadata resolution, and App Platform merging                                  |
+| `learning-paths.completion-round-trip.test.ts` | Integration tests for guide completion flowing back into hook state                                     |
+| `reset-path-completion.test.ts`                | Integration tests for path reset behavior                                                               |
+| `useNextLearningAction.test.ts`                | Tests for next-action computation                                                                       |
+| `useDiscoverMore.test.ts`                      | Tests for the Discover more hook                                                                        |
 
 ## Path types
 
-Learning paths come in three variants based on how their guides are sourced.
+Learning paths come from three sources.
 
 ### Static paths
 
@@ -61,9 +67,9 @@ The `useLearningPaths()` hook merges these dynamically fetched guides into the p
 
 ### App Platform paths
 
-Published `path` and `journey` packages from the stack's own custom-guide catalogue are ingested at runtime, so private paths appear on My Learning alongside the bundled ones. They are not declared in `paths.json` / `paths-cloud.json` at all: `fetchAppPlatformLearningPaths(namespace)` in `app-platform-paths.ts` reads the catalogue through the `/custom-guide-repository` proxy and synthesizes `LearningPath` entries whose `guides` are the manifest's milestone IDs (bare package IDs, the same identifier completions are recorded under, so progress calculation needs no glue).
+`fetchAppPlatformLearningPaths()` reads the stack's private custom-guide catalogue through `fetchCustomGuideRepository()`. It includes only published packages whose manifest type is `path` or `journey`, and includes only published milestone members in each synthesized path. The adapter also builds metadata for every published catalogue entry, using `backend-guide:{id}` URLs so path members launch through the App Platform content resolver.
 
-`useLearningPaths()` appends them after the bundled and URL-based paths — bundled-first, matching the composite resolver's precedence. The same fetch also yields a guide-ID → title/URL map that `resolveGuideMetadata` consults before the static `paths.json` metadata, so member titles resolve without a second round-trip. A stack with no namespace, no catalogue, or an unavailable backend simply contributes no paths.
+These paths are fetched when `config.namespace` is available and appended after the bundled and URL-based paths. Their package manifest is carried on the `LearningPath` so the My Learning launch flow can preserve milestone context.
 
 ## Platform selection
 
@@ -130,7 +136,7 @@ For `path-completed` triggers, `isPathCompleted()` returns `false` when `path.gu
 | Last activity was yesterday                        | `currentStreak + 1`                 |
 | Gap of more than one day                           | Reset to `1`                        |
 
-Dates are compared as `YYYY-MM-DD` strings derived from the user's local timezone.
+Dates are compared as UTC `YYYY-MM-DD` strings derived with `toISOString()`.
 
 ### Display info
 
@@ -158,11 +164,11 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 ### State loading and synchronization
 
-`useLearningPaths()` loads the user's `LearningProgress` from `learningProgressStorage` on mount. It listens for `CustomEvent('learning-progress-updated')` dispatched by the storage layer to sync state when progress changes elsewhere in the app (for example, when a guide is completed from the docs panel). If the event includes a `detail.progress` payload, it is used directly; otherwise, progress is re-read from storage.
+`useLearningPaths()` loads the user's `LearningProgress` from `learningProgressStorage` on mount. It listens for `CustomEvent('learning-progress-updated')` dispatched by the completion coordinator and storage helpers to sync state when progress changes elsewhere in the app (for example, when a guide is completed from the docs panel). If the event includes a `detail.progress` payload, it is used directly; otherwise, progress is re-read from storage.
 
 ### Marking guides completed
 
-`markGuideCompleted(guideId)` delegates to `learningProgressStorage.markGuideCompleted()`, which handles streak updates, badge awarding, and event dispatch. The hook does not perform badge checks itself — it relies on the storage layer and event-driven synchronization.
+`markGuideCompleted(guideId)` delegates to the Tier 2 coordinator in `badge-coordinator.ts`. The coordinator loads and persists progress through `learningProgressStorage`, updates the streak, evaluates and records new badges, reports badge analytics, and dispatches the progress event. The storage layer only persists learning progress and exposes focused mutation helpers. The coordinator function is also exported directly from the module's `index.ts` barrel for completion flows that do not need the hook.
 
 ### Dismissing celebrations
 
@@ -172,9 +178,13 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 `resetPath(pathId)` clears progress for a path. The behavior differs by path type:
 
-**Static paths**: For each guide ID in the path, clears the interactive step storage (`bundled:{guideId}`), interactive completion storage, and journey completion storage. Then removes the guide IDs from `completedGuides`.
+**Static and App Platform paths**: Clears interactive steps, interactive completion, and journey completion for both the path's own keys and each member guide under both `bundled:` and `backend-guide:` schemes. It also clears milestone completion for the path keys, evicts the corresponding in-memory completion cache entries, and removes the member guide IDs from `completedGuides`. Clearing both schemes lets the same reset path handle bundled and App Platform entries without inferring the source from bare guide IDs.
 
-**URL-based paths**: Clears milestone tracking (`milestoneCompletionStorage`), journey completion, and `completedGuides` for the fetched guide slugs. Also clears interactive steps and completions for any content key that starts with the path's normalized URL. After clearing, dispatches `CustomEvent('interactive-progress-cleared')` so UI components can refresh.
+**URL-based paths**: Clears milestone tracking for the path URL and removes the fetched guide slugs from `completedGuides`. It discovers interactive and journey completion keys by normalized URL prefix, clears them in batches (including the path URL's own journey-completion key), clears matching interactive steps, and evicts matching in-memory completion cache entries.
+
+After either reset path, the hook dispatches `CustomEvent('interactive-progress-cleared')` and reloads learning progress so UI components refresh.
+
+The My Learning **Reset all progress** action is broader: it clears all learning progress, journey completion, milestone checklists, interactive steps, interactive completion, and in-memory completion caches before dispatching the same refresh event. Clearing milestone storage prevents an old checklist from immediately re-crossing the whole-path completion threshold after the reset.
 
 ## Key hooks and exports
 
@@ -182,21 +192,22 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 The primary hook exported from the module. Returns `UseLearningPathsReturn`:
 
-| Property                      | Type                        | Description                                                |
-| ----------------------------- | --------------------------- | ---------------------------------------------------------- |
-| `paths`                       | `LearningPath[]`            | Paths for the current platform with dynamic guides merged  |
-| `allBadges`                   | `Badge[]`                   | All defined badges                                         |
-| `badgesWithStatus`            | `EarnedBadge[]`             | Badges with earned state and legacy badges appended        |
-| `progress`                    | `LearningProgress`          | Current progress (guides, badges, streak, celebrations)    |
-| `getPathGuides(pathId)`       | `(string) => PathGuide[]`   | Guides for a path with completion and current-guide status |
-| `getPathProgress(pathId)`     | `(string) => number`        | Completion percentage (0–100)                              |
-| `isPathCompleted(pathId)`     | `(string) => boolean`       | Whether progress is 100%                                   |
-| `markGuideCompleted(guideId)` | `(string) => Promise<void>` | Delegates to storage layer                                 |
-| `resetPath(pathId)`           | `(string) => Promise<void>` | Clears progress for a path                                 |
-| `dismissCelebration(badgeId)` | `(string) => Promise<void>` | Removes a pending celebration                              |
-| `streakInfo`                  | `StreakInfo`                | Current streak display info                                |
-| `isLoading`                   | `boolean`                   | Initial progress loading state                             |
-| `isDynamicLoading`            | `boolean`                   | Whether URL-based guide data is still being fetched        |
+| Property                              | Type                                      | Description                                                |
+| ------------------------------------- | ----------------------------------------- | ---------------------------------------------------------- |
+| `paths`                               | `LearningPath[]`                          | Bundled, URL-based, and App Platform paths                 |
+| `allBadges`                           | `Badge[]`                                 | All defined badges                                         |
+| `badgesWithStatus`                    | `EarnedBadge[]`                           | Badges with earned state and legacy badges appended        |
+| `progress`                            | `LearningProgress`                        | Current progress (guides, badges, streak, celebrations)    |
+| `getPathGuides(pathId)`               | `(string) => PathGuide[]`                 | Guides for a path with completion and current-guide status |
+| `getPathProgress(pathId)`             | `(string) => number`                      | Completion percentage (0–100)                              |
+| `isPathCompleted(pathId)`             | `(string) => boolean`                     | Whether progress is 100%                                   |
+| `getGuideUrlForPath(guideId, pathId)` | `(string, string) => string \| undefined` | Resolves a guide URL within its parent path                |
+| `markGuideCompleted(guideId)`         | `(string) => Promise<void>`               | Delegates to the completion coordinator                    |
+| `resetPath(pathId)`                   | `(string) => Promise<void>`               | Clears progress for a path                                 |
+| `dismissCelebration(badgeId)`         | `(string) => Promise<void>`               | Removes a pending celebration                              |
+| `streakInfo`                          | `StreakInfo`                              | Current streak display info                                |
+| `isLoading`                           | `boolean`                                 | Initial progress loading state                             |
+| `isDynamicLoading`                    | `boolean`                                 | Whether URL-based guide data is still being fetched        |
 
 ### `useGuideCompletion()`
 
@@ -224,7 +235,7 @@ A pure function (no hooks) that computes the next learning action. It sorts path
 2. Not-started paths
 3. Completed paths are skipped
 
-From the highest-priority path, it selects the first guide with `isCurrent: true`. For URL-based paths, the returned `guideUrl` points to the path URL; for static paths, it uses the guide's metadata URL or falls back to `bundled:{guideId}`.
+From the highest-priority path, it selects the first guide with `isCurrent: true`. It prefers the path-scoped URL already resolved on that guide, which opens the actual next module for URL-based paths and uses `backend-guide:` URLs for App Platform members. It then falls back to the path URL, static metadata, or `bundled:{guideId}` in that order.
 
 ### `useDiscoverMore()`
 
@@ -236,13 +247,13 @@ Surfaces novel external learning paths for the My Learning "Discover more" secti
 
 The module depends on several storage instances:
 
-- `learningProgressStorage` — persists `LearningProgress`, handles `markGuideCompleted`, badge awarding, and streak updates
+- `learningProgressStorage` — persists `LearningProgress` and provides focused badge, streak, guide-removal, and reset operations
 - `interactiveStepStorage` — per-guide interactive step progress (used by `resetPath`)
 - `interactiveCompletionStorage` — interactive guide completion flags (used by `resetPath`)
 - `journeyCompletionStorage` — journey-level completion (used by `resetPath`)
-- `milestoneCompletionStorage` — milestone completion for URL-based paths (used by `resetPath`)
+- `milestoneCompletionStorage` — milestone completion for URL-based and package-backed paths (used by resets)
 
-Badge awarding for static paths is handled by `learningProgressStorage`. Badge awarding for URL-based paths is handled by `markMilestoneDone` in `docs-retrieval/learning-journey-helpers.ts`, which also emits the completion fact (and the whole-journey `journey_completed` trigger) through the `completion-records` recorder.
+Static guide completion flows through `markGuideCompleted()` in `badge-coordinator.ts`, which evaluates badges against the bundled path definitions. URL-based and App Platform journey milestones flow through `markMilestoneDone` in `docs-retrieval/learning-journey-helpers.ts`; it updates local completion state and emits completion facts (including the whole-journey `journey_completed` trigger) through the `completion-records` recorder.
 
 ### UI components (`src/components/LearningPaths/`)
 
@@ -250,17 +261,21 @@ The components consume the hooks exported from this module to render learning pa
 
 ### Content system (`src/docs-retrieval/`)
 
-`fetchPathGuides()` fetches guide data from remote `index.json` files, using the same pattern as the content fetcher's learning journey metadata parser. Guide metadata resolution in the hook checks dynamically fetched metadata first, then falls back to the static `guideMetadata` from the JSON data files.
+`fetchPathGuides()` fetches guide data from remote `index.json` files, using the same pattern as the content fetcher's learning journey metadata parser. Guide metadata resolution is scoped to a path for dynamically fetched guides, then falls back to App Platform catalogue metadata and finally the static `guideMetadata` from the JSON data files. Remote- and catalogue-derived metadata maps use null prototypes, while static lookup is gated with `Object.hasOwn()` so authored IDs cannot resolve inherited object properties.
+
+### App Platform package system
+
+`app-platform-paths.ts` consumes the private catalogue exposed by `src/lib/custom-guide-repository-client.ts`. That client calls the backend `/custom-guide-repository` proxy, applies a short per-namespace cache with in-flight request deduplication, and fails soft to an empty catalogue when the capability or request is unavailable. My Learning launches `backend-guide:` member URLs through the package-content resolver while carrying the parent manifest as package context.
 
 ### Events
 
-| Event                          | Dispatched by                  | Listened by                   |
-| ------------------------------ | ------------------------------ | ----------------------------- |
-| `learning-progress-updated`    | Storage layer (`user-storage`) | `useLearningPaths()` hook     |
-| `interactive-progress-cleared` | `resetPath()`                  | UI components needing refresh |
+| Event                          | Dispatched by                              | Listened by                   |
+| ------------------------------ | ------------------------------------------ | ----------------------------- |
+| `learning-progress-updated`    | Completion coordinator and storage helpers | `useLearningPaths()` hook     |
+| `interactive-progress-cleared` | Path reset and Reset all progress          | UI components needing refresh |
 
 ## See also
 
 - [Learning Paths components](../components/LearningPaths/README.md) — UI component documentation
 - `src/types/learning-paths.types.ts` — TypeScript type definitions
-- `src/lib/user-storage/` — Storage layer that handles persistence and badge awarding
+- `src/lib/user-storage.ts` — Storage layer for learning progress and completion state

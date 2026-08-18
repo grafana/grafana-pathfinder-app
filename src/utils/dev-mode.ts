@@ -23,11 +23,10 @@
  * - disableDevMode() - Disable dev mode entirely
  */
 
-import { config, getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import { config } from '@grafana/runtime';
 import { DocsPluginConfig } from '../constants';
 import { logger } from '../lib/logging';
-import { updatePluginSettings } from './utils.plugin';
+import { fetchPluginJsonData, updatePluginSettings } from './utils.plugin';
 import pluginJson from '../plugin.json';
 
 /**
@@ -35,12 +34,7 @@ import pluginJson from '../plugin.json';
  * fields managed by other config tabs when saving dev mode changes.
  */
 async function fetchCurrentJsonData(): Promise<DocsPluginConfig> {
-  const response = getBackendSrv().fetch<{ jsonData?: DocsPluginConfig }>({
-    url: `/api/plugins/${pluginJson.id}/settings`,
-    method: 'GET',
-  });
-  const result = await lastValueFrom(response);
-  return result.data?.jsonData || {};
+  return fetchPluginJsonData(pluginJson.id);
 }
 
 /**

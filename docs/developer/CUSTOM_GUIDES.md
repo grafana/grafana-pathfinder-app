@@ -110,13 +110,24 @@ Guides can also be pushed into a stack from outside the editor — useful for CI
 Authentication is a Grafana service-account Bearer token; writes need the **Editor** or **Admin** role. The repo ships a small helper at [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) that handles the GET-then-create-or-update dance:
 
 ```bash
+export PATHFINDER_SA_TOKEN="$GRAFANA_SA_TOKEN"
+
 scripts/upsert-guide.sh \
   --stack learn.grafana.net \
-  --token "$GRAFANA_SA_TOKEN" \
   --spec ./my-guide.json
 ```
 
-See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, error codes, and curl recipes for each operation.
+To upload a whole learning path or journey — a `manifest.json` plus the milestone guides it sequences — use [`scripts/upsert-learning-path.sh`](../../scripts/upsert-learning-path.sh) instead. It walks a package directory, uploads each milestone, then the path's cover page, and attaches the package metadata as `spec.manifest`:
+
+```bash
+scripts/upsert-learning-path.sh \
+  --stack learn.grafana.net \
+  --package ./drilldown-logs-lj
+```
+
+Guides uploaded this way can be loaded and edited in the editor like any other, with two caveats for a path's **cover page**. The editor's guide model has no `manifest` field, so saving a cover page drops `spec.manifest` and collapses the path into a flat guide — the resolver then treats it as `type: "guide"` and the milestones stop rendering, with no warning. Save, publish, and unpublish also replace `metadata` wholesale, which erases the provenance annotations `upsert-learning-path.sh` writes, so a later re-run refuses the package until you pass `--overwrite`. Re-upload with the script rather than editing a cover page in place.
+
+See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, the `spec.manifest` field table, error codes, and curl recipes for each operation.
 
 ---
 

@@ -84,7 +84,7 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 
 ## Frontend tier model
 
-Imports flow **downward only** through these tiers. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification.
+Imports flow **downward only** through these tiers. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification. Two exist today, both requirement checks reaching `integrations/` through a dynamic import so the integration stays out of the requirements chunk when the feature is off: `checks/terminal.ts` for terminal connection status and `checks/coda.ts` for the sandbox session id and exec client.
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`. Pure type definitions and configuration constants; no runtime behavior; safe to import from anywhere.
 - **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`, `completion-records/`. Auxiliary utilities, shared state, theme-aware styles, and validation helpers; importable by higher tiers.
@@ -154,7 +154,7 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `docs-retrieval` (`fetchUnifiedContent`) | `context-engine`, `components/docs-panel` | Multi-strategy fetch returns parsed guide                    |
 | `context-engine` (`getRecommendations`) | `components/docs-panel`, `Home`          | Returns scored `Recommendation[]` from recommender or bundled  |
 | `package-engine` (`createCompositeResolver`) | `docs-retrieval`, `context-engine`  | Bundled-first fallback chain                                   |
-| `requirements-manager` (`checkRequirements`) | `interactive-engine`, `components/interactive-tutorial` | Synchronous prereq verification          |
+| `requirements-manager` (`useGuideRequirements`) | `interactive-engine`, `components/interactive-tutorial` | Prereq verification scoped to the renderer's guide id |
 | `interactive-engine` (`useInteractiveElements`) | `components/interactive-tutorial`     | Action execution + auto-completion detection                |
 | `lib/dom` (`resolveSelector`)          | `interactive-engine`                     | Selector pipeline: detect → generate → validate → retry        |
 | `global-state/sidebar`, `panel-mode`   | `components/docs-panel`, `App`           | Sidebar visibility + content/editor mode                       |
@@ -165,69 +165,59 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 
 ## Backend architecture (`pkg/`)
 
-The Go backend is a **thin bridge** from the React frontend to Coda and Grafana App Platform. Pathfinder owns no database: VM state is delegated to Coda, completion records are durable App Platform resources, and process-local caches remain ephemeral. Built on `grafana-plugin-sdk-go`.
+The Go backend is a **proxy for the App Platform aggregator**, and nothing else. No database, no
+streaming. Direct dependencies are `grafana-plugin-sdk-go` and `grafana/authlib` (the on-behalf-of
+token exchange).
+
+The **App Platform** routes (`completion_records.go` + `completion_records_write.go`,
+`custom_guide_repository.go`) follow one shape: drain a paginated namespace-scoped upstream LIST,
+cache the shaped result per caller, serve it availability-first, and ride the caller's own identity
+end to end — outbound as an on-behalf-of access token minted in `pkg/plugin/auth`, never the ID
+token itself. Completion records add the write half of that shape: a POST create on the same
+coordinate, with identity stamped server-side and a deterministic idempotent name. The canonical
+pattern — including the identity trust boundary — is `docs/design/BACKEND_PROXY_PATTERN.md`.
+
+`package_recommendations.go` is the exception and must not be assimilated into that shape: it fetches
+a public CDN index anonymously behind a host allowlist, with no namespace and one process-wide
+6-hour cache. Because that cache is shared across users, per-user data must never be routed into it.
 
 **File map:**
 
 | File                                | Role                                                                                                              |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `main.go`                           | Plugin entrypoint. Calls `app.Manage("grafana-pathfinder-app", plugin.NewApp, ...)`                                |
-| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `StreamHandler`). Holds `CodaClient`, stream-sessions map, per-user VM cache. |
-| `plugin/resources.go`               | HTTP resource handlers — `http.ServeMux` wrapped in `httpadapter.New`. Input allowlists.                          |
-| `plugin/settings.go`                | Parses `JSONData` and decrypts `SecureJSONData`. Reads `CodaAPIURL`, `CodaRelayURL`, `EnrollmentKey`, `RefreshToken`. |
-| `plugin/stream.go`                  | Grafana Live `SubscribeStream` / `PublishStream` / `RunStream`. The largest file. VM resolution, SSH retry, heartbeat (3s), VM-expiry poll (15s). |
-| `plugin/terminal.go`                | `TerminalSession` — SSH session over a `WSConn`. PTY, stdin/stdout/stderr pipes, private-key normalization.        |
-| `plugin/wsconn.go`                  | `WSConn` — adapts gorilla/websocket as `net.Conn` for SSH-over-WebSocket. Pong-based read-deadline reset (90s).    |
-| `plugin/coda.go`                    | `CodaClient` — JWT-authenticated REST. VM CRUD, sample apps, alloy scenarios. Token refresh under `RWMutex`. Per-user quota: 3 VMs. |
-| `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory).            |
+| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, and the completion-write rate limiter. |
+| `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`.                      |
+| `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory). Owns `timeNow`. |
 | `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`). Per-user collation of a full-namespace LIST, 5-min TTL cache with single-flight refresh, invalidation generations, negative-cache cooldown, and stale-serve/503/capability=false error paths. |
 | `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform client for `completionrecords`: supplies group/version + resource, decodes each `items[].spec` for LISTs, and issues the create (POST) for the write path. |
 | `plugin/completion_records_write.go` | Completion Records durable write proxy (`POST /completion-records`). Fails closed with 401 on missing identity (the client retries after re-auth); server-stamps identity/org/stack/`recordedAt`/`schemaVersion`; validates a single bounded JSON fact; builds the CRD spec; derives the record name deterministically from the required non-blank client `idempotencyKey` scoped to the trusted `userID` — blank/missing → terminal 400, 409 → idempotent success; rejects negative/over-ceiling `durationMs` and `completedAt` outside `[now−30d, now+5m]`; invalidates the read cache on success; maps outcomes onto the retry contract (201 created / 401 transient after re-auth / structural 404 disarm — persisted data survives / 408+429+5xx+3xx+network+token-exchange-failure transient / other 4xx incl. 403 terminal). |
 | `plugin/completion_records_write_ratelimit.go` | Per-user token-bucket rate limiter (`newCompletionWriteRateLimiter`, held on `App`) guarding `POST /completion-records` (backend proxy pattern §9 flood guard). |
-| `plugin/auth/auth.go`               | `Exchanger` — mints the short-lived on-behalf-of access token every App Platform proxy call authenticates with. `New` returns `(nil, nil)` when no credential is provisioned, so resolvers report `obo-unavailable` instead of failing. |
-| `plugin/app_platform_client.go`     | Shared LIST/create client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, response caps and timeouts, per-request `X-Access-Token` minting, redirects disabled so a minted credential can never be followed off-origin, transient/terminal/identity-scoped error classification, first-request credential diagnostics. |
-| `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken` — fail-closed structural JWT validation of the INBOUND ID token (outbound credentials come from `pkg/plugin/auth`); `deriveCompletionUserID` (the epic's canonical identity contract) delegates here. Trust boundary documented in `docs/developer/CODA.md`. |
+| `plugin/custom_guide_repository.go` | Namespace-global custom-guide catalogue proxy (`/custom-guide-repository`).                                        |
+| `plugin/custom_guide_repository_client.go` | Per-kind wrapper for the guide-catalogue resource.                                                         |
+| `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. `New` returns `(nil, nil)` when no credential is provisioned, so resolvers report `obo-unavailable` instead of failing. |
+| `plugin/settings.go`                | Parses `JSONData` and decrypts `SecureJSONData`. Reads only `secureJsonData.accessToken` into `OBOToken`; the exchange namespace comes from plugin-context, not settings. |
+| `plugin/app_platform_client.go`     | Shared LIST/create client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, per-page byte cap + timeout, per-request `X-Access-Token` minting, redirects disabled so a minted credential can never be followed off-origin, two-axis error classification (transient/terminal, namespace-global/caller-scoped), first-request credential diagnostics. |
+| `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken` — fail-closed structural JWT validation of the INBOUND ID token (outbound credentials come from `pkg/plugin/auth`); `deriveCompletionUserID` (the epic's canonical identity contract) delegates here. Trust boundary documented in `docs/design/BACKEND_PROXY_PATTERN.md`. |
 
-**HTTP request flow (e.g., `POST /vms`):**
+**Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
 
-1. Plugin SDK dispatches to `App.CallResource()`
-2. `http.ServeMux` routes to `App.handleVMs` → `handleCreateVM`
-3. Verifies Coda is registered, validates body, gets `X-Grafana-User` header, checks quota via `CodaClient.CountVMsForUser`
-4. `CodaClient.CreateVM` — refreshes token if needed via `setAuthHeader`, POSTs to `{codaAPIURL}/api/v1/vms`, returns `VM` struct
-5. `writeJSON(w, http.StatusCreated, vm)`
-
-**Terminal stream flow (`terminal/{vmId}/{nonce}/{template?}/{app?}`):**
-
-1. Frontend xterm.js subscribes via Grafana Live → `App.SubscribeStream` accepts
-2. `App.RunStream` begins:
-   - `resolveVMForUser` — 3-tier cache: in-memory `userVMs[userLogin]` → `CodaClient.FindActiveVMForUser` → quota cleanup if needed → `CodaClient.CreateVM`
-   - `waitForVMActive` — polls `GetVM` every 3s, emits `status` frames (`pending` / `provisioning` / `active`) to the client. Timeout: 60 attempts (~3 min)
-   - SSH retry loop (3 attempts):
-     - `ConnectSSHViaRelay(relayURL, vmID, creds, accessToken)` — dial `wss://{relayURL}/relay/{vmID}` with `Authorization: Bearer {token}`; wrap as `WSConn`; SSH handshake over the WebSocket
-     - On auth error: `GetVM` to refresh creds, retry (max 2 refreshes)
-     - On transient error: 5s delay, retry
-   - `NewTerminalSessionWithClient` — `RequestPty("xterm-256color", 24, 80, …)`, `session.Shell()`, start `forwardOutput` + `forwardStderr` goroutines
-   - Store session in `streamSessions[path]`
-   - Send `connected` frame with `vmId`
-   - Start heartbeat goroutine (3s) and VM-expiry poll goroutine (15s)
-   - Block on `<-streamCtx.Done()`
-3. `App.PublishStream` — receives `{type: "input"|"resize", data}` from frontend; looks up session in `streamSessions[path]`; forwards via `session.Write` or `session.Resize`
-4. SSH stdout/stderr → `forwardOutput` / `forwardStderr` → `onOutput` callback → `sender.SendFrame` with `TerminalStreamOutput{Type: "output", Data: ...}`
-
-**Stream message types** (`TerminalStreamOutput.Type`):
-
-- `output` — SSH stdout / stderr bytes
-- `status` — VM state update (`pending` / `provisioning` / `active` / `retrying`)
-- `error` — error message + imminent disconnect
-- `connected` — handshake complete, includes `vmId`
-- `disconnected` — stream ended cleanly
-- `heartbeat` — keep-alive (no payload)
+`/package-recommendations`, `/completion-records/my`, `/completion-records/capability`,
+`/custom-guide-repository`, `/health`.
 
 **Security boundaries:**
 
-- `isAllowedCodaURL` — `https` only, host in `.lg.grafana-dev.com` / `.grafana.com`
-- `IsAllowedRelayURL` — `wss` only, same host allowlist
 - Package-recommendations URL — `https` + explicit hostname allowlist
-- SSH `HostKeyCallback: InsecureIgnoreHostKey` — intentional, VMs are ephemeral
+- Forwarded ID token — structural validation, fail closed; never `Cookie`, never a replayed
+  `Authorization` header
 
-For the full operational reference (failure modes, troubleshooting, scale considerations), load `docs/developer/CODA.md`. For agent-facing constraints on Coda code, load `.cursor/rules/coda.mdc`.
+### What is deliberately NOT here
+
+Sandbox VMs, SSH, the WebSocket relay, and Grafana Live streaming all live in the separate
+**`grafana-coda-app`** plugin. Pathfinder keeps the terminal UI only and consumes that plugin's v1
+API. `plugin.json` therefore does not set `"streaming": true`, and `pkg/` has no `gorilla/websocket`
+or `golang.org/x/crypto` dependency.
+
+If a task mentions `CodaClient`, `RunStream`, `ConnectSSHViaRelay`, `WSConn`, or `resolveVMForUser`,
+that work belongs in the `grafana-coda-app` repo. For the frontend side of the integration, load
+`.cursor/rules/coda.mdc`; for the operational reference, `docs/developer/CODA.md`.

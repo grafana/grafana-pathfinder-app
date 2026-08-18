@@ -10,6 +10,7 @@
 import React from 'react';
 import { Button, Badge, Icon, IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import type { ViewMode } from './types';
+import { editorStatusBadge } from './editor-chrome-status';
 import { testIds } from '../../constants/testIds';
 import { getHeaderStyles } from './header/header.styles';
 import { HeaderTitleRow } from './header/HeaderTitleRow';
@@ -126,31 +127,17 @@ export function BlockEditorHeader({
   const styles = useStyles2(getHeaderStyles);
 
   const backendBadge = () => {
-    // The label sits in a [data-badge-label] span so `previewStatusWrap` can hide
-    // it at narrow preview widths — the badge collapses to its colored icon while
-    // the Tooltip keeps the full text, so status never disappears at 320px.
-    const badge = (
-      text: string,
-      color: 'blue' | 'orange' | 'green',
-      icon: 'circle' | 'exclamation-triangle' | 'cloud-upload',
-      tip: string
-    ) => (
-      <Tooltip content={tip}>
+    // Labels come from the shared status module so this badge and the docs-panel
+    // tab badge can't drift. The label sits in a [data-badge-label] span so
+    // `previewStatusWrap` can hide it at narrow preview widths — the badge
+    // collapses to its colored icon while the Tooltip keeps the full text, so
+    // status never disappears at 320px.
+    const { text, color, icon, tooltip } = editorStatusBadge({ publishedStatus, hasUnsyncedChanges });
+    return (
+      <Tooltip content={tooltip}>
         <Badge text={<span data-badge-label>{text}</span>} color={color} icon={icon} />
       </Tooltip>
     );
-
-    if (publishedStatus === 'not-saved') {
-      return badge('Draft', 'blue', 'circle', 'Not yet saved to library');
-    }
-    if (publishedStatus === 'draft') {
-      return hasUnsyncedChanges
-        ? badge('Draft (modified)', 'orange', 'exclamation-triangle', 'Draft has unsaved changes')
-        : badge('Draft', 'blue', 'circle', 'Saved to library but not published to users');
-    }
-    return hasUnsyncedChanges
-      ? badge('Published (modified)', 'orange', 'exclamation-triangle', 'Published guide has unsaved changes')
-      : badge('Published', 'green', 'cloud-upload', 'Published and visible to users');
   };
 
   const localSaveIndicator = !isBackendAvailable && (

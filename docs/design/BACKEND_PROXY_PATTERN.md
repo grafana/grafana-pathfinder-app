@@ -40,9 +40,15 @@ flat byte fetches). It must:
   deadline, an N-page drain under `context.WithoutCancel` is bounded only by N × per-page-timeout
   — detached must not mean unkillable. Derive the detach as
   `context.WithTimeout(context.WithoutCancel(ctx), aggregateDeadline)`;
-- classify errors once — **transient** (429 / 5xx / network / timeout) vs **terminal** (other
-  4xx) — and flag whether the failure was **identity-scoped** (upstream 401/403 for _this_
-  caller's forwarded identity). Every downstream decision keys off this classification;
+- classify errors once, on two **orthogonal** axes. **Retryability**: transient (429 / 5xx /
+  network / timeout) vs terminal (other 4xx). **Scope**: namespace-global (a property of the
+  namespace, so shareable across callers) vs caller-scoped (upstream 401/403 for _this_ caller's
+  forwarded identity, or a failure to mint _this_ caller's on-behalf-of token). The combinations
+  are all reachable — a mint failure is caller-scoped **and** transient — so neither axis may be
+  derived from the other. Classify scope as an **allow-list**: only positively recognized
+  namespace-global shapes are shareable, so a statusless failure nobody has classified yet costs
+  re-probes rather than replaying one caller's error to another. Every downstream decision keys
+  off this classification;
 - take a per-kind decode callback (`items[].spec` → typed record) so one client serves every kind.
 
 URL construction: `url.PathEscape` every path segment via one shared
@@ -100,16 +106,39 @@ the fixed internal aggregator.
 - **A stack with no provisioned CAP token is structurally unavailable** (`reason:
 "obo-unavailable"`), not a transient failure. A failed exchange, by contrast, is transient: it
   carries no HTTP status, so the shared classifier retries rather than caching a terminal result.
+  It is also **caller-scoped** — auth-api can reject one subject token while serving others — so
+  it needs its own sentinel error and must never reach a shared negative cache (§1 scope axis).
 - **Never forward `Cookie`.** No branch in this repo's history has ever needed it against the
   aggregator; the caller's full session is the broadest possible ambient grant and the classic
   confused-deputy shape.
 - **Never replay the inbound `Authorization` header.** Grafana strips it before plugin resource
   handlers, so replaying it forwards an absent header — dead code that reads as load-bearing.
-- Write down the trust assumption **once**, in `docs/developer/CODA.md`, identically for all
-  proxies: structural (non-signature) JWT validation is defensible _only_ because requests reach
-  the plugin exclusively via Grafana's trusted server→plugin forwarding, and the plugin backend
-  is not independently reachable with a client-set `X-Grafana-Id`. Name JWKS verification via
-  `github.com/grafana/authlib` as the single future-hardening item; do not re-argue it per PR.
+
+### The identity trust boundary — canonical statement
+
+This subsection is the single authoritative statement for **all** App Platform proxies. Do not
+re-argue this trade-off per PR; link here instead. (It previously lived in
+`docs/developer/CODA.md`, which was correct only by accident — it moved here when the Coda backend
+was extracted into the `grafana-coda-app` plugin and `CODA.md` became a consumer guide.)
+
+The `/completion-records/*` and `/custom-guide-repository` routes authenticate callers by
+**structural (non-signature) validation** of the Grafana-forwarded ID token (`X-Grafana-Id`, via the
+SDK constant `backend.GrafanaUserSignInTokenHeaderName`): well-formed JWT, `exp` present and
+unexpired, with the `sub` claim extracted verbatim only on routes that serve per-user data
+(`pkg/plugin/app_platform_identity.go`).
+
+This is defensible **only** because requests reach the plugin exclusively via Grafana's trusted
+server→plugin forwarding, and the plugin backend is not independently reachable with a client-set
+`X-Grafana-Id`.
+
+Outbound, the ID token is **not** forwarded as a credential. It is exchanged for a short-lived
+on-behalf-of access token sent on `X-Access-Token`, per the outbound bullets above — never the
+caller's `Cookie`, and never a replay of the inbound `Authorization` header.
+
+The single future-hardening item is cryptographic verification of the inbound ID token against
+Grafana's JWKS via `github.com/grafana/authlib`; it is not wired today because it needs runtime
+key-endpoint configuration. (`authlib` is already a direct dependency for the outbound token
+exchange; this is about the inbound check.)
 
 ## 4. Cache
 
@@ -127,9 +156,10 @@ the fixed internal aggregator.
   LIST returns the same result for every authorized caller in the namespace; otherwise one
   caller's richer RBAC view leaks to everyone for a TTL window. The invariance claim must be
   written down, not assumed.
-- **Identity-scoped failures never enter the shared cache.** An upstream 401/403 for caller A's
-  token must not become a cached error served to caller B. Terminal identity failures are
-  per-request responses.
+- **Caller-scoped failures never enter the shared cache.** An upstream 401/403 for caller A's
+  token — or a failure to mint caller A's on-behalf-of token — must not become a cached error
+  served to caller B. Only failures positively classified as namespace-global on the §1 scope axis
+  are shareable; every other failure, transient or terminal, is a per-request response.
 - Cache the **shaped/collated result, not raw records**, so steady-state memory is bounded by the
   meaningful entity count; the §1 aggregate budget bounds the transient build footprint.
 - TTL by data volatility (5 min for slowly-changing per-user records; 30 s for an
@@ -164,6 +194,8 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   `http.Error` only for 405.
 - Additive evolution only; agree any envelope change with every consumer. These envelopes are
   forward contracts — downstream PRs bind to them and they ossify immediately.
+- Every envelope is described twice, in two languages, across a process boundary, so it carries
+  **contract goldens** — see §10.
 
 ## 7. Availability signaling
 
@@ -234,13 +266,43 @@ One definition each, package-wide:
 - Mocked-client unit tests cover: pagination draining (multi-page continue tokens), TTL expiry
   (deterministic via `timeNow`), single-flight, refresh rate limit, identity fail-closed
   **including `exp == 0` rejection**, cross-user isolation where data is per-user, the failure
-  matrix (cold-transient, cold-terminal, warm-stale, cooldown, identity-scoped-not-shared), and
-  the config-resolution branch (toggle off / no app URL) — don't let a test-only override
-  short-circuit the structural-unavailability path out of existence.
+  matrix (cold-transient, cold-terminal, warm-stale, cooldown, and caller-scoped-not-shared for
+  both 401/403 and a failed token mint), and the config-resolution branch (toggle off / no app
+  URL) — don't let a test-only override short-circuit the structural-unavailability path out of
+  existence.
 - Mocked tests cannot prove the live credential path. Every PR of this shape carries a **runtime
   smoke procedure** in its body (create a resource upstream, hit the route, see it shaped) and
   treats that smoke as a **gate before dependent work binds to the route** — doubly so where the
   outbound header set itself (§3) is smoke-dependent.
+
+### Contract goldens (Go ⇄ TypeScript)
+
+A new route's envelope is described twice — once in `pkg/plugin`, once in the client that consumes
+it — in two processes, so no compiler couples them. Two committed golden families do:
+
+- **Value goldens** captured from the real handler over `httptest`, in
+  `pkg/plugin/testdata/contract/<envelope-key>.<variant>.json`. Never marshalled from a hand-built
+  struct value: that cannot catch a handler that stops emitting a field its struct still declares.
+- **A reflected tag golden**, `struct-tags.json`, inventorying every reachable struct's json names,
+  types, normalized JSON wire types, and `omitempty` flags. The TypeScript test derives the same
+  normalized descriptors from Zod and compares every field, so regenerating cannot bless a type
+  widening whose existing fixture values still fit the old schema. Load-bearing, not
+  belt-and-braces: no fixture populates a
+  brand-new `omitempty` field, so a struct that _gains_ one leaves every value golden byte-identical
+  and both sides green while the frontend never learns the field exists.
+
+`pkg/plugin/contract_fixtures_test.go` writes both; `src/validation/backend-api-contract.test.ts`
+reads both and holds them against the Zod schemas in `src/types/backend-api.schema.ts`, so a Go
+change surfaces as a TypeScript failure that names the field. Those schemas track **wire truth**,
+not what the client interface wishes were on the wire.
+
+Adding a route means adding an envelope to `contractRoots()` plus at least one capture case, and a
+schema registered in `GO_STRUCT_SCHEMAS` / `BACKEND_RESPONSE_ENVELOPES`; the tests fail if either
+half is missing. Regenerate after an intentional change:
+
+```bash
+go test ./pkg/plugin -run TestContract -update
+```
 
 ## 11. The write variant (POST create)
 
@@ -357,13 +419,15 @@ out** — remove the write, not the read.
 - [ ] Outbound: shared identity-forwarding helper; ID-token-derived headers only; never `Cookie`;
       never replay inbound `Authorization`
 - [ ] Per-user data ⇒ identity-partitioned cache; shared blob ⇒ identity-invariance proven &
-      documented; identity-scoped failures never cached shared
+      documented; caller-scoped failures never cached shared
 - [ ] "Auth enforced at cache-fill, shared for TTL" comment present; no-eviction invariant
       commented
 - [ ] Stale-serve on warm failure; 503+`Retry-After` cold-transient; capability envelope
       cold-terminal; negative-cache cooldown as a separate constant
 - [ ] Envelope: `[]` never `null`; `asOf`; in-band capability; stable machine error tokens;
       "empty ≠ unavailable"
+- [ ] Contract goldens: envelope in `contractRoots()`, ≥1 `httptest` capture case, Zod schema
+      registered — value goldens _and_ the reflected tag golden
 - [ ] One toggle const; SDK header constant; `timeNow` seam everywhere
 - [ ] Debug-level upstream logs; cache metrics; first-request credential diagnostics
 - [ ] Tests: pagination, TTL expiry, `exp == 0` rejection, isolation, failure matrix, config
@@ -392,7 +456,7 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 - Transient/terminal taxonomy + `Retry-After` — the fetcher already distinguishes 401/403 from
   other non-200s internally but discards the distinction into a flat 503 (§5)
 - Separate failure cooldown + stale-serve; stop unconditionally overwriting last-good data with
-  error entries; identity-scoped failures never cached shared (§4, §5)
+  error entries; caller-scoped failures never cached shared (§4, §5)
 - `timeNow` seam + TTL-expiry test (§8, §10)
 - Stable machine error token; add `asOf` (§6)
 - Document the shared-blob identity-invariance claim at the cache (§4)
@@ -414,8 +478,8 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
 
 - Extract shared plumbing: identity helpers, toggle constant, paginated LIST client, URL builder,
   single-flight/cache scaffolding (§8)
-- Document the unsigned-JWT trust boundary once in `docs/developer/CODA.md`, identically; name
-  authlib/JWKS as the future-hardening item (§3)
+- Document the unsigned-JWT trust boundary once, identically — it now lives in §3 of this document;
+  name authlib/JWKS as the future-hardening item (§3)
 - First-request credential diagnostics log (§9)
 - Runtime smoke procedure in the PR body, gating dependent work and the final outbound header set
   (§3, §10)

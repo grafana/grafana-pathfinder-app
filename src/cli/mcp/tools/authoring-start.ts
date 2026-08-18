@@ -87,7 +87,7 @@ const AUTHORING_CONTEXT = {
     'Add contextual `requirements` to every interactive step that touches the DOM. At minimum `on-page:/path`; also `navmenu-open` for nav clicks and `is-admin` (or a role) for admin-only features.',
     "Use `verify` on actions that change state (save, create, navigate) so the next step can't run against a half-completed action.",
     'Keep prose punchy and action-oriented — the guide shows in a sidebar. "Click **Save**" beats "The save button can be clicked."',
-    "Prefer `action: button` with the visible button text over a CSS selector when possible — Grafana's button text changes far less often than the DOM tree.",
+    'Prefer a `grafana:` selector path, then a `data-testid`, over any text-based target. Visible text, `aria-label`, `placeholder` and `title` are all translated, so a guide anchored to them breaks for every user not running the locale you authored in — the engine flags these `i18n-sensitive` for exactly this reason. `action: button` with visible text remains the right fallback when you have no verified stable selector (never invent one), but treat it as a fallback, not a preference.',
     'If the target lives in a virtualized list, paginated table, or dashboard row below the fold, use a `guided` block with `lazyRender: true` on the step — a plain `interactive` will fail because `exists-reftarget` waits but cannot scroll.',
   ],
   discovery: [

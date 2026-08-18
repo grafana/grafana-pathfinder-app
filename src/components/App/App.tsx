@@ -8,7 +8,6 @@ import { homePage } from '../../pages/homePage';
 import { docsPage } from '../../pages/docsPage';
 import { fullScreenPage } from '../../pages/fullScreenPage';
 import { PluginPropsContext } from '../../utils/utils.plugin';
-import { getConfigWithDefaults } from '../../constants';
 import { onPluginStart } from '../../context-engine';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { pauseFaroBeforeReload, pushFaroError } from '../../lib/faro';
@@ -134,14 +133,6 @@ function getSceneApp() {
 
 function App(props: AppRootProps) {
   const scene = useMemo(() => getSceneApp(), []);
-
-  // Get configuration
-  const config = useMemo(() => getConfigWithDefaults(props.meta.jsonData || {}), [props.meta.jsonData]);
-
-  // Set global config early for module-level utilities
-  useEffect(() => {
-    (window as any).__pathfinderPluginConfig = config;
-  }, [config]);
 
   // SECURITY: Initialize plugin on mount (includes dev mode from server)
   useEffect(() => {

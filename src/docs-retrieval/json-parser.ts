@@ -298,7 +298,7 @@ function convertBlockByType(
     case 'quiz':
       return convertQuizBlock(block, path, stepContext);
     case 'input':
-      return convertInputBlock(block, path);
+      return convertInputBlock(block, path, stepContext);
     case 'terminal':
       return convertTerminalBlock(block, path, stepContext);
     case 'terminal-connect':
@@ -900,12 +900,41 @@ function convertQuizBlock(block: JsonQuizBlock, path: string, stepContext?: Step
   };
 }
 
-function convertInputBlock(block: JsonInputBlock, path: string): ConversionResult {
+/**
+ * Emits two element types. A datasource picker whose author asked a failing
+ * check to block becomes a tracked step; everything else stays the passive
+ * `input-block`, so no existing guide starts counting toward completion.
+ */
+function convertInputBlock(block: JsonInputBlock, path: string, stepContext?: StepContext): ConversionResult {
   // Parse prompt as markdown for the content
   const promptElements = parseMarkdownToElements(block.prompt);
 
   // Convert requirements array to comma-separated string
   const requirements = block.requirements?.join(',') || undefined;
+
+  const hasDataCheck = block.inputType === 'datasource' && Boolean(block.dataCheckQuery?.trim());
+
+  if (hasDataCheck && block.dataCheckBlocking) {
+    return {
+      element: {
+        type: 'datasource-check-step',
+        props: {
+          stepId: resolveStepId(block.id, stepContext, 'datasource-check', block.variableName),
+          variableName: block.variableName,
+          query: block.dataCheckQuery,
+          datasourceFilter: block.datasourceFilter,
+          placeholder: block.placeholder,
+          failureMessage: block.dataCheckFailureMessage,
+          timeFrom: block.dataCheckTimeFrom,
+          timeTo: block.dataCheckTimeTo,
+          requirements,
+          skippable: block.skippable ?? false,
+        },
+        children: promptElements,
+      },
+      hasInteractive: true,
+    };
+  }
 
   return {
     element: {
@@ -923,6 +952,12 @@ function convertInputBlock(block: JsonInputBlock, path: string): ConversionResul
         requirements,
         skippable: block.skippable ?? false,
         datasourceFilter: block.datasourceFilter,
+        ...(hasDataCheck && {
+          dataCheckQuery: block.dataCheckQuery,
+          dataCheckFailureMessage: block.dataCheckFailureMessage,
+          dataCheckTimeFrom: block.dataCheckTimeFrom,
+          dataCheckTimeTo: block.dataCheckTimeTo,
+        }),
       },
       children: promptElements,
     },

@@ -13,7 +13,7 @@ import (
 // settings, so stackId is deliberately not parsed here.
 func TestParseSettings_OBOCredentials(t *testing.T) {
 	settings, err := ParseSettings(backend.AppInstanceSettings{
-		JSONData:                []byte(`{"codaApiUrl":"https://coda.example"}`),
+		JSONData:                []byte(`{}`),
 		DecryptedSecureJSONData: map[string]string{"accessToken": "cap-token"},
 	})
 	if err != nil {

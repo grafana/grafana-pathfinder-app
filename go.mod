@@ -3,10 +3,8 @@ module github.com/grafana/grafana-pathfinder-app
 go 1.26.5
 
 require (
-	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/authlib v0.0.0-20260707082819-467781b5f1d6
-	github.com/grafana/grafana-plugin-sdk-go v0.296.1
-	golang.org/x/crypto v0.54.0
+	github.com/grafana/authlib v0.0.0-20260814184937-0d62418c2815
+	github.com/grafana/grafana-plugin-sdk-go v0.296.2
 )
 
 require (
