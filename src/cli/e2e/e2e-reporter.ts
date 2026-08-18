@@ -22,6 +22,7 @@ import {
   type RunnerProvenance,
   type ReportSummary,
   type ArtifactPaths,
+  type StepCoverage,
   type ReportStepResult,
   type GuideMetadata,
   type ReportConfig,
@@ -42,6 +43,7 @@ import {
  */
 export interface TestStepResult {
   stepId: string;
+  stepKind?: ReportStepResult['stepKind'];
   status: 'passed' | 'failed' | 'skipped' | 'not_reached';
   durationMs: number;
   currentUrl: string;
@@ -72,6 +74,8 @@ export interface TestResultsData {
   runner?: Partial<RunnerProvenance>;
   /** Individual step results */
   results: TestStepResult[];
+  /** Rendered tracked-root coverage from DOM discovery. */
+  coverage?: StepCoverage;
   /** Whether execution was aborted */
   aborted: boolean;
   /** Reason for abort if aborted */
@@ -131,6 +135,9 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
       currentUrl: result.currentUrl,
       consoleErrors: result.consoleErrors,
     };
+    if (result.stepKind) {
+      reportStep.stepKind = result.stepKind;
+    }
 
     // Add optional fields only if present
     if (result.skipReason) {
@@ -213,6 +220,7 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
     },
     summary,
     steps,
+    ...(data.coverage ? { coverage: data.coverage } : {}),
   };
 
   // Add optional config fields

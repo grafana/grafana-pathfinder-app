@@ -113,6 +113,43 @@ describe('generateMultiGuideReport — dependency-skipped guides', () => {
 });
 
 describe('versioned report contract', () => {
+  it('includes additive step-kind and non-gating unsupported coverage', () => {
+    const data = ranGuide('mixed-guide');
+    data.results[0]!.stepKind = 'plain';
+    data.coverage = {
+      contractSource: 'current',
+      rendered: 2,
+      supported: 1,
+      executed: 1,
+      unsupported: 1,
+      unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+    };
+
+    const report = generateReport(data);
+
+    expect(report.outcome).toBe('passed');
+    expect(report.steps[0]!.stepKind).toBe('plain');
+    expect(report.coverage).toEqual(data.coverage);
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+  });
+
+  it('keeps per-guide coverage in multi-guide reports without changing guide outcomes', () => {
+    const covered = ranGuide('covered');
+    covered.coverage = {
+      contractSource: 'legacy',
+      rendered: 1,
+      supported: 1,
+      executed: 1,
+      unsupported: 0,
+      unsupportedSteps: [],
+    };
+
+    const report = generateMultiGuideReport([covered, ranGuide('other')]);
+
+    expect(report.summary.passedGuides).toBe(2);
+    expect(report.reports[0]!.coverage).toEqual(covered.coverage);
+    expect(() => MultiGuideReportSchema.parse(report)).not.toThrow();
+  });
   it('includes normalized outcome, provenance, target, timestamps, and content digest', () => {
     const report = generateReport({
       ...ranGuide('always-passes'),

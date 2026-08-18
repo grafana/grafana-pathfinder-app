@@ -11,11 +11,14 @@
 // DOM Selectors
 // ============================================
 
+export const CURRENT_STEP_SELECTOR = '[data-test-step-kind][data-test-step-id]';
+
 /**
- * Selector pattern for interactive step elements.
- * Steps are identified by data-testid starting with "interactive-step-".
+ * Older deployed plugins do not expose the tracked-root contract.
+ * The completed badge shares the step test ID prefix, so this fallback excludes it.
  */
-export const STEP_SELECTOR = '[data-testid^="interactive-step-"]';
+export const LEGACY_STEP_SELECTOR =
+  '[data-testid^="interactive-step-"]:not([data-testid^="interactive-step-completed-"])';
 
 /**
  * Prefix to strip from data-testid to get the step ID.

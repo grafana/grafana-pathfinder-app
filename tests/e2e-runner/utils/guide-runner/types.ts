@@ -9,6 +9,7 @@
  */
 
 import { Locator } from '@playwright/test';
+import type { StepTypeKind } from '../../../../src/components/interactive-tutorial/step-type-registry';
 
 // ============================================
 // Step Types
@@ -24,6 +25,8 @@ import { Locator } from '@playwright/test';
  * - U3: Steps may not be clickable when discovered (sequential dependencies)
  */
 export interface TestableStep {
+  /** Registered driver kind for this step. */
+  stepKind: StepTypeKind;
   /** Unique identifier for the step (extracted from data-testid) */
   stepId: string;
 
@@ -81,11 +84,27 @@ export interface TestableStep {
   locator: Locator;
 }
 
+export type StepContractSource = 'current' | 'legacy';
+
+export interface UnsupportedStepCoverage {
+  stepKind: string;
+  stepId: string;
+}
+
+export interface StepCoverage {
+  contractSource: StepContractSource;
+  rendered: number;
+  supported: number;
+  executed: number;
+  unsupported: number;
+  unsupportedSteps: UnsupportedStepCoverage[];
+}
+
 /**
  * Result of step discovery operation.
  */
 export interface StepDiscoveryResult {
-  /** All discovered steps in DOM order */
+  /** Supported steps in DOM order. */
   steps: TestableStep[];
 
   /** Total count of steps found */
@@ -99,6 +118,9 @@ export interface StepDiscoveryResult {
 
   /** Duration of discovery in milliseconds */
   durationMs: number;
+
+  /** Coverage for every rendered tracked root. */
+  coverage: StepCoverage;
 }
 
 /**
@@ -297,6 +319,9 @@ export type ErrorClassification =
 export interface StepTestResult {
   /** The step identifier */
   stepId: string;
+
+  /** Registered driver kind for this step. */
+  stepKind?: StepTypeKind;
 
   /** Execution outcome */
   status: StepStatus;

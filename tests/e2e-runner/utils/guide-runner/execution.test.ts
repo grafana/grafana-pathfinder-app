@@ -58,12 +58,12 @@ import type { Locator, Page } from '@playwright/test';
 
 import {
   scrollStepIntoView,
-  clickSkipButtonAndSync,
   waitForGuidedCommentBoxReady,
   runGuidedSubstepLoop,
   executeStep,
   summarizeResults,
 } from './execution';
+import { clickSkipButtonAndSync } from './drivers';
 import { handleRequirementsWithFix } from './requirements';
 import { dismissBadgeCelebrations } from './badge-celebrations';
 import {
@@ -75,6 +75,7 @@ import type { StepTestResult, TestableStep } from './types';
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
+    stepKind: overrides.stepKind ?? (overrides.isGuided === false ? 'plain' : 'guided'),
     stepId: 'test-step-1',
     index: 0,
     skippable: false,

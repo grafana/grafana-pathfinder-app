@@ -91,8 +91,23 @@ export const ArtifactPathsSchema = z.object({
   console: z.string().optional(),
 });
 
+export const StepCoverageSchema = z.object({
+  contractSource: z.enum(['current', 'legacy']),
+  rendered: z.number().int().nonnegative(),
+  supported: z.number().int().nonnegative(),
+  executed: z.number().int().nonnegative(),
+  unsupported: z.number().int().nonnegative(),
+  unsupportedSteps: z.array(
+    z.object({
+      stepKind: z.string(),
+      stepId: z.string(),
+    })
+  ),
+});
+
 export const ReportStepResultSchema = z.object({
   stepId: z.string(),
+  stepKind: z.string().optional(),
   index: z.number().int().nonnegative(),
   status: z.enum(['passed', 'failed', 'skipped', 'not_reached']),
   duration: z.number().nonnegative(),
@@ -161,6 +176,7 @@ export const E2ETestReportSchema = z
     config: ReportConfigSchema,
     summary: ReportSummarySchema,
     steps: z.array(ReportStepResultSchema),
+    coverage: StepCoverageSchema.optional(),
     aborted: z.boolean().optional(),
     abortReason: AbortReasonSchema.optional(),
     abortMessage: z.string().optional(),
@@ -231,6 +247,7 @@ export type RunnerProvenance = z.infer<typeof RunnerProvenanceSchema>;
 export type ReportTarget = z.infer<typeof ReportTargetSchema>;
 export type ReportSummary = z.infer<typeof ReportSummarySchema>;
 export type ArtifactPaths = z.infer<typeof ArtifactPathsSchema>;
+export type StepCoverage = z.infer<typeof StepCoverageSchema>;
 export type ReportStepResult = z.infer<typeof ReportStepResultSchema>;
 export type GuideMetadata = z.infer<typeof GuideMetadataSchema>;
 export type ReportConfig = z.infer<typeof ReportConfigSchema>;
