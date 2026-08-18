@@ -31,7 +31,7 @@ const response: PackageRecommendationsResponse = {
       title: 'A',
       type: 'path',
       description: 'first',
-      manifest: { milestones: ['m1', 'm2'] },
+      manifest: { id: 'a', type: 'path', milestones: ['m1', 'm2'] },
     },
     { id: 'b', path: 'packages/b', title: 'B', type: 'path' },
     // Individual guide, not a whole path → filtered out.
@@ -54,7 +54,10 @@ describe('useDiscoverMore', () => {
 
     // The 'guide'-typed entry is excluded; only whole paths surface.
     expect(result.current.items.map((i) => i.id)).not.toContain('g');
-    expect(result.current.items).toEqual([
+    // toMatchObject, not toEqual: a schema-valid manifest parses with its
+    // .default() fields applied, so the parsed object has more keys than the
+    // raw fixture — only the fields under test need to match.
+    expect(result.current.items).toMatchObject([
       {
         id: 'a',
         title: 'A',
@@ -74,15 +77,12 @@ describe('useDiscoverMore', () => {
     ]);
   });
 
-  // Without the inlined manifest threaded through as packageInfo, Discover
-  // More launches fall through to plain fetchContent and never resolve a
-  // milestone toolbar, progress chrome, or next/prev nav.
   it('threads the inlined manifest through so launch can build packageInfo from it', async () => {
     const { result } = renderHook(() => useDiscoverMore());
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(result.current.items.find((i) => i.id === 'a')?.manifest).toEqual({ milestones: ['m1', 'm2'] });
+    expect(result.current.items.find((i) => i.id === 'a')?.manifest).toMatchObject({ milestones: ['m1', 'm2'] });
   });
 
   it('excludes items whose title is already shown elsewhere', async () => {

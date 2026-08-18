@@ -16,6 +16,8 @@ import {
   buildPackageFileUrl,
   type OnlinePackageEntry,
 } from '../lib/package-recommendations-client';
+import { ManifestJsonObjectSchema } from '../types/package.schema';
+import type { ManifestJson } from '../types/package.types';
 import { logger } from '../lib/logging';
 
 const DEFAULT_DISCOVER_COUNT = 5;
@@ -32,13 +34,8 @@ export interface DiscoverMoreItem {
   contentUrl: string;
   /** Milestone count from the inlined manifest, when available. */
   milestoneCount?: number;
-  /**
-   * The package's inlined manifest, when available. Threaded into launch as
-   * `packageInfo` — without it, the loader falls through to plain
-   * `fetchContent` and the item renders as a bare document with no milestone
-   * toolbar, progress chrome, or next/prev navigation.
-   */
-  manifest?: Record<string, unknown>;
+  /** The package's inlined manifest, when available and schema-valid — threaded into launch as `packageInfo` to save a redundant re-fetch. */
+  manifest?: ManifestJson;
 }
 
 export interface UseDiscoverMoreOptions {
@@ -58,6 +55,15 @@ function milestoneCountOf(entry: OnlinePackageEntry): number | undefined {
   return Array.isArray(milestones) ? milestones.length : undefined;
 }
 
+// Mirrors online-cdn-resolver.ts's handling of the same OnlinePackageEntry.manifest shape.
+function parseManifest(manifest: Record<string, unknown> | undefined): ManifestJson | undefined {
+  if (!manifest) {
+    return undefined;
+  }
+  const parsed = ManifestJsonObjectSchema.loose().safeParse(manifest);
+  return parsed.success ? (parsed.data as ManifestJson) : undefined;
+}
+
 function toDiscoverItem(entry: OnlinePackageEntry, baseUrl: string): DiscoverMoreItem | null {
   const contentUrl = buildPackageFileUrl(baseUrl, entry.path, 'content.json');
   if (!contentUrl) {
@@ -69,7 +75,7 @@ function toDiscoverItem(entry: OnlinePackageEntry, baseUrl: string): DiscoverMor
     description: entry.description,
     contentUrl,
     milestoneCount: milestoneCountOf(entry),
-    manifest: entry.manifest,
+    manifest: parseManifest(entry.manifest),
   };
 }
 

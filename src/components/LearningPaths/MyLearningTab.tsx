@@ -231,10 +231,8 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         interaction_location: 'my_learning_discover_more',
       });
 
-      // Without packageInfo, the loader falls through to plain fetchContent
-      // and the item renders as a bare document — no milestone toolbar, no
-      // progress chrome, no next/prev nav. Mirrors the packageInfo threading
-      // already done for My Courses / App Platform guides above.
+      // prepareGuideLaunch backfills packageInfo from the URL when absent, but
+      // the manifest is already inlined here — passing it saves that re-fetch.
       const packageInfo: PackageOpenInfo | undefined = item.manifest
         ? { packageId: item.id, packageManifest: { ...item.manifest, id: item.id } }
         : undefined;
