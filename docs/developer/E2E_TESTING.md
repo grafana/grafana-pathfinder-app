@@ -258,6 +258,7 @@ Key contract fields:
 - `guide.sourceUrl`: remote package source URL when available
 - `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
 - `steps[].stepKind`: optional registered driver kind for a reported step
+- `steps[].guidedSubsteps`: optional guided substep records with an index, action, and passed or skipped outcome
 - `coverage.contractSource`: `current` for tracked roots, or `legacy` for the compatibility selector
 - `coverage.rendered`: number of tracked roots in the rendered DOM
 - `coverage.supported`: number of rendered roots with supported drivers
@@ -318,7 +319,17 @@ Or by path:
 npx pathfinder-cli e2e src/bundled-interactives/block-editor-tutorial/content.json
 ```
 
-Guided steps are discovered via `data-targetaction="guided"` and `data-test-substep-total`; after "Do it", the runner drives substeps using only the comment box (`data-test-action`, `data-test-reftarget`, `data-test-target-value`) and step state (`data-test-step-state`, `data-test-substep-index`). Full coverage (button, highlight, formfill, hover, noop, skippable) may require additional guides such as `prometheus-grafana-101` or `loki-grafana-101`.
+Guided steps use the tracked root contract and `data-test-substep-total`. The root also supplies `data-test-substep-timeout-ms`.
+
+Before Do it, the runner exposes the settlement binding. It installs an idempotent listener in the current and future documents.
+
+After Do it, the runner reads each action from the comment box. It uses `data-test-skippable` only after the normal action fails.
+
+The collector keeps all passed and skipped substeps after root detachment, reload, or navigation. It clears page state when the page closes.
+
+It also keeps partial evidence when a later action fails.
+
+The report can include optional `guidedSubsteps` evidence. This addition does not change `schemaVersion`, guide outcomes, or exit codes.
 
 ## Framework test guide
 
@@ -362,24 +373,27 @@ The environment is reset **between dependency chains**, not between every guide.
 
 ## Timing and timeouts
 
-| Constant                   | Value            | Purpose                                                                                     |
-| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------- |
-| Base step timeout          | 30s              | Maximum time for a single step                                                              |
-| Multistep bonus            | +5s per action   | Added for each internal action in multisteps                                                |
-| Guided substep bonus       | +30s per substep | Added for each substep in guided blocks                                                     |
-| Button enable wait         | 10s              | Wait for sequential dependencies                                                            |
-| Fix button timeout         | 10s              | Per fix operation                                                                           |
-| Max fix attempts           | 3                | Retry limit before giving up                                                                |
-| Requirements settle window | 1s               | Poll budget before an unmet read with no Fix button counts as terminal                      |
-| Scroll into view           | 5s               | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
-| Late completion check      | 2s               | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
-| Skip sync                  | 5s               | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |
-| Guided reload wait         | 15s              | Bounds waiting for `domcontentloaded` after a detected reload or navigation mid-guided-step |
+| Constant                   | Value           | Purpose                                                                                     |
+| -------------------------- | --------------- | ------------------------------------------------------------------------------------------- |
+| Base step timeout          | 30s             | Maximum time for a single step                                                              |
+| Multistep bonus            | +5s per action  | Added for each internal action in multisteps                                                |
+| Guided substep timeout     | 120s by default | Uses the effective block value for each guided substep                                      |
+| Button enable wait         | 10s             | Wait for sequential dependencies                                                            |
+| Fix button timeout         | 10s             | Per fix operation                                                                           |
+| Max fix attempts           | 3               | Retry limit before giving up                                                                |
+| Requirements settle window | 1s              | Poll budget before an unmet read with no Fix button counts as terminal                      |
+| Scroll into view           | 5s              | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
+| Late completion check      | 2s              | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
+| Skip sync                  | 5s              | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |
+| Guided reload wait         | 15s             | Bounds waiting for `domcontentloaded` after a detected reload or navigation mid-guided-step |
 
 Examples:
 
 - A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
-- A guided block with 3 substeps gets a 120s timeout (30s base + 3×30s).
+- A guided block with three default substeps gets a 390s step timeout (30s base + 3×120s).
+- A guided block with two 45s substeps gets a 120s step timeout (30s base + 2×45s).
+
+Authored guided timeouts must be finite positive integers. Invalid programmatic or DOM values use the 120s default.
 
 ## Troubleshooting
 

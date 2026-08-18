@@ -1,25 +1,27 @@
-import type { InternalAction } from './interactive-actions.types';
+import {
+  isGuidedActionType,
+  type GuidedAction,
+  type GuidedActionType,
+  type InternalAction,
+} from './interactive-actions.types';
 
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
 
-// Derived by exclusion rather than restated: a field the engine reads off an
-// action must reach the live tab, and hand-listing the fields is what dropped
-// targetState on this wire three times over. Only `requirements` stays behind —
-// the controller gates them, the live tab replays. Fields added to
-// InternalAction therefore reach the wire by default rather than by remembering.
-export type CrossTabInternalAction = Omit<InternalAction, 'requirements'>;
+export type CrossTabInternalAction = InternalAction &
+  Partial<Pick<GuidedAction, 'isSkippable' | 'formHint' | 'validateInput' | 'lazyRender' | 'scrollContainer'>>;
 
 /** Narrow an engine action to what the wire carries. */
-export function toCrossTabInternalAction(action: InternalAction): CrossTabInternalAction {
-  const { requirements, ...wire } = action;
-  return wire;
+export function toCrossTabInternalAction(action: CrossTabInternalAction): CrossTabInternalAction {
+  return { ...action };
 }
 
 export interface CrossTabAction extends CrossTabInternalAction {
   refTarget: string;
   internalActions?: CrossTabInternalAction[];
+  guideId?: string;
+  guidedStepTimeoutMs?: number;
 }
 
 interface CrossTabEnvelope {
@@ -153,6 +155,15 @@ export interface StepProgressMessage extends CrossTabEnvelope {
   total: number;
 }
 
+export interface GuidedSubstepSettledMessage extends CrossTabEnvelope {
+  kind: 'guided-substep-settled';
+  stepId: string;
+  runId: string;
+  index: number;
+  action: GuidedActionType;
+  outcome: 'passed' | 'skipped';
+}
+
 export type CrossTabMessage =
   | StepCommandMessage
   | HeartbeatMessage
@@ -163,6 +174,7 @@ export type CrossTabMessage =
   | FixResultMessage
   | StepCompleteMessage
   | StepProgressMessage
+  | GuidedSubstepSettledMessage
   | PairingChallengeMessage
   | PairingAcceptMessage;
 
@@ -200,6 +212,7 @@ const KNOWN_TARGET_ACTIONS: ReadonlySet<string> = new Set([
   'formfill',
   'navigate',
   'hover',
+  'noop',
   'guided',
   'multistep',
 ]);
@@ -214,6 +227,18 @@ function hasValidEnvelope(message: Record<string, unknown>): boolean {
     typeof message.senderId === 'string' &&
     typeof message.timestamp === 'number' &&
     typeof message.kind === 'string'
+  );
+}
+
+function isValidGuidedSubstepSettled(message: Record<string, unknown>): boolean {
+  return (
+    typeof message.stepId === 'string' &&
+    typeof message.runId === 'string' &&
+    typeof message.index === 'number' &&
+    Number.isInteger(message.index) &&
+    message.index >= 0 &&
+    isGuidedActionType(message.action) &&
+    (message.outcome === 'passed' || message.outcome === 'skipped')
   );
 }
 
@@ -235,7 +260,15 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
     typeof action.refTarget !== 'string' ||
     typeof action.targetAction !== 'string' ||
     !KNOWN_TARGET_ACTIONS.has(action.targetAction) ||
-    !isOptionalTargetState(action.targetState)
+    !isOptionalTargetState(action.targetState) ||
+    !isOptionalString(action.requirements) ||
+    !isOptionalBoolean(action.isSkippable) ||
+    !isOptionalString(action.formHint) ||
+    !isOptionalBoolean(action.validateInput) ||
+    !isOptionalBoolean(action.lazyRender) ||
+    !isOptionalString(action.scrollContainer) ||
+    !isOptionalString(action.guideId) ||
+    !isOptionalPositiveInteger(action.guidedStepTimeoutMs)
   ) {
     return false;
   }
@@ -251,10 +284,17 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
           isRecord(sub) &&
           typeof sub.targetAction === 'string' &&
           KNOWN_TARGET_ACTIONS.has(sub.targetAction) &&
+          (action.targetAction !== 'guided' || isGuidedActionType(sub.targetAction)) &&
           isOptionalString(sub.refTarget) &&
           isOptionalString(sub.targetValue) &&
           isOptionalString(sub.targetComment) &&
-          isOptionalTargetState(sub.targetState)
+          isOptionalTargetState(sub.targetState) &&
+          isOptionalString(sub.requirements) &&
+          isOptionalBoolean(sub.isSkippable) &&
+          isOptionalString(sub.formHint) &&
+          isOptionalBoolean(sub.validateInput) &&
+          isOptionalBoolean(sub.lazyRender) &&
+          isOptionalString(sub.scrollContainer)
       )
     );
   }
@@ -275,6 +315,16 @@ function isOptionalString(value: unknown): boolean {
 
 function isOptionalTargetState(value: unknown): boolean {
   return value === undefined || typeof value === 'boolean' || typeof value === 'string';
+}
+
+function isOptionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean';
+}
+
+function isOptionalPositiveInteger(value: unknown): boolean {
+  return (
+    value === undefined || (typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value > 0)
+  );
 }
 
 const MAX_PAIRING_FIELD_LENGTH = 512;
@@ -397,6 +447,7 @@ const KIND_VALIDATORS: Record<CrossTabMessage['kind'], (message: Record<string, 
   'fix-result': isValidFixResult,
   'step-complete': isValidStepComplete,
   'step-progress': isValidStepProgress,
+  'guided-substep-settled': isValidGuidedSubstepSettled,
   'pairing-challenge': isValidPairingChallenge,
   'pairing-accept': isValidPairingAccept,
 };

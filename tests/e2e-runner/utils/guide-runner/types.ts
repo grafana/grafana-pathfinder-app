@@ -10,6 +10,7 @@
 
 import { Locator } from '@playwright/test';
 import type { StepTypeKind } from '../../../../src/components/interactive-tutorial/step-type-registry';
+import type { GuidedAction } from '../../../../src/types/interactive-actions.types';
 
 // ============================================
 // Step Types
@@ -74,6 +75,9 @@ export interface TestableStep {
    */
   guidedStepCount?: number;
 
+  /** Effective runtime timeout for each guided substep. */
+  guidedStepTimeoutMs?: number;
+
   /**
    * The target element selector (L3-4A).
    * Extracted from data-reftarget attribute.
@@ -127,6 +131,12 @@ export interface StepDiscoveryResult {
  * Status of a step execution.
  */
 export type StepStatus = 'passed' | 'failed' | 'skipped' | 'not_reached';
+
+export interface GuidedSubstepResult {
+  index: number;
+  action: GuidedAction['targetAction'];
+  outcome: 'passed' | 'skipped';
+}
 
 /**
  * Reason why a step was skipped.
@@ -361,6 +371,9 @@ export interface StepTestResult {
    * Contains screenshot and DOM snapshot for debugging.
    */
   artifacts?: ArtifactPaths;
+
+  /** Guided substep evidence from the rendered runtime contract. */
+  guidedSubsteps?: GuidedSubstepResult[];
 }
 
 /**

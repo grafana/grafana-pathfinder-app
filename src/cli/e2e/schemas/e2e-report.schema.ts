@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { GUIDED_ACTION_TYPES } from '../../../types/interactive-actions.types';
 
 export const E2E_REPORT_SCHEMA_VERSION = '1.0.0' as const;
 
@@ -105,6 +106,11 @@ export const StepCoverageSchema = z.object({
   ),
 });
 
+export const GuidedSubstepResultSchema = z.object({
+  index: z.number().int().nonnegative(),
+  action: z.enum(GUIDED_ACTION_TYPES),
+  outcome: z.enum(['passed', 'skipped']),
+});
 export const ReportStepResultSchema = z.object({
   stepId: z.string(),
   stepKind: z.string().optional(),
@@ -118,6 +124,7 @@ export const ReportStepResultSchema = z.object({
   skippable: z.boolean().optional(),
   classification: ErrorClassificationSchema.optional(),
   artifacts: ArtifactPathsSchema.optional(),
+  guidedSubsteps: z.array(GuidedSubstepResultSchema).optional(),
 });
 
 export const GuideMetadataSchema = z.object({

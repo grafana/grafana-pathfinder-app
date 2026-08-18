@@ -109,6 +109,28 @@ describe('requirements-checker.utils', () => {
       expect(mockReftargetExistsCheck).toHaveBeenCalledWith('button[data-testid="test-button"]', 'button', {
         lazyRender: undefined,
         scrollContainer: undefined,
+        discoverLazyTarget: undefined,
+        deadlineMs: undefined,
+        signal: undefined,
+      });
+    });
+
+    it('forwards guided lazy discovery to the shared target checker', async () => {
+      await checkRequirements({
+        requirements: 'exists-reftarget',
+        refTarget: '.lazy-panel',
+        targetAction: 'highlight',
+        lazyRender: true,
+        scrollContainer: '.dashboard-scroll',
+        discoverLazyTarget: true,
+      });
+
+      expect(mockReftargetExistsCheck).toHaveBeenCalledWith('.lazy-panel', 'highlight', {
+        lazyRender: true,
+        scrollContainer: '.dashboard-scroll',
+        discoverLazyTarget: true,
+        deadlineMs: undefined,
+        signal: undefined,
       });
     });
   });

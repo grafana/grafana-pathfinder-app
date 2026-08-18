@@ -7,6 +7,7 @@ import {
   findButtonByText,
   isElementVisible,
   resolveSelector,
+  scrollUntilElementFound,
 } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { withFaroUserAction } from '../../lib/faro';
@@ -14,14 +15,15 @@ import { createInteractionName, UserInteraction } from '../../lib/analytics';
 import { type CompletionResult, outcomeFromCompletionResult } from '../outcome-classifier';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 import { parseTargetState, resolveStateSource, satisfiesTargetState } from '../../lib/dom/toggle-state';
-import { GuidedAction } from '../../types/interactive-actions.types';
-import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
+import { GuidedAction, type GuidedSubstepSettledDetail } from '../../types/interactive-actions.types';
+import { GUIDED_SUBSTEP_SETTLED_EVENT, INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { matchFormValue } from '../auto-completion/action-matcher';
 import { applyE2ECommentBoxAttributes } from '../e2e-attributes';
 import { commentForTargetState } from './toggle-click';
 
 export type { CompletionResult };
+const GUIDED_DEADLINE_EXPIRED = Symbol('guided-deadline-expired');
 
 interface ActiveListener {
   target: EventTarget;
@@ -35,18 +37,40 @@ interface GuidedStepArbiter {
   settle: (result: CompletionResult, beforeSettle?: () => void) => CompletionResult;
   getResult: () => CompletionResult | null;
 }
+export type GuidedRequirementsCheck = (options: {
+  requirements: string;
+  targetAction?: string;
+  refTarget?: string;
+  targetValue?: string;
+  stepId?: string;
+  lazyRender?: boolean;
+  scrollContainer?: string;
+  discoverLazyTarget?: boolean;
+  guideId?: string;
+  maxRetries?: number;
+  deadlineMs?: number;
+  signal?: AbortSignal;
+}) => Promise<{ pass: boolean }>;
+
+export interface GuidedStepExecutionContext {
+  parentStepId?: string;
+  guideId?: string;
+}
 
 export class GuidedHandler {
   private activeListeners: ActiveListener[] = [];
   private pendingTimeouts: Array<ReturnType<typeof setTimeout>> = [];
   private pendingIntervals: Array<ReturnType<typeof setInterval>> = [];
   private currentAbortController: AbortController | null = null;
+  private currentRunController: AbortController | null = null;
   private completedSteps: number[] = [];
+  private settledSteps = new Set<number>();
 
   constructor(
     private stateManager: InteractiveStateManager,
     private navigationManager: NavigationManager,
-    private waitForReactUpdates: () => Promise<void>
+    private waitForReactUpdates: () => Promise<void>,
+    private checkRequirements: GuidedRequirementsCheck
   ) {}
 
   /**
@@ -72,16 +96,26 @@ export class GuidedHandler {
     }
   }
 
+  private interruptedResult(deadline: number): 'cancelled' | 'timeout' {
+    return this.remainingTime(deadline) > 0 ? 'cancelled' : 'timeout';
+  }
+
   resetProgress(): void {
     this.completedSteps = [];
+    this.settledSteps.clear();
   }
   async executeGuidedStep(
     action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
     timeout: number = INTERACTIVE_CONFIG.guided.stepTimeout,
-    onActionCompleted?: () => void
+    onActionCompleted?: () => void,
+    context: GuidedStepExecutionContext = {}
   ): Promise<CompletionResult> {
+    this.currentRunController?.abort();
+    const runController = new AbortController();
+    this.currentRunController = runController;
+    const deadline = Date.now() + timeout;
     return withFaroUserAction(
       createInteractionName(UserInteraction.DoItButtonClick),
       {
@@ -90,14 +124,36 @@ export class GuidedHandler {
         step_index: stepIndex,
         total_steps: totalSteps,
       },
-      () => this.runGuidedStep(action, stepIndex, totalSteps, timeout, onActionCompleted),
+      () => this.runGuidedStep(action, stepIndex, totalSteps, deadline, runController, onActionCompleted, context),
       // Internal waits are bounded by `timeout`; the margin only catches a hung step.
       timeout + 10_000,
       { critical: true, outcomeFrom: outcomeFromCompletionResult }
     );
   }
 
-  private createGuidedStepArbiter(): GuidedStepArbiter {
+  private waitForRetryDelay(delay: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      return Promise.reject(new DOMException('Guided target retry cancelled', 'AbortError'));
+    }
+    return new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        signal?.removeEventListener('abort', abort);
+        resolve();
+      }, delay);
+      const abort = () => {
+        clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', abort);
+        reject(new DOMException('Guided target retry cancelled', 'AbortError'));
+      };
+      signal?.addEventListener('abort', abort, { once: true });
+    });
+  }
+
+  private createGuidedStepArbiter(
+    action: GuidedAction,
+    stepIndex: number,
+    parentStepId: string | undefined
+  ): GuidedStepArbiter {
     let result: CompletionResult | null = null;
     let resolvePromise!: (result: CompletionResult) => void;
     const promise = new Promise<CompletionResult>((resolve) => {
@@ -118,6 +174,7 @@ export class GuidedHandler {
           logger.error('Guided completion callback failed', { error });
           result = 'error';
         }
+        this.publishSettledSubstep(action, stepIndex, parentStepId, result);
         resolvePromise(result);
         return result;
       },
@@ -129,15 +186,58 @@ export class GuidedHandler {
     action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
-    timeout: number,
-    onActionCompleted?: () => void
+    deadline: number,
+    runController: AbortController,
+    onActionCompleted: (() => void) | undefined,
+    context: GuidedStepExecutionContext
   ): Promise<CompletionResult> {
-    const arbiter = this.createGuidedStepArbiter();
+    const arbiter = this.createGuidedStepArbiter(action, stepIndex, context.parentStepId);
 
     try {
       this.cleanupListeners();
+      if (action.requirements) {
+        const result = await this.runBeforeDeadline(
+          this.checkRequirements({
+            requirements: action.requirements,
+            targetAction: action.targetAction,
+            refTarget: action.refTarget,
+            targetValue: action.targetValue,
+            stepId: `guided-substep-${stepIndex}`,
+            lazyRender: action.lazyRender,
+            scrollContainer: action.scrollContainer,
+            discoverLazyTarget: true,
+            guideId: context.guideId,
+            maxRetries: 0,
+            deadlineMs: deadline,
+            signal: runController.signal,
+          }),
+          deadline,
+          runController
+        );
+        if (result === GUIDED_DEADLINE_EXPIRED) {
+          return this.finishGuidedStep(this.interruptedResult(deadline), stepIndex, action, context.parentStepId);
+        }
+        if (!result.pass) {
+          return this.finishGuidedStep(
+            action.isSkippable ? 'skipped' : 'error',
+            stepIndex,
+            action,
+            context.parentStepId
+          );
+        }
+      }
+      const remainingAfterRequirements = this.remainingTime(deadline);
+      if (remainingAfterRequirements <= 0) {
+        return this.finishGuidedStep('timeout', stepIndex, action, context.parentStepId);
+      }
       if (action.targetAction === 'noop') {
-        return await this.executeNoopStep(action, stepIndex, totalSteps, timeout);
+        return await this.executeNoopStep(
+          action,
+          stepIndex,
+          totalSteps,
+          remainingAfterRequirements,
+          context.parentStepId
+        );
       }
 
       const refTarget = action.refTarget;
@@ -147,44 +247,75 @@ export class GuidedHandler {
         throw new Error(`Non-noop action ${targetAction} requires a refTarget`);
       }
 
-      await this.expandNavigationParentIfNeeded(refTarget);
+      const navigationReady = await this.runBeforeDeadline(
+        this.expandNavigationParentIfNeeded(refTarget, runController.signal),
+        deadline,
+        runController
+      );
+      if (navigationReady === GUIDED_DEADLINE_EXPIRED) {
+        return this.finishGuidedStep(this.interruptedResult(deadline), stepIndex, action, context.parentStepId);
+      }
 
       let targetElement: HTMLElement;
       try {
-        targetElement = await this.findTargetElementWithRetry(
-          refTarget,
-          targetAction,
-          timeout,
-          INTERACTIVE_CONFIG.guided.retryInterval,
-          action.isSkippable === true
-        );
+        targetElement = await this.resolveGuidedTarget(action, refTarget, targetAction, deadline, runController.signal);
       } catch (elementNotFoundError) {
+        if (this.remainingTime(deadline) <= 0) {
+          return this.finishGuidedStep('timeout', stepIndex, action, context.parentStepId);
+        }
+        if (runController.signal.aborted) {
+          return this.finishGuidedStep('cancelled', stepIndex, action, context.parentStepId);
+        }
         if (action.isSkippable) {
-          return this.finishGuidedStep('skipped', stepIndex);
+          return this.finishGuidedStep('skipped', stepIndex, action, context.parentStepId);
         }
         throw elementNotFoundError;
       }
 
-      await this.prepareElement(targetElement);
+      const prepared = await this.runBeforeDeadline(
+        this.prepareElement(targetElement, runController.signal),
+        deadline,
+        runController
+      );
+      if (prepared === GUIDED_DEADLINE_EXPIRED || this.remainingTime(deadline) <= 0) {
+        return this.finishGuidedStep(this.interruptedResult(deadline), stepIndex, action, context.parentStepId);
+      }
+      if (runController.signal.aborted) {
+        return this.finishGuidedStep('cancelled', stepIndex, action, context.parentStepId);
+      }
       // Attach before highlighting so click activation cannot beat the listener.
-      this.createCompletionListener(action, targetElement, timeout, arbiter, onActionCompleted);
+      this.createCompletionListener(action, targetElement, this.remainingTime(deadline), arbiter, onActionCompleted);
       if (action.isSkippable) {
         this.createSkipListener(stepIndex, arbiter);
       }
       this.createCancelListener(stepIndex, arbiter);
-      await this.highlightTarget(
-        targetElement,
-        targetAction,
-        stepIndex,
-        totalSteps,
-        commentForTargetState(action.targetComment, targetElement, action.targetState),
-        action.isSkippable,
-        action.formHint,
-        action.targetValue,
-        action.refTarget!
+      const highlighted = await this.runBeforeDeadline(
+        this.highlightTarget(
+          targetElement,
+          targetAction,
+          stepIndex,
+          totalSteps,
+          commentForTargetState(action.targetComment, targetElement, action.targetState),
+          action.isSkippable,
+          action.formHint,
+          action.targetValue,
+          action.refTarget!,
+          runController.signal
+        ).finally(() => {
+          if (runController.signal.aborted) {
+            targetElement.classList.remove('interactive-guided-active');
+            this.navigationManager.clearAllHighlights();
+          }
+        }),
+        deadline,
+        runController
       );
+      if (highlighted === GUIDED_DEADLINE_EXPIRED) {
+        const result = arbiter.getResult() ?? arbiter.settle(this.interruptedResult(deadline));
+        return this.finishGuidedStep(result, stepIndex, action, context.parentStepId);
+      }
 
-      return this.finishGuidedStep(await arbiter.promise, stepIndex);
+      return this.finishGuidedStep(await arbiter.promise, stepIndex, action, context.parentStepId);
     } catch (error) {
       const settledResult = arbiter.getResult();
       if (settledResult === null) {
@@ -193,14 +324,24 @@ export class GuidedHandler {
         logger.warn(`Guided step ${stepIndex + 1} settled before setup failed`, { error, result: settledResult });
       }
       const result = settledResult ?? arbiter.settle('error');
-      return this.finishGuidedStep(result, stepIndex);
+      return this.finishGuidedStep(result, stepIndex, action, context.parentStepId);
     }
   }
 
-  private finishGuidedStep(result: CompletionResult, stepIndex: number): CompletionResult {
+  private finishGuidedStep(
+    result: CompletionResult,
+    stepIndex: number,
+    action: GuidedAction,
+    parentStepId?: string
+  ): CompletionResult {
+    this.publishSettledSubstep(action, stepIndex, parentStepId, result);
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
+    }
+    if (this.currentRunController) {
+      this.currentRunController.abort();
+      this.currentRunController = null;
     }
     try {
       this.cleanupListeners(true);
@@ -213,6 +354,58 @@ export class GuidedHandler {
     return result;
   }
 
+  private publishSettledSubstep(
+    action: GuidedAction,
+    stepIndex: number,
+    parentStepId: string | undefined,
+    result: CompletionResult
+  ): void {
+    if (!parentStepId || (result !== 'completed' && result !== 'skipped') || this.settledSteps.has(stepIndex)) {
+      return;
+    }
+    this.settledSteps.add(stepIndex);
+    const detail: GuidedSubstepSettledDetail = {
+      stepId: parentStepId,
+      index: stepIndex,
+      action: action.targetAction,
+      outcome: result === 'skipped' ? 'skipped' : 'passed',
+    };
+    document.dispatchEvent(new CustomEvent(GUIDED_SUBSTEP_SETTLED_EVENT, { detail }));
+  }
+
+  private remainingTime(deadline: number): number {
+    return Math.max(0, deadline - Date.now());
+  }
+
+  private async runBeforeDeadline<T>(
+    work: Promise<T>,
+    deadline: number,
+    runController: AbortController
+  ): Promise<T | typeof GUIDED_DEADLINE_EXPIRED> {
+    if (runController.signal.aborted) {
+      return GUIDED_DEADLINE_EXPIRED;
+    }
+    const remaining = this.remainingTime(deadline);
+    if (remaining <= 0) {
+      runController.abort();
+      return GUIDED_DEADLINE_EXPIRED;
+    }
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<typeof GUIDED_DEADLINE_EXPIRED>((resolve) => {
+      timeoutId = setTimeout(() => {
+        runController.abort();
+        resolve(GUIDED_DEADLINE_EXPIRED);
+      }, remaining);
+    });
+    try {
+      return await Promise.race([work, expired]);
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
   /**
    * Execute a noop step - informational step with no target element
    * Shows a comment box and waits for user to click "Continue" or skip
@@ -221,10 +414,11 @@ export class GuidedHandler {
     action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
-    timeout: number
+    timeout: number,
+    parentStepId?: string
   ): Promise<CompletionResult> {
     this.cleanupListeners();
-    const arbiter = this.createGuidedStepArbiter();
+    const arbiter = this.createGuidedStepArbiter(action, stepIndex, parentStepId);
     this.currentAbortController = new AbortController();
     const signal = this.currentAbortController.signal;
     if (action.isSkippable) {
@@ -249,7 +443,7 @@ export class GuidedHandler {
       action.targetComment || 'Complete this step to continue',
       action.isSkippable
     );
-    return this.finishGuidedStep(await arbiter.promise, stepIndex);
+    return this.finishGuidedStep(await arbiter.promise, stepIndex, action, parentStepId);
   }
 
   /**
@@ -276,9 +470,6 @@ export class GuidedHandler {
     });
   }
 
-  /**
-   * Show a comment box for noop steps (no element highlight)
-   */
   private async showNoopCommentBox(
     stepIndex: number,
     totalSteps: number,
@@ -293,9 +484,9 @@ export class GuidedHandler {
     commentBox.setAttribute('data-ready', 'true');
     commentBox.setAttribute('data-noop', 'true');
 
-    // Apply E2E testing contract attributes
     applyE2ECommentBoxAttributes(commentBox, {
       actionType: 'noop',
+      skippable: isSkippable === true,
     });
 
     const content = document.createElement('div');
@@ -336,9 +527,9 @@ export class GuidedHandler {
     buttonContainer.className = 'interactive-comment-buttons';
 
     const continueButton = document.createElement('button');
-    continueButton.className = 'interactive-comment-skip-btn'; // Reuse skip button styling
+    continueButton.className = 'interactive-comment-skip-btn';
     continueButton.textContent = 'Continue →';
-    continueButton.style.backgroundColor = '#3871dc'; // Primary color
+    continueButton.style.backgroundColor = '#3871dc';
     continueButton.onclick = () => {
       document.dispatchEvent(new CustomEvent('guided-noop-continue', { detail: { stepIndex } }));
     };
@@ -379,17 +570,24 @@ export class GuidedHandler {
     actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     timeout: number,
     retryInterval: number,
-    skipRetryOnFailure = false
+    skipRetryOnFailure = false,
+    signal?: AbortSignal
   ): Promise<HTMLElement> {
     const startTime = Date.now();
     let attemptCount = 0;
 
     while (Date.now() - startTime < timeout) {
+      if (signal?.aborted) {
+        throw new DOMException('Guided target retry cancelled', 'AbortError');
+      }
       attemptCount++;
       try {
         const element = await this.findTargetElement(selector, actionType);
         return element;
       } catch (error) {
+        if (signal?.aborted) {
+          throw new DOMException('Guided target retry cancelled', 'AbortError');
+        }
         const elapsed = Date.now() - startTime;
         const remaining = timeout - elapsed;
 
@@ -408,20 +606,52 @@ export class GuidedHandler {
           throw error;
         }
         // Wait before retrying, but don't exceed timeout
-        await new Promise((resolve) => setTimeout(resolve, Math.min(retryInterval, remaining)));
+        await this.waitForRetryDelay(Math.min(retryInterval, remaining), signal);
       }
     }
 
     throw new Error(`Timeout finding element: ${selector}`);
   }
 
-  private async expandNavigationParentIfNeeded(selector: string): Promise<void> {
+  private async resolveGuidedTarget(
+    action: GuidedAction,
+    selector: string,
+    actionType: 'hover' | 'button' | 'highlight' | 'formfill',
+    deadline: number,
+    signal: AbortSignal
+  ): Promise<HTMLElement> {
+    if (action.lazyRender) {
+      try {
+        return await this.findTargetElement(selector, actionType);
+      } catch {
+        const discovered = await scrollUntilElementFound(selector, {
+          scrollContainerSelector: action.scrollContainer,
+          deadlineMs: deadline,
+          signal,
+        });
+        if (discovered) {
+          return this.findTargetElement(selector, actionType);
+        }
+      }
+    }
+
+    return this.findTargetElementWithRetry(
+      selector,
+      actionType,
+      this.remainingTime(deadline),
+      INTERACTIVE_CONFIG.guided.retryInterval,
+      action.isSkippable === true,
+      signal
+    );
+  }
+
+  private async expandNavigationParentIfNeeded(selector: string, signal: AbortSignal): Promise<void> {
     const targetHref = this.getNavigationTargetHref(selector);
     if (!targetHref) {
       return;
     }
 
-    await this.navigationManager.expandParentNavigationSection(targetHref);
+    await this.navigationManager.expandParentNavigationSection(targetHref, signal);
   }
 
   private getNavigationTargetHref(selector: string): string | undefined {
@@ -526,20 +756,17 @@ export class GuidedHandler {
   /**
    * Prepare element for interaction (scroll, open navigation)
    */
-  private async prepareElement(targetElement: HTMLElement): Promise<void> {
+  private async prepareElement(targetElement: HTMLElement, signal: AbortSignal): Promise<void> {
     // Validate visibility before interaction
     if (!isElementVisible(targetElement)) {
       logger.warn('Target element is not visible', { targetElement: describeElement(targetElement) });
       // Continue anyway (non-breaking)
     }
 
-    await this.navigationManager.ensureNavigationOpen(targetElement);
-    await this.navigationManager.ensureElementVisible(targetElement);
+    await this.navigationManager.ensureNavigationOpen(targetElement, signal);
+    await this.navigationManager.ensureElementVisible(targetElement, signal);
   }
 
-  /**
-   * Highlight target element with action-specific messaging
-   */
   private async highlightTarget(
     element: HTMLElement,
     actionType: 'hover' | 'button' | 'highlight' | 'formfill',
@@ -547,24 +774,21 @@ export class GuidedHandler {
     totalSteps: number,
     customComment?: string,
     isSkippable?: boolean,
-    formHint?: string, // Hint for formfill validation
-    targetValue?: string, // Target value for data-test-target-value attribute
-    refTarget?: string // E2E contract: selector for current target (data-test-refTarget)
+    formHint?: string,
+    targetValue?: string,
+    refTarget?: string,
+    signal?: AbortSignal
   ): Promise<void> {
-    // Use custom comment if provided, otherwise generate default message
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
 
-    // Build step info for progress display in comment tooltip
     const stepInfo = {
       current: stepIndex,
       total: totalSteps,
-      completedSteps: [...this.completedSteps], // Copy to avoid mutations
+      completedSteps: [...this.completedSteps],
     };
 
-    // Create skip callback if step is skippable
     const skipCallback = isSkippable
       ? () => {
-          // Dispatch skip event when skip button is clicked
           const skipEvent = new CustomEvent('guided-step-skipped', {
             detail: { stepIndex },
           });
@@ -572,18 +796,13 @@ export class GuidedHandler {
         }
       : undefined;
 
-    // Create cancel callback - always available during guided execution
     const cancelCallback = () => {
-      // Dispatch cancel event when cancel button is clicked
       const cancelEvent = new CustomEvent('guided-step-cancelled', {
         detail: { stepIndex },
       });
       document.dispatchEvent(cancelEvent);
     };
 
-    // Use existing highlight system with persistent highlight
-    // Disable auto-cleanup for guided mode - highlights should only clear when step completes
-    // Skip animations after first step for smooth transitions
     await this.navigationManager.highlightWithComment(
       element,
       message,
@@ -591,29 +810,27 @@ export class GuidedHandler {
       stepInfo,
       skipCallback,
       cancelCallback,
-      undefined, // No next callback for guided mode
-      undefined, // No previous callback for guided mode
+      undefined,
+      undefined,
       {
-        skipAnimations: stepIndex > 0, // Instant transitions after first step
-        actionType: actionType, // Pass action type for data-test-action attribute
-        targetValue: targetValue, // Pass target value for data-test-target-value attribute
-        refTarget: refTarget, // E2E contract: selector for current target
+        skipAnimations: stepIndex > 0,
+        actionType,
+        targetValue,
+        refTarget,
+        skippable: isSkippable === true,
+        signal,
       }
     );
-
-    // Add a persistent highlight class that won't auto-remove
-    element.classList.add('interactive-guided-active');
+    if (!signal?.aborted) {
+      element.classList.add('interactive-guided-active');
+    }
   }
 
-  /**
-   * Generate user-friendly message for each action type
-   */
   private getActionMessage(
     actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     stepIndex: number,
     totalSteps: number
   ): string {
-    // Step number is now shown in checkbox list, so just show the instruction
     switch (actionType) {
       case 'hover':
         return 'Hover your mouse over this element';
@@ -1133,6 +1350,10 @@ export class GuidedHandler {
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
+    }
+    if (this.currentRunController) {
+      this.currentRunController.abort();
+      this.currentRunController = null;
     }
     try {
       this.cleanupListeners(true);

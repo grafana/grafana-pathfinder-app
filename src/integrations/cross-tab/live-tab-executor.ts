@@ -13,7 +13,7 @@ import {
   NavigateHandler,
   NavigationManager,
 } from '../../interactive-engine';
-import type { GuidedAction } from '../../types/interactive-actions.types';
+import { isGuidedActionType } from '../../types/interactive-actions.types';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
 import { checkRequirements, dispatchFix, type RequirementsCheckResult } from '../../requirements-manager';
 import {
@@ -34,16 +34,6 @@ import pluginJson from '../../plugin.json';
 import { logger } from '../../lib/logging';
 import { setFaroUserActionAttributes, USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../../lib/faro';
 import { TELEMETRY_ACTIONS } from '../../lib/telemetry';
-
-// The verbs the guided handler can actually drive — narrower than the receive
-// gate's KNOWN_TARGET_ACTIONS, so runGuided checks against this before casting.
-const GUIDED_VERBS: ReadonlySet<GuidedAction['targetAction']> = new Set([
-  'hover',
-  'button',
-  'highlight',
-  'noop',
-  'formfill',
-]);
 
 interface ExecutorTransport {
   start(): void;
@@ -119,7 +109,7 @@ export function installLiveTabExecutor(
   const formFillHandler = new FormFillHandler(stateManager, navigationManager, waitForReactUpdates);
   const navigateHandler = new NavigateHandler(stateManager, waitForReactUpdates);
   const hoverHandler = new HoverHandler(stateManager, navigationManager, waitForReactUpdates);
-  const guidedHandler = new GuidedHandler(stateManager, navigationManager, waitForReactUpdates);
+  const guidedHandler = new GuidedHandler(stateManager, navigationManager, waitForReactUpdates, checkRequirements);
 
   // Claim the install slot only after every handler is constructed, so a
   // throwing constructor leaves installed=false and a later init can retry
@@ -228,7 +218,14 @@ export function installLiveTabExecutor(
 
   // Guided is human-driven: highlight each target and wait for the user to perform
   // it on the live tab, rather than the auto replay a multi-step uses.
-  const runGuided = async (actions: ActionList, onProgress: OnProgress): Promise<boolean> => {
+  const runGuided = async (
+    actions: ActionList,
+    onProgress: OnProgress,
+    stepId: string,
+    runId: string,
+    guideId: string | undefined,
+    stepTimeout: number
+  ): Promise<boolean> => {
     guidedHandler.resetProgress();
     for (let i = 0; i < actions.length; i++) {
       onProgress(i);
@@ -236,18 +233,29 @@ export function installLiveTabExecutor(
       // The receive gate accepts any KNOWN_TARGET_ACTIONS verb, which is wider than
       // the guided verb set — guard the cast so a non-guided verb (e.g. navigate)
       // fails loud instead of being mistyped into the guided handler (F-1073-nit-cast).
-      if (!GUIDED_VERBS.has(action.targetAction as GuidedAction['targetAction'])) {
+      if (!isGuidedActionType(action.targetAction)) {
         logger.warn(`[Pathfinder] cross-tab executor: guided step has non-guided verb "${action.targetAction}"`);
         return false;
       }
       const result = await guidedHandler.executeGuidedStep(
-        { ...action, targetAction: action.targetAction as GuidedAction['targetAction'] },
+        { ...action, targetAction: action.targetAction },
         i,
-        actions.length
+        actions.length,
+        stepTimeout,
+        undefined,
+        { parentStepId: stepId, guideId }
       );
       if (result !== 'completed' && result !== 'skipped') {
         return false;
       }
+      transport.post({
+        kind: 'guided-substep-settled',
+        stepId,
+        runId,
+        index: i,
+        action: action.targetAction,
+        outcome: result === 'skipped' ? 'skipped' : 'passed',
+      });
     }
     return true;
   };
@@ -275,7 +283,14 @@ export function installLiveTabExecutor(
         try {
           if (internalActions?.length) {
             if (command.action.targetAction === 'guided') {
-              ok = await runGuided(internalActions, postProgress);
+              ok = await runGuided(
+                internalActions,
+                postProgress,
+                stepId,
+                runId,
+                command.action.guideId,
+                command.action.guidedStepTimeoutMs ?? INTERACTIVE_CONFIG.guided.stepTimeout
+              );
             } else {
               await runComposite(internalActions, postProgress);
               ok = true;

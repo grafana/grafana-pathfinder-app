@@ -9,7 +9,7 @@
  * - Existing attributes: data-ready, data-position, data-noop
  * - New tier 1 attributes: data-test-action
  * - New tier 2 attributes: data-test-target-value
- * - E2E target selector: data-test-refTarget
+ * - E2E target selector: data-test-reftarget
  *
  * Test Pattern:
  * Each test verifies that comment boxes created through the NavigationManager API
@@ -130,6 +130,32 @@ describe('E2E Contract: Comment Box Attributes', () => {
 
   afterAll(() => {
     mockConsoleWarn.mockRestore();
+  });
+
+  describe('data-test-skippable', () => {
+    it.each([true, false])('exposes %s when the guided substep is ready', async (skippable) => {
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Complete this step',
+        false,
+        { current: 0, total: 1, completedSteps: [] },
+        skippable ? jest.fn() : undefined,
+        jest.fn(),
+        undefined,
+        undefined,
+        {
+          actionType: 'highlight',
+          refTarget: '#target',
+          skippable,
+          skipAnimations: true,
+        }
+      );
+
+      expect(document.querySelector('.interactive-comment-box')).toHaveAttribute(
+        'data-test-skippable',
+        String(skippable)
+      );
+    });
   });
 
   // ============================================================================
@@ -549,10 +575,10 @@ describe('E2E Contract: Comment Box Attributes', () => {
   });
 
   // ============================================================================
-  // data-test-refTarget Tests (E2E current target selector)
+  // data-test-reftarget Tests (E2E current target selector)
   // ============================================================================
 
-  describe('data-test-refTarget', () => {
+  describe('data-test-reftarget', () => {
     it('is set when refTarget option is provided', async () => {
       await navigationManager.highlightWithComment(
         mockElement,
@@ -571,7 +597,7 @@ describe('E2E Contract: Comment Box Attributes', () => {
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
-      expect(commentBox).toHaveAttribute('data-test-refTarget', '[data-testid="submit-btn"]');
+      expect(commentBox).toHaveAttribute('data-test-reftarget', '[data-testid="submit-btn"]');
     });
 
     it('is absent when refTarget option is not provided', async () => {
@@ -591,7 +617,7 @@ describe('E2E Contract: Comment Box Attributes', () => {
 
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
-      expect(commentBox).not.toHaveAttribute('data-test-refTarget');
+      expect(commentBox).not.toHaveAttribute('data-test-reftarget');
     });
 
     it('is absent for noop comment boxes', () => {
@@ -600,7 +626,7 @@ describe('E2E Contract: Comment Box Attributes', () => {
       const commentBox = document.querySelector('.interactive-comment-box');
       expect(commentBox).not.toBeNull();
       expect(commentBox).toHaveAttribute('data-test-action', 'noop');
-      expect(commentBox).not.toHaveAttribute('data-test-refTarget');
+      expect(commentBox).not.toHaveAttribute('data-test-reftarget');
     });
 
     it('matches the provided refTarget selector exactly', async () => {
@@ -622,7 +648,7 @@ describe('E2E Contract: Comment Box Attributes', () => {
         );
 
         const commentBox = document.querySelector('.interactive-comment-box');
-        expect(commentBox).toHaveAttribute('data-test-refTarget', refTarget);
+        expect(commentBox).toHaveAttribute('data-test-reftarget', refTarget);
       }
     });
   });
@@ -754,7 +780,7 @@ describe('E2E Contract: Comment Box Attributes', () => {
       expect(commentBox).not.toBeNull();
       expect(commentBox).toHaveAttribute('data-test-action', 'formfill');
       expect(commentBox).toHaveAttribute('data-test-target-value', 'user@example.com');
-      expect(commentBox).toHaveAttribute('data-test-refTarget', 'input[name="email"]');
+      expect(commentBox).toHaveAttribute('data-test-reftarget', 'input[name="email"]');
     });
   });
 
@@ -788,7 +814,7 @@ describe('E2E Contract: Comment Box Attributes', () => {
       // Should not have new attributes when options not provided
       expect(commentBox).not.toHaveAttribute('data-test-action');
       expect(commentBox).not.toHaveAttribute('data-test-target-value');
-      expect(commentBox).not.toHaveAttribute('data-test-refTarget');
+      expect(commentBox).not.toHaveAttribute('data-test-reftarget');
     });
 
     it('handles empty options object gracefully', async () => {
@@ -816,7 +842,7 @@ describe('E2E Contract: Comment Box Attributes', () => {
       // Should not have new attributes when options are empty
       expect(commentBox).not.toHaveAttribute('data-test-action');
       expect(commentBox).not.toHaveAttribute('data-test-target-value');
-      expect(commentBox).not.toHaveAttribute('data-test-refTarget');
+      expect(commentBox).not.toHaveAttribute('data-test-reftarget');
     });
 
     it('maintains backward compatibility with existing code', async () => {
@@ -843,7 +869,7 @@ describe('E2E Contract: Comment Box Attributes', () => {
       // Should not have new attributes
       expect(commentBox).not.toHaveAttribute('data-test-action');
       expect(commentBox).not.toHaveAttribute('data-test-target-value');
-      expect(commentBox).not.toHaveAttribute('data-test-refTarget');
+      expect(commentBox).not.toHaveAttribute('data-test-reftarget');
     });
   });
 });

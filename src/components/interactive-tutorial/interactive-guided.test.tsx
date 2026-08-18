@@ -14,6 +14,7 @@ import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
+import { GuidedHandler } from '../../interactive-engine';
 
 // ─── Mock @grafana/ui ────────────────────────────────────────────────────────
 jest.mock('@grafana/ui', () => ({
@@ -66,6 +67,9 @@ jest.mock('../../constants/interactive-config', () => ({
     delays: {},
   })),
   INTERACTIVE_CONFIG: { guided: { stepTimeout: 120000 } },
+  normalizeGuidedStepTimeout: jest.fn((value?: number) =>
+    typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value > 0 ? value : 120000
+  ),
 }));
 
 // ─── Mock DOM utils ──────────────────────────────────────────────────────────
@@ -84,6 +88,20 @@ let mockCompletionReason = 'none';
 const mockMarkSkipped = jest.fn(() => {
   mockStoredCompleted = true;
 });
+const mockCheckGuidedRequirements = jest.fn().mockResolvedValue({ pass: true, error: [] });
+let mockInteractiveMode = 'in-tab';
+let mockControllerChannel: Record<string, jest.Mock> | null = null;
+let mockGuideId: string | undefined;
+
+jest.mock('../../global-state/interactive-mode-context', () => ({
+  useInteractiveMode: () => mockInteractiveMode,
+}));
+jest.mock('../../global-state/controller-channel', () => ({
+  useControllerChannel: () => mockControllerChannel,
+}));
+jest.mock('../../docs-retrieval', () => ({
+  useGuideResponsesOptional: () => (mockGuideId ? { guideId: mockGuideId } : null),
+}));
 
 // ─── Mock completion store ────────────────────────────────────────────────
 jest.mock('../../global-state/completion-store', () => ({
@@ -97,6 +115,9 @@ jest.mock('../../global-state/completion-store', () => ({
 
 // ─── Mock requirements manager ───────────────────────────────────────────────
 jest.mock('../../requirements-manager', () => ({
+  useGuideRequirements: jest.fn(() => ({
+    checkRequirements: mockCheckGuidedRequirements,
+  })),
   useStepChecker: jest.fn(() => ({
     isEnabled: true,
     isChecking: false,
@@ -153,6 +174,9 @@ jest.mock('../../interactive-engine', () => ({
 beforeEach(() => {
   mockStoredCompleted = false;
   mockCompletionReason = 'none';
+  mockInteractiveMode = 'in-tab';
+  mockControllerChannel = null;
+  mockGuideId = undefined;
   mockExecuteGuidedStep.mockReset();
   mockMarkSkipped.mockReset();
   mockMarkSkipped.mockImplementation(() => {
@@ -279,6 +303,126 @@ describe('deriveGuidedUiState', () => {
     ['reports unmet requirements when disabled', { isEnabled: false }, 'requirements-unmet'],
   ])('%s', (_name, overrides, expected) => {
     expect(deriveGuidedUiState({ ...baseState, ...overrides })).toBe(expected);
+  });
+});
+
+describe('InteractiveGuided — runtime substep contract', () => {
+  it('injects the guide-scoped requirement checker into GuidedHandler', async () => {
+    render(<InteractiveGuided stepId="scoped-requirements" internalActions={[{ targetAction: 'noop' }]} />);
+    const injectedCheck = (GuidedHandler as jest.Mock).mock.calls.at(-1)?.[3];
+    await injectedCheck({ requirements: 'var-ready:true', guideId: 'wire-guide' });
+    expect(mockCheckGuidedRequirements).toHaveBeenCalledWith({ requirements: 'var-ready:true' });
+  });
+  it.each([
+    [undefined, '120000'],
+    [30000, '30000'],
+    [45000, '45000'],
+    [60000, '60000'],
+  ])('exposes the effective timeout for %s', (stepTimeout, expected) => {
+    render(
+      <InteractiveGuided
+        stepId={`timeout-${expected}`}
+        stepTimeout={stepTimeout}
+        internalActions={[{ targetAction: 'noop' }]}
+      />
+    );
+
+    expect(screen.getByTestId(testIds.interactive.step(`timeout-${expected}`))).toHaveAttribute(
+      'data-test-substep-timeout-ms',
+      expected
+    );
+  });
+
+  it.each([0, -1, 1.5, Number.NaN])('normalizes invalid programmatic timeout %s', (stepTimeout) => {
+    render(
+      <InteractiveGuided
+        stepId={`invalid-timeout-${String(stepTimeout)}`}
+        stepTimeout={stepTimeout}
+        internalActions={[{ targetAction: 'noop' }]}
+      />
+    );
+
+    expect(screen.getByTestId(testIds.interactive.step(`invalid-timeout-${String(stepTimeout)}`))).toHaveAttribute(
+      'data-test-substep-timeout-ms',
+      '120000'
+    );
+  });
+
+  it('forwards lazy target settings to the guided handler', async () => {
+    mockExecuteGuidedStep.mockResolvedValue('completed');
+    const action = {
+      targetAction: 'highlight' as const,
+      refTarget: '.lazy-panel',
+      lazyRender: true,
+      scrollContainer: '.dashboard-scroll',
+    };
+
+    render(<InteractiveGuided stepId="lazy-forwarding" internalActions={[action]} />);
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(mockExecuteGuidedStep).toHaveBeenCalledWith(action, 0, 1, 120000, undefined, {
+        parentStepId: 'lazy-forwarding',
+        guideId: undefined,
+      });
+    });
+  });
+
+  it.each([30000, 45000, 60000, 120000])(
+    'carries all guided fields, guide scope, and the %ims timeout through the cross-tab wire',
+    async (stepTimeout) => {
+      mockInteractiveMode = 'controller';
+      mockGuideId = 'guide-scope';
+      mockControllerChannel = {
+        post: jest.fn(),
+        onStepProgress: jest.fn().mockReturnValue(jest.fn()),
+        awaitStepComplete: jest.fn().mockResolvedValue(true),
+        cancelStepComplete: jest.fn(),
+      };
+      const action = {
+        targetAction: 'formfill' as const,
+        refTarget: '#field',
+        targetValue: 'value',
+        requirements: 'var-ready:true',
+        isSkippable: true,
+        formHint: 'Enter a value',
+        validateInput: true,
+        lazyRender: true,
+        scrollContainer: '.dashboard-scroll',
+      };
+
+      render(<InteractiveGuided stepId={`wire-${stepTimeout}`} stepTimeout={stepTimeout} internalActions={[action]} />);
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+      await waitFor(() => {
+        expect(mockControllerChannel?.post).toHaveBeenCalledWith({
+          kind: 'step-command',
+          phase: 'do',
+          stepId: `wire-${stepTimeout}`,
+          runId: expect.any(String),
+          action: {
+            targetAction: 'guided',
+            refTarget: '',
+            internalActions: [action],
+            guideId: 'guide-scope',
+            guidedStepTimeoutMs: stepTimeout,
+          },
+        });
+      });
+    }
+  );
+
+  it('does not expose lossy last-substep snapshot attributes', () => {
+    render(
+      <InteractiveGuided
+        stepId="event-evidence"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#missing', isSkippable: true }]}
+      />
+    );
+    const root = screen.getByTestId(testIds.interactive.step('event-evidence'));
+    expect(root).not.toHaveAttribute('data-test-last-substep-index');
+    expect(root).not.toHaveAttribute('data-test-last-substep-action');
+    expect(root).not.toHaveAttribute('data-test-last-substep-outcome');
   });
 });
 

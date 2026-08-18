@@ -9,6 +9,7 @@ import {
   type ControllerPairingLaunch,
 } from '../lib/pairing-manager';
 import { generateSessionKeyPair } from '../security/cross-tab-crypto';
+import { GUIDED_SUBSTEP_SETTLED_EVENT } from '../constants/interactive-config';
 import {
   SIGNED_MESSAGE_KINDS,
   type CheckRequirementsMessage,
@@ -94,6 +95,7 @@ export function ControllerChannelProvider({
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
   const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
   const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
+  const guidedRunRef = useRef<Map<string, string>>(new Map());
 
   const signForLive = useCallback(
     async (payload: CrossTabPayload): Promise<CrossTabPayload | null> => {
@@ -154,6 +156,9 @@ export function ControllerChannelProvider({
 
   const post = useCallback(
     (payload: CrossTabPayload): void => {
+      if (payload.kind === 'step-command' && payload.action.targetAction === 'guided') {
+        guidedRunRef.current.set(payload.stepId, payload.runId);
+      }
       void postPayload(payload);
     },
     [postPayload]
@@ -202,6 +207,7 @@ export function ControllerChannelProvider({
       stepDone.forEach((resolve) => resolve(false));
       stepDone.clear();
       stepProgressRef.current.clear();
+      guidedRunRef.current.clear();
     };
 
     const unsubscribe = active.onMessage((message) => {
@@ -239,7 +245,8 @@ export function ControllerChannelProvider({
         message.kind !== 'requirement-result' &&
         message.kind !== 'fix-result' &&
         message.kind !== 'step-complete' &&
-        message.kind !== 'step-progress'
+        message.kind !== 'step-progress' &&
+        message.kind !== 'guided-substep-settled'
       ) {
         return;
       }
@@ -259,8 +266,25 @@ export function ControllerChannelProvider({
       } else if (message.kind === 'step-progress') {
         const key = `${message.stepId}:${message.runId}`;
         stepProgressRef.current.get(key)?.(message.index, message.total);
+      } else if (message.kind === 'guided-substep-settled') {
+        if (guidedRunRef.current.get(message.stepId) !== message.runId) {
+          return;
+        }
+        document.dispatchEvent(
+          new CustomEvent(GUIDED_SUBSTEP_SETTLED_EVENT, {
+            detail: {
+              stepId: message.stepId,
+              index: message.index,
+              action: message.action,
+              outcome: message.outcome,
+            },
+          })
+        );
       } else {
         const key = `${message.stepId}:${message.runId}`;
+        if (guidedRunRef.current.get(message.stepId) === message.runId) {
+          guidedRunRef.current.delete(message.stepId);
+        }
         const resolve = stepDone.get(key);
         if (resolve) {
           stepDone.delete(key);
@@ -370,6 +394,9 @@ export function ControllerChannelProvider({
     if (resolve) {
       stepCompletionRef.current.delete(key);
       resolve(false);
+    }
+    if (guidedRunRef.current.get(stepId) === runId) {
+      guidedRunRef.current.delete(stepId);
     }
   }, []);
 

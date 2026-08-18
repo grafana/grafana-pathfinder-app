@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import type { StepTypeKind } from '../../../../../src/components/interactive-tutorial/step-type-registry';
-import type { TestableStep } from '../types';
+import type { GuidedSubstepResult, TestableStep } from '../types';
 
 export interface StepDriverInspection {
   skippable: boolean;
@@ -13,6 +13,7 @@ export interface StepDriverInspection {
   internalActionCount: number;
   isGuided: boolean;
   guidedStepCount?: number;
+  guidedStepTimeoutMs?: number;
   refTarget?: string;
 }
 
@@ -27,6 +28,17 @@ export interface StepDriverExecutionContext {
 export interface StepDriverExecutionResult {
   outcome: 'completed' | 'no-control';
   completedViaObjectives?: boolean;
+  guidedSubsteps?: GuidedSubstepResult[];
+}
+
+export class StepDriverExecutionError extends Error {
+  constructor(
+    cause: unknown,
+    readonly guidedSubsteps: GuidedSubstepResult[]
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'StepDriverExecutionError';
+  }
 }
 
 export interface StepDriver {

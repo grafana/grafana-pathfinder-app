@@ -210,6 +210,50 @@ describe('NavigationManager', () => {
     });
   });
 
+  describe('abortable navigation mutations', () => {
+    it('does not click the menu toggle after cancellation', async () => {
+      const toggle = document.createElement('button');
+      toggle.id = 'mega-menu-toggle';
+      document.body.appendChild(toggle);
+      const clickSpy = jest.spyOn(toggle, 'click');
+      const controller = new AbortController();
+      controller.abort();
+
+      await navigationManager.openAndDockNavigation(undefined, {
+        ensureDocked: false,
+        signal: controller.signal,
+      });
+
+      expect(clickSpy).not.toHaveBeenCalled();
+      toggle.remove();
+    });
+
+    it('restores the closed menu when cancellation occurs after the open click', async () => {
+      const toggle = document.createElement('button');
+      toggle.id = 'mega-menu-toggle';
+      document.body.appendChild(toggle);
+      const controller = new AbortController();
+      let open = false;
+      let clickCount = 0;
+      toggle.addEventListener('click', () => {
+        open = !open;
+        clickCount += 1;
+        if (clickCount === 1) {
+          controller.abort();
+        }
+      });
+
+      await navigationManager.openAndDockNavigation(undefined, {
+        ensureDocked: false,
+        signal: controller.signal,
+      });
+
+      expect(clickCount).toBe(2);
+      expect(open).toBe(false);
+      toggle.remove();
+    });
+  });
+
   describe('clearAllHighlights', () => {
     it('should remove all highlight outlines', () => {
       const outline1 = document.createElement('div');

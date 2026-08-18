@@ -248,6 +248,38 @@ console.log(`Progress: ${parseInt(currentIndex) + 1}/${totalSteps}`);
 
 ---
 
+#### `data-test-substep-timeout-ms`
+
+**Purpose**: Effective timeout for each guided substep, in milliseconds.
+
+**Values**: A positive integer. The runtime default is `120000`.
+
+**Presence**: Always present on guided step roots.
+
+The runtime owns this value. The runner reads it from the rendered root and does not infer it from guide JSON.
+
+The guide schema accepts finite positive integers only. Programmatic invalid values use `120000`.
+
+The runner and cross-tab validator apply the same positive-integer rule.
+
+---
+
+#### Guided substep settlement event
+
+`GuidedHandler` dispatches `pathfinder:guided-substep-settled` for each passed or skipped substep.
+
+The event detail contains the parent step ID, substep index, action kind, and outcome.
+
+The runner exposes one Playwright binding before it selects Do it. An init script installs the event listener in every new document.
+
+The runner also installs the listener in the current document. The installation is idempotent.
+
+The collector keeps all events after root detachment or document replacement. It clears its page state when the page closes.
+
+The collector also keeps partial evidence when a later substep fails.
+
+---
+
 #### `data-test-fix-type`
 
 **Purpose**: Classification of requirement fix needed when requirements are unmet
@@ -389,6 +421,18 @@ Applied to comment box elements created by `NavigationManager` and `GuidedHandle
 ```
 
 **Usage in tests**: Read `data-test-reftarget` from `.interactive-comment-box` together with `data-test-action` and `data-test-target-value` to perform the current substep (click, fill, hover) without parsing guide JSON.
+
+---
+
+#### `data-test-skippable`
+
+**Purpose**: States whether the current guided substep can be skipped.
+
+**Values**: `true` or `false`.
+
+**Presence**: Present when the guided comment box is ready.
+
+The runner completes the normal action first. If that action fails, the runner can use Skip only when this value is `true`.
 
 ---
 
@@ -560,12 +604,15 @@ await page.waitForSelector('[data-test-step-state="completed"]', { timeout: 3000
 
 Guided steps run a substep loop driven by the comment box. The runner uses only the DOM and contract attributes (no guide JSON):
 
-1. **Wait for execution to start**: After clicking "Do it", wait for the step element to have `data-test-step-state="executing"`.
-2. **Read substep bounds**: From the step element, read `data-test-substep-index` (current substep, 0-based) and `data-test-substep-total` (total substeps).
-3. **Locate the comment box**: Use `.interactive-comment-box` (visible while the guided step is executing).
-4. **Read the comment box contract**: From the comment box, read `data-test-action` (e.g. `button`, `highlight`, `formfill`, `hover`, `noop`), `data-test-reftarget` (selector for the current target; see [Comment Boxes](#comment-boxes) — absent for noop), and `data-test-target-value` (for formfill).
-5. **Perform the substep**: For noop, click the Continue button; for button/highlight, resolve the target from `data-test-reftarget` and click; for hover, resolve and hover; for formfill, resolve and fill with `data-test-target-value`.
-6. **Wait for advance**: Poll the step element until `data-test-substep-index` increases or `data-test-step-state` becomes `"completed"`. If the step becomes `"error"` or `"cancelled"`, fail.
+1. **Subscribe to evidence**: Install the settlement binding and init script before Do it.
+2. **Wait for execution to start**: Wait for `data-test-step-state="executing"`.
+3. **Read substep bounds**: Read `data-test-substep-index` and `data-test-substep-total`.
+4. **Read the timeout**: Read `data-test-substep-timeout-ms`. Use this value for each substep.
+5. **Locate the comment box**: Use `.interactive-comment-box`.
+6. **Read the comment box contract**: Read the action, target, target value, and skippability attributes.
+7. **Perform the substep**: Use the action, target, and target value from the comment box.
+8. **Use failure evidence**: If the action fails and `data-test-skippable="true"`, select Skip.
+9. **Wait for advance**: Wait for the next substep or the completed state. Fail on the error or cancelled state.
 
 Completion is standardized on `data-test-step-state="completed"` for all step types (single, multistep, guided).
 

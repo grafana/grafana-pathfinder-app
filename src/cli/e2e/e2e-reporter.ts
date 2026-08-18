@@ -55,6 +55,7 @@ export interface TestStepResult {
   classification?: ErrorClassification;
   /** Paths to failure artifacts (L3-5D) */
   artifacts?: ArtifactPaths;
+  guidedSubsteps?: ReportStepResult['guidedSubsteps'];
 }
 
 /**
@@ -137,6 +138,9 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
     };
     if (result.stepKind) {
       reportStep.stepKind = result.stepKind;
+    }
+    if (result.guidedSubsteps) {
+      reportStep.guidedSubsteps = result.guidedSubsteps;
     }
 
     // Add optional fields only if present

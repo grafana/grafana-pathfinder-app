@@ -616,15 +616,15 @@ Highlights elements and **waits for user** to perform actions.
 }
 ```
 
-| Field           | Type       | Required | Description                                     |
-| --------------- | ---------- | -------- | ----------------------------------------------- |
-| `content`       | string     | ✅       | Description shown to user                       |
-| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform           |
-| `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)         |
-| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal |
-| `requirements`  | string[]   | ❌       | Requirements for the block                      |
-| `objectives`    | string[]   | ❌       | Objectives tracked                              |
-| `skippable`     | boolean    | ❌       | Allow skipping                                  |
+| Field           | Type       | Required | Description                                       |
+| --------------- | ---------- | -------- | ------------------------------------------------- |
+| `content`       | string     | ✅       | Description shown to user                         |
+| `steps`         | JsonStep[] | ✅       | Sequence of steps for user to perform             |
+| `stepTimeout`   | integer    | ❌       | Positive timeout per step in ms (default: 120000) |
+| `completeEarly` | boolean    | ❌       | Persist completion from the final action signal   |
+| `requirements`  | string[]   | ❌       | Requirements for the block                        |
+| `objectives`    | string[]   | ❌       | Objectives tracked                                |
+| `skippable`     | boolean    | ❌       | Allow skipping                                    |
 
 Steps accept `targetstate` here too, with the meaning adjusted for a step the
 user performs: a control already in the requested state completes immediately
@@ -643,6 +643,9 @@ store completion.
 `InteractiveGuided` owns the idempotent completion write and completion
 callbacks. `GuidedHandler` owns listeners, timeouts, connectivity intervals, the
 overlay, click ordering, and cleanup.
+
+The schema rejects zero, negative, fractional, and non-finite timeout values.
+Programmatic invalid values use the 120000ms runtime default.
 
 #### Quiz Block
 

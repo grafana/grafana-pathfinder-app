@@ -133,6 +133,38 @@ describe('versioned report contract', () => {
     expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
   });
 
+  it('reports partial guided evidence when a later substep fails', () => {
+    const data = ranGuide('guided-partial-failure', { failed: true });
+    data.results[0]!.stepKind = 'guided';
+    data.results[0]!.guidedSubsteps = [{ index: 0, action: 'highlight', outcome: 'passed' }];
+
+    const report = generateReport(data);
+
+    expect(report.outcome).toBe('failed');
+    expect(report.steps[0]).toMatchObject({
+      status: 'failed',
+      guidedSubsteps: [{ index: 0, action: 'highlight', outcome: 'passed' }],
+    });
+    expect(report.schemaVersion).toBe('1.0.0');
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+  });
+
+  it('includes optional guided substep results without changing the schema version', () => {
+    const data = ranGuide('guided-report');
+    data.results[0]!.stepKind = 'guided';
+    data.results[0]!.guidedSubsteps = [
+      { index: 0, action: 'highlight', outcome: 'passed' },
+      { index: 1, action: 'button', outcome: 'skipped' },
+    ];
+
+    const report = generateReport(data);
+
+    expect(report.schemaVersion).toBe(E2E_REPORT_SCHEMA_VERSION);
+    expect(report.schemaVersion).toBe('1.0.0');
+    expect(report.steps[0]!.guidedSubsteps).toEqual(data.results[0]!.guidedSubsteps);
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+  });
+
   it('keeps per-guide coverage in multi-guide reports without changing guide outcomes', () => {
     const covered = ranGuide('covered');
     covered.coverage = {

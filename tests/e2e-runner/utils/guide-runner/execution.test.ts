@@ -63,7 +63,7 @@ import {
   executeStep,
   summarizeResults,
 } from './execution';
-import { clickSkipButtonAndSync } from './drivers';
+import { clickSkipButtonAndSync, getStepDriver, StepDriverExecutionError } from './drivers';
 import { handleRequirementsWithFix } from './requirements';
 import { dismissBadgeCelebrations } from './badge-celebrations';
 import {
@@ -345,7 +345,7 @@ describe('runGuidedSubstepLoop', () => {
       perSubstepTimeoutMs: 1000,
     });
 
-    expect(result).toEqual({ completed: true });
+    expect(result).toEqual({ completed: true, guidedSubsteps: [] });
   });
 
   it('propagates a genuine query failure instead of reporting false completion', async () => {
@@ -437,7 +437,7 @@ describe('runGuidedSubstepLoop', () => {
       perSubstepTimeoutMs: 1000,
     });
 
-    expect(result).toEqual({ completed: true });
+    expect(result).toEqual({ completed: true, guidedSubsteps: [] });
     expect(page.waitForLoadState).toHaveBeenCalledWith('domcontentloaded', {
       timeout: GUIDED_RELOAD_LOAD_TIMEOUT_MS,
     });
@@ -498,8 +498,43 @@ describe('runGuidedSubstepLoop', () => {
       perSubstepTimeoutMs: 1000,
     });
 
-    expect(result).toEqual({ completed: true });
+    expect(result).toEqual({ completed: true, guidedSubsteps: [] });
     expect(commentBox.getAttribute).not.toHaveBeenCalled();
+  });
+
+  it('skips immediately after action failure only when the comment-box contract permits it', async () => {
+    let stepCountCalls = 0;
+    const stepLocator = createLocator({
+      count: jest.fn().mockImplementation(() => Promise.resolve(stepCountCalls++ === 0 ? 1 : 0)),
+      getAttribute: jest.fn().mockResolvedValueOnce('executing').mockResolvedValueOnce('0'),
+    });
+    const skipButton = createLocator();
+    const commentBox = createLocator({
+      getAttribute: jest.fn((name: string) => {
+        const attributes: Record<string, string | null> = {
+          'data-test-action': 'button',
+          'data-test-reftarget': null,
+          'data-test-target-value': null,
+          'data-test-skippable': 'true',
+        };
+        return Promise.resolve(attributes[name] ?? null);
+      }),
+      getByRole: jest.fn().mockReturnValue(skipButton),
+    });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      locator: jest.fn().mockReturnValue({ first: jest.fn().mockReturnValue(commentBox) }),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+    } as unknown as Page;
+
+    const result = await runGuidedSubstepLoop(page, createTestableStep(), {
+      stepLocator,
+      perSubstepTimeoutMs: 60000,
+    });
+
+    expect(skipButton.click).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ completed: true, guidedSubsteps: [] });
+    expect(page.waitForTimeout).not.toHaveBeenCalledWith(48000);
   });
 });
 
@@ -565,6 +600,49 @@ describe('executeStep - skip sync sequential-flow regression', () => {
     expect(result.status).toBe('failed');
     expect(result.skippable).toBe(true);
     expect(result.error).toMatch(/skip sync/i);
+  });
+});
+
+describe('executeStep - guided partial evidence', () => {
+  it('attaches passed substeps when a later guided substep fails', async () => {
+    (handleRequirementsWithFix as jest.Mock).mockResolvedValue({
+      requirements: {
+        requirementsMet: true,
+        status: 'met',
+        skippable: false,
+        hasFixButton: false,
+        isChecking: false,
+        hasSkipButton: false,
+        hasRetryButton: false,
+      },
+    });
+    const stepLocator = createLocator({ getAttribute: jest.fn().mockResolvedValue(null) });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      off: jest.fn(),
+      url: jest.fn().mockReturnValue('http://localhost:3000/'),
+    } as unknown as Page;
+    const driver = getStepDriver('guided');
+    const completionSpy = jest.spyOn(driver, 'completionState').mockResolvedValue(false);
+    const executionSpy = jest
+      .spyOn(driver, 'execute')
+      .mockRejectedValue(
+        new StepDriverExecutionError(new Error('second substep failed'), [
+          { index: 0, action: 'highlight', outcome: 'passed' },
+        ])
+      );
+
+    const result = await executeStep(page, createTestableStep(), {});
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: 'second substep failed',
+      guidedSubsteps: [{ index: 0, action: 'highlight', outcome: 'passed' }],
+    });
+    completionSpy.mockRestore();
+    executionSpy.mockRestore();
   });
 });
 

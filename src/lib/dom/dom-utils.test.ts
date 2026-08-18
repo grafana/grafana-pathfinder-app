@@ -563,6 +563,23 @@ describe('scrollUntilElementFound', () => {
 
     expect(result).toBeNull();
   });
+
+  it('does not let repeated lazy scroll attempts exceed a 30-second deadline', async () => {
+    jest.useFakeTimers();
+    const startedAt = Date.now();
+    const { scrollUntilElementFound } = await import('./dom-utils');
+    const result = scrollUntilElementFound('#non-existent', {
+      maxScrollAttempts: 100,
+      waitTime: 10000,
+      deadlineMs: startedAt + 30000,
+    });
+
+    await jest.advanceTimersByTimeAsync(30000);
+
+    await expect(result).resolves.toBeNull();
+    expect(scrollContainer.scrollBy).toHaveBeenCalledTimes(3);
+    jest.useRealTimers();
+  });
 });
 
 describe('getVisibleHighlightTarget', () => {

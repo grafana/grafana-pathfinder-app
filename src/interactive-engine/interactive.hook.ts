@@ -91,8 +91,8 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   );
 
   const guidedHandler = useMemo(
-    () => new GuidedHandler(stateManager, navigationManager, waitForReactUpdates),
-    [stateManager, navigationManager]
+    () => new GuidedHandler(stateManager, navigationManager, waitForReactUpdates, checkRequirements),
+    [stateManager, navigationManager, checkRequirements]
   );
 
   const popoutHandler = useMemo(() => new PopoutHandler(stateManager, waitForReactUpdates), [stateManager]);
