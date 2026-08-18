@@ -122,8 +122,7 @@ export enum UserInteraction {
   AiFixApplied = 'ai_fix_applied',
   AiFixFailed = 'ai_fix_failed',
 
-  // Interactive-learning banner experiment (treatment arm only). The CTA reports
-  // OpenResourceClick like every other guide open, so it lands in the same funnel.
+  // Interactive-learning banner experiment
   InteractiveLearningBannerShown = 'interactive_learning_banner_shown',
   InteractiveLearningBannerDismissed = 'interactive_learning_banner_dismissed',
 }

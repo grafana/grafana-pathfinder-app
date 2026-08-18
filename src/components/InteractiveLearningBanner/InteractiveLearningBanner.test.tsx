@@ -27,7 +27,11 @@ describe('InteractiveLearningBanner', () => {
     mockEnroll.mockReturnValue({ variant: 'treatment' });
   });
 
-  it.each(['control', 'excluded'])('renders nothing for the %s arm', (variant) => {
+  // 'excluded' is the default arm, so the first case is what every stack with no
+  // MTFF value renders. The last is not a real arm: the gate is an allow-list on
+  // 'treatment', so a future arm or a malformed payload shows nothing rather than
+  // defaulting a user into the banner.
+  it.each(['excluded', 'control', 'rollout'])('renders nothing for the %s arm', (variant) => {
     mockEnroll.mockReturnValue({ variant });
     render(<InteractiveLearningBanner />);
 
