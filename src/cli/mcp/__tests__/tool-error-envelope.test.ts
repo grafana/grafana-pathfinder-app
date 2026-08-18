@@ -111,7 +111,7 @@ describe('tool-layer error envelope', () => {
     const h = await newHarness(store);
     try {
       const { text, payload } = await h.call('pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         sessionToken: TOKEN,
         type: 'markdown',
         fields: { content: 'x' },

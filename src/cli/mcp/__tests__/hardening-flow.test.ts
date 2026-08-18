@@ -88,7 +88,7 @@ describe('MCP hardening — end-to-end composition', () => {
       // -------- Control: a markdown block emits no hardening warnings —
       // confirms the warning channel doesn't false-fire on unrelated calls.
       const markdownAdd = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'markdown',
         fields: { content: 'Intro' },
@@ -101,7 +101,7 @@ describe('MCP hardening — end-to-end composition', () => {
       // at outcome-time so the agent gets a reinforcing nudge even if it
       // ignored the same rule in `_start.compositionRules`.
       const multistepAdd = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'multistep',
         id: 'walk-1',
@@ -146,7 +146,7 @@ describe('MCP hardening — end-to-end composition', () => {
       // to the embed form. The agent gets an INPUT_NORMALIZED warning, the
       // call succeeds, and the persisted block carries the embed URL.
       const videoAdd = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'video',
         fields: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
@@ -172,7 +172,7 @@ describe('MCP hardening — end-to-end composition', () => {
         // agent would echo if it forgot to round-trip cleanly.
       };
       const mutated = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact: corrupted,
         type: 'markdown',
         fields: { content: 'should not be appended' },

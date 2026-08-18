@@ -329,7 +329,7 @@ describe('HTTP transport', () => {
           jsonrpc: '2.0',
           id: 'call',
           method: 'tools/call',
-          params: { name: 'pathfinder_read_session', arguments: { sessionToken: token, operation: 'list_blocks' } },
+          params: { name: 'pathfinder_read_session', arguments: { sessionToken: token, operation: 'list-blocks' } },
         }),
       });
       const entry = h.logs.at(-1)!;

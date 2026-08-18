@@ -185,7 +185,7 @@ describe('MCP server', () => {
         properties?: Record<string, { enum?: string[]; description?: string }>;
         required?: string[];
       };
-      expect(schema.properties?.operation?.enum).toEqual(['add', 'edit', 'remove']);
+      expect(schema.properties?.operation?.enum).toEqual(['add-block', 'edit-block', 'remove-block']);
       expect(schema.properties?.resource).toBeUndefined();
       expect(schema.required).toContain('operation');
       expect(manage!.description).toMatch(/pathfinder_help.*add-block/);
@@ -193,13 +193,13 @@ describe('MCP server', () => {
       expect(manage!.description).toMatch(/remove-block/);
       // Applicability tags — same `[op]` / `[op|op]` prefix style as
       // pathfinder_read_session / pathfinder_read_repository.
-      expect(schema.properties?.type?.description).toMatch(/^\[add\]/);
-      expect(schema.properties?.parentId?.description).toMatch(/^\[add\]/);
-      expect(schema.properties?.branch?.description).toMatch(/^\[add\]/);
-      expect(schema.properties?.id?.description).toMatch(/\[add\]/);
-      expect(schema.properties?.id?.description).toMatch(/\[edit\|remove\]/);
-      expect(schema.properties?.fields?.description).toMatch(/\[edit\]/);
-      expect(schema.properties?.cascade?.description).toMatch(/^\[remove\]/);
+      expect(schema.properties?.type?.description).toMatch(/^\[add-block\]/);
+      expect(schema.properties?.parentId?.description).toMatch(/^\[add-block\]/);
+      expect(schema.properties?.branch?.description).toMatch(/^\[add-block\]/);
+      expect(schema.properties?.id?.description).toMatch(/\[add-block\]/);
+      expect(schema.properties?.id?.description).toMatch(/\[edit-block\|remove-block\]/);
+      expect(schema.properties?.fields?.description).toMatch(/\[edit-block\]/);
+      expect(schema.properties?.cascade?.description).toMatch(/^\[remove-block\]/);
 
       for (const name of ['pathfinder_add_step', 'pathfinder_add_choice']) {
         const childTool = tools.find((tool) => tool.name === name);
@@ -251,7 +251,7 @@ describe('MCP server', () => {
 
       // 3. add_block — markdown leaf.
       const added = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'markdown',
         fields: { content: 'Hello from the MCP test.' },
@@ -285,14 +285,14 @@ describe('MCP server', () => {
     }
   });
 
-  it('rejects pathfinder_manage_block add without type at the MCP schema boundary', async () => {
+  it('rejects pathfinder_manage_block add-block without type at the MCP schema boundary', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await callTool(client, 'pathfinder_create_package', { title: 'op check', type: 'guide' });
       const result = await client.callTool({
         name: 'pathfinder_manage_block',
         arguments: {
-          operation: 'add',
+          operation: 'add-block',
           artifact: created.artifact!,
           fields: { content: 'missing type' },
         },
@@ -313,7 +313,7 @@ describe('MCP server', () => {
       const result = await client.callTool({
         name: 'pathfinder_manage_block',
         arguments: {
-          operation: 'add',
+          operation: 'add-block',
           type: 'section',
           artifact: created.artifact!,
           fields: { title: 'No id' },
@@ -336,7 +336,7 @@ describe('MCP server', () => {
     try {
       const created = await callTool(client, 'pathfinder_create_package', { title: 'leaf check', type: 'guide' });
       const result = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         type: 'markdown',
         artifact: created.artifact!,
         fields: { content: 'auto-minted id' },
@@ -347,12 +347,12 @@ describe('MCP server', () => {
     }
   });
 
-  it('rejects pathfinder_read_repository get without id at the MCP schema boundary', async () => {
+  it('rejects pathfinder_read_repository get-package without id at the MCP schema boundary', async () => {
     const { client, close } = await spinUp();
     try {
       const result = await client.callTool({
         name: 'pathfinder_read_repository',
-        arguments: { operation: 'get' },
+        arguments: { operation: 'get-package' },
       });
       expect(result.isError).toBe(true);
       const content = result.content as Array<{ type: string; text?: string }>;
@@ -363,7 +363,7 @@ describe('MCP server', () => {
     }
   });
 
-  it('rejects pathfinder_read_session get_block without blockId at the MCP schema boundary', async () => {
+  it('rejects pathfinder_read_session get-block without blockId at the MCP schema boundary', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await callTool(client, 'pathfinder_create_package', { title: 'read check', type: 'guide' });
@@ -371,7 +371,7 @@ describe('MCP server', () => {
       const result = await client.callTool({
         name: 'pathfinder_read_session',
         arguments: {
-          operation: 'get_block',
+          operation: 'get-block',
           sessionToken: created.sessionToken,
         },
       });
@@ -394,7 +394,7 @@ describe('MCP server', () => {
       // guard in runAddBlock). The MCP must surface the CLI's structured
       // error verbatim instead of accepting the call.
       const result = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'conditional',
         id: 'cond-1',
@@ -414,7 +414,7 @@ describe('MCP server', () => {
       const artifact = created.artifact!;
 
       const result = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'video',
         fields: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
@@ -467,7 +467,7 @@ describe('MCP server', () => {
       const created = await callTool(client, 'pathfinder_create_package', { title: 'selector test', type: 'guide' });
       let artifact = created.artifact!;
       const withMs = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'multistep',
         id: 'ms-1',
@@ -498,7 +498,7 @@ describe('MCP server', () => {
       const created = await callTool(client, 'pathfinder_create_package', { title: 'hint test', type: 'guide' });
       const artifact = created.artifact!;
       const result = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'multistep',
         id: 'ms-1',
@@ -524,7 +524,7 @@ describe('MCP server', () => {
 
       // Need a multistep container before add-step has somewhere to land.
       const withMs = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'multistep',
         id: 'ms-1',
@@ -555,7 +555,7 @@ describe('MCP server', () => {
       let artifact = created.artifact!;
 
       const withQuiz = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'quiz',
         id: 'q-1',
@@ -579,14 +579,14 @@ describe('MCP server', () => {
     }
   });
 
-  it('updates an existing block in place via pathfinder_manage_block edit+block', async () => {
+  it('updates an existing block in place via pathfinder_manage_block edit-block', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await callTool(client, 'pathfinder_create_package', { title: 'edit test', type: 'guide' });
       let artifact = created.artifact!;
 
       const added = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'add',
+        operation: 'add-block',
         artifact,
         type: 'markdown',
         id: 'md-1',
@@ -596,7 +596,7 @@ describe('MCP server', () => {
       artifact = added.artifact!;
 
       const edited = await callTool(client, 'pathfinder_manage_block', {
-        operation: 'edit',
+        operation: 'edit-block',
         artifact,
         id: 'md-1',
         fields: { content: 'after' },

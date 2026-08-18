@@ -40,8 +40,8 @@ const AUTHORING_CONTEXT = {
   domains: [...PATHFINDER_DOMAINS],
   workflow: [
     '1. Call pathfinder_create_package with a title. The response carries BOTH a sessionToken (use this for subsequent calls) AND a seed artifact (ignore unless you are running in stateless fallback mode).',
-    '2. Mutate blocks via pathfinder_manage_block with operation "add" | "edit" | "remove". Append steps with pathfinder_add_step and quiz choices with pathfinder_add_choice. All add operations append under the parent, so author in display order. Steps and choices are not individually editable or removable; cascade-remove their parent block and rebuild it instead. Pass {sessionToken}; each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact.',
-    '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_read_session with operation "list_blocks" | "get_block" | "get_manifest" and {sessionToken}. Cheap; use freely instead of re-reading the full artifact.',
+    '2. Mutate blocks via pathfinder_manage_block with operation "add-block" | "edit-block" | "remove-block" (CLI command names). Append steps with pathfinder_add_step and quiz choices with pathfinder_add_choice. All adds append under the parent, so author in display order. Steps and choices are not individually editable or removable; cascade-remove their parent block and rebuild it instead. Pass {sessionToken}; each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact.',
+    '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_read_session with operation "list-blocks" | "get-block" | "get-manifest" and {sessionToken}. Cheap; use freely instead of re-reading the full artifact.',
     '4. When you need the full artifact body in your context (rare — e.g. for a wholesale review before finalize), call pathfinder_inspect with {sessionToken}. This is the explicit "pull the artifact" escape hatch.',
     '5. Call pathfinder_validate with {sessionToken} before finalize.',
     '6. Call pathfinder_finalize_for_app_platform with {sessionToken} to receive the publish handoff (path templates, viewer link, localExport fallback). The full artifact returns here. The server deletes the session on success — the sessionToken is single-use through finalize.',
@@ -76,7 +76,7 @@ const AUTHORING_CONTEXT = {
   rules: [
     'The CLI runners are the sole validator. If a tool returns status "error" with code "SCHEMA_VALIDATION", the message lists every issue at once — fix all of them before retrying.',
     `Block ids: pass an explicit \`id\` whenever \`type\` is a container (${CONTAINER_TYPES_TEXT}) — they are rejected without one. Every other type auto-ids as <type>-<n> when you omit it.`,
-    'Append-only: pathfinder_manage_block always appends new blocks to the end of their parent. Author in display order. To reorder, remove and re-add in the desired order (there is no move/insert-index on this tool).',
+    'Append-only: pathfinder_manage_block operation "add-block" always appends to the end of the parent. Author in display order. To reorder, remove-block and add-block in the desired order (there is no move/insert-index on this tool).',
     'Mutation acks include a `summary` field — a compact tree of every block ({path, id, type, hint?, children?}). Use the summary for navigation and to reference block ids.',
   ],
   // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
@@ -97,10 +97,10 @@ const AUTHORING_CONTEXT = {
     'If the target lives in a virtualized list, paginated table, or dashboard row below the fold, use a `guided` block with `lazyRender: true` on the step — a plain `interactive` will fail because `exists-reftarget` waits but cannot scroll.',
   ],
   discovery: [
-    'pathfinder_help — CLI field schemas for mutation payloads. Map: pathfinder_manage_block → command "add-block" (subcommand=<type>) | "edit-block" | "remove-block"; pathfinder_add_step → "add-step"; pathfinder_add_choice → "add-choice"; pathfinder_set_manifest → "set-manifest". Help flag names become `fields` keys; addressing flags map to tool args (`--parent`→`parentId`, `--id`→`id`).',
-    'pathfinder_read_session — given a sessionToken and operation list_blocks | get_block | get_manifest, returns a cheap facet of the session artifact. Use freely.',
+    'pathfinder_help — CLI field schemas for mutation payloads. For pathfinder_manage_block, pass command equal to `operation` ("add-block" with subcommand=<type>, "edit-block", or "remove-block"). For dedicated tools: pathfinder_add_step → "add-step"; pathfinder_add_choice → "add-choice"; pathfinder_set_manifest → "set-manifest". Help flag names become `fields` keys; addressing flags map to tool args (`--parent`→`parentId`, `--id`→`id`).',
+    'pathfinder_read_session — given a sessionToken and operation list-blocks | get-block | get-manifest, returns a cheap facet of the session artifact. Use freely.',
     'pathfinder_inspect — escape hatch. Given a sessionToken (or artifact), returns the full artifact plus a tree summary.',
-    'pathfinder_read_repository — given operation list | get | get_manifest, discovers or inspects published CDN packages. Sibling of pathfinder_read_session for published (not session) content.',
+    'pathfinder_read_repository — given operation list-packages | get-package | get-manifest, discovers or inspects published CDN packages. Sibling of pathfinder_read_session for published (not session) content.',
   ],
 };
 
