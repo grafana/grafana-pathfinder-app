@@ -16,7 +16,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
-import { REQUEST_FULLSCREEN_GUIDE_EVENT } from '../../lib/event-names';
+import { REQUEST_FULLSCREEN_GUIDE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../../lib/event-names';
 import { findDocPage } from '../../utils/find-doc-page';
 import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import pluginJson from '../../plugin.json';
@@ -237,10 +237,19 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   });
 
   const handleExitToSidebar = useCallback(async () => {
+    // Read fresh from the model, not the render-time guideUrl/title closure:
+    // an automatic handoff (REQUEST_SIDEBAR_HANDOFF_EVENT) can dispatch in the
+    // same synchronous tick as the state update that just loaded the new
+    // active tab, before React re-renders this component — the closure would
+    // still report the milestone the user is leaving, not the one that
+    // triggered the handoff. panel.state is a plain object mutated
+    // synchronously by setState, so this is always current.
+    const currentTab = panel.getActiveTab();
+    const isCurrentEditorTab = currentTab?.type === 'editor';
     reportAppInteraction(UserInteraction.FullScreenExit, {
       destination: 'sidebar',
-      guide_url: guideUrl || '',
-      guide_title: title,
+      guide_url: (isCurrentEditorTab ? undefined : currentTab?.currentUrl || currentTab?.baseUrl) || '',
+      guide_title: isCurrentEditorTab ? EDITOR_FULL_SCREEN_TITLE : currentTab?.title || 'Interactive learning',
     });
     // Flush before the mode flip: the sidebar force-restores from tabStorage
     // when it takes the workspace back, so anything unsaved here is lost.
@@ -258,7 +267,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // URLs (no captured prior path).
     const priorPath = panelModeManager.consumePriorPath();
     locationService.push(priorPath ?? PLUGIN_BASE_URL);
-  }, [guideUrl, title, panel]);
+  }, [panel]);
 
   /**
    * Hand off to the floating panel — works for both guides and the editor.
@@ -312,14 +321,13 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     locationService.push(PLUGIN_BASE_URL);
   }, [isEditorTab, guideUrl, title, activeTab?.id, activeTab?.type, activeTab?.packageInfo, panel]);
 
-  // Stable ref to the latest exit-to-sidebar callback. Without it, the
-  // empty-state fallback effect below would re-subscribe whenever
-  // `handleExitToSidebar` is recreated (i.e. whenever `guideUrl` or `title`
-  // changes — which is on every milestone navigation / content reload). If
-  // any of those updates lands in the same render where `hasActiveGuide`
-  // is transiently false (e.g. activeTabId pointing at a tab still being
-  // swapped in), the effect would spuriously fire and kick the user out
-  // of full screen.
+  // Stable ref to the latest exit-to-sidebar callback. `handleExitToSidebar`
+  // only depends on `panel` (a stable useMemo'd reference) so its identity
+  // rarely changes, but the ref still guards the empty-state fallback effect
+  // below from re-subscribing on the odd render where it does — if that
+  // landed in the same render where `hasActiveGuide` is transiently false
+  // (e.g. activeTabId pointing at a tab still being swapped in), the effect
+  // would spuriously fire and kick the user out of full screen.
   const handleExitToSidebarRef = useRef(handleExitToSidebar);
   // eslint-disable-next-line react-hooks/refs -- intentional latest-callback ref so the empty-state effect's deps stay limited to trigger booleans (see comment above)
   handleExitToSidebarRef.current = handleExitToSidebar;
@@ -347,6 +355,25 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       document.removeEventListener('pathfinder-request-dock', handleDockRequest);
     };
   }, [handleExitToSidebar]);
+
+  // Fired by docs-panel.tsx's loadDocsTabContent, via the standalone
+  // requestSidebarHandoff() in global-state/panel-mode.ts, when a
+  // newly-loaded milestone turns out to need the live Grafana UI — full
+  // screen has none for it to act on. Reuses the same exit-to-sidebar
+  // mechanics as the manual back-arrow, just triggered by navigation instead
+  // of the user leaving deliberately. Reads the latest callback through the
+  // ref above (not a `[handleExitToSidebar]` dep) for the same reason as the
+  // empty-state effect: this can fire in the same tick as the state update
+  // that just loaded the new tab, before this component re-renders.
+  useEffect(() => {
+    const handleSidebarHandoffRequest = () => {
+      void handleExitToSidebarRef.current();
+    };
+    document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleSidebarHandoffRequest);
+    return () => {
+      document.removeEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleSidebarHandoffRequest);
+    };
+  }, []);
 
   useEffect(() => {
     // `handleSwitchToFloating` already covers both editor and guide cases

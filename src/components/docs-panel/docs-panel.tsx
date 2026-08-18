@@ -69,7 +69,9 @@ import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
-import { panelModeManager } from '../../global-state/panel-mode';
+import { panelModeManager, requestSidebarHandoff } from '../../global-state/panel-mode';
+import { requiresGrafanaUi } from './utils/requires-grafana-ui';
+import { validateGuideFromString } from '../../validation';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
 
@@ -952,6 +954,41 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           pathContext,
           pendingAlignment,
         }));
+
+        // Milestone-to-milestone navigation (Get started, Next/Previous, this
+        // shared loader) never committed a surface for the newly-loaded
+        // content before now — only the initial My Learning launch classifies
+        // via `prepareGuideLaunch`. Reclassify here too: full screen has no
+        // live Grafana UI behind it, so a milestone that turns out interactive
+        // should hand off to the sidebar before the user ever clicks into it.
+        // Surface is a property of which milestone the user navigated to,
+        // decided once, here — not of which step's action they click within it.
+        // Not snippet-expanded (unlike prepareGuideLaunch) — an unresolved
+        // snippet-ref fails safe to "interactive" in the classifier, so this
+        // can occasionally over-trigger for snippet-only content. Accepted:
+        // bouncing unnecessarily is tolerable, staying in full screen for
+        // genuinely interactive content is not.
+        //
+        // Validated first, same as prepareGuideLaunch and for the same
+        // reason: requiresGrafanaUi recurses through blocks/steps unguarded,
+        // so malformed-but-JSON-parseable nesting could throw instead of
+        // classifying — the one failure mode this function must never have.
+        if (isFullScreenMode) {
+          const validation = validateGuideFromString(fetchedContent.content);
+          if (validation.guide) {
+            if (requiresGrafanaUi(validation.guide)) {
+              requestSidebarHandoff();
+            }
+          } else if (validation.errors[0]?.code !== 'invalid_json') {
+            // Genuinely non-JSON content reaching this loader (e.g. a legacy
+            // HTML doc) is expected and not worth logging; JSON that fails
+            // guide validation is not.
+            logger.warn('[DocsPanel] Could not classify newly-loaded content for full-screen handoff', {
+              url,
+              validation_error_code: validation.errors[0]?.code,
+            });
+          }
+        }
 
         if (pendingAlignment) {
           reportAppInteraction(UserInteraction.AlignmentPromptShown, {
