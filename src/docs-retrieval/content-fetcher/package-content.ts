@@ -6,28 +6,15 @@
 // single home; `fetchContent` itself stays in the orchestrator and is imported
 // here (one-directional — the orchestrator never imports back).
 import { ContentFetchResult, LearningJourneyMetadata, Milestone } from '../../types/content.types';
-import type { PackageResolver } from '../../types';
 import type { ResolvedNavLink } from '../../types/context.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
+import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
-/**
- * Module-level PackageResolver injected at Tier 3+ (docs-panel wires the
- * concrete CompositePackageResolver here so docs-retrieval stays decoupled
- * from the package-engine Tier 2 implementation).
- */
-let _packageResolver: PackageResolver | undefined;
-
-/**
- * Inject the PackageResolver implementation into docs-retrieval.
- * Called once at app startup by Tier 3/4 wiring code.
- */
-export function setPackageResolver(resolver: PackageResolver): void {
-  _packageResolver = resolver;
-}
+export { setPackageResolver, setPackageResolverFactory };
 
 /**
  * Derive the grafana.com/docs/learning-paths/ website URL for a milestone.
@@ -73,12 +60,13 @@ export function derivePathSlug(manifestId: string): string {
  * @returns Milestone[] suitable for LearningJourneyMetadata and Recommendation.milestones
  */
 export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?: string): Promise<Milestone[]> {
-  if (!_packageResolver || milestoneIds.length === 0) {
+  const resolver = await getPackageResolver();
+  if (!resolver || milestoneIds.length === 0) {
     return [];
   }
 
   const settled = await Promise.allSettled(
-    milestoneIds.map((id) => _packageResolver!.resolve(id, { loadContent: 'metadata-only' }))
+    milestoneIds.map((id) => resolver.resolve(id, { loadContent: 'metadata-only' }))
   );
 
   const milestones: Milestone[] = [];
@@ -124,12 +112,13 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
  * Unresolvable IDs are silently skipped.
  */
 export async function resolvePackageNavLinks(packageIds: string[]): Promise<ResolvedNavLink[]> {
-  if (!_packageResolver || packageIds.length === 0) {
+  const resolver = await getPackageResolver();
+  if (!resolver || packageIds.length === 0) {
     return [];
   }
 
   const settled = await Promise.allSettled(
-    packageIds.map((id) => _packageResolver!.resolve(id, { loadContent: 'metadata-only' }))
+    packageIds.map((id) => resolver.resolve(id, { loadContent: 'metadata-only' }))
   );
 
   const links: ResolvedNavLink[] = [];
@@ -250,12 +239,17 @@ export async function fetchPackageContent(
 
   // Run content fetch, milestone resolution, and baseUrl resolution in
   // parallel. These are independent: the page body doesn't need milestones
-  // and milestones don't need the page body.
+  // and milestones don't need the page body. The baseUrl branch awaits
+  // getPackageResolver() itself (rather than a resolver fetched ahead of this
+  // array) so a cold resolver's chunk fetch overlaps fetchContent(contentUrl)
+  // instead of serializing in front of it.
   const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
-    manifestId && _packageResolver
-      ? _packageResolver.resolve(manifestId, { loadContent: false }).catch(() => undefined)
+    manifestId
+      ? getPackageResolver().then((resolver) =>
+          resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
+        )
       : Promise.resolve(undefined),
   ]);
 
@@ -325,7 +319,8 @@ export async function fetchPackageById(
   packageId: string,
   packageManifest?: Record<string, unknown>
 ): Promise<ContentFetchResult> {
-  if (!_packageResolver) {
+  const resolver = await getPackageResolver();
+  if (!resolver) {
     return {
       content: null,
       error: 'No package resolver configured — call setPackageResolver() first',
@@ -338,7 +333,7 @@ export async function fetchPackageById(
   // tab restore), so a draft opened by bare id is only caught here. The baseUrl
   // hydration resolve() in fetchPackageContent stays unverified — it runs on
   // every milestone fetch and its id is already known-good.
-  const resolution = await _packageResolver.resolve(packageId, { loadContent: false, verifyPublished: true });
+  const resolution = await resolver.resolve(packageId, { loadContent: false, verifyPublished: true });
 
   if (!resolution.ok) {
     return {

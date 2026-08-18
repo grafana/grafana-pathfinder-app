@@ -15,6 +15,7 @@ import {
   fetchPackageContent,
   fetchPackageById,
   setPackageResolver,
+  setPackageResolverFactory,
   resolvePackageMilestones,
   resolvePackageNavLinks,
   ensureNonEmptyCoverContent,
@@ -338,6 +339,63 @@ describe('setPackageResolver', () => {
     setPackageResolver(secondResolver);
     await fetchPackageById('any-id');
     expect(secondResolver.resolve).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('setPackageResolverFactory', () => {
+  afterEach(() => {
+    setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
+  });
+
+  it('does not invoke the factory until the resolver is actually read', () => {
+    const factory = jest.fn().mockResolvedValue(makeResolver(makeSuccessResolution({ id: 'm1' })));
+
+    setPackageResolverFactory(factory);
+
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it('resolves milestones once the factory-registered resolver is available', async () => {
+    setPackageResolverFactory(() => Promise.resolve(makeResolver(makeSuccessResolution({ id: 'm1' }))));
+
+    const milestones = await resolvePackageMilestones(['m1']);
+
+    expect(milestones).not.toEqual([]);
+  });
+
+  it('invokes the factory only once across repeated reads', async () => {
+    const resolver = makeResolver(makeSuccessResolution({ id: 'm1' }));
+    const factory = jest.fn().mockResolvedValue(resolver);
+    setPackageResolverFactory(factory);
+
+    await resolvePackageMilestones(['m1']);
+    await resolvePackageMilestones(['m1']);
+
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it('a later setPackageResolver call overrides a pending factory registration', async () => {
+    setPackageResolverFactory(() =>
+      Promise.resolve(makeResolver({ ok: false, id: 'x', error: { code: 'not-found', message: 'factory' } }))
+    );
+    setPackageResolver(makeResolver(makeSuccessResolution({ id: 'm1' })));
+
+    const milestones = await resolvePackageMilestones(['m1']);
+
+    expect(milestones).not.toEqual([]);
+  });
+
+  it('a rejected factory does not poison later reads with a cached rejection', async () => {
+    setPackageResolverFactory(() => Promise.reject(new Error('dynamic import failed')));
+
+    // The rejection is caught internally — callers see "no resolver
+    // configured" (empty result), never a thrown exception, and that holds
+    // on every subsequent read since the promise is memoized.
+    const first = await resolvePackageMilestones(['m1']);
+    const second = await resolvePackageMilestones(['m1']);
+
+    expect(first).toEqual([]);
+    expect(second).toEqual([]);
   });
 });
 
