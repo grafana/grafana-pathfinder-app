@@ -150,6 +150,68 @@ describe('fetchCustomGuideRepository', () => {
     expect(result).toEqual([]);
   });
 
+  // An omitted or null `guides` on an available capability is an ordinary empty
+  // catalogue, not drift — Go's json.Marshal of a nil slice emits `null`, so the
+  // proxy sends exactly this for a stack with no guides. Signalling here would
+  // fire on the most common case there is.
+  it.each([
+    { shape: 'omitted', response: { capability: { available: true } } },
+    { shape: 'null', response: { capability: { available: true }, guides: null } },
+  ])('stays silent when guides is $shape', async ({ response }) => {
+    mockGet.mockResolvedValue(response);
+
+    const result = await fetchCustomGuideRepository('stacks-123');
+
+    expect(result).toEqual([]);
+    expect(recordCustomGuideCatalogueUnavailable).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  // A present-but-non-array `guides` cannot be a catalogue under any encoding,
+  // so it is schema drift and must be countable rather than silently empty.
+  it.each([
+    { shape: 'an object', guides: { 'fe-alerting-path': {} } },
+    { shape: 'a string', guides: 'fe-alerting-path' },
+    { shape: 'a number', guides: 3 },
+    { shape: 'a boolean', guides: true },
+  ])('reports malformed-response when guides is $shape', async ({ guides }) => {
+    mockGet.mockResolvedValue({ capability: { available: true }, guides });
+
+    const result = await fetchCustomGuideRepository('stacks-123');
+
+    expect(result).toEqual([]);
+    expect(recordCustomGuideCatalogueUnavailable).toHaveBeenCalledWith('malformed-response');
+    expect(logger.warn).toHaveBeenCalledWith('[custom-guides] catalogue malformed', {
+      reason: 'malformed-response',
+    });
+  });
+
+  it('does not cache a malformed response for the TTL', async () => {
+    mockGet.mockResolvedValueOnce({ capability: { available: true }, guides: { nope: true } });
+
+    await expect(fetchCustomGuideRepository('stacks-123')).resolves.toEqual([]);
+
+    // The backend recovers on the very next call; a cached empty would hide it.
+    mockGet.mockResolvedValueOnce({
+      capability: { available: true },
+      guides: [{ id: 'fe-alerting-path', title: 'Alerting enablement', status: 'published' }],
+    });
+
+    const recovered = await fetchCustomGuideRepository('stacks-123');
+
+    expect(recovered).toHaveLength(1);
+    expect(mockGet).toHaveBeenCalledTimes(2);
+  });
+
+  it('still caches a legitimately empty catalogue', async () => {
+    mockGet.mockResolvedValue({ capability: { available: true }, guides: [] });
+
+    await fetchCustomGuideRepository('stacks-123');
+    await fetchCustomGuideRepository('stacks-123');
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
   // The reason lands on a Faro event attribute and in the bridged log context,
   // so every rejection shape must collapse to a token from the closed set.
   it.each([

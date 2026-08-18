@@ -987,7 +987,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
 
   const isEditorUser = isCurrentUserEditor();
 
-  const codaAvailable = useCodaPluginAvailable();
+  const codaAvailable = useCodaPluginAvailable(isDevMode && pluginConfig.enableCodaTerminal);
 
   // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
   // Stable callback identity so effects depending on it do not re-run when isDevMode toggles.
