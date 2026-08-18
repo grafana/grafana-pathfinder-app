@@ -36,8 +36,8 @@ const (
 	// separate constant from the success TTL: after an upstream refresh fails,
 	// TTL-expired re-attempts are suppressed for this long so a sustained
 	// outage doesn't re-trigger a full-namespace LIST on every sequential
-	// request. Identity-scoped (401/403) failures never enter this shared
-	// negative cache — see getCompletionIndex.
+	// request. Only failures positively classified as namespace-global enter this
+	// shared negative cache — see getCompletionIndex.
 	completionFailureCooldown = 30 * time.Second
 
 	// completionRetryAfterSeconds is the Retry-After hint on a cold 503.
@@ -200,10 +200,10 @@ func resetCompletionRecordsCache() {
 // most once per TTL (or immediately when a rate-limit-permitted forced refresh
 // is requested). On refresh failure it serves a warm (stale) index when one
 // exists; a cold failure returns (nil, err). After a namespace-global failure
-// a short cooldown suppresses TTL-driven re-attempts; identity-scoped (401/403)
-// failures are per-request and never enter that shared negative cache — caller
-// A's denied token must not become a cached error served to caller B.
-// Concurrent refreshes single-flight.
+// a short cooldown suppresses TTL-driven re-attempts; only failures positively
+// classified as namespace-global enter that shared negative cache — caller A's
+// denied token or failed token mint must not become a cached error served to
+// caller B. Concurrent refreshes single-flight.
 func getCompletionIndex(ctx context.Context, namespace string, lister completionRecordLister, forced bool, logger log.Logger) (*completionIndex, error) {
 	completionCacheMu.Lock()
 	completionCacheInit()
@@ -283,15 +283,15 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 			"staleServes", stats.staleServes, "refreshFailures", stats.refreshFailures)
 	} else {
 		stats.refreshFailures++
-		identityScoped := isIdentityScopedCompletionError(err)
-		if !identityScoped {
+		namespaceGlobal := isNamespaceGlobalCompletionError(err)
+		if namespaceGlobal {
 			completionLastFailure[namespace] = completionFailure{at: timeNow(), err: err}
 		}
 		// Refresh attempts are throttled by TTL + cooldown, so this logs state
 		// transitions, not every request.
 		logger.Info("completion index refresh failed",
 			"namespace", namespace, "error", err,
-			"identityScoped", identityScoped, "servingStale", entry != nil,
+			"namespaceGlobal", namespaceGlobal, "servingStale", entry != nil,
 			"refreshFailures", stats.refreshFailures)
 		if entry != nil {
 			// Warm cache + upstream failure: serve stale. asOf reflects true age.
@@ -591,9 +591,9 @@ func isTerminalCompletionError(err error) bool {
 	return isTerminalUpstreamError(err)
 }
 
-// isIdentityScopedCompletionError reports whether an upstream failure means
-// the aggregator rejected this caller's forwarded identity (401/403). Thin
-// domain alias over the shared classifier.
-func isIdentityScopedCompletionError(err error) bool {
-	return isIdentityScopedUpstreamError(err)
+// isNamespaceGlobalCompletionError reports whether an upstream failure may be
+// shared across callers through the negative cache. Thin domain alias over the
+// shared classifier.
+func isNamespaceGlobalCompletionError(err error) bool {
+	return isNamespaceGlobalUpstreamError(err)
 }

@@ -393,7 +393,13 @@ export interface JsonGuidedBlock extends AuthorAnnotated {
   objectives?: string[];
   /** Whether this block can be skipped */
   skippable?: boolean;
-  /** Whether to mark complete when user performs action early */
+  /**
+   * Persist completion from the final guided action signal.
+   * For a final button or highlight action, click activation causes completion to persist during capture.
+   * The application click handler runs after persistence.
+   * A final action without click activation persists after its result.
+   * Cancellation, timeout, or error does not persist completion.
+   */
   completeEarly?: boolean;
 }
 
@@ -542,6 +548,25 @@ export interface JsonInputBlock extends AuthorAnnotated {
   skippable?: boolean;
   /** Filter datasources by type (e.g., 'prometheus', 'loki'). Only used when inputType is 'datasource'. */
   datasourceFilter?: string;
+  /**
+   * Query run against the picked data source to confirm it holds the data this
+   * guide teaches against. Its presence is what enables the check; it runs on
+   * click only, never on a polling cadence. Only used when inputType is
+   * 'datasource', and only against Prometheus, Loki, Tempo, and Pyroscope.
+   */
+  dataCheckQuery?: string;
+  /** Message shown when the check finds no data */
+  dataCheckFailureMessage?: string;
+  /** Check query range start (defaults to "now-1h") */
+  dataCheckTimeFrom?: string;
+  /** Check query range end (defaults to "now") */
+  dataCheckTimeTo?: string;
+  /**
+   * Make a failing check hold the section up. Off by default: the check reports
+   * what it found and the user moves on. Turning it on makes this block a
+   * tracked step that completes only on a pass, or a skip when `skippable`.
+   */
+  dataCheckBlocking?: boolean;
 }
 
 // ============ TERMINAL BLOCK ============
@@ -650,7 +675,7 @@ export interface JsonChallengeBlock extends AuthorAnnotated {
   /** Sample app for the sample-app template */
   vmApp?: string;
   /**
-   * Bash commands run sequentially via /coda/exec after the VM is ready
+   * Bash commands run sequentially in the sandbox VM after it is ready
    * and before "Check my work" becomes available.
    *
    * @deprecated Prefer `setupScript` for new challenges — it accepts
@@ -662,7 +687,7 @@ export interface JsonChallengeBlock extends AuthorAnnotated {
    */
   setupCommands?: string[];
   /**
-   * Bash script run via /coda/exec after the VM is ready and before
+   * Bash script run in the sandbox VM after it is ready and before
    * "Check my work" becomes available. The whole string (including
    * newlines) is passed to the remote login shell as a single command,
    * so heredocs and multi-line control flow work as expected.

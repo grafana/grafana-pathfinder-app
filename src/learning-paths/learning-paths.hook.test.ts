@@ -114,6 +114,26 @@ describe('useLearningPaths — App Platform path ingestion', () => {
     );
   });
 
+  // The bundled paths.json metadata keeps Object.prototype, and the App Platform
+  // tier is null-prototype, so a member id naming a built-in must fall through to
+  // the id-titled default rather than resolving to Object.prototype.toString.
+  it('titles a member named after an Object.prototype member by its id', async () => {
+    mockFetchAppPlatformLearningPaths.mockResolvedValue({
+      paths: [
+        { id: 'fe-alerting-path', title: 'Alerting enablement', description: '', guides: ['toString'], badgeId: '' },
+      ],
+      guideMetadata: Object.create(null),
+    });
+
+    const { result } = renderHook(() => useLearningPaths());
+
+    await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain('fe-alerting-path'));
+
+    const [member] = result.current.getPathGuides('fe-alerting-path');
+    expect(member!.title).toBe('toString');
+    expect(member!.url).toBeUndefined();
+  });
+
   it('does not fetch when no namespace is available', async () => {
     mockNamespace = undefined;
 

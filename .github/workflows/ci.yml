@@ -111,6 +111,7 @@ jobs:
           key: node-modules-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
       - if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
+      - run: npm run test:review-contract
       - run: npm run test:ci
       - name: Upload coverage reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -146,6 +147,23 @@ jobs:
         run: npm run validate:packages
       - name: Check repository.json freshness
         run: npm run repository:check
+
+  # No node_modules: the authoring scripts are bash, curl and jq, and the suite
+  # stubs curl so nothing reaches a stack.
+  test-scripts:
+    name: Test scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Test shell scripts
+        run: npm run test:scripts
 
   # Backend tests run in parallel with the frontend build and quality checks.
   # No dependency on setup: this job only needs Go, not node_modules.
@@ -272,7 +290,7 @@ jobs:
   # CI gate job for branch protection - aggregates all required checks
   ci-gate:
     name: CI Gate
-    needs: [lint, typecheck, prettier, test, validate-packages, build, test-backend]
+    needs: [lint, typecheck, prettier, test, validate-packages, build, test-backend, test-scripts]
     if: always()
     runs-on: ubuntu-latest
     permissions: {} # No permissions needed - only checks job results
@@ -286,13 +304,15 @@ jobs:
           echo "Validate packages: ${{ needs.validate-packages.result }}"
           echo "Build: ${{ needs.build.result }}"
           echo "Test backend: ${{ needs.test-backend.result }}"
+          echo "Test scripts: ${{ needs.test-scripts.result }}"
 
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.prettier.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.validate-packages.result }}" != "success" ]] || \
-             [[ "${{ needs.build.result }}" != "success" ]]; then
+             [[ "${{ needs.build.result }}" != "success" ]] || \
+             [[ "${{ needs.test-scripts.result }}" != "success" ]]; then
             echo "One or more required jobs failed"
             exit 1
           fi
@@ -309,7 +329,7 @@ jobs:
   # Alerts #grafana-pathfinder-alerts on main-branch CI failures only.
   notify-ci-failure:
     name: Notify CI failure
-    needs: [lint, typecheck, prettier, test, validate-packages, build, test-backend]
+    needs: [lint, typecheck, prettier, test, validate-packages, build, test-backend, test-scripts]
     if: >-
       always() &&
       github.event_name == 'push' &&

@@ -18,6 +18,7 @@ export type { TerminalVMOptions };
 
 // Module-level status for requirement checker access (outside React tree)
 let _moduleTerminalStatus: ConnectionStatus = 'disconnected';
+let _moduleTerminalSessionId: string | null = null;
 
 /**
  * Read terminal connection status from outside React (for requirement checkers).
@@ -26,14 +27,47 @@ export function getTerminalConnectionStatus(): ConnectionStatus {
   return _moduleTerminalStatus;
 }
 
+/**
+ * Read the active Coda session id from outside React. Exec calls are
+ * session-scoped, and the requirement checker runs outside the React tree.
+ *
+ * Gated on `connected`: exec reuses the stream's SSH client, so an id read out
+ * of a terminal that is not attached can only buy a doomed request.
+ */
+export function getTerminalSessionId(): string | null {
+  return _moduleTerminalStatus === 'connected' ? _moduleTerminalSessionId : null;
+}
+
 export interface TerminalContextValue {
   status: ConnectionStatus;
+  /** Active Coda session id, or null when disconnected */
+  sessionId: string | null;
+  /** Last connection error reported by the terminal, or null. */
+  error: string | null;
+  /**
+   * Whether a TerminalPanel has registered itself, so `connect` and
+   * `openTerminal` actually reach the Live hook.
+   *
+   * The provider mounts unconditionally but the panel is gated (dev mode,
+   * `enableCodaTerminal`, and the Coda plugin being installed), so a present
+   * context is not a working terminal. Callers that would otherwise wait on a
+   * connection must check this or they wait forever.
+   */
+  isTerminalRegistered: boolean;
   connect: (vmOpts?: TerminalVMOptions) => void;
   disconnect: () => void;
   /** Send a command string to the terminal (appends newline to execute) */
   sendCommand: (command: string) => Promise<void>;
-  /** Expand the terminal panel and connect if not already connected */
-  openTerminal: (vmOpts?: TerminalVMOptions) => void;
+  /**
+   * Expand the terminal panel and connect if not already connected.
+   *
+   * Resolves with the session id the caller may then use, or `null` if no
+   * session was reached. Awaiting matters when the requested VM differs from
+   * the live one: this tears the old session down and provisions a new one, so
+   * a caller that reads `sessionId` off the render instead gets the session
+   * that is being deleted.
+   */
+  openTerminal: (vmOpts?: TerminalVMOptions) => Promise<string | null>;
   /** Whether the terminal panel is expanded */
   isExpanded: boolean;
   /** Set terminal panel expanded state */
@@ -41,6 +75,8 @@ export interface TerminalContextValue {
   /** Register the underlying useTerminalLive hook values */
   _register: (opts: {
     status: ConnectionStatus;
+    sessionId: string | null;
+    error: string | null;
     connect: (vmOpts?: TerminalVMOptions) => void;
     disconnect: () => void;
     sendCommand: (command: string) => Promise<void>;
@@ -66,6 +102,9 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   // Store registered hook values from TerminalPanel
   const [registeredStatus, setRegisteredStatus] = useState<ConnectionStatus>('disconnected');
+  const [registeredSessionId, setRegisteredSessionId] = useState<string | null>(null);
+  const [registeredError, setRegisteredError] = useState<string | null>(null);
+  const [isTerminalRegistered, setIsTerminalRegistered] = useState(false);
   const registeredConnectRef = useRef<((vmOpts?: TerminalVMOptions) => void) | null>(null);
   const registeredDisconnectRef = useRef<(() => void) | null>(null);
   const registeredSendCommandRef = useRef<((command: string) => Promise<void>) | null>(null);
@@ -81,22 +120,68 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   // Pending reconnect timer — stored so disconnect() can cancel it
   const pendingConnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Callers awaiting openTerminal. `leftConnected` records whether the session
+  // they were told to stop using has actually gone away yet: a reconnect starts
+  // from 'connected', so resolving on the first 'connected' seen would hand back
+  // the id of the session being torn down.
+  const sessionWaitersRef = useRef<Array<{ resolve: (id: string | null) => void; leftConnected: boolean }>>([]);
+
+  const settleWaiters = useCallback((status: ConnectionStatus, sessionId: string | null) => {
+    const waiters = sessionWaitersRef.current;
+    if (waiters.length === 0) {
+      return;
+    }
+    if (status !== 'connected') {
+      waiters.forEach((waiter) => {
+        waiter.leftConnected = true;
+      });
+    }
+    const settled = waiters.filter((waiter) => (status === 'connected' && waiter.leftConnected) || status === 'error');
+    if (settled.length === 0) {
+      return;
+    }
+    sessionWaitersRef.current = waiters.filter((waiter) => !settled.includes(waiter));
+    settled.forEach((waiter) => waiter.resolve(status === 'connected' ? sessionId : null));
+  }, []);
+
   // Sync module-level status whenever it changes
   useEffect(() => {
     _moduleTerminalStatus = registeredStatus;
   }, [registeredStatus]);
 
+  useEffect(() => {
+    _moduleTerminalSessionId = registeredSessionId;
+  }, [registeredSessionId]);
+
+  useEffect(() => {
+    return () => {
+      const abandoned = sessionWaitersRef.current;
+      sessionWaitersRef.current = [];
+      abandoned.forEach((waiter) => waiter.resolve(null));
+      if (pendingConnectTimerRef.current) {
+        clearTimeout(pendingConnectTimerRef.current);
+        pendingConnectTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const register = useCallback(
     (opts: {
       status: ConnectionStatus;
+      sessionId: string | null;
+      error: string | null;
       connect: (vmOpts?: TerminalVMOptions) => void;
       disconnect: () => void;
       sendCommand: (command: string) => Promise<void>;
     }) => {
       setRegisteredStatus(opts.status);
+      setRegisteredSessionId(opts.sessionId);
+      setRegisteredError(opts.error);
+      setIsTerminalRegistered(true);
       registeredConnectRef.current = opts.connect;
       registeredDisconnectRef.current = opts.disconnect;
       registeredSendCommandRef.current = opts.sendCommand;
+      settleWaiters(opts.status, opts.sessionId);
 
       // When a disconnect/error originates outside openTerminal (e.g. panel button,
       // network drop, VM expiry), clear stale VM options so subsequent openTerminal
@@ -105,7 +190,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
         activeVmOptsRef.current = undefined;
       }
     },
-    []
+    [settleWaiters]
   );
 
   const connect = useCallback((vmOpts?: TerminalVMOptions) => {
@@ -121,6 +206,11 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     }
     reconnectingRef.current = false;
     activeVmOptsRef.current = undefined;
+    // Whoever asked for this session is not getting one. Without this they
+    // await a `register` that a cancelled connect will never produce.
+    const abandoned = sessionWaitersRef.current;
+    sessionWaitersRef.current = [];
+    abandoned.forEach((waiter) => waiter.resolve(null));
     // Keep lastVmOpts in storage so the Connect button and auto-reconnect
     // can restore the same VM type. Only openTerminal with different opts
     // (or an explicit storage clear) should overwrite the persisted value.
@@ -136,7 +226,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   }, []);
 
   const openTerminal = useCallback(
-    (vmOpts?: TerminalVMOptions) => {
+    (vmOpts?: TerminalVMOptions): Promise<string | null> => {
       setIsExpanded(true);
 
       const needsConnect = registeredStatus === 'disconnected' || registeredStatus === 'error';
@@ -151,29 +241,38 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
         !needsConnect &&
         (requestedTemplate !== activeTemplate || requestedApp !== activeApp || requestedScenario !== activeScenario);
 
+      if (!needsConnect && !needsReconnect) {
+        return Promise.resolve(registeredSessionId);
+      }
+
       if (needsReconnect) {
         reconnectingRef.current = true;
         registeredDisconnectRef.current?.();
       }
 
-      if (needsConnect || needsReconnect) {
-        activeVmOptsRef.current = vmOpts;
-        setLastVmOpts(vmOpts);
-        if (pendingConnectTimerRef.current) {
-          clearTimeout(pendingConnectTimerRef.current);
-        }
-        pendingConnectTimerRef.current = setTimeout(() => {
-          pendingConnectTimerRef.current = null;
-          reconnectingRef.current = false;
-          registeredConnectRef.current?.(vmOpts);
-        }, 100);
+      activeVmOptsRef.current = vmOpts;
+      setLastVmOpts(vmOpts);
+      if (pendingConnectTimerRef.current) {
+        clearTimeout(pendingConnectTimerRef.current);
       }
+      pendingConnectTimerRef.current = setTimeout(() => {
+        pendingConnectTimerRef.current = null;
+        reconnectingRef.current = false;
+        registeredConnectRef.current?.(vmOpts);
+      }, 100);
+
+      return new Promise((resolve) => {
+        sessionWaitersRef.current.push({ resolve, leftConnected: registeredStatus !== 'connected' });
+      });
     },
-    [registeredStatus]
+    [registeredStatus, registeredSessionId]
   );
 
   const value: TerminalContextValue = {
     status: registeredStatus,
+    sessionId: registeredSessionId,
+    error: registeredError,
+    isTerminalRegistered,
     connect,
     disconnect,
     sendCommand,

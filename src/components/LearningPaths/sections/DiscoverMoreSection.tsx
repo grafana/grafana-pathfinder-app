@@ -8,11 +8,14 @@
 
 import React from 'react';
 import { Icon } from '@grafana/ui';
+import { cx } from '@emotion/css';
 import { t } from '@grafana/i18n';
 
 import { testIds } from '../../../constants/testIds';
 import type { DiscoverMoreItem } from '../../../learning-paths';
+import { useVerticalOverflow } from '../../../hooks';
 import { SkeletonLoader } from '../../SkeletonLoader';
+import { DiscoverMoreCard } from '../DiscoverMoreCard';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
 
 interface DiscoverMoreSectionProps {
@@ -24,46 +27,6 @@ interface DiscoverMoreSectionProps {
   styles: ReturnType<typeof getMyLearningStyles>;
 }
 
-function DiscoverMoreCard({
-  item,
-  onStart,
-  isStarting,
-  startDisabled,
-  styles,
-}: {
-  item: DiscoverMoreItem;
-  onStart: (item: DiscoverMoreItem) => void;
-  isStarting: boolean;
-  startDisabled: boolean;
-  styles: ReturnType<typeof getMyLearningStyles>;
-}) {
-  const meta =
-    item.milestoneCount != null
-      ? t('myLearning.discoverMoreMilestones', '{{count}} milestones', { count: item.milestoneCount })
-      : item.description;
-
-  return (
-    <div className={styles.discoverCard} data-testid={testIds.learningPaths.discoverMoreCard(item.id)}>
-      <div className={styles.discoverIcon}>
-        <Icon name="compass" size="lg" />
-      </div>
-      <div className={styles.discoverBody}>
-        <h3 className={styles.discoverTitle}>{item.title}</h3>
-        {meta && <p className={styles.discoverMeta}>{meta}</p>}
-      </div>
-      <button
-        className={styles.discoverStartButton}
-        onClick={() => onStart(item)}
-        disabled={startDisabled}
-        data-testid={testIds.learningPaths.discoverMoreStart(item.id)}
-      >
-        <Icon name={isStarting ? 'fa fa-spinner' : 'play'} size="sm" />
-        {isStarting ? t('myLearning.discoverMoreOpening', 'Opening…') : t('myLearning.discoverMoreStart', 'Start')}
-      </button>
-    </div>
-  );
-}
-
 export function DiscoverMoreSection({
   items,
   isLoading,
@@ -72,12 +35,18 @@ export function DiscoverMoreSection({
   startDisabled,
   styles,
 }: DiscoverMoreSectionProps) {
+  const [listRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
+
   return (
     <div className={styles.section} data-testid={testIds.learningPaths.discoverMoreSection}>
       <div className={styles.sectionHeader}>
         <Icon name="compass" size="md" className={styles.sectionIcon} />
         <h2 className={styles.sectionTitle}>{t('myLearning.discoverMore', 'Discover more')}</h2>
       </div>
+      <p className={styles.sectionDescription}>
+        {t('myLearning.discoverMoreDescription', 'Structured paths to help you master Grafana step by step')}
+      </p>
+
       {isLoading ? (
         <SkeletonLoader type="recommendations" />
       ) : items.length === 0 ? (
@@ -86,7 +55,10 @@ export function DiscoverMoreSection({
           <p>{t('myLearning.discoverMoreEmpty', 'Nothing new to show right now — check back later')}</p>
         </div>
       ) : (
-        <div className={styles.discoverList}>
+        <div
+          ref={listRef}
+          className={cx(styles.discoverList, styles.scrollRegion, hasOverflow && styles.scrollRegionFaded)}
+        >
           {items.map((item) => (
             <DiscoverMoreCard
               key={item.id}
@@ -94,7 +66,6 @@ export function DiscoverMoreSection({
               onStart={onStart}
               isStarting={startingId === item.id}
               startDisabled={startDisabled}
-              styles={styles}
             />
           ))}
         </div>

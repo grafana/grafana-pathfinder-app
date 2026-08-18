@@ -3,9 +3,9 @@ import { Button } from '@grafana/ui';
 
 import { waitForReactUpdates } from '../../lib/async-utils';
 import {
-  useStepChecker,
   getPostVerifyExplanation,
-  checkPostconditions,
+  useGuideRequirements,
+  useStepChecker,
   validateInteractiveRequirements,
 } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
@@ -296,6 +296,7 @@ export const InteractiveStep = forwardRef<
 
     // Get the interactive functions from the hook
     const { executeInteractiveAction, verifyStepResult } = useInteractiveElements();
+    const { checkPostconditions } = useGuideRequirements();
 
     // For section steps, use a simplified checker that respects section authority
     // For standalone steps, use the full global checker
@@ -664,6 +665,7 @@ export const InteractiveStep = forwardRef<
         onComplete,
         analyticsStepMeta,
         persistCompletion,
+        checkPostconditions,
       ]
     );
 

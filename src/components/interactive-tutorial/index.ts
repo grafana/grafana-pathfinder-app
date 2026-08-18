@@ -17,6 +17,7 @@ export { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 export { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 export { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 export { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+export { DatasourceCheckStep, resetDatasourceCheckStepCounter } from './datasource-check-step';
 export { GrotGuideBlock } from './grot-guide-block';
 
 export { STEP_TYPE_PARSE_KEYS, STEP_TYPE_SCHEMAS } from './step-type-registry';

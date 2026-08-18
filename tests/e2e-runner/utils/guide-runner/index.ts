@@ -38,6 +38,10 @@ export {
   STEP_OVERHEAD_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+  SCROLL_INTO_VIEW_TIMEOUT_MS,
+  LATE_COMPLETION_CHECK_TIMEOUT_MS,
+  GUIDED_RELOAD_LOAD_TIMEOUT_MS,
+  SKIP_SYNC_TIMEOUT_MS,
 } from './constants';
 
 // ============================================
@@ -60,6 +64,7 @@ export {
 // ============================================
 export { discoverStepsFromDOM, logDiscoveryResults, resolveEffectiveSkippable } from './discovery';
 export { ensureDocsPanelOpen } from './bootstrap';
+export { dismissBadgeCelebrations } from './badge-celebrations';
 
 // ============================================
 // Requirements
@@ -77,6 +82,7 @@ export {
 // ============================================
 // Execution
 // ============================================
+export type { GuidedCommentBoxWaitOutcome } from './execution';
 export {
   scrollStepIntoView,
   calculateGuideTimeout,
@@ -87,6 +93,9 @@ export {
   waitForStepCompletion,
   checkObjectiveCompletion,
   waitForCompletionWithObjectivePolling,
+  waitForGuidedCommentBoxReady,
+  runGuidedSubstepLoop,
+  clickSkipButtonAndSync,
   executeStep,
   executeAllSteps,
   logStepResult,

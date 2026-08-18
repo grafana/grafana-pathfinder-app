@@ -14,9 +14,17 @@ import { css } from '@emotion/css';
 
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
+import {
+  codaUnavailableMessage,
+  useCodaSessionEligibility,
+  useReportSandboxUnavailable,
+  useCodaTerminalGate,
+} from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { logger } from '../../lib/logging';
+
+const SANDBOX_SUBJECT = 'This step runs its command in a Coda sandbox VM';
 
 export interface TerminalStepProps {
   command: string;
@@ -129,6 +137,9 @@ export const TerminalStep = forwardRef<
   ) => {
     const styles = useStyles2(getStyles);
     const terminalCtx = useTerminalContext();
+    const codaGate = useCodaTerminalGate();
+    const codaEligibility = useCodaSessionEligibility(codaGate !== 'disabled');
+    useReportSandboxUnavailable(codaGate, codaEligibility, !!terminalCtx?.isTerminalRegistered, 'terminal');
 
     const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
@@ -228,6 +239,15 @@ export const TerminalStep = forwardRef<
 
     const isEnabled = checker.isEnabled && !disabled;
     const isTerminalConnected = terminalCtx?.status === 'connected';
+    // The provider mounts unconditionally while the panel that registers the
+    // real `connect` is gated, so "Connect terminal" would otherwise be a
+    // button wired to nothing. Copy still works — it never needed a sandbox.
+    const sandboxUnavailable = codaUnavailableMessage(
+      codaGate,
+      codaEligibility,
+      !!terminalCtx?.isTerminalRegistered,
+      SANDBOX_SUBJECT
+    );
 
     // Determine visual state
     let stepState: StepStateValue = STEP_STATES.IDLE;
@@ -297,7 +317,7 @@ export const TerminalStep = forwardRef<
               Copy
             </Button>
 
-            {isTerminalConnected ? (
+            {isTerminalConnected && (
               <Button
                 size="sm"
                 variant="primary"
@@ -308,7 +328,8 @@ export const TerminalStep = forwardRef<
               >
                 {isExecRunning ? 'Running...' : 'Exec'}
               </Button>
-            ) : (
+            )}
+            {!isTerminalConnected && !sandboxUnavailable && (
               <Button
                 size="sm"
                 variant="primary"
@@ -322,6 +343,11 @@ export const TerminalStep = forwardRef<
 
             {copyFeedback && <span className={styles.copyFeedback}>Copied!</span>}
           </div>
+        )}
+
+        {/* Why there is no Exec button. Copy is still offered above. */}
+        {isEnabled && !isCompleted && !isTerminalConnected && sandboxUnavailable && (
+          <div className={styles.requirementMessage}>{sandboxUnavailable}</div>
         )}
 
         {/* Completed badge */}

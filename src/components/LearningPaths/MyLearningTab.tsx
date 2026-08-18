@@ -19,12 +19,14 @@ import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { StorageEvents } from '../../lib/event-names';
 import {
   learningProgressStorage,
   journeyCompletionStorage,
   interactiveStepStorage,
   interactiveCompletionStorage,
+  milestoneCompletionStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
 import type { EarnedBadge } from '../../types';
@@ -34,6 +36,7 @@ import { getMyLearningStyles } from './MyLearningTab.styles';
 import { BadgeDetailCard } from './BadgeDetailCard';
 import { HeroStats } from './sections/HeroStats';
 import { MyCoursesSection } from './sections/MyCoursesSection';
+import { PrivatePathsSection } from './sections/PrivatePathsSection';
 import { BadgesSection } from './sections/BadgesSection';
 import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
 import { CompletedSection } from './sections/CompletedSection';
@@ -62,8 +65,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       mountedRef.current = false;
     };
   }, []);
-  const [showAllBadges, setShowAllBadges] = useState(false);
-  const [showAllCourses, setShowAllCourses] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
 
   const {
@@ -79,17 +80,20 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     isLoading,
   } = useLearningPaths();
 
-  const courses = useMemo(() => {
+  const inProgress = useMemo(() => {
     return paths
       .filter((path) => getPathProgress(path.id) < 100)
       .sort((a, b) => getPathProgress(b.id) - getPathProgress(a.id));
   }, [paths, getPathProgress]);
 
+  const privatePaths = useMemo(() => inProgress.filter((path) => path.isPrivate), [inProgress]);
+  const courses = useMemo(() => inProgress.filter((path) => !path.isPrivate), [inProgress]);
+
   const completedPaths = useMemo(() => paths.filter((path) => isPathCompleted(path.id)), [paths, isPathCompleted]);
 
   const excludeTitles = useMemo(
-    () => new Set([...courses, ...completedPaths].map((path) => path.title)),
-    [courses, completedPaths]
+    () => new Set([...inProgress, ...completedPaths].map((path) => path.title)),
+    [inProgress, completedPaths]
   );
   const { items: discoverItems, isLoading: discoverLoading } = useDiscoverMore({ excludeTitles });
 
@@ -116,10 +120,15 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         if (result.ok) {
           onOpenGuide(result.launch);
         } else {
-          // The raw error is internal-shaped — keep it for the logs (Faro
-          // bridge makes launch failures countable) and show a translated
-          // generic message.
-          logger.error('[MyLearning] Guide launch preparation failed', { url, error: result.error });
+          // Log context reaches Faro attributes verbatim, so only stable,
+          // low-cardinality values go in: the URL loses its query and fragment,
+          // and the classification code stands in for `result.error`, whose free
+          // text can echo fetched-guide values. The user sees a translated
+          // generic message either way.
+          logger.error('[MyLearning] Guide launch preparation failed', {
+            content_url: normalizeTelemetryUrl(url),
+            error_code: result.errorCode,
+          });
           getAppEvents().publish({
             type: 'alert-error',
             payload: [
@@ -236,6 +245,11 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         await journeyCompletionStorage.clear(url);
       }
 
+      // Milestone checklists outlive a per-path reset for paths that predate the
+      // path-key fix, so a global reset has to drop them too — otherwise the next
+      // single completion re-crosses the all-milestones threshold.
+      await milestoneCompletionStorage.clearAll();
+
       // Clear all interactive guide step and completion state
       // This prevents guides from instantly re-completing when reopened
       await interactiveStepStorage.clearAll();
@@ -256,7 +270,6 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const totalGuidesCompleted = progress.completedGuides.length;
   const totalBadgesEarned = progress.earnedBadges.length;
-  const totalBadges = badgesWithStatus.length;
 
   const pathsForProgress = useMemo(() => paths.map((p) => ({ id: p.id, guides: p.guides })), [paths]);
 
@@ -312,37 +325,44 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       <HeroStats
         guidesCompleted={totalGuidesCompleted}
         badgesEarned={totalBadgesEarned}
-        totalBadges={totalBadges}
         streakDays={streakInfo.days}
         styles={styles}
       />
 
-      {/* My Courses ∥ Badges — collapses to stacked on narrow panels */}
-      <div className={styles.columnsRow}>
-        <MyCoursesSection
-          courses={courses}
-          showAll={showAllCourses}
-          onToggleShowAll={() => setShowAllCourses((v) => !v)}
-          getPathGuides={getPathGuides}
-          getPathProgress={getPathProgress}
-          onContinue={handleOpenGuide}
-          onReset={resetPath}
-          launchingPathId={launchingId}
-          launchDisabled={launchingId !== null}
-          styles={styles}
-        />
+      <PrivatePathsSection
+        paths={privatePaths}
+        getPathGuides={getPathGuides}
+        getPathProgress={getPathProgress}
+        onContinue={handleOpenGuide}
+        onReset={resetPath}
+        launchingPathId={launchingId}
+        launchDisabled={launchingId !== null}
+        styles={styles}
+      />
 
-        <BadgesSection
-          badges={sortedBadges}
-          totalBadges={totalBadges}
-          showAll={showAllBadges}
-          onToggleShowAll={() => setShowAllBadges((v) => !v)}
-          completedGuides={progress.completedGuides}
-          streakDays={progress.streakDays}
-          paths={pathsForProgress}
-          onSelect={setSelectedBadge}
-          styles={styles}
-        />
+      {/* My Courses ∥ Badges — collapses to stacked on narrow panels */}
+      <div className={styles.columnsContainer}>
+        <div className={styles.columnsRow}>
+          <MyCoursesSection
+            courses={courses}
+            getPathGuides={getPathGuides}
+            getPathProgress={getPathProgress}
+            onContinue={handleOpenGuide}
+            onReset={resetPath}
+            launchingPathId={launchingId}
+            launchDisabled={launchingId !== null}
+            styles={styles}
+          />
+
+          <BadgesSection
+            badges={sortedBadges}
+            completedGuides={progress.completedGuides}
+            streakDays={progress.streakDays}
+            paths={pathsForProgress}
+            onSelect={setSelectedBadge}
+            styles={styles}
+          />
+        </div>
       </div>
 
       <DiscoverMoreSection

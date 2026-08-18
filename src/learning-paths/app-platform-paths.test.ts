@@ -53,6 +53,7 @@ describe('fetchAppPlatformLearningPaths', () => {
         description: 'Learn to build alert rules, contact points, and notification policies.',
         guides: ['fe-alerting-01', 'fe-alerting-02'],
         badgeId: '',
+        isPrivate: true,
         // Carried so the My Learning launch renders members with milestone chrome.
         manifest: {
           type: 'path',
@@ -95,6 +96,45 @@ describe('fetchAppPlatformLearningPaths', () => {
 
     expect(result.paths).toEqual([]);
     expect(result.guideMetadata['draft-guide']).toBeUndefined();
+  });
+
+  // Milestone ids are CR-authored. An inherited built-in name must not pass the
+  // published-member gate: it would render untitled and, because it can never
+  // complete, pin the path's progress denominator below 100%.
+  it.each(['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf'])(
+    'drops the milestone id %s, which has no published guide behind it',
+    async (hostileId) => {
+      mockFetchCustomGuideRepository.mockResolvedValue([
+        {
+          id: 'fe-alerting-path',
+          title: 'Alerting enablement',
+          status: 'published',
+          manifest: { type: 'path', milestones: [hostileId, 'fe-alerting-01'] },
+        },
+        { id: 'fe-alerting-01', title: 'Alerting module 1', status: 'published' },
+      ]);
+
+      const result = await fetchAppPlatformLearningPaths('stacks-123');
+
+      expect(result.paths[0]!.guides).toEqual(['fe-alerting-01']);
+      expect(result.guideMetadata[hostileId]).toBeUndefined();
+    }
+  );
+
+  it('records an entry id of __proto__ as an own metadata key instead of swapping the prototype', async () => {
+    mockFetchCustomGuideRepository.mockResolvedValue([
+      { id: '__proto__', title: 'Hostile', status: 'published' },
+      { id: 'fe-alerting-01', title: 'Alerting module 1', status: 'published' },
+    ]);
+
+    const result = await fetchAppPlatformLearningPaths('stacks-123');
+
+    expect(Object.hasOwn(result.guideMetadata, '__proto__')).toBe(true);
+    expect(result.guideMetadata['fe-alerting-01']).toEqual({
+      title: 'Alerting module 1',
+      estimatedMinutes: 5,
+      url: 'backend-guide:fe-alerting-01',
+    });
   });
 
   it('falls back to id when a path manifest has no description', async () => {

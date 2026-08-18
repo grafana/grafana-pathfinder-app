@@ -48,6 +48,13 @@ export function GuideResponseProvider({ guideId, children }: GuideResponseProvid
   // State to trigger re-renders when responses change
   const [responses, setResponses] = useState<Record<string, GuideResponseValue>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [loadedGuideId, setLoadedGuideId] = useState(guideId);
+
+  // Responses belong to one guide, and the provider stays mounted across a swap.
+  if (loadedGuideId !== guideId) {
+    setLoadedGuideId(guideId);
+    setResponses({});
+  }
 
   // Load responses when guideId changes (async)
   // Uses async/await with AbortController pattern to satisfy lint rules
@@ -58,7 +65,9 @@ export function GuideResponseProvider({ guideId, children }: GuideResponseProvid
       try {
         const loaded = await guideResponseStorage.getForGuide(guideId);
         if (!controller.signal.aborted) {
-          setResponses(loaded);
+          // Whatever is in state was written for this guide while the load was
+          // in flight, and is newer than what storage returned.
+          setResponses((prev) => ({ ...loaded, ...prev }));
           setIsLoading(false);
         }
       } catch {

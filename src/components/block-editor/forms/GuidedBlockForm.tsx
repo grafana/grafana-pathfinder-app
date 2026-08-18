@@ -187,7 +187,6 @@ export function GuidedBlockForm({
         testId="guided-block-objectives-lint"
       />
 
-      {/* Options */}
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Options</div>
         <Checkbox
@@ -198,15 +197,14 @@ export function GuidedBlockForm({
         />
         <Checkbox
           className={styles.checkbox}
-          label="Complete early (mark complete when user performs action early)"
-          description="Marks the block as done if user completes the action before being prompted"
+          label="Complete early for final action"
+          description="Stores completion during a final click activation, before Grafana handles it. Other final actions store completion after their result."
           checked={completeEarly}
           onChange={(e) => setCompleteEarly(e.currentTarget.checked)}
         />
       </div>
 
       <div className={styles.footer}>
-        {/* Conversion options - only when editing */}
         {isEditing && (onSplitToBlocks || onConvertType || onSwitchBlockType) && (
           <div className={styles.footerLeft}>
             {onSwitchBlockType && (

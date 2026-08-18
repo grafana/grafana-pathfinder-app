@@ -508,9 +508,18 @@ export const getStringFlagValue = (flagName: string, defaultValue: string): stri
  * Get the highlighted-guide experiment configuration.
  *
  * Reads `pathfinder.highlighted-guide-experiment` and validates the extra fields
- * (`guideId`, `autoOpen`) on top of the base `ExperimentConfig` shape. Falls back
- * to `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded') when the flag is
- * missing, malformed, or evaluation throws.
+ * (`guideId`, `autoOpen`) on top of the base `ExperimentConfig` shape. A payload
+ * is rejected when it is not an object, is missing `variant` / `pages` /
+ * `guideId`, or carries a variant outside the known arms. Rejection is
+ * whole-payload — `resetCache` and `pages` are discarded with the rest.
+ *
+ * The two sources fall back differently, which matters when debugging:
+ *   - Remote (MTFF) payload rejected, or evaluation throws ⇒
+ *     `DEFAULT_HIGHLIGHTED_GUIDE_CONFIG` (variant: 'excluded').
+ *   - localStorage override rejected ⇒ the override is *ignored* and the remote
+ *     MTFF value applies instead. Locally there is no MTFF provider, so the
+ *     client returns the default we pass it — which is why this looks like the
+ *     same thing in dev but is not on a Cloud stack.
  *
  * Supports the localStorage flag-override mechanism for QA / demos.
  *
@@ -537,16 +546,61 @@ export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
         reportFeatureFlagExposure(flagName, validated as unknown as JsonValue);
         return validated;
       }
+      warnHighlightedGuideRejection('override', flagName, override);
     }
 
     const client = getFeatureFlagClient();
     const value = client.getObjectValue(flagName, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue);
-    return validateHighlightedGuideValue(value) ?? DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
+    const validatedRemote = validateHighlightedGuideValue(value);
+    if (!validatedRemote) {
+      warnHighlightedGuideRejection('remote', flagName, value);
+    }
+    return validatedRemote ?? DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
   } catch (error) {
     logger.error(`[OpenFeature] Error evaluating flag '${flagName}'`, { error });
     return DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
   }
 };
+
+const VALID_VARIANTS: ReadonlySet<HighlightedGuideConfig['variant']> = new Set(['excluded', 'control', 'treatment']);
+
+const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set(['docs-page', 'learning-journey', 'interactive']);
+
+type HighlightedGuideRejectionSource = 'override' | 'remote';
+
+// Once per source per page load: getActiveExperiments re-reads this flag on every
+// reportAppInteraction, so an unguarded warn would flood the console and Faro.
+const warnedRejectionSources = new Set<HighlightedGuideRejectionSource>();
+
+// Classification, not the raw string: the payload is operator free text and would
+// be a high-cardinality Faro attribute (TELEMETRY.md privacy invariants).
+function classifyHighlightedGuideRejection(value: unknown): 'unknown_variant' | 'invalid_shape' {
+  const variant =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>).variant
+      : undefined;
+  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant as HighlightedGuideConfig['variant']);
+  return isUnknownArm ? 'unknown_variant' : 'invalid_shape';
+}
+
+function warnHighlightedGuideRejection(
+  source: HighlightedGuideRejectionSource,
+  flagName: string,
+  value: unknown
+): void {
+  if (warnedRejectionSources.has(source)) {
+    return;
+  }
+  warnedRejectionSources.add(source);
+
+  const consequence =
+    source === 'override'
+      ? 'ignoring it and using the MTFF value instead (locally, with no MTFF provider, that is the safe excluded default)'
+      : 'using the safe excluded default, so nobody is enrolled';
+  logger.warn(`[OpenFeature] Rejected the ${source} payload for '${flagName}' — ${consequence}`, {
+    reason: classifyHighlightedGuideRejection(value),
+  });
+}
 
 function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -561,11 +615,9 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
   ) {
     return null;
   }
-  const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set([
-    'docs-page',
-    'learning-journey',
-    'interactive',
-  ]);
+  if (!VALID_VARIANTS.has(record.variant as HighlightedGuideConfig['variant'])) {
+    return null;
+  }
   const docType =
     typeof record.docType === 'string' && VALID_DOC_TYPES.has(record.docType as HighlightedGuideDocType)
       ? (record.docType as HighlightedGuideDocType)

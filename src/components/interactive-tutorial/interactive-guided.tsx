@@ -105,7 +105,7 @@ interface InteractiveGuidedProps {
   objectives?: string;
   onComplete?: () => void;
   skippable?: boolean;
-  completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
+  completeEarly?: boolean;
 
   // Step position tracking for analytics (added by section)
   stepIndex?: number;
@@ -318,13 +318,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Combined completion state: objectives always win
     const isCompletedWithObjectives = storedCompleted || checker.completionReason === 'objectives';
 
-    // Main execution logic
     const executeStep = useCallback(async (): Promise<boolean> => {
       if (!checker.isEnabled || (isCompletedWithObjectives && !allowCompletedRetryRef.current) || isExecuting) {
         return false;
       }
 
-      // Check objectives before executing
       if (checker.completionReason === 'objectives') {
         persistCompletion();
         if (onStepComplete && stepId) {
@@ -342,9 +340,14 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setFailedStepIndex(-1);
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
-      // Commit execution before early persistence or overlay creation so observers never see a terminal state mid-run.
+      // Commit execution before overlay creation so idle controls and the overlay never overlap.
       await waitForReactUpdates();
-      if (completeEarly) {
+
+      let completionPersisted = false;
+      const completeStep = () => {
+        if (completionPersisted) {
+          return;
+        }
         persistCompletion();
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
@@ -352,21 +355,29 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         if (onComplete) {
           onComplete();
         }
-
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
+        completionPersisted = true;
+      };
 
       try {
-        // Execute each internal action in sequence, waiting for user
         for (let i = 0; i < internalActions.length; i++) {
           const action = internalActions[i];
           setCurrentStepIndex(i);
           setCurrentStepStatus('waiting');
 
-          // Execute guided step and wait for user completion
-          const result = await guidedHandler.executeGuidedStep(action!, i, internalActions.length, stepTimeout);
+          const completeBeforeActionEffect =
+            completeEarly && i === internalActions.length - 1 ? completeStep : undefined;
+          const result = await guidedHandler.executeGuidedStep(
+            action!,
+            i,
+            internalActions.length,
+            stepTimeout,
+            completeBeforeActionEffect
+          );
 
           if (result === 'completed' || result === 'skipped') {
+            if (completeEarly && i === internalActions.length - 1) {
+              completeStep();
+            }
             setCurrentStepStatus('completed');
             // Brief visual feedback before moving to next step
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -384,20 +395,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             return false;
           }
         }
-
-        // NEW: If NOT completeEarly, mark complete after actions (normal flow)
-        if (!completeEarly) {
-          persistCompletion();
-
-          if (onStepComplete && stepId) {
-            onStepComplete(stepId);
-          }
-
-          if (onComplete) {
-            onComplete();
-          }
-        }
-
+        completeStep();
         return true;
       } catch (error) {
         logger.error(`Guided execution failed: ${stepId}`, { error });

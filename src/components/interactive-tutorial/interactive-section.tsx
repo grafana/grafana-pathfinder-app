@@ -21,9 +21,11 @@ import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import { DatasourceCheckStep, resetDatasourceCheckStepCounter } from './datasource-check-step';
 import {
   CHALLENGE_BLOCK_SCHEMA,
   CODE_BLOCK_STEP_SCHEMA,
+  DATASOURCE_CHECK_STEP_SCHEMA,
   type EnhanceContext,
   INTERACTIVE_GUIDED_SCHEMA,
   INTERACTIVE_MULTISTEP_SCHEMA,
@@ -56,6 +58,7 @@ export const STEP_TYPE_LOOKUP: ReadonlyMap<React.ComponentType<any>, StepTypeSch
   [TerminalConnectStep, TERMINAL_CONNECT_STEP_SCHEMA],
   [CodeBlockStep, CODE_BLOCK_STEP_SCHEMA],
   [ChallengeBlock, CHALLENGE_BLOCK_SCHEMA],
+  [DatasourceCheckStep, DATASOURCE_CHECK_STEP_SCHEMA],
 ]);
 
 /** Resolve the schema for a child element, or `undefined` if the child
@@ -135,6 +138,7 @@ export function resetInteractiveCounters() {
   resetTerminalConnectStepCounter();
   resetCodeBlockStepCounter();
   resetChallengeCounter();
+  resetDatasourceCheckStepCounter();
 }
 
 export function InteractiveSection({
@@ -804,10 +808,9 @@ export function InteractiveSection({
 
             const stepInfo = stepComponents[i]!;
 
-            // PAUSE: If this is a guided step, stop automated execution
-            // User must manually click the guided step's "Do it" button
-            // Once complete, they can click "Resume" to continue
-            if (stepInfo.isGuided) {
+            // PAUSE: this step is one only the user can perform, so stop
+            // automated execution. They click its own button, then "Resume".
+            if (stepInfo.isGuided || stepInfo.pausesSectionRun) {
               ActionMonitor.getInstance().forceEnable(); // Re-enable monitor for guided mode
               // (cursor is already at `i` via the prior COMPLETE_STEP dispatches)
               setIsRunning(false); // Stop the automated loop
