@@ -390,7 +390,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    */
   const executeInteractiveAction = useCallback(
     async (request: InteractiveActionRequest): Promise<StepOutcome> => {
-      const { targetAction, refTarget = '', targetValue, targetState, targetComment, openGuide, buttonType = 'do' } = request;
+      const {
+        targetAction,
+        refTarget = '',
+        targetValue,
+        targetState,
+        targetComment,
+        openGuide,
+        buttonType = 'do',
+      } = request;
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
         refTarget: refTarget,
