@@ -398,7 +398,14 @@ export const InteractiveStep = forwardRef<
     const [formTargetElement, setFormTargetElement] = useState<HTMLElement | null>(null);
 
     useEffect(() => {
-      if (targetAction !== 'formfill' || !refTarget) {
+      if (
+        targetAction !== 'formfill' ||
+        !refTarget ||
+        validateInput !== true ||
+        !finalIsEnabled ||
+        isCompletedWithObjectives ||
+        disabled
+      ) {
         setFormTargetElement(null);
         return;
       }
@@ -409,10 +416,33 @@ export const InteractiveStep = forwardRef<
       };
 
       resolveFormTarget();
-      const observer = new MutationObserver(resolveFormTarget);
+      let resolveTimer: ReturnType<typeof setTimeout> | null = null;
+      const scheduleResolve = () => {
+        if (resolveTimer !== null) {
+          return;
+        }
+        resolveTimer = setTimeout(() => {
+          resolveTimer = null;
+          resolveFormTarget();
+        }, 50);
+      };
+      const observer = new MutationObserver(scheduleResolve);
       observer.observe(document.body, { childList: true, subtree: true });
-      return () => observer.disconnect();
-    }, [targetAction, refTarget, currentTargetValue]);
+      return () => {
+        observer.disconnect();
+        if (resolveTimer !== null) {
+          clearTimeout(resolveTimer);
+        }
+      };
+    }, [
+      targetAction,
+      refTarget,
+      currentTargetValue,
+      validateInput,
+      finalIsEnabled,
+      isCompletedWithObjectives,
+      disabled,
+    ]);
 
     // Handle form validation completion
     const handleFormValidationComplete = useCallback(() => {
