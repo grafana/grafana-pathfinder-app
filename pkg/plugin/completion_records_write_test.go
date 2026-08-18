@@ -105,7 +105,9 @@ func TestCompletionWrite_Created_StampsServerFields(t *testing.T) {
 	creator := &fakeCreator{}
 	withCreator(t, creator)
 
-	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), "alice", "")
+	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
+		makeIDTokenWithProfile(t, "user:abc", timeNow().Add(time.Hour).Unix(), "alice", "alice"))
 	rec := doWrite(t, nil, r)
 
 	if rec.Code != http.StatusCreated {
@@ -126,10 +128,10 @@ func TestCompletionWrite_Created_StampsServerFields(t *testing.T) {
 		t.Errorf("userId = %q, want user:abc", s.UserID)
 	}
 	if s.UserLogin != "alice" {
-		t.Errorf("userLogin = %q, want alice (from trusted PluginContext.User)", s.UserLogin)
+		t.Errorf("userLogin = %q, want alice (from the ID token's username claim)", s.UserLogin)
 	}
 	if s.UserDisplayName != "alice" {
-		t.Errorf("userDisplayName = %q, want alice (falls back to login)", s.UserDisplayName)
+		t.Errorf("userDisplayName = %q, want alice (from the ID token's name claim)", s.UserDisplayName)
 	}
 	if s.OrgID != testOrgID {
 		t.Errorf("orgId = %d, want %d", s.OrgID, testOrgID)
@@ -266,28 +268,31 @@ func TestCompletionWrite_ProfileFromTokenClaims(t *testing.T) {
 	}
 }
 
-// When the token carries no username/name claims, the snapshots fall back to the
-// trusted PluginContext.User (never the spoofable raw X-Grafana-User header).
-func TestCompletionWrite_ProfileFallsBackToTrustedContext(t *testing.T) {
+// The signed ID token is the ONLY source for the profile snapshots. When it
+// carries no username/name claims the fields are omitted — the write still
+// succeeds, and nothing is substituted from PluginContext.User or any header.
+// A plausible-but-unverified login reads as verified; absence is auditable.
+func TestCompletionWrite_ProfileOmittedWhenClaimAbsent(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	creator := &fakeCreator{}
 	withCreator(t, creator)
 
 	// The test token from writeRequest carries only sub/exp — no profile claims.
-	// A raw X-Grafana-User header must be ignored; only PluginContext.User counts.
+	// Both a populated PluginContext.User and a raw X-Grafana-User header are
+	// present, and neither may reach the record.
 	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), "ctx-login", "Context Name")
 	r.Header.Set("X-Grafana-User", "spoofed")
 	rec := doWrite(t, nil, r)
 
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201", rec.Code)
+		t.Fatalf("status = %d, want 201 (an absent claim must not fail the write)", rec.Code)
 	}
 	s := creator.last.Spec
-	if s.UserLogin != "ctx-login" {
-		t.Errorf("userLogin = %q, want ctx-login (trusted PluginContext, not X-Grafana-User)", s.UserLogin)
+	if s.UserLogin != "" || s.UserDisplayName != "" {
+		t.Errorf("snapshots = (%q, %q), want empty: only the signed ID token may populate them", s.UserLogin, s.UserDisplayName)
 	}
-	if s.UserDisplayName != "Context Name" {
-		t.Errorf("userDisplayName = %q, want Context Name", s.UserDisplayName)
+	if s.UserID != "user:abc" {
+		t.Errorf("userId = %q, want user:abc — the identity of record is unaffected", s.UserID)
 	}
 }
 
@@ -327,7 +332,9 @@ func TestCompletionWrite_BodyIdentityRejected(t *testing.T) {
 	body["recordedAt"] = "2000-01-01T00:00:00Z"
 	body["schemaVersion"] = 999
 
-	r := writeRequestWithUser(t, "user:good", body, testGrafanaConfig(), "good", "")
+	r := writeRequest(t, "user:good", body, testGrafanaConfig())
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
+		makeIDTokenWithProfile(t, "user:good", timeNow().Add(time.Hour).Unix(), "good", ""))
 	rec := doWrite(t, nil, r)
 
 	if rec.Code != http.StatusCreated {
@@ -499,6 +506,45 @@ func TestValidateBoundedText_RejectsInvalidUTF8(t *testing.T) {
 		if err := validateBoundedText("guideTitle", valid, completionMaxTitleLen); err != nil {
 			t.Errorf("valid UTF-8 %q rejected: %v", valid, err)
 		}
+	}
+}
+
+// The caps are BYTE caps, and invalid UTF-8 must not buy a caller extra bytes.
+// This is the end-to-end complement to the unit test above: it drives the real
+// request path with hostile bytes and pins the outcome Tom Glenn's review asked
+// about — whether a field capped at N bytes can land ~3N bytes in a durable
+// record. It cannot: encoding/json expands each invalid byte to U+FFFD (3 bytes)
+// at DECODE, so the expansion happens BEFORE the cap, the byte cap rejects the
+// inflated string with a terminal 400, and nothing is created upstream.
+func TestCompletionWrite_InvalidUTF8CannotExceedByteCap(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	// Exactly at the cap in raw bytes — only the 3x decode expansion can push it
+	// over, so a rune-based (or absent) cap would let this through.
+	hostile := strings.Repeat("\xff", completionMaxTitleLen)
+	body := validWriteBody()
+	body["guideTitle"] = hostile
+
+	rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "bytes") {
+		t.Errorf("body = %s, want the byte-cap reason", rec.Body.String())
+	}
+	if creator.n != 0 {
+		t.Fatalf("hostile field reached upstream: %d creates", creator.n)
+	}
+
+	// And the server-derived snapshot fields cap on bytes too: ranging a string
+	// yields U+FFFD per invalid byte and boundedIdentityField accounts for its
+	// full 3-byte width, so the output can never exceed maxBytes.
+	got := boundedIdentityField(strings.Repeat("\xff", completionMaxDisplayLen), completionMaxDisplayLen)
+	if len(got) > completionMaxDisplayLen {
+		t.Errorf("boundedIdentityField returned %d bytes, want <= %d", len(got), completionMaxDisplayLen)
 	}
 }
 

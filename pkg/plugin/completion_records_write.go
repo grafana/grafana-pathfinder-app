@@ -152,6 +152,12 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
 		return
 	}
+	if userLogin == "" {
+		// The record is still written — the login snapshot is display convenience,
+		// not the identity of record. Logged so a token issuer that stops emitting
+		// the claim is discoverable rather than silently degrading every record.
+		a.ctxLogger(r.Context()).Info("completion write: ID token carried no username claim, omitting userLogin")
+	}
 
 	// Per-user flood guard (RFC §9) before any upstream work.
 	if a.completionWriteRateLimiter != nil {

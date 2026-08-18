@@ -336,9 +336,13 @@ where a create differs from a read:
   decode; `userId` (from the ID-token
   `sub`), `userLogin`, `userDisplayName`, `orgId`, `stackNamespace`, `recordedAt`, and `schemaVersion`
   come from the verified request context. `userLogin`/`userDisplayName` are best-effort **display
-  snapshots** — the ID-token `username`/`name` claims (Grafana authlib `IDTokenClaims`) first, then
-  the trusted `PluginContext.User` (the SDK's authenticated session, as in `coda_exec.go`), never
-  the spoofable raw `X-Grafana-User` header. They gate nothing and the read path joins exclusively
+  snapshots** read from the signed ID token's `username`/`name` claims (Grafana authlib
+  `IDTokenClaims` — not `login`/`preferred_username`, which Grafana does not emit). There is
+  **no fallback**: an absent claim omits the field rather than substituting `PluginContext.User`,
+  the `X-Grafana-User` header, or anything else, and the write still succeeds (the omission is
+  logged). A plausible-but-unverified login is worse than an absent one because it reads as
+  verified, and these records are headed for compliance-grade use — absence is auditable, a
+  forgery is not. They gate nothing and the read path joins exclusively
   on `userId`, so an absent claim yielding an empty snapshot is acceptable. The inbound gate (§3)
   still applies, but a write **fails
   closed with a 401**, not the read path's soft-200; the client retries 401s as transient, since
@@ -370,7 +374,8 @@ where a create differs from a read:
   clears the negative-cache cooldown (a create is fresh proof the upstream is reachable).
   Any LIST that began before the write may finish for its caller but cannot repopulate that cache;
   a post-write GET starts a new refresh.
-- **Outcomes map onto the front-end retry-queue contract (four-way):** 201 created (durable);
+- **Outcomes map onto the front-end retry-queue contract — four outcomes (created, retry,
+  disarm-and-keep, drop) across five status classes:** 201 created (durable);
   **404 preserved verbatim** as the structural "route not deployed here" signal — the create POSTs
   to the completionrecords **collection**, so an upstream 404 means the whole group/route is absent
   (never a per-record miss). The client disarms writes for the session (persisted items survive for

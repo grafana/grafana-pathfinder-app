@@ -42,10 +42,14 @@ func subjectFromIDToken(r *http.Request) (string, bool) {
 // completionWriterIdentity derives the server-stamped identity for a completion
 // write from the caller's forwarded Grafana context. The stable user id (the
 // ID-token `sub`) is REQUIRED and fails closed. Login and display name are
-// best-effort denormalized snapshots (an empty string is a valid, schema-
-// permitted value): the ID-token `username`/`name` claims first, then the
-// trusted PluginContext.User (the SDK's authenticated session, matching
-// coda_exec.go), never the spoofable raw X-Grafana-User header.
+// best-effort denormalized snapshots read ONLY from the signed ID token's
+// `username`/`name` claims (authlib IDTokenClaims). There is deliberately no
+// fallback: an absent claim leaves the field empty rather than substituting a
+// value from anywhere else. A plausible-but-unverified login is worse than an
+// absent one because it reads as verified, and these records are headed for
+// compliance-grade use — absence is auditable, a forgery is not. The record's
+// identity of record is `userId`, which the read path joins on exclusively;
+// these two are display convenience.
 //
 // Every value here comes from the INBOUND request. The outbound on-behalf-of
 // access token is a credential, not the source of the stamped subject — moving
@@ -56,19 +60,15 @@ func completionWriterIdentity(r *http.Request) (userID, userLogin, userDisplayNa
 	if !ok {
 		return "", "", "", false
 	}
-	login, name := idTokenProfile(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
-	var ctxLogin, ctxName string
-	if user := backend.PluginConfigFromContext(r.Context()).User; user != nil {
-		ctxLogin, ctxName = user.Login, user.Name
-	}
-	userLogin = firstNonEmpty(login, ctxLogin)
-	userDisplayName = firstNonEmpty(name, ctxName, userLogin)
+	userLogin, userDisplayName = idTokenProfile(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
 	return userID, userLogin, userDisplayName, true
 }
 
 // idTokenProfile best-effort reads the login and display-name claims from a
-// forwarded ID token, per Grafana authlib's IDTokenClaims: login is the
-// `username` claim, display name is `name`. It gates nothing (the subject
+// forwarded ID token. The claim names are pinned to Grafana authlib's
+// IDTokenClaims (authn/verifier_id_token.go): login is `username`, display name
+// is `name` — NOT `login` or `preferred_username`, which Grafana does not emit
+// and which silently yielded empty snapshots. It gates nothing (the subject
 // already did) and returns ("", "") on any decode failure — the fields are
 // denormalized snapshots, not authorization inputs.
 func idTokenProfile(token string) (login, name string) {
@@ -92,15 +92,6 @@ func idTokenProfile(token string) (login, name string) {
 		return "", ""
 	}
 	return claims.Username, claims.Name
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // parseIDToken structurally validates a JWT and returns its `sub` claim.
