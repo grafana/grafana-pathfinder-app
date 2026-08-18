@@ -16,21 +16,12 @@ import (
 
 const idTokenVerifierMaxAge = 5 * time.Minute
 
-// Shared caller-identity helpers for App Platform proxy routes
-// (docs/design/BACKEND_PROXY_PATTERN.md §3). Two layers: validIDToken for
-// routes that only need an authenticated caller, subjectFromIDToken for
-// per-user-data routes that additionally key on the caller's subject.
-//
-// Both CRYPTOGRAPHICALLY verify the forwarded Grafana ID token (X-Grafana-Id)
-// against the stack's published JWKS, so neither relies on Grafana's
-// server→plugin forwarding to keep the header honest — see "The identity trust
-// boundary" in docs/design/BACKEND_PROXY_PATTERN.md §3. The ID token
-// stays an identity attestation, never an outbound credential: proxy routes
-// exchange it for an access token (pkg/plugin/auth) and send that instead.
-//
-// Every failure yields an identityStatus rather than a bare bool, so all three
-// proxy routes make one shared decision about how each distinct failure is
-// served and cannot drift apart.
+// Shared caller-identity helpers for App Platform proxy routes. Two layers:
+// validIDToken for routes that only need an authenticated caller,
+// subjectFromIDToken for per-user-data routes that additionally key on the
+// caller's subject. Both cryptographically verify the forwarded Grafana ID token
+// (X-Grafana-Id) against the stack's published JWKS — see "The identity trust
+// boundary" in docs/design/BACKEND_PROXY_PATTERN.md §3.
 
 // identityStatus is the verdict of the identity gate. Three distinct failures,
 // because BACKEND_PROXY_PATTERN.md §7's transient/structural split cuts across
@@ -39,8 +30,12 @@ const idTokenVerifierMaxAge = 5 * time.Minute
 type identityStatus int
 
 const (
+	// identityUnknown is the zero value, so a status left unset can never be
+	// mistaken for a verified caller.
+	identityUnknown identityStatus = iota
+
 	// identityVerified: the caller carries a cryptographically verified token.
-	identityVerified identityStatus = iota
+	identityVerified
 
 	// identityRejected: no token at all, or one this stack will not accept —
 	// forged signature, unknown `kid`, wrong `typ`, expired, or no `exp`.
@@ -58,15 +53,17 @@ const (
 )
 
 // capabilityReason is the envelope token for a status served as a soft 200.
-// identitySigningKeysDown has none: it takes each route's transient path.
+// identitySigningKeysDown has none: it takes each route's transient path. An
+// unrecognized status reports the generic identity failure rather than an empty
+// reason, since every status but identityVerified is served with no data.
 func (s identityStatus) capabilityReason() string {
 	switch s {
-	case identityRejected:
-		return reasonIdentityUnavailable
+	case identityVerified, identitySigningKeysDown:
+		return ""
 	case identityUnverifiable:
 		return reasonIdentityUnverifiable
 	default:
-		return ""
+		return reasonIdentityUnavailable
 	}
 }
 
@@ -114,8 +111,7 @@ func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 		return "", identitySigningKeysDown
 	default:
 		// Info, not Debug: this branch is only reachable when a token was present
-		// and unacceptable, which is exactly the attack #1568 closed, so it must
-		// be observable without raising the log level.
+		// and unacceptable, so it must be observable without raising the log level.
 		a.ctxLogger(r.Context()).Info("caller id token rejected", "error", err)
 		return "", identityRejected
 	}
@@ -127,11 +123,7 @@ func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 // cache is shared across requests, then rebuilt to bound how long a key removed
 // from the live JWKS remains trusted.
 func (a *App) idTokenVerifier(ctx context.Context) (*auth.IDTokenVerifier, error) {
-	cfg := config.GrafanaConfigFromContext(ctx)
-	if cfg == nil {
-		return nil, errors.New("no grafana config on request context")
-	}
-	appURL, err := cfg.AppURL()
+	appURL, err := config.GrafanaConfigFromContext(ctx).AppURL()
 	if err != nil {
 		return nil, fmt.Errorf("resolving app URL: %w", err)
 	}

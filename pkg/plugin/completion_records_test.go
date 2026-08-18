@@ -793,6 +793,33 @@ func TestCapability_IdentityUnavailable(t *testing.T) {
 	}
 }
 
+// The probe shares the identity gate with the data route, so a stack that can
+// never verify a caller must read the same way on both. Asserted end to end
+// here, not just on the status enum, because this route builds its own envelope.
+func TestCapability_IdentityUnverifiableWithNoAppURL(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	l := singlePageLister()
+	withLister(t, l)
+
+	cfg := map[string]string{featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle} // no app URL
+	rr := httptest.NewRecorder()
+	r := completionRequestWithConfig(t, "/completion-records/capability", "user:1", cfg)
+	newTestApp(t).handleCompletionCapability(rr, r)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	var cap completionCapability
+	if err := json.Unmarshal(rr.Body.Bytes(), &cap); err != nil {
+		t.Fatalf("decode: %v (raw %s)", err, rr.Body.String())
+	}
+	if cap.Available || cap.Reason != reasonIdentityUnverifiable {
+		t.Fatalf("expected capability=false %q, got %+v", reasonIdentityUnverifiable, cap)
+	}
+	if l.callCount() != 0 {
+		t.Fatalf("unverifiable identity must not hit upstream, got %d calls", l.callCount())
+	}
+}
+
 // The probe makes the same transient/terminal distinction as the data route:
 // a cold transient blip is a 503 hiccup, NOT available=false — otherwise a
 // 30-second hiccup would grey out the feature for everyone.

@@ -189,14 +189,16 @@ func TestDeriveCompletionUserID(t *testing.T) {
 		wantStatus identityStatus
 	}{
 		{
-			name:   "verified token yields verbatim typed subject",
-			token:  makeValidIDToken(t, "user:abc123"),
-			wantID: "user:abc123",
+			name:       "verified token yields verbatim typed subject",
+			token:      makeValidIDToken(t, "user:abc123"),
+			wantID:     "user:abc123",
+			wantStatus: identityVerified,
 		},
 		{
-			name:   "typed prefix preserved verbatim",
-			token:  makeValidIDToken(t, "service-account:xyz"),
-			wantID: "service-account:xyz",
+			name:       "typed prefix preserved verbatim",
+			token:      makeValidIDToken(t, "service-account:xyz"),
+			wantID:     "service-account:xyz",
+			wantStatus: identityVerified,
 		},
 		{
 			name:       "absent header fails closed",
@@ -280,8 +282,8 @@ func TestValidIDToken(t *testing.T) {
 		token      string
 		wantStatus identityStatus
 	}{
-		{name: "verified token", token: makeValidIDToken(t, "user:1")},
-		{name: "no subject still authorizes", token: makeValidIDToken(t, "")},
+		{name: "verified token", token: makeValidIDToken(t, "user:1"), wantStatus: identityVerified},
+		{name: "no subject still authorizes", token: makeValidIDToken(t, ""), wantStatus: identityVerified},
 		{name: "missing exp rejected", token: makeIDToken(t, "user:1", 0), wantStatus: identityRejected},
 		{name: "expired rejected", token: makeIDToken(t, "user:1", time.Now().Add(-time.Hour).Unix()), wantStatus: identityRejected},
 		{name: "absent rejected", token: "", wantStatus: identityRejected},
@@ -300,6 +302,9 @@ func TestValidIDToken(t *testing.T) {
 // served as a 503, never in an envelope.
 func TestIdentityStatus_CapabilityReason(t *testing.T) {
 	cases := map[identityStatus]string{
+		// The zero value is a non-verdict: it must not read as verified, and it
+		// must still name a reason rather than serving an envelope with none.
+		identityUnknown:         reasonIdentityUnavailable,
 		identityVerified:        "",
 		identityRejected:        reasonIdentityUnavailable,
 		identityUnverifiable:    reasonIdentityUnverifiable,
@@ -325,6 +330,9 @@ func TestVerifyIDToken_UnverifiableFailsClosed(t *testing.T) {
 		name string
 		cfg  map[string]string
 	}{
+		// A request with no Grafana config at all resolves to the same place as one
+		// whose config omits the app URL: GrafanaConfigFromContext substitutes an
+		// empty config, whose AppURL() errors.
 		{name: "no grafana config on context", cfg: nil},
 		{name: "config carries no app URL", cfg: map[string]string{}},
 	}
@@ -546,6 +554,57 @@ func TestVerifyIDToken_NewKeyAcceptedMidWindow(t *testing.T) {
 	}
 	if status := verify(firstToken); status != identityVerified {
 		t.Fatalf("previous key mid-window: status = %v, want verified", status)
+	}
+}
+
+// One App serves every request, so the cached verifier is read on the hot path
+// while another request replaces it. Without a test that drives that
+// concurrently, -race over the cache proves nothing.
+func TestVerifyIDToken_VerifierCacheUnderConcurrentRebuilds(t *testing.T) {
+	first, _ := startJWKSServer(t)
+	second, _ := startJWKSServer(t)
+	app := newTestApp(t)
+	token := makeValidIDToken(t, "user:1")
+	// Alternating app URLs makes most requests miss the cache, so readers and
+	// replacements collide on purpose.
+	cfgs := []map[string]string{{sdkconfig.AppURL: first.URL}, {sdkconfig.AppURL: second.URL}}
+
+	var wg sync.WaitGroup
+	for i := range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range 8 {
+				r := identityRequestWithConfig(t, token, cfgs[(i+j)%len(cfgs)])
+				if _, status := app.deriveCompletionUserID(r); status != identityVerified {
+					t.Errorf("goroutine %d iteration %d: status = %v, want verified", i, j, status)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// The one-minute expiry leeway is a transitive default (go-jose, via authlib),
+// not something this repo sets, so pin it: it matches what Grafana core's own
+// verifiers accept, and a silent upstream change either widens the window or
+// starts rejecting tokens Grafana considers live.
+func TestVerifyIDToken_ExpiryLeeway(t *testing.T) {
+	cases := []struct {
+		name       string
+		expiredAgo time.Duration
+		want       identityStatus
+	}{
+		{name: "inside the leeway", expiredAgo: 30 * time.Second, want: identityVerified},
+		{name: "past the leeway", expiredAgo: 2 * time.Minute, want: identityRejected},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			token := makeIDToken(t, "user:1", time.Now().Add(-tt.expiredAgo).Unix())
+			if _, status := newTestApp(t).deriveCompletionUserID(identityRequest(t, token)); status != tt.want {
+				t.Fatalf("status = %v, want %v", status, tt.want)
+			}
+		})
 	}
 }
 
