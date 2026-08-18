@@ -26,6 +26,7 @@ import {
 } from '../../integrations/coda/useCodaAvailability.hook';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 export interface TerminalConnectStepProps {
   buttonText?: string;
@@ -306,6 +307,7 @@ export const TerminalConnectStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        {...getTrackedStepRootAttributes('terminal-connect', renderedStepId)}
         data-test-step-state={stepState}
         data-testid={testIds.interactive.terminalConnectStep(renderedStepId)}
       >
