@@ -376,6 +376,19 @@ describe('setPackageResolverFactory', () => {
 
     expect(milestones).not.toEqual([]);
   });
+
+  it('a rejected factory does not poison later reads with a cached rejection', async () => {
+    setPackageResolverFactory(() => Promise.reject(new Error('dynamic import failed')));
+
+    // The rejection is caught internally — callers see "no resolver
+    // configured" (empty result), never a thrown exception, and that holds
+    // on every subsequent read since the promise is memoized.
+    const first = await resolvePackageMilestones(['m1']);
+    const second = await resolvePackageMilestones(['m1']);
+
+    expect(first).toEqual([]);
+    expect(second).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
