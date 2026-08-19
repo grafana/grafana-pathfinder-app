@@ -222,6 +222,12 @@ export interface PackageResolutionSuccess {
   /** Populated when resolve options request content loading */
   content?: ContentJson;
   /**
+   * Short title from the online CDN package index entry (OnlinePackageEntry.title),
+   * when the resolver has one. Populated only by OnlineCdnPackageResolver — the
+   * recommender's by-id endpoint carries no title field.
+   */
+  entryTitle?: string;
+  /**
    * Raw resource the `verifyPublished` probe already fetched, when the resolver
    * had to GET it to check publish status. Lets the caller's content load reuse
    * it instead of issuing the identical request again. Opaque here — only the

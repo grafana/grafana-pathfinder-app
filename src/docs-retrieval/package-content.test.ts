@@ -623,6 +623,28 @@ describe('resolvePackageMilestones', () => {
 
     const result = await resolvePackageMilestones(['no-title']);
     expect(result[0]!.title).toBe('A description');
+    // Title and description are the same string here (no separate short
+    // title exists) — showing it twice would just duplicate the heading.
+    expect(result[0]!.description).toBeUndefined();
+  });
+
+  it('prefers the CDN index entryTitle over the manifest description, and surfaces the description distinctly', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'install-datasources',
+        contentUrl: 'bundled:install-datasources/content.json',
+        manifestUrl: 'bundled:install-datasources/manifest.json',
+        repository: 'online-cdn',
+        entryTitle: 'Install data sources',
+        manifest: { id: 'install-datasources', description: 'Connect Prometheus and Loki.', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['install-datasources']);
+    expect(result[0]!.title).toBe('Install data sources');
+    expect(result[0]!.description).toBe('Connect Prometheus and Loki.');
   });
 
   it('falls back to package ID when manifest has no title or description', async () => {
@@ -1082,6 +1104,24 @@ describe('resolvePackageNavLinks', () => {
       repository: 'bundled',
     });
     expect(result[1]!.packageId).toBe('beta');
+  });
+
+  it('falls back to entryTitle when content has no title', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'install-datasources',
+        contentUrl: 'bundled:install-datasources/content.json',
+        manifestUrl: 'bundled:install-datasources/manifest.json',
+        repository: 'online-cdn',
+        entryTitle: 'Install data sources',
+        manifest: { id: 'install-datasources', description: 'Connect Prometheus and Loki.', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageNavLinks(['install-datasources']);
+    expect(result[0]!.title).toBe('Install data sources');
   });
 
   it('falls back to description then ID for the title, and skips unresolvable IDs', async () => {

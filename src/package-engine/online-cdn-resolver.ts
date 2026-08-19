@@ -67,6 +67,7 @@ export class OnlineCdnPackageResolver implements PackageResolver {
       contentUrl,
       manifestUrl,
       repository: 'online-cdn',
+      ...(entry.title != null && { entryTitle: entry.title }),
     };
 
     if (options?.loadContent) {

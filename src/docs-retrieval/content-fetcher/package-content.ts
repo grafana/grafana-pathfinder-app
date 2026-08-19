@@ -89,10 +89,10 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
       continue;
     }
 
-    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+    const title = resolution.content?.title ?? resolution.entryTitle ?? resolution.manifest?.description ?? id;
     // Only surface the manifest description as a subtitle when it isn't
     // already doing double duty as the title fallback above.
-    const description = resolution.content?.title ? resolution.manifest?.description : undefined;
+    const description = resolution.manifest?.description !== title ? resolution.manifest?.description : undefined;
     const estimatedMinutes = resolution.manifest?.estimatedMinutes;
 
     milestones.push({
@@ -143,7 +143,7 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
       continue;
     }
 
-    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+    const title = resolution.content?.title ?? resolution.entryTitle ?? resolution.manifest?.description ?? id;
     const manifest: Record<string, unknown> | undefined = resolution.manifest
       ? (resolution.manifest as unknown as Record<string, unknown>)
       : undefined;
