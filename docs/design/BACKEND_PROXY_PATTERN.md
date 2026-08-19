@@ -95,7 +95,8 @@ the fixed internal aggregator.
   (`reason: "identity-unavailable"`), not 401 (see §7 for why).
 - The gate has **three** outcomes, not two, and the transient/structural split of §7 cuts across
   them. Route them from one shared decision (`identityStatus` in
-  `pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way:
+  `pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way. The
+  statuses below are named on the GET-read path; §11 states how the POST-write path serves each:
   - no token, or one the stack will not accept → soft-200 `identity-unavailable`;
   - **no signing-keys URL resolvable at all** (no app URL in the Grafana config, which is also what
     a request carrying no config at all resolves to) → soft-200 `identity-unverifiable`, because
@@ -104,6 +105,12 @@ the fixed internal aggregator.
     **503 + `Retry-After`**. This one is retryable, and the front-end caches an empty
     capability=false result without retrying, so an envelope would darken the surface past the
     end of the outage.
+- **A write serves the same three statuses in write-path shapes, not soft-200 envelopes**, and the
+  standing/transient distinction must survive the translation: rejected → **401** (transient, the
+  client retries after re-auth), signing-keys down → **transient 503 + `Retry-After`**, and
+  unverifiable → the structural **404** carrying `identity-unverifiable`. Unverifiable must not
+  collapse into the 401: it is a standing condition on that stack, and a status the client retries
+  would retry every queued write to the 30-day horizon without ever disarming. See §11.
 
 ### Outbound (plugin → aggregator)
 
@@ -392,9 +399,16 @@ where a create differs from a read:
   verified, and these records are headed for compliance-grade use — absence is auditable, a
   forgery is not. They gate nothing and the read path joins exclusively
   on `userId`, so an absent claim yielding an empty snapshot is acceptable. The inbound gate (§3)
-  still applies, but a write **fails
-  closed with a 401**, not the read path's soft-200; the client retries 401s as transient, since
-  an expired session or forwarded token recovers after re-auth.
+  still applies, but a write **fails closed with a status, not the read path's soft-200** — and the
+  three failing statuses are not interchangeable, because the status IS the client's retry
+  instruction. A **rejected** token is the **401**: the client retries it as transient, since an
+  expired session or forwarded token recovers after re-auth. A **signing-keys outage** is the
+  transient **503 + `Retry-After`**: a retryable outage, not a verdict on the caller. An
+  **unverifiable** stack — no app URL, so no signing keys to check any token against — is the
+  structural **404** carrying `identity-unverifiable`, because verification can never succeed there;
+  served as a 401 it would retry every queued write to the 30-day horizon and never disarm, whereas
+  the 404 disarms the session and RETAINS the records, re-arming on a later app load so a stack that
+  gains an app URL starts recording then.
 - **`metadata.name` is server-derived, deterministic, and identity-scoped.** A non-blank
   `idempotencyKey` (the completion event's stable client id, #1434) is **required** — a blank or
   missing key is a terminal 400, never a random-name fallback. The name is a DNS-safe
@@ -431,10 +445,15 @@ where a create differs from a read:
   **404 preserved verbatim** as the structural "route not deployed here" signal — the create POSTs
   to the completionrecords **collection**, so an upstream 404 means the whole group/route is absent
   (never a per-record miss). The client disarms writes for the session (persisted items survive for
-  the next load); the 404 is never a per-record drop and is never remapped to another status.
+  the next load); the 404 is never a per-record drop and is never remapped to another status. There
+  are **three** ways into that 404: an upstream 404, a stack with no provisioned on-behalf-of
+  credential (`obo-unavailable`), and an inbound identity this stack can never verify
+  (`identity-unverifiable`, §3) — all three are "never works here" on this load, and all three keep
+  the queued records.
   The full status/outcome table: **201** created (durable); **401** transient — echoed verbatim and
   retried client-side after re-auth (an expired session/token recovers), the one 4xx that is not a
-  drop; **404** structural disarm/keep; **408 / 429 / 5xx / 3xx / network / token-exchange failure**
+  drop; **404** structural disarm/keep (upstream 404, `obo-unavailable`, or
+  `identity-unverifiable`); **408 / 429 / 5xx / 3xx / network / token-exchange failure**
   transient; **403** disarm/keep —
   echoed verbatim; like 404 the client disarms writes for the session and RETAINS the queued
   records for a later drain, because a missing grant can be added without the completion ever
