@@ -482,6 +482,12 @@ export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
       backgroundColor: theme.colors.background.secondary,
       border: `1px solid ${theme.colors.border.weak}`,
     }),
+    heroTitle: css({
+      margin: `0 0 ${theme.spacing(1)}`,
+      fontSize: theme.typography.h3.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+    }),
     heroDescription: css({
       margin: `0 0 ${theme.spacing(1.5)}`,
       color: theme.colors.text.primary,
