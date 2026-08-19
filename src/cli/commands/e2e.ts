@@ -75,6 +75,11 @@ import {
   type CloudStackPoolManagerConfig,
 } from '../e2e/cloud-stack-pool-manager';
 import { assertTierHomogeneousChains, preflightTargetUrlsForPlan } from '../e2e/preflight-targets';
+import { createStartingLocationTracker } from '../e2e/starting-location';
+import {
+  applyLocalManifestStartingLocation,
+  applyLocalRepositoryStartingLocations,
+} from '../e2e/local-starting-location';
 
 /**
  * CLI options for the e2e command
@@ -690,6 +695,7 @@ async function runChains(
     }
     let provisionedTargets: Awaited<ReturnType<typeof provisionCloudTargetsForChain>>;
     let chainHadFailure = false;
+    const startingLocations = createStartingLocationTracker();
     try {
       provisionedTargets = await provisionCloudTargetsForChain({
         targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
@@ -763,7 +769,7 @@ async function runChains(
         const targetUrl = provisionedTargets.targetUrlForGuide(planned.id, meta?.targetUrl ?? options.grafanaUrl);
         const runGuideOptions: RunGuideOptions = {
           targetUrl,
-          startingLocation: meta?.startingLocation ?? '/',
+          startingLocation: startingLocations.select(meta?.startingLocation),
           verbose: options.verbose,
           trace: options.trace,
           headed: options.headed,
@@ -817,6 +823,7 @@ async function runChains(
         } else {
           console.log(`   ✅ Test passed`);
         }
+        startingLocations.record(result.success, result.resultsData, targetUrl);
 
         if (result.traceFile && options.trace) {
           console.log(`   📊 Trace file: ${result.traceFile}`);
@@ -898,10 +905,20 @@ function resolveLocalRunInputs(files: string[], options: E2ECommandOptions): Run
       throw error;
     }
   }
+  let repoSource: LocalRepositorySource;
+  try {
+    repoSource = loadLocalRepositorySource(options.repository);
+  } catch (error) {
+    throw new E2ECommandError(
+      error instanceof Error ? error.message : 'Failed to load repository index.',
+      ExitCode.CONFIGURATION_ERROR
+    );
+  }
 
   return {
     mode: 'local',
     guides: resolveValidGuides(files, options),
+    repoSource,
     preRunSkipped: [],
     packageMetaById: new Map(),
     localPackageDir: options.package,
@@ -1061,6 +1078,9 @@ export const e2eCommand = new Command('e2e')
       printRunConfiguration(inputs.guides, options, inputs.mode);
 
       const plan = inputs.executionPlan ?? buildExecutionPlan(inputs.guides, options, inputs.repoSource);
+      if (inputs.mode === 'local' && inputs.repoSource) {
+        applyLocalRepositoryStartingLocations(plan, inputs.repoSource, inputs.packageMetaById);
+      }
       assertTierHomogeneousChains(plan, inputs.packageMetaById);
 
       await maybeCleanStart(cleanEnv, options);
@@ -1082,10 +1102,7 @@ export const e2eCommand = new Command('e2e')
         inputs.localPackageDir
       );
       if (localManifest) {
-        inputs.packageMetaById.set(localManifest.id, {
-          packageId: localManifest.id,
-          startingLocation: localManifest.startingLocation ?? '/',
-        });
+        applyLocalManifestStartingLocation(localManifest, inputs.packageMetaById);
       }
 
       const outcome = await runChains(

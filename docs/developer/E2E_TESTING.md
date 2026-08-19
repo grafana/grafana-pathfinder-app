@@ -321,6 +321,10 @@ Before running, the CLI builds an execution plan from a `repository.json` index 
 - Missing milestones, incompatible targets, and cycles crossing `depends` and `milestones` fail before Grafana provisioning or Playwright execution.
 - The metapackage cover `content.json` is not executed; only leaf guides are sent to Playwright.
 
+After a guide passes, the runner carries its final passed step location to the next guide in that chain. The location includes its path, query, and fragment. It must use the same origin as the Grafana target.
+
+An explicit manifest `startingLocation` always takes precedence. A failed guide, a skipped final step, an unsafe final URL, or a zero-step guide does not replace the carried location. Each new chain starts without a carried location, so omitted metadata falls back to `/`.
+
 This ordering applies to every run. `--clean` additionally isolates each chain in its own environment (see below).
 
 ## Clean-slate runs (`--clean`)
@@ -473,7 +477,7 @@ These variables are consumed by the CLI or passed to the spawned Playwright proc
 | ----------------------- | ------------------------------------------------------------------------------ | ----------------------- |
 | `GUIDE_JSON_PATH`       | Path to JSON guide file                                                        | Required                |
 | `GRAFANA_URL`           | Grafana instance URL                                                           | `http://localhost:3000` |
-| `STARTING_LOCATION`     | Same-origin path where the guide should begin (set from manifest or `/`)       | `/`                     |
+| `STARTING_LOCATION`     | Effective same-origin start path from the manifest, current chain, or `/`      | `/`                     |
 | `AUTH_STATE_FILE`       | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
 | `E2E_VERBOSE`           | Enable verbose logging                                                         | `false`                 |
 | `E2E_TRACE`             | Generate Playwright trace file                                                 | `false`                 |

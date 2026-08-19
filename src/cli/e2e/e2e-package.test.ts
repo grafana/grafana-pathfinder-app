@@ -97,7 +97,7 @@ describe('resolveRemotePackage (single, recommender)', () => {
         id: 'alerting-101',
         path: 'alerting-101/',
         type: 'guide',
-        startingLocation: '/alerting',
+        startingLocation: '/repository-location',
         testEnvironment: { tier: 'local' },
       },
     ]);
@@ -121,6 +121,35 @@ describe('resolveRemotePackage (single, recommender)', () => {
     expect(result.runnable[0]!.guide.content).toBe(
       '{"id":"alerting-101","title":"Alerting","blocks":[{"type":"markdown","content":"Read this"}]}'
     );
+  });
+
+  it('preserves an omitted starting location for chain handoff', async () => {
+    mockResolve({
+      ok: true,
+      id: 'chain-guide',
+      contentUrl: 'https://cdn.test/chain-guide/content.json',
+      manifestUrl: 'https://cdn.test/chain-guide/manifest.json',
+      repository: 'r',
+      manifest: {
+        id: 'chain-guide',
+        type: 'guide',
+        testEnvironment: { tier: 'local' },
+      },
+    });
+    mockIndex([
+      {
+        id: 'chain-guide',
+        path: 'chain-guide/',
+        type: 'guide',
+        testEnvironment: { tier: 'local' },
+      },
+    ]);
+    mockFetch({ ok: true, text: '{"id":"chain-guide"}' });
+
+    const result = await resolveRemotePackage('chain-guide', OPTIONS);
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.runnable[0]?.startingLocation).toBeUndefined();
   });
 
   it('maps a recommender failure to resolution_failed', async () => {
