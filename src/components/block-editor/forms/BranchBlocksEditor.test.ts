@@ -1,4 +1,24 @@
-import { ALLOWED_BRANCH_BLOCK_TYPES, createDefaultBlock } from './BranchBlocksEditor';
+import {
+  ALLOWED_BRANCH_BLOCK_TYPES,
+  createDefaultBlock,
+  type BranchBlocksEditorProps,
+} from './BranchBlocksEditor';
+
+const validProps: BranchBlocksEditorProps = {
+  label: 'Branch',
+  variant: 'success',
+  blocks: [],
+  onChange: () => undefined,
+  addableBlockTypes: ['markdown', 'guided'],
+};
+
+const invalidProps: BranchBlocksEditorProps = {
+  ...validProps,
+  // @ts-expect-error challenge has a dedicated editor and cannot be built by the branch add picker
+  addableBlockTypes: ['challenge'],
+};
+
+void invalidProps;
 
 describe('BranchBlocksEditor createDefaultBlock', () => {
   it('does not offer challenge in the inline add picker', () => {
