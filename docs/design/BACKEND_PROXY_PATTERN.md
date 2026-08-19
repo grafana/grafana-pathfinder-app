@@ -375,7 +375,7 @@ gap as unfixable. The residual merge gate
 is a live Viewer-attributed write through the _deployed_ plugin proxy — proving the proxy's identity
 forwarding end-to-end, not the RBAC layer, which is now cleared. The proxy reuses the read
 shape's shared machinery — the URL builder (§1), trusted-context namespace (§2), the identity
-helpers and unsigned-JWT trust boundary (§3), and the in-process cache (§4) — and diverges only
+helpers and the JWKS-verified trust boundary (§3), and the in-process cache (§4) — and diverges only
 where a create differs from a read:
 
 - **Identity/org/stack are stamped server-side**, never trusted from the body. The typed request
@@ -408,8 +408,9 @@ where a create differs from a read:
   key. Client-supplied names are never accepted.
 - **Client fact fields are validated against the CRD's value domains** (source, category, and
   platform enums; `completionPercent` bounds; per-field byte caps, a UTF-8 validity check, and a
-  control-character reject on the free-text fields; `durationMs` rejected when negative or above a
-  24h ceiling — a larger value is a producer bug, not durable data) and `completedAt` is bounded to
+  control-character reject on the free-text fields; `durationMs` CLAMPED into `[0, 24h]` when out of
+  range — an out-of-range value is a producer bug in one denormalized convenience field, and
+  clamping it visibly, with a log line, beats discarding a completion the user really earned) and `completedAt` is bounded to
   a sane window
   (`[now − 30d, now + 5m]`) to tolerate delayed offline/queued retries while rejecting gross
   backdating; any violation is a terminal 400. The **30-day backdating horizon is the durability
@@ -418,8 +419,11 @@ where a create differs from a read:
   30-day bound rather than retrying a write the backend will reject.
 - **A per-user token-bucket write rate limit** (`completion_records_write_ratelimit.go`, §9 flood
   guard) runs before any upstream work; exhaustion returns 429 with `Retry-After`.
-- **A successful create invalidates the namespace read cache** (§4), advances its generation, and
-  clears the negative-cache cooldown (a create is fresh proof the upstream is reachable).
+- **A successful create stales the namespace read cache** (§4), advances its generation, and
+  clears the negative-cache cooldown (a create is fresh proof the upstream is reachable). The
+  cached index is marked stale rather than deleted: staling is what skips the TTL fast path and
+  forces the refresh, while KEEPING the warm index as §7's stale-serve fallback, so a failed
+  post-write refresh still serves a slightly-stale 200 instead of a cold 503.
   Any LIST that began before the write may finish for its caller but cannot repopulate that cache;
   a post-write GET starts a new refresh.
 - **Outcomes map onto the front-end retry-queue contract — four outcomes (created, retry,
@@ -431,10 +435,12 @@ where a create differs from a read:
   The full status/outcome table: **201** created (durable); **401** transient — echoed verbatim and
   retried client-side after re-auth (an expired session/token recovers), the one 4xx that is not a
   drop; **404** structural disarm/keep; **408 / 429 / 5xx / 3xx / network / token-exchange failure**
-  transient; **all other
-  4xx** terminal (validation / schema — the client drops it), **including 403**: an upstream 403 is
-  a systemic RBAC/grant-rollout denial that will not fix itself by retrying, so it is terminal/drop
-  and logged at a Faro-visible level (warn), not treated as transient. On the transient path the
+  transient; **403** disarm/keep —
+  echoed verbatim; like 404 the client disarms writes for the session and RETAINS the queued
+  records for a later drain, because a missing grant can be added without the completion ever
+  happening again. It is logged at a Faro-visible level (warn), since a systemic RBAC/grant-rollout
+  denial will not fix itself by retrying; **all other
+  4xx** terminal (validation / schema — the client drops it). On the transient path the
   client retries with capped exponential backoff — the proxy sets `Retry-After` as a standard hint,
   but Grafana's `backendSrv` strips response headers from its thrown `FetchError`, so the front-end
   client cannot honor it. Redirects are never followed on an

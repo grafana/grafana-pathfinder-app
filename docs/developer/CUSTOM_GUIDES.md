@@ -87,8 +87,6 @@ Click **•••** → **Unpublish**. The guide is removed from the docs panel 
 
 Published guides appear under **Custom guides** in the Pathfinder sidebar docs panel. They are available to all users on the Grafana instance where the guide was published.
 
-When any published guide carries a `path` or `journey` manifest, the section renders those packages as cards — each with a **Start** action and an expandable member list resolved on demand — followed by the loose guides no path claims as a member. With no path or journey manifests in the catalogue, the section renders the flat guide list unchanged. Published paths and journeys are also ingested into **My Learning** at runtime; see [`learning-paths/README.md`](learning-paths/README.md#app-platform-paths).
-
 Draft guides are not shown in the docs panel. They can only be accessed through the block editor library.
 
 ---

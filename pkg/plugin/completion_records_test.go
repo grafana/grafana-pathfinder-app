@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -370,6 +371,51 @@ func TestCache_Singleflight(t *testing.T) {
 	}
 }
 
+// A write invalidates the read cache, but the superseded index is kept as the
+// stale-serve fallback. Both halves matter: the next read must still refresh
+// (or a just-written record would not surface until the TTL), and if that
+// refresh fails the reader must still get the slightly-stale index rather than
+// a cold error.
+func TestCache_InvalidationKeepsStaleServeFallback(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	var calls atomic.Int32
+	l := &fakeLister{respond: func(_ string) (*completionRecordPage, error) {
+		if calls.Add(1) == 1 {
+			return &completionRecordPage{Records: []completionRecordSpec{
+				rec("user:1", "bundled", "old", "Old", "interactive", "", "objectives", "2026-07-10T00:00:00Z", 100),
+			}}, nil
+		}
+		return nil, errors.New("upstream blip")
+	}}
+	resetCompletionRecordsCache()
+	t.Cleanup(resetCompletionRecordsCache)
+
+	warm, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if err != nil {
+		t.Fatalf("warm read: %v", err)
+	}
+	if got := warm.byUser["user:1"][0].GuideID; got != "old" {
+		t.Fatalf("warm guide = %q, want old", got)
+	}
+
+	invalidateCompletionIndex(testNamespace)
+
+	// Well inside the TTL: without the invalidation this would be a cache hit,
+	// so a second LIST proves the write still forces a refresh.
+	idx, err := getCompletionIndex(context.Background(), testNamespace, l, false, log.DefaultLogger)
+	if calls.Load() != 2 {
+		t.Fatalf("LIST calls = %d, want 2 — invalidation must force a refresh", calls.Load())
+	}
+	// The forced refresh failed, so the kept entry is served instead of a cold
+	// error. Deleting the entry on invalidation would make this a nil index.
+	if idx == nil {
+		t.Fatalf("post-write refresh failure returned no index, want the stale one (err: %v)", err)
+	}
+	if got := idx.byUser["user:1"][0].GuideID; got != "old" {
+		t.Fatalf("stale-served guide = %q, want old", got)
+	}
+}
+
 func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	firstStarted := make(chan struct{})
@@ -468,6 +514,42 @@ func TestErrors_ColdTransientReturns503WithRetryAfter(t *testing.T) {
 	}
 	if rr.Header().Get("Retry-After") == "" {
 		t.Errorf("expected Retry-After header on cold 503")
+	}
+}
+
+// An unfollowed 3xx on the LIST path is classified TRANSIENT, so the read path
+// serves §7's 503 hiccup rather than the terminal capability=false envelope. The
+// 2xx/3xx clause in isTransientUpstreamStatus exists to stop a redirect being
+// acknowledged as a durable create, but it also decides this; a redirect is a
+// misrouted stack, which is recoverable, not a standing "never works here".
+func TestErrors_UnexpectedRedirectOnListIsTransient(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	for _, status := range []int{
+		http.StatusMovedPermanently,
+		http.StatusFound,
+		http.StatusTemporaryRedirect,
+		http.StatusPermanentRedirect,
+		http.StatusAccepted,
+	} {
+		t.Run(fmt.Sprintf("%d", status), func(t *testing.T) {
+			resetCompletionRecordsCache()
+			t.Cleanup(resetCompletionRecordsCache)
+			withLister(t, &fakeLister{respond: func(string) (*completionRecordPage, error) {
+				return nil, &appPlatformUpstreamError{status: status, msg: "unfollowed redirect"}
+			}})
+
+			rr, body := doMyCompletions(t, "/completion-records/my", "user:1")
+			if rr.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want 503 — a %d LIST must be transient, not terminal (body: %s)",
+					rr.Code, status, rr.Body.String())
+			}
+			if rr.Header().Get("Retry-After") == "" {
+				t.Errorf("expected Retry-After on the transient 503")
+			}
+			if body.Capability.Reason != "" {
+				t.Errorf("capability reason = %q, want empty — a transient blip must not report a standing condition", body.Capability.Reason)
+			}
+		})
 	}
 }
 

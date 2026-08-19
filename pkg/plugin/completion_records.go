@@ -120,6 +120,11 @@ type completionIndex struct {
 
 type completionCacheEntry struct {
 	index *completionIndex
+
+	// stale marks an entry a write has superseded: too old to serve on the TTL
+	// fast path, but still worth keeping as the fallback when the refresh it
+	// forces fails. See invalidateCompletionIndex.
+	stale bool
 }
 
 // completionFailure records the most recent namespace-global upstream refresh
@@ -215,19 +220,29 @@ func resetCompletionRecordsCache() {
 	completionGenerations = nil
 }
 
-// invalidateCompletionIndex drops a namespace's collated read cache so the next
-// GET /completion-records/my refreshes from upstream. Called after a successful
-// write so the new record surfaces promptly rather than after the TTL. The
-// failure cooldown is cleared too: a successful create is fresh proof the
-// upstream is reachable, and a lingering cooldown would replay a stale error
-// to exactly the post-write read this invalidation serves. Forced/stats
+// invalidateCompletionIndex stales a namespace's collated read cache so the
+// next GET /completion-records/my refreshes from upstream. Called after a
+// successful write so the new record surfaces promptly rather than after the
+// TTL. The failure cooldown is cleared too: a successful create is fresh proof
+// the upstream is reachable, and a lingering cooldown would replay a stale
+// error to exactly the post-write read this invalidation serves. Forced/stats
 // bookkeeping is left intact.
+//
+// The entry is marked stale rather than deleted, and that distinction is the
+// whole point: getCompletionIndex serves a warm-but-stale index when a refresh
+// fails, so deleting here would throw that fallback away on every write —
+// turning the next upstream blip into a cold 503 for a reader who could have
+// had a slightly-stale 200. Marking it skips the TTL fast path (which is what
+// actually forces the refresh — the generation bump only coalesces in-flight
+// refreshes) while leaving the fallback intact.
 func invalidateCompletionIndex(namespace string) {
 	completionCacheMu.Lock()
 	defer completionCacheMu.Unlock()
 	completionCacheInit()
 	completionGenerations[namespace]++
-	delete(completionCacheEntries, namespace)
+	if entry := completionCacheEntries[namespace]; entry != nil {
+		completionCacheEntries[namespace] = &completionCacheEntry{index: entry.index, stale: true}
+	}
 	delete(completionLastFailure, namespace)
 }
 
@@ -255,7 +270,7 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		}
 	}
 
-	if entry != nil && !effectiveForced && timeNow().Sub(entry.index.asOf) < completionCacheTTL {
+	if entry != nil && !entry.stale && !effectiveForced && timeNow().Sub(entry.index.asOf) < completionCacheTTL {
 		stats.hits++
 		idx := entry.index
 		completionCacheMu.Unlock()

@@ -49,12 +49,18 @@ import (
 //          group/route is absent, never a per-record miss), and a stack with no
 //          provisioned on-behalf-of credential (reasonOBOUnavailable) — the
 //          production case in ops/prod today (#1503).
+//   - 403  the caller's identity holds no grant for this route. Echoed verbatim
+//          from upstream. Like 404 it disarms writes for the session and KEEPS
+//          the pending records for a later drain — a grant can be added without
+//          the completion ever having happened again, so dropping would lose
+//          data the user earned.
 //   - 408 / 429 / 5xx / 3xx / network / token-exchange failure — transient; the client retries with
 //          exponential backoff. Retry-After is set as a standard backpressure
 //          hint, though Grafana's backendSrv does not expose response headers to
 //          the front-end client.
-//   - other 4xx  terminal — validation / schema / 403; the write will never
-//          succeed as posted, so the client drops it (no retry).
+//   - other 4xx  terminal — validation / schema; the write will never succeed
+//          as posted, so the client drops it (no retry). 401/403/408/429 are
+//          each carved out above and are NOT in this class.
 //
 // Idempotency: a non-blank idempotencyKey (#1434) is REQUIRED — a blank/missing
 // key is a terminal 400. The record name is hash(userID || sep || key) over the
@@ -86,8 +92,11 @@ const (
 
 	// completionMaxDurationMs bounds a client-supplied guide duration (24h). A
 	// single guide completion cannot realistically span longer; a larger value —
-	// or any negative — is a producer bug or bad client clock, not durable data,
-	// and is rejected as a terminal 400 rather than silently coerced.
+	// or any negative — is a producer bug or bad client clock, not durable data.
+	// Out-of-range values are CLAMPED into range and logged, not rejected: the
+	// duration is one denormalized convenience field on an otherwise valid
+	// completion the user really earned, and failing the write would discard the
+	// whole record over it. Clamping is lossy but visible; dropping is not.
 	completionMaxDurationMs = 24 * 60 * 60 * 1000
 
 	// Per-field byte caps on client-supplied free text. The CRD enforces field
@@ -289,13 +298,13 @@ func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, u
 
 	durationSeconds := int64(0)
 	if req.DurationMs != nil {
-		if *req.DurationMs < 0 {
-			return completionRecordWriteSpec{}, fmt.Errorf("durationMs must not be negative")
+		durationMs := *req.DurationMs
+		if clamped := min(max(durationMs, 0), int64(completionMaxDurationMs)); clamped != durationMs {
+			a.ctxLogger(r.Context()).Info("completion write: durationMs out of range, clamped",
+				"received", durationMs, "clamped", clamped)
+			durationMs = clamped
 		}
-		if *req.DurationMs > completionMaxDurationMs {
-			return completionRecordWriteSpec{}, fmt.Errorf("durationMs exceeds maximum of %d", completionMaxDurationMs)
-		}
-		durationSeconds = *req.DurationMs / 1000
+		durationSeconds = durationMs / 1000
 	}
 
 	return completionRecordWriteSpec{
@@ -405,12 +414,13 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	// Terminal 4xx: schema/validation rejected upstream, or identity-scoped
-	// 401/403. Echo the upstream status VERBATIM; the client drops these (except
-	// 401, which it retries as transient). A 404 is preserved, not remapped: the
-	// create POSTs to the completionrecords COLLECTION, so an upstream 404 means
-	// the group/route is not served on this stack. That is the structural "route
-	// not deployed here" signal — the front end disarms writes for the session and
-	// keeps the queued item — never a per-record drop.
+	// 401/403. Echo the upstream status VERBATIM. The client drops only the
+	// genuine validation failures; 401 it retries as transient, and 403 and 404
+	// both disarm writes for the session while KEEPING the queued items. A 404 is
+	// preserved, not remapped: the create POSTs to the completionrecords
+	// COLLECTION, so an upstream 404 means the group/route is not served on this
+	// stack. That is the structural "route not deployed here" signal — never a
+	// per-record drop.
 	switch status {
 	case http.StatusUnauthorized:
 		// The handler's own 401 gate already rejected a missing/expired inbound ID
@@ -421,10 +431,11 @@ func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Reques
 		// exist for, so log at the same Faro-visible level.
 		logger.Warn("completion write unauthorized upstream (minted credential rejected, retried)", "status", status, "error", err)
 	case http.StatusForbidden:
-		// A 403 is terminal and drops the completion, but it is not expected to be
-		// transient: it signals a systemic RBAC/grant-rollout denial, so log at a
-		// level the Faro telemetry layer surfaces rather than Debug/Info.
-		logger.Warn("completion write forbidden upstream (terminal, dropped)", "status", status, "error", err)
+		// A 403 disarms the client for the session and retains the queued records,
+		// so nothing is lost — but it signals a systemic RBAC/grant-rollout denial
+		// that will not clear on its own, so log at a level the Faro telemetry
+		// layer surfaces rather than Debug/Info.
+		logger.Warn("completion write forbidden upstream (disarms client, records retained)", "status", status, "error", err)
 	default:
 		logger.Info("completion write terminal upstream failure", "status", status, "error", err)
 	}

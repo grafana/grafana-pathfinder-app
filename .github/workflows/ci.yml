@@ -19,13 +19,6 @@ concurrency:
 env:
   NODE_VERSION: '24'
 
-# Triage note: any red job whose only step is "Set up job", logging "Failed to
-# resolve action download info" with Service Unavailable / Bad Gateway, is a
-# GitHub Actions service failure while resolving that job's pinned actions. No
-# step ran, so it is never a plugin or test failure, and because resolution is
-# per-job some jobs pass while others fail in the same run on the same pins.
-# Re-run the failed jobs; every action here is already pinned to an existing
-# commit, so there is no repo-side fix.
 jobs:
   # Parallel quality check jobs
   lint:

@@ -193,37 +193,44 @@ func TestCompletionWrite_DurationMsConvertedToSeconds(t *testing.T) {
 	}
 }
 
-// durationMs has a bounded domain (D6): negatives and values above the 24h
-// ceiling are producer bugs, rejected as terminal 400 rather than coerced; the
-// ceiling itself is accepted.
+// durationMs has a bounded domain (D6), but an out-of-range value is a producer
+// bug in ONE denormalized convenience field — not grounds to discard a
+// completion the user really earned. Out-of-range clamps into range and the
+// record is still written; the ceiling itself is accepted untouched.
 func TestCompletionWrite_DurationDomain(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 
-	t.Run("negative rejected", func(t *testing.T) {
+	t.Run("negative clamped to zero, record still written", func(t *testing.T) {
 		creator := &fakeCreator{}
 		withCreator(t, creator)
 		body := validWriteBody()
 		body["durationMs"] = -1
 		rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400 (negative durationMs)", rec.Code)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (negative durationMs must not drop the record)", rec.Code)
 		}
-		if creator.n != 0 {
-			t.Fatalf("must not reach upstream on invalid duration")
+		if creator.n != 1 {
+			t.Fatalf("creates = %d, want 1", creator.n)
+		}
+		if got := creator.last.Spec.DurationSeconds; got != 0 {
+			t.Fatalf("durationSeconds = %d, want 0 (clamped)", got)
 		}
 	})
 
-	t.Run("above ceiling rejected", func(t *testing.T) {
+	t.Run("above ceiling clamped to ceiling, record still written", func(t *testing.T) {
 		creator := &fakeCreator{}
 		withCreator(t, creator)
 		body := validWriteBody()
 		body["durationMs"] = completionMaxDurationMs + 1
 		rec := doWrite(t, nil, writeRequest(t, "user:abc", body, testGrafanaConfig()))
-		if rec.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400 (durationMs over ceiling)", rec.Code)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201 (over-ceiling durationMs must not drop the record)", rec.Code)
 		}
-		if creator.n != 0 {
-			t.Fatalf("must not reach upstream on invalid duration")
+		if creator.n != 1 {
+			t.Fatalf("creates = %d, want 1", creator.n)
+		}
+		if got := creator.last.Spec.DurationSeconds; got != completionMaxDurationMs/1000 {
+			t.Fatalf("durationSeconds = %d, want %d (clamped to ceiling)", got, completionMaxDurationMs/1000)
 		}
 	})
 
