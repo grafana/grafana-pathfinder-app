@@ -66,6 +66,8 @@ jest.mock('@grafana/ui', () => {
       progressInfo: 'progressInfo',
       progressHeader: 'progressHeader',
       milestoneText: 'milestoneText',
+      milestoneSubtitle: 'milestoneSubtitle',
+      milestoneSubtitleMeta: 'milestoneSubtitleMeta',
       milestoneActions: 'milestoneActions',
       navButton: 'navButton',
       progressBar: 'progressBar',
@@ -162,6 +164,34 @@ describe('LearningJourneyMilestoneToolbar', () => {
     (tab.content as any).metadata.learningJourney.currentMilestone = 0;
     renderToolbar({ activeTab: tab });
     expect(screen.getByText('Introduction (3 milestones)')).toBeInTheDocument();
+  });
+
+  it("shows the current milestone's description as a subtitle, when authored", () => {
+    const tab = makeJourneyTab();
+    (tab.content as any).metadata.learningJourney.milestones[0].description = 'Connect your first data source.';
+    renderToolbar({ activeTab: tab });
+    expect(screen.getByText('Connect your first data source.')).toBeInTheDocument();
+  });
+
+  it('shows the estimated duration alongside the subtitle, when authored', () => {
+    const tab = makeJourneyTab();
+    (tab.content as any).metadata.learningJourney.milestones[0].description = 'Connect your first data source.';
+    (tab.content as any).metadata.learningJourney.milestones[0].estimatedMinutes = 12;
+    renderToolbar({ activeTab: tab });
+    expect(screen.getByText('12 min')).toBeInTheDocument();
+  });
+
+  it('shows nothing extra when the current milestone has no description or duration', () => {
+    renderToolbar();
+    expect(screen.queryByText(/min$/)).not.toBeInTheDocument();
+  });
+
+  it('shows no subtitle on the introduction row (no milestone entry has number 0)', () => {
+    const tab = makeJourneyTab();
+    (tab.content as any).metadata.learningJourney.currentMilestone = 0;
+    (tab.content as any).metadata.learningJourney.milestones[0].description = 'Connect your first data source.';
+    renderToolbar({ activeTab: tab });
+    expect(screen.queryByText('Connect your first data source.')).not.toBeInTheDocument();
   });
 
   it('fires panel.navigateToPreviousMilestone on the back arrow', () => {
