@@ -200,7 +200,12 @@ export function getBadgesByTriggerType(type: BadgeTrigger['type']): Badge[] {
  * state, so it can preview "earns X badge" before the user has started.
  */
 export function getBadgeForPath(pathId: string): Badge | undefined {
-  return BADGES.find((b) => b.trigger.type === 'path-completed' && b.trigger.pathId === pathId);
+  // Public/CDN packages carry an authoring-convention suffix (e.g.
+  // infrastructure-alerting-lj) distinct from the plain id badges are
+  // registered under (infrastructure-alerting) — same rule
+  // docs-retrieval's derivePathSlug applies for URL slugs.
+  const normalizedId = pathId.endsWith('-lj') ? pathId.slice(0, -3) : pathId;
+  return BADGES.find((b) => b.trigger.type === 'path-completed' && b.trigger.pathId === normalizedId);
 }
 
 // ============================================================================
