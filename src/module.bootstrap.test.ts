@@ -8,8 +8,14 @@ import * as ts from 'typescript';
 // dropped, moved off plugin.init, or sunk below one of init's early returns,
 // completion recording silently stops for every surface and no behavioural test
 // anywhere fails. This asserts the wiring structurally instead.
+//
+// Arming is deferred behind a dynamic import so the write stack stays out of
+// module.js, so the pinned shape is "one statement of plugin.init that imports
+// the hook module and calls the arm function", not a bare top-level call. A
+// static import would defeat the split, so it is pinned closed as well.
 const ARM_FN = 'armCompletionWriteHook';
-const ARM_MODULE = './completion-records';
+const ARM_MODULE = './completion-records/completion-write-hook';
+const STATIC_IMPORT_RE = /^import\s[^;]*from\s+['"]\.\/completion-records(\/[^'"]*)?['"]/m;
 const MODULE_ENTRY = path.join(__dirname, 'module.tsx');
 
 const sourceFile = ts.createSourceFile(
@@ -47,13 +53,41 @@ function findPluginInitBody(): ts.Statement[] {
   return body;
 }
 
+function importsHookModule(node: ts.Node): boolean {
+  let found = false;
+  const visit = (child: ts.Node): void => {
+    if (
+      ts.isCallExpression(child) &&
+      child.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      child.arguments.length > 0 &&
+      ts.isStringLiteralLike(child.arguments[0]!) &&
+      (child.arguments[0] as ts.StringLiteralLike).text === ARM_MODULE
+    ) {
+      found = true;
+    }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+  return found;
+}
+
+function callsArmFn(node: ts.Node): boolean {
+  let found = false;
+  const visit = (child: ts.Node): void => {
+    if (ts.isCallExpression(child) && ts.isIdentifier(child.expression) && child.expression.text === ARM_FN) {
+      found = true;
+    }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+  return found;
+}
+
+// The arming statement: whatever its syntax, it must both load the hook module
+// and call the arm function. Nesting is allowed (the call lives in the import's
+// `.then`); position within init's statement list is not — see the tests below.
 function isArmCall(statement: ts.Statement): boolean {
-  return (
-    ts.isExpressionStatement(statement) &&
-    ts.isCallExpression(statement.expression) &&
-    ts.isIdentifier(statement.expression.expression) &&
-    statement.expression.expression.text === ARM_FN
-  );
+  return importsHookModule(statement) && callsArmFn(statement);
 }
 
 function containsReturn(node: ts.Node): boolean {
@@ -72,31 +106,14 @@ function containsReturn(node: ts.Node): boolean {
   return found;
 }
 
-function importsArmFn(): boolean {
-  let imported = false;
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isImportDeclaration(node) &&
-      ts.isStringLiteralLike(node.moduleSpecifier) &&
-      node.moduleSpecifier.text === ARM_MODULE &&
-      node.importClause?.namedBindings &&
-      ts.isNamedImports(node.importClause.namedBindings) &&
-      node.importClause.namedBindings.elements.some((element) => element.name.text === ARM_FN)
-    ) {
-      imported = true;
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  return imported;
-}
-
 describe('module bootstrap arms the durable completion-write hook', () => {
-  it(`imports ${ARM_FN} from ${ARM_MODULE}`, () => {
-    expect(importsArmFn()).toBe(true);
+  it(`loads ${ARM_MODULE} dynamically, keeping the write stack out of module.js`, () => {
+    const source = fs.readFileSync(MODULE_ENTRY, 'utf8');
+    expect(source).not.toMatch(STATIC_IMPORT_RE);
+    expect(importsHookModule(sourceFile)).toBe(true);
   });
 
-  it('calls it as a top-level statement of plugin.init, so every surface arms it', () => {
+  it('arms it from a top-level statement of plugin.init, so every surface arms it', () => {
     const armCalls = findPluginInitBody().filter(isArmCall);
     expect(armCalls).toHaveLength(1);
   });

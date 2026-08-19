@@ -69,9 +69,20 @@ class CompletionWriteController {
     this.started = true;
     this.unsubscribe = onCompletionRecorded((fact) => this.onFact(fact));
     this.unsubscribeStorage = this.queue.subscribe(() => this.scheduleDrain(0));
-    if (this.queue.size() > 0) {
-      this.scheduleDrain(0);
-    }
+    // Unconditional: the queue no longer scans storage when constructed, so its
+    // in-memory size is always 0 here and says nothing about what a previous
+    // load persisted. This first drain is what reconciles them — under the
+    // lease, off the bootstrap stack.
+    this.scheduleDrain(0);
+  }
+
+  /**
+   * Drop every queued-but-unsent record, in memory and in storage. Reset asks us
+   * to forget these completions, and a record that has not left the browser is
+   * still the user's to withdraw.
+   */
+  discardQueued(): void {
+    this.queue?.clear();
   }
 
   dispose(): void {
@@ -195,8 +206,37 @@ export function armCompletionWriteHook(overrides?: Partial<WriteHookDeps>): void
   if (controller) {
     return;
   }
-  controller = new CompletionWriteController({ ...defaultDeps, ...overrides });
+  const deps = { ...defaultDeps, ...overrides };
+  // Leave the controller null rather than assign an inert one. Arming runs at
+  // the earliest point in bootstrap, where an unresolvable identity is the
+  // expected anonymous case — but an assigned-yet-inert controller would make
+  // that indistinguishable from a broken one, and would latch: every later arm
+  // would early-return even once an identity resolved.
+  if (!deps.ownerKey()) {
+    logger.warn('completion write: no user/org identity — durable completion writes are inert for this session');
+    return;
+  }
+  controller = new CompletionWriteController(deps);
   controller.start();
+}
+
+/**
+ * Discard every queued-but-unsent completion write for the current owner.
+ * Called by "reset all learning progress" so a reset cannot be followed by the
+ * queue draining durable records for the guides the user just cleared.
+ */
+export function discardQueuedCompletionWrites(): void {
+  if (controller) {
+    controller.discardQueued();
+    return;
+  }
+  // Not armed on this surface (anonymous, or reset reached before init's dynamic
+  // import resolved). Clear the persisted queue directly so a reset still drops
+  // what an earlier load or another tab left behind.
+  const ownerKey = defaultDeps.ownerKey();
+  if (ownerKey) {
+    defaultDeps.storage(ownerKey).clear();
+  }
 }
 
 export function __resetCompletionWriteHookForTests(): void {

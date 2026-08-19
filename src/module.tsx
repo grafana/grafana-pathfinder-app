@@ -29,7 +29,6 @@ import {
 // Surgical import (not the ./lib/telemetry barrel): module.tsx is the entry
 // point, and the barrel would pull the whole telemetry package into module.js.
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from './lib/telemetry/surface';
-import { armCompletionWriteHook } from './completion-records';
 
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
@@ -156,7 +155,15 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // every entry surface (sidebar, floating, full-screen, controller), so a guide
   // completed in any of them records. Idempotent and a no-op without a resolvable
   // user/org identity — see armCompletionWriteHook.
-  armCompletionWriteHook();
+  //
+  // Deferred (like the telemetry barrel above): a static import would put the
+  // whole write stack — queue, storage, client, normalise/timing/telemetry — in
+  // module.js, paid on every page load of every Grafana with this plugin
+  // installed, including by users who never open Pathfinder. Arming is
+  // background work with no first-paint deadline, so the chunk can land late.
+  void import('./completion-records/completion-write-hook')
+    .then(({ armCompletionWriteHook }) => armCompletionWriteHook())
+    .catch((err) => logger.error('[Pathfinder] Failed to arm completion-write hook', { error: err }));
 
   const config = publishPathfinderPluginConfig(meta?.jsonData || {});
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);

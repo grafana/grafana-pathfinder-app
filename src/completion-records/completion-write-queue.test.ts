@@ -342,8 +342,12 @@ describe('write queue — persistence', () => {
     await q1.processDue(); // transient → still queued, persisted
     expect(q1.size()).toBe(1);
 
-    const s2 = makeSender([{ kind: 'created' }]);
+    // A fresh queue does not scan storage when constructed; its first drain is
+    // what reloads what the previous one persisted.
+    const s2 = makeSender([{ kind: 'transient' }, { kind: 'transient' }]);
     const q2 = createWriteQueue({ now: () => 1_000_000, send: s2.send, storage: storage.storage });
+    expect(q2.size()).toBe(0);
+    await q2.processDue();
     expect(q2.size()).toBe(1); // reloaded
     q2.enqueue(body({ completedAt: '2026-07-20T01:00:00.000Z' }));
     expect(q2.size()).toBe(2);
@@ -481,18 +485,69 @@ describe('write queue — idempotency (two-tab in-flight lease expiry)', () => {
 });
 
 describe('write queue — emission path does not enumerate storage', () => {
-  it('enqueue does not scan stored keys; the async drain reconciles off that stack', async () => {
+  it('neither construction nor enqueue scans stored keys; the async drain reconciles off that stack', async () => {
     const base = makeStorage();
     const listSpy = jest.fn(() => Array.from(base.items.values()).map((i) => ({ ...i })));
     const storage: CompletionWriteStorage = { ...base.storage, list: listSpy };
     const q = createWriteQueue({ now: () => 0, send: makeSender([{ kind: 'created' }]).send, storage });
+    // Constructing runs on every page load once arming moved into plugin.init,
+    // so it must not scan the origin — and its expiry/over-cap removals would be
+    // the only storage mutations happening outside the lease.
+    expect(listSpy).not.toHaveBeenCalled();
 
-    listSpy.mockClear(); // ignore the constructor's initial refresh()
     q.enqueue(body());
     expect(listSpy).not.toHaveBeenCalled();
 
     await q.processDue();
     expect(listSpy).toHaveBeenCalled();
+  });
+});
+
+describe('write queue — clear', () => {
+  it('drops every queued record from memory and storage', async () => {
+    const memory = makeStorage();
+    const s = makeSender([{ kind: 'created' }]);
+    const q = createWriteQueue({ now: () => 0, send: s.send, storage: memory.storage });
+    q.enqueue(body({ guideId: 'a' }));
+    q.enqueue(body({ guideId: 'b' }));
+    expect(memory.items.size).toBe(2);
+
+    q.clear();
+
+    expect(q.size()).toBe(0);
+    expect(memory.items.size).toBe(0);
+    await q.processDue();
+    expect(s.calls).toHaveLength(0);
+  });
+
+  it('does not re-persist an item cleared while its POST was in flight', async () => {
+    const memory = makeStorage();
+    let releaseSend: (() => void) | null = null;
+    const gate = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    const calls: string[] = [];
+    const q = createWriteQueue({
+      now: () => 0,
+      storage: memory.storage,
+      send: async (b) => {
+        calls.push(b.guideId);
+        await gate;
+        return { kind: 'transient' };
+      },
+    });
+    q.enqueue(body({ guideId: 'in-flight' }));
+
+    const pending = q.processDue();
+    await Promise.resolve();
+    expect(calls).toEqual(['in-flight']);
+
+    q.clear();
+    releaseSend!();
+    await pending;
+
+    expect(q.size()).toBe(0);
+    expect(memory.items.size).toBe(0);
   });
 });
 
@@ -604,7 +659,7 @@ describe('write queue — retention horizon (retry-retention-horizon)', () => {
   const NOW = Date.parse('2026-07-20T00:00:00.000Z');
   const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
-  it('drops a persisted record older than the retention horizon on load', () => {
+  it('drops a persisted record older than the retention horizon on the first drain', async () => {
     const storage = makeStorage();
     storage.items.set('old', {
       id: 'old',
@@ -614,11 +669,16 @@ describe('write queue — retention horizon (retry-retention-horizon)', () => {
       nextAttemptAt: 0,
     });
     const q = createWriteQueue({ now: () => NOW, send: makeSender([]).send, storage: storage.storage });
+    // Constructing the queue must not touch storage — the expiry drop is a
+    // mutation, and it belongs under the lease the drain holds.
+    expect(storage.items.has('old')).toBe(true);
+
+    await q.processDue();
     expect(q.size()).toBe(0);
     expect(storage.items.has('old')).toBe(false);
   });
 
-  it('keeps a record just inside the horizon', () => {
+  it('keeps a record just inside the horizon', async () => {
     const storage = makeStorage();
     storage.items.set('fresh', {
       id: 'fresh',
@@ -627,7 +687,12 @@ describe('write queue — retention horizon (retry-retention-horizon)', () => {
       createdAt: NOW - THIRTY_DAYS + 60_000,
       nextAttemptAt: 0,
     });
-    const q = createWriteQueue({ now: () => NOW, send: makeSender([]).send, storage: storage.storage });
+    const q = createWriteQueue({
+      now: () => NOW,
+      send: makeSender([{ kind: 'transient' }]).send,
+      storage: storage.storage,
+    });
+    await q.processDue();
     expect(q.size()).toBe(1);
   });
 
@@ -643,7 +708,7 @@ describe('write queue — retention horizon (retry-retention-horizon)', () => {
 });
 
 describe('write queue — over-cap persisted load eviction', () => {
-  it('evicts oldest-first when more than maxSize items are already persisted', () => {
+  it('evicts oldest-first when more than maxSize items are already persisted', async () => {
     const NOW = Date.parse('2026-07-20T00:00:00.000Z');
     const storage = makeStorage();
     for (const [id, created] of [
@@ -659,7 +724,16 @@ describe('write queue — over-cap persisted load eviction', () => {
         nextAttemptAt: 0,
       });
     }
-    const q = createWriteQueue({ now: () => NOW, send: makeSender([]).send, storage: storage.storage, maxSize: 2 });
+    const q = createWriteQueue({
+      now: () => NOW,
+      send: makeSender([{ kind: 'transient' }, { kind: 'transient' }]).send,
+      storage: storage.storage,
+      maxSize: 2,
+    });
+    // The over-cap eviction is a storage mutation too, so it waits for the lease.
+    expect(storage.items.has('old')).toBe(true);
+
+    await q.processDue();
     expect(q.size()).toBe(2);
     expect(
       q

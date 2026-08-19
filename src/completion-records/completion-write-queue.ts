@@ -34,6 +34,8 @@ export interface WriteQueue {
   isDisarmed(): boolean;
   snapshot(): QueuedWrite[];
   subscribe(listener: () => void): () => void;
+  /** Drop every queued record, in memory and in storage. */
+  clear(): void;
 }
 
 // 100 is a PER-TAB, eventually-global bound for MVP: each tab enforces it
@@ -62,7 +64,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   // The item whose POST is currently in flight. Pinned so a concurrent
   // at-capacity enqueue() cannot evict it — otherwise a transient result would
   // re-persist an item no longer in the in-memory queue, transiently exceeding
-  // the cap and letting another tab observe/drain it (see queue-eviction-concurrency).
+  // the cap and letting another tab observe/drain it — see `queue-eviction-concurrency`.
   let inFlightId: string | null = null;
 
   function isExpired(item: QueuedWrite): boolean {
@@ -71,6 +73,11 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     return now() - referenceMs > maxRetentionMs;
   }
 
+  // Only ever called under the lease (from processDue). Constructing the queue
+  // deliberately does NOT refresh: that would scan every key in the origin, and
+  // JSON.parse each match, on every page load — and its expiry/over-cap
+  // `storage.remove()` calls would be the only mutations happening unleased.
+  // The first scheduled drain reconciles instead.
   function refresh(): void {
     const loaded = storage.list().filter(isQueuedWrite).sort(compareQueuedWrites);
     // Drop records past the retention horizon: the backend would terminally
@@ -95,8 +102,6 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     }
     items = loaded;
   }
-
-  refresh();
 
   function computeNextDelay(): number | null {
     if (items.length === 0) {
@@ -233,6 +238,12 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
         reportCompletionWriteDegradation('terminal-drop');
         continue;
       }
+      // Re-check membership before re-persisting: `clear()` (a progress reset)
+      // or an eviction can land while the POST is in flight, and an unguarded
+      // put would resurrect a record that is no longer in the queue.
+      if (!items.some((i) => i.id === item.id)) {
+        continue;
+      }
       item.attempts += 1;
       item.nextAttemptAt = now() + backoffMs(item.attempts);
       storage.put(item);
@@ -246,6 +257,11 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     storage.remove(item.id);
   }
 
+  function clear(): void {
+    items = [];
+    storage.clear();
+  }
+
   return {
     enqueue,
     processDue,
@@ -253,6 +269,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     isDisarmed: () => disarmed,
     snapshot: () => items.map((i) => ({ ...i })),
     subscribe: (listener) => storage.subscribe(listener),
+    clear,
   };
 }
 

@@ -29,6 +29,7 @@ import {
   milestoneCompletionStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
+import { discardQueuedCompletionWrites } from '../../completion-records';
 import type { EarnedBadge } from '../../types';
 
 import { getBadgeProgress } from './badge-utils';
@@ -265,6 +266,12 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       // this, currently mounted `useStepCompletion` subscribers would still
       // render the prior state until the user closed and reopened the tab.
       evictAllContentCaches();
+
+      // Durable completion writes that are queued but not yet sent are cleared
+      // too. Without this the queue drains after the reset and mints records for
+      // exactly the guides the user just asked us to forget — and the dialog
+      // gives them no second lever to stop it.
+      discardQueuedCompletionWrites();
 
       // Notify the context engine to refresh recommendations.
       window.dispatchEvent(

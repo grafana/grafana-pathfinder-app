@@ -18,9 +18,17 @@ import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel
 import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { testIds } from '../../constants/testIds';
 import { milestoneCompletionStorage } from '../../lib/user-storage';
+import { discardQueuedCompletionWrites } from '../../completion-records';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
+}));
+
+// The discard behaviour itself (queue and storage emptied, nothing left to
+// drain) is covered in completion-write-hook.test.ts; here the contract is that
+// reset reaches it at all.
+jest.mock('../../completion-records', () => ({
+  discardQueuedCompletionWrites: jest.fn(),
 }));
 
 // Not mocking `lib/logging`: the assertion below is about what the real
@@ -640,6 +648,27 @@ describe('MyLearningTab — reset all learning progress', () => {
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(milestoneCompletionStorage.clearAll).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('discards queued completion writes, so the queue cannot mint records for the guides just cleared', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(discardQueuedCompletionWrites).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  it('keeps queued completion writes when the confirmation is declined', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect(discardQueuedCompletionWrites).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 });

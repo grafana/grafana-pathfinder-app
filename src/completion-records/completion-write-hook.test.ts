@@ -19,9 +19,12 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
+import { logger } from '../lib/logging';
+
 import { recordGuideCompletion, recordJourneyCompletion, __resetRecorderForTests } from './completion-recorder';
 import {
   armCompletionWriteHook,
+  discardQueuedCompletionWrites,
   __resetCompletionWriteHookForTests,
   type WriteHookDeps,
 } from './completion-write-hook';
@@ -140,6 +143,96 @@ describe('arming', () => {
 
     expect(sent).toHaveLength(0);
     expect(localStorage.length).toBe(0);
+  });
+
+  it('warns when it goes inert, so an anonymous user is distinguishable from a broken one', () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+
+    armCompletionWriteHook(deps({ ownerKey: () => null }));
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('no user/org identity'));
+    warn.mockRestore();
+  });
+
+  it('stays armable after going inert, so a later identity still arms it', async () => {
+    jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    // Arming happens at the earliest point in bootstrap. An inert controller
+    // assigned here would latch and swallow every later attempt.
+    armCompletionWriteHook(deps({ ownerKey: () => null }));
+
+    armCompletionWriteHook(deps());
+    recordGuideCompletion(guideFact({ guideId: 'now-known' }));
+    await runTimer();
+
+    expect(sent.map((b) => b.guideId)).toEqual(['now-known']);
+    jest.restoreAllMocks();
+  });
+});
+
+describe('discarding the queue on progress reset', () => {
+  it('leaves nothing to drain', async () => {
+    sendResults = [{ kind: 'transient' }];
+    armCompletionWriteHook(deps());
+    await runTimer();
+
+    recordGuideCompletion(guideFact({ guideId: 'forget-me' }));
+    discardQueuedCompletionWrites();
+    sendResults = [{ kind: 'created' }];
+    sendIdx = 0;
+    await runTimer();
+    await runTimer();
+
+    expect(sent).toHaveLength(0);
+    expect(createCompletionWriteStorage('user-7:org-3').list()).toHaveLength(0);
+  });
+
+  it('does not resurrect a record whose POST was already in flight', async () => {
+    // The reset lands between the send starting and its transient result coming
+    // back; the un-guarded re-persist would have written it back to storage.
+    let releaseSend: (() => void) | null = null;
+    const gate = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    armCompletionWriteHook(
+      deps({
+        send: async (b) => {
+          sent.push(b);
+          await gate;
+          return { kind: 'transient' };
+        },
+      })
+    );
+    await runTimer();
+
+    recordGuideCompletion(guideFact({ guideId: 'in-flight' }));
+    const drain = drainCb;
+    drainCb = null;
+    drain?.();
+    await flushMicro();
+    expect(sent).toHaveLength(1);
+
+    discardQueuedCompletionWrites();
+    releaseSend!();
+    await flushMicro();
+    await flushMicro();
+
+    expect(createCompletionWriteStorage('user-7:org-3').list()).toHaveLength(0);
+  });
+
+  it('clears the persisted queue even when no controller is armed', () => {
+    const storage = createCompletionWriteStorage('user-7:org-3');
+    storage.put({
+      id: 'left-over',
+      body: { ...guideFact(), platform: 'cloud' } as never,
+      attempts: 0,
+      createdAt: 0,
+      nextAttemptAt: 0,
+    });
+    expect(storage.list()).toHaveLength(1);
+
+    discardQueuedCompletionWrites();
+
+    expect(storage.list()).toHaveLength(0);
   });
 });
 

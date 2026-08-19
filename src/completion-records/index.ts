@@ -11,7 +11,7 @@ export {
 } from './completion-recorder';
 export { resolveCompletionIdentity, manifestGuideId, manifestGuideSource } from './completion-identity';
 export type { ResolveCompletionIdentityInput } from './completion-identity';
-export { armCompletionWriteHook } from './completion-write-hook';
+export { armCompletionWriteHook, discardQueuedCompletionWrites } from './completion-write-hook';
 export type {
   CompletionKey,
   CompletionKind,
