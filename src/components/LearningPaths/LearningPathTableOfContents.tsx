@@ -60,16 +60,19 @@ export function LearningPathTableOfContents({
   // "unpublished" (locked even once its turn comes).
   const cursor = milestones.findIndex((m) => !m.isLocked && !completedSlugs.has(getMilestoneSlug(m.url)));
 
-  const guides: PathGuide[] = milestones.map((milestone, index) => ({
-    id: String(milestone.number),
-    title: milestone.title,
-    description: milestone.description,
-    estimatedMinutes: milestone.estimatedMinutes,
-    completed: completedSlugs.has(getMilestoneSlug(milestone.url)),
-    isCurrent: cursor >= 0 && index === cursor,
-    locked: milestone.isLocked || (cursor >= 0 && index > cursor),
-    url: milestone.url,
-  }));
+  const guides: PathGuide[] = milestones.map((milestone, index) => {
+    const completed = completedSlugs.has(getMilestoneSlug(milestone.url));
+    return {
+      id: String(milestone.number),
+      title: milestone.title,
+      description: milestone.description,
+      estimatedMinutes: milestone.estimatedMinutes,
+      completed,
+      isCurrent: cursor >= 0 && index === cursor,
+      locked: milestone.isLocked || (!completed && cursor >= 0 && index > cursor),
+      url: milestone.url,
+    };
+  });
 
   const completedCount = guides.filter((g) => g.completed).length;
   const progress = milestones.length > 0 ? Math.round((completedCount / milestones.length) * 100) : 0;

@@ -217,5 +217,17 @@ describe('LearningPathTableOfContents', () => {
       await waitFor(() => expect(screen.getAllByText('Locked')).toHaveLength(1));
       expect(document.querySelectorAll('.guideIconBadge [data-icon="play"]')).toHaveLength(1);
     });
+
+    it('treats a module completed out of order as done, not locked', async () => {
+      // "Three" completed while "One"/"Two" aren't — the cursor still sits at
+      // "One", but "Three" must not be marked both completed and locked.
+      getCompletedMock.mockResolvedValue(new Set(['three']));
+      render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
+
+      await waitFor(() => expect(document.querySelectorAll('.guideIconBadge [data-icon="check"]')).toHaveLength(1));
+      // Only "Two" is locked; "Three" is done and "One" is the current cursor.
+      expect(screen.getAllByText('Locked')).toHaveLength(1);
+      expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(1);
+    });
   });
 });
