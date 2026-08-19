@@ -29,30 +29,23 @@ jest.mock('../../../lib/analytics', () => ({
 }));
 
 jest.mock('../../../docs-retrieval', () => ({
-  getMilestoneSlug: jest.fn(),
-  markMilestoneDone: jest.fn(),
-  setJourneyCompletionPercentage: jest.fn(),
-  countUnlockedMilestones: (ms: Array<{ isLocked?: boolean }> | undefined) =>
-    (ms ?? []).filter((m) => !m.isLocked).length,
+  recordGuideCompletionForSurface: jest.fn(),
 }));
 
-// Heavy leaf children are irrelevant to the footer button — stub them out so
-// the branch renders without their dependency trees. ContentRenderer exposes a
-// button that fires `onGuideComplete` so the completion path can be triggered.
+// Heavy leaf children are irrelevant to these tests — stub them out so the
+// branch renders without their dependency trees. ContentRenderer exposes a
+// button that fires onGuideComplete so the completion-boundary tests can drive it.
 jest.mock('../../content-renderer/content-renderer', () => ({
-  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => {
-    const react = require('react');
-    return react.createElement('button', {
-      'data-testid': 'fire-guide-complete',
-      onClick: () => onGuideComplete?.(),
-    });
-  },
+  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => (
+    <button onClick={onGuideComplete}>Complete rendered guide</button>
+  ),
 }));
 jest.mock('../../SelectorDebugPanel', () => ({ SelectorDebugPanel: () => null }));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
 const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
+const { recordGuideCompletionForSurface } = jest.requireMock('../../../docs-retrieval');
 
 function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPanelContentAreaProps {
   const activeTab: any = {
@@ -124,6 +117,75 @@ describe('DocsPanelContentArea', () => {
       expect(reportAppInteraction).toHaveBeenCalledWith('docs_panel_interaction', {
         action: 'navigate_to_recommendations',
         source: 'content_footer',
+      });
+    });
+  });
+
+  describe('completion boundary', () => {
+    it('records an ordinary remote interactive guide from its manifest', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'docs',
+          baseUrl: 'https://example.com/remote-guide',
+          currentUrl: 'https://example.com/remote-guide/content.json',
+        } as any,
+        stableContent: {
+          url: 'https://example.com/remote-guide/content.json',
+          type: 'docs',
+          content: '',
+          metadata: { packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
+
+      // The sidebar forwards its view-level identity to the shared, surface-neutral
+      // emitter; the bundled-vs-remote / milestone decision is owned and tested there.
+      expect(recordGuideCompletionForSurface).toHaveBeenCalledWith({
+        baseUrl: 'https://example.com/remote-guide',
+        contentUrl: 'https://example.com/remote-guide/content.json',
+        currentUrl: 'https://example.com/remote-guide/content.json',
+        contentType: 'docs',
+        metadata: { packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
+        guideTitle: 'My guide',
+      });
+    });
+
+    it('forwards learning-journey identity (base, current milestone, manifest) to the shared emitter', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          baseUrl: 'bundled:select-platform',
+          currentUrl: 'https://example.com/select-platform/content.json',
+        } as any,
+        stableContent: {
+          url: 'bundled:select-platform',
+          type: 'learning-journey',
+          content: '',
+          metadata: {
+            packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+            learningJourney: { totalMilestones: 3 },
+          },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
+
+      expect(recordGuideCompletionForSurface).toHaveBeenCalledWith({
+        baseUrl: 'bundled:select-platform',
+        contentUrl: 'bundled:select-platform',
+        currentUrl: 'https://example.com/select-platform/content.json',
+        contentType: 'learning-journey',
+        metadata: {
+          packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+          learningJourney: { totalMilestones: 3 },
+        },
+        guideTitle: 'My guide',
       });
     });
   });
@@ -215,41 +277,6 @@ describe('DocsPanelContentArea', () => {
 
       expect(screen.getByTestId('home-content')).toBeInTheDocument();
       expect(screen.queryByTestId('editor-tab-content')).not.toBeInTheDocument();
-    });
-  });
-
-  describe('milestone completion threshold', () => {
-    it('marks completion against the UNLOCKED milestone count, not the locked-inclusive total', () => {
-      const { getMilestoneSlug, markMilestoneDone } = jest.requireMock('../../../docs-retrieval');
-      getMilestoneSlug.mockReturnValue('m1');
-
-      const content = {
-        url: 'backend-guide:fe-alerting-01',
-        type: 'learning-journey',
-        content: '',
-        metadata: {
-          learningJourney: {
-            baseUrl: 'backend-guide:fe-alerting-path',
-            // 3 declared, 1 locked (unpublished) → only 2 are reachable.
-            totalMilestones: 3,
-            milestones: [
-              { number: 1, title: 'm1', url: 'backend-guide:fe-alerting-01', isActive: false },
-              { number: 2, title: 'm2', url: 'backend-guide:fe-alerting-02', isActive: false },
-              { number: 3, title: 'm3', url: '', isActive: false, isLocked: true },
-            ],
-          },
-        },
-      };
-      const props = makeProps({
-        activeTab: { ...makeProps().activeTab, currentUrl: 'backend-guide:fe-alerting-01', content } as any,
-        stableContent: content as any,
-      });
-
-      render(<DocsPanelContentArea {...props} />);
-      fireEvent.click(screen.getByTestId('fire-guide-complete'));
-
-      // 2 (unlocked), not 3 — otherwise a partially-published path never completes.
-      expect(markMilestoneDone).toHaveBeenCalledWith('backend-guide:fe-alerting-path', 'm1', 2, expect.any(Object));
     });
   });
 });

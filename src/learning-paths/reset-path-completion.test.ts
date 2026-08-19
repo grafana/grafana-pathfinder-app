@@ -129,7 +129,7 @@ describe('resetPath — App Platform path (no url)', () => {
     const facts: CompletionFact[] = [];
     const unsubscribe = onCompletionRecorded((fact) => facts.push(fact));
 
-    await markMilestoneDone(PATH_KEY, GUIDES[0]!, GUIDES.length, {
+    await markMilestoneDone(PATH_KEY, GUIDES[0]!, GUIDES, {
       packageManifest: { id: PATH_ID, repository: 'app-platform' },
     });
     unsubscribe();

@@ -204,6 +204,7 @@ const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOp
   return {
     packageId,
     packageManifest: recommendation.manifest,
+    repository: recommendation.repository,
     resolvedMilestones: Array.isArray(recommendation.milestones) ? recommendation.milestones : undefined,
   };
 };
@@ -635,6 +636,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}
@@ -669,6 +671,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}
@@ -933,6 +936,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               openDocsPage(link.contentUrl, link.title, {
                                                 packageId: link.packageId,
                                                 packageManifest: link.manifest,
+                                                repository: link.repository,
                                               });
                                             }}
                                             className={styles.milestoneItem}
@@ -967,6 +971,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               openDocsPage(link.contentUrl, link.title, {
                                                 packageId: link.packageId,
                                                 packageManifest: link.manifest,
+                                                repository: link.repository,
                                               });
                                             }}
                                             className={styles.milestoneItem}

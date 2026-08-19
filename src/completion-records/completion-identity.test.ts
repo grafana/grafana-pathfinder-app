@@ -1,9 +1,11 @@
 /**
- * Tests for `resolveCompletionIdentity` — the manifest-keyed identity rule
- * shared with the Custom Guide Packages RFC: `(guideSource, guideId) =
- * (manifest.repository, manifest.id)`, never derived from a loader URL.
+ * Tests for `resolveCompletionIdentity` — the identity rule shared with the
+ * Custom Guide Packages RFC: `(guideSource, guideId) = (repository, manifest.id)`,
+ * never derived from a loader URL. The explicit/resolved `repository` takes
+ * precedence over any repository embedded in the manifest, because the manifest
+ * schema defaults an absent repository to `interactive-tutorials`.
  */
-import { resolveCompletionIdentity, manifestGuideId } from './completion-identity';
+import { resolveCompletionIdentity, manifestGuideId, manifestGuideSource } from './completion-identity';
 
 describe('resolveCompletionIdentity', () => {
   it('keys on manifest.repository / manifest.id when present', () => {
@@ -13,6 +15,18 @@ describe('resolveCompletionIdentity', () => {
         fallbackId: 'ignored',
       })
     ).toEqual({ guideSource: 'app-platform', guideId: 'fe-alerting-01' });
+  });
+
+  it('gives the explicit/resolved repository precedence over the manifest value (repository-identity-authority)', () => {
+    // The manifest carries the schema default; the resolver knows the true source.
+    // Records must key on the resolved source, not the synthetic default.
+    expect(
+      resolveCompletionIdentity({
+        packageManifest: { id: 'linux-01', repository: 'interactive-tutorials', type: 'guide' },
+        repository: 'online-cdn',
+        fallbackId: 'ignored',
+      })
+    ).toEqual({ guideSource: 'online-cdn', guideId: 'linux-01' });
   });
 
   it('uses the recommendation-level repository when the manifest lacks its own (V1PackageManifest)', () => {
@@ -73,5 +87,14 @@ describe('manifestGuideId', () => {
     expect(manifestGuideId({})).toBeUndefined();
     expect(manifestGuideId({ id: '' })).toBeUndefined();
     expect(manifestGuideId({ id: 42 })).toBeUndefined();
+  });
+});
+
+describe('manifestGuideSource', () => {
+  it('returns only a non-empty repository string', () => {
+    expect(manifestGuideSource({ repository: 'app-platform' })).toBe('app-platform');
+    expect(manifestGuideSource({ repository: '' })).toBeUndefined();
+    expect(manifestGuideSource({ repository: 42 })).toBeUndefined();
+    expect(manifestGuideSource()).toBeUndefined();
   });
 });

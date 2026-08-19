@@ -149,6 +149,22 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Grafana never awaits it, so work behind an await would run after first paint
   // — after scene construction has already read the published config, and after
   // the deep-link and link-interception listeners needed to exist.
+
+  // Arm the durable completion-write hook from the universal plugin bootstrap
+  // rather than only the root App page: plugin.init fires once per session for
+  // every entry surface (sidebar, floating, full-screen, controller), so a guide
+  // completed in any of them records. Idempotent and a no-op without a resolvable
+  // user/org identity — see armCompletionWriteHook.
+  //
+  // Deferred (like the telemetry barrel above): a static import would put the
+  // whole write stack — queue, storage, client, normalise/timing/telemetry — in
+  // module.js, paid on every page load of every Grafana with this plugin
+  // installed, including by users who never open Pathfinder. Arming is
+  // background work with no first-paint deadline, so the chunk can land late.
+  void import('./completion-records/completion-write-hook')
+    .then(({ armCompletionWriteHook }) => armCompletionWriteHook())
+    .catch((err) => logger.error('[Pathfinder] Failed to arm completion-write hook', { error: err }));
+
   const config = publishPathfinderPluginConfig(meta?.jsonData || {});
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
 

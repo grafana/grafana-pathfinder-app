@@ -42,6 +42,14 @@ export interface ContentMetadata {
    * so the content display layer can render richer UI without needing a separate manifest fetch.
    */
   packageManifest?: Record<string, unknown>;
+
+  /**
+   * Recommendation-level repository (sibling of the manifest in the V1 wire
+   * shape; V1PackageManifest has no repository of its own). Carried alongside
+   * packageManifest so completion emission can key the durable
+   * `(guideSource, guideId)` on the true source rather than a manifest default.
+   */
+  repository?: string;
 }
 
 export interface LearningJourneyMetadata {

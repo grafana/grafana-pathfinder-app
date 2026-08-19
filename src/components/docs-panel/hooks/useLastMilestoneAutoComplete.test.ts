@@ -6,8 +6,7 @@ jest.mock('../../../docs-retrieval', () => ({
   isLastMilestone: jest.fn(),
   getMilestoneSlug: jest.fn(),
   markMilestoneDone: jest.fn(),
-  countUnlockedMilestones: (ms: Array<{ isLocked?: boolean }> | undefined) =>
-    (ms ?? []).filter((m) => !m.isLocked).length,
+  resolveExpectedMilestoneIds: jest.fn(() => []),
 }));
 
 import { isLastMilestone, getMilestoneSlug, markMilestoneDone } from '../../../docs-retrieval';
@@ -135,7 +134,7 @@ describe('useLastMilestoneAutoComplete', () => {
     expect(markMilestoneDoneMock).toHaveBeenCalledWith(
       'https://example.com/journey-canonical',
       'final-slug',
-      5,
+      expect.any(Array),
       expect.objectContaining({ guideTitle: 'Journey' })
     );
   });

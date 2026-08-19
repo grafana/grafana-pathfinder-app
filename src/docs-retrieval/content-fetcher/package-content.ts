@@ -148,6 +148,7 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
       title,
       contentUrl: resolution.contentUrl,
       manifest,
+      repository: resolution.repository,
     });
   }
 
@@ -216,11 +217,14 @@ export function ensureNonEmptyCoverContent(jsonContent: string): string {
  * @param contentUrl - Pre-resolved CDN URL or bundled: URL for the content.json
  * @param packageManifest - Optional manifest metadata to attach to the result
  * @param preResolvedMilestones - Optional milestones already resolved by the caller (avoids redundant resolution)
+ * @param repository - Resolved source repository, stamped onto `metadata.repository` so completion keys on the true source rather than the manifest default; falls back to the baseUrl resolution's own repository when omitted
+ * @param preFetchedContent - Optional content the caller already fetched (avoids re-issuing an identical request)
  */
 export async function fetchPackageContent(
   contentUrl: string,
   packageManifest?: Record<string, unknown>,
   preResolvedMilestones?: Milestone[],
+  repository?: string,
   preFetchedContent?: ContentFetchResult
 ): Promise<ContentFetchResult> {
   const renderType = getPackageRenderType(packageManifest);
@@ -256,6 +260,8 @@ export async function fetchPackageContent(
   if (!result.content) {
     return result;
   }
+
+  const resolvedRepository = repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
 
   let learningJourney: LearningJourneyMetadata | undefined;
   let contentString = result.content.content;
@@ -300,6 +306,10 @@ export async function fetchPackageContent(
       metadata: {
         ...result.content.metadata,
         ...(packageManifest !== undefined && { packageManifest }),
+        // Fall back to the repository the baseUrl resolution already carries, so
+        // an entry path that supplies no explicit one still keys the durable
+        // completion on the true source instead of the manifest schema default.
+        ...(resolvedRepository !== undefined && { repository: resolvedRepository }),
         ...(learningJourney !== undefined && { learningJourney }),
       },
     },
@@ -314,10 +324,12 @@ export async function fetchPackageContent(
  *
  * @param packageId - Bare package ID (e.g., "alerting-101")
  * @param packageManifest - Optional manifest metadata to attach to the result
+ * @param repository - Optional explicit source repository; falls back to the resolver's own when omitted
  */
 export async function fetchPackageById(
   packageId: string,
-  packageManifest?: Record<string, unknown>
+  packageManifest?: Record<string, unknown>,
+  repository?: string
 ): Promise<ContentFetchResult> {
   const resolver = await getPackageResolver();
   if (!resolver) {
@@ -349,5 +361,14 @@ export async function fetchPackageById(
     ? buildBackendGuideContent(resolution.probedResource as BackendGuideResource, resolution.contentUrl, packageId)
     : undefined;
 
-  return fetchPackageContent(resolution.contentUrl, packageManifest, undefined, preFetched);
+  // Prefer an explicit caller-supplied repository, but fall back to the
+  // resolver's own source so a bare-ID open still keys the durable completion
+  // on the true repository instead of the manifest schema default.
+  return fetchPackageContent(
+    resolution.contentUrl,
+    packageManifest,
+    undefined,
+    repository ?? resolution.repository,
+    preFetched
+  );
 }

@@ -137,6 +137,8 @@ const {
   buildResourceIgnorePattern,
 }: typeof import('./faro') = require('./faro');
 
+const { TELEMETRY_EVENTS }: typeof import('./telemetry/types') = require('./telemetry/types');
+
 type FreshFaro = typeof import('./faro') &
   Pick<typeof import('./telemetry/faro-adapter'), 'pushFaroEvent' | 'pushFaroMeasurement'>;
 
@@ -252,6 +254,18 @@ function eventItem(): TransportItem<APIEvent> {
   } as unknown as TransportItem<APIEvent>;
 }
 
+function completionWriteDegradedItem(): TransportItem<APIEvent> {
+  return {
+    type: 'event',
+    payload: {
+      name: TELEMETRY_EVENTS.completionWriteDegraded,
+      timestamp: new Date().toISOString(),
+      attributes: { reason: 'route-missing' },
+    },
+    meta: {},
+  } as unknown as TransportItem<APIEvent>;
+}
+
 function performanceResourceItem(resourceUrl: string): TransportItem<APIEvent> {
   return {
     type: 'event',
@@ -349,6 +363,14 @@ describe('filterPathfinderTelemetry', () => {
 
   it('passes through other item types unfiltered', () => {
     const item = eventItem();
+    expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  // The completion-write path's only observability signal. It is emitted from a
+  // best-effort catch block, so a filter that silently dropped it would leave
+  // the event defined, the tests green, and the route degradation invisible.
+  it('keeps the completion-write degradation event', () => {
+    const item = completionWriteDegradedItem();
     expect(filterPathfinderTelemetry(item)).toBe(item);
   });
 
@@ -1149,6 +1171,16 @@ describe('passesActivityGate', () => {
     localStorage.setItem(PANEL_MODE_KEY, 'floating');
     const faro = freshFaro();
     expect(faro.passesActivityGate(eventItem())).toBe(true);
+  });
+
+  // A guide can only be completed from an open surface, so the degradation
+  // event must clear the gate as well as the attribution filter above.
+  it('passes the completion-write degradation event from an open surface', () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    const item = completionWriteDegradedItem();
+    expect(faro.filterPathfinderTelemetry(item)).toBe(item);
+    expect(faro.passesActivityGate(item)).toBe(true);
   });
 
   it('passes events when the panel mode is fullscreen', () => {

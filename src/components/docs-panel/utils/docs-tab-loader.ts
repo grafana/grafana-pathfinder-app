@@ -18,11 +18,16 @@ export async function loadDocsTabContentResult(
 
   if (packageInfo) {
     if (normalizedUrl) {
-      return fetchPackageContent(normalizedUrl, packageInfo.packageManifest, packageInfo.resolvedMilestones);
+      return fetchPackageContent(
+        normalizedUrl,
+        packageInfo.packageManifest,
+        packageInfo.resolvedMilestones,
+        packageInfo.repository
+      );
     }
 
     if (packageInfo.packageId) {
-      return fetchPackageById(packageInfo.packageId, packageInfo.packageManifest);
+      return fetchPackageById(packageInfo.packageId, packageInfo.packageManifest, packageInfo.repository);
     }
 
     return {

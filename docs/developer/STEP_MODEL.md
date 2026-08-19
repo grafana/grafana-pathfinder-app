@@ -55,7 +55,7 @@ Known reset sites (each pairs the storage clear with a cache eviction):
 - `useContentReset` (docs-panel "Reset guide") — `interactiveStepStorage.clearAllForContent` + `evictContentCache`.
 - `useGuidePreviewProgress.reset` (block-editor preview reset) — `interactiveStepStorage.clearAllForContent` + `evictContentCache`.
 - `learning-paths.hook.ts` per-path reset — `interactiveStepStorage.clearAllForContent` + `evictContentCache` (URL and bundled branches).
-- `MyLearningTab.handleResetAll` (global "Reset progress") — `interactiveStepStorage.clearAll` + `evictAllContentCaches`.
+- `MyLearningTab.handleResetProgress` (global "Reset all progress") — `interactiveStepStorage.clearAll` + `evictAllContentCaches`.
 
 Adding a new reset path: pair the storage clear with the corresponding eviction.
 

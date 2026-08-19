@@ -12,14 +12,8 @@
  *   6. Error state with retry
  *   7. ContentRenderer + content meta + milestone toolbar + footer
  *
- * Behavior preserved verbatim. Lazy imports are kept INSIDE this file
- * (pre-mortem H8): the same module paths are used so webpack chunk
- * resolution remains stable.
- *
- * The wrapping `<div className={styles.content} data-testid={testIds.docsPanel.content}>`
- * is the outer surface. testIds.docsPanel.content moves with this component
- * — SOURCE_CONTRACT in docs-panel.contract.test.tsx is updated in the same
- * commit.
+ * Lazy imports are kept INSIDE this file so webpack sees the same dynamic-import
+ * module specifiers and chunk resolution stays stable.
  */
 import React, { Suspense, lazy } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
@@ -42,12 +36,7 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import {
-  countUnlockedMilestones,
-  getMilestoneSlug,
-  markMilestoneDone,
-  setJourneyCompletionPercentage,
-} from '../../../docs-retrieval';
+import { recordGuideCompletionForSurface } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
@@ -60,8 +49,6 @@ import { PanelModeActionButtons } from './PanelModeActionButtons';
 import type { SceneObject } from '@grafana/scenes';
 import type { DocsPanelModelOperations, OpenDocsOptions } from '../types';
 
-// Kept inside the component file so webpack sees the same dynamic-import
-// module specifiers used pre-refactor. See pre-mortem H8.
 const SelectorDebugPanel = lazy(() =>
   import('../../SelectorDebugPanel').then((module) => ({
     default: module.SelectorDebugPanel,
@@ -428,28 +415,16 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onContentReady={() => {
                         restoreScrollPosition();
                       }}
-                      onGuideComplete={() => {
-                        const baseUrl = activeTab?.baseUrl || stableContent.url;
-                        const completionContext = {
-                          packageManifest: stableContent.metadata?.packageManifest,
+                      onGuideComplete={() =>
+                        recordGuideCompletionForSurface({
+                          baseUrl: activeTab?.baseUrl,
+                          contentUrl: stableContent.url,
+                          currentUrl: activeTab?.currentUrl,
+                          contentType: stableContent.type,
+                          metadata: stableContent.metadata,
                           guideTitle: activeTab?.title,
-                        };
-                        if (baseUrl?.startsWith('bundled:')) {
-                          setJourneyCompletionPercentage(baseUrl, 100, completionContext);
-                        }
-                        if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
-                          const slug = getMilestoneSlug(activeTab.currentUrl);
-                          const journeyBase = stableContent.metadata.learningJourney?.baseUrl;
-                          if (slug && journeyBase) {
-                            markMilestoneDone(
-                              journeyBase,
-                              slug,
-                              countUnlockedMilestones(stableContent.metadata?.learningJourney?.milestones ?? []),
-                              completionContext
-                            );
-                          }
-                        }
-                      }}
+                        })
+                      }
                     />
                   </AlignmentPendingContext.Provider>
                 )}
