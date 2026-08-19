@@ -109,6 +109,15 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
     expect(blocks[0]).toEqual({ type: 'markdown', content: 'Just some prose, no expect heading.' });
   });
 
+  it('omits the Ready to Begin block entirely when skipReadyToBegin is true', () => {
+    const input = guide([{ type: 'markdown', content: 'Just some prose, no expect heading.' }]);
+
+    const result = injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true);
+
+    expect(result).not.toContain('journey-ready-to-begin');
+    expect(result).not.toContain('Ready to Begin');
+  });
+
   it('returns the original string unchanged when JSON is invalid', () => {
     const notJson = 'this is not json {';
     expect(injectJourneyExtrasIntoJsonGuide(notJson, coverMetadata)).toBe(notJson);
