@@ -52,7 +52,7 @@ export const JsonGuideSchemaStrict = z.object({
 
 // 3. Add to KNOWN_FIELDS
 // `KnownFieldsMetaKey` is the union of the non-block registry keys
-// ('_guide' | '_step' | '_choice' | '_manifest' | ...), declared just above
+// ('_guide' | '_step' | '_choice' | ...), declared just above
 // KNOWN_FIELDS in json-guide.schema.ts.
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   _guide: new Set(['schemaVersion', 'id', 'title', 'blocks', 'newField']), // ADD HERE

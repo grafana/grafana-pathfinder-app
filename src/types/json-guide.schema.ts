@@ -1134,10 +1134,9 @@ export type InferredJsonQuizChoice = z.infer<typeof JsonQuizChoiceSchema>;
 
 /**
  * Non-block registry keys — nested shapes that are validated positionally
- * (`steps[]`, `choices[]`) or are not blocks at all (the guide root, the
- * package manifest).
+ * (`steps[]`, `choices[]`) or are not blocks at all (the guide root).
  */
-type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_manifest' | '_conditionalSectionConfig';
+type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_conditionalSectionConfig';
 
 /**
  * Known fields for each block type.
@@ -1324,26 +1323,6 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
   'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),
   'snippet-ref': new Set(['type', 'id', 'snippetId', 'authorNote']),
-  _manifest: new Set([
-    'schemaVersion',
-    'id',
-    'type',
-    'repository',
-    'milestones',
-    'description',
-    'language',
-    'category',
-    'author',
-    'startingLocation',
-    'depends',
-    'recommends',
-    'suggests',
-    'provides',
-    'conflicts',
-    'replaces',
-    'targeting',
-    'testEnvironment',
-  ]),
 } satisfies Record<JsonBlock['type'] | KnownFieldsMetaKey, ReadonlySet<string>>;
 
 /**

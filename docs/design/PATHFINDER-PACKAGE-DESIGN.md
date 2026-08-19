@@ -556,7 +556,7 @@ Until `build-index` is implemented, `index.json` continues to be maintained sepa
 
 For `content.json`: the existing `KNOWN_FIELDS._guide` applies unchanged. If `content.json` contains metadata/dependency/targeting fields (e.g., from a legacy single-file guide), they are accepted via `.passthrough()` but the canonical location is `manifest.json`.
 
-For `manifest.json`: a new `KNOWN_FIELDS._manifest` set includes `'schemaVersion'`, `'id'`, `'type'`, `'repository'`, `'milestones'`, `'description'`, `'language'`, `'category'`, `'author'`, `'startingLocation'`, `'depends'`, `'recommends'`, `'suggests'`, `'provides'`, `'conflicts'`, `'replaces'`, and `'targeting'`.
+For `manifest.json`: there is no `KNOWN_FIELDS` entry. The top-level manifest namespace is open by design, so unknown-field detection does not apply there — an unrecognized top-level key is extension metadata to forward, not a typo to warn about. See the [namespace collision note](#namespace-collision-note).
 
 ### Schema version
 
