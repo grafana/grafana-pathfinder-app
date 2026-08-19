@@ -57,6 +57,26 @@ describe('GuideList', () => {
     expect(screen.getByText('12 min')).toBeInTheDocument();
   });
 
+  it('shows both the duration and the locked status inline for a locked, timed module', () => {
+    const timedAndLocked: PathGuide[] = [
+      { id: 'a', title: 'Timed locked module', completed: false, isCurrent: false, locked: true, estimatedMinutes: 10 },
+    ];
+    render(<GuideList guides={timedAndLocked} />);
+
+    const row = screen.getByText('Timed locked module').closest('div')!;
+    expect(row).toHaveTextContent('10 min');
+    expect(row).toHaveTextContent('Locked');
+  });
+
+  it('shows an "Up next" label on the current row only', () => {
+    render(<GuideList guides={guides} />);
+
+    expect(screen.getByText('Up next')).toBeInTheDocument();
+    expect(screen.getByText('Second module').closest('div')).toHaveTextContent('Up next');
+    expect(screen.getByText('First module').closest('div')).not.toHaveTextContent('Up next');
+    expect(screen.getByText('Fourth module').closest('div')).not.toHaveTextContent('Up next');
+  });
+
   it('shows a loading row instead of the list when isLoading is set', () => {
     render(<GuideList guides={[]} isLoading />);
 

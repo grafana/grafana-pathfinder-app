@@ -29,6 +29,7 @@ export function GuideList({ guides, isLoading = false, className }: GuideListPro
             className={cx(
               styles.guideItem,
               guide.isCurrent && styles.guideItemCurrent,
+              guide.isCurrent && styles.guideItemCurrentCard,
               guide.locked && styles.guideItemLocked,
               guide.description && styles.guideItemWithDescription
             )}
@@ -39,33 +40,39 @@ export function GuideList({ guides, isLoading = false, className }: GuideListPro
           >
             <span
               className={cx(
-                styles.guideIcon,
-                guide.completed && styles.guideIconCompleted,
-                guide.isCurrent && styles.guideIconCurrent,
-                guide.locked && styles.guideIconLocked,
-                !guide.completed && !guide.isCurrent && !guide.locked && styles.guideIconPending
+                styles.guideIconBadge,
+                guide.completed && styles.guideIconBadgeCompleted,
+                guide.isCurrent && styles.guideIconBadgeCurrent,
+                (guide.locked || (!guide.completed && !guide.isCurrent)) && styles.guideIconBadgeLocked
               )}
             >
               {guide.completed ? (
-                <Icon name="check" size="sm" />
+                <Icon name="check" size="md" />
               ) : guide.locked ? (
-                <Icon name="lock" size="sm" />
+                <Icon name="lock" size="md" />
               ) : guide.isCurrent ? (
-                <Icon name="play" size="sm" />
+                <Icon name="play" size="md" />
               ) : (
-                <Icon name="circle" size="sm" />
+                <Icon name="circle" size="md" />
               )}
             </span>
             <span className={styles.guideTextGroup}>
               <span className={styles.guideTitle}>{guide.title}</span>
               {guide.description && <span className={styles.guideDescription}>{guide.description}</span>}
+              {(guide.locked || typeof guide.estimatedMinutes === 'number') && (
+                <span className={styles.guideMeta}>
+                  {typeof guide.estimatedMinutes === 'number' && (
+                    <>
+                      <Icon name="clock-nine" size="sm" />
+                      {t('coverPage.estimatedMinutes', '{{count}} min', { count: guide.estimatedMinutes })}
+                    </>
+                  )}
+                  {typeof guide.estimatedMinutes === 'number' && guide.locked && <span aria-hidden="true">·</span>}
+                  {guide.locked && t('coverPage.locked', 'Locked')}
+                </span>
+              )}
             </span>
-            <span className={styles.guideStatus}>
-              {guide.locked
-                ? t('coverPage.locked', 'Locked')
-                : typeof guide.estimatedMinutes === 'number' &&
-                  t('coverPage.estimatedMinutes', '{{count}} min', { count: guide.estimatedMinutes })}
-            </span>
+            {guide.isCurrent && <span className={styles.guideUpNext}>{t('coverPage.upNext', 'Up next')}</span>}
           </div>
         ))
       )}
