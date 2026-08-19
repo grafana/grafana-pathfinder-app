@@ -181,36 +181,33 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       const parentPath = paths.find((p) => p.id === pathId);
 
       // Manifest-backed (package) paths — App Platform and public/CDN course
-      // packages alike — land on their own cover page on a fresh launch, same
-      // as URL-based cloud paths below. The rendering pipeline is identical
-      // for every repository (docs/design/package/learning-journeys.md), so
-      // there's no reason to special-case one source over another here.
-      if (parentPath?.manifest && !parentPath.url && getPathProgress(parentPath.id) === 0) {
+      // packages alike — always land on their own cover page from My Learning,
+      // fresh or resumed, same as URL-based cloud paths below. The rendering
+      // pipeline is identical for every repository
+      // (docs/design/package/learning-journeys.md), so there's no reason to
+      // special-case one source over another here. Whether the cover itself
+      // is interactive is decided by prepareGuideLaunch's own content-based
+      // classification, independent of progress — resuming a course whose
+      // cover happens to be interactive still ends up in the sidebar, exactly
+      // like a fresh launch would.
+      if (parentPath?.manifest && !parentPath.url) {
         void openPathCover(parentPath);
         return;
       }
 
       if (parentPath?.url) {
-        const isFreshLaunch = getPathProgress(parentPath.id) === 0;
-        const launchTarget = isFreshLaunch ? 'cover_page' : 'milestone';
-        // The path base URL is its cover page; continuing still resolves the current milestone.
-        const resolvedGuideUrl = isFreshLaunch
-          ? parentPath.url
-          : (getGuideUrlForPath(guideId, parentPath.id) ?? parentPath.url);
-        const guideTitle = isFreshLaunch
-          ? parentPath.title
-          : getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title;
-        const title = guideTitle || parentPath.title;
-
+        // The path's own url is its cover page; the cover's own CTA
+        // ("Get started" / "Resume") is what resolves the current milestone,
+        // using real completion data — see LearningPathTableOfContents.
         reportAppInteraction(UserInteraction.OpenResourceClick, {
-          content_title: title,
-          content_url: resolvedGuideUrl,
+          content_title: parentPath.title,
+          content_url: parentPath.url,
           content_type: AnalyticsContentType.LearningJourney,
           interaction_location: 'my_learning_tab',
-          launch_target: launchTarget,
+          launch_target: 'cover_page',
         });
 
-        void launch(resolvedGuideUrl, title, parentPath.id);
+        void launch(parentPath.url, parentPath.title, parentPath.id);
         return;
       }
 
