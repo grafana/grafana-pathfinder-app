@@ -702,6 +702,29 @@ describe('fetchPackageContent path-type enrichment', () => {
     expect(result.content!.metadata.repository).toBe('online-cdn');
   });
 
+  // A failed resolution's `repository` is negative-caching policy, not an
+  // identity claim: app-platform is unconditionally the composite's last tier,
+  // so its probed-and-missed failure would otherwise key a public CDN path as
+  // ('app-platform', <id>).
+  it('does not stamp the repository off a failed resolution', async () => {
+    setPackageResolver(
+      makeResolver({
+        ok: false,
+        id: 'discover-path',
+        error: { code: 'not-found', message: 'all tiers missed' },
+        repository: 'app-platform',
+      })
+    );
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'discover-path',
+      type: 'path',
+    });
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.repository).toBeUndefined();
+  });
+
   it('lets an explicit caller repository outrank the resolved one', async () => {
     setPackageResolver(
       makeResolver(

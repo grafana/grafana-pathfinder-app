@@ -261,7 +261,7 @@ export async function fetchPackageContent(
     return result;
   }
 
-  const resolvedRepository = repository ?? baseUrlResolution?.repository;
+  const resolvedRepository = repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
 
   let learningJourney: LearningJourneyMetadata | undefined;
   let contentString = result.content.content;
