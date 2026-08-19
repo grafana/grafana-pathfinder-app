@@ -36,6 +36,8 @@ import {
   AllStepsResult,
   AbortReason,
   StepTestResult,
+  createBrowserTerminationMonitor,
+  settleWithin,
 } from './utils/guide-runner';
 import {
   printHeader,
@@ -98,7 +100,7 @@ function writeResultsFile(
     startedAt: timestamp,
     endedAt: new Date().toISOString(),
     outcome,
-    errorCode: allStepsResult.abortReason ?? (outcome === 'failed' ? 'UNKNOWN' : undefined),
+    errorCode: allStepsResult.abortReason ?? (outcome === 'passed' ? undefined : 'UNKNOWN'),
     errorMessage: allStepsResult.abortMessage,
     results: results.map((r) => ({
       stepId: r.stepId,
@@ -299,7 +301,9 @@ test.describe('Guide Runner', () => {
     // ============================================
     // Step execution: Execute all discovered steps
     // ============================================
-    const executionResult: AllStepsResult = await executeAllSteps(page, discoveryResult.steps, {
+    const completedResults: StepTestResult[] = [];
+    const terminationMonitor = createBrowserTerminationMonitor(page);
+    const execution = executeAllSteps(page, discoveryResult.steps, {
       verbose: isVerbose,
       stopOnMandatoryFailure: true, // Happy path: stop on first failure
       sessionCheckInterval: 5, // L3-3D: validate session every 5 steps
@@ -307,11 +311,47 @@ test.describe('Guide Runner', () => {
       artifactsDir,
       // Capture screenshots on success and failure
       alwaysScreenshot,
+      onDeadline: terminationMonitor.expectPageClose,
       // L3-5A: Real-time step progress callback
       onStepComplete: (result) => {
+        completedResults.push(result);
         printStepResult(result);
       },
     });
+    let winner: { kind: 'completed'; result: AllStepsResult } | { kind: 'terminated'; message: string };
+    try {
+      winner = await Promise.race([
+        execution.then((result) => ({ kind: 'completed' as const, result })),
+        terminationMonitor.termination.then(({ message }) => ({ kind: 'terminated' as const, message })),
+      ]);
+    } finally {
+      terminationMonitor.dispose();
+    }
+
+    if (winner.kind === 'terminated') {
+      const resultsAtTermination = [...completedResults];
+      terminationMonitor.expectPageClose();
+      await settleWithin(page.close({ runBeforeUnload: false }), 1000);
+      const drained = await settleWithin(execution, 1000);
+      const terminationResult: AllStepsResult = {
+        results: drained.status === 'fulfilled' ? drained.value.results : resultsAtTermination,
+        aborted: true,
+        abortMessage: winner.message,
+        infrastructureError: true,
+      };
+      writeResultsFile(
+        terminationResult.results,
+        guideMetadata,
+        targetUrl,
+        startingLocation,
+        testStartTimestamp,
+        terminationResult,
+        guideJson,
+        'infrastructure_error'
+      );
+      throw new Error(`RUNNER_TERMINATED: ${winner.message}`);
+    }
+    const executionResult = winner.result;
 
     // Get summary for assertions
     const summary = summarizeResults(executionResult.results);
@@ -328,12 +368,17 @@ test.describe('Guide Runner', () => {
       testStartTimestamp,
       executionResult,
       guideJson,
-      executionResult.abortReason === 'AUTH_EXPIRED'
-        ? 'aborted'
-        : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
-          ? 'failed'
-          : 'passed'
+      executionResult.infrastructureError
+        ? 'infrastructure_error'
+        : executionResult.abortReason === 'AUTH_EXPIRED'
+          ? 'aborted'
+          : executionResult.abortReason === 'MANDATORY_FAILURE' || !summary.success
+            ? 'failed'
+            : 'passed'
     );
+    if (executionResult.infrastructureError) {
+      throw new Error(`RUNNER_TERMINATED: ${executionResult.abortMessage}`);
+    }
 
     // L3-3D: Handle session expiry with specific exit code
     if (executionResult.aborted && executionResult.abortReason === 'AUTH_EXPIRED') {

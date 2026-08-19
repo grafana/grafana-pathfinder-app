@@ -67,6 +67,7 @@ let mockDiscoverItems: Array<{
   contentUrl: string;
   milestoneCount?: number;
   description?: string;
+  manifest?: Record<string, unknown>;
 }> = [];
 let mockDiscoverExcludeTitles: Set<string> | undefined;
 
@@ -493,7 +494,33 @@ describe('MyLearningTab launch flow', () => {
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
     expect(prepareMock).toHaveBeenCalledWith(
       'https://cdn.example/pkg-1/content.json',
-      expect.objectContaining({ title: 'Package one' })
+      expect.objectContaining({ title: 'Package one', packageInfo: undefined })
+    );
+  });
+
+  it('threads the inlined manifest through as packageInfo so the item resolves its milestone context', async () => {
+    mockDiscoverItems = [
+      {
+        id: 'pkg-1',
+        title: 'Package one',
+        contentUrl: 'https://cdn.example/pkg-1/content.json',
+        manifest: { type: 'path', milestones: ['m1', 'm2'] },
+      },
+    ];
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.discoverMoreStart('pkg-1')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
+    expect(prepareMock).toHaveBeenCalledWith(
+      'https://cdn.example/pkg-1/content.json',
+      expect.objectContaining({
+        packageInfo: {
+          packageId: 'pkg-1',
+          packageManifest: { type: 'path', milestones: ['m1', 'm2'], id: 'pkg-1' },
+        },
+      })
     );
   });
 });

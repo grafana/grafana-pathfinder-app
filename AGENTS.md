@@ -73,11 +73,11 @@ For the annotated tier definitions, the per-subsystem reference, and the key dep
 
 ### Backend (`pkg/`)
 
-The Go backend is an **App Platform proxy**, and nothing else. No database, no streaming. Its **App Platform** routes — `completion_records.go` + `completion_records_write.go` and `custom_guide_repository.go` — drain a paginated namespace-scoped upstream LIST (and, for completion records, POST one durable object back), cache the shaped result per caller, and ride the caller's own identity end to end, authenticating outbound with an **on-behalf-of (OBO) access token** minted from the caller's `X-Grafana-Id` in the `pkg/plugin/auth` seam; the plugin holds no credential of its own beyond the provisioned CAP token that mint uses.
+The Go backend is an **App Platform proxy**, and nothing else. No database, no streaming. Its **App Platform** routes — `completion_records.go` + `completion_records_write.go` and `custom_guide_repository.go` — drain a paginated namespace-scoped upstream LIST (and, for completion records, POST one durable object back), cache the shaped result per caller, and ride the caller's own identity end to end. `pkg/plugin/auth` owns both halves of that identity seam: inbound, it **cryptographically verifies** the caller's `X-Grafana-Id` against the stack's published JWKS (`id_token.go`); outbound, it mints an **on-behalf-of (OBO) access token** for that caller. The plugin holds no credential of its own beyond the provisioned CAP token that mint uses.
 
 `/package-recommendations` is **not** one of them: it is an anonymous fetch of a public CDN index behind a host allowlist, with no namespace and a single process-wide 6-hour cache. Keep it that way — its cache is shared across users, so per-user data must never enter it. `/health` is neither shape.
 
-Routes live in `resources.go`; the per-feature proxies are `completion_records.go` (+ `completion_records_write.go`), `custom_guide_repository.go`, and `package_recommendations.go`, sharing `app_platform_client.go` (paginated LIST + create) and `app_platform_identity.go` (forwarded-identity validation). Plugin entrypoint is `pkg/main.go`.
+Routes live in `resources.go`; the per-feature proxies are `completion_records.go` (+ `completion_records_write.go`), `custom_guide_repository.go`, and `package_recommendations.go`, sharing `app_platform_client.go` (paginated LIST + create) and `app_platform_identity.go` (the shared identity gate, over `auth/id_token.go`). Plugin entrypoint is `pkg/main.go`.
 
 When touching `pkg/`, load `docs/design/BACKEND_PROXY_PATTERN.md` — it is the canonical pattern for these routes and holds the identity trust-boundary statement.
 

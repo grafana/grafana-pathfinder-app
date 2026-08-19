@@ -147,8 +147,16 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	// Identity is REQUIRED for a write and fails closed: unlike the soft-200 read
 	// routes, a write with no verifiable caller is a 401. The client retries it
 	// with backoff — an expired forwarded token is time-recoverable after re-auth.
-	userID, userLogin, userDisplayName, ok := completionWriterIdentity(r)
-	if !ok {
+	// An unreachable JWKS is a retryable outage rather than a verdict on the
+	// caller, so it takes §7's transient 503 instead of reporting a bad token.
+	userID, userLogin, userDisplayName, status := a.completionWriterIdentity(r)
+	switch status {
+	case identityVerified:
+	case identitySigningKeysDown:
+		w.Header().Set("Retry-After", strconv.Itoa(completionWriteRetryAfterSeconds))
+		a.writeError(w, "completion-write-unavailable", http.StatusServiceUnavailable)
+		return
+	default:
 		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
 		return
 	}

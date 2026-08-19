@@ -66,7 +66,7 @@ func writeRequest(t *testing.T, sub string, body map[string]any, cfg map[string]
 	}
 	r, _ := http.NewRequest(http.MethodPost, "/completion-records", bytes.NewReader(raw))
 	if sub != "" {
-		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeIDToken(t, sub, timeNow().Add(time.Hour).Unix()))
+		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeValidIDToken(t, sub))
 	}
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace, OrgID: testOrgID})
 	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
@@ -74,9 +74,10 @@ func writeRequest(t *testing.T, sub string, body map[string]any, cfg map[string]
 }
 
 // writeRequestWithUser is writeRequest plus a trusted PluginContext.User (the
-// SDK's authenticated session), the profile-snapshot fallback source when the
-// ID token carries no username/name claim. It overlays the user onto the plugin
-// context; the Grafana config from writeRequest survives (different context key).
+// SDK's authenticated session). It is NOT a fallback source for the profile
+// snapshot — no such fallback exists, and the tests below pin that these values
+// never reach the record. It overlays the user onto the plugin context; the
+// Grafana config from writeRequest survives (different context key).
 func writeRequestWithUser(t *testing.T, sub string, body map[string]any, cfg map[string]string, login, name string) *http.Request {
 	t.Helper()
 	r := writeRequest(t, sub, body, cfg)
@@ -107,7 +108,7 @@ func TestCompletionWrite_Created_StampsServerFields(t *testing.T) {
 
 	r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
 	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
-		makeIDTokenWithProfile(t, "user:abc", timeNow().Add(time.Hour).Unix(), "alice", "alice"))
+		makeValidIDTokenWithProfile(t, "user:abc", "alice", "alice"))
 	rec := doWrite(t, nil, r)
 
 	if rec.Code != http.StatusCreated {
@@ -253,7 +254,7 @@ func TestCompletionWrite_ProfileFromTokenClaims(t *testing.T) {
 
 	r := writeRequestWithUser(t, "user:abc", validWriteBody(), testGrafanaConfig(), "ctx-login", "Context Name")
 	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
-		makeIDTokenWithProfile(t, "user:abc", timeNow().Add(time.Hour).Unix(), "token-login", "Token Name"))
+		makeValidIDTokenWithProfile(t, "user:abc", "token-login", "Token Name"))
 	rec := doWrite(t, nil, r)
 
 	if rec.Code != http.StatusCreated {
@@ -334,7 +335,7 @@ func TestCompletionWrite_BodyIdentityRejected(t *testing.T) {
 
 	r := writeRequest(t, "user:good", body, testGrafanaConfig())
 	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
-		makeIDTokenWithProfile(t, "user:good", timeNow().Add(time.Hour).Unix(), "good", ""))
+		makeValidIDTokenWithProfile(t, "user:good", "good", ""))
 	rec := doWrite(t, nil, r)
 
 	if rec.Code != http.StatusCreated {
@@ -386,8 +387,10 @@ func TestCompletionWrite_StructurallyUnavailableIsTerminal(t *testing.T) {
 	creator := &fakeCreator{}
 	withCreator(t, creator)
 
-	// Feature toggle absent → structurally unavailable.
-	cfg := map[string]string{sdkconfig.AppURL: "http://grafana.example"}
+	// Feature toggle absent → structurally unavailable. The app URL still points
+	// at the test JWKS so identity verifies: this pins the toggle gate, not the
+	// identity gate.
+	cfg := map[string]string{sdkconfig.AppURL: testSigningKeysURL()}
 	rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), cfg))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404 terminal", rec.Code)
