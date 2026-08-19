@@ -3,6 +3,8 @@ package plugin
 import (
 	"context"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -32,6 +34,15 @@ type App struct {
 	// when the stack has no on-behalf-of credentials provisioned, in which case
 	// those routes report themselves unavailable instead of failing.
 	oboExchanger *auth.Exchanger
+
+	// Verifies inbound Grafana ID tokens against the stack's published JWKS.
+	// Built lazily (the signing-keys URL comes from the per-request Grafana
+	// config, unavailable in NewApp), keyed by app URL, and periodically rebuilt
+	// so a key removed from JWKS cannot remain trusted indefinitely.
+	idVerifier          *auth.IDTokenVerifier
+	idVerifierAppURL    string
+	idVerifierCreatedAt time.Time
+	idVerifierMu        sync.Mutex
 
 	logger log.Logger
 }

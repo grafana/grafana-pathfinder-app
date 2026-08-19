@@ -9,6 +9,11 @@ import { DocsPluginConfig } from './constants';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
 import { publishPathfinderPluginConfig, refreshPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
+// Direct file import, not the ./docs-retrieval barrel: the barrel statically
+// imports the whole content-fetcher orchestrator (zod, dompurify, the bundled
+// guide index), which would land in module.js. createCompositeResolver is
+// deferred behind a dynamic import below for the same reason.
+import { setPackageResolverFactory } from './docs-retrieval/content-fetcher/package-resolver-registry';
 import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
@@ -156,11 +161,26 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   const config = publishPathfinderPluginConfig(meta?.jsonData || {});
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
 
+  // Deferred: setPackageResolverFactory only stores this thunk, so the dynamic
+  // import — and its zod/CDN/etc. dependencies — isn't fetched until something
+  // actually calls getPackageResolver(), not on every page load. No
+  // webpackPrefetch here: by the time it's read, it's needed promptly (inside
+  // fetchPackageContent's Promise.all), not at idle-time priority.
+  setPackageResolverFactory(() =>
+    import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(config))
+  );
+
   // `meta.jsonData` can lag a recent save. Re-publish from the authoritative
   // read when it lands; subscribers pick it up via the config-updated event.
   void refreshPathfinderPluginConfig().then((refreshed) => {
     if (refreshed) {
       linkInterceptionState.setInterceptionEnabled(refreshed.interceptGlobalDocsLinks);
+      // Skip re-registering when nothing changed — avoids a redundant resolver rebuild.
+      if (refreshed !== config) {
+        setPackageResolverFactory(() =>
+          import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(refreshed))
+        );
+      }
     }
   });
 

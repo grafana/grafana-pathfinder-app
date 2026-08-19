@@ -234,8 +234,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     // Wire the composite PackageResolver into docs-retrieval so that
     // fetchPackageContent() and fetchPackageById() can resolve bundled and
-    // remote packages. This is the Tier 3/4 injection point described in Phase 4g.
-    setPackageResolver(createCompositeResolver(pluginConfig));
+    // remote packages — the Tier 3/4 injection point.
+    //
+    // Seed from the published global, not this surface's snapshot — the resolver is one app-wide singleton.
+    const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: DocsPluginConfig })
+      .__pathfinderPluginConfig;
+    setPackageResolver(createCompositeResolver(resolverConfig ?? pluginConfig));
 
     // Note: Tab restoration now happens from React component after storage is initialized
     // to avoid race condition with useUserStorage hook

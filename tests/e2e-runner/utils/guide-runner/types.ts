@@ -312,6 +312,8 @@ export interface StepTestResult {
 
   /** Error message if status is 'failed' */
   error?: string;
+  /** Whether the runner stopped the step at its hard deadline */
+  deadlineExceeded?: boolean;
 
   /** Reason if status is 'skipped' */
   skipReason?: SkipReason;
@@ -356,6 +358,8 @@ export interface AllStepsResult {
 
   /** Human-readable abort message */
   abortMessage?: string;
+  /** Whether runner execution stopped because its hard backstop expired */
+  infrastructureError?: boolean;
 
   /** Path to final screenshot (only when alwaysScreenshot is enabled) */
   finalScreenshot?: string;

@@ -111,15 +111,21 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Identity gate first. This is a namespace-global catalogue, so we only
-	// STRUCTURALLY validate the ID token (validIDToken); there is no per-user
-	// need, so we deliberately do not extract `sub`. Missing/invalid identity on
-	// a GET read is a soft-200 capability envelope (not 401): these routes gate
-	// whether a feature renders at all, and a bare error status conflates "never
-	// works here" with a transient blip (BACKEND_PROXY_PATTERN.md §3, §7).
-	if !validIDToken(r) {
+	// Identity gate first. This is a namespace-global catalogue, so validIDToken
+	// only needs a verified caller; there is no per-user need, so we deliberately
+	// do not extract `sub`. Missing/invalid identity on a GET read is a soft-200
+	// capability envelope (not 401): these routes gate whether a feature renders
+	// at all, and a bare error status conflates "never works here" with a
+	// transient blip (BACKEND_PROXY_PATTERN.md §3, §7). An unreachable JWKS is
+	// that blip, so it takes the transient path instead.
+	switch status := a.validIDToken(r); status {
+	case identityVerified:
+	case identitySigningKeysDown:
+		a.writeCustomGuideUnavailable(w)
+		return
+	default:
 		a.writeJSON(w, customGuideRepositoryResponse{
-			Capability: customGuideCapability{Available: false, Reason: reasonIdentityUnavailable},
+			Capability: customGuideCapability{Available: false, Reason: status.capabilityReason()},
 			Guides:     []customGuideRepositoryEntry{},
 		}, http.StatusOK)
 		return
@@ -167,8 +173,7 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		// this route indefinitely — is diagnosable without raising the log level
 		// (matches getCompletionIndex on the completions route).
 		logger.Info("custom guide catalogue unavailable (transient)", "namespace", namespace, "error", err)
-		w.Header().Set("Retry-After", strconv.Itoa(customGuideRetryAfterSeconds))
-		a.writeError(w, "custom-guide-repository-unavailable", http.StatusServiceUnavailable)
+		a.writeCustomGuideUnavailable(w)
 		return
 	}
 
@@ -178,6 +183,14 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 		Guides:     entries,
 		AsOf:       timeNow().UTC().Format(time.RFC3339),
 	}, http.StatusOK)
+}
+
+// writeCustomGuideUnavailable serves BACKEND_PROXY_PATTERN.md §7's transient
+// hiccup — 503 plus a Retry-After hint, never a capability envelope — so every
+// retryable failure on this route answers in one shape.
+func (a *App) writeCustomGuideUnavailable(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", strconv.Itoa(customGuideRetryAfterSeconds))
+	a.writeError(w, "custom-guide-repository-unavailable", http.StatusServiceUnavailable)
 }
 
 // drainCustomGuides drains the namespace LIST across pages — up to the

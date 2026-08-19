@@ -213,7 +213,7 @@ export function resolveLocalMetapackage(options: LocalMetapackageOptions): Local
         instance: target.instance,
         targetUrl: target.targetUrl!,
         sourceUrl: planned.guide.path,
-        startingLocation: entry?.startingLocation ?? '/',
+        ...(entry?.startingLocation !== undefined ? { startingLocation: entry.startingLocation } : {}),
         sideEffects: classifyGuideSideEffectsFromString(planned.guide.content),
         ...(entry?.testEnvironment?.plugins?.length ? { plugins: entry.testEnvironment.plugins } : {}),
       });
