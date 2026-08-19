@@ -465,6 +465,16 @@ func TestCache_InvalidationFencesInFlightRefresh(t *testing.T) {
 	if got := calls.Load(); got != 2 {
 		t.Fatalf("LIST calls = %d, want 2", got)
 	}
+
+	// The fenced refresh still lands in the §9 vital signs: every miss must be
+	// answered by a refresh or a failure, or the per-namespace counters an operator
+	// reads stop reconciling exactly when the write path is busiest.
+	completionCacheMu.Lock()
+	stats := *completionStatsFor(testNamespace)
+	completionCacheMu.Unlock()
+	if stats.refreshes+stats.refreshFailures != stats.misses {
+		t.Errorf("stats do not reconcile (a fenced refresh went uncounted): %+v", stats)
+	}
 }
 
 func TestCache_ForcedRefreshBypassAndRateLimit(t *testing.T) {
