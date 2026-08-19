@@ -239,8 +239,12 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it('keeps launch-URL secrets and forwarded error text out of logger and Faro context', async () => {
-    mockGetGuideUrlForPath.mockReturnValue(
-      'https://grafana.com/docs/learning-paths/path-1/guide-1/?token=url-secret#fragment-secret'
+    // The cover url (path-1's own .url, now what actually gets launched) is
+    // where a secret would leak from, not the resolved-milestone url.
+    mockPaths = mockPaths.map((path) =>
+      path.id === 'path-1'
+        ? { ...path, url: 'https://grafana.com/docs/learning-paths/path-1/?token=url-secret#fragment-secret' }
+        : path
     );
     // Shaped like the fetch tier's forwarded Zod message (content-fetcher's
     // `Invalid guide: ${message}`), which interpolates the authored token.
@@ -258,7 +262,7 @@ describe('MyLearningTab launch flow', () => {
 
       await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
       const expectedContext = {
-        content_url: 'grafana.com/docs/learning-paths/path-1/guide-1/',
+        content_url: 'grafana.com/docs/learning-paths/path-1/',
         error_code: 'fetch-failed',
       };
       expect(consoleError).toHaveBeenCalledWith('[MyLearning] Guide launch preparation failed', expectedContext);
@@ -616,6 +620,44 @@ describe('MyLearningTab — online course package cover launch', () => {
       },
     });
   });
+
+  it('resuming an in-progress public/CDN package path also lands on its cover page', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(40);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      {
+        packageId: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        contentUrl: 'bundled:core-grafana-concepts-lj/content.json',
+      },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['core-grafana-concepts-lj']);
+    expect(prepareMock).toHaveBeenCalledWith('bundled:core-grafana-concepts-lj/content.json', {
+      title: 'Core Grafana concepts',
+      source: 'home_page',
+      packageInfo: {
+        packageId: 'core-grafana-concepts-lj',
+        packageManifest: {
+          type: 'path',
+          milestones: ['core-grafana-concepts-data-sources'],
+          id: 'core-grafana-concepts-lj',
+        },
+      },
+    });
+  });
 });
 
 describe('MyLearningTab — App Platform guide launch', () => {
@@ -654,7 +696,7 @@ describe('MyLearningTab — App Platform guide launch', () => {
     });
   });
 
-  it('resumes an in-progress App Platform path on the current member guide (unchanged)', async () => {
+  it('resuming an in-progress App Platform path still lands on its cover page', async () => {
     mockPaths = [
       {
         id: 'ap-path',
@@ -664,20 +706,21 @@ describe('MyLearningTab — App Platform guide launch', () => {
       },
     ];
     mockGetPathProgress.mockReturnValue(40);
-    mockGetPathGuides.mockReturnValue([
-      { id: 'fe-alerting-01', title: 'Alerting module 1', completed: false, isCurrent: true },
+    resolvePackageNavLinksMock.mockResolvedValue([
+      { packageId: 'ap-path', title: 'Alerting enablement', contentUrl: 'backend-guide:ap-path' },
     ]);
-    mockGetGuideUrlForPath.mockReturnValue('backend-guide:fe-alerting-01');
     prepareMock.mockResolvedValue(okResult);
 
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
     fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
-    // Without packageInfo the loader falls through to a standalone guide with no
-    // milestone toolbar; the PATH manifest (with id merged) is what renders chrome.
-    expect(prepareMock).toHaveBeenCalledWith('backend-guide:fe-alerting-01', {
-      title: expect.any(String),
+    // Same cover-launch outcome as the fresh case above — the cover's own CTA
+    // (LearningPathTableOfContents) is what resolves the current milestone,
+    // not this launch call.
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
+      title: 'Alerting enablement',
       source: 'home_page',
       packageInfo: {
         packageId: 'ap-path',
