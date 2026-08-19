@@ -24,7 +24,11 @@ export interface GuideStatsSummary {
   sectionCount: number;
   /** Counted blocks carrying a completion affordance. */
   interactiveBlockCount: number;
-  /** Position of the last interactive block, 0 when there is none. */
+  /**
+   * Position of the last interactive block, 0 when there is none. Equal to
+   * `blockCount` when the final counted block is interactive, which is the
+   * signal that the guide needs no "Mark as complete" button at its foot.
+   */
   finalInteractivePosition: number;
 }
 
@@ -49,8 +53,9 @@ export function summarizeGuideBlocks(blocks: readonly CountableBlock[] | undefin
  * A path or journey rolls up as `[its own content, ...its milestones]`, which
  * needs no special case: a metapackage with no body of its own contributes a
  * zero part. Positions are offsets into the concatenation, so
- * `finalInteractivePosition` comes from the last part that has one — which is
- * what keeps the 100% special case meaningful across a rollup.
+ * `finalInteractivePosition` comes from the last part that has one, and equals
+ * `blockCount` only when the concatenation genuinely ends on an interactive
+ * block.
  *
  * Callers must summarize every milestone before its parent; the ordering is
  * load-bearing, not incidental.

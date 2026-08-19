@@ -38,24 +38,25 @@ export interface GuideProgress {
 /**
  * Completion for a guide whose furthest evidenced position is `position`.
  *
- * The base formula is `position / totalBlockCount`. The one special case: when
- * the guide's final interactive block is evidenced, completion is 100% even if
- * non-interactive blocks follow it. Without that, a guide ending in "Well
- * done!" markdown could never reach 100% from its final "Do it" — and per the
- * same decision such a guide carries no "Mark as complete" button either,
- * because its final operative step *is* interactive.
+ * The formula is `position / totalBlockCount`, with no special cases. A guide
+ * whose final counted block is interactive reaches 100% by clicking it, since
+ * that block is position `n` of `n`; a guide with trailing prose after its
+ * last "Do it" does not, and carries a "Mark as complete" button at its foot
+ * instead — see {@link GuideBlockIndex.finalInteractivePosition}.
+ *
+ * `percent` is reserved: it reads 100 only when `complete`, so a large
+ * denominator one block short of the end rounds down to 99 rather than
+ * publishing a completion the flag denies.
  */
 export function guideProgressAtPosition(index: GuideBlockIndex, position: number): GuideProgress {
   const total = index.totalBlockCount;
   const clamped = Math.max(0, Math.min(Math.floor(position), total));
 
-  const reachedEnd = total > 0 && clamped >= total;
-  const reachedFinalInteractive = index.finalInteractivePosition > 0 && clamped >= index.finalInteractivePosition;
-  const complete = reachedEnd || reachedFinalInteractive;
+  const complete = total > 0 && clamped >= total;
+  const fraction = total === 0 ? 0 : clamped / total;
+  const percent = complete ? 100 : Math.min(99, Math.floor(fraction * 100));
 
-  const fraction = total === 0 ? 0 : complete ? 1 : clamped / total;
-
-  return { position: clamped, totalBlockCount: total, fraction, percent: Math.round(fraction * 100), complete };
+  return { position: clamped, totalBlockCount: total, fraction, percent, complete };
 }
 
 /**

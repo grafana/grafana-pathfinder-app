@@ -14,10 +14,9 @@
  *   evidence of completion sits at position `n`, completion is `n / total`.
  *   Reaching `n` implies `1..n-1`, so non-interactive preamble is never
  *   individually completable.
- * - `multistep` and `guided` count as exactly ONE block each. Their inner
- *   steps are deliberately abstracted away from the denominator.
- * - `conditional` counts as ONE block and the traversal does not descend into
- *   its branches. See {@link OPAQUE_PARENT_BLOCK_TYPES}.
+ * - `multistep`, `guided`, `conditional`, and `snippet-ref` count as exactly
+ *   ONE block each, with the traversal never entering them. See
+ *   {@link OPAQUE_PARENT_BLOCK_TYPES}.
  *
  * Consumers must ask this module for a block's position rather than deriving
  * one themselves — that is what makes the numerator and the denominator
@@ -25,6 +24,7 @@
  */
 
 import { isInteractiveBlockType } from '../../constants/json-guide-classification';
+import type { JsonBlock } from '../../types/json-guide.types';
 
 /**
  * The narrowest block shape the counter needs. `JsonBlock` satisfies it; so
@@ -43,24 +43,35 @@ export interface CountableBlock {
  * Containers that hold child blocks and are transparent to the count: they
  * contribute nothing themselves, their contents contribute everything.
  */
-export const TRANSPARENT_CONTAINER_BLOCK_TYPES: readonly string[] = ['section', 'assistant', 'collapsible'];
+export const TRANSPARENT_CONTAINER_BLOCK_TYPES = [
+  'section',
+  'assistant',
+  'collapsible',
+] as const satisfies ReadonlyArray<JsonBlock['type']>;
 
 /**
  * Blocks that hold children yet count as exactly one, with the traversal
  * never entering them.
  *
- * `multistep` and `guided` are settled: the 2026-08-19 decision abstracts
- * their inner steps away from the denominator (analytics still tracks the
- * child steps separately).
+ * `multistep` and `guided` abstract their inner steps away from the
+ * denominator; analytics still tracks the child steps separately.
  *
- * `conditional` is a WORKING ASSUMPTION, not a settled decision. Descending
- * into `whenTrue` and `whenFalse` would put blocks in the denominator that
- * the reader can never see, making 100% unreachable for every guide with a
- * conditional. Treating it as one opaque block mirrors `multistep`/`guided`
- * and keeps 100% reachable. It is safe here specifically because positions
- * and the denominator both come from this module, so the two cannot disagree.
+ * `conditional` counts as one because descending into `whenTrue` and
+ * `whenFalse` would put blocks in the denominator that the reader can never
+ * see, making 100% unreachable for every guide holding one.
+ *
+ * `snippet-ref` counts as one and its resolved contents inherit that single
+ * position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in
+ * before the parser sees the guide, so the denominator here is the
+ * PRE-INLINING count: a consumer must index the pre-inlining tree, or map an
+ * inlined block back to the position of the ref it came from.
  */
-export const OPAQUE_PARENT_BLOCK_TYPES: readonly string[] = ['multistep', 'guided', 'conditional'];
+export const OPAQUE_PARENT_BLOCK_TYPES = [
+  'multistep',
+  'guided',
+  'conditional',
+  'snippet-ref',
+] as const satisfies ReadonlyArray<JsonBlock['type']>;
 
 const TRANSPARENT_CONTAINERS: ReadonlySet<string> = new Set(TRANSPARENT_CONTAINER_BLOCK_TYPES);
 
@@ -103,7 +114,9 @@ export interface GuideBlockIndex {
   interactiveBlockCount: number;
   /**
    * Position of the last interactive counted block, or 0 when the guide has
-   * none. Drives the "final step is interactive means 100%" special case.
+   * none. `finalInteractivePosition === totalBlockCount` means the final
+   * counted block is interactive, so the guide needs no "Mark as complete"
+   * button at its foot; anything less means one is mandatory.
    */
   finalInteractivePosition: number;
 }

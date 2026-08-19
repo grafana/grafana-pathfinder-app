@@ -1,6 +1,5 @@
 /**
- * Behavioural tests for the position-to-percentage rule, including the
- * "final step is interactive means 100%" special case.
+ * Behavioural tests for the position-to-percentage rule.
  */
 
 import { computeGuideBlockIndex, type CountableBlock } from './block-index';
@@ -43,25 +42,43 @@ describe('guideProgressAtPosition', () => {
     expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 100, complete: true });
   });
 
-  it('yields 100% when the final interactive block is reached, despite trailing prose', () => {
+  it('reaches 100% from the final block when that block is interactive', () => {
+    const index = computeGuideBlockIndex([markdown(), markdown(), interactive('doit')]);
+
+    expect(index.finalInteractivePosition).toBe(index.totalBlockCount);
+    expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 100, fraction: 1, complete: true });
+  });
+
+  it('stops short of 100% when prose follows the final interactive block', () => {
     const index = computeGuideBlockIndex([markdown(), interactive('doit'), markdown(), markdown()]);
 
     expect(index.totalBlockCount).toBe(4);
     expect(index.finalInteractivePosition).toBe(2);
-    expect(guideProgressAtPosition(index, 2)).toMatchObject({ percent: 100, fraction: 1, complete: true });
+    expect(guideProgressAtPosition(index, 2)).toMatchObject({ percent: 50, complete: false });
   });
 
-  it('does not shortcut earlier interactive blocks to 100%', () => {
+  it('does not shortcut an earlier interactive block to 100%', () => {
     const index = computeGuideBlockIndex([interactive('first'), markdown(), interactive('last'), markdown()]);
 
     expect(guideProgressAtPosition(index, 1)).toMatchObject({ percent: 25, complete: false });
-    expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 100, complete: true });
+    expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 75, complete: false });
+    expect(guideProgressAtPosition(index, 4)).toMatchObject({ percent: 100, complete: true });
   });
 
-  it('offers no interactive shortcut for a guide with no interactive blocks', () => {
+  it('treats a guide with no interactive block the same as any other', () => {
     const index = computeGuideBlockIndex([markdown(), markdown(), markdown(), markdown()]);
 
     expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 75, complete: false });
+  });
+
+  it('never reports 100% while incomplete, however large the denominator', () => {
+    const index = computeGuideBlockIndex(Array.from({ length: 250 }, () => markdown()));
+
+    const oneShort = guideProgressAtPosition(index, 249);
+
+    expect(oneShort.fraction).toBeCloseTo(0.996);
+    expect(oneShort).toMatchObject({ percent: 99, complete: false });
+    expect(guideProgressAtPosition(index, 250)).toMatchObject({ percent: 100, complete: true });
   });
 });
 
@@ -103,6 +120,17 @@ describe('furthestEvidencedPosition', () => {
 
 describe('guideProgress', () => {
   it('turns the raw signals of a guide ending in a "Do it" into 100%', () => {
+    const index = computeGuideBlockIndex([{ type: 'section', blocks: [markdown('brief'), interactive('run')] }]);
+
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'run' }])).toMatchObject({
+      position: 2,
+      totalBlockCount: 2,
+      percent: 100,
+      complete: true,
+    });
+  });
+
+  it('needs a "Mark as complete" to finish a guide whose last block is prose', () => {
     const index = computeGuideBlockIndex([
       { type: 'section', blocks: [markdown('brief'), interactive('run')] },
       markdown('well-done'),
@@ -110,10 +138,10 @@ describe('guideProgress', () => {
 
     expect(guideProgress(index, [{ kind: 'do-it', blockId: 'run' }])).toMatchObject({
       position: 2,
-      totalBlockCount: 3,
-      percent: 100,
-      complete: true,
+      percent: 66,
+      complete: false,
     });
+    expect(guideProgress(index, [{ kind: 'mark-guide-complete' }])).toMatchObject({ percent: 100, complete: true });
   });
 
   it('leaves a guide with no interactive block at 0% until it is marked complete', () => {

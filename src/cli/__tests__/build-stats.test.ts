@@ -223,6 +223,18 @@ describe('buildStats', () => {
     expect(readManifest(tmpDir, 'the-path').stats).toBeUndefined();
   });
 
+  it('leaves the whole tree unstamped when any package fails to resolve', async () => {
+    writeGuide(tmpDir, 'aaa-guide', { blocks: [markdown, interactive] });
+    writeGuide(tmpDir, 'zzz-path', { type: 'path', milestones: ['nowhere'], blocks: [] });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual(['zzz-path: milestone "nowhere" not found in the package tree']);
+    expect(result.written).toEqual([]);
+    expect(readManifest(tmpDir, 'aaa-guide').stats).toBeUndefined();
+    expect(readManifest(tmpDir, 'zzz-path').stats).toBeUndefined();
+  });
+
   it('errors on a milestone cycle instead of recursing forever', async () => {
     writeGuide(tmpDir, 'path-a', { type: 'path', milestones: ['path-b'], blocks: [] });
     writeGuide(tmpDir, 'path-b', { type: 'path', milestones: ['path-a'], blocks: [] });

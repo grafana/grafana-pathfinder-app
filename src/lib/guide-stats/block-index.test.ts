@@ -2,7 +2,7 @@
  * Behavioural tests for the canonical block-count rule (decision 2026-08-19).
  */
 
-import { VALID_BLOCK_TYPES } from '../../types/json-guide.schema';
+import { KNOWN_FIELDS, VALID_BLOCK_TYPES } from '../../types/json-guide.schema';
 import type { JsonBlock } from '../../types/json-guide.types';
 import {
   computeGuideBlockIndex,
@@ -150,16 +150,70 @@ describe('computeGuideBlockIndex', () => {
     expect(index.positionsById.get('dup')).toBe(1);
   });
 
-  it('classifies every block type in the schema as either transparent or countable-once', () => {
-    const classified = [...TRANSPARENT_CONTAINER_BLOCK_TYPES, ...OPAQUE_PARENT_BLOCK_TYPES];
+  it('counts a snippet-ref as one block and does not descend into it', () => {
+    const index = computeGuideBlockIndex([
+      markdown('before'),
+      { type: 'snippet-ref', id: 'ref', blocks: [markdown('s1'), markdown('s2'), interactive('s3')] },
+      markdown('after'),
+    ]);
+
+    expect(index.totalBlockCount).toBe(3);
+    expect(index.blocks.map((block) => block.id)).toEqual(['before', 'ref', 'after']);
+    expect(index.positionsById.has('s3')).toBe(false);
+    expect(index.finalInteractivePosition).toBe(0);
+  });
+});
+
+/**
+ * Every schema block type must be deliberately classified. Runtime defaults an
+ * unclassified type to countable-once, which is the safe direction; these tests
+ * are what force a new block type to be classified rather than defaulted.
+ */
+describe('block-type classification', () => {
+  const transparent = new Set<string>(TRANSPARENT_CONTAINER_BLOCK_TYPES);
+  const opaque = new Set<string>(OPAQUE_PARENT_BLOCK_TYPES);
+
+  /** Types that hold no children at all, so counting one is the only option. */
+  const PLAIN_BLOCK_TYPES = [
+    'markdown',
+    'html',
+    'image',
+    'video',
+    'interactive',
+    'quiz',
+    'input',
+    'terminal',
+    'terminal-connect',
+    'code-block',
+    'challenge',
+    'grot-guide',
+  ];
+
+  it('partitions the schema exactly — no type unclassified, none classified twice', () => {
+    const classified = [...TRANSPARENT_CONTAINER_BLOCK_TYPES, ...OPAQUE_PARENT_BLOCK_TYPES, ...PLAIN_BLOCK_TYPES];
 
     expect(classified.filter((type) => !VALID_BLOCK_TYPES.has(type))).toEqual([]);
+    expect([...VALID_BLOCK_TYPES].filter((type) => !classified.includes(type))).toEqual([]);
+    expect(classified.filter((type, at) => classified.indexOf(type) !== at)).toEqual([]);
+  });
 
+  it('classifies every schema type that carries child blocks as a container, never as plain', () => {
+    const childFields = ['blocks', 'whenTrue', 'whenFalse'];
+    const carriesChildren = [...VALID_BLOCK_TYPES].filter((type) =>
+      childFields.some((field) => KNOWN_FIELDS[type]?.has(field))
+    );
+
+    expect(carriesChildren.length).toBeGreaterThan(0);
+    expect(carriesChildren.filter((type) => !transparent.has(type) && !opaque.has(type))).toEqual([]);
+  });
+
+  it('counts each classified type the way its classification says', () => {
     for (const type of VALID_BLOCK_TYPES) {
-      const index = computeGuideBlockIndex([{ type, blocks: [markdown(), markdown()] }]);
-      const expected = TRANSPARENT_CONTAINER_BLOCK_TYPES.includes(type) ? 2 : 1;
+      const index = computeGuideBlockIndex([
+        { type, blocks: [markdown(), markdown()], whenTrue: [markdown()], whenFalse: [markdown()] },
+      ]);
 
-      expect(index.totalBlockCount).toBe(expected);
+      expect([type, index.totalBlockCount]).toEqual([type, transparent.has(type) ? 2 : 1]);
     }
   });
 });

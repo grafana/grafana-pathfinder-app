@@ -97,15 +97,23 @@ export async function buildStats(
   }
 
   const resolved = new Map<string, GuideStatsSummary>();
+  const pending: Array<{ pkg: DiscoveredPackage; stats: GuideStatsSummary }> = [];
 
   for (const pkg of ordered) {
     const stats = resolveStats(pkg, packages, resolved, [], result.errors);
-    if (!stats) {
-      continue;
+    if (stats) {
+      pending.push({ pkg, stats });
     }
+  }
 
-    const current = pkg.rawManifest.stats;
-    if (deepEqual(current, stats)) {
+  // Every package resolves before any manifest is written, so a tree that
+  // errors anywhere is left entirely unstamped rather than half-stamped.
+  if (result.errors.length > 0) {
+    return result;
+  }
+
+  for (const { pkg, stats } of pending) {
+    if (deepEqual(pkg.rawManifest.stats, stats)) {
       result.unchanged.push(pkg.dirName);
       continue;
     }
@@ -121,6 +129,15 @@ export async function buildStats(
 
 type PackageReadOutcome = { pkg: DiscoveredPackage } | { error: string };
 
+/**
+ * Parse one package, or describe why it cannot be measured.
+ *
+ * A manifest that fails schema validation is an error rather than a warning —
+ * `build-repository` degrades the same failure and carries on, and that
+ * divergence is deliberate: a manifest this command cannot trust is one whose
+ * milestone list it cannot trust either, and a rollup off an untrusted
+ * milestone list is a wrong denominator.
+ */
 function readPackage(root: string, packageDir: string): PackageReadOutcome {
   const relativeDir = path.relative(root, packageDir).split(path.sep).join('/');
   const dirName = relativeDir || path.basename(packageDir);
@@ -163,9 +180,14 @@ function readPackage(root: string, packageDir: string): PackageReadOutcome {
  * A path or journey rolls up as its own body followed by its milestones in
  * declared order. Recursing depth-first is what guarantees milestones are
  * measured before their parents; `resolved` memoizes so a milestone shared by
- * two paths is measured once. A milestone that does not exist in the tree is an
- * error, matching the write-time rule that a pathway cannot refer to a
- * milestone that is not there.
+ * two paths is measured once.
+ *
+ * A milestone missing from the tree is a hard error, knowingly stricter than
+ * `build-graph` (warns on an unresolvable milestone), `build-repository`
+ * (degrades a manifest schema failure to a warning), and `package-content.ts`
+ * (keeps a locked placeholder). Those tolerate a partial tree at read time;
+ * this command exists to produce a denominator that is never wrong, and a
+ * rollup silently missing a milestone would publish one that is.
  */
 function resolveStats(
   pkg: DiscoveredPackage,
@@ -270,7 +292,11 @@ export const buildStatsCommand = new Command('build-stats')
     }
 
     if (errors.length > 0) {
-      console.error(`❌ ${errors.length} error(s) prevented computing stats; no manifests written.`);
+      console.error(
+        written.length > 0
+          ? `❌ ${errors.length} error(s) while writing manifests; the tree is partially stamped.`
+          : `❌ ${errors.length} error(s) prevented computing stats; no manifests written.`
+      );
       process.exit(1);
     }
 
