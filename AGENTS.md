@@ -110,6 +110,10 @@ Use `/review`. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`,
 
 Use `/techdebt <subsystem>` against a concrete target (directory, glob, or named subsystem); add `--suggestive` for lower-confidence candidates.
 
+## A/B experiments
+
+Use `/create-experiment`. Experiments are remote-configured through MTFF, allocated **per stack rather than per user**, and temporary — each one keeps its flag reader, arm logic, and teardown list in `src/utils/experiments/` so retiring it is a directory delete plus the registry entry in `src/utils/openfeature.ts`. Only object-valued flags carrying a `variant` field emit exposure events; a boolean experiment flag silently produces no readout.
+
 ## `npx` examples
 
 Namespace every `npx` example under `pathfinder-cli@...` — for a hypothetical `pathfinder-example` package, write `npx pathfinder-cli@... example`. This keeps us from being namesquatted.
