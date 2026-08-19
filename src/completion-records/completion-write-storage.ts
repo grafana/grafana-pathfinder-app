@@ -51,6 +51,9 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
   const itemPrefix = `${ownerPrefix}item:`;
   const leaseKey = `${ownerPrefix}lease`;
   const volatileItems = new Map<string, QueuedWrite>();
+  // True only while this tab has a lease it actually persisted, so renewLease
+  // can tell a vanished lease from one that was never written.
+  let leasePersisted = false;
 
   function list(): QueuedWrite[] {
     // Load the persisted copies first, then overlay volatile entries so a newer
@@ -125,11 +128,13 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
       const candidate: StoredLease = { tabId, expiresAt: now + LEASE_TTL_MS };
       localStorage.setItem(leaseKey, JSON.stringify(candidate));
       const stored = parseLease(localStorage.getItem(leaseKey));
+      leasePersisted = stored?.tabId === tabId;
       return {
         acquired: stored?.tabId === tabId,
         retryAfterMs: stored?.tabId === tabId ? 0 : Math.max(100, (stored?.expiresAt ?? now + 100) - now),
       };
     } catch {
+      leasePersisted = false;
       return { acquired: true, retryAfterMs: 0 };
     }
   }
@@ -137,18 +142,25 @@ export function createCompletionWriteStorage(ownerKey: string, tabId = randomId(
   function renewLease(now: number): boolean {
     try {
       const existing = parseLease(localStorage.getItem(leaseKey));
-      if (existing && existing.tabId !== tabId) {
+      // A lease this tab persisted and that has since vanished means
+      // takeover-or-clear — another tab took it, or a progress reset swept the
+      // owner prefix. Either way the drain must stop rather than re-establish a
+      // lease over records the owner may have just discarded.
+      if (existing ? existing.tabId !== tabId : leasePersisted) {
         return false;
       }
       const candidate: StoredLease = { tabId, expiresAt: now + LEASE_TTL_MS };
       localStorage.setItem(leaseKey, JSON.stringify(candidate));
-      return parseLease(localStorage.getItem(leaseKey))?.tabId === tabId;
+      const renewed = parseLease(localStorage.getItem(leaseKey))?.tabId === tabId;
+      leasePersisted = renewed;
+      return renewed;
     } catch {
       return true;
     }
   }
 
   function releaseLease(): void {
+    leasePersisted = false;
     try {
       if (parseLease(localStorage.getItem(leaseKey))?.tabId === tabId) {
         localStorage.removeItem(leaseKey);

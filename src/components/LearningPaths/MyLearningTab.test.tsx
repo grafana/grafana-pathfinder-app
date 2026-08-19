@@ -17,7 +17,7 @@ import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { testIds } from '../../constants/testIds';
-import { milestoneCompletionStorage } from '../../lib/user-storage';
+import { learningProgressStorage, milestoneCompletionStorage } from '../../lib/user-storage';
 import { discardQueuedCompletionWrites } from '../../completion-records';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
@@ -658,6 +658,19 @@ describe('MyLearningTab — reset all learning progress', () => {
     fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
 
     await waitFor(() => expect(discardQueuedCompletionWrites).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  it('discards before the first awaited clear, so a drain cannot fire mid-reset', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(learningProgressStorage.clear).toHaveBeenCalledTimes(1));
+    const discardOrder = (discardQueuedCompletionWrites as jest.Mock).mock.invocationCallOrder[0]!;
+    const firstClearOrder = (learningProgressStorage.clear as jest.Mock).mock.invocationCallOrder[0]!;
+    expect(discardOrder).toBeLessThan(firstClearOrder);
     confirmSpy.mockRestore();
   });
 

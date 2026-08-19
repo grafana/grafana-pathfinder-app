@@ -219,6 +219,31 @@ describe('discarding the queue on progress reset', () => {
     expect(createCompletionWriteStorage('user-7:org-3').list()).toHaveLength(0);
   });
 
+  it('stops an in-flight drain when another tab discards the queue', async () => {
+    // The reset lands in the other tab, so this tab's in-memory queue is
+    // untouched — the swept lease is the only signal it gets, and it must bound
+    // the leak to the one POST already in flight.
+    armCompletionWriteHook(
+      deps({
+        send: async (b) => {
+          sent.push(b);
+          if (sent.length === 1) {
+            createCompletionWriteStorage('user-7:org-3', 'other-tab').clear();
+          }
+          return { kind: 'created' };
+        },
+      })
+    );
+    await runTimer();
+
+    recordGuideCompletion(guideFact({ guideId: 'a' }));
+    recordGuideCompletion(guideFact({ guideId: 'b' }));
+    recordGuideCompletion(guideFact({ guideId: 'c' }));
+    await runTimer();
+
+    expect(sent).toHaveLength(1);
+  });
+
   it('clears the persisted queue even when no controller is armed', () => {
     const storage = createCompletionWriteStorage('user-7:org-3');
     storage.put({

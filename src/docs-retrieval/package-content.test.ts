@@ -677,6 +677,53 @@ describe('fetchPackageContent path-type enrichment', () => {
     }
   });
 
+  // `repository-identity-authority`: without the fallback, opening the same
+  // package from My Learning / Discover More (manifest inlined, no explicit
+  // repository) recorded under the manifest schema default while the nav-link
+  // path recorded under the resolved one — one guide, two durable guideSource keys.
+  it('stamps the resolved repository when the caller supplies none', async () => {
+    setPackageResolver(
+      makeResolver(
+        makeSuccessResolution({
+          id: 'discover-path',
+          contentUrl: 'bundled:first-dashboard/content.json',
+          repository: 'online-cdn',
+        })
+      )
+    );
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'discover-path',
+      type: 'path',
+      repository: 'interactive-tutorials',
+    });
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.repository).toBe('online-cdn');
+  });
+
+  it('lets an explicit caller repository outrank the resolved one', async () => {
+    setPackageResolver(
+      makeResolver(
+        makeSuccessResolution({
+          id: 'explicit-path',
+          contentUrl: 'bundled:first-dashboard/content.json',
+          repository: 'online-cdn',
+        })
+      )
+    );
+
+    const result = await fetchPackageContent(
+      'bundled:first-dashboard/content.json',
+      { id: 'explicit-path', type: 'path' },
+      undefined,
+      'app-platform'
+    );
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.repository).toBe('app-platform');
+  });
+
   it('does not add learningJourney for guide-type packages', async () => {
     const manifest = {
       id: 'test-guide',

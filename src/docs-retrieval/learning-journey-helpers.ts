@@ -160,10 +160,14 @@ export function isLastMilestone(content: RawContent): boolean {
 }
 
 /**
- * Number of navigable (unlocked) milestones — the threshold a journey must reach
- * to count as complete. Locked members are placeholders for unpublished content
- * (RFC §6.5) and are unreachable, so they must not inflate the completion
- * denominator. `totalMilestones` stays the locked-inclusive display count.
+ * Number of navigable (unlocked) milestones. Locked members are placeholders for
+ * unpublished content (RFC §6.5) and are unreachable; `totalMilestones` stays the
+ * locked-inclusive display count.
+ *
+ * This is NOT the journey completion threshold. Completion is whole-set
+ * membership of the current milestone ids — see `resolveExpectedMilestoneIds`
+ * and `journey-threshold-membership` — never a count, which stale slugs from a
+ * renamed or reordered path can cross while current milestones are outstanding.
  */
 export function countUnlockedMilestones(milestones: Milestone[]): number {
   return milestones.filter((m) => !m.isLocked).length;

@@ -130,6 +130,28 @@ describe('completion write cross-tab storage', () => {
     expect(tabA.renewLease(30_002)).toBe(false);
   });
 
+  it('refuses to renew a lease that has vanished, so a swept owner prefix stops the drain', () => {
+    const tabA = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    expect(tabA.acquireLease(0).acquired).toBe(true);
+
+    // What another tab's clear() (a progress reset) does to the owner prefix.
+    createCompletionWriteStorage('user-7:org-3', 'tab-b').clear();
+
+    expect(tabA.renewLease(1)).toBe(false);
+  });
+
+  it('still renews when this tab never managed to persist a lease', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota exceeded');
+    });
+    // Acquisition failed open with nothing written; renewal must not read the
+    // absent key as a takeover and strand the queue.
+    expect(store.acquireLease(0).acquired).toBe(true);
+
+    expect(store.renewLease(1)).toBe(true);
+  });
+
   it('does not let an old holder release a newer lease', () => {
     const tabA = createCompletionWriteStorage('user-7:org-3', 'tab-a');
     const tabB = createCompletionWriteStorage('user-7:org-3', 'tab-b');

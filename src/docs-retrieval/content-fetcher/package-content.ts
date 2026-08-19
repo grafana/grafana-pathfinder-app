@@ -217,7 +217,7 @@ export function ensureNonEmptyCoverContent(jsonContent: string): string {
  * @param contentUrl - Pre-resolved CDN URL or bundled: URL for the content.json
  * @param packageManifest - Optional manifest metadata to attach to the result
  * @param preResolvedMilestones - Optional milestones already resolved by the caller (avoids redundant resolution)
- * @param repository - Resolved source repository, stamped onto `metadata.repository` so completion keys on the true source rather than the manifest default
+ * @param repository - Resolved source repository, stamped onto `metadata.repository` so completion keys on the true source rather than the manifest default; falls back to the baseUrl resolution's own repository when omitted
  * @param preFetchedContent - Optional content the caller already fetched (avoids re-issuing an identical request)
  */
 export async function fetchPackageContent(
@@ -260,6 +260,8 @@ export async function fetchPackageContent(
   if (!result.content) {
     return result;
   }
+
+  const resolvedRepository = repository ?? baseUrlResolution?.repository;
 
   let learningJourney: LearningJourneyMetadata | undefined;
   let contentString = result.content.content;
@@ -304,7 +306,10 @@ export async function fetchPackageContent(
       metadata: {
         ...result.content.metadata,
         ...(packageManifest !== undefined && { packageManifest }),
-        ...(repository !== undefined && { repository }),
+        // Fall back to the repository the baseUrl resolution already carries, so
+        // an entry path that supplies no explicit one still keys the durable
+        // completion on the true source instead of the manifest schema default.
+        ...(resolvedRepository !== undefined && { repository: resolvedRepository }),
         ...(learningJourney !== undefined && { learningJourney }),
       },
     },
