@@ -352,6 +352,9 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       display: 'flex',
       alignItems: 'center',
       gap: theme.spacing(1),
+      padding: theme.spacing(1),
+      borderRadius: theme.shape.radius.default,
+      border: '1px solid transparent',
       fontSize: theme.typography.bodySmall.fontSize,
       color: theme.colors.text.secondary,
     }),
@@ -360,30 +363,37 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       fontWeight: theme.typography.fontWeightMedium,
       cursor: 'pointer',
     }),
+    // Same accent-card idiom as getLearningPathCardStyles.card, scoped here
+    // since it decorates a GuideList row, not that component's own card.
+    guideItemCurrentCard: css({
+      background: `linear-gradient(135deg, ${colors.pathAccentLight} 0%, ${theme.colors.background.secondary} 100%)`,
+      borderColor: colors.pathAccentMedium,
+    }),
     guideItemLocked: css({
       color: theme.colors.text.disabled,
     }),
     guideItemWithDescription: css({
       alignItems: 'flex-start',
     }),
-    guideIcon: css({
-      width: 16,
-      height: 16,
+    guideIconBadge: css({
+      width: 32,
+      height: 32,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
+      borderRadius: theme.shape.radius.default,
     }),
-    guideIconCompleted: css({
+    guideIconBadgeCurrent: css({
+      backgroundColor: colors.pathAccent,
+      color: theme.colors.primary.contrastText,
+    }),
+    guideIconBadgeCompleted: css({
+      backgroundColor: colors.successLight,
       color: colors.success,
     }),
-    guideIconCurrent: css({
-      color: colors.pathAccent,
-    }),
-    guideIconLocked: css({
-      color: theme.colors.text.disabled,
-    }),
-    guideIconPending: css({
+    guideIconBadgeLocked: css({
+      backgroundColor: theme.colors.background.primary,
       color: theme.colors.text.disabled,
     }),
     guideTitle: css({
@@ -407,11 +417,19 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       WebkitLineClamp: 2,
       WebkitBoxOrient: 'vertical',
     }),
-    guideStatus: css({
+    guideMeta: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(0.5),
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: theme.colors.text.disabled,
+    }),
+    guideUpNext: css({
       flexShrink: 0,
       whiteSpace: 'nowrap',
       fontSize: theme.typography.bodySmall.fontSize,
-      color: theme.colors.text.disabled,
+      color: colors.pathAccent,
+      fontWeight: theme.typography.fontWeightMedium,
     }),
   };
 };

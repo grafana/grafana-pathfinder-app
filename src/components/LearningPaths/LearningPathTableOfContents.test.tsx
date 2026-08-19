@@ -58,7 +58,7 @@ describe('LearningPathTableOfContents', () => {
     await waitFor(() => expect(document.querySelectorAll('[data-icon="check"]')).toHaveLength(1));
     // Scoped to the module-list rows — the "Resume" CTA button above also
     // renders its own play icon, which a document-wide query would double-count.
-    expect(document.querySelectorAll('.guideIcon [data-icon="play"]')).toHaveLength(1);
+    expect(document.querySelectorAll('.guideIconBadge [data-icon="play"]')).toHaveLength(1);
   });
 
   it('shows a Get started CTA targeting the first milestone, with no progress ring, at 0%', async () => {
@@ -207,7 +207,7 @@ describe('LearningPathTableOfContents', () => {
       render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
 
       await waitFor(() => expect(screen.getAllByText('Locked')).toHaveLength(2));
-      expect(document.querySelectorAll('.guideIcon [data-icon="lock"]')).toHaveLength(2);
+      expect(document.querySelectorAll('.guideIconBadge [data-icon="lock"]')).toHaveLength(2);
     });
 
     it('unlocks the next module once the previous one completes, keeping the rest locked', async () => {
@@ -215,7 +215,7 @@ describe('LearningPathTableOfContents', () => {
       render(<LearningPathTableOfContents milestones={threeMilestones} baseUrl={baseUrl} />);
 
       await waitFor(() => expect(screen.getAllByText('Locked')).toHaveLength(1));
-      expect(document.querySelectorAll('.guideIcon [data-icon="play"]')).toHaveLength(1);
+      expect(document.querySelectorAll('.guideIconBadge [data-icon="play"]')).toHaveLength(1);
     });
   });
 });
