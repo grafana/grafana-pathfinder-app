@@ -125,6 +125,31 @@ describe('buildRepository', () => {
     expect(entry!.replaces).toEqual(['legacy-test']);
   });
 
+  it('preserves omitted and explicit root starting locations', () => {
+    for (const id of ['omitted-location', 'explicit-root']) {
+      writeJson(path.join(tmpDir, id, 'content.json'), {
+        id,
+        title: id,
+        blocks: [],
+      });
+    }
+    writeJson(path.join(tmpDir, 'omitted-location', 'manifest.json'), {
+      id: 'omitted-location',
+      type: 'guide',
+    });
+    writeJson(path.join(tmpDir, 'explicit-root', 'manifest.json'), {
+      id: 'explicit-root',
+      type: 'guide',
+      startingLocation: '/',
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+
+    expect(errors).toHaveLength(0);
+    expect(repository['omitted-location']).not.toHaveProperty('startingLocation');
+    expect(repository['explicit-root']?.startingLocation).toBe('/');
+  });
+
   it('should error on ID mismatch between content and manifest', () => {
     writeJson(path.join(tmpDir, 'mismatched', 'content.json'), {
       id: 'content-id',

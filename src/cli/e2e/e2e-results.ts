@@ -178,13 +178,14 @@ export function applyPackageMeta(data: TestResultsData | undefined, meta: Packag
   if (!data || !meta) {
     return;
   }
+  const startingLocation = data.guide.startingLocation ?? meta.startingLocation;
   data.guide = {
     ...data.guide,
     packageId: meta.packageId,
     tier: meta.tier,
     instance: meta.instance,
     sourceUrl: meta.sourceUrl,
-    startingLocation: meta.startingLocation,
+    ...(startingLocation !== undefined ? { startingLocation } : {}),
     sideEffects: meta.sideEffects,
   };
 }
