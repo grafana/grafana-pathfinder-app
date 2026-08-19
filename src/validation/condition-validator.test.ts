@@ -29,6 +29,7 @@ describe('Condition Validator', () => {
         ['has-plugin:grafana-clock-panel', ParameterizedRequirementPrefix.HAS_PLUGIN],
         ['plugin-enabled:volkovlabs-rss-datasource', ParameterizedRequirementPrefix.PLUGIN_ENABLED],
         ['has-dashboard-named:My Dashboard', ParameterizedRequirementPrefix.HAS_DASHBOARD_NAMED],
+        ['has-escalation-chain:Production - Default', ParameterizedRequirementPrefix.HAS_ESCALATION_CHAIN],
         ['on-page:/dashboards', ParameterizedRequirementPrefix.ON_PAGE],
         ['on-page:/d/abc123', ParameterizedRequirementPrefix.ON_PAGE],
         ['has-feature:alerting', ParameterizedRequirementPrefix.HAS_FEATURE],
@@ -399,6 +400,7 @@ describe('Condition Types Coverage', () => {
     FixedRequirementType.DASHBOARD_EXISTS,
     FixedRequirementType.FORM_VALID,
     FixedRequirementType.IS_TERMINAL_ACTIVE,
+    FixedRequirementType.HAS_ESCALATION_CHAINS,
   ]);
 
   // All parameterized prefixes that should be tested
@@ -410,6 +412,7 @@ describe('Condition Types Coverage', () => {
     ParameterizedRequirementPrefix.HAS_PLUGIN,
     ParameterizedRequirementPrefix.PLUGIN_ENABLED,
     ParameterizedRequirementPrefix.HAS_DASHBOARD_NAMED,
+    ParameterizedRequirementPrefix.HAS_ESCALATION_CHAIN,
     ParameterizedRequirementPrefix.ON_PAGE,
     ParameterizedRequirementPrefix.HAS_FEATURE,
     ParameterizedRequirementPrefix.IN_ENVIRONMENT,

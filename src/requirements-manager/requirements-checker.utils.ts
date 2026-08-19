@@ -36,6 +36,7 @@ import {
   dashboardExistsCheck,
   datasourceConfiguredCheck,
 } from './checks/grafana-api';
+import { hasEscalationChainCheck } from './checks/oncall-api';
 import { onPageCheck } from './checks/location';
 import { hasFeatureCheck, inEnvironmentCheck, minVersionCheck, rendererCheck } from './checks/env';
 import { guideVariableCheck } from './checks/vars';
@@ -116,6 +117,16 @@ const CHECK_HANDLERS: readonly CheckHandler[] = [
     run: (c) => hasDashboardNamedCheck(c),
   },
   { id: 'dashboard-exists', match: (c) => c === 'dashboard-exists', run: (c) => dashboardExistsCheck(c) },
+  {
+    id: 'has-escalation-chains',
+    match: (c) => c === 'has-escalation-chains',
+    run: (c) => hasEscalationChainCheck(c),
+  },
+  {
+    id: 'has-escalation-chain:',
+    match: (c) => c.startsWith('has-escalation-chain:'),
+    run: (c) => hasEscalationChainCheck(c),
+  },
   { id: 'on-page:', match: (c) => c.startsWith('on-page:'), run: (c) => onPageCheck(c) },
   { id: 'has-feature:', match: (c) => c.startsWith('has-feature:'), run: (c) => hasFeatureCheck(c) },
   { id: 'in-environment:', match: (c) => c.startsWith('in-environment:'), run: (c) => inEnvironmentCheck(c) },
