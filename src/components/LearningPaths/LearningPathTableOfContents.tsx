@@ -18,6 +18,8 @@ export interface LearningPathTableOfContentsProps {
   baseUrl: string;
   /** Package manifest ID, when known — used to look up a completion badge to preview. */
   pathId?: string;
+  /** The path's own title, when known — shown as the hero heading above the description. */
+  title?: string;
   /** Package manifest description, when known — shown as the hero summary above the module list. */
   description?: string;
 }
@@ -26,6 +28,7 @@ export function LearningPathTableOfContents({
   milestones,
   baseUrl,
   pathId,
+  title,
   description,
 }: LearningPathTableOfContentsProps) {
   const styles = useStyles2(getTableOfContentsStyles);
@@ -74,16 +77,34 @@ export function LearningPathTableOfContents({
   const ctaTarget = cursor >= 0 ? milestones[cursor] : undefined;
   const ctaLabel = progress === 0 ? t('coverPage.getStarted', 'Get started') : t('coverPage.resume', 'Resume');
 
+  // Sum of authored per-milestone estimates — only when every milestone has
+  // one, matching estimatedMinutes' own "never a guessed default" contract.
+  // A partial sum across e.g. 3 of 10 authored milestones would understate
+  // the real total rather than approximate it.
+  const totalEstimatedMinutes =
+    milestones.length > 0 && milestones.every((m) => typeof m.estimatedMinutes === 'number')
+      ? milestones.reduce((sum, m) => sum + m.estimatedMinutes!, 0)
+      : undefined;
+
   return (
     <>
-      {(description || badge) && (
+      {(title || description || badge) && (
         <div className={styles.hero} data-testid={testIds.learningPaths.coverHero}>
+          {title && <h1 className={styles.heroTitle}>{title}</h1>}
           {description && <p className={styles.heroDescription}>{description}</p>}
           <div className={styles.heroMeta}>
             <span className={styles.heroMetaItem}>
               <Icon name="list-ul" size="sm" />
               {t('coverPage.moduleCount', '{{count}} modules', { count: milestones.length })}
             </span>
+            {totalEstimatedMinutes != null && (
+              <span className={styles.heroMetaItem}>
+                <Icon name="clock-nine" size="sm" />
+                {totalEstimatedMinutes < 60
+                  ? t('coverPage.totalMinutes', '{{count}} min', { count: totalEstimatedMinutes })
+                  : t('coverPage.totalHours', '~{{count}} hr', { count: Math.round(totalEstimatedMinutes / 60) })}
+              </span>
+            )}
             {badge && (
               <span className={styles.heroMetaItem}>
                 <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="sm" />

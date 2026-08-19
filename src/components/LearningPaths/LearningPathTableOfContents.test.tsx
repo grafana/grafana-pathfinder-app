@@ -121,28 +121,78 @@ describe('LearningPathTableOfContents', () => {
     expect(screen.queryByText(/Earns .* badge/)).not.toBeInTheDocument();
   });
 
-  it('shows a hero card with the description and module count when a description is provided', async () => {
+  it('shows a hero card with the title, description, and module count when provided', async () => {
     getCompletedMock.mockResolvedValue(new Set());
     render(
       <LearningPathTableOfContents
         milestones={milestones}
         baseUrl={baseUrl}
+        title="Connect your first data source"
         description="Learn how Grafana connects to data."
       />
     );
 
     expect(screen.getByTestId('learning-paths-cover-hero')).toBeInTheDocument();
+    expect(screen.getByText('Connect your first data source')).toBeInTheDocument();
     expect(screen.getByText('Learn how Grafana connects to data.')).toBeInTheDocument();
     expect(await screen.findByText('2 modules')).toBeInTheDocument();
   });
 
-  it('omits the hero card entirely when there is no description and no badge', async () => {
+  it('shows the hero card from title alone, with no description and no badge', async () => {
+    getCompletedMock.mockResolvedValue(new Set());
+    getBadgeForPathMock.mockReturnValue(undefined);
+    render(
+      <LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} title="Connect your first data source" />
+    );
+
+    expect(screen.getByTestId('learning-paths-cover-hero')).toBeInTheDocument();
+    expect(screen.getByText('Connect your first data source')).toBeInTheDocument();
+  });
+
+  it('omits the hero card entirely when there is no title, description, or badge', async () => {
     getCompletedMock.mockResolvedValue(new Set());
     getBadgeForPathMock.mockReturnValue(undefined);
     render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
 
     await waitFor(() => expect(getCompletedMock).toHaveBeenCalled());
     expect(screen.queryByTestId('learning-paths-cover-hero')).not.toBeInTheDocument();
+  });
+
+  it('shows the total estimated duration when every milestone has one authored', async () => {
+    getCompletedMock.mockResolvedValue(new Set());
+    const timedMilestones: Milestone[] = [
+      { ...milestones[0]!, estimatedMinutes: 15 },
+      { ...milestones[1]!, estimatedMinutes: 20 },
+    ];
+    render(<LearningPathTableOfContents milestones={timedMilestones} baseUrl={baseUrl} description="Summary" />);
+
+    expect(await screen.findByText('35 min')).toBeInTheDocument();
+  });
+
+  it('formats the total as hours once it reaches 60 minutes, rounded', async () => {
+    getCompletedMock.mockResolvedValue(new Set());
+    const timedMilestones: Milestone[] = [
+      { ...milestones[0]!, estimatedMinutes: 100 },
+      { ...milestones[1]!, estimatedMinutes: 130 },
+    ];
+    render(<LearningPathTableOfContents milestones={timedMilestones} baseUrl={baseUrl} description="Summary" />);
+
+    // 230 min = 3.83h, rounds to 4h.
+    expect(await screen.findByText('~4 hr')).toBeInTheDocument();
+  });
+
+  it('omits the total duration from the hero when any milestone lacks an authored estimate', async () => {
+    getCompletedMock.mockResolvedValue(new Set());
+    // milestones[0] has its own authored estimate (rendered on its own row
+    // regardless), but milestones[1] doesn't — the hero total requires all.
+    const partiallyTimedMilestones: Milestone[] = [{ ...milestones[0]!, estimatedMinutes: 15 }, milestones[1]!];
+    render(
+      <LearningPathTableOfContents milestones={partiallyTimedMilestones} baseUrl={baseUrl} description="Summary" />
+    );
+
+    const hero = await screen.findByTestId('learning-paths-cover-hero');
+    expect(hero).not.toHaveTextContent('min');
+    expect(hero).not.toHaveTextContent('hr');
   });
 
   describe('sequential lock/unlock', () => {

@@ -405,6 +405,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         milestones={journey.milestones}
         baseUrl={journey.baseUrl}
         pathId={pathId}
+        title={content.metadata.title}
         description={pathDescription}
       />
     ) : null;
@@ -531,7 +532,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && isNativeJson && <h1 className={titleStyle}>{title}</h1>}
+      {title && isNativeJson && !beforeContent && <h1 className={titleStyle}>{title}</h1>}
       {beforeContent}
       <ContentProcessor
         html={processedContent}
