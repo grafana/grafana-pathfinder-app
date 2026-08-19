@@ -574,9 +574,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           };
 
           if (currentMilestone === 0) {
+            // The cover-page component now owns the start/continue CTA, so skip
+            // the legacy injected "Ready to Begin" button here (matches the
+            // `skipReadyToBegin` default fetchContent's own callers already use).
             content = {
               ...content,
-              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney),
+              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney, true),
             };
           }
 
