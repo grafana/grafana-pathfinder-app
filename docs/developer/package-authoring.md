@@ -78,6 +78,12 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `targeting`        | `{ match? }`                         | No                            | —                         | Advisory recommendation targeting (see [targeting](#targeting))            |
 | `testEnvironment`  | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment)) |
 
+### Extension fields
+
+Any top-level key not listed above is extension metadata. It survives validation unchanged and `pathfinder-cli build-repository` forwards it verbatim into that package's entry in `repository.json`, so adding one costs no CLI change. Two names are refused with a warning because the build computes them itself: `path` (from the package directory) and `title` (from `content.json`). `__proto__` is refused as well, though a JSON `__proto__` key is already dropped during parsing. Named manifest fields are never forwarded generically, so `id`, `schemaVersion`, `repository`, and `language` still do not appear in a repository entry.
+
+Extension keys are not validated. If a key becomes load-bearing, promote it to a named field in the schema — that is the intended migration path and it needs no rename.
+
 ### Package IDs must not collide across repositories
 
 A bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The resolver tries repositories in order (bundled → recommender or CDN → App Platform) and the first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.

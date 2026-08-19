@@ -41,7 +41,8 @@ const NAMED_MANIFEST_FIELDS: ReadonlySet<string> = new Set(Object.keys(ManifestJ
  * Repository-entry fields the builder computes itself (`path` from the package
  * directory, `title` from content.json). A manifest key of the same name is
  * refused rather than allowed to overwrite the computed value. `__proto__` is
- * refused because assigning it would mutate the entry's prototype.
+ * belt-and-braces on an assignment sink fed by file content — zod's loose parse
+ * already drops a JSON `__proto__` own-key before the copy runs.
  */
 const RESERVED_ENTRY_FIELDS: ReadonlySet<string> = new Set([
   ...Object.keys(RepositoryEntrySchema.shape).filter((key) => !NAMED_MANIFEST_FIELDS.has(key)),

@@ -158,7 +158,7 @@ async function doFetchRepositoryIndex(baseUrl: string, now: number): Promise<Rep
   for (const [id, entry] of Object.entries(rawIndex)) {
     const parsed = RepositoryEntrySchema.safeParse(entry);
     if (parsed.success) {
-      packages.push({ id, ...parsed.data });
+      packages.push({ ...parsed.data, id });
     } else {
       for (const issue of parsed.error.issues) {
         issues.push({ path: [id, ...normalizeIssuePath(issue.path)], message: issue.message });
@@ -169,7 +169,7 @@ async function doFetchRepositoryIndex(baseUrl: string, now: number): Promise<Rep
         const e = entry as Record<string, unknown>;
         const path = typeof e.path === 'string' ? e.path : '';
         if (path) {
-          packages.push({ id, ...(e as unknown as RepositoryEntry), path });
+          packages.push({ ...(e as unknown as RepositoryEntry), path, id });
         }
       }
     }

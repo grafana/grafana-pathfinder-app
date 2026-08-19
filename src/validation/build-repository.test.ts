@@ -453,6 +453,30 @@ describe('buildRepository', () => {
     expect(warnings.filter((w) => w.includes('"title"'))).toHaveLength(1);
   });
 
+  it('should not let a manifest __proto__ key pollute the entry prototype', () => {
+    writeJson(path.join(tmpDir, 'proto-manifest', 'content.json'), {
+      id: 'proto-manifest',
+      title: 'Proto manifest',
+      blocks: [],
+    });
+    fs.writeFileSync(
+      path.join(tmpDir, 'proto-manifest', 'manifest.json'),
+      '{"id":"proto-manifest","type":"guide","__proto__":{"polluted":true},"safeExtension":"kept"}',
+      'utf-8'
+    );
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+
+    const entry = repository['proto-manifest'];
+    expect(entry).toBeDefined();
+    expect(entry!.safeExtension).toBe('kept');
+    // zod's loose parse drops the __proto__ own-key before forwarding, so the
+    // reserved-field refusal never has to fire and nothing is polluted.
+    expect(Object.getPrototypeOf(entry!)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
   it('should keep known manifest fields validated and their entry mapping unchanged', () => {
     writeJson(path.join(tmpDir, 'bad-type', 'content.json'), {
       id: 'bad-type',
