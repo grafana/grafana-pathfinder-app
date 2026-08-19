@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -65,6 +67,75 @@ func (s identityStatus) capabilityReason() string {
 	default:
 		return reasonIdentityUnavailable
 	}
+}
+
+// completionWriterIdentity derives the server-stamped identity for a completion
+// write from the caller's forwarded Grafana context. The stable user id is
+// REQUIRED and fails closed; it comes from deriveCompletionUserID — the
+// canonical identity contract — rather than from subjectFromIDToken directly,
+// so the read and write paths cannot drift apart on the key they join on.
+//
+// Login and display name are best-effort denormalized snapshots read ONLY from
+// the verified ID token's `username`/`name` claims (authlib IDTokenClaims).
+// There is deliberately no fallback: an absent claim leaves the field empty
+// rather than substituting a value from anywhere else. A plausible-but-unverified
+// login is worse than an absent one because it reads as verified, and these
+// records are headed for compliance-grade use — absence is auditable, a forgery
+// is not. The record's identity of record is `userId`, which the read path joins
+// on exclusively; these two are display convenience.
+//
+// Every value here comes from the INBOUND request. The outbound on-behalf-of
+// access token is a credential, not the source of the stamped subject — moving
+// identity onto it would silently change what gets attributed
+// (TestCompletionWrite_SubjectComesFromInboundIDToken pins this).
+func (a *App) completionWriterIdentity(r *http.Request) (userID, userLogin, userDisplayName string, status identityStatus) {
+	userID, status = a.deriveCompletionUserID(r)
+	if status != identityVerified {
+		return "", "", "", status
+	}
+	userLogin, userDisplayName = idTokenProfile(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
+	return userID, userLogin, userDisplayName, identityVerified
+}
+
+// idTokenProfile best-effort reads the login and display-name claims from a
+// forwarded ID token. It runs only after the token has been cryptographically
+// verified, so re-decoding the payload here reads already-trusted bytes. The
+// claim names are pinned to Grafana authlib's IDTokenClaims
+// (authn/verifier_id_token.go): login is `username`, display name is `name` —
+// NOT `login` or `preferred_username`, which Grafana does not emit and which
+// silently yielded empty snapshots. It gates nothing (the subject already did)
+// and returns ("", "") on any decode failure — the fields are denormalized
+// snapshots, not authorization inputs.
+func idTokenProfile(token string) (login, name string) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return "", ""
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", ""
+	}
+	payload, err := decodeJWTSegment(parts[1])
+	if err != nil {
+		return "", ""
+	}
+	var claims struct {
+		Username string `json:"username"`
+		Name     string `json:"name"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "", ""
+	}
+	return claims.Username, claims.Name
+}
+
+// decodeJWTSegment decodes a base64url JWT segment, tolerating both the
+// unpadded (RFC 7515) and padded encodings.
+func decodeJWTSegment(seg string) ([]byte, error) {
+	if b, err := base64.RawURLEncoding.DecodeString(seg); err == nil {
+		return b, nil
+	}
+	return base64.URLEncoding.DecodeString(seg)
 }
 
 // validIDToken reports whether the request carries a verified Grafana ID token.

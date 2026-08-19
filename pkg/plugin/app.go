@@ -45,6 +45,9 @@ type App struct {
 	idVerifierMu        sync.Mutex
 
 	logger log.Logger
+
+	// Per-user rate limiter for POST /completion-records (RFC §9 flood guard)
+	completionWriteRateLimiter *completionWriteRateLimiter
 }
 
 // NewApp creates a new App instance.
@@ -58,7 +61,8 @@ func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instanc
 	}
 
 	app := &App{
-		logger: logger,
+		logger:                     logger,
+		completionWriteRateLimiter: newCompletionWriteRateLimiter(),
 	}
 
 	// A stack without provisioned on-behalf-of credentials still loads: the App

@@ -106,6 +106,11 @@ type idToken struct {
 	kid string
 	typ string
 	key *ecdsa.PrivateKey
+
+	// Optional authlib profile claims; empty values are omitted so a test can
+	// pin what an absent claim yields.
+	username string
+	name     string
 }
 
 // signIDToken builds and ES256-signs a JWT to spec.
@@ -122,6 +127,12 @@ func signIDToken(t *testing.T, tok idToken) string {
 	}
 	if tok.exp != 0 {
 		claims["exp"] = tok.exp
+	}
+	if tok.username != "" {
+		claims["username"] = tok.username
+	}
+	if tok.name != "" {
+		claims["name"] = tok.name
 	}
 	payload, err := json.Marshal(claims)
 	if err != nil {
@@ -171,6 +182,50 @@ func identityRequestWithConfig(t *testing.T, token string, cfg map[string]string
 		return r
 	}
 	return r.WithContext(sdkconfig.WithGrafanaConfig(r.Context(), sdkconfig.NewGrafanaCfg(cfg)))
+}
+
+// makeIDTokenWithProfile signs a token carrying sub/exp plus the authlib profile
+// claims: `username` (login) and `name` (display name). Empty values are omitted
+// so a caller can pin what an absent claim yields.
+func makeIDTokenWithProfile(t *testing.T, sub string, exp int64, username, name string) string {
+	t.Helper()
+	return signIDToken(t, idToken{
+		sub: sub, exp: exp, kid: testSigningKeyID, typ: "jwt", key: testSigningKey(),
+		username: username, name: name,
+	})
+}
+
+// makeValidIDTokenWithProfile is makeIDTokenWithProfile with a wall-clock `exp`,
+// so it verifies under withFrozenTime (authlib checks expiry against time.Now).
+func makeValidIDTokenWithProfile(t *testing.T, sub, username, name string) string {
+	t.Helper()
+	return makeIDTokenWithProfile(t, sub, time.Now().Add(time.Hour).Unix(), username, name)
+}
+
+// idTokenProfile reads authlib's IDTokenClaims profile fields: `username` is the
+// login, `name` is the display name. Legacy `login`/`preferred_username` claims
+// are NOT read.
+func TestIDTokenProfile(t *testing.T) {
+	tests := []struct {
+		name      string
+		token     string
+		wantLogin string
+		wantName  string
+	}{
+		{"username and name claims", makeIDTokenWithProfile(t, "user:1", 1, "alice", "Alice Anderson"), "alice", "Alice Anderson"},
+		{"username only", makeIDTokenWithProfile(t, "user:1", 1, "bob", ""), "bob", ""},
+		{"no profile claims", makeIDTokenWithProfile(t, "user:1", 1, "", ""), "", ""},
+		{"legacy login claim ignored", `x.` + base64.RawURLEncoding.EncodeToString([]byte(`{"login":"legacy","preferred_username":"legacy2"}`)) + `.y`, "", ""},
+		{"malformed token", "not-a-jwt", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			login, name := idTokenProfile(tt.token)
+			if login != tt.wantLogin || name != tt.wantName {
+				t.Fatalf("idTokenProfile = (%q, %q), want (%q, %q)", login, name, tt.wantLogin, tt.wantName)
+			}
+		})
+	}
 }
 
 // --- Verification matrix -----------------------------------------------------

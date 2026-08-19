@@ -37,7 +37,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, INTERACTIVE_ACTIONS } from '../constants';
+import { BLOCK_TYPE_METADATA, INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import type { BlockType, JsonBlock, JsonInteractiveAction, BlockFormProps } from '../types';
 import {
@@ -264,7 +264,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 /**
  * Create a default block of a given type
  */
-function createDefaultBlock(type: BlockType): JsonBlock {
+export function createDefaultBlock(type: BlockType): JsonBlock {
   switch (type) {
     case 'markdown':
       return { type: 'markdown', content: '' };
@@ -289,15 +289,29 @@ function createDefaultBlock(type: BlockType): JsonBlock {
       return { type: 'multistep', content: '', steps: [] };
     case 'guided':
       return { type: 'guided', content: '', steps: [] };
+    case 'challenge':
+      return { type: 'challenge', title: '', brief: '', successCriteria: '' };
     default:
       return { type: 'markdown', content: '' };
   }
 }
 
-// Block types allowed in conditional branches (no nested containers)
-const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BLOCK_TYPE_ORDER.filter(
-  (t) => t !== 'section' && t !== 'collapsible' && t !== 'conditional'
-);
+// Block types the inline branch editor can construct without falling through to an
+// empty markdown stub. Nested containers are excluded; types that need dedicated
+// forms (challenge, quiz, terminal, …) are also excluded so the combobox cannot
+// silently create the wrong block shape (see #1542).
+const BRANCH_INLINE_CREATABLE_TYPES: BlockType[] = [
+  'markdown',
+  'interactive',
+  'image',
+  'video',
+  'input',
+  'quiz',
+  'multistep',
+  'guided',
+];
+
+export const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BRANCH_INLINE_CREATABLE_TYPES;
 
 // Block types that support inline form editing in BranchBlocksEditor
 // quiz, multistep, and guided require the dedicated editors and cannot be edited inline

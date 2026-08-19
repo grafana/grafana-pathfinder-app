@@ -167,15 +167,17 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 
 ## Backend architecture (`pkg/`)
 
-The Go backend is a **read proxy for the App Platform aggregator**, and nothing else. No database, no
+The Go backend is a **proxy for the App Platform aggregator**, and nothing else. No database, no
 streaming. Direct dependencies are `grafana-plugin-sdk-go` and `grafana/authlib` (the on-behalf-of
 token exchange).
 
-The **App Platform** routes (`completion_records.go`, `custom_guide_repository.go`) follow one shape:
-drain a paginated namespace-scoped upstream LIST, cache the shaped result per caller, serve it
-availability-first, and ride the caller's own identity end to end — outbound as an on-behalf-of
-access token minted in `pkg/plugin/auth`, never the ID token itself. The canonical pattern —
-including the identity trust boundary — is `docs/design/BACKEND_PROXY_PATTERN.md`.
+The **App Platform** routes (`completion_records.go` + `completion_records_write.go`,
+`custom_guide_repository.go`) follow one shape: drain a paginated namespace-scoped upstream LIST,
+cache the shaped result per caller, serve it availability-first, and ride the caller's own identity
+end to end — outbound as an on-behalf-of access token minted in `pkg/plugin/auth`, never the ID
+token itself. Completion records add the write half of that shape: a POST create on the same
+coordinate, with identity stamped server-side and a deterministic idempotent name. The canonical
+pattern — including the identity trust boundary — is `docs/design/BACKEND_PROXY_PATTERN.md`.
 
 `package_recommendations.go` is the exception and must not be assimilated into that shape: it fetches
 a public CDN index anonymously behind a host allowlist, with no namespace and one process-wide
@@ -186,17 +188,19 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | File                                | Role                                                                                                              |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `main.go`                           | Plugin entrypoint. Calls `app.Manage("grafana-pathfinder-app", plugin.NewApp, ...)`                                |
-| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger and the on-behalf-of exchanger. |
+| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, and the completion-write rate limiter. |
 | `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`.                      |
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory). Owns `timeNow`. |
-| `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`). Per-user collation of a full-namespace LIST, 5-min TTL cache with single-flight refresh + negative-cache cooldown, stale-serve/503/capability=false error paths. |
-| `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform LIST client for `completionrecords`: supplies group/version + resource and decodes each `items[].spec`. |
+| `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`). Per-user collation of a full-namespace LIST, 5-min TTL cache with single-flight refresh, invalidation generations, negative-cache cooldown, and stale-serve/503/capability=false error paths. |
+| `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform client for `completionrecords`: supplies group/version + resource, decodes each `items[].spec` for LISTs, and issues the create (POST) for the write path. |
+| `plugin/completion_records_write.go` | Completion Records durable write proxy (`POST /completion-records`). Fails closed with 401 on missing identity (the client retries after re-auth); server-stamps identity/org/stack/`recordedAt`/`schemaVersion` (`userLogin`/`userDisplayName` come only from the signed ID token's `username`/`name` claims — no fallback, absent claim omits the field and logs); validates a single bounded JSON fact; builds the CRD spec; derives the record name deterministically from the required non-blank client `idempotencyKey` scoped to the trusted `userID` — blank/missing → terminal 400, 409 → idempotent success; clamps out-of-range `durationMs` into `[0, 24h]` rather than dropping the record, and rejects `completedAt` outside `[now−30d, now+5m]`; stales the read cache on success, keeping the entry as the stale-serve fallback; maps outcomes onto the retry contract (201 created / 401 transient after re-auth / structural 404 disarm — persisted data survives / 408+429+5xx+3xx+network+token-exchange-failure transient / 403 disarm with records retained / other 4xx terminal). |
+| `plugin/completion_records_write_ratelimit.go` | Per-user token-bucket rate limiter (`newCompletionWriteRateLimiter`, held on `App`) guarding `POST /completion-records` (backend proxy pattern §9 flood guard). |
 | `plugin/custom_guide_repository.go` | Namespace-global custom-guide catalogue proxy (`/custom-guide-repository`).                                        |
 | `plugin/custom_guide_repository_client.go` | Per-kind wrapper for the guide-catalogue resource.                                                         |
-| `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. |
+| `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. `New` returns `(nil, nil)` when no credential is provisioned, so resolvers report `obo-unavailable` instead of failing. |
 | `plugin/settings.go`                | Parses `JSONData` and decrypts `SecureJSONData`. Reads only `secureJsonData.accessToken` into `OBOToken`; the exchange namespace comes from plugin-context, not settings. |
-| `plugin/app_platform_client.go`     | Shared paginated LIST client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, per-page byte cap + timeout, two-axis error classification (transient/terminal, namespace-global/caller-scoped), first-request credential diagnostics. |
-| `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `identityStatus` — fail-closed JWKS signature verification via `pkg/plugin/auth/id_token.go` (outbound credentials come from `pkg/plugin/auth` too); `deriveCompletionUserID` (the epic's canonical identity contract) delegates here. Trust boundary documented in `docs/design/BACKEND_PROXY_PATTERN.md`. |
+| `plugin/app_platform_client.go`     | Shared LIST/create client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, per-page byte cap + timeout, per-request `X-Access-Token` minting, redirects disabled so a minted credential can never be followed off-origin, two-axis error classification (transient/terminal, namespace-global/caller-scoped), first-request credential diagnostics. |
+| `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `identityStatus` — fail-closed JWKS signature verification via `pkg/plugin/auth/id_token.go` (outbound credentials come from `pkg/plugin/auth` too); `deriveCompletionUserID` (the epic's canonical identity contract) delegates here, and `completionWriterIdentity` routes the write path through that same helper. Trust boundary documented in `docs/design/BACKEND_PROXY_PATTERN.md`. |
 | `plugin/auth/id_token.go`           | Inbound Grafana ID-token verifier: derives the stack-local JWKS endpoint from the Grafana app URL, verifies ES256 signature, token type, and expiry, and classifies signing-key fetch failures for the shared identity gate. The verifier is rebuilt at least every 5 min, so a key removed from JWKS stays trusted for no longer than that. |
 
 **Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
