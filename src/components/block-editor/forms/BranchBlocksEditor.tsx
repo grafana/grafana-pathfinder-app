@@ -264,43 +264,31 @@ const getStyles = (theme: GrafanaTheme2) => ({
 /**
  * Create a default block of a given type
  */
-export function createDefaultBlock(type: BlockType): JsonBlock {
-  switch (type) {
-    case 'markdown':
-      return { type: 'markdown', content: '' };
-    case 'interactive':
-      return { type: 'interactive', action: 'highlight', reftarget: '', content: '' };
-    case 'image':
-      return { type: 'image', src: '' };
-    case 'video':
-      return { type: 'video', src: '' };
-    case 'quiz':
-      return {
-        type: 'quiz',
-        question: '',
-        choices: [
-          { id: 'a', text: '', correct: true },
-          { id: 'b', text: '' },
-        ],
-      };
-    case 'input':
-      return { type: 'input', prompt: '', inputType: 'text', variableName: '' };
-    case 'multistep':
-      return { type: 'multistep', content: '', steps: [] };
-    case 'guided':
-      return { type: 'guided', content: '', steps: [] };
-    case 'challenge':
-      return { type: 'challenge', title: '', brief: '', successCriteria: '' };
-    default:
-      return { type: 'markdown', content: '' };
-  }
+const BLOCK_DEFAULT_BUILDERS = {
+  markdown: (): JsonBlock => ({ type: 'markdown', content: '' }),
+  interactive: (): JsonBlock => ({ type: 'interactive', action: 'highlight', reftarget: '', content: '' }),
+  image: (): JsonBlock => ({ type: 'image', src: '' }),
+  video: (): JsonBlock => ({ type: 'video', src: '' }),
+  quiz: (): JsonBlock => ({
+    type: 'quiz',
+    question: '',
+    choices: [
+      { id: 'a', text: '', correct: true },
+      { id: 'b', text: '' },
+    ],
+  }),
+  input: (): JsonBlock => ({ type: 'input', prompt: '', inputType: 'text', variableName: '' }),
+  multistep: (): JsonBlock => ({ type: 'multistep', content: '', steps: [] }),
+  guided: (): JsonBlock => ({ type: 'guided', content: '', steps: [] }),
+} as const satisfies Partial<Record<BlockType, () => JsonBlock>>;
+
+export type DefaultableBlockType = keyof typeof BLOCK_DEFAULT_BUILDERS;
+
+export function createDefaultBlock(type: DefaultableBlockType): JsonBlock {
+  return BLOCK_DEFAULT_BUILDERS[type]();
 }
 
-// Block types the inline branch editor can construct without falling through to an
-// empty markdown stub. Nested containers are excluded; types that need dedicated
-// forms (challenge, quiz, terminal, …) are also excluded so the combobox cannot
-// silently create the wrong block shape (see #1542).
-const BRANCH_INLINE_CREATABLE_TYPES: BlockType[] = [
+export const ALLOWED_BRANCH_BLOCK_TYPES: readonly DefaultableBlockType[] = [
   'markdown',
   'interactive',
   'image',
@@ -311,11 +299,17 @@ const BRANCH_INLINE_CREATABLE_TYPES: BlockType[] = [
   'guided',
 ];
 
-export const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BRANCH_INLINE_CREATABLE_TYPES;
-
 // Block types that support inline form editing in BranchBlocksEditor
 // quiz, multistep, and guided require the dedicated editors and cannot be edited inline
-const INLINE_EDITABLE_TYPES: BlockType[] = ['markdown', 'interactive', 'image', 'video', 'input'];
+const INLINE_EDITABLE_TYPES: readonly DefaultableBlockType[] = ['markdown', 'interactive', 'image', 'video', 'input'];
+
+function isDefaultableBlockType(type: BlockType): type is DefaultableBlockType {
+  return type in BLOCK_DEFAULT_BUILDERS;
+}
+
+function isInlineEditableType(type: BlockType): type is DefaultableBlockType {
+  return isDefaultableBlockType(type) && INLINE_EDITABLE_TYPES.includes(type);
+}
 
 const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
   value: a.value as JsonInteractiveAction,
@@ -373,7 +367,7 @@ export interface BranchBlocksEditorProps {
   /** Called when blocks change */
   onChange: (blocks: JsonBlock[]) => void;
   /** Block types offered in the add menu. Defaults to ALLOWED_BRANCH_BLOCK_TYPES. */
-  addableBlockTypes?: BlockType[];
+  addableBlockTypes?: readonly DefaultableBlockType[];
   /** Called to start/stop the element picker */
   onPickerModeChange?: BlockFormProps['onPickerModeChange'];
 }
@@ -393,7 +387,7 @@ export function BranchBlocksEditor({
 
   // Add block form state
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newBlockType, setNewBlockType] = useState<BlockType>('markdown');
+  const [newBlockType, setNewBlockType] = useState<DefaultableBlockType>('markdown');
 
   // Edit block state
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -461,7 +455,7 @@ export function BranchBlocksEditor({
 
   // Build block from form fields
   const buildBlockFromForm = useCallback(
-    (type: BlockType, existing?: JsonBlock): JsonBlock => {
+    (type: DefaultableBlockType, existing?: JsonBlock): JsonBlock => {
       switch (type) {
         case 'markdown':
           return { type: 'markdown', content: formContent };
@@ -552,7 +546,9 @@ export function BranchBlocksEditor({
         return;
       }
       setEditingIndex(index);
-      setNewBlockType(block.type as BlockType);
+      if (isDefaultableBlockType(block.type)) {
+        setNewBlockType(block.type);
+      }
       populateFormFromBlock(block);
     },
     [blocks, populateFormFromBlock]
@@ -567,11 +563,11 @@ export function BranchBlocksEditor({
     if (!editingBlock) {
       return;
     }
-    const blockType = editingBlock.type as BlockType;
+    const blockType = editingBlock.type;
 
     // Safety check: prevent data loss for types without inline editing support
     // These types should use handleCancelEdit instead (UI shows Close button, not Save)
-    if (!INLINE_EDITABLE_TYPES.includes(blockType)) {
+    if (!isInlineEditableType(blockType)) {
       setEditingIndex(null);
       resetFormFields();
       return;
@@ -860,7 +856,7 @@ export function BranchBlocksEditor({
                                   tooltip="Delete block"
                                 />
                               </>
-                            ) : INLINE_EDITABLE_TYPES.includes(block.type as BlockType) ? (
+                            ) : isInlineEditableType(block.type) ? (
                               <>
                                 <Button size="sm" variant="primary" onClick={handleSaveEdit}>
                                   Save

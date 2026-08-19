@@ -9,15 +9,15 @@
 import React, { useState, useCallback } from 'react';
 import { Button, Field, Input, Switch, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
-import { BranchBlocksEditor } from './BranchBlocksEditor';
+import { BranchBlocksEditor, type DefaultableBlockType } from './BranchBlocksEditor';
 import { testIds } from '../../../constants/testIds';
-import type { BlockFormProps, BlockType, JsonBlock } from '../types';
+import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonCollapsibleBlock, PresentationalBlock } from '../../../types/json-guide.types';
 
 // Content-only block types offered in a collapsible's add menu. Mirrors
 // PresentationalBlock in json-guide.types.ts (html is authored via markdown,
 // not the palette).
-const PRESENTATIONAL_ADDABLE_TYPES: BlockType[] = ['markdown', 'image', 'video'];
+const PRESENTATIONAL_ADDABLE_TYPES: readonly DefaultableBlockType[] = ['markdown', 'image', 'video'];
 
 function isCollapsibleBlock(block: JsonBlock): block is JsonCollapsibleBlock {
   return block.type === 'collapsible';
