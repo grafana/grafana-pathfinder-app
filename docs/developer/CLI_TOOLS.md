@@ -271,7 +271,7 @@ The command walks the directory tree starting at `<root>`. Any subdirectory at a
 
 ### Output format
 
-The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.). The output is formatted with Prettier using the project's configuration.
+The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.), plus any unknown top-level manifest key forwarded verbatim as extension metadata — see [extension fields](./package-authoring.md#extension-fields) for the forwarding rules and the names the build refuses. The output is formatted with Prettier using the project's configuration.
 
 ---
 
@@ -387,16 +387,16 @@ node dist/cli/cli/index.js schema <name> [options]
 
 ### Available schemas
 
-| Name               | Description                                                                 |
-| ------------------ | --------------------------------------------------------------------------- |
-| `guide`            | Root JSON guide schema (strict, no extra fields)                            |
-| `block`            | Union of all block types with depth-limited nesting                         |
-| `content`          | Content JSON schema (`content.json` in two-file packages)                   |
-| `manifest`         | Manifest JSON schema (`manifest.json`, without cross-field refinement)      |
-| `repository`       | Repository index schema (`repository.json`)                                 |
-| `graph`            | Dependency graph schema (D3-compatible output)                              |
-| `e2e-report`       | E2E single-guide test report (open-world: no `additionalProperties: false`) |
-| `e2e-multi-report` | E2E multi-guide aggregate test report (open-world)                          |
+| Name               | Description                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| `guide`            | Root JSON guide schema (strict, no extra fields)                                       |
+| `block`            | Union of all block types with depth-limited nesting                                    |
+| `content`          | Content JSON schema (`content.json` in two-file packages)                              |
+| `manifest`         | Manifest JSON schema (`manifest.json`, without cross-field refinement; top level open) |
+| `repository`       | Repository index schema (`repository.json`; entry top level open)                      |
+| `graph`            | Dependency graph schema (D3-compatible output)                                         |
+| `e2e-report`       | E2E single-guide test report (open-world: no `additionalProperties: false`)            |
+| `e2e-multi-report` | E2E multi-guide aggregate test report (open-world)                                     |
 
 ### Examples
 

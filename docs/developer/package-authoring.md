@@ -209,7 +209,7 @@ Each repository publishes a compiled `repository.json` that maps bare package ID
 
 ### What repository.json contains
 
-Each entry maps a bare package ID to a `RepositoryEntry` with the package's path, type, and all denormalized manifest metadata:
+Each entry maps a bare package ID to a `RepositoryEntry` with the package's path, type, all denormalized manifest metadata, and any [extension fields](#extension-fields) the manifest carried:
 
 ```json
 {
