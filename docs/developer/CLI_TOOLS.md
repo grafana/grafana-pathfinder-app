@@ -4,12 +4,13 @@ The `pathfinder-cli` is a command-line interface for working with interactive JS
 
 - **validate** — Validates guide definitions and package directories against schemas and best practices
 - **build-repository** — Generates `repository.json` from a package tree
+- **build-stats** — Writes the computed completion block stats into every package's `manifest.json`
 - **build-graph** — Generates a D3-compatible dependency graph from repository indexes
 - **build-snippets** — Generates a snippet catalog (`index.json`) from a directory of snippet bodies
 - **schema** — Exports Zod validation schemas as JSON Schema for cross-language consumers
 - **e2e** — Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
 
-This document covers the `validate`, `build-repository`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
+This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
 
 ---
 
@@ -272,6 +273,59 @@ The command walks the directory tree starting at `<root>`. Any subdirectory at a
 ### Output format
 
 The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.). The output is formatted with Prettier using the project's configuration.
+
+---
+
+## Build-stats command
+
+Computes the block stats that completion tracking uses as its denominator and writes them into each package's `manifest.json` under a `stats` key. Authors never assert these numbers, so they cannot be wrong.
+
+The arithmetic is not implemented here. It lives in `src/lib/guide-stats` (Tier 1, pure, dependency-free) so the CLI, an upload script, the plugin frontend, and a Go port all inherit one rule. This command is argument parsing, file IO, and ordering.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js build-stats <root> [options]
+```
+
+### Arguments
+
+- `<root>` (required): Root directory containing package directories. Discovery is identical to `build-repository`.
+
+### Options
+
+- `-e, --exclude <paths...>`: Path(s) to exclude from the scan, relative to `<root>`. Excluded trees are not descended into.
+- `--check`: Report packages whose committed stats have drifted from their content and exit non-zero. Writes nothing.
+
+### Examples
+
+**Stamp every manifest under a package tree, then index it:**
+
+```bash
+node dist/cli/cli/index.js build-stats packages/
+node dist/cli/cli/index.js build-repository packages/ -o dist/repository.json
+```
+
+Run `build-stats` first: `build-repository` denormalizes each manifest into `repository.json`, so stats must already be on disk when it runs.
+
+**Fail CI when a committed manifest is stale:**
+
+```bash
+node dist/cli/cli/index.js build-stats packages/ --check
+```
+
+### What gets counted
+
+- Every block counts once, except containers (`section`, `assistant`, `collapsible`), which contribute their contents and nothing of their own. A section holding five blocks contributes five, not six.
+- `multistep` and `guided` count as exactly one block each. Their inner steps are deliberately outside the denominator.
+- `conditional` counts as one block, and neither branch is descended into.
+- A `path` or `journey` rolls up as its own body followed by its milestones in declared order. Milestones are measured before their parents. A milestone missing from the tree is an error, matching the rule that a pathway cannot refer to a milestone that does not exist.
+
+### Determinism
+
+Re-running on unchanged content is a byte-for-byte no-op: the command compares the computed stats against what is on disk and skips the write when they match. Stats keys are emitted in a fixed order and carry no timestamps. An existing `stats` key is replaced in place, so a manifest's authored key order survives a rewrite.
+
+Output is formatted with Prettier using the project's configuration, the same as `build-repository`. The run that first stamps a manifest can therefore re-expand nested objects an author had collapsed onto one line — both forms are Prettier-clean, and the file is stable from that run onward.
 
 ---
 
