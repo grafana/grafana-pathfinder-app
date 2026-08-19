@@ -494,8 +494,8 @@ describe('milestone opened directly (surface base is the milestone, not the jour
           totalMilestones: 2,
           baseUrl: COVER,
           milestones: [
-            { number: 1, title: 'Select platform', duration: '5m', url: FIRST, isActive: false },
-            { number: 2, title: 'Install Alloy', duration: '5m', url: MILESTONE, isActive: true },
+            { number: 1, title: 'Select platform', url: FIRST, isActive: false },
+            { number: 2, title: 'Install Alloy', url: MILESTONE, isActive: true },
           ],
         },
       },
@@ -559,7 +559,7 @@ describe('surface emitter carries the resolved repository end-to-end (repository
 
 describe('resolveExpectedMilestoneIds', () => {
   function milestone(url: string, number: number): Milestone {
-    return { number, title: url, duration: '5 min', url, isActive: false };
+    return { number, title: url, url, isActive: false };
   }
 
   it('maps each milestone URL to its slug, de-duplicated', () => {
