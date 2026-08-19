@@ -151,6 +151,16 @@ describe('ManifestJsonSchema', () => {
     expect(result.data.testEnvironment).toEqual({ tier: 'cloud' });
   });
 
+  it('should drop a malformed estimatedMinutes instead of failing the whole manifest', () => {
+    const result = ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, estimatedMinutes: 'not-a-number' });
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.estimatedMinutes).toBeUndefined();
+    expect(result.data.id).toBe('test-guide');
+  });
+
   it('should accept a fully populated manifest', () => {
     const result = ManifestJsonSchema.safeParse({
       schemaVersion: '1.1.0',

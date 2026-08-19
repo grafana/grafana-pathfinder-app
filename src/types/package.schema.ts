@@ -141,7 +141,7 @@ export const ManifestJsonObjectSchema = z.object({
 
   description: z.string().optional(),
   /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
-  estimatedMinutes: z.number().positive().optional(),
+  estimatedMinutes: z.number().positive().optional().catch(undefined),
   language: z.string().default('en'),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
