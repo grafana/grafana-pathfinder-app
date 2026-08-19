@@ -15,7 +15,12 @@ import type { RepositoryEntry, RepositoryJson } from '../../types/package.types'
 // applies graceful degradation — a path/journey manifest missing `milestones` produces
 // a repository entry rather than failing. The `validate` command enforces the
 // refinement (ManifestJsonSchema) for strict correctness checking.
-import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryJsonSchema } from '../../types/package.schema';
+import {
+  ContentJsonSchema,
+  ManifestJsonObjectSchema,
+  RepositoryEntrySchema,
+  RepositoryJsonSchema,
+} from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
 import { preserveAuthoredStartingLocation } from '../e2e/starting-location';
 import { resolveCliPath } from '../utils/file-loader';
@@ -24,6 +29,44 @@ import { formatJsonWithPrettier } from '../utils/output';
 interface BuildRepositoryOptions {
   output?: string;
   exclude?: string[];
+}
+
+/**
+ * Manifest keys the builder maps onto a repository entry by hand. Everything
+ * else in a manifest is extension metadata and is forwarded verbatim.
+ */
+const NAMED_MANIFEST_FIELDS: ReadonlySet<string> = new Set(Object.keys(ManifestJsonObjectSchema.shape));
+
+/**
+ * Repository-entry fields the builder computes itself (`path` from the package
+ * directory, `title` from content.json). A manifest key of the same name is
+ * refused rather than allowed to overwrite the computed value. `__proto__` is
+ * refused because assigning it would mutate the entry's prototype.
+ */
+const RESERVED_ENTRY_FIELDS: ReadonlySet<string> = new Set([
+  ...Object.keys(RepositoryEntrySchema.shape).filter((key) => !NAMED_MANIFEST_FIELDS.has(key)),
+  '__proto__',
+]);
+
+/**
+ * Copy every manifest key the builder does not name explicitly onto the entry.
+ * Returns a warning for each key refused as reserved.
+ */
+function forwardExtensionFields(manifest: Record<string, unknown>, entry: RepositoryEntry): string[] {
+  const warnings: string[] = [];
+
+  for (const key of Object.keys(manifest)) {
+    if (NAMED_MANIFEST_FIELDS.has(key)) {
+      continue;
+    }
+    if (RESERVED_ENTRY_FIELDS.has(key)) {
+      warnings.push(`Ignoring manifest field "${key}": reserved for a repository entry field the build computes`);
+      continue;
+    }
+    entry[key] = manifest[key];
+  }
+
+  return warnings;
 }
 
 /**
@@ -151,6 +194,8 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.replaces = manifest.replaces?.length ? manifest.replaces : undefined;
     entry.targeting = manifest.targeting;
     entry.testEnvironment = manifest.testEnvironment;
+
+    warnings.push(...forwardExtensionFields(manifest, entry));
   }
 
   return { id, dirName, entry, warnings, errors };
