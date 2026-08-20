@@ -82,6 +82,8 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 
 Any top-level key not listed above is extension metadata. It survives validation unchanged and `pathfinder-cli build-repository` forwards it verbatim into that package's entry in `repository.json`, so adding one costs no CLI change. Two names are refused with a warning because the build computes them itself: `path` (from the package directory) and `title` (from `content.json`). `__proto__` is refused as well, though a JSON `__proto__` key is already dropped during parsing. Named manifest fields are never forwarded generically, so `id`, `schemaVersion`, `repository`, and `language` still do not appear in a repository entry.
 
+Because forwarding is silent and unvalidated, an extension key's **shape is never checked** — a consumer reading `entry.stats.blockCount` gets whatever the author typed, including a string, a nested object, or nothing at all. The consumer owns that validation. The same openness means a misspelled known field (`startingLocaton`) is not rejected: it is forwarded as an extension field while the real field quietly takes its default. `build-repository` lists the keys it forwards for each package so a typo is visible in the build log — check that line when a manifest field appears not to take effect.
+
 Extension keys are not validated. If a key becomes load-bearing, promote it to a named field in the schema — that is the intended migration path and it needs no rename.
 
 ### Package IDs must not collide across repositories

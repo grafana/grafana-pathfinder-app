@@ -427,6 +427,61 @@ describe('buildRepository', () => {
     expect(Object.keys(entry!).filter((key) => !declaredEntryFields.has(key))).toEqual([]);
   });
 
+  it('should report the extension fields it forwarded so a typo is visible in the build log', () => {
+    writeJson(path.join(tmpDir, 'noisy', 'content.json'), {
+      id: 'noisy',
+      title: 'Noisy',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'noisy', 'manifest.json'), {
+      id: 'noisy',
+      type: 'guide',
+      stats: { steps: 4 },
+      estimatedMinutes: 15,
+    });
+
+    const { info, warnings, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(warnings).toHaveLength(0);
+    expect(info).toEqual(['noisy: forwarding 2 extension field(s): stats, estimatedMinutes']);
+  });
+
+  it('should surface a misspelled known field as a forwarded extension field', () => {
+    writeJson(path.join(tmpDir, 'typo', 'content.json'), {
+      id: 'typo',
+      title: 'Typo',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'typo', 'manifest.json'), {
+      id: 'typo',
+      type: 'guide',
+      startingLocaton: '/a/grafana-pathfinder-app/foo',
+    });
+
+    const { repository, info } = buildRepository(tmpDir);
+
+    // The typo'd key ships as plausible-looking metadata while the real field
+    // never lands at all, which is exactly why the info line matters.
+    expect(repository['typo']?.startingLocaton).toBe('/a/grafana-pathfinder-app/foo');
+    expect(repository['typo']?.startingLocation).toBeUndefined();
+    expect(info).toEqual(['typo: forwarding 1 extension field(s): startingLocaton']);
+  });
+
+  it('should report no info line when the manifest carries no extension fields', () => {
+    writeJson(path.join(tmpDir, 'plain', 'content.json'), {
+      id: 'plain',
+      title: 'Plain',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'plain', 'manifest.json'), {
+      id: 'plain',
+      type: 'guide',
+    });
+
+    const { info } = buildRepository(tmpDir);
+    expect(info).toEqual([]);
+  });
+
   it('should not let manifest keys named after computed entry fields overwrite them', () => {
     writeJson(path.join(tmpDir, 'collider', 'content.json'), {
       id: 'collider',

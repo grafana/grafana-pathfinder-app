@@ -51,10 +51,17 @@ const RESERVED_ENTRY_FIELDS: ReadonlySet<string> = new Set([
 
 /**
  * Copy every manifest key the builder does not name explicitly onto the entry.
- * Returns a warning for each key refused as reserved.
+ * Reports a warning for each key refused as reserved, and the names of the keys
+ * it forwarded — an open namespace means a misspelled known field is forwarded
+ * as a plausible-looking extension field, and the build log is where that is
+ * findable.
  */
-function forwardExtensionFields(manifest: Record<string, unknown>, entry: RepositoryEntry): string[] {
+function forwardExtensionFields(
+  manifest: Record<string, unknown>,
+  entry: RepositoryEntry
+): { warnings: string[]; forwarded: string[] } {
   const warnings: string[] = [];
+  const forwarded: string[] = [];
 
   for (const key of Object.keys(manifest)) {
     if (NAMED_MANIFEST_FIELDS.has(key)) {
@@ -65,9 +72,10 @@ function forwardExtensionFields(manifest: Record<string, unknown>, entry: Reposi
       continue;
     }
     entry[key] = manifest[key];
+    forwarded.push(key);
   }
 
-  return warnings;
+  return { warnings, forwarded };
 }
 
 /**
@@ -128,6 +136,7 @@ interface PackageReadResult {
   entry: RepositoryEntry;
   warnings: string[];
   errors: string[];
+  info: string[];
 }
 
 /**
@@ -138,6 +147,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
   const dirName = relativeDir || path.basename(packageDir);
   const warnings: string[] = [];
   const errors: string[] = [];
+  const info: string[] = [];
   const fallbackEntry: RepositoryEntry = { path: `${dirName}/`, type: 'guide' };
 
   const contentPath = path.join(packageDir, 'content.json');
@@ -150,7 +160,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
         ? `content.json validation failed: ${contentRead.issues?.map((i) => i.message).join('; ')}`
         : contentRead.message;
     errors.push(msg);
-    return { id: dirName, dirName, entry: fallbackEntry, warnings, errors };
+    return { id: dirName, dirName, entry: fallbackEntry, warnings, errors, info };
   }
 
   const content = contentRead.data;
@@ -170,7 +180,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
           ? `manifest.json validation failed: ${manifestRead.issues?.map((i) => i.message).join('; ')}`
           : `${manifestRead.message}, using content.json only`;
       warnings.push(msg);
-      return { id, dirName, entry, warnings, errors };
+      return { id, dirName, entry, warnings, errors, info };
     }
 
     const manifest = preserveAuthoredStartingLocation(manifestRead.parsed, manifestRead.data);
@@ -196,10 +206,14 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.targeting = manifest.targeting;
     entry.testEnvironment = manifest.testEnvironment;
 
-    warnings.push(...forwardExtensionFields(manifest, entry));
+    const forwarding = forwardExtensionFields(manifest, entry);
+    warnings.push(...forwarding.warnings);
+    if (forwarding.forwarded.length > 0) {
+      info.push(`forwarding ${forwarding.forwarded.length} extension field(s): ${forwarding.forwarded.join(', ')}`);
+    }
   }
 
-  return { id, dirName, entry, warnings, errors };
+  return { id, dirName, entry, warnings, errors, info };
 }
 
 /**
@@ -214,9 +228,11 @@ export function buildRepository(
   repository: RepositoryJson;
   warnings: string[];
   errors: string[];
+  info: string[];
 } {
   const warnings: string[] = [];
   const errors: string[] = [];
+  const info: string[] = [];
   const repository: RepositoryJson = {};
 
   const absoluteExcludes =
@@ -225,7 +241,7 @@ export function buildRepository(
 
   if (packageDirs.length === 0) {
     warnings.push(`No package directories with manifest.json found under ${root}`);
-    return { repository, warnings, errors };
+    return { repository, warnings, errors, info };
   }
 
   for (const packageDir of packageDirs) {
@@ -236,6 +252,9 @@ export function buildRepository(
     }
     for (const e of result.errors) {
       errors.push(`${result.dirName}: ${e}`);
+    }
+    for (const i of result.info) {
+      info.push(`${result.dirName}: ${i}`);
     }
 
     if (result.errors.length === 0) {
@@ -253,7 +272,7 @@ export function buildRepository(
     errors.push(`Generated repository.json is invalid: ${messages}`);
   }
 
-  return { repository, warnings, errors };
+  return { repository, warnings, errors, info };
 }
 
 export const buildRepositoryCommand = new Command('build-repository')
@@ -273,7 +292,11 @@ export const buildRepositoryCommand = new Command('build-repository')
     }
 
     const exclude = options.exclude ? (Array.isArray(options.exclude) ? options.exclude : [options.exclude]) : [];
-    const { repository, warnings, errors } = buildRepository(absoluteRoot, { exclude });
+    const { repository, warnings, errors, info } = buildRepository(absoluteRoot, { exclude });
+
+    for (const line of info) {
+      console.log(`ℹ️  ${line}`);
+    }
 
     for (const warning of warnings) {
       console.warn(`⚠️  ${warning}`);
