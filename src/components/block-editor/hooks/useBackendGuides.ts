@@ -92,12 +92,12 @@ export interface UseBackendGuidesReturn {
   saveGuide: (
     guide: JsonGuide,
     existingResourceName?: string,
-    existingMetadata?: any,
+    existingMetadata?: Partial<BackendGuideMetadata> | null,
     status?: 'draft' | 'published',
     replacesForeignResource?: boolean
   ) => Promise<void>;
-  publishGuide: (resourceName: string, currentMetadata: any) => Promise<void>;
-  unpublishGuide: (resourceName: string, currentMetadata: any) => Promise<void>;
+  publishGuide: (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => Promise<void>;
+  unpublishGuide: (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => Promise<void>;
   deleteGuide: (resourceName: string) => Promise<void>;
   isSaving: boolean;
 }
@@ -172,7 +172,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
     async (
       guide: JsonGuide,
       existingResourceName?: string,
-      existingMetadata?: any,
+      existingMetadata?: Partial<BackendGuideMetadata> | null,
       status: 'draft' | 'published' = 'draft',
       replacesForeignResource = false
     ) => {
@@ -197,10 +197,12 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         let existing = existingResourceName ? guides.find((g) => g.metadata.name === existingResourceName) : undefined;
         // An absent entry does not mean an absent resource: a transient LIST failure resolves to an
         // empty list rather than an error, so confirm with the server before refusing. Without this
-        // one failed refresh would make the guide permanently unsaveable.
+        // one failed refresh would make the guide permanently unsaveable. Probed rather than
+        // refreshed: committing the result would clear a live error and store an empty catalogue,
+        // hiding the guide-library entry that is the only way back.
         if (existingResourceName && !existing) {
-          const refreshed = await refreshGuides();
-          existing = refreshed.find((g) => g.metadata.name === existingResourceName);
+          const probed = await fetchBackendGuides(namespace);
+          existing = probed.find((g) => g.metadata.name === existingResourceName);
         }
         // Fail closed rather than replace a resource whose current spec is not in hand: the write
         // would drop spec.manifest and the provenance annotations, and with no resourceVersion it
@@ -251,7 +253,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
    * Publish an existing guide — sets spec.status to 'published' without changing content.
    */
   const publishGuide = useCallback(
-    async (resourceName: string, currentMetadata: any) => {
+    async (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => {
       if (!namespace) {
         throw new Error('No namespace available');
       }
@@ -294,7 +296,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
    * Unpublish a guide — sets spec.status to 'draft', removing it from the docs panel.
    */
   const unpublishGuide = useCallback(
-    async (resourceName: string, currentMetadata: any) => {
+    async (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => {
       if (!namespace) {
         throw new Error('No namespace available');
       }

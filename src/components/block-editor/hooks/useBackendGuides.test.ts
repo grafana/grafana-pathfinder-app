@@ -24,7 +24,7 @@ import { of } from 'rxjs';
 
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
 import type { JsonGuide } from '../types';
-import { useBackendGuides } from './useBackendGuides';
+import { hasManageableBackendGuides, useBackendGuides } from './useBackendGuides';
 
 const mockFetch = jest.fn();
 
@@ -185,6 +185,40 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     await expect(result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')).rejects.toThrow(
       'Could not read the saved guide'
     );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('probes without committing, so a live error and the guide-library entry both survive a refusal', async () => {
+    const resource = pathCoverPage();
+    (fetchBackendGuides as jest.Mock).mockRejectedValueOnce(new Error('list unavailable'));
+    const { result } = renderHook(() => useBackendGuides());
+    await waitFor(() => expect(result.current.hasLoaded).toBe(true));
+    // The failed initial list is what keeps the guide-library entry visible.
+    expect(hasManageableBackendGuides(result.current)).toBe(true);
+
+    (fetchBackendGuides as jest.Mock).mockResolvedValue([]);
+    await act(async () => {
+      await expect(
+        result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')
+      ).rejects.toThrow('Could not read the saved guide');
+    });
+
+    // Committing the probe would clear the error and store an empty catalogue, hiding the only
+    // affordance that could refresh the list — while the save still refuses.
+    expect(result.current.error).toBe('list unavailable');
+    expect(hasManageableBackendGuides(result.current)).toBe(true);
+  });
+
+  it('surfaces a failed probe as itself rather than as an absent resource', async () => {
+    const resource = pathCoverPage();
+    const result = await renderLoaded([]);
+    (fetchBackendGuides as jest.Mock).mockRejectedValue(new Error('list unavailable'));
+
+    await act(async () => {
+      await expect(
+        result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')
+      ).rejects.toThrow('list unavailable');
+    });
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
