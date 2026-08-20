@@ -37,7 +37,8 @@ export interface ContentMetadata {
   singleDoc?: SingleDocMetadata;
 
   /**
-   * Package manifest metadata — present when content was fetched via fetchPackageContent().
+   * Package manifest metadata — present when content was fetched via fetchPackageContent(),
+   * or synthesized by the `backend-guide:` loader for a launch that carries no resolved package.
    * Carries through manifest fields (category, author, recommends, suggests, depends, milestones, etc.)
    * so the content display layer can render richer UI without needing a separate manifest fetch.
    */
