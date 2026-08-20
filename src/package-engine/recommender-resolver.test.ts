@@ -159,18 +159,22 @@ describe('RecommenderPackageResolver', () => {
   });
 
   describe('entryTitle cross-reference (recommender endpoint carries no title field)', () => {
-    it('sets entryTitle from the CDN index when the resolved id has a matching entry', async () => {
+    // manifestUrl omitted so loadFromCdn's optional manifest fetch is skipped —
+    // these tests are scoped to entryTitle, not manifest loading.
+    const RESOLUTION_NO_MANIFEST = { ...FIXTURE_RESOLUTION, manifestUrl: '' };
+
+    it('sets entryTitle from the CDN index when loadContent is requested and the id has a matching entry', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve(FIXTURE_RESOLUTION),
+        json: () => Promise.resolve(RESOLUTION_NO_MANIFEST),
       });
       fetchOnlinePackageRecommendationsMock.mockResolvedValue({
         baseUrl: 'https://interactive-learning.grafana.net/packages/',
         packages: [{ id: 'alerting-101', path: 'alerting-101/', title: 'Grafana Alerting 101' }],
       });
 
-      const result = await resolver.resolve('alerting-101');
+      const result = await resolver.resolve('alerting-101', { loadContent: 'metadata-only' });
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -182,9 +186,27 @@ describe('RecommenderPackageResolver', () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: () => Promise.resolve(FIXTURE_RESOLUTION),
+        json: () => Promise.resolve(RESOLUTION_NO_MANIFEST),
       });
       fetchOnlinePackageRecommendationsMock.mockResolvedValue({ baseUrl: '', packages: [] });
+
+      const result = await resolver.resolve('alerting-101', { loadContent: 'metadata-only' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.entryTitle).toBeUndefined();
+      }
+    });
+
+    // Regression guard for a real latency issue: this fetch used to run
+    // unconditionally, blocking fast/no-content callers (e.g. fetchPackageById's
+    // verifyPublished probe) on a CDN index fetch they had no use for.
+    it('does not fetch the CDN index — or set entryTitle — when loadContent is not requested', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(RESOLUTION_NO_MANIFEST),
+      });
 
       const result = await resolver.resolve('alerting-101');
 
@@ -192,6 +214,7 @@ describe('RecommenderPackageResolver', () => {
       if (result.ok) {
         expect(result.entryTitle).toBeUndefined();
       }
+      expect(fetchOnlinePackageRecommendationsMock).not.toHaveBeenCalled();
     });
   });
 

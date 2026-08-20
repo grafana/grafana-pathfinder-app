@@ -80,18 +80,23 @@ export class RecommenderPackageResolver implements PackageResolver {
       repository: resolutionData.repository,
     };
 
-    // V1PackageResolutionResponse carries no title field, so cross-reference
-    // the same process-cached CDN index OnlineCdnPackageResolver uses —
-    // otherwise titles are lost whenever the recommender tier is active
-    // (the default on Grafana Cloud). Best-effort: the index call never
-    // throws and an empty/missing match just leaves entryTitle unset.
-    const index = await fetchOnlinePackageRecommendations();
-    const entry = index.packages.find((p) => p.id === packageId);
-    if (entry?.title != null) {
-      resolution.entryTitle = entry.title;
-    }
-
     if (options?.loadContent) {
+      // V1PackageResolutionResponse carries no title field, so cross-reference
+      // the same process-cached CDN index OnlineCdnPackageResolver uses —
+      // otherwise titles are lost whenever the recommender tier is active
+      // (the default on Grafana Cloud). Best-effort: the index call never
+      // throws and an empty/missing match just leaves entryTitle unset.
+      // Gated on loadContent: callers that only want a fast URL/publish-status
+      // lookup (e.g. fetchPackageById's verifyPublished probe) have no use
+      // for a title, and this index fetch isn't guaranteed warm — cold, it
+      // can cost several seconds, which must never block a caller that never
+      // asked for enriched metadata in the first place.
+      const index = await fetchOnlinePackageRecommendations();
+      const entry = index.packages.find((p) => p.id === packageId);
+      if (entry?.title != null) {
+        resolution.entryTitle = entry.title;
+      }
+
       const metadataOnly = options.loadContent === 'metadata-only';
       const loaded = await this.loadFromCdn(resolutionData, packageId, metadataOnly);
       if (!loaded.ok) {
