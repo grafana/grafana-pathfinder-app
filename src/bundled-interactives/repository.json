@@ -91,6 +91,22 @@
       "minVersion": "12.2.0"
     }
   },
+  "interactive-style-validation": {
+    "path": "interactive-style-validation/",
+    "title": "Interactive style validation",
+    "type": "guide",
+    "description": "Local-only visual spray board for interactive.styles.ts feedback and layout selectors. Not intended for end users.",
+    "category": "reference",
+    "author": {
+      "name": "Interactive Learning",
+      "team": "Grafana Developer Advocacy"
+    },
+    "startingLocation": "/",
+    "testEnvironment": {
+      "tier": "local",
+      "minVersion": "12.2.0"
+    }
+  },
   "json-guide-demo": {
     "path": "json-guide-demo/",
     "title": "JSON Guide Demo - All Block Types",

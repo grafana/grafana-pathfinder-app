@@ -912,7 +912,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         ═══════════════════════════════════════════════════════════════════ */}
         {uiState === STEP_STATES.REQUIREMENTS_UNMET && checker.explanation && (
           <div
-            className="interactive-step-requirement-explanation"
+            className="interactive-feedback-box interactive-feedback-box--neutral interactive-requirement-box interactive-step-requirement-explanation"
             data-testid={testIds.interactive.requirementCheck(renderedStepId)}
           >
             {checker.explanation}
@@ -924,7 +924,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         ═══════════════════════════════════════════════════════════════════ */}
         {uiState === STEP_STATES.ERROR && executionError && (
           <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
-            <div className="interactive-guided-error-box">
+            <div className="interactive-feedback-box interactive-feedback-box--warning interactive-guided-error-box">
               <span className="interactive-guided-error-icon">!</span>
               <div className="interactive-guided-error-content">
                 <span className="interactive-guided-error-title">Step {failedStepIndex + 1} failed</span>

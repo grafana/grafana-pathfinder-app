@@ -19,11 +19,21 @@ export interface SelectorDebugPanelProps {
   onOpenLearningJourney?: (url: string, title: string) => void;
 }
 
+const STYLE_VALIDATION_GUIDE_URL = 'bundled:interactive-style-validation/content.json';
+const STYLE_VALIDATION_GUIDE_TITLE = 'Interactive style validation';
+
 export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: SelectorDebugPanelProps = {}) {
   const styles = useStyles2(getDebugPanelStyles);
 
   const [prTesterExpanded, setPrTesterExpanded] = usePersistedBoolean(StorageKeys.DEVTOOLS_PR_TESTER_EXPANDED);
   const [UrlTesterExpanded, setUrlTesterExpanded] = usePersistedBoolean(StorageKeys.DEVTOOLS_URL_TESTER_EXPANDED);
+  const [styleValidationExpanded, setStyleValidationExpanded] = usePersistedBoolean(
+    StorageKeys.DEVTOOLS_STYLE_VALIDATION_EXPANDED
+  );
+
+  const handleOpenStyleValidation = useCallback(() => {
+    onOpenDocsPage?.(STYLE_VALIDATION_GUIDE_URL, STYLE_VALIDATION_GUIDE_TITLE);
+  }, [onOpenDocsPage]);
 
   // Handle leaving dev mode
   const handleLeaveDevMode = useCallback(async () => {
@@ -94,6 +104,34 @@ export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: Se
         {UrlTesterExpanded && onOpenDocsPage && (
           <div className={styles.sectionContent}>
             <UrlTester onOpenDocsPage={onOpenDocsPage} onOpenLearningJourney={onOpenLearningJourney} />
+          </div>
+        )}
+      </div>
+
+      {/* Interactive style validation spray guide */}
+      <div className={styles.section}>
+        <div className={styles.sectionHeader} onClick={() => setStyleValidationExpanded(!styleValidationExpanded)}>
+          <Stack direction="row" gap={1} alignItems="center">
+            <Icon name="list-ul" />
+            <h4 className={styles.sectionTitle}>Style validation</h4>
+          </Stack>
+          <Icon name={styleValidationExpanded ? 'angle-up' : 'angle-down'} />
+        </div>
+        {styleValidationExpanded && onOpenDocsPage && (
+          <div className={styles.sectionContent}>
+            <p className={styles.helpText}>
+              Opens the bundled interactive style spray guide — section and standalone cards, requirement boxes,
+              numbering, and terminal states — through the real ContentRenderer.
+            </p>
+            <Button
+              variant="primary"
+              size="sm"
+              icon="play"
+              onClick={handleOpenStyleValidation}
+              data-testid="devtools-style-validation-open"
+            >
+              Open style validation guide
+            </Button>
           </div>
         )}
       </div>

@@ -45,13 +45,11 @@ export function shouldNumberSectionChild(child: React.ReactNode): boolean {
  * without a number.
  *
  * `data-step="true"`  → React component (InteractiveStep, quiz,
- *   terminal, etc.). These carry their own CSS margin-top that
- *   naturally aligns the card with the `::before` number at
- *   `top: theme.spacing(2)`. The `<li>` needs no extra padding.
+ *   terminal, etc.). Card padding determines the number's internal
+ *   vertical alignment.
  * `data-step="false"` → Plain HTML content (markdown `<p>`, headings,
- *   etc.). No built-in top margin, so the `<li>` gets `paddingTop`
- *   via CSS to push the content start down to match the number
- *   position.
+ *   etc.). CSS supplies the number inset and removes the child's outer
+ *   margins so the section gap controls spacing for both kinds.
  */
 export function wrapSectionChildrenForNumbering(children: React.ReactNode): React.ReactNode {
   return React.Children.map(children, (child, index) => {
