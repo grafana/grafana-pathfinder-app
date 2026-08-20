@@ -70,7 +70,7 @@ async function seedWithOneBlock(
   return created.sessionToken;
 }
 
-describe('pathfinder_read_session', () => {
+describe('pathfinder_read_session — list-blocks', () => {
   it('returns the tree summary for a real session', async () => {
     const h = await newHarness();
     try {
@@ -118,7 +118,7 @@ describe('pathfinder_read_session', () => {
   });
 });
 
-describe('pathfinder_read_session', () => {
+describe('pathfinder_read_session — get-block', () => {
   it('returns the block by id', async () => {
     const h = await newHarness();
     try {
@@ -169,7 +169,7 @@ describe('pathfinder_read_session', () => {
   });
 });
 
-describe('pathfinder_read_session', () => {
+describe('pathfinder_read_session — get-manifest', () => {
   it('returns the manifest for a real session', async () => {
     const h = await newHarness();
     try {

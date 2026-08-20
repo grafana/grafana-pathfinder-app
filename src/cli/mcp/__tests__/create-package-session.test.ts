@@ -88,7 +88,7 @@ describe('pathfinder_create_package — session mint', () => {
     });
   });
 
-  it('the minted token works for subsequent session-mode add_block calls', async () => {
+  it('the minted token works for subsequent session-mode add-block calls', async () => {
     await withHarness(async (call, store) => {
       const created = await call('pathfinder_create_package', { opts: { title: 'Chained' } });
       expect(created.sessionToken).toBeDefined();

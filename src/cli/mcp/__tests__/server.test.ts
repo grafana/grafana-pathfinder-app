@@ -533,7 +533,11 @@ describe('MCP server', () => {
       // mechanism (a crashed-and-retried add duplicates content without it).
       expect(parameters).toEqual(expect.arrayContaining(['type', 'parent', 'branch', 'id', 'ifAbsent']));
       // Placement stays a CLI power tool; the MCP procedure is append-only.
-      expect(parameters).not.toEqual(expect.arrayContaining(['dir', 'before', 'after', 'position']));
+      // Per-key: a negated `arrayContaining` passes when any single member is
+      // absent, so it would not catch one placement flag leaking on its own.
+      for (const withheld of ['dir', 'before', 'after', 'position']) {
+        expect(parameters).not.toContain(withheld);
+      }
       const parent = [
         ...(result.required as Array<{ name: string; description: string }>),
         ...(result.optional as Array<{ name: string; description: string }>),

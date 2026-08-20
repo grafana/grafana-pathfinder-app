@@ -47,7 +47,7 @@ async function call(client: Client, name: string, args: Record<string, unknown> 
 }
 
 describe('mutation responses include a TreeNode[] summary', () => {
-  it('pathfinder_create_package returns an empty summary', async () => {
+  it('pathfinder_create_package: returns an empty summary', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await call(client, 'pathfinder_create_package', {
@@ -61,7 +61,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
     }
   });
 
-  it('pathfinder_manage_block updates the summary tree', async () => {
+  it('pathfinder_manage_block — add-block: updates the summary tree', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await call(client, 'pathfinder_create_package', {
@@ -95,7 +95,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
     }
   });
 
-  it('nested children appear under their container in the summary', async () => {
+  it('pathfinder_manage_block — add-block: nested children appear under their container in the summary', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await call(client, 'pathfinder_create_package', {
@@ -127,7 +127,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
     }
   });
 
-  it('cascade-removing a container drops its subtree from the summary', async () => {
+  it('pathfinder_manage_block — remove-block: cascade-removing a container drops its subtree from the summary', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await call(client, 'pathfinder_create_package', {
@@ -162,7 +162,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
     }
   });
 
-  it('summary is also returned on validation failure (so the agent can still navigate)', async () => {
+  it('pathfinder_manage_block — add-block: summary is also returned on validation failure (so the agent can still navigate)', async () => {
     const { client, close } = await spinUp();
     try {
       const created = await call(client, 'pathfinder_create_package', {

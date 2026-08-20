@@ -97,7 +97,7 @@ beforeEach(() => {
   global.fetch = fetchMock as unknown as typeof fetch;
 });
 
-describe('pathfinder_read_repository', () => {
+describe('pathfinder_read_repository — list-packages', () => {
   it('returns all packages from the index when no filters are supplied', async () => {
     mockFetchJsonOnce(sampleIndex);
     const payload = await callTool('pathfinder_read_repository', {
@@ -149,7 +149,7 @@ describe('pathfinder_read_repository', () => {
   });
 });
 
-describe('pathfinder_read_repository', () => {
+describe('pathfinder_read_repository — get-package', () => {
   it('returns content + manifest with validation reports on the happy path', async () => {
     mockFetchJsonOnce(sampleIndex);
     mockFetchJsonOnce(sampleContent);
@@ -195,7 +195,7 @@ describe('pathfinder_read_repository', () => {
   });
 });
 
-describe('pathfinder_read_repository', () => {
+describe('pathfinder_read_repository — get-manifest', () => {
   it('returns manifest only on the happy path', async () => {
     mockFetchJsonOnce(sampleIndex);
     mockFetchJsonOnce(sampleManifest);
