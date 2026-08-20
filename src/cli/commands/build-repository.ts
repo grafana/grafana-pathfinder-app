@@ -295,7 +295,7 @@ export const buildRepositoryCommand = new Command('build-repository')
     const { repository, warnings, errors, info } = buildRepository(absoluteRoot, { exclude });
 
     for (const line of info) {
-      console.log(`ℹ️  ${line}`);
+      console.error(`ℹ️  ${line}`);
     }
 
     for (const warning of warnings) {

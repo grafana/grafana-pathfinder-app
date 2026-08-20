@@ -8,8 +8,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { buildRepository } from '../cli/commands/build-repository';
+import { buildRepository, buildRepositoryCommand } from '../cli/commands/build-repository';
 import { RepositoryEntrySchema, RepositoryJsonSchema } from '../types/package.schema';
+
+jest.mock('prettier', () => ({
+  resolveConfig: async () => ({}),
+  format: async (source: string) => source,
+}));
 
 function createTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-build-repo-'));
@@ -700,5 +705,48 @@ describe('buildRepository', () => {
       expect(repository['sibling-b']).toBeDefined();
       expect(repository['deep-pkg']).toBeUndefined();
     });
+  });
+});
+
+describe('buildRepositoryCommand streams', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = createTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should keep stdout parseable JSON and put the forwarded-keys line on stderr', async () => {
+    writeJson(path.join(tmpDir, 'noisy', 'content.json'), { id: 'noisy', title: 'Noisy', blocks: [] });
+    writeJson(path.join(tmpDir, 'noisy', 'manifest.json'), { id: 'noisy', type: 'guide', stats: { steps: 4 } });
+
+    const stdoutChunks: string[] = [];
+    const stdoutLines: string[] = [];
+    const stderrLines: string[] = [];
+    const stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(((chunk: unknown) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    }) as unknown as typeof process.stdout.write);
+    const logSpy = jest.spyOn(console, 'log').mockImplementation((line: unknown) => {
+      stdoutLines.push(String(line));
+    });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation((line: unknown) => {
+      stderrLines.push(String(line));
+    });
+
+    try {
+      await buildRepositoryCommand.parseAsync([tmpDir], { from: 'user' });
+    } finally {
+      stdoutSpy.mockRestore();
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+
+    expect(JSON.parse(stdoutChunks.join(''))).toHaveProperty('noisy');
+    expect(stdoutLines).toEqual([]);
+    expect(stderrLines.join('\n')).toContain('noisy: forwarding 1 extension field(s): stats');
   });
 });
