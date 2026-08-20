@@ -1,12 +1,32 @@
 apiVersion: 1
 
-# Only plugins that are always present may be listed here. Grafana treats a missing
-# app plugin as fatal — "app provisioning error: plugin not installed" fails the
-# provisioning module and the process exits 1 — so listing an optional plugin here
-# takes the whole dev stack, and CI, down with it. The Coda plugin is provisioned by
-# docker-compose.coda.yaml, which mounts the plugin and its entry together.
-apps:
-  - type: 'grafana-pathfinder-app'
-    org_id: 1
-    org_name: 'grafanalabs'
-    disabled: false
+# Deliberately empty. Do not add an app entry here.
+#
+# Grafana's plugin provisioner REPLACES jsonData on every startup with whatever
+# the file says — and a file that omits `jsonData:` says "nothing", so it wipes
+# every setting an operator saved through the UI. `secureJsonData` is merged key
+# by key, `jsonData` is assigned outright:
+#
+#   pluginSetting.JsonData = cmd.JsonData
+#     — grafana/pkg/services/pluginsintegration/pluginsettings/service/service.go
+#
+# That is what silently reset `devMode`, `devModeUserIds` and `enableCodaTerminal`
+# on every `docker compose up`, and it looked like a save bug in this plugin.
+#
+# An entry would buy nothing anyway: `plugin.json` sets `autoEnabled: true`, so
+# Grafana already reports the app as enabled when no settings row exists
+# (`pkg/api/bootdata.go`), and the provisioner outright REFUSES to disable an
+# auto-enabled plugin (`ErrPluginProvisioningAutoEnabled`). So the only thing an
+# entry can express here is the state the plugin already has, at the cost of
+# destroying the operator's settings.
+#
+# Provisioning jsonData instead of omitting it is not the fix. It stops the wipe
+# but pins the values: a change made in the UI would survive until the next
+# restart and then snap back.
+#
+# Also worth keeping: Grafana treats a provisioned-but-missing app plugin as
+# fatal — "app provisioning error: plugin not installed" fails the provisioning
+# module and the process exits 1, serving no requests. So an *optional* plugin
+# must never be listed here even once this file has a use again; it belongs
+# beside the bind-mount that installs it.
+apps: []

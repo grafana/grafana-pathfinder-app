@@ -225,21 +225,29 @@ explicitly, without touching `.env`:
 docker compose -f docker-compose.yaml -f docker-compose.coda.yaml up -d --build grafana
 ```
 
-The overlay mounts two things that must always travel together: the plugin's `dist/`, and a
-provisioning entry (`demo/coda-app-provisioning.yaml`) that enables it.
+The overlay mounts one thing: the plugin's `dist/`. It needs no provisioning entry — the Coda plugin's
+`plugin.json` sets `autoEnabled: true`, so Grafana reports it enabled with no settings row at all
+(`pkg/api/bootdata.go`).
 
-**Never move that entry into `provisioning/plugins/`.** Grafana treats a provisioned-but-missing app
-plugin as fatal:
+**There used to be an entry here, and removing it fixed a settings bug.** Grafana's plugin provisioner
+_replaces_ `jsonData` on every startup with whatever the file says, and a file that omits `jsonData:`
+says nothing — so it wiped the Coda plugin's `apiUrl`, `relayUrl`, `minimumSessionRole` and, worst of
+all, `registered`, on every `docker compose up`. The refresh token in `secureJsonData` survived, because
+that half is merged key by key while `jsonData` is assigned outright. A stack that was genuinely
+registered therefore came back up claiming it was not, with the credential still sitting there. See
+[`provisioning/plugins/app.yaml`](../../provisioning/plugins/app.yaml) for the code references.
+
+`CODA_PLUGIN_DIST` is still **required with no default**: a wrong default would mount an empty
+directory and Grafana would find no `plugin.json`. And if you ever do add a provisioning entry for an
+_optional_ plugin, it must live beside the mount that installs it and never in `provisioning/plugins/`
+— Grafana treats a provisioned-but-missing app plugin as fatal:
 
 ```
 app provisioning error: plugin not installed: "grafana-coda-app"
 ```
 
 The provisioning module fails, every module depending on it fails, and Grafana **exits 1** — it never
-serves a request. So the entry is only safe next to the mount that installs the plugin. For the same
-reason `CODA_PLUGIN_DIST` is **required with no default**: a wrong default would mount an empty
-directory, Grafana would find no `plugin.json`, and the provisioning entry would then be fatal.
-Failing fast on an unset variable beats debugging a Grafana that never comes up.
+serves a request.
 
 Running without the overlay is a supported case, not a broken one, and it costs no request: boot data
 carries no `grafana-coda-app`, `CodaBackendStatus` says the plugin is absent, and the terminal stays

@@ -30,10 +30,16 @@ services:
       GF_LOG_FILTERS: plugin.grafana-pathfinder-app:debug,plugin.grafana-coda-app:debug
     volumes:
       # Point CODA_PLUGIN_DIST at a real, built dist/. There is no default: Docker
-      # would create a missing path as an empty directory, Grafana would find no
-      # plugin.json in it, and the provisioning entry below would then be fatal.
+      # would create a missing path as an empty directory and Grafana would find
+      # no plugin.json in it.
+      #
+      # The mount is all that is needed — the plugin's own plugin.json sets
+      # `autoEnabled: true`, so Grafana reports it enabled with no settings row
+      # and no provisioning entry. There used to be one here; it enabled nothing
+      # the plugin did not already enable, and it wiped the plugin's jsonData on
+      # every restart, because the provisioner replaces jsonData with whatever the
+      # file says and the file said nothing. That is what kept resetting `apiUrl`,
+      # `minimumSessionRole` and — the one that really bit — `registered`, while
+      # the refresh token in secureJsonData survived, because that half is merged.
+      # See provisioning/plugins/app.yaml for the full reasoning.
       - ${CODA_PLUGIN_DIST:?set CODA_PLUGIN_DIST to the Coda plugin dist/ path}:/var/lib/grafana/plugins/grafana-coda-app
-      # Enables the plugin. Must travel with the mount above and never move into
-      # provisioning/plugins/ — Grafana exits 1 on "plugin not installed", so this
-      # entry without that mount kills the whole stack.
-      - ./demo/coda-app-provisioning.yaml:/etc/grafana/provisioning/plugins/coda-app.yaml
