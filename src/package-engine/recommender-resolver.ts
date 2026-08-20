@@ -10,6 +10,7 @@
  * @coupling API: GET /api/v1/packages/{id} in grafana-recommender openapi.yaml
  */
 
+import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
 import { ContentJsonSchema, ManifestJsonObjectSchema } from '../types/package.schema';
 import type {
   ContentJson,
@@ -78,6 +79,17 @@ export class RecommenderPackageResolver implements PackageResolver {
       manifestUrl: resolutionData.manifestUrl,
       repository: resolutionData.repository,
     };
+
+    // V1PackageResolutionResponse carries no title field, so cross-reference
+    // the same process-cached CDN index OnlineCdnPackageResolver uses —
+    // otherwise titles are lost whenever the recommender tier is active
+    // (the default on Grafana Cloud). Best-effort: the index call never
+    // throws and an empty/missing match just leaves entryTitle unset.
+    const index = await fetchOnlinePackageRecommendations();
+    const entry = index.packages.find((p) => p.id === packageId);
+    if (entry?.title != null) {
+      resolution.entryTitle = entry.title;
+    }
 
     if (options?.loadContent) {
       const metadataOnly = options.loadContent === 'metadata-only';
