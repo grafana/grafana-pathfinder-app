@@ -23,7 +23,7 @@ import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../util
 import pluginJson from '../../plugin.json';
 import { FullScreenLayout } from './FullScreenLayout';
 import { getFullScreenStyles } from './full-screen.styles';
-import { dockOnLeavingFullScreen, type HistoryAction } from './full-screen-autodock';
+import { dockOnLeavingFullScreen, type HistoryAction, type FullScreenExitReason } from './full-screen-autodock';
 
 // Lazy-loaded so the editor only ships when the user actually opens it full screen.
 const BlockEditor = lazy(() =>
@@ -33,12 +33,6 @@ const BlockEditor = lazy(() =>
 );
 
 const EDITOR_FULL_SCREEN_TITLE = 'Guide editor';
-
-// Mirrors full-screen-autodock.ts's `reason` vocabulary for the same
-// FullScreenExit event, so every route back to the sidebar from this panel
-// stays distinguishable in analytics.
-type FullScreenExitToSidebarReason =
-  'manual_exit' | 'empty_state_fallback' | 'dock_request' | 'content_requires_grafana_ui';
 
 interface FullScreenPanelState extends SceneObjectState {}
 
@@ -244,7 +238,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   });
 
   const handleExitToSidebar = useCallback(
-    async (reason: FullScreenExitToSidebarReason) => {
+    async (reason: FullScreenExitReason) => {
       // Read fresh from the model, not the render-time guideUrl/title closure:
       // an automatic handoff (REQUEST_SIDEBAR_HANDOFF_EVENT) can dispatch in the
       // same synchronous tick as the state update that just loaded the new
@@ -258,10 +252,11 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
         destination: 'sidebar',
         guide_url: (isCurrentEditorTab ? undefined : currentTab?.currentUrl || currentTab?.baseUrl) || '',
         guide_title: isCurrentEditorTab ? EDITOR_FULL_SCREEN_TITLE : currentTab?.title || 'Interactive learning',
-        // Matches full-screen-autodock.ts's reason vocabulary for the same
-        // FullScreenExit event, so a deliberate exit and an involuntary one
-        // (e.g. content that turned out to need the live Grafana UI) stay
-        // distinguishable in analytics instead of conflating under one count.
+        // FullScreenExitReason (full-screen-autodock.ts) is shared with that
+        // module's own automatic exit reasons, so a deliberate exit and an
+        // involuntary one (e.g. content that turned out to need the live
+        // Grafana UI) stay distinguishable in analytics instead of
+        // conflating under one count.
         reason,
       });
       // Flush before the mode flip: the sidebar force-restores from tabStorage
