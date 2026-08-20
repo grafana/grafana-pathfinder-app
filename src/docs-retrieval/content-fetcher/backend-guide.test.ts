@@ -180,12 +180,12 @@ describe('fetchBackendInteractive — completion identity', () => {
     });
   });
 
-  it('keys on the resource name when spec.id and metadata.name are absent', async () => {
+  it('supplies no id when the resource carries none, so the recorder fails closed on the loader URL', async () => {
     mockFetch.mockReturnValue(of({ data: { spec: { title: 'T', blocks: [{ type: 'markdown', content: 'x' }] } } }));
 
     const result = await fetchBackendInteractive('backend-guide:my-guide');
 
-    expect(result.content!.metadata.packageManifest).toMatchObject({ id: 'my-guide' });
+    expect(result.content!.metadata.packageManifest!.id).toBeUndefined();
   });
 
   it('carries a persisted manifest through, so a path cover is not mislabelled a guide', async () => {

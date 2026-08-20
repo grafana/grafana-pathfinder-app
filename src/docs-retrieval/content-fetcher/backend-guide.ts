@@ -23,24 +23,21 @@ export interface BackendGuideResource {
 const APP_PLATFORM_REPOSITORY = 'app-platform';
 
 /**
- * The completion identity for content loaded straight off this scheme.
- *
- * Every launch that carries a resolved package hands its own manifest down
- * instead (fetchPackageContent overwrites this one), so what this covers is the
- * launches that carry none: an orphan custom guide started from the Custom
- * Guides list, a `?doc=api:<id>` share link, auto-dock tab restore. Those reach
- * the recorder with no manifest at all, and it fails closed on a missing id
- * rather than key a record on a loader URL — so the completion is simply lost.
- *
- * `id` and `repository` are forced over any persisted value per
- * `repository-identity-authority` (docs/design/CONCERNS.md): a stray manifest
- * field must not outrank the resource actually being loaded, and everything
- * served here is App Platform-sourced whatever the manifest claims. `type` is
- * carried through unforced — it is what keeps a path/journey cover out of the
- * standalone-guide fact that the journey trigger owns.
+ * Completion identity for a launch that carries no resolved package — an orphan
+ * guide from the custom guides list, a `?doc=api:<id>` share link, auto-dock tab
+ * restore. `id` and `repository` are forced over any persisted manifest value per
+ * `repository-identity-authority` (docs/design/CONCERNS.md); a resource with no
+ * id of its own gets none, so the recorder fails closed rather than keying on the
+ * loader URL. `type` is carried through unforced so a path cover is not recorded
+ * as a standalone guide.
  */
-function buildLoaderManifest(guideId: string, spec: BackendGuideResource['spec']): Record<string, unknown> {
-  return { type: 'guide', ...spec?.manifest, id: guideId, repository: APP_PLATFORM_REPOSITORY };
+function buildLoaderManifest(guideResource: BackendGuideResource): Record<string, unknown> {
+  return {
+    type: 'guide',
+    ...guideResource.spec?.manifest,
+    id: guideResource.spec?.id || guideResource.metadata?.name,
+    repository: APP_PLATFORM_REPOSITORY,
+  };
 }
 
 /**
@@ -85,7 +82,7 @@ export function buildBackendGuideContent(
       content: JSON.stringify(guide),
       metadata: {
         title: guide.title,
-        packageManifest: buildLoaderManifest(guide.id, guideResource.spec),
+        packageManifest: buildLoaderManifest(guideResource),
         repository: APP_PLATFORM_REPOSITORY,
       },
       type: 'interactive',

@@ -679,7 +679,7 @@ describe('standalone private guide opened straight off the backend-guide: scheme
     expect(journeySetMock).not.toHaveBeenCalled();
   });
 
-  it('leaves a path cover to the journey trigger instead of emitting a guide fact', async () => {
+  it('emits no guide fact for a path cover, so a path is never recorded as a standalone guide', async () => {
     const content = await loadStandalonePrivateGuide('fe-alerting-path', {
       manifest: { type: 'path', milestones: ['m1', 'm2'] },
     });
