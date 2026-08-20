@@ -27,8 +27,10 @@ import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
+import { panelModeManager, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { GRAFANA_DRIVING_ACTIONS } from '../../constants/interactive-actions';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -116,6 +118,9 @@ interface InteractiveGuidedProps {
   // Guided-specific configuration
   stepTimeout?: number; // Timeout per step in milliseconds (default: 120000ms = 2min)
   resetTrigger?: number;
+
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 interface GuidedUiStateInput {
@@ -182,6 +187,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -334,6 +340,17 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         return true;
       }
 
+      // Guided steps never route through executeInteractiveAction's own gate
+      // (see interactive.hook.ts), so a guided step needs the same full-screen
+      // -> sidebar handoff applied here directly, keyed off its inner actions'
+      // targetAction rather than the 'guided' container tag itself.
+      if (
+        panelModeManager.getMode() === 'fullscreen' &&
+        internalActions.some((action) => GRAFANA_DRIVING_ACTIONS.has(action.targetAction))
+      ) {
+        await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
+      }
+
       setIsExecuting(true);
       setExecutionError(null);
       setCurrentStepIndex(0);
@@ -419,6 +436,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       onComplete,
       persistCompletion,
       checker.completionReason,
+      fullScreenFallbackLocation,
     ]);
 
     // Expose execute method for parent (section execution)

@@ -64,6 +64,9 @@ interface InteractiveMultiStepProps {
   // Timing configuration
   stepDelay?: number; // Delay between steps in milliseconds (default: 1800ms)
   resetTrigger?: number; // Signal from parent to reset local completion state
+
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 interface MultiStepUiStateInput {
@@ -176,6 +179,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -417,7 +421,11 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             } // Skip to cancellation check at loop start
 
             // Do mode (actually perform the action)
-            const doOutcome = await executeInteractiveAction({ ...action, buttonType: 'do' });
+            const doOutcome = await executeInteractiveAction({
+              ...action,
+              buttonType: 'do',
+              fullScreenFallbackLocation,
+            });
             if (doOutcome === 'error') {
               setFailedStepIndex(i);
               setExecutionError(`Step ${i + 1} did not complete successfully.`);
@@ -503,6 +511,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       title,
       renderedStepId,
       persistCompletion,
+      fullScreenFallbackLocation,
     ]);
 
     // Expose execute method for parent (sequence execution)

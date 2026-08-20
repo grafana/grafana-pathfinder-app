@@ -320,11 +320,20 @@ export const panelModeManager = new PanelModeManager();
  * encountered there can't actually be acted on. Signal FullScreenPanel to
  * hand off to the sidebar (reusing its existing handleExitToSidebar) instead.
  *
- * Called proactively, the moment a newly-loaded milestone turns out to
- * require the Grafana UI — before the user has clicked anything. See
- * `loadDocsTabContent` in docs-panel.tsx, the sole caller: surface is a
- * property of which milestone the user navigated to, decided once at that
- * point, not of any individual step's action.
+ * Called the moment the user clicks "Do it" on a step whose action drives the
+ * live Grafana UI while full screen is active — see the gate in
+ * `interactive-engine/interactive.hook.ts`, the sole caller: surface is a
+ * property of what the user is about to do, decided at that click, not
+ * proactively when a milestone loads.
+ *
+ * `targetPath`, when resolved (step/milestone/course fallback chain), is
+ * forwarded to `handleExitToSidebar` so the user lands somewhere the clicked
+ * step can actually act on, instead of the page they were on before entering
+ * full screen.
+ *
+ * Returns a promise that resolves once the sidebar has actually mounted (or
+ * after a safety timeout), so the caller's subsequent DOM lookup runs against
+ * the destination page rather than racing the dock/navigate.
  *
  * Deliberately no confirmation toast here: `dispatchEvent` succeeds whether
  * or not a listener exists, so it can't tell us the handoff actually
@@ -332,6 +341,36 @@ export const panelModeManager = new PanelModeManager();
  * mode/mount desync window — see `full-screen-autodock.ts`). FullScreenPanel
  * publishes the toast itself, after its real exit-to-sidebar effects run.
  */
-export function requestSidebarHandoff(): void {
-  document.dispatchEvent(new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT));
+export function requestSidebarHandoffAndWait(options?: { targetPath?: string }): Promise<void> {
+  // Mirrors GlobalSidebarState.openWithGuide's settle delay after the mount
+  // event — the sidebar's own docs-panel mount effect still needs a tick to
+  // register its listeners.
+  const SETTLE_DELAY_MS = 300;
+  // Safety net for cases where 'pathfinder-sidebar-mounted' never fires (the
+  // sidebar was already mounted, or the listener is gone in the mode/mount
+  // desync window) — covers the async save-then-dock work in
+  // handleExitToSidebar without blocking the click indefinitely.
+  const SAFETY_TIMEOUT_MS = 3000;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.removeEventListener('pathfinder-sidebar-mounted', onMounted);
+      clearTimeout(timeoutId);
+      resolve();
+    };
+    const onMounted = () => setTimeout(finish, SETTLE_DELAY_MS);
+
+    window.addEventListener('pathfinder-sidebar-mounted', onMounted, { once: true });
+    timeoutId = setTimeout(finish, SAFETY_TIMEOUT_MS);
+
+    document.dispatchEvent(
+      new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT, { detail: { targetPath: options?.targetPath } })
+    );
+  });
 }

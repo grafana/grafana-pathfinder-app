@@ -34,14 +34,16 @@ describe('full-screen sidebar-handoff and relaunch listener wiring', () => {
     // would let the effect close over a stale `handleExitToSidebar` between
     // an automatic dispatch and the next re-render. Pin the empty array.
     expect(fullScreenPanel).toMatch(
-      /useEffect\(\(\) => \{\s*const handleSidebarHandoffRequest = \(\) => \{[\s\S]*?\}, \[\]\);/
+      /useEffect\(\(\) => \{\s*const handleSidebarHandoffRequest = \(event: Event\) => \{[\s\S]*?\}, \[\]\);/
     );
   });
 
   it('the handoff handler reads handleExitToSidebarRef.current(), not handleExitToSidebar directly', () => {
-    const handlerBlock = fullScreenPanel.match(/const handleSidebarHandoffRequest = \(\) => \{[\s\S]*?\n {4}\};/)?.[0];
+    const handlerBlock = fullScreenPanel.match(
+      /const handleSidebarHandoffRequest = \(event: Event\) => \{[\s\S]*?\n {4}\};/
+    )?.[0];
     expect(handlerBlock).toBeDefined();
-    expect(handlerBlock).toContain("handleExitToSidebarRef.current('content_requires_grafana_ui')");
+    expect(handlerBlock).toContain("handleExitToSidebarRef.current('content_requires_grafana_ui', targetPath)");
     expect(handlerBlock).not.toMatch(/[^.]handleExitToSidebar\(/);
   });
 
@@ -59,10 +61,12 @@ describe('full-screen sidebar-handoff and relaunch listener wiring', () => {
     // fired directly from requestSidebarHandoff() (panel-mode.ts) would lie
     // whenever FullScreenPanel isn't there to receive it. The toast must be
     // gated on this listener's own callback actually running to completion.
-    const handlerBlock = fullScreenPanel.match(/const handleSidebarHandoffRequest = \(\) => \{[\s\S]*?\n {4}\};/)?.[0];
+    const handlerBlock = fullScreenPanel.match(
+      /const handleSidebarHandoffRequest = \(event: Event\) => \{[\s\S]*?\n {4}\};/
+    )?.[0];
     expect(handlerBlock).toBeDefined();
     expect(handlerBlock).toMatch(
-      /handleExitToSidebarRef\.current\('content_requires_grafana_ui'\)\.then\(\(\) => \{[\s\S]*getAppEvents\(\)\.publish/
+      /handleExitToSidebarRef\.current\('content_requires_grafana_ui', targetPath\)\.then\(\(\) => \{[\s\S]*getAppEvents\(\)\.publish/
     );
   });
 
@@ -70,15 +74,29 @@ describe('full-screen sidebar-handoff and relaunch listener wiring', () => {
     expect(fullScreenPanel).toContain("void handleExitToSidebar('manual_exit')");
     expect(fullScreenPanel).toContain("void handleExitToSidebarRef.current('empty_state_fallback')");
     expect(fullScreenPanel).toContain("void handleExitToSidebar('dock_request')");
-    expect(fullScreenPanel).toContain("void handleExitToSidebarRef.current('content_requires_grafana_ui')");
+    expect(fullScreenPanel).toContain("void handleExitToSidebarRef.current('content_requires_grafana_ui', targetPath)");
   });
 
-  it('panel-mode.ts does not publish a toast from requestSidebarHandoff itself (regression guard)', () => {
+  it('panel-mode.ts does not publish a toast from requestSidebarHandoffAndWait itself (regression guard)', () => {
     const panelMode = read('global-state/panel-mode.ts');
-    const fnBody = panelMode.match(/export function requestSidebarHandoff\(\): void \{[\s\S]*?\n\}/)?.[0];
+    const fnBody = panelMode.match(/export function requestSidebarHandoffAndWait\([\s\S]*?\n\}/)?.[0];
     expect(fnBody).toBeDefined();
-    expect(fnBody).toContain('document.dispatchEvent(new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT))');
+    expect(fnBody).toContain('new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT');
     expect(fnBody).not.toContain('getAppEvents()');
+  });
+
+  it('validates targetPath through resolveSafeTargetPath before it reaches locationService.push, falling back to priorPath then PLUGIN_BASE_URL', () => {
+    // Regression guard: targetPath is author-controlled manifest data with no
+    // user confirmation gate (see resolve-safe-target-path.ts) — it must never
+    // reach locationService.push unvalidated, and a rejected/absent value must
+    // still fall through to priorPath/PLUGIN_BASE_URL rather than dropping the
+    // handoff entirely.
+    expect(fullScreenPanel).toContain("import { resolveSafeTargetPath } from './resolve-safe-target-path';");
+    expect(fullScreenPanel).toContain(
+      'const safeTargetPath = targetPath != null ? resolveSafeTargetPath(targetPath) : undefined;'
+    );
+    expect(fullScreenPanel).toContain('locationService.push(safeTargetPath ?? priorPath ?? PLUGIN_BASE_URL);');
+    expect(fullScreenPanel).not.toMatch(/locationService\.push\(targetPath \?\?/);
   });
 
   it('imports the shared FullScreenExitReason type from full-screen-autodock.ts rather than declaring its own disconnected union', () => {

@@ -149,6 +149,14 @@ jest.mock('../../interactive-engine', () => ({
   matchesStepAction: jest.fn().mockReturnValue(false),
 }));
 
+// ─── Mock panel-mode (full-screen -> sidebar handoff) ────────────────────────
+const mockGetMode = jest.fn(() => 'sidebar');
+const mockRequestSidebarHandoffAndWait = jest.fn().mockResolvedValue(undefined);
+jest.mock('../../global-state/panel-mode', () => ({
+  panelModeManager: { getMode: () => mockGetMode() },
+  requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
+}));
+
 // ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {
   mockStoredCompleted = false;
@@ -644,5 +652,75 @@ describe('InteractiveGuided — AI "Fix this" gating vs sequential block', () =>
       />
     );
     expect(screen.getByTestId(testIds.interactive.guidedAiFixButton('elig-failing'))).toBeInTheDocument();
+  });
+});
+
+describe('InteractiveGuided — full-screen sidebar handoff', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetMode.mockReturnValue('sidebar');
+    mockExecuteGuidedStep.mockResolvedValue('completed');
+    // A prior describe block's beforeEach leaves useStepChecker mocked as
+    // blocked — restore the enabled default these tests need.
+    (useStepChecker as jest.Mock).mockReturnValue({
+      isEnabled: true,
+      isChecking: false,
+      explanation: null,
+      completionReason: mockCompletionReason,
+      markSkipped: mockMarkSkipped,
+      canFixRequirement: false,
+      fixRequirement: null,
+      checkStep: jest.fn(),
+      isRetrying: false,
+      retryCount: 0,
+      maxRetries: 3,
+    });
+  });
+
+  it('hands off before executing when in full screen and an internal action drives the live Grafana UI', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    render(
+      <InteractiveGuided
+        stepId="guided-fullscreen"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]}
+        fullScreenFallbackLocation="/connections"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
+    });
+    // The handoff must complete before the first guided step runs, not after.
+    const handoffCallOrder = mockRequestSidebarHandoffAndWait.mock.invocationCallOrder[0]!;
+    const execCallOrder = mockExecuteGuidedStep.mock.invocationCallOrder[0]!;
+    expect(handoffCallOrder).toBeLessThan(execCallOrder);
+  });
+
+  it('does not hand off outside full screen', async () => {
+    mockGetMode.mockReturnValue('sidebar');
+    render(
+      <InteractiveGuided stepId="guided-sidebar" internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(mockExecuteGuidedStep).toHaveBeenCalled();
+    });
+    expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
+  });
+
+  it('does not hand off in full screen when every internal action is a noop', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    render(<InteractiveGuided stepId="guided-noop-only" internalActions={[{ targetAction: 'noop' }]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(mockExecuteGuidedStep).toHaveBeenCalled();
+    });
+    expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
   });
 });

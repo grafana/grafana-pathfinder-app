@@ -208,6 +208,7 @@ export const InteractiveStep = forwardRef<
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -489,6 +490,7 @@ export const InteractiveStep = forwardRef<
           targetState,
           targetComment,
           buttonType: 'do',
+          fullScreenFallbackLocation,
         });
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
@@ -564,6 +566,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       renderedStepId,
       persistCompletion,
+      fullScreenFallbackLocation,
     ]);
 
     // Expose execute method for parent (sequence execution)

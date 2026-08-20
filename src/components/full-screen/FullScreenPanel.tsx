@@ -24,6 +24,7 @@ import pluginJson from '../../plugin.json';
 import { FullScreenLayout } from './FullScreenLayout';
 import { getFullScreenStyles } from './full-screen.styles';
 import { dockOnLeavingFullScreen, type HistoryAction, type FullScreenExitReason } from './full-screen-autodock';
+import { resolveSafeTargetPath } from './resolve-safe-target-path';
 
 // Lazy-loaded so the editor only ships when the user actually opens it full screen.
 const BlockEditor = lazy(() =>
@@ -238,7 +239,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   });
 
   const handleExitToSidebar = useCallback(
-    async (reason: FullScreenExitReason) => {
+    async (reason: FullScreenExitReason, targetPath?: string) => {
       // Read fresh from the model, not the render-time guideUrl/title closure:
       // an automatic handoff (REQUEST_SIDEBAR_HANDOFF_EVENT) can dispatch in the
       // same synchronous tick as the state update that just loaded the new
@@ -270,11 +271,14 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       panelModeManager.setMode('sidebar');
       sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
       sidebarState.openSidebar('Interactive learning');
-      // Land the user back on the page they were on before they entered full
-      // screen. Falls back to the plugin home for cold-loaded `/fullscreen`
-      // URLs (no captured prior path).
+      // Prefer a resolved step/milestone/course location (the click-triggered
+      // handoff — see interactive.hook.ts) so the user lands somewhere the
+      // clicked step can act on. Otherwise land back on the page they were on
+      // before they entered full screen, falling back to the plugin home for
+      // cold-loaded `/fullscreen` URLs (no captured prior path).
       const priorPath = panelModeManager.consumePriorPath();
-      locationService.push(priorPath ?? PLUGIN_BASE_URL);
+      const safeTargetPath = targetPath != null ? resolveSafeTargetPath(targetPath) : undefined;
+      locationService.push(safeTargetPath ?? priorPath ?? PLUGIN_BASE_URL);
     },
     [panel]
   );
@@ -372,23 +376,25 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     };
   }, [handleExitToSidebar]);
 
-  // Fired by docs-panel.tsx's loadDocsTabContent, via the standalone
-  // requestSidebarHandoff() in global-state/panel-mode.ts, when a
-  // newly-loaded milestone turns out to need the live Grafana UI — full
-  // screen has none for it to act on. Reuses the same exit-to-sidebar
-  // mechanics as the manual back-arrow, just triggered by navigation instead
-  // of the user leaving deliberately. Reads the latest callback through the
-  // ref above (not a `[handleExitToSidebar]` dep) for the same reason as the
-  // empty-state effect: this can fire in the same tick as the state update
-  // that just loaded the new tab, before this component re-renders.
+  // Fired by interactive.hook.ts's executeInteractiveAction, via the
+  // standalone requestSidebarHandoffAndWait() in global-state/panel-mode.ts,
+  // when the user clicks "Do it" on a step whose action needs the live
+  // Grafana UI — full screen has none for it to act on. Reuses the same
+  // exit-to-sidebar mechanics as the manual back-arrow, just triggered by the
+  // click instead of the user leaving deliberately. Reads the latest callback
+  // through the ref above (not a `[handleExitToSidebar]` dep) for the same
+  // reason as the empty-state effect: this can fire in the same tick as the
+  // state update that just loaded the new tab, before this component
+  // re-renders.
   useEffect(() => {
-    const handleSidebarHandoffRequest = () => {
-      // Confirmation toast lives here, not in requestSidebarHandoff() itself:
-      // dispatchEvent succeeds whether or not this listener is even attached
-      // (e.g. FullScreenPanel already unmounted in the mode/mount desync
-      // window documented in full-screen-autodock.ts), so only a real
+    const handleSidebarHandoffRequest = (event: Event) => {
+      const targetPath = (event as CustomEvent<{ targetPath?: string }>).detail?.targetPath;
+      // Confirmation toast lives here, not in requestSidebarHandoffAndWait()
+      // itself: dispatchEvent succeeds whether or not this listener is even
+      // attached (e.g. FullScreenPanel already unmounted in the mode/mount
+      // desync window documented in full-screen-autodock.ts), so only a real
       // handleExitToSidebar completion earns the "switched to sidebar" message.
-      void handleExitToSidebarRef.current('content_requires_grafana_ui').then(() => {
+      void handleExitToSidebarRef.current('content_requires_grafana_ui', targetPath).then(() => {
         getAppEvents().publish({
           type: 'alert-info',
           payload: [t('panelMode.sidebarHandoffTitle', 'Switched to the sidebar so you can complete this step')],

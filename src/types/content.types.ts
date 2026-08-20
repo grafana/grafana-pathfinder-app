@@ -106,6 +106,8 @@ export interface Milestone {
   websiteUrl?: string;
   /** Short summary shown under the title in the cover-page module list. Package paths only — sourced from the member's manifest description. */
   description?: string;
+  /** Author-provided starting location from the member's own manifest. Absent when not authored. */
+  startingLocation?: string;
   sideJourneys?: SideJourneys;
   relatedJourneys?: RelatedJourneys;
   conclusionImage?: ConclusionImage;

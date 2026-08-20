@@ -12,6 +12,8 @@ import { useGuideRequirements, RequirementsCheckOptions } from '../requirements-
 import { extractInteractiveDataFromElement } from '../lib/dom';
 import { InteractiveActionRequest, InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
+import { panelModeManager, requestSidebarHandoffAndWait } from '../global-state/panel-mode';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
 import { NavigationManager } from './navigation-manager';
@@ -390,7 +392,15 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    */
   const executeInteractiveAction = useCallback(
     async (request: InteractiveActionRequest): Promise<StepOutcome> => {
-      const { targetAction, refTarget = '', targetValue, targetState, targetComment, buttonType = 'do' } = request;
+      const {
+        targetAction,
+        refTarget = '',
+        targetValue,
+        targetState,
+        targetComment,
+        buttonType = 'do',
+        fullScreenFallbackLocation,
+      } = request;
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
         refTarget: refTarget,
@@ -402,10 +412,25 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         tagName: 'button', // Simulated for React components
         textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,
         timestamp: Date.now(),
+        fullScreenFallbackLocation,
       };
 
       // No DOM element needed - React components manage their own state
       const isShowMode = buttonType === 'show';
+
+      // Full screen has no live Grafana UI behind it. "Show me" stays put
+      // (nothing to relocate for); "Do it" on a Grafana-driving action hands
+      // off to the sidebar first, navigating to the resolved fallback
+      // location (step/milestone/course — see content-renderer.tsx) so the
+      // click has something to act on once docked. Waits for the sidebar to
+      // actually mount before proceeding, rather than expanding the action
+      // handler's own resolveWithRetry budget. The target may still not be
+      // there yet (navigation itself can be slow) — skipCompletionOnEmptyTarget
+      // stops that from being silently reported as done.
+      if (!isShowMode && panelModeManager.getMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction)) {
+        await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
+        elementData.skipCompletionOnEmptyTarget = true;
+      }
 
       // Sequence runs resolve on failure, so the captured result — not
       // promise settlement — stamps the action outcome.
@@ -478,6 +503,13 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
           outcomeFrom: () => outcomeFromSequenceRun(sequenceResult),
         }
       );
+      // A handler that suppressed its own completion (skipCompletionOnEmptyTarget)
+      // reports it here — otherwise the return value would say 'ok' and the
+      // caller's own completion persistence, which only checks this outcome,
+      // would mark the step done anyway.
+      if (elementData.completionSuppressed) {
+        return 'error';
+      }
       // Sequence runs resolve rather than throw on requirements-exhausted/
       // action-error, so callers must check this instead of assuming
       // settlement means success — see the outcomeFrom mapping above.
