@@ -273,6 +273,8 @@ The command walks the directory tree starting at `<root>`. Any subdirectory at a
 
 The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.), plus any unknown top-level manifest key forwarded verbatim as extension metadata — see [extension fields](./package-authoring.md#extension-fields) for the forwarding rules and the names the build refuses. The output is formatted with Prettier using the project's configuration.
 
+Diagnostics are printed to stderr — the per-package `forwarding N extension field(s): …` line, warnings, and errors — so the JSON on stdout stays parseable when piped.
+
 ---
 
 ## Build-graph command

@@ -84,7 +84,7 @@ Any top-level key not listed above is extension metadata. It survives validation
 
 Because forwarding is silent and unvalidated, an extension key's **shape is never checked** — a consumer reading `entry.stats.blockCount` gets whatever the author typed, including a string, a nested object, or nothing at all. The consumer owns that validation. The same openness means a misspelled known field (`startingLocaton`) is not rejected: it is forwarded as an extension field while the real field quietly takes its default. `build-repository` lists the keys it forwards for each package so a typo is visible in the build log — check that line when a manifest field appears not to take effect.
 
-Extension keys are not validated. If a key becomes load-bearing, promote it to a named field in the schema — that is the intended migration path and it needs no rename.
+If a key becomes load-bearing, promote it to a named field in the schema — that is the intended migration path and it needs no rename.
 
 ### Package IDs must not collide across repositories
 
