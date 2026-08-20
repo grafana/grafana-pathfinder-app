@@ -2,7 +2,7 @@
 
 This guide covers the two-file package model used by Grafana Pathfinder. It is intended for content authors in the `interactive-tutorials` repository and enablement teams creating packages in any repository.
 
-For the block-level guide format (actions, requirements, sequences, quizzes), see the [JSON guide format](./interactive-examples/json-guide-format.md). For CLI commands that validate, build, and graph packages, see [CLI tools](./CLI_TOOLS.md). For the prescriptive type/schema synchronization checklist, see [schema-type coupling rules](../../.cursor/rules/schema-coupling.mdc).
+For the block-level guide format (actions, requirements, sequences, quizzes), see the [JSON guide format](./interactive-examples/json-guide-format.md). For CLI commands that validate, build, and graph packages, see [CLI tools](./CLI_TOOLS.md). For the runtime resolver architecture, see [system patterns](../../.cursor/rules/systemPatterns.mdc). For the prescriptive type/schema synchronization checklist, see [schema-type coupling rules](../../.cursor/rules/schema-coupling.mdc).
 
 ---
 
@@ -80,7 +80,7 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 
 ### Package IDs must not collide across repositories
 
-A bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The resolver tries repositories in order (bundled → recommender or CDN → App Platform) and the first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
+A bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The resolver tries repositories in order (bundled → recommender or CDN → App Platform) and the first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
 
 ---
 
