@@ -7,7 +7,16 @@
 
 import type { ContentJson, ManifestJson } from '../types/package.types';
 
+jest.mock('../lib/package-recommendations-client', () => ({
+  fetchOnlinePackageRecommendations: jest.fn(),
+}));
+
+import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
 import { RecommenderPackageResolver } from './recommender-resolver';
+
+const fetchOnlinePackageRecommendationsMock = fetchOnlinePackageRecommendations as jest.MockedFunction<
+  typeof fetchOnlinePackageRecommendations
+>;
 
 const BASE_URL = 'https://recommender.example.com';
 
@@ -40,6 +49,7 @@ describe('RecommenderPackageResolver', () => {
   beforeEach(() => {
     resolver = new RecommenderPackageResolver(BASE_URL);
     jest.clearAllMocks();
+    fetchOnlinePackageRecommendationsMock.mockResolvedValue({ baseUrl: '', packages: [] });
   });
 
   describe('resolve (metadata only)', () => {
@@ -144,6 +154,43 @@ describe('RecommenderPackageResolver', () => {
       if (!result.ok) {
         expect(result.error.code).toBe('network-error');
         expect(result.error.message).toBe('Unknown network error');
+      }
+    });
+  });
+
+  describe('entryTitle cross-reference (recommender endpoint carries no title field)', () => {
+    it('sets entryTitle from the CDN index when the resolved id has a matching entry', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(FIXTURE_RESOLUTION),
+      });
+      fetchOnlinePackageRecommendationsMock.mockResolvedValue({
+        baseUrl: 'https://interactive-learning.grafana.net/packages/',
+        packages: [{ id: 'alerting-101', path: 'alerting-101/', title: 'Grafana Alerting 101' }],
+      });
+
+      const result = await resolver.resolve('alerting-101');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.entryTitle).toBe('Grafana Alerting 101');
+      }
+    });
+
+    it('leaves entryTitle unset when the index has no matching entry', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(FIXTURE_RESOLUTION),
+      });
+      fetchOnlinePackageRecommendationsMock.mockResolvedValue({ baseUrl: '', packages: [] });
+
+      const result = await resolver.resolve('alerting-101');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.entryTitle).toBeUndefined();
       }
     });
   });
