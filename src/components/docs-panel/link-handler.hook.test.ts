@@ -641,7 +641,37 @@ describe('useLinkClickHandler', () => {
           content_title: 'Test Journey',
           content_url: 'https://grafana.com/docs/test-journey',
           total_milestones: 5,
+          interaction_location: 'ready_to_begin_button',
         })
+      );
+    });
+
+    it('reports the caller-supplied interaction_location when a data-journey-start element carries data-interaction-location', () => {
+      // The cover-page CTA and current-module row both reuse this attribute
+      // contract but tag themselves distinctly, so a fresh start, a resume,
+      // and a direct row click stay separable from the legacy button's label.
+      const { reportAppInteraction } = require('../../lib/analytics');
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const resumeButton = document.createElement('button');
+      resumeButton.setAttribute('data-journey-start', 'true');
+      resumeButton.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone1');
+      resumeButton.setAttribute('data-interaction-location', 'resume_cta');
+      contentDiv.appendChild(resumeButton);
+
+      fireEvent.click(resumeButton);
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.StartLearningJourneyClick,
+        expect.objectContaining({ interaction_location: 'resume_cta' })
       );
     });
   });

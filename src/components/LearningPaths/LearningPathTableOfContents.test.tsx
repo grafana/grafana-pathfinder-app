@@ -68,6 +68,7 @@ describe('LearningPathTableOfContents', () => {
     const cta = await screen.findByText('Get started');
     expect(cta.closest('button')).toHaveAttribute('data-journey-start', 'true');
     expect(cta.closest('button')).toHaveAttribute('data-milestone-url', milestones[0]!.url);
+    expect(cta.closest('button')).toHaveAttribute('data-interaction-location', 'get_started_cta');
     expect(screen.queryByText('40%')).not.toBeInTheDocument();
   });
 
@@ -77,6 +78,7 @@ describe('LearningPathTableOfContents', () => {
 
     const cta = await screen.findByText('Resume');
     expect(cta.closest('button')).toHaveAttribute('data-milestone-url', milestones[1]!.url);
+    expect(cta.closest('button')).toHaveAttribute('data-interaction-location', 'resume_cta');
     expect(await screen.findByText('50%')).toBeInTheDocument();
   });
 
