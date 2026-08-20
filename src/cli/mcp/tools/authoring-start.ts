@@ -103,7 +103,7 @@ const AUTHORING_CONTEXT = {
       '`warnings` are advisory and non-blocking (composition nudges, unverified selectors, normalized input). They do not fail the call, but they are the CLI telling you the guide will be worse if you ignore them.',
       '`data` is the stable machine payload and `details` is display text — read ids and paths from `data`.',
       'Mutation acks add a `summary` tree ({path, id, type, hint?, children?}). Navigate and address blocks from it instead of re-reading the artifact.',
-      'CLI-only next-step recipes are stripped before you see them. Anything that still reads like terminal advice is describing the underlying command, not an interface you can call.',
+      'Messages come from the CLI, so they name its flags (`--id`, `--parent`, `--help`). Read `--some-flag` as the `someFlag` parameter in `opts`, and ignore any suggestion to run a command — you call tools, not a shell. Withheld parameters are the exception: if a message names one, the `exposed` list from a rejection is authoritative.',
     ],
   },
   rules: [
