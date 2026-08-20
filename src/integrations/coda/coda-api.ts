@@ -19,6 +19,8 @@ import {
   toCodaError,
   isNotReady,
   isUnavailable,
+  canMintGrafanaToken,
+  provisionGcxCredential,
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
@@ -30,6 +32,8 @@ import {
   type CreateSessionOptions,
   type ExecOptions,
   type ExecResult,
+  type GcxCredential,
+  type MintTokenOptions,
 } from '@grafana/coda-client';
 
 export {
@@ -37,12 +41,13 @@ export {
   toCodaError,
   isNotReady,
   isUnavailable,
+  canMintGrafanaToken,
   CODA_PLUGIN_ID,
   V1_DEFAULTS,
   isCodaUsable,
   codaSessionEligibility,
 };
-export type { CatalogueItem, CodaErrorCode, CodaCapabilities, CodaSessionRole };
+export type { CatalogueItem, CodaErrorCode, CodaCapabilities, CodaSessionRole, GcxCredential, MintTokenOptions };
 
 export type TerminalVMOptions = CreateSessionOptions;
 export type ExecRequest = ExecOptions & { command: string };
@@ -71,6 +76,18 @@ export const PATHFINDER_READY_FILE = '/tmp/pathfinder-ready';
  */
 export function isRoleForbidden(err: unknown): boolean {
   return toCodaError(err).code === 'role_forbidden';
+}
+
+/**
+ * Grafana declined to let this user mint a service account token. Not a fault,
+ * and not the same as `role_forbidden`: `serviceaccounts:create` is an Admin
+ * permission by default while sandbox sessions are open to Editors, so this is
+ * the *expected* answer for most learners. Branch to a pasted token.
+ *
+ * The code is synthesised by the client, never sent by the Coda backend.
+ */
+export function isMintForbidden(err: unknown): boolean {
+  return toCodaError(err).code === 'mint_forbidden';
 }
 
 /**
@@ -116,6 +133,12 @@ export function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: 
       return 'You already have the maximum number of sandbox VMs. Wait for one to expire before starting another.';
     case 'rate_limited':
       return 'Too many sandbox requests. Wait a moment and try again.';
+    case 'mint_forbidden':
+      return 'Grafana did not allow this account to create a service account token. Paste one instead.';
+    case 'invalid_token':
+      return 'That does not look like a usable Grafana service account token.';
+    case 'credential_write_failed':
+      return 'The credential could not be written into the sandbox VM. Try again.';
     case 'terminal_disconnected':
       return 'The sandbox VM is no longer connected. Connect again to start a new session.';
     case 'coda_unavailable':
@@ -148,4 +171,18 @@ export function deleteSession(sessionId: string) {
 export function execInSession(sessionId: string, req: ExecRequest) {
   const { command, ...options } = req;
   return client.exec(sessionId, command, options);
+}
+
+/**
+ * Give a session's VM a Grafana credential, so the `gcx` CLI baked into every
+ * sandbox image can talk to this Grafana as the learner.
+ *
+ * Wrapped here because `provisionGcxCredential` takes the client, and this
+ * module owns the only instance. Pass `token` to install one the user supplied
+ * rather than minting — the path that works for everyone, since minting needs
+ * Admin. The session's terminal must already be connected; the backend has no
+ * other route to the box and answers 409 before then.
+ */
+export function provisionGcx(sessionId: string, options: MintTokenOptions & { token?: string } = {}) {
+  return provisionGcxCredential(client, sessionId, options);
 }

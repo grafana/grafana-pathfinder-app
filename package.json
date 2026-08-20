@@ -119,7 +119,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@emotion/css": "^11.13.5",
     "@grafana/assistant": "^0.1.25",
-    "@grafana/coda-client": "npm:@grafana-coda/sandbox-client@^1.1.1",
+    "@grafana/coda-client": "npm:@grafana-coda/sandbox-client@^1.2.2",
     "@grafana/data": "13.1.3",
     "@grafana/e2e-selectors": "13.1.3",
     "@grafana/faro-instrumentation-replay": "~2.9.0",

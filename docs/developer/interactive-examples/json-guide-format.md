@@ -1025,6 +1025,25 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 | `vmTemplate` | string | `""` (→ `vm-aws`)   | VM template to provision                                  |
 | `vmApp`      | string | `""`                | App name for `vm-aws-sample-app`                          |
 | `vmScenario` | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
+| `gcx`        | bool   | `false`             | Also install a Grafana credential for the `gcx` CLI       |
+
+With `gcx: true` the step also gives the VM a credential, so the `gcx` CLI that ships in every sandbox
+image can talk to this Grafana as the learner:
+
+```json
+{
+  "type": "terminal-connect",
+  "content": "Connect a sandbox and set up `gcx`:",
+  "buttonText": "Connect and set up gcx",
+  "vmTemplate": "vm-aws",
+  "gcx": true
+}
+```
+
+Minting the token needs `serviceaccounts:create`, which is an admin permission by default while sandbox
+sessions are open to editors — so the step offers a pasted service account token as well, and that is the
+path most learners take. A refusal never blocks the guide: the terminal is connected either way, so the
+step offers "Continue without gcx" and later `is-terminal-active` steps still run.
 
 See [`CODA.md`](../CODA.md) for the full VM template catalog and lifecycle details.
 

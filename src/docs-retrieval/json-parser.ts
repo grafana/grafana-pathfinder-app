@@ -1005,6 +1005,7 @@ function convertTerminalConnectBlock(
         vmTemplate: block.vmTemplate,
         vmApp: block.vmApp,
         vmScenario: block.vmScenario,
+        gcx: block.gcx,
       },
       children,
     },

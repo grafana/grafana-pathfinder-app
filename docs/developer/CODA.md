@@ -18,8 +18,10 @@ constraints, and the `grafana-coda-app` repo's `docs/API.md` for the authoritati
 | xterm.js panel, scrollback, resize, search                      | **Pathfinder** (`src/integrations/coda/`) |
 | Guide block types (`terminal`, `terminal-connect`, `challenge`) | **Pathfinder**                            |
 | `is-terminal-active` and `coda-exit-zero:` requirements         | **Pathfinder**                            |
+| Minting a gcx token, and the UI that offers it                  | **Pathfinder** (in the browser)           |
 | Session lifecycle, VM provisioning, quota                       | `grafana-coda-app`                        |
 | SSH, relay handshake, credential handling                       | `grafana-coda-app`                        |
+| Writing the gcx config into the VM                              | `grafana-coda-app`                        |
 | Coda API URL, relay URL, enrollment key, refresh token          | `grafana-coda-app`                        |
 
 **There is no Coda Go code in this repo.** `pkg/` is an App Platform read proxy only, and
@@ -105,6 +107,52 @@ Use `isNotReady`, `isRoleForbidden` and `isUnavailable` from `coda-api.ts`.
 
 Timeouts default to 5 s and are capped at 120 s (the cap accommodates `setupScript` runs such as
 `apt-get install`). Output is capped at 32 KB per stream, with `truncated: true` when it overflows.
+
+## gcx credentials
+
+Every sandbox image ships the [`gcx`](https://github.com/grafana/gcx) CLI, and it has no credential
+until something gives it one. A `terminal-connect` block with `gcx: true` does that: once the terminal
+is connected, `provisionGcx(sessionId, { token? })` sends a Grafana service account token to
+`POST /v1/sessions/{id}/credential`, and the Coda backend writes
+`$HOME/.config/gcx/config.yaml` (mode `0600`, `current-context: coda`) into the VM over the SSH channel
+it already owns. gcx then talks to **this** Grafana as **this** learner.
+
+**The browser mints; the backend cannot.** Grafana refuses to create a service account whose role
+exceeds the caller's own, and a plugin's managed service account is created with no basic role at all —
+`plugin.json` `iam` grants fine-grained permissions, never a role. So the plugin can mint nothing
+usable, by design, and minting with the user's own session satisfies Grafana's guard by construction
+instead of re-implementing it. Whatever comes back is capped at what the user already had. One service
+account per user (`coda-gcx-<login>`), reused, with a fresh token per session named `coda-<sessionId>`,
+expiring with the VM.
+
+**Minting is Admin-only in practice, so the paste path is not a fallback.** `serviceaccounts:create` is
+an Admin permission by default while sandbox sessions are open to Editors, so most people who can open
+a terminal cannot mint. Grafana answers `403` on the service-account _search_, not only the create, and
+`@grafana/coda-client` maps that to the client-synthesised code `mint_forbidden`. Treat it as a branch,
+not an error: the step reveals a token field and the same flow works for everyone. **Never ship a
+mint-only UI.**
+
+**The token is readable inside the VM.** The learner has a root shell on the same box, so it is exposed
+for the VM's lifetime. That is bounded rather than prevented — it is the learner's own identity, capped
+at their own role, and it expires with the VM. Recorded as an accepted risk in the Coda plugin's
+`docs/SECURITY.md`.
+
+**There is no capability flag for the route.** `capabilities.features` still lists only
+`exec.readyFile`, and a Coda plugin older than 1.3.0 answers `404 session_not_found` — the same code as
+a bad session id. Since the call only ever follows a session we just connected, `terminal-connect-step`
+reads that 404 as "the plugin is too old" and says so, rather than doing version arithmetic on
+`pluginVersion`.
+
+A refusal never dead-ends a guide. The terminal is connected either way, so the step offers **Continue
+without gcx**, and later steps gated on `is-terminal-active` still pass — their `gcx` commands just fail
+unauthenticated, which is visible in the terminal.
+
+**`gcx` does not survive an upload through `scripts/upsert-guide.sh` yet.** The `InteractiveGuide` CRD in
+`grafana-pathfinder-backend` (`kinds/interactiveguide.cue`) declares `vmTemplate`, `vmApp` and
+`vmScenario` but not `gcx`, and the API server prunes an undeclared field with a `200` and no message —
+so a guide pushed to a Cloud stack that way connects a terminal without installing a credential.
+`src/validation/upsert-script-crd-fields.test.ts` records this as a deliberate prune; the fix is a `#Block`
+field in that repo's CUE.
 
 ## Availability
 
@@ -264,7 +312,7 @@ Grafana restart.
 | `src/requirements-manager/checks/terminal.ts`                   | `is-terminal-active` check                                                               |
 | `src/components/AppConfig/CodaBackendStatus.tsx`                | Backend availability reporting                                                           |
 | `src/components/interactive-tutorial/challenge-block.tsx`       | CTF-style block                                                                          |
-| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button                                                                 |
+| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button, and the gcx mint/paste flow behind `gcx: true`                 |
 
 ### Terminal persistence
 
@@ -291,13 +339,14 @@ a **new** session; the backend reuses the underlying VM when template, app, and 
 }
 ```
 
-| Field        | Type   | Default             | Description                                               |
-| ------------ | ------ | ------------------- | --------------------------------------------------------- |
-| `content`    | string | (required)          | Markdown shown above the button                           |
-| `buttonText` | string | `"Try in terminal"` | Button label                                              |
-| `vmTemplate` | string | `""` (→ `vm-aws`)   | VM template to provision                                  |
-| `vmApp`      | string | `""`                | App name for `vm-aws-sample-app`                          |
-| `vmScenario` | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
+| Field        | Type   | Default             | Description                                                             |
+| ------------ | ------ | ------------------- | ----------------------------------------------------------------------- |
+| `content`    | string | (required)          | Markdown shown above the button                                         |
+| `buttonText` | string | `"Try in terminal"` | Button label                                                            |
+| `vmTemplate` | string | `""` (→ `vm-aws`)   | VM template to provision                                                |
+| `vmApp`      | string | `""`                | App name for `vm-aws-sample-app`                                        |
+| `vmScenario` | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`)               |
+| `gcx`        | bool   | `false`             | Also install a gcx credential — see [gcx credentials](#gcx-credentials) |
 
 Defined in `src/types/json-guide.types.ts` and validated by `src/types/json-guide.schema.ts`. The
 block editor populates the app and scenario dropdowns from `capabilities.sampleApps` and
@@ -351,6 +400,26 @@ key and must register again at `/plugins/grafana-coda-app`. Reported by `credent
 
 The gated sentinel may be missing. Confirm setup completed — the challenge block writes
 `/tmp/pathfinder-ready` as its last setup step, and a gated exec cannot pass before that exists.
+
+### "Grafana would not let this account mint a token"
+
+Expected below Admin: `serviceaccounts:create` is an Admin permission by default. Paste a service
+account token into the field the step reveals (Administration → Service accounts), or ask an
+administrator for the permission. This is a branch, not a bug.
+
+### "This Grafana's Coda plugin is too old to install a gcx credential"
+
+`POST /v1/sessions/{id}/credential` arrived in `grafana-coda-app` 1.3.0. An older plugin has no such
+route and answers `404` with the same code as an unknown session, so this is the best reading available
+— there is no capability flag to feature-detect with. Upgrade the Coda plugin.
+
+### `gcx` commands fail to connect, but `gcx config check` shows both ✔ lines
+
+The config is fine and this is the expected result in local dev. The server written into the VM is
+Grafana's own `AppURL`, which in the dev stack is `http://localhost:3000` — the **VM's** loopback,
+where nothing is listening. Both ✔ lines prove gcx read our file and selected our context; only
+reachability is missing. Exercising the commands needs a Grafana the VM can reach. Do not "fix" this by
+rewriting the URL.
 
 ### VM stuck provisioning, SSH failures, quota problems
 

@@ -618,6 +618,15 @@ export interface JsonTerminalConnectBlock extends AuthorAnnotated {
   vmApp?: string;
   /** Scenario name for alloy-scenario template. Only used with vm-aws-alloy-scenario. */
   vmScenario?: string;
+  /**
+   * Also give the VM a Grafana credential, so the `gcx` CLI it ships with can
+   * talk to this Grafana as the learner.
+   *
+   * Minting needs `serviceaccounts:create` — Admin by default, while sandbox
+   * sessions are open to Editors — so the step always offers a pasted token as
+   * well, and never blocks the guide when Grafana refuses.
+   */
+  gcx?: boolean;
 }
 
 // ============ CHALLENGE BLOCK ============
