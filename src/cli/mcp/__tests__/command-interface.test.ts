@@ -24,9 +24,6 @@ beforeAll(() => {
   registerCommandInterfaceConfig('add-block', {
     optBlacklist: ['dir', 'before', 'after', 'position'],
     subcommandOpt: 'type',
-    optContext: {
-      type: 'Pass this same value as pathfinder_help `subcommand` to discover its block-specific options.',
-    },
   });
 });
 
@@ -88,7 +85,11 @@ describe('formatCommandInterface', () => {
     }
     const names = flagNames(help);
     expect(names).toEqual(expect.arrayContaining(['type', 'parent', 'autoCollapse', 'ifAbsent']));
-    expect(names).not.toEqual(expect.arrayContaining(['dir', 'before', 'after', 'position', 'auto-collapse']));
+    // Per-key: a negated `arrayContaining` passes when any single member is
+    // absent, so it would not catch a placement flag leaking on its own.
+    for (const withheld of ['dir', 'before', 'after', 'position', 'auto-collapse']) {
+      expect(names).not.toContain(withheld);
+    }
     expect(help.required.find((flag) => flag.name === 'type')?.description).toMatch(/subcommand/);
   });
 

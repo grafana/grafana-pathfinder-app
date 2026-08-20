@@ -27,15 +27,6 @@ export interface CommandInterfaceConfig {
   /** Commander attribute/argument names omitted from agent help and rejected at invocation. */
   optBlacklist?: readonly string[];
   /**
-   * Extra agent-facing guidance appended to a CLI-owned option description.
-   * Use only for something true of one parameter, on MCP alone, that no other
-   * surface can carry — not required-ness, parent kind, or other facts help
-   * already publishes. A fact about the command belongs in its Commander
-   * description, where CLI users get it too; recovery advice belongs in the
-   * outcome raised at the moment it applies.
-   */
-  optContext?: Readonly<Record<string, string>>;
-  /**
    * Synthetic required option that selects a Commander subcommand. `add-block`
    * uses `type`, whose enum values are derived from registered subcommands.
    */
@@ -46,8 +37,6 @@ const COMMAND_INTERFACE_CONFIG = new Map<string, CommandInterfaceConfig>();
 
 /**
  * Bind MCP-specific interface policy next to the MCP tool that owns it.
- * Re-registration intentionally replaces the previous value so repeated test
- * server construction remains deterministic.
  */
 export function registerCommandInterfaceConfig(commandName: string, config: CommandInterfaceConfig): void {
   COMMAND_INTERFACE_CONFIG.set(commandName, config);
@@ -143,12 +132,6 @@ function exposedArguments(command: Command, config: CommandInterfaceConfig): Arg
   return command.registeredArguments.filter((argument) => !blacklist.includes(argument.name()));
 }
 
-/** Append the binding's extra guidance to a CLI-owned description. */
-function appendOptContext(flag: HelpJsonFlag, config: CommandInterfaceConfig): HelpJsonFlag {
-  const context = config.optContext?.[flag.name];
-  return context ? { ...flag, description: `${flag.description} ${context}` } : flag;
-}
-
 /** Rekey help flags to attribute names, dropping any the binding filtered out. */
 function translateFlags(
   flags: HelpJsonFlag[],
@@ -161,7 +144,7 @@ function translateFlags(
       return [];
     }
     // Commander's own conversion — the key a runner reads out of `opts()`.
-    return [appendOptContext({ ...flag, name: option.attributeName() }, config)];
+    return [{ ...flag, name: option.attributeName() }];
   });
 }
 
@@ -200,21 +183,18 @@ function optionToHelpFlag(option: Option): HelpJsonFlag {
 }
 
 /** Publish a positional argument as if it were an ordinary opt. */
-function argumentToHelpFlag(argument: Argument, config: CommandInterfaceConfig): HelpJsonFlag {
+function argumentToHelpFlag(argument: Argument): HelpJsonFlag {
   const choices = argument.argChoices;
   const valueType: HelpJsonFlag['valueType'] =
     choices && choices.length > 0 ? 'enum' : argument.variadic ? 'array' : 'string';
-  return appendOptContext(
-    {
-      name: argument.name(),
-      valueType,
-      description: argument.description,
-      ...(choices && choices.length > 0 ? { enum: choices } : {}),
-      ...(argument.variadic ? { repeatable: true } : {}),
-      ...(argument.defaultValue !== undefined ? { default: argument.defaultValue } : {}),
-    },
-    config
-  );
+  return {
+    name: argument.name(),
+    valueType,
+    description: argument.description,
+    ...(choices && choices.length > 0 ? { enum: choices } : {}),
+    ...(argument.variadic ? { repeatable: true } : {}),
+    ...(argument.defaultValue !== undefined ? { default: argument.defaultValue } : {}),
+  };
 }
 
 /** Synthesize the enum opt that picks a subcommand, when one is configured. */
@@ -222,15 +202,12 @@ function subcommandSelector(root: Command, config: CommandInterfaceConfig): Help
   if (!config.subcommandOpt || root.commands.length === 0) {
     return undefined;
   }
-  return appendOptContext(
-    {
-      name: config.subcommandOpt,
-      valueType: 'enum',
-      enum: root.commands.map((command) => command.name()),
-      description: `Selects the ${root.name()} subcommand.`,
-    },
-    config
-  );
+  return {
+    name: config.subcommandOpt,
+    valueType: 'enum',
+    enum: root.commands.map((command) => command.name()),
+    description: `Selects the ${root.name()} subcommand.`,
+  };
 }
 
 /** The complete agent-facing opt set — the contract both entry points share. */
@@ -247,7 +224,7 @@ function publishedOpts(resolved: ResolvedCommand): {
   const addressing = translateFlags(base.addressing ?? [], optionsByCliName, resolved.config);
 
   for (const argument of exposedArguments(resolved.command, resolved.config)) {
-    (argument.required ? required : optional).push(argumentToHelpFlag(argument, resolved.config));
+    (argument.required ? required : optional).push(argumentToHelpFlag(argument));
   }
   const selector = subcommandSelector(resolved.root, resolved.config);
   if (selector) {
@@ -260,8 +237,7 @@ function publishedOpts(resolved: ResolvedCommand): {
     if (publishedNames.has(name)) {
       continue;
     }
-    const flag = appendOptContext(optionToHelpFlag(option), resolved.config);
-    (option.mandatory ? required : optional).push(flag);
+    (option.mandatory ? required : optional).push(optionToHelpFlag(option));
     publishedNames.add(name);
   }
 
