@@ -147,6 +147,14 @@ A refusal never dead-ends a guide. The terminal is connected either way, so the 
 without gcx**, and later steps gated on `is-terminal-active` still pass — their `gcx` commands just fail
 unauthenticated, which is visible in the terminal.
 
+**Two entry points, one implementation.** A guide drives it through
+`terminal-connect` with `gcx: true`; anyone using the terminal on its own gets the **gcx** button in the
+panel toolbar, which opens the same form in a modal. The shared parts live in `integrations/coda/` —
+`useGcxCredential.hook.ts` for the flow and `GcxSetupPanel.tsx` for the form — and they have to live
+there, not in `components/`: `TerminalPanel` is tier 3 and cannot import from tier 4, while
+`terminal-connect-step` is tier 4 and can import from tier 3. The hook takes `onReady` as an injected
+callback because marking a step complete is the step's business and means nothing to a toolbar button.
+
 **`gcx` does not survive an upload through `scripts/upsert-guide.sh` yet.** The `InteractiveGuide` CRD in
 `grafana-pathfinder-backend` (`kinds/interactiveguide.cue`) declares `vmTemplate`, `vmApp` and
 `vmScenario` but not `gcx`, and the API server prunes an undeclared field with a `200` and no message —
@@ -326,6 +334,8 @@ Grafana restart.
 | `src/integrations/coda/useTerminalLive.hook.ts`                 | Live subscription, publish, provision progress bar, 35 s handshake timeout               |
 | `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` |
 | `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                         |
+| `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                 |
+| `src/integrations/coda/GcxSetupPanel.tsx`                       | The gcx form and its result line; test ids come in as a prop                             |
 | `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                    |
 | `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                    |
 | `src/requirements-manager/checks/coda.ts`                       | `coda-exit-zero:` check (always gated)                                                   |
@@ -432,6 +442,20 @@ administrator for the permission. This is a branch, not a bug.
 `POST /v1/sessions/{id}/credential` arrived in `grafana-coda-app` 1.3.0. An older plugin has no such
 route and answers `404` with the same code as an unknown session, so this is the best reading available
 — there is no capability flag to feature-detect with. Upgrade the Coda plugin.
+
+### `11;rgb:…` or similar escape text appears after command output
+
+A program in the VM asked the terminal for its background colour (OSC 11) and the answer was echoed as
+text instead of being consumed. xterm replies to OSC 10/11/12 through `onData`, and `onData` is piped
+straight to the PTY — so over a relay the reply lands after the asking program has exited and restored
+termios ECHO, and the shell echoes it. `TerminalPanel` now swallows those three queries with
+`registerOscHandler(code, () => true)`, and the Coda plugin stops them being asked at all by running the
+PTY under `TERM=screen-256color`, which is the prefix Go's `termenv` skips. If you see this again, a
+different escape sequence is involved — check which, before adding another handler.
+
+Worth knowing why it mattered beyond the cosmetics: `gcx` links `bubbletea`, whose package `init()`
+issues that query and then blocks **five seconds** waiting for a reply it never uses. Fixing this made
+every `gcx` command in a sandbox five seconds faster.
 
 ### `gcx` commands fail to connect, but `gcx config check` shows both ✔ lines
 

@@ -109,6 +109,14 @@ for it — `features` is still `["exec.readyFile"]` — and the call only ever f
 connected, so `session_not_found` there is read as "Coda plugin predates 1.3.0". Do not do version
 arithmetic on `pluginVersion` instead.
 
+**The flow is shared and lives in tier 3.** `useGcxCredential.hook.ts` and `GcxSetupPanel.tsx` sit in
+`integrations/coda/` because `TerminalPanel` (tier 3) cannot import from `components/` (tier 4). Do not
+move them up; add consumers instead. The hook takes `onReady` rather than calling `markComplete` itself —
+step semantics do not belong in it.
+
+**Never answer OSC 10/11/12.** xterm replies through `onData`, `onData` goes to the PTY, and a late reply
+is echoed by the shell as text. `TerminalPanel` registers suppressing handlers after `open()`; keep them.
+
 **A refusal must not dead-end a guide.** The terminal is connected either way, so offer "Continue
 without gcx" and let `is-terminal-active` steps proceed.
 
