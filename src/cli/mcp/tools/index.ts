@@ -1,11 +1,13 @@
 /**
  * Pathfinder authoring MCP tool registry.
  *
- * One entry per MCP tool. Each tool is a thin dispatcher to a CLI `runX`
- * function — the CLI is the sole validator. The tool list intentionally
- * mirrors the CLI command surface plus MCP-specific tools
- * (`pathfinder_authoring_start`, `pathfinder_help`,
- * `pathfinder_finalize_for_app_platform`).
+ * Each module's first line is `Contract: mcp-native | cli-routed`:
+ *
+ * - **mcp-native** — the tool's behavior and schema live here. Explicit Zod;
+ *   no pathfinder_help / `opts`. Includes discovery (`pathfinder_help`).
+ * - **cli-routed** — a thin wrap of a CLI `runX`. Agents copy `opts` from
+ *   pathfinder_help; MCP adds only shared plumbing (tmpdir, session
+ *   transport) around the runner.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -15,11 +17,12 @@ import { registerArtifactTools } from './artifact-tools';
 import { registerAuthoringStart } from './authoring-start';
 import { registerFinalizeTool } from './finalize';
 import { registerHelpTool } from './help';
-import { registerInspectionTools } from './inspection-tools';
+import { registerInspectTool } from './inspect';
 import { registerMutationTools } from './mutation-tools';
 import { registerRepositoryTools } from './repository-tools';
 import { registerSchemaTools } from './schema-tools';
 import { registerSessionReadTools } from './session-read-tools';
+import { registerValidateTool } from './validate';
 
 export interface RegisterAuthoringToolsOptions {
   /**
@@ -37,13 +40,17 @@ export interface RegisterAuthoringToolsOptions {
 }
 
 export function registerAuthoringTools(server: McpServer, options: RegisterAuthoringToolsOptions): void {
+  // mcp-native — MCP-owned behavior
   registerAuthoringStart(server);
   registerHelpTool(server);
-  registerArtifactTools(server, options);
-  registerMutationTools(server, options);
-  registerInspectionTools(server, options);
+  registerValidateTool(server, options);
   registerSessionReadTools(server, options);
   registerFinalizeTool(server, options);
   registerRepositoryTools(server);
+
+  // cli-routed — thin wrap of CLI runX
   registerSchemaTools(server);
+  registerArtifactTools(server, options);
+  registerMutationTools(server, options);
+  registerInspectTool(server, options);
 }

@@ -80,7 +80,7 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
 
   beforeEach(async () => {
     h = await newHarness();
-    const created = await h.call('pathfinder_create_package', { title: 'Invariant Test' });
+    const created = await h.call('pathfinder_create_package', { opts: { title: 'Invariant Test' } });
     if (!created.sessionToken) {
       throw new Error('create returned no token');
     }
@@ -96,9 +96,8 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
     const r = await h.call('pathfinder_manage_block', {
       operation: 'add-block',
       sessionToken: token,
-      type: 'markdown', // server-accepted type
       // Empty fields fails the per-type Zod validation in the CLI.
-      fields: {},
+      opts: { type: 'markdown' },
     });
     expect(r.status).toBe('error');
     expect(r.code).toBe('SCHEMA_VALIDATION');
@@ -109,8 +108,7 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
     const r = await h.call('pathfinder_manage_block', {
       operation: 'edit-block',
       sessionToken: token,
-      id: 'does-not-exist',
-      fields: { content: 'updated' },
+      opts: { id: 'does-not-exist', content: 'updated' },
     });
     expect(r.status).toBe('error');
     expect(await snapshot(h.store, token)).toBe(initialSnapshot);
@@ -120,29 +118,27 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
     const r = await h.call('pathfinder_manage_block', {
       operation: 'remove-block',
       sessionToken: token,
-      id: 'does-not-exist',
+      opts: { id: 'does-not-exist' },
     });
     expect(r.status).toBe('error');
     expect(await snapshot(h.store, token)).toBe(initialSnapshot);
   });
 
-  it('pathfinder_add_step targeting a non-multistep block leaves the store untouched', async () => {
+  it('pathfinder_manage_block add-step targeting a non-multistep block leaves the store untouched', async () => {
     // Add a markdown block to provide a non-multistep target.
     const added = await h.call('pathfinder_manage_block', {
       operation: 'add-block',
       sessionToken: token,
-      type: 'markdown',
-      id: 'md-1',
-      fields: { content: 'hello' },
+      opts: { type: 'markdown', id: 'md-1', content: 'hello' },
     });
     expect(added.status).toBe('ok');
     const afterAdd = await snapshot(h.store, token);
 
     // add_step against a markdown parent must fail.
-    const r = await h.call('pathfinder_add_step', {
+    const r = await h.call('pathfinder_manage_block', {
+      operation: 'add-step',
       sessionToken: token,
-      parentId: 'md-1',
-      fields: { title: 'should-fail', instruction: 'wont-land' },
+      opts: { parent: 'md-1', title: 'should-fail', instruction: 'wont-land' },
     });
     expect(r.status).toBe('error');
     expect(await snapshot(h.store, token)).toBe(afterAdd);
@@ -153,8 +149,7 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
     const ok = await h.call('pathfinder_manage_block', {
       operation: 'add-block',
       sessionToken: token,
-      type: 'markdown',
-      fields: { content: 'this lands' },
+      opts: { type: 'markdown', content: 'this lands' },
     });
     expect(ok.status).toBe('ok');
     expect(ok.generation).toBe(2);
@@ -164,8 +159,7 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
     const fail = await h.call('pathfinder_manage_block', {
       operation: 'edit-block',
       sessionToken: token,
-      id: 'never-existed',
-      fields: { content: 'will not land' },
+      opts: { id: 'never-existed', content: 'will not land' },
     });
     expect(fail.status).toBe('error');
 
@@ -180,8 +174,7 @@ describe('P7 failed-mutation invariant — session store unchanged on CLI runner
       const r = await h.call('pathfinder_manage_block', {
         operation: 'edit-block',
         sessionToken: token,
-        id: `phantom-${i}`,
-        fields: { content: 'x' },
+        opts: { id: `phantom-${i}`, content: 'x' },
       });
       expect(r.status).toBe('error');
     }

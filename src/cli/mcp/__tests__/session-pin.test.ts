@@ -57,8 +57,7 @@ async function callTool(
 
 async function mintSession(store: InMemorySessionStore, mcpSessionId: string | undefined): Promise<string> {
   const r = await callTool(store, mcpSessionId, 'pathfinder_create_package', {
-    title: 'pin-test',
-    type: 'guide',
+    opts: { title: 'pin-test', type: 'guide' },
   });
   if (typeof r.sessionToken !== 'string') {
     throw new Error('create_package did not return a sessionToken');
@@ -76,8 +75,7 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       const r = await callTool(store, 'transport-session-A', 'pathfinder_manage_block', {
         operation: 'add-block',
         sessionToken: token,
-        type: 'markdown',
-        fields: { content: 'hello' },
+        opts: { type: 'markdown', content: 'hello' },
       });
       expect(r.status).toBe('ok');
       expect(r.generation).toBe(2);
@@ -115,8 +113,7 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       const r = await callTool(store, 'transport-session-B', 'pathfinder_manage_block', {
         operation: 'add-block',
         sessionToken: token,
-        type: 'markdown',
-        fields: { content: 'hello' },
+        opts: { type: 'markdown', content: 'hello' },
       });
       // 404 (SESSION_NOT_FOUND), not 403. The pin is a confidentiality
       // boundary; we don't leak "exists but not yours."
@@ -140,6 +137,7 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
 
       const r = await callTool(store, 'transport-session-B', 'pathfinder_inspect', {
         sessionToken: token,
+        opts: {},
       });
       expect(r.code).toBe('SESSION_NOT_FOUND');
     });
@@ -172,8 +170,7 @@ describe('Mcp-Session-Id binding (P7 task 16)', () => {
       const r = await callTool(store, undefined, 'pathfinder_manage_block', {
         operation: 'add-block',
         sessionToken: token,
-        type: 'markdown',
-        fields: { content: 'hello' },
+        opts: { type: 'markdown', content: 'hello' },
       });
       expect(r.code).toBe('SESSION_NOT_FOUND');
     });

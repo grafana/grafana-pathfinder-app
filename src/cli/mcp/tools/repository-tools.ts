@@ -1,12 +1,12 @@
 /**
- * Read-only tools that read the public Pathfinder package CDN repository.
+ * Contract: mcp-native
+ *
+ * Read-only tools against the public Pathfinder package CDN. No CLI twins;
+ * explicit top-level Zod is authoritative.
  *
  * `pathfinder_read_repository` collapses the former list_packages / get_package / get_manifest tools
  * into one tool with an operation flag (`list-packages` | `get-package` | `get-manifest`).
  * `pathfinder_launch_package` stays separate — different output contract and currently PARTIAL (see #855).
- *
- * These operations are MCP-only (no CLI twins); names follow kebab-case capability style
- * matching the former standalone tool suffixes.
  *
  * Stateless — no artifact in/out, no session token. The repository base
  * URL is read from `PATHFINDER_REPOSITORY_URL` (falls back to the public
@@ -35,10 +35,6 @@ import { textResult } from './result';
 
 const REPOSITORY_OPERATIONS = ['list-packages', 'get-package', 'get-manifest'] as const;
 
-/**
- * Single source of truth for pathfinder_read_repository args. Published schema and
- * handleRepository both derive from this (same pattern as manage_block).
- */
 const RepositoryInputSchema = z
   .object({
     operation: z
@@ -75,10 +71,9 @@ function registerRepository(server: McpServer): void {
     'pathfinder_read_repository',
     {
       description:
-        'Use this tool to discover or inspect published Pathfinder packages from the public Grafana package repository (or a custom one via PATHFINDER_REPOSITORY_URL). Pass `operation: "list-packages" | "get-package" | "get-manifest"` (kebab-case capability names matching the former standalone tools; MCP-only — no CLI twins). For shareable deep links use pathfinder_launch_package. For session-stored authoring reads use pathfinder_read_session.',
+        'Use this tool to discover or inspect published Pathfinder packages from the public Grafana package repository (or a custom one via PATHFINDER_REPOSITORY_URL). MCP-native contract: no CLI command or pathfinder_help step. Pass `operation: "list-packages" | "get-package" | "get-manifest"`; list filters (`type`, `category`, `q`) and package `id` are top-level parameters. For shareable deep links use pathfinder_launch_package. For session-stored authoring reads use pathfinder_read_session.',
       annotations: readOnly('Read Pathfinder repository', /* openWorld */ true),
-      // Flat object + superRefine so operation-required fields fail at the MCP
-      // schema boundary (same contract as pathfinder_manage_block).
+      // Explicit MCP-native schema; conditional requireds stay at its boundary.
       inputSchema: RepositoryInputSchema,
     },
     async (args) => handleRepository(args)
@@ -151,6 +146,7 @@ async function handleRepository(args: RepositoryInput): Promise<ReturnType<typeo
 const LAUNCH_PACKAGE_BUG_URL = 'https://github.com/grafana/grafana-pathfinder-app/issues/855';
 
 function registerLaunchPackage(server: McpServer): void {
+  // URL construction has no CLI command interface.
   server.registerTool(
     'pathfinder_launch_package',
     {

@@ -56,7 +56,9 @@ async function withHarness<T>(
 describe('pathfinder_create_package — session mint', () => {
   it('mints a session token at generation 1 and persists the seed artifact', async () => {
     await withHarness(async (call, store) => {
-      const r = await call('pathfinder_create_package', { title: 'My Guide', description: 'A test' });
+      const r = await call('pathfinder_create_package', {
+        opts: { title: 'My Guide', description: 'A test' },
+      });
       expect(r.status).toBe('ok');
       expect(typeof r.sessionToken).toBe('string');
       expect(isValidSessionToken(r.sessionToken!)).toBe(true);
@@ -75,8 +77,8 @@ describe('pathfinder_create_package — session mint', () => {
 
   it('mints distinct tokens for two distinct calls', async () => {
     await withHarness(async (call, store) => {
-      const a = await call('pathfinder_create_package', { title: 'A' });
-      const b = await call('pathfinder_create_package', { title: 'B' });
+      const a = await call('pathfinder_create_package', { opts: { title: 'A' } });
+      const b = await call('pathfinder_create_package', { opts: { title: 'B' } });
       expect(a.sessionToken).toBeDefined();
       expect(b.sessionToken).toBeDefined();
       expect(a.sessionToken).not.toBe(b.sessionToken);
@@ -88,14 +90,13 @@ describe('pathfinder_create_package — session mint', () => {
 
   it('the minted token works for subsequent session-mode add_block calls', async () => {
     await withHarness(async (call, store) => {
-      const created = await call('pathfinder_create_package', { title: 'Chained' });
+      const created = await call('pathfinder_create_package', { opts: { title: 'Chained' } });
       expect(created.sessionToken).toBeDefined();
 
       const added = await call('pathfinder_manage_block', {
         operation: 'add-block',
         sessionToken: created.sessionToken,
-        type: 'markdown',
-        fields: { content: 'Hello' },
+        opts: { type: 'markdown', content: 'Hello' },
       });
       expect(added.status).toBe('ok');
       expect(added.sessionToken).toBe(created.sessionToken);
@@ -111,7 +112,7 @@ describe('pathfinder_create_package — session mint', () => {
 
   it('returns INVALID_TITLE when the title has no alphanumeric chars (regression — sessionToken branch must not mask this)', async () => {
     await withHarness(async (call) => {
-      const r = await call('pathfinder_create_package', { title: '!!!' });
+      const r = await call('pathfinder_create_package', { opts: { title: '!!!' } });
       expect(r.code).toBe('INVALID_TITLE');
       // No sessionToken on errors — sessionToken only appears on success.
       expect(r.sessionToken).toBeUndefined();

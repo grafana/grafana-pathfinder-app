@@ -1,4 +1,6 @@
 /**
+ * Contract: mcp-native
+ *
  * `pathfinder_authoring_start` — first tool a client should call.
  *
  * Returns a compact context block telling the model what Pathfinder is, what
@@ -11,6 +13,19 @@
  * artifacts), reads are explicit and on-demand, and the full artifact
  * returns only at finalize. Stateless `{artifact}` mode is mentioned once
  * as a fallback for OSS / airgap or multi-instance deployments.
+ *
+ * `interfaceContract` is the canonical statement of the two directions, and
+ * the reason tool descriptions do not restate them:
+ *
+ * - **Inbound (`parameters`) is ours.** `pathfinder_help` projects Commander's
+ *   option surface into the JSON keys a tool accepts. It exists for the
+ *   agent's convenience and is the only thing here we author.
+ * - **Outbound (`responses`) is the CLI's.** `CommandOutcome` reaches the
+ *   agent verbatim, minus argv-shaped hints. When a response reads like
+ *   terminal output, that is why — see `tools/result.ts`.
+ *
+ * Anything agent-facing that is a fact about a command belongs in that
+ * command's Commander description, not here, so CLI users get it too.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -39,12 +54,13 @@ const AUTHORING_CONTEXT = {
   notFor: [...PATHFINDER_NOT_FOR],
   domains: [...PATHFINDER_DOMAINS],
   workflow: [
-    '1. Call pathfinder_create_package with a title. The response carries BOTH a sessionToken (use this for subsequent calls) AND a seed artifact (ignore unless you are running in stateless fallback mode).',
-    '2. Mutate blocks via pathfinder_manage_block with operation "add-block" | "edit-block" | "remove-block" (CLI command names). Append steps with pathfinder_add_step and quiz choices with pathfinder_add_choice. All adds append under the parent, so author in display order. Steps and choices are not individually editable or removable; cascade-remove their parent block and rebuild it instead. Pass {sessionToken}; each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact.',
-    '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_read_session with operation "list-blocks" | "get-block" | "get-manifest" and {sessionToken}. Cheap; use freely instead of re-reading the full artifact.',
-    '4. When you need the full artifact body in your context (rare — e.g. for a wholesale review before finalize), call pathfinder_inspect with {sessionToken}. This is the explicit "pull the artifact" escape hatch.',
-    '5. Call pathfinder_validate with {sessionToken} before finalize.',
-    '6. Call pathfinder_finalize_for_app_platform with {sessionToken} to receive the publish handoff (path templates, viewer link, localExport fallback). The full artifact returns here. The server deletes the session on success — the sessionToken is single-use through finalize.',
+    '1. Call pathfinder_help({ command: "create" }), then pathfinder_create_package with those parameters in `opts`. The response carries BOTH a sessionToken (use this for subsequent calls) AND a seed artifact (ignore unless you are running in stateless fallback mode).',
+    '2. Build the block tree with pathfinder_manage_block, operation "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" (CLI command names). Every operation is scoped to ONE block, addressed by id. All adds append under the parent, so author in display order. Steps and choices are not individually editable or removable; cascade-remove their parent block and rebuild it instead. Pass {sessionToken}; each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact.',
+    '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_read_session with operation "list-blocks" | "get-block" | "get-manifest" and {sessionToken}; get-block also takes top-level blockId. Cheap; use freely instead of re-reading the full artifact.',
+    '4. Set guide-level metadata with pathfinder_manage_guide, operation "set-manifest" — description, category, language, targeting, and anything else describing the package as a whole. This is a different tool from pathfinder_manage_block on purpose: guide metadata is not a block operation, and this is usually the last authoring step before validate.',
+    '5. When you need the full artifact body in your context (rare — e.g. for a wholesale review before finalize), call pathfinder_inspect with {sessionToken, opts:{}}. This is the explicit "pull the artifact" escape hatch.',
+    '6. Call pathfinder_validate with {sessionToken} before finalize.',
+    '7. Call pathfinder_finalize_for_app_platform with {sessionToken} to receive the publish handoff (path templates, viewer link, localExport fallback). The full artifact returns here. The server deletes the session on success — the sessionToken is single-use through finalize.',
   ],
   sessionMode: {
     summary:
@@ -73,11 +89,33 @@ const AUTHORING_CONTEXT = {
       'Never mix modes — pass EITHER `artifact` OR `sessionToken`, never both. Mixing returns INPUT_MODE_AMBIGUOUS.',
     ],
   },
+  // The two halves agents most often conflate. `parameters` is ours: a
+  // projection of the CLI's option surface, published for convenience and
+  // keyed the way the tool accepts it. `responses` is the CLI's own output,
+  // passed through verbatim — nothing in it was authored for MCP, which is
+  // why it reads like terminal tooling. Stated once here so no tool
+  // description has to restate the translation rules.
+  interfaceContract: {
+    parameters: [
+      "JSON in, always. pathfinder_help({ command }) returns the parameter interface for that tool's `opts`. It is a convenience projection of the CLI option surface into the JSON shape the tool accepts — it is not CLI syntax, and you never build a command line.",
+      'Names are camelCase (`--parent-id` → `parentId`). Values are JSON: boolean flags become booleans (`list: true`), repeatable flags become arrays. Never send `--flag` names.',
+      'Positional CLI arguments are republished as ordinary named parameters, so positional order never matters to you.',
+      'When help returns `subcommands`, pass your chosen value in `opts` and call help again with that value as `subcommand` to get the full per-subcommand surface.',
+      'Parameters a tool owns itself, or cannot honor, are withheld from help and rejected as UNSUPPORTED_PARAMETER. The `exposed` list on that error is authoritative — read it rather than guessing.',
+    ],
+    responses: [
+      "CLI spec out, always. Every tool returns the CLI runner's structured outcome verbatim: `status`, plus `code` and `message` on error, plus `summary` / `details` / `warnings` / `data` on success.",
+      'The CLI runners are the sole validator. A `SCHEMA_VALIDATION` error lists every issue at once — fix all of them before retrying.',
+      '`warnings` are advisory and non-blocking (composition nudges, unverified selectors, normalized input). They do not fail the call, but they are the CLI telling you the guide will be worse if you ignore them.',
+      '`data` is the stable machine payload and `details` is display text — read ids and paths from `data`.',
+      'Mutation acks add a `summary` tree ({path, id, type, hint?, children?}). Navigate and address blocks from it instead of re-reading the artifact.',
+      'CLI-only next-step recipes are stripped before you see them. Anything that still reads like terminal advice is describing the underlying command, not an interface you can call.',
+    ],
+  },
   rules: [
-    'The CLI runners are the sole validator. If a tool returns status "error" with code "SCHEMA_VALIDATION", the message lists every issue at once — fix all of them before retrying.',
     `Block ids: pass an explicit \`id\` whenever \`type\` is a container (${CONTAINER_TYPES_TEXT}) — they are rejected without one. Every other type auto-ids as <type>-<n> when you omit it.`,
-    'Append-only: pathfinder_manage_block operation "add-block" always appends to the end of the parent. Author in display order. To reorder, remove-block and add-block in the desired order (there is no move/insert-index on this tool).',
-    'Mutation acks include a `summary` field — a compact tree of every block ({path, id, type, hint?, children?}). Use the summary for navigation and to reference block ids.',
+    'Append-only: pathfinder_manage_block operation "add-block" always appends to the end of the parent. Author in display order. To reorder, remove-block and add-block in the desired order (there is no move/insert-index on this tool). Removing a populated container requires `cascade: true` and deletes its entire subtree with no undo — read the children first (pathfinder_read_session operation "get-block") if you plan to rebuild them.',
+    'Tool scope: pathfinder_manage_block changes one block at a time inside the tree. pathfinder_manage_guide changes the guide as a whole (the manifest). Guide-level fields never go through pathfinder_manage_block, and block fields never go through pathfinder_manage_guide.',
   ],
   // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
   // Curate ruthlessly — every connected client pays this length on every
@@ -97,14 +135,15 @@ const AUTHORING_CONTEXT = {
     'If the target lives in a virtualized list, paginated table, or dashboard row below the fold, use a `guided` block with `lazyRender: true` on the step — a plain `interactive` will fail because `exists-reftarget` waits but cannot scroll.',
   ],
   discovery: [
-    'pathfinder_help — CLI field schemas for mutation payloads. For pathfinder_manage_block, pass command equal to `operation` ("add-block" with subcommand=<type>, "edit-block", or "remove-block"). For dedicated tools: pathfinder_add_step → "add-step"; pathfinder_add_choice → "add-choice"; pathfinder_set_manifest → "set-manifest". Help flag names become `fields` keys; addressing flags map to tool args (`--parent`→`parentId`, `--id`→`id`).',
-    'pathfinder_read_session — given a sessionToken and operation list-blocks | get-block | get-manifest, returns a cheap facet of the session artifact. Use freely.',
-    'pathfinder_inspect — escape hatch. Given a sessionToken (or artifact), returns the full artifact plus a tree summary.',
-    'pathfinder_read_repository — given operation list-packages | get-package | get-manifest, discovers or inspects published CDN packages. Sibling of pathfinder_read_session for published (not session) content.',
+    "pathfinder_help — the parameter interface for any CLI-backed tool's `opts`; read it per `interfaceContract.parameters`. For pathfinder_manage_block and pathfinder_manage_guide, pass `command` equal to that call's `operation`. Remember the addressing parameters help returns (`parent` for add-step / add-choice).",
+    'pathfinder_read_session — MCP-native explicit schema. Given a sessionToken and operation list-blocks | get-block | get-manifest (plus blockId for get-block), returns a cheap facet of the session artifact. Use freely.',
+    'pathfinder_inspect — escape hatch. Given a sessionToken (or artifact) plus help-derived `opts`, returns the full artifact plus a tree summary.',
+    'pathfinder_read_repository — MCP-native explicit schema. Given operation list-packages | get-package | get-manifest plus its documented top-level filters/id, discovers or inspects published CDN packages. Sibling of pathfinder_read_session for published (not session) content.',
   ],
 };
 
 export function registerAuthoringStart(server: McpServer): void {
+  // Static orchestration context, not a CLI command.
   server.registerTool(
     'pathfinder_authoring_start',
     {
