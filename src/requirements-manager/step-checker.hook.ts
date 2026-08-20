@@ -32,6 +32,7 @@ import { stepReducer, createInitialState, toLegacyState, type StepAction } from 
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> interactive-engine
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
+import { TERMINAL_STATUS_CHANGED_EVENT } from '../types/requirements.types';
 import { logger } from '../lib/logging';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
@@ -206,6 +207,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // The async checkStep function can be mid-execution when eligibility changes, causing it to
   // use a stale captured value. This ref always has the current value.
   const isEligibleRef = useRef(isEligibleForChecking);
+  /** A terminal status change seen while a check was running, still to be acted on. */
+  const pendingTerminalRecheckRef = useRef(false);
   // eslint-disable-next-line react-hooks/refs -- intentional latest-value ref read by async checkStep to avoid stale closures
   isEligibleRef.current = isEligibleForChecking;
 
@@ -1063,6 +1066,29 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     // Also check periodically for SPA navigation that doesn't fire events
     const urlCheckInterval = setInterval(handleUrlChange, 2000);
 
+    // A terminal connecting unblocks `is-terminal-active` and `coda-exit-zero:`,
+    // and nothing above would notice: the heartbeat watchdog only polls
+    // DOM-fragile requirements, and provisioning a VM takes about a minute, so
+    // every terminal step has long since answered "not connected". No delay
+    // here — unlike navigation there is no DOM to settle, and the module state
+    // this reads is already written when the event fires.
+    const handleTerminalStatusChange = () => {
+      if (!isSubscribed) {
+        return;
+      }
+      // `triggerRecheckIfBlocked` declines while a check is in flight, and this
+      // event is a one-shot — dropping it leaves the step stale for good. A
+      // reconnect flips disconnected → connecting → connected inside ~100ms
+      // (`openTerminal` re-connects on a timer), so the decisive status really
+      // can arrive mid-check. Remember it and recheck when the check settles.
+      if (isCheckingRef.current) {
+        pendingTerminalRecheckRef.current = true;
+        return;
+      }
+      triggerRecheckIfBlocked();
+    };
+    window.addEventListener(TERMINAL_STATUS_CHANGED_EVENT, handleTerminalStatusChange);
+
     return () => {
       isSubscribed = false;
       if (contextUnsubscribe) {
@@ -1070,9 +1096,21 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
       window.removeEventListener('popstate', handleUrlChange);
       window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener(TERMINAL_STATUS_CHANGED_EVENT, handleTerminalStatusChange);
       clearInterval(urlCheckInterval);
     };
   }, [isEligibleForChecking, state.isCompleted, state.fixType, lazyRender, stepId]); // Only re-subscribe when eligibility, completion, or lazy-scroll state changes (objectives tracked via ref)
+
+  // Drain a terminal status change that arrived while a check was in flight.
+  useEffect(() => {
+    if (state.isChecking || !pendingTerminalRecheckRef.current) {
+      return;
+    }
+    pendingTerminalRecheckRef.current = false;
+    if (!state.isCompleted && !state.isEnabled) {
+      checkStepRef.current();
+    }
+  }, [state.isChecking, state.isCompleted, state.isEnabled]);
 
   // Scoped heartbeat recheck for fragile prerequisites
   useEffect(() => {

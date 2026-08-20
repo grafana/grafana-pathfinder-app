@@ -10,6 +10,7 @@
  */
 
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect } from 'react';
+import { TERMINAL_STATUS_CHANGED_EVENT } from '../../types/requirements.types';
 import type { ConnectionStatus, TerminalVMOptions } from './useTerminalLive.hook';
 import { setLastVmOpts } from './terminal-storage';
 import { logger } from '../../lib/logging';
@@ -144,9 +145,11 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     settled.forEach((waiter) => waiter.resolve(status === 'connected' ? sessionId : null));
   }, []);
 
-  // Sync module-level status whenever it changes
+  // Sync module-level status whenever it changes, and tell the requirements
+  // checker to look again — it runs outside React and cannot observe this.
   useEffect(() => {
     _moduleTerminalStatus = registeredStatus;
+    window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: registeredStatus } }));
   }, [registeredStatus]);
 
   useEffect(() => {

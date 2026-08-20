@@ -112,6 +112,18 @@ arithmetic on `pluginVersion` instead.
 **A refusal must not dead-end a guide.** The terminal is connected either way, so offer "Continue
 without gcx" and let `is-terminal-active` steps proceed.
 
+## A connecting terminal must re-open the requirement
+
+`is-terminal-active` and `coda-exit-zero:` read live module state, so they can see a connection — but
+nothing tells them to look again when one arrives. The checker runs outside React, the heartbeat polls
+only DOM-fragile requirements, and retries are bounded. `TerminalProvider` therefore dispatches
+`TERMINAL_STATUS_CHANGED_EVENT` (declared in `types/requirements.types.ts`, tier 0, because tier 3 and
+tier 2 cannot import each other) and `step-checker.hook.ts` rechecks blocked steps on it.
+
+**Do not drop the event when a check is in flight.** It is a one-shot; a status that arrives mid-check is
+stored in `pendingTerminalRecheckRef` and drained when the check settles. `openTerminal` reconnects on a
+100 ms timer, so `disconnected → connecting → connected` really can land inside one check.
+
 ## Availability gating
 
 The terminal is optional, so `grafana-coda-app` is **not** a declared plugin dependency. Availability

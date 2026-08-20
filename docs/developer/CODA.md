@@ -154,6 +154,26 @@ so a guide pushed to a Cloud stack that way connects a terminal without installi
 `src/validation/upsert-script-crd-fields.test.ts` records this as a deliberate prune; the fix is a `#Block`
 field in that repo's CUE.
 
+## Requirements and a connecting terminal
+
+`is-terminal-active` and `coda-exit-zero:` read live module state through
+`getTerminalConnectionStatus()` / `getTerminalSessionId()`, so they can always _see_ a connection. What
+they cannot do is notice one arriving: the requirements checker runs outside React, the heartbeat
+watchdog only polls DOM-fragile requirements (`navmenu-open`, `exists-reftarget`, `on-page:`), and the
+retry loop is bounded at three attempts. Provisioning a VM takes about a minute, so every terminal step
+in a guide had long since settled on "not connected" and stayed there — the step showed _"A terminal
+connection is required"_ under a terminal that was plainly connected.
+
+So `TerminalProvider` dispatches **`TERMINAL_STATUS_CHANGED_EVENT`** on `window` whenever the registered
+status changes, and `step-checker.hook.ts` rechecks any blocked step when it fires. The event name lives
+in `src/types/requirements.types.ts` because the emitter is `integrations/coda` (tier 3) and the listener
+is `requirements-manager` (tier 2) — they cannot import each other, and tier 0 is the only shared ground.
+
+One subtlety worth keeping: the recheck declines while a check is already in flight, and the event never
+comes again, so a status that arrives mid-check is **remembered and drained** once the check settles. That
+is not hypothetical — `openTerminal` reconnects on a 100 ms timer, so a reconnect flips
+`disconnected → connecting → connected` fast enough to land inside one check.
+
 ## Availability
 
 The terminal is optional, so `grafana-coda-app` is **not** a declared plugin dependency. Three gates
