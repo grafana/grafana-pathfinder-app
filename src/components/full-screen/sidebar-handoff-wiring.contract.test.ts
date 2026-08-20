@@ -81,6 +81,16 @@ describe('full-screen sidebar-handoff and relaunch listener wiring', () => {
     expect(fnBody).not.toContain('getAppEvents()');
   });
 
+  it('imports the shared FullScreenExitReason type from full-screen-autodock.ts rather than declaring its own disconnected union', () => {
+    // Regression guard: a local, uncoordinated reason type here previously
+    // claimed (only in a comment) to "mirror" full-screen-autodock.ts's
+    // vocabulary with nothing enforcing it. The import is the actual contract.
+    expect(fullScreenPanel).toContain(
+      "import { dockOnLeavingFullScreen, type HistoryAction, type FullScreenExitReason } from './full-screen-autodock';"
+    );
+    expect(fullScreenPanel).not.toMatch(/type FullScreenExitToSidebarReason/);
+  });
+
   it('the REQUEST_FULLSCREEN_GUIDE_EVENT listener is added and removed alongside the legacy pathfinder-request-full-screen event', () => {
     expect(fullScreenPanel).toContain(
       "document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest)"
