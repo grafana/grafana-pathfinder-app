@@ -1,5 +1,4 @@
 import { getAppEvents } from '@grafana/runtime';
-import { t } from '@grafana/i18n';
 import { StorageKeys } from '../lib/storage-keys';
 import { PANEL_MODE_CHANGE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
 // Surgical import (not the ../lib/telemetry barrel): panel-mode is
@@ -326,11 +325,13 @@ export const panelModeManager = new PanelModeManager();
  * `loadDocsTabContent` in docs-panel.tsx, the sole caller: surface is a
  * property of which milestone the user navigated to, decided once at that
  * point, not of any individual step's action.
+ *
+ * Deliberately no confirmation toast here: `dispatchEvent` succeeds whether
+ * or not a listener exists, so it can't tell us the handoff actually
+ * happened (e.g. FullScreenPanel already unmounted in the documented
+ * mode/mount desync window — see `full-screen-autodock.ts`). FullScreenPanel
+ * publishes the toast itself, after its real exit-to-sidebar effects run.
  */
 export function requestSidebarHandoff(): void {
   document.dispatchEvent(new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT));
-  getAppEvents().publish({
-    type: 'alert-info',
-    payload: [t('panelMode.sidebarHandoffTitle', 'Switched to the sidebar so you can complete this step')],
-  });
 }
