@@ -113,8 +113,7 @@ describe('tool-layer error envelope', () => {
       const { text, payload } = await h.call('pathfinder_manage_block', {
         operation: 'add-block',
         sessionToken: TOKEN,
-        type: 'markdown',
-        fields: { content: 'x' },
+        opts: { type: 'markdown', content: 'x' },
       });
       expect(() => JSON.parse(text)).not.toThrow();
       expect(payload.status).toBe('error');

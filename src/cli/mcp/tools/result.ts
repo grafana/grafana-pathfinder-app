@@ -16,6 +16,14 @@
  * Built via the shared `errorResult` factory; the named wrappers below
  * exist so call sites read as the intent (`sessionNotFoundResult(token)`)
  * rather than open-coded code strings.
+ *
+ * This module is the *outbound* half of the agent contract, and none of it is
+ * authored for MCP: `CommandOutcome` is the CLI's own shape and reaches the
+ * agent verbatim apart from argv-shaped hints. The inbound half — the
+ * convenience projection an agent fills in — belongs to `pathfinder_help` and
+ * `lib/command-interface.ts`. Read both halves together in
+ * `authoring_start`'s `interfaceContract`, which is where agents are told
+ * which side of the line they are looking at.
  */
 
 import type { TreeNode } from '../../utils/package-io';
@@ -23,7 +31,18 @@ import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { type CommandOutcome, renderMachineJson } from '../../utils/output';
 import { type ConcurrentModificationResult, type SessionTooLargeResult } from './state-bridge';
 
-type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+export type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+
+/**
+ * MCP agents get their command interface from `pathfinder_help`; CLI argv
+ * recipes only teach them positional syntax and `--flag` names they cannot
+ * send. Keep the structured outcome and omit those CLI-only next-step hints.
+ */
+export function sanitizeOutcomeForMcp(outcome: CommandOutcome): CommandOutcome {
+  const structured = { ...outcome } as CommandOutcome & { hints?: string[] };
+  delete structured.hints;
+  return structured;
+}
 
 export function textResult(text: string, isError = false): ToolResult {
   return {
@@ -55,10 +74,9 @@ function errorResult(
 
 /**
  * Render a CommandOutcome (plus an optional artifact echo) as the MCP tool
- * result. The CLI's `CommandOutcome` shape is the wire shape — the MCP does
- * not transform it. This is what makes "schema-illegal output is impossible
- * because it is impossible in the CLI" hold end-to-end: error codes, paths,
- * and structured `data` flow through verbatim.
+ * result. The CLI's structured `CommandOutcome` shape is the wire shape;
+ * only CLI-specific next-step `hints` are omitted. Error codes, paths, and
+ * structured `data` flow through verbatim.
  *
  * When `artifact` is present, the response wraps it with an `__etag` field
  * (issue #1 — see `src/cli/utils/etag.ts`) sibling to `content` / `manifest`.
@@ -71,7 +89,7 @@ export function outcomeResult(
   artifact?: { content: unknown; manifest?: unknown },
   summary?: TreeNode[]
 ): ToolResult {
-  const payload: Record<string, unknown> = { ...outcome };
+  const payload: Record<string, unknown> = { ...sanitizeOutcomeForMcp(outcome) };
   if (artifact) {
     payload.artifact = {
       ...artifact,
@@ -96,7 +114,7 @@ export function sessionOutcomeResult(
   generation: number | undefined,
   summary: TreeNode[]
 ): ToolResult {
-  const payload: Record<string, unknown> = { ...outcome, sessionToken, summary };
+  const payload: Record<string, unknown> = { ...sanitizeOutcomeForMcp(outcome), sessionToken, summary };
   if (generation !== undefined) {
     payload.generation = generation;
   }

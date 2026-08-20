@@ -79,8 +79,7 @@ describe('MCP hardening — end-to-end composition', () => {
 
       // -------- Setup: fresh artifact for the authoring flow.
       const created = await callTool(client, 'pathfinder_create_package', {
-        title: 'Hardening flow test',
-        type: 'guide',
+        opts: { title: 'Hardening flow test', type: 'guide' },
       });
       expect(created.status).toBe('ok');
       let artifact = created.artifact!;
@@ -90,8 +89,7 @@ describe('MCP hardening — end-to-end composition', () => {
       const markdownAdd = await callTool(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact,
-        type: 'markdown',
-        fields: { content: 'Intro' },
+        opts: { type: 'markdown', content: 'Intro' },
       });
       expect(markdownAdd.status).toBe('ok');
       expect(markdownAdd.warnings).toBeUndefined();
@@ -103,9 +101,7 @@ describe('MCP hardening — end-to-end composition', () => {
       const multistepAdd = await callTool(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact,
-        type: 'multistep',
-        id: 'walk-1',
-        fields: { content: 'walkthrough heading' },
+        opts: { type: 'multistep', id: 'walk-1', content: 'walkthrough heading' },
       });
       expect(multistepAdd.status).toBe('ok');
       const compositionHint = multistepAdd.warnings?.find((w) => w.code === 'MULTISTEP_COMPOSITION_HINT');
@@ -115,15 +111,25 @@ describe('MCP hardening — end-to-end composition', () => {
       // -------- Issue #3: adding a step with a `reftarget` fires the
       // unverified-selector signal at outcome-time. The path carries the
       // position so a reviewer can grep for the exact step that took the risk.
-      const stepAdd = await callTool(client, 'pathfinder_add_step', {
+      const stepAdd = await callTool(client, 'pathfinder_manage_block', {
+        operation: 'add-step',
         artifact,
-        parentId: 'walk-1',
-        fields: { action: 'button', reftarget: '[data-testid="save"]', description: 'Click Save' },
+        opts: {
+          parent: 'walk-1',
+          action: 'button',
+          reftarget: '[data-testid="save"]',
+          description: 'Click Save',
+          lazyRender: true,
+        },
       });
       expect(stepAdd.status).toBe('ok');
       const unverified = stepAdd.warnings?.find((w) => w.code === 'UNVERIFIED_SELECTOR');
       expect(unverified).toBeDefined();
       expect(unverified?.path).toContain('reftarget');
+      const multistep = (stepAdd.artifact?.content.blocks as Array<Record<string, unknown>>).find(
+        (block) => block.id === 'walk-1'
+      );
+      expect((multistep?.steps as Array<Record<string, unknown>>)[0]?.lazyRender).toBe(true);
       artifact = stepAdd.artifact!;
 
       // -------- Slice 2 / Issue #1: every response so far carries an etag,
@@ -148,8 +154,7 @@ describe('MCP hardening — end-to-end composition', () => {
       const videoAdd = await callTool(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact,
-        type: 'video',
-        fields: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
+        opts: { type: 'video', src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
       });
       expect(videoAdd.status).toBe('ok');
       const normalized = videoAdd.warnings?.find((w) => w.code === 'INPUT_NORMALIZED');
@@ -174,8 +179,7 @@ describe('MCP hardening — end-to-end composition', () => {
       const mutated = await callTool(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact: corrupted,
-        type: 'markdown',
-        fields: { content: 'should not be appended' },
+        opts: { type: 'markdown', content: 'should not be appended' },
       });
       expect(mutated.status).toBe('error');
       expect(mutated.code).toBe('ARTIFACT_MUTATED');

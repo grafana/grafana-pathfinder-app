@@ -1,14 +1,15 @@
 /**
- * Fine-grained read tools — session-scoped, lightweight.
+ * Contract: mcp-native
+ *
+ * Fine-grained read tools — session-scoped, lightweight. There is no CLI
+ * twin; the explicit top-level Zod schema is authoritative.
  *
  * `pathfinder_read_session` collapses the former list_blocks / get_block /
  * get_manifest_session trio into one tool with an operation flag so agents
  * pay a single tool slot for cheap session reads. The full-artifact escape
  * hatch remains `pathfinder_inspect({sessionToken})`.
  *
- * Operations use kebab-case capability names (same style as CLI command
- * names). There is no CLI twin for these reads — they are MCP-only facets
- * of the session store:
+ * Operations use kebab-case capability names:
  *   - list-blocks  — top-level structure (block ids + types)
  *   - get-block    — one block by id
  *   - get-manifest — the session-stored manifest only
@@ -25,14 +26,10 @@ import { renderMachineJson } from '../../utils/output';
 import type { LoadedSession, AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveAndPinToken } from './read-input';
-import { sessionNotFoundResult, textResult, withToolErrorEnvelope } from './result';
+import { sessionNotFoundResult, textResult, withToolErrorEnvelope, type ToolResult } from './result';
 
 const READ_SESSION_OPERATIONS = ['list-blocks', 'get-block', 'get-manifest'] as const;
 
-/**
- * Single source of truth for pathfinder_read_session args. Published schema
- * and renderReadSession both derive from this (same pattern as manage_block).
- */
 const ReadSessionInputSchema = z
   .object({
     sessionToken: z
@@ -58,8 +55,6 @@ const ReadSessionInputSchema = z
   });
 
 type ReadSessionInput = z.infer<typeof ReadSessionInputSchema>;
-
-type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
 /**
  * Resolve + pin a session token, load the session, then either render the
@@ -108,14 +103,15 @@ export function registerSessionReadTools(
     'pathfinder_read_session',
     {
       description:
-        'Use this tool to read facets of a session-stored Pathfinder artifact without pulling the full artifact into context. Pass `operation: "list-blocks" | "get-block" | "get-manifest"` (kebab-case capability names; MCP-only — no CLI twins). Cheap; use freely for navigation. For the full artifact body use pathfinder_inspect. CDN / published package reads use pathfinder_read_repository instead.',
+        'Use this tool to read facets of a session-stored Pathfinder artifact without pulling the full artifact into context. MCP-native contract: no CLI command or pathfinder_help step. Pass `operation: "list-blocks" | "get-block" | "get-manifest"`; `get-block` also requires top-level `blockId`. Cheap; use freely for navigation. For the full artifact body use pathfinder_inspect. CDN / published package reads use pathfinder_read_repository instead.',
       annotations: readOnly('Read Pathfinder session'),
-      // Flat object + superRefine so operation-required fields fail at the MCP
-      // schema boundary (same contract as pathfinder_manage_block).
+      // Explicit MCP-native schema; conditional requireds stay at its boundary.
       inputSchema: ReadSessionInputSchema,
     },
     async ({ sessionToken, operation, blockId }) =>
-      withLoadedSession(sessionStore, mcpSessionId, sessionToken, 'read_session', (loaded, token) =>
+      // Interpolating the operation into the envelope name means a faulted
+      // read logs `read_session:get-block`, not just the tool name.
+      withLoadedSession(sessionStore, mcpSessionId, sessionToken, `read_session:${operation}`, (loaded, token) =>
         renderReadSession({ operation, blockId }, loaded, token)
       )
   );

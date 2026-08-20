@@ -1,7 +1,9 @@
 /**
- * Tools that produce a fresh artifact:
- *   - `pathfinder_create_package` opens a blank artifact for the standard
- *     authoring loop (then mutate via pathfinder_manage_block / ...).
+ * Contract: cli-routed
+ *
+ * Thin wrap of CLI `create`. Agents copy `opts` from pathfinder_help; `dir`
+ * is withheld (tmpdir). Session minting and the create-time wire shape are
+ * shared MCP plumbing around `runCreate`, not a second command interface.
  */
 
 import * as fs from 'node:fs';
@@ -15,49 +17,62 @@ import { runCreate } from '../../commands/create';
 import { defaultPackageId } from '../../utils/auto-id';
 import { buildArtifactSummary, readPackage, type TreeNode } from '../../utils/package-io';
 import { MCP_TMPDIR_PREFIX } from '../lib/constants';
+import { registerCommandInterfaceConfig, validateCommandArgs } from '../lib/command-interface';
 import { generateSessionToken } from '../lib/session-token';
 import { SESSION_GENERATION_ABSENT, type SessionArtifact, type AuthoringSessionStore } from '../lib/session-store';
-import { type CommandOutcome, renderMachineJson } from '../../utils/output';
+import { type CommandOutcome, renderError, renderMachineJson } from '../../utils/output';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { writeAppend } from './annotations';
-import { outcomeResult, textResult, withToolErrorEnvelope } from './result';
+import { sanitizeOutcomeForMcp, outcomeResult, textResult, withToolErrorEnvelope, type ToolResult } from './result';
 
 export function registerArtifactTools(
   server: McpServer,
   options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
+  registerCommandInterfaceConfig('create', { optBlacklist: ['dir'] });
+
   server.registerTool(
     'pathfinder_create_package',
     {
       description:
-        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
+        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call pathfinder_help({ command: "create" }) for the `opts` interface. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
       annotations: writeAppend('Create Pathfinder package'),
       inputSchema: {
-        title: z.string().describe('Guide title shown to learners.'),
-        id: z
-          .string()
-          .optional()
-          .describe('Package id (kebab-case). Auto-generated from title with a random suffix if omitted.'),
-        type: z.enum(['guide', 'path', 'journey']).default('guide').describe('Package type.'),
-        description: z.string().optional().describe('Short description shown in catalogs.'),
+        opts: z
+          .record(z.string(), z.unknown())
+          .describe('Parameters keyed exactly as pathfinder_help({ command: "create" }) returns them.'),
       },
     },
-    async ({ title, id, type, description }) =>
-      withToolErrorEnvelope(undefined, 'create_package', async () => {
+    async ({ opts }) => {
+      const rejected = validateCommandArgs('create', opts);
+      if (rejected) {
+        return rejected;
+      }
+      // `create` mints the id in its Commander action, so the binding does the
+      // same before calling the runner. A title with no alphanumerics is an
+      // agent input error, not the INTERNAL_ERROR the outer envelope reports.
+      const title = opts.title as string;
+      let id = opts.id as string | undefined;
+      if (id === undefined) {
+        try {
+          id = defaultPackageId(title);
+        } catch (err) {
+          return outcomeResult({ status: 'error', code: 'INVALID_TITLE', message: renderError(err) });
+        }
+      }
+
+      return withToolErrorEnvelope(undefined, 'create_package', async () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${MCP_TMPDIR_PREFIX}create-`));
         try {
           const pkgDir = path.join(dir, 'pkg');
-          const finalId = id ?? deriveId(title);
-          if (!finalId) {
-            return outcomeResult({
-              status: 'error',
-              code: 'INVALID_TITLE',
-              message:
-                'Title must contain at least one alphanumeric character so an id can be generated. Pass id explicitly to override.',
-            });
-          }
-          const outcome = await runCreate({ dir: pkgDir, id: finalId, title, type, description });
+          const outcome = await runCreate({
+            dir: pkgDir,
+            id,
+            title,
+            type: (opts.type as 'guide' | 'path' | 'journey') ?? 'guide',
+            description: opts.description as string | undefined,
+          });
           if (outcome.status !== 'ok') {
             return outcomeResult(outcome);
           }
@@ -83,16 +98,9 @@ export function registerArtifactTools(
             // Best-effort cleanup.
           }
         }
-      })
+      });
+    }
   );
-}
-
-function deriveId(title: string): string | null {
-  try {
-    return defaultPackageId(title);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -123,9 +131,9 @@ function sessionCreateResult(
   outcome: CommandOutcome,
   artifact: { content: unknown; manifest?: unknown },
   summary: TreeNode[]
-): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+): ToolResult {
   const payload: Record<string, unknown> = {
-    ...outcome,
+    ...sanitizeOutcomeForMcp(outcome),
     sessionToken,
     generation: 1,
     artifact: {

@@ -50,7 +50,9 @@ describe('mutation responses include a TreeNode[] summary', () => {
   it('pathfinder_create_package returns an empty summary', async () => {
     const { client, close } = await spinUp();
     try {
-      const created = await call(client, 'pathfinder_create_package', { title: 'Sum1', type: 'guide' });
+      const created = await call(client, 'pathfinder_create_package', {
+        opts: { title: 'Sum1', type: 'guide' },
+      });
       expect(created.status).toBe('ok');
       expect(Array.isArray(created.summary)).toBe(true);
       expect(created.summary).toEqual([]);
@@ -62,14 +64,15 @@ describe('mutation responses include a TreeNode[] summary', () => {
   it('pathfinder_manage_block updates the summary tree', async () => {
     const { client, close } = await spinUp();
     try {
-      const created = await call(client, 'pathfinder_create_package', { title: 'Sum2', type: 'guide' });
+      const created = await call(client, 'pathfinder_create_package', {
+        opts: { title: 'Sum2', type: 'guide' },
+      });
       let artifact = created.artifact!;
 
       const added = await call(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact,
-        type: 'markdown',
-        fields: { content: 'Hello' },
+        opts: { type: 'markdown', content: 'Hello' },
       });
       expect(added.status).toBe('ok');
       expect(added.summary).toHaveLength(1);
@@ -81,9 +84,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
       const sectioned = await call(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact,
-        type: 'section',
-        id: 'intro',
-        fields: { title: 'Intro' },
+        opts: { type: 'section', id: 'intro', title: 'Intro' },
       });
       expect(sectioned.summary).toHaveLength(2);
       const section = sectioned.summary!.find((n) => n.id === 'intro');
@@ -97,24 +98,22 @@ describe('mutation responses include a TreeNode[] summary', () => {
   it('nested children appear under their container in the summary', async () => {
     const { client, close } = await spinUp();
     try {
-      const created = await call(client, 'pathfinder_create_package', { title: 'Sum3', type: 'guide' });
+      const created = await call(client, 'pathfinder_create_package', {
+        opts: { title: 'Sum3', type: 'guide' },
+      });
       let artifact = created.artifact!;
 
       const sectioned = await call(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact,
-        type: 'section',
-        id: 'intro',
-        fields: { title: 'Intro' },
+        opts: { type: 'section', id: 'intro', title: 'Intro' },
       });
       artifact = sectioned.artifact!;
 
       const nested = await call(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact,
-        type: 'markdown',
-        parentId: 'intro',
-        fields: { content: 'Inside intro' },
+        opts: { type: 'markdown', parent: 'intro', content: 'Inside intro' },
       });
       expect(nested.status).toBe('ok');
       expect(nested.summary).toHaveLength(1);
@@ -131,33 +130,30 @@ describe('mutation responses include a TreeNode[] summary', () => {
   it('cascade-removing a container drops its subtree from the summary', async () => {
     const { client, close } = await spinUp();
     try {
-      const created = await call(client, 'pathfinder_create_package', { title: 'Sum4', type: 'guide' });
+      const created = await call(client, 'pathfinder_create_package', {
+        opts: { title: 'Sum4', type: 'guide' },
+      });
       let artifact = created.artifact!;
 
       artifact = (
         await call(client, 'pathfinder_manage_block', {
           operation: 'add-block',
           artifact,
-          type: 'section',
-          id: 'intro',
-          fields: { title: 'Intro' },
+          opts: { type: 'section', id: 'intro', title: 'Intro' },
         })
       ).artifact!;
       artifact = (
         await call(client, 'pathfinder_manage_block', {
           operation: 'add-block',
           artifact,
-          type: 'markdown',
-          parentId: 'intro',
-          fields: { content: 'inside' },
+          opts: { type: 'markdown', parent: 'intro', content: 'inside' },
         })
       ).artifact!;
 
       const removed = await call(client, 'pathfinder_manage_block', {
         operation: 'remove-block',
         artifact,
-        id: 'intro',
-        cascade: true,
+        opts: { id: 'intro', cascade: true },
       });
       expect(removed.status).toBe('ok');
       expect(removed.summary).toEqual([]);
@@ -169,7 +165,9 @@ describe('mutation responses include a TreeNode[] summary', () => {
   it('summary is also returned on validation failure (so the agent can still navigate)', async () => {
     const { client, close } = await spinUp();
     try {
-      const created = await call(client, 'pathfinder_create_package', { title: 'Sum5', type: 'guide' });
+      const created = await call(client, 'pathfinder_create_package', {
+        opts: { title: 'Sum5', type: 'guide' },
+      });
       const artifact = created.artifact!;
 
       // Conditional without --conditions trips a CLI-strict guard. The
@@ -178,9 +176,7 @@ describe('mutation responses include a TreeNode[] summary', () => {
       const result = await call(client, 'pathfinder_manage_block', {
         operation: 'add-block',
         artifact,
-        type: 'conditional',
-        id: 'cond-1',
-        fields: {},
+        opts: { type: 'conditional', id: 'cond-1' },
       });
       expect(result.status).toBe('error');
       expect(Array.isArray(result.summary)).toBe(true);

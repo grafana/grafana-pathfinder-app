@@ -1,16 +1,13 @@
 /**
- * MCP authoring mutation tools.
+ * Contract: cli-routed
  *
- * Each tool accepts the in-flight artifact ({ content, manifest }) and
- * mutation arguments, dispatches to the corresponding CLI `runX` function
- * via the per-call tmpdir bridge in `state-bridge.ts`, and returns the
- * updated artifact alongside the CLI's `CommandOutcome` verbatim.
+ * Thin wrap of CLI tree/manifest commands. `operation` is the Commander
+ * command name; `opts` is the help-derived bag. Shared MCP plumbing
+ * (tmpdir bridge, `artifact` | `sessionToken`) sits around the runner and
+ * is not a second command interface.
  *
- * The input schemas here are intentionally **permissive** — fields like
- * `flagValues` (and the nested per-block-type fields) pass through as
- * `record<string, unknown>` so the CLI is the sole validator. This is what
- * the design calls out as the MCP's defining property: schema-illegal
- * output is impossible because it is impossible in the CLI.
+ * `opts` is intentionally permissive (`record<string, unknown>`) so the CLI
+ * remains the sole content validator.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -22,11 +19,12 @@ import { runAddStep } from '../../commands/add-step';
 import { runEditBlock } from '../../commands/edit-block';
 import { runRemoveBlock } from '../../commands/remove-block';
 import { runSetManifest } from '../../commands/set-manifest';
-import { BLOCK_SCHEMA_MAP, CONTAINER_BLOCK_TYPES, type BlockType } from '../../utils/block-registry';
+import type { BlockType } from '../../utils/block-registry';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
+import { registerCommandInterfaceConfig, validateCommandArgs } from '../lib/command-interface';
 import type { AuthoringSessionStore } from '../lib/session-store';
-import { writeAppend, writeDestructive } from './annotations';
+import { writeAppend } from './annotations';
 import { resolveAndPinToken } from './read-input';
 import {
   concurrentModificationResult,
@@ -35,6 +33,7 @@ import {
   sessionOutcomeResult,
   sessionTooLargeResult,
   withToolErrorEnvelope,
+  type ToolResult,
 } from './result';
 import {
   dispatchSessionMutation,
@@ -82,7 +81,7 @@ function verifyArtifactEtag(artifact: {
   content: Record<string, unknown>;
   manifest?: Record<string, unknown>;
   __etag?: string;
-}): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } | null {
+}): ToolResult | null {
   if (typeof artifact.__etag !== 'string' || artifact.__etag.length === 0) {
     return null;
   }
@@ -103,109 +102,36 @@ function verifyArtifactEtag(artifact: {
   });
 }
 
-const FlagValuesSchema = z
+const OptsSchema = z
   .record(z.string(), z.unknown())
-  .describe('Payload fields keyed by name (e.g. content, action, reftarget). The CLI is the sole validator.');
+  .describe(
+    'Opaque CLI runner parameters keyed exactly as pathfinder_help returns them (camelCase). The CLI is the sole content validator.'
+  );
 
-const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as [BlockType, ...BlockType[]];
+const MANAGE_BLOCK_OPERATIONS = ['add-block', 'edit-block', 'remove-block', 'add-step', 'add-choice'] as const;
+const MANAGE_GUIDE_OPERATIONS = ['set-manifest'] as const;
 
-// Containers need an author-supplied id so later calls can target them as
-// `parentId`. Derived from the CLI registry rather than hand-listed, so the
-// agent-facing copy can't drift from the CONTAINER_REQUIRES_ID check.
-const CONTAINER_TYPES_TEXT = BlockTypeEnum.filter((type) => CONTAINER_BLOCK_TYPES.has(type)).join(', ');
+type ManageBlockOperation = (typeof MANAGE_BLOCK_OPERATIONS)[number];
+type ManageGuideOperation = (typeof MANAGE_GUIDE_OPERATIONS)[number];
+type MutationOperation = ManageBlockOperation | ManageGuideOperation;
 
 /**
- * Single source of truth for pathfinder_manage_block args. `operation` uses the
- * CLI command name so help/traceability stay 1:1 (`pathfinder_help` command =
- * this enum value).
+ * Stable MCP transport plus a CLI operation and its opaque parameter bag.
+ * Operation-specific shape and validation belong to the command interface and
+ * imported CLI runner, not this MCP schema.
  */
-const ManageBlockInputSchema = z
-  .object({
+function mutationSuiteSchema<T extends readonly [string, ...string[]]>(operations: T) {
+  return z.object({
     ...ArtifactInputSchema,
-    operation: z
-      .enum(['add-block', 'edit-block', 'remove-block'])
-      .describe('CLI command to run: "add-block" | "edit-block" | "remove-block".'),
-    type: z
-      .enum(BlockTypeEnum)
-      .optional()
-      .describe(
-        `[add-block] Required block type. Container types (${CONTAINER_TYPES_TEXT}) must also be given an \`id\`.`
-      ),
-    parentId: z
-      .string()
-      .optional()
-      .describe('[add-block] Optional parent container id. Omit to append at the guide root.'),
-    branch: z
-      .enum(['true', 'false'])
-      .optional()
-      .describe(
-        '[add-block] Required when `parentId` is a conditional — destination arm (`whenTrue` / `whenFalse`). Omit otherwise.'
-      ),
-    id: z
-      .string()
-      .optional()
-      .describe(
-        `[add-block] Create-time id; required for containers (${CONTAINER_TYPES_TEXT}), auto-minted for leaves. [edit-block|remove-block] Required target block id.`
-      ),
-    fields: FlagValuesSchema.optional().describe(
-      '[add-block] Optional block payload (CLI validates). [edit-block] Required non-empty fields to overwrite.'
+    operation: z.enum(operations).describe(`CLI command to run: ${operations.map((name) => `"${name}"`).join(' | ')}.`),
+    opts: OptsSchema.describe(
+      'Parameters for the selected CLI command, keyed exactly as pathfinder_help returns them.'
     ),
-    cascade: z
-      .boolean()
-      .default(false)
-      .describe(
-        '[remove-block] When true, also delete children. Required for a non-empty container (else CONTAINER_HAS_CHILDREN). Default false.'
-      ),
-  })
-  .superRefine((args, ctx) => {
-    const requireString = (field: 'type' | 'parentId' | 'id', message: string): void => {
-      if (typeof args[field] !== 'string' || args[field].trim() === '') {
-        ctx.addIssue({ code: 'custom', path: [field], message });
-      }
-    };
-    const requireFields = (message: string): void => {
-      if (!args.fields || Object.keys(args.fields).length === 0) {
-        ctx.addIssue({ code: 'custom', path: ['fields'], message });
-      }
-    };
-
-    if (args.operation === 'add-block') {
-      requireString('type', 'add-block requires `type`.');
-      // The CLI rejects an id-less container with CONTAINER_REQUIRES_ID. Catch it
-      // at the schema boundary instead so the agent gets the rule stated in MCP
-      // terms (`id`, not the CLI's `--id`) before any session mutation is attempted.
-      if (typeof args.type === 'string' && CONTAINER_BLOCK_TYPES.has(args.type)) {
-        requireString(
-          'id',
-          `add-block with type "${args.type}" requires \`id\` — container blocks must be addressable so later calls can pass them as \`parentId\`.`
-        );
-      }
-    } else if (args.operation === 'edit-block') {
-      requireString('id', 'edit-block requires `id`.');
-      requireFields('edit-block requires non-empty `fields`.');
-    } else if (args.operation === 'remove-block') {
-      requireString('id', 'remove-block requires `id`.');
-    }
   });
+}
 
-/** Post-parse manage_block args (cascade always present via `.default(false)`). */
-type ManageBlockInput = z.infer<typeof ManageBlockInputSchema>;
-
-const AddStepInputSchema = z.object({
-  ...ArtifactInputSchema,
-  parentId: z.string().min(1).describe('Parent multistep or guided block id.'),
-  fields: FlagValuesSchema.refine((fields) => Object.keys(fields).length > 0, {
-    message: 'Adding a step requires at least one field.',
-  }).describe('Step fields such as action, description, reftarget, and requirements.'),
-});
-
-const AddChoiceInputSchema = z.object({
-  ...ArtifactInputSchema,
-  parentId: z.string().min(1).describe('Parent quiz block id.'),
-  fields: FlagValuesSchema.refine((fields) => Object.keys(fields).length > 0, {
-    message: 'Adding a choice requires at least one field.',
-  }).describe('Choice fields such as id, text, correct, and feedback.'),
-});
+const ManageBlockInputSchema = mutationSuiteSchema(MANAGE_BLOCK_OPERATIONS);
+const ManageGuideInputSchema = mutationSuiteSchema(MANAGE_GUIDE_OPERATIONS);
 
 /**
  * Shared dispatch for every mutation tool's two-mode input. Validates
@@ -219,6 +145,7 @@ const AddChoiceInputSchema = z.object({
 async function dispatchMutation(
   store: AuthoringSessionStore,
   mcpSessionId: string | undefined,
+  envelopeName: string,
   inputs: {
     artifact?: {
       content: Record<string, unknown>;
@@ -229,7 +156,7 @@ async function dispatchMutation(
     expectedGeneration?: number;
   },
   runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
-): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+): Promise<ToolResult> {
   const classified = classifyTwoModeInput({ artifact: inputs.artifact, sessionToken: inputs.sessionToken });
   if (classified.kind === 'error') {
     return classified.response;
@@ -239,7 +166,7 @@ async function dispatchMutation(
   // throw can escape, so the catch-all envelope can echo it back.
   const rawToken = classified.kind === 'session' ? classified.token : undefined;
 
-  return withToolErrorEnvelope(rawToken, 'mutation-tools', async () => {
+  return withToolErrorEnvelope(rawToken, envelopeName, async () => {
     if (classified.kind === 'session') {
       const resolution = await resolveAndPinToken(store, classified.token, mcpSessionId);
       if (!resolution.ok) {
@@ -273,31 +200,70 @@ async function dispatchMutation(
 }
 
 /**
- * Map a Zod-validated block operation to its existing CLI runner.
+ * The CLI's CONTAINER_HAS_CHILDREN remedy names `--orphan-children`, which
+ * the MCP surface withholds (append-only procedure — see the remove-block
+ * `optBlacklist` below). Re-word the remedy in MCP terms so agents are not
+ * told to retry with a parameter the validator will reject as unsupported.
  */
-function manageBlockRunner(args: ManageBlockInput): (dir: string) => Promise<CommandOutcome> | CommandOutcome {
-  switch (args.operation) {
-    case 'add-block':
-      return (dir) =>
-        runAddBlock({
-          dir,
-          // superRefine requires type before the handler runs.
-          type: args.type!,
-          parentId: args.parentId,
-          branch: args.branch,
-          explicitId: args.id,
-          flagValues: args.fields ?? {},
-        });
-    case 'edit-block':
-      return (dir) => runEditBlock({ dir, id: args.id!, flagValues: args.fields! });
-    case 'remove-block':
-      return (dir) =>
-        runRemoveBlock({
-          dir,
-          id: args.id!,
-          cascade: args.cascade,
-        });
+function adaptContainerHasChildren(outcome: CommandOutcome): CommandOutcome {
+  if (outcome.status !== 'error' || outcome.code !== 'CONTAINER_HAS_CHILDREN') {
+    return outcome;
   }
+  // The CLI message's first clause is surface-neutral ('Block "x" has N
+  // child(ren)'); everything after the semicolon is CLI-flag advice.
+  const factClause = outcome.message.split(';')[0];
+  return {
+    ...outcome,
+    message:
+      `${factClause}. Pass \`cascade: true\` to remove the block and its entire subtree — destructive, no undo. ` +
+      'To keep the children, read them first (pathfinder_read_session with operation "get-block", or pathfinder_inspect), ' +
+      'then cascade-remove and re-add them under the parent in display order.',
+  };
+}
+
+// `before` / `after` / `position` / `orphanChildren` are withheld from the
+// MCP interface (blacklisted below → rejected as UNSUPPORTED_PARAMETER before
+// any runner is called), so the runners bind only the parameters an agent can
+// actually send.
+const MUTATION_RUNNERS: Record<
+  MutationOperation,
+  (dir: string, opts: Record<string, unknown>) => Promise<CommandOutcome> | CommandOutcome
+> = {
+  'add-block': (dir, opts) =>
+    runAddBlock({
+      dir,
+      type: opts.type as BlockType,
+      parentId: opts.parent as string | undefined,
+      branch: opts.branch as 'true' | 'false' | undefined,
+      ifAbsent: opts.ifAbsent === true,
+      explicitId: opts.id as string | undefined,
+      flagValues: opts,
+    }),
+  // The CLI takes the target id positionally, so `editBlock` treats an `id` in
+  // the patch as a rename and rejects it. Here `id` is the address, not a
+  // field, and must not reach the patch.
+  'edit-block': (dir, { id, ...flagValues }) => runEditBlock({ dir, id: id as string, flagValues }),
+  'remove-block': async (dir, opts) =>
+    adaptContainerHasChildren(
+      await runRemoveBlock({
+        dir,
+        id: opts.id as string,
+        cascade: opts.cascade === true,
+      })
+    ),
+  // These runners take the bag as-is and drop `parent` from the projection
+  // themselves, so the binding only lifts out the addressing field.
+  'add-step': (dir, opts) => runAddStep({ dir, parentId: opts.parent as string, flagValues: opts }),
+  'add-choice': (dir, opts) => runAddChoice({ dir, parentId: opts.parent as string, flagValues: opts }),
+  'set-manifest': (dir, opts) => runSetManifest({ dir, flagValues: opts }),
+};
+
+/** Bind a validated command-interface bag to its CLI runner. */
+function mutationRunner(
+  operation: MutationOperation,
+  opts: Record<string, unknown>
+): (dir: string) => Promise<CommandOutcome> | CommandOutcome {
+  return (dir) => MUTATION_RUNNERS[operation](dir, opts);
 }
 
 export function registerMutationTools(
@@ -306,79 +272,92 @@ export function registerMutationTools(
 ): void {
   const { sessionStore, mcpSessionId } = options;
 
-  // Block mutations share one resource-focused tool. Steps and choices remain
-  // separate append tools because they are child members with different parent
-  // and payload contracts, not addressable blocks.
+  // MCP deviations from the passive Commander interface live beside the tool
+  // bindings that require them — which, for these commands, is the blacklist
+  // and nothing else.
+  //
+  // `optContext` is deliberately unused here. Per-field agent prose was
+  // either restating Commander's own text or teaching a mechanic that is
+  // generic across every command, so it moved to whichever surface owns it:
+  // translation mechanics to `pathfinder_help` and `authoring_start`'s
+  // `interfaceContract`, facts about a command to that command's Commander
+  // description (where CLI users get them too), and recovery advice to the
+  // outcome message raised at the moment it applies (see
+  // `adaptContainerHasChildren`). Reach for `optContext` only for something
+  // true of one parameter, on MCP alone, that no other surface can carry.
+  registerCommandInterfaceConfig('add-block', {
+    optBlacklist: ['dir', 'before', 'after', 'position'],
+    subcommandOpt: 'type',
+  });
+  registerCommandInterfaceConfig('edit-block', { optBlacklist: ['dir'] });
+  registerCommandInterfaceConfig('remove-block', { optBlacklist: ['dir', 'orphanChildren'] });
+  registerCommandInterfaceConfig('add-step', { optBlacklist: ['dir'] });
+  registerCommandInterfaceConfig('add-choice', { optBlacklist: ['dir'] });
+  registerCommandInterfaceConfig('set-manifest', { optBlacklist: ['dir'] });
+
+  const runSuite = async (args: {
+    operation: MutationOperation;
+    opts: Record<string, unknown>;
+    artifact?: {
+      content: Record<string, unknown>;
+      manifest?: Record<string, unknown>;
+      __etag?: string;
+    };
+    sessionToken?: string;
+    expectedGeneration?: number;
+  }) => {
+    const rejected = validateCommandArgs(args.operation, args.opts);
+    if (rejected) {
+      return rejected;
+    }
+    return dispatchMutation(
+      sessionStore,
+      mcpSessionId,
+      // Faulted mutations log e.g. `mutation:add-block`, not a suite-wide name.
+      `mutation:${args.operation}`,
+      { artifact: args.artifact, sessionToken: args.sessionToken, expectedGeneration: args.expectedGeneration },
+      mutationRunner(args.operation, args.opts)
+    );
+  };
+
+  // Tree writes share one resource-focused tool. `operation` is the CLI
+  // command name; `opts` is the help-derived bag for that command.
   server.registerTool(
     'pathfinder_manage_block',
     {
       description: [
-        'Use this tool when the user wants to add, edit, or remove a block in a Pathfinder guide.',
-        'Pass `operation` as the CLI command name: "add-block" | "edit-block" | "remove-block".',
+        'Use this tool when the user wants to add, edit, or remove a single block, or append a step or quiz choice, in a Pathfinder guide.',
+        'Scope: one block at a time, addressed by id inside the guide tree. Guide-level metadata (description, category, language, targeting) is NOT a block operation — use pathfinder_manage_guide for that.',
+        'Pass `operation` as the CLI command name: "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice".',
         'Adds append under the parent (reorder = remove-block + add-block). Duplicate ids → DUPLICATE_ID.',
-        'Field schemas: pathfinder_help({ command: <operation>, subcommand: <type> }) for add-block; pathfinder_help({ command: <operation> }) for edit-block / remove-block.',
-        'CLI flag names (e.g. --content, --action) become keys in `fields`; addressing flags map to tool args (`--parent`→`parentId`, `--id`→`id`, `--branch`→`branch`).',
-        'Returns updated artifact (stateless) or session ack (sessionToken).',
+        'Steps and choices are not individually editable or removable; cascade-remove their parent block and rebuild it instead.',
+        'Call pathfinder_help({ command: <operation> }) for the `opts` interface; for add-block, call help again with the chosen block type as `subcommand`.',
+        'Returns a session ack (or the updated artifact in stateless mode).',
       ].join(' '),
-      // Conservative: the tool can remove/overwrite, so clients that respect
-      // destructiveHint treat the whole surface as confirmation-worthy.
-      annotations: writeDestructive('Manage Pathfinder block'),
+      // Deliberately NOT destructive: MCP hints are per-tool (no per-operation
+      // hints), and every operation here mutates an in-flight authoring
+      // artifact, never live Grafana data. Marking the suite destructive
+      // would make hint-respecting clients confirm every append.
+      annotations: writeAppend('Manage Pathfinder block'),
       inputSchema: ManageBlockInputSchema,
     },
-    async (args) =>
-      dispatchMutation(
-        sessionStore,
-        mcpSessionId,
-        { artifact: args.artifact, sessionToken: args.sessionToken, expectedGeneration: args.expectedGeneration },
-        manageBlockRunner(args)
-      )
+    runSuite
   );
 
   server.registerTool(
-    'pathfinder_add_step',
+    'pathfinder_manage_guide',
     {
-      description:
-        'Use this tool when the user wants to append a step to a multistep or guided block. Pass `parentId` and step `fields`. Field schemas: pathfinder_help(command="add-step"). CLI flags become `fields` keys (`--action`→`fields.action`); `--parent` is the tool arg `parentId`.',
-      annotations: writeAppend('Add Pathfinder step'),
-      inputSchema: AddStepInputSchema,
+      description: [
+        'Use this tool when the user wants to set or update the guide as a whole — top-level Pathfinder metadata on the package manifest (description, category, language, tags, targeting).',
+        'Scope: guide-level only, and the usual home for the final metadata pass before validate and finalize. For individual blocks, steps, or choices, use pathfinder_manage_block instead.',
+        'Pass `operation` as the CLI command name: "set-manifest".',
+        'Call pathfinder_help({ command: "set-manifest" }) for the `opts` interface.',
+        'Returns a session ack (or the updated artifact in stateless mode).',
+      ].join(' '),
+      annotations: writeAppend('Manage Pathfinder guide'),
+      inputSchema: ManageGuideInputSchema,
     },
-    async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
-      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
-        runAddStep({ dir, parentId, flagValues: fields })
-      )
-  );
-
-  server.registerTool(
-    'pathfinder_add_choice',
-    {
-      description:
-        'Use this tool when the user wants to append a choice to a quiz block. Pass `parentId` and choice `fields`. Field schemas: pathfinder_help(command="add-choice"). CLI flags become `fields` keys (`--text`→`fields.text`); `--parent` is the tool arg `parentId`.',
-      annotations: writeAppend('Add Pathfinder choice'),
-      inputSchema: AddChoiceInputSchema,
-    },
-    async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
-      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
-        runAddChoice({ dir, parentId, flagValues: fields })
-      )
-  );
-
-  server.registerTool(
-    'pathfinder_set_manifest',
-    {
-      description:
-        'Use this tool when the user wants to set or update top-level Pathfinder guide metadata (description, category, language, etc.) on the package manifest. Field schemas: pathfinder_help(command="set-manifest"). Returns the updated artifact.',
-      annotations: writeDestructive('Set Pathfinder manifest', /* idempotent */ true),
-      inputSchema: {
-        ...ArtifactInputSchema,
-        fields: FlagValuesSchema.describe(
-          'Manifest fields to set. Discover names via pathfinder_help(command="set-manifest"); CLI flag names become keys here.'
-        ),
-      },
-    },
-    async ({ artifact, sessionToken, expectedGeneration, fields }) =>
-      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
-        runSetManifest({ dir, flagValues: fields })
-      )
+    runSuite
   );
 }
 

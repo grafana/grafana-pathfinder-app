@@ -376,10 +376,10 @@ export function formatHelpAsJson(cmd: Command): HelpJson {
     let valueType: HelpJsonFlag['valueType'];
     if (isBoolean) {
       valueType = 'boolean';
-    } else if (argChoices && argChoices.length > 0) {
-      valueType = 'enum';
     } else if (isVariadic || Array.isArray(option.defaultValue)) {
       valueType = 'array';
+    } else if (argChoices && argChoices.length > 0) {
+      valueType = 'enum';
     } else if (option.flags.includes('<number>')) {
       valueType = 'number';
     } else {

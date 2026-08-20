@@ -55,16 +55,14 @@ async function newHarness(): Promise<{
 async function seedWithOneBlock(
   call: (n: string, a: Record<string, unknown>) => Promise<ToolPayload>
 ): Promise<string> {
-  const created = await call('pathfinder_create_package', { title: 'Reads Test' });
+  const created = await call('pathfinder_create_package', { opts: { title: 'Reads Test' } });
   if (!created.sessionToken) {
     throw new Error('create failed');
   }
   const added = await call('pathfinder_manage_block', {
     operation: 'add-block',
     sessionToken: created.sessionToken,
-    type: 'markdown',
-    id: 'md-1',
-    fields: { content: 'Hello world' },
+    opts: { type: 'markdown', id: 'md-1', content: 'Hello world' },
   });
   if (added.status !== 'ok') {
     throw new Error(`add_block failed: ${JSON.stringify(added)}`);
@@ -177,7 +175,7 @@ describe('pathfinder_read_session', () => {
     try {
       const created = await newHarness();
       try {
-        const r = await created.call('pathfinder_create_package', { title: 'Manifest Test' });
+        const r = await created.call('pathfinder_create_package', { opts: { title: 'Manifest Test' } });
         const m = await created.call('pathfinder_read_session', {
           operation: 'get-manifest',
           sessionToken: r.sessionToken,

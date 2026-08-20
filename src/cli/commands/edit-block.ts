@@ -23,7 +23,7 @@ import { normalizeBlockInput } from '../utils/input-normalizers';
 import { isNonEmptySelector, unverifiedSelectorWarning } from '../utils/warnings';
 
 export const editBlockCommand = new Command('edit-block')
-  .description('Update fields on an existing block by id')
+  .description("Update fields on an existing block by id. Only options valid for the block's actual type are retained.")
   .argument('<dir>', 'package directory')
   .argument('<id>', 'id of the block to edit')
   // We can't know the block type until we read it from disk, so register a
