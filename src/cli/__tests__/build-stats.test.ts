@@ -88,8 +88,8 @@ describe('buildStats', () => {
       version: 1,
       blockCount: 3,
       sectionCount: 1,
-      interactiveBlockCount: 1,
-      finalInteractivePosition: 2,
+      completableBlockCount: 1,
+      finalCompletablePosition: 2,
     });
   });
 
@@ -147,7 +147,7 @@ describe('buildStats', () => {
     const result = await buildStats(tmpDir);
 
     expect(result.written).toEqual(['guide-a']);
-    expect(readManifest(tmpDir, 'guide-a').stats).toMatchObject({ blockCount: 3, finalInteractivePosition: 3 });
+    expect(readManifest(tmpDir, 'guide-a').stats).toMatchObject({ blockCount: 3, finalCompletablePosition: 3 });
   });
 
   it('rolls a path up from its milestones, measuring them first', async () => {
@@ -168,8 +168,8 @@ describe('buildStats', () => {
       version: 1,
       blockCount: 5,
       sectionCount: 1,
-      interactiveBlockCount: 2,
-      finalInteractivePosition: 5,
+      completableBlockCount: 2,
+      finalCompletablePosition: 5,
     });
   });
 
@@ -181,7 +181,7 @@ describe('buildStats', () => {
 
     expect(readManifest(tmpDir, 'aaa-path').stats).toMatchObject({
       blockCount: 3,
-      finalInteractivePosition: 2,
+      finalCompletablePosition: 2,
     });
   });
 
@@ -195,7 +195,7 @@ describe('buildStats', () => {
     const result = await buildStats(tmpDir);
 
     expect(result.errors).toEqual([]);
-    expect(readManifest(tmpDir, 'journey').stats).toMatchObject({ blockCount: 3, interactiveBlockCount: 2 });
+    expect(readManifest(tmpDir, 'journey').stats).toMatchObject({ blockCount: 3, completableBlockCount: 2 });
   });
 
   it('counts a metapackage own body ahead of its milestones', async () => {
@@ -210,7 +210,7 @@ describe('buildStats', () => {
 
     expect(readManifest(tmpDir, 'the-path').stats).toMatchObject({
       blockCount: 3,
-      finalInteractivePosition: 3,
+      finalCompletablePosition: 3,
     });
   });
 
@@ -257,6 +257,28 @@ describe('buildStats', () => {
     expect(readManifest(tmpDir, 'top').stats).toBeUndefined();
   });
 
+  it('reports a nested duplicate milestone once, attributed to the package that lists it', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown] });
+    writeGuide(tmpDir, 'the-path', { type: 'path', milestones: ['leaf', 'leaf'], blocks: [] });
+    writeGuide(tmpDir, 'the-journey', { type: 'journey', milestones: ['the-path'], blocks: [] });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual(['the-path: lists milestone "leaf" more than once']);
+  });
+
+  it('reports a nested diamond once, attributed to the package that lists it', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown] });
+    writeGuide(tmpDir, 'mid', { type: 'path', milestones: ['leaf'], blocks: [] });
+    writeGuide(tmpDir, 'the-path', { type: 'path', milestones: ['mid', 'leaf'], blocks: [] });
+    writeGuide(tmpDir, 'the-journey', { type: 'journey', milestones: ['the-path'], blocks: [] });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('the-path: milestone "leaf" is reachable twice (also via "mid")');
+  });
+
   it('errors when a guide-typed manifest carries milestones', async () => {
     writeGuide(tmpDir, 'leaf', { blocks: [markdown, markdown, markdown] });
     writeJson(path.join(tmpDir, 'sneaky', 'content.json'), { id: 'sneaky', title: 'x', blocks: [markdown] });
@@ -291,8 +313,8 @@ describe('buildStats', () => {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
     const stats = manifest.stats;
     manifest.stats = {
-      finalInteractivePosition: stats.finalInteractivePosition,
-      interactiveBlockCount: stats.interactiveBlockCount,
+      finalCompletablePosition: stats.finalCompletablePosition,
+      completableBlockCount: stats.completableBlockCount,
       sectionCount: stats.sectionCount,
       blockCount: stats.blockCount,
       version: stats.version,

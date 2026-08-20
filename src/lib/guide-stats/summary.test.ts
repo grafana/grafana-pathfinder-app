@@ -16,8 +16,8 @@ describe('summarizeGuideBlocks', () => {
       version: GUIDE_STATS_VERSION,
       blockCount: 3,
       sectionCount: 1,
-      interactiveBlockCount: 1,
-      finalInteractivePosition: 2,
+      completableBlockCount: 1,
+      finalCompletablePosition: 2,
     });
   });
 
@@ -28,13 +28,13 @@ describe('summarizeGuideBlocks', () => {
       'version',
       'blockCount',
       'sectionCount',
-      'interactiveBlockCount',
-      'finalInteractivePosition',
+      'completableBlockCount',
+      'finalCompletablePosition',
     ]);
   });
 
   it('summarizes an empty guide without special casing', () => {
-    expect(summarizeGuideBlocks([])).toMatchObject({ blockCount: 0, finalInteractivePosition: 0 });
+    expect(summarizeGuideBlocks([])).toMatchObject({ blockCount: 0, finalCompletablePosition: 0 });
   });
 });
 
@@ -47,21 +47,21 @@ describe('rollUpGuideStats', () => {
     expect(rollUpGuideStats([first, second])).toMatchObject({
       blockCount: 5,
       sectionCount: 1,
-      interactiveBlockCount: 2,
+      completableBlockCount: 2,
     });
   });
 
   it('offsets the final interactive position into the concatenation', () => {
-    expect(rollUpGuideStats([first, second]).finalInteractivePosition).toBe(4);
-    expect(rollUpGuideStats([second, first]).finalInteractivePosition).toBe(4);
+    expect(rollUpGuideStats([first, second]).finalCompletablePosition).toBe(4);
+    expect(rollUpGuideStats([second, first]).finalCompletablePosition).toBe(4);
   });
 
   it('keeps the last part that has an interactive block, not the last part', () => {
-    expect(rollUpGuideStats([first, prose]).finalInteractivePosition).toBe(2);
+    expect(rollUpGuideStats([first, prose]).finalCompletablePosition).toBe(2);
   });
 
   it('reports no interactive position when no part has one', () => {
-    expect(rollUpGuideStats([prose, prose]).finalInteractivePosition).toBe(0);
+    expect(rollUpGuideStats([prose, prose]).finalCompletablePosition).toBe(0);
   });
 
   it('rolls up an empty list to zeroes', () => {
@@ -69,8 +69,8 @@ describe('rollUpGuideStats', () => {
       version: GUIDE_STATS_VERSION,
       blockCount: 0,
       sectionCount: 0,
-      interactiveBlockCount: 0,
-      finalInteractivePosition: 0,
+      completableBlockCount: 0,
+      finalCompletablePosition: 0,
     });
   });
 

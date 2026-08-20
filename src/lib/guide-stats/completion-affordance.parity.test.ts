@@ -112,22 +112,22 @@ describe('guides whose final block cannot emit completion evidence', () => {
     const index = computeGuideBlockIndex([{ type: 'markdown' }, { type: 'input', inputType: 'text' }]);
 
     expect(index.totalBlockCount).toBe(2);
-    expect(index.interactiveBlockCount).toBe(0);
-    expect(index.finalInteractivePosition).toBe(0);
-    expect(index.finalInteractivePosition).not.toBe(index.totalBlockCount);
+    expect(index.completableBlockCount).toBe(0);
+    expect(index.finalCompletablePosition).toBe(0);
+    expect(index.finalCompletablePosition).not.toBe(index.totalBlockCount);
   });
 
   it('does not report a grot-guide as the final interactive block', () => {
     const index = computeGuideBlockIndex([{ type: 'markdown' }, { type: 'markdown' }, { type: 'grot-guide' }]);
 
-    expect(index.finalInteractivePosition).toBe(0);
-    expect(index.finalInteractivePosition).not.toBe(index.totalBlockCount);
+    expect(index.finalCompletablePosition).toBe(0);
+    expect(index.finalCompletablePosition).not.toBe(index.totalBlockCount);
   });
 
   it('does report a blocking datasource input as the final interactive block', () => {
     const index = computeGuideBlockIndex([{ type: 'markdown' }, TRACKED_INPUT]);
 
-    expect(index.interactiveBlockCount).toBe(1);
-    expect(index.finalInteractivePosition).toBe(index.totalBlockCount);
+    expect(index.completableBlockCount).toBe(1);
+    expect(index.finalCompletablePosition).toBe(index.totalBlockCount);
   });
 });

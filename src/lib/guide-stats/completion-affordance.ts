@@ -4,7 +4,7 @@
  * This is a different question from "which blocks render interactively", and
  * conflating the two makes guides permanently uncompletable: a block counted as
  * completable that emits no evidence can become the guide's final counted
- * block, and `finalInteractivePosition === blockCount` is what tells a consumer
+ * block, and `finalCompletablePosition === blockCount` is what tells a consumer
  * no foot-of-guide "Mark as complete" button is needed. The reader would then
  * have no way to finish. `content-renderer.tsx` excludes `input-block` from its
  * step count for exactly this reason.

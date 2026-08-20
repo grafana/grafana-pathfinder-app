@@ -306,7 +306,7 @@ node dist/cli/cli/index.js build-stats packages/
 node dist/cli/cli/index.js build-repository packages/ -o dist/repository.json
 ```
 
-Run `build-stats` first — the ordering is load-bearing. `build-repository` reads each manifest to build `repository.json` and carries the `stats` field through, so a `repository.json` built before the manifests are stamped omits stats for every package.
+Run `build-stats` first. Today the ordering is inert: `build-repository` builds each `RepositoryEntry` field by field and never assigns `stats`, so `repository.json` carries none either way. It becomes load-bearing once the manifest-extension passthrough of PR #1662 lands, after which `build-repository` forwards unknown top-level manifest keys — `stats` among them — into `repository.json`, and an index built before the manifests are stamped omits stats for every package. Ordering the two this way now costs nothing and is already correct for after.
 
 **Fail CI when a committed manifest is stale:**
 
@@ -320,14 +320,14 @@ node dist/cli/cli/index.js build-stats packages/ --check
 - `multistep` and `guided` count as exactly one block each. Their inner steps are deliberately outside the denominator.
 - `conditional` counts as one block, and neither branch is descended into. Descending into both would put blocks in the denominator the reader can never see.
 - `snippet-ref` counts as one block, and its resolved contents inherit that single position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in before the parser sees the guide, so the stamped denominator is the **pre-inlining** count and a consumer must index the pre-inlining tree. Mapping an inlined block back to its ref is not an option today: the splice carries no provenance, so there is nothing to map back from.
-- Completion is `n / total` with no special case. A "Do it" yields 100% only when its block is the guide's last counted one — `finalInteractivePosition === blockCount`. Anything less means the guide needs a "Mark as complete" button at its foot, and that field is the signal for it.
+- Completion is `n / total` with no special case. A "Do it" yields 100% only when its block is the guide's last counted one — `finalCompletablePosition === blockCount`. Anything less means the guide needs a "Mark as complete" button at its foot, and that field is the signal for it.
 - A `path` or `journey` rolls up as its own body followed by its milestones in declared order. Milestones are measured before their parents.
 
 ### Strictness
 
 A milestone missing from the tree, and a manifest that fails schema validation, both abort the run with a non-zero exit and nothing written. That is knowingly stricter than the sibling tooling — `build-graph` warns on an unresolvable milestone, `build-repository` degrades a manifest schema failure to a warning, and `docs-retrieval`'s package content keeps an unresolvable milestone as a locked placeholder. Those tolerate a partial tree at read time; this command's whole purpose is to produce a denominator that is never wrong, and a rollup silently missing a milestone would publish one that is. No manifest is written until every package in the tree has resolved, so a failed run leaves the tree completely unstamped rather than half-stamped.
 
-One consequence worth knowing before putting `build-stats` ahead of `build-repository` in a pipeline that uses `--exclude`: if an excluded subtree holds a package that a path lists as a milestone, that milestone is now missing from the tree, so the run aborts and leaves _unrelated_ packages unstamped too. `build-repository` with the same `--exclude` omits the entry and succeeds. The strictness is deliberate, but it converts a tree shape the sibling tolerates into a hard stop.
+One consequence worth knowing before putting `build-stats` ahead of `build-repository` in a pipeline that uses `--exclude`. This one is true today, independently of #1662: if an excluded subtree holds a package that a path lists as a milestone, that milestone is missing from the tree, so `build-stats` aborts and leaves _unrelated_ packages unstamped too. `build-repository` with the same `--exclude` omits the entry and succeeds. The strictness is deliberate, but it converts a tree shape the sibling tolerates into a hard stop.
 
 A duplicated milestone, and a milestone reachable through two parents, are both errors as well. Summing a package twice inflates the denominator, and because positions are first-occurrence-wins the second copy's blocks can never be evidenced — so the reader would be permanently stuck below 100%.
 
@@ -339,7 +339,9 @@ A duplicated milestone, and a milestone reachable through two parents, are both 
 
 Re-running on unchanged content is a byte-for-byte no-op: the command compares the computed stats against what is on disk and skips the write when they match. Stats keys are emitted in a fixed order and carry no timestamps. An existing `stats` key is replaced in place, so a manifest's authored key order survives a rewrite.
 
-Output is formatted with Prettier using the project's configuration, the same as `build-repository`. The run that first stamps a manifest can therefore re-expand nested objects an author had collapsed onto one line — both forms are Prettier-clean, and the file is stable from that run onward.
+Output is formatted with Prettier using the project's configuration wherever Prettier resolves — a repo checkout, or any environment that has it installed. The published CLI image does not: Prettier is a devDependency and is absent from `RUNTIME_DEPS`, so the command degrades to two-space `JSON.stringify` output with a trailing newline rather than failing. Both forms are valid JSON and `--check` compares stats field by field, so neither reads as drift against the other; a tree stamped from the image and then re-stamped locally will show a formatting-only diff, though.
+
+The run that first stamps a manifest can re-expand nested objects an author had collapsed onto one line — both forms are Prettier-clean, and the file is stable from that run onward.
 
 ---
 

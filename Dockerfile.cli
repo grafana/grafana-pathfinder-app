@@ -38,9 +38,7 @@ COPY src/cli ./src/cli
 COPY src/types ./src/types
 COPY src/validation ./src/validation
 # src/lib/guide-stats is the canonical block-count computation the
-# build-stats command calls; src/constants carries the block
-# classification it reads.
-COPY src/constants ./src/constants
+# build-stats command calls.
 COPY src/lib/guide-stats ./src/lib/guide-stats
 
 RUN npm ci --no-audit --no-fund

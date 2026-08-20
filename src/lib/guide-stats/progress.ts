@@ -39,10 +39,10 @@ export interface GuideProgress {
  * Completion for a guide whose furthest evidenced position is `position`.
  *
  * The formula is `position / totalBlockCount`, with no special cases. A guide
- * whose final counted block is interactive reaches 100% by clicking it, since
+ * whose final counted block is completable reaches 100% by clicking it, since
  * that block is position `n` of `n`; a guide with trailing prose after its
  * last "Do it" does not, and carries a "Mark as complete" button at its foot
- * instead — see {@link GuideBlockIndex.finalInteractivePosition}.
+ * instead — see {@link GuideBlockIndex.finalCompletablePosition}.
  *
  * `percent` is reserved: it reads 100 only when `complete`, so a large
  * denominator one block short of the end rounds down to 99 rather than

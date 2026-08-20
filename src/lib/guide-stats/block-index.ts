@@ -12,8 +12,8 @@
  *   section holding five blocks contributes five, not six.
  * - Progress is position-based and monotonic: if the furthest block with
  *   evidence of completion sits at position `n`, completion is `n / total`.
- *   Reaching `n` implies `1..n-1`, so non-interactive preamble is never
- *   individually completable.
+ *   Reaching `n` implies `1..n-1`, so preamble that emits no evidence is
+ *   never individually completable.
  * - `multistep`, `guided`, `conditional`, and `snippet-ref` count as exactly
  *   ONE block each, with the traversal never entering them. See
  *   {@link OPAQUE_PARENT_BLOCK_TYPES}.
@@ -96,7 +96,7 @@ export interface CountedBlock {
    * Whether the block can emit evidence that the reader completed it. Not the
    * same as "renders interactively" — see `completion-affordance.ts`.
    */
-  interactive: boolean;
+  completable: boolean;
 }
 
 /**
@@ -121,15 +121,15 @@ export interface GuideBlockIndex {
   containerEndPositions: ReadonlyMap<string, number>;
   /** Transparent `section` containers encountered. Not part of the denominator. */
   sectionCount: number;
-  /** Counted blocks that are interactive. */
-  interactiveBlockCount: number;
+  /** Counted blocks that can emit completion evidence. */
+  completableBlockCount: number;
   /**
-   * Position of the last interactive counted block, or 0 when the guide has
-   * none. `finalInteractivePosition === totalBlockCount` means the final
-   * counted block is interactive, so the guide needs no "Mark as complete"
+   * Position of the last completable counted block, or 0 when the guide has
+   * none. `finalCompletablePosition === totalBlockCount` means the final
+   * counted block is completable, so the guide needs no "Mark as complete"
    * button at its foot; anything less means one is mandatory.
    */
-  finalInteractivePosition: number;
+  finalCompletablePosition: number;
 }
 
 /**
@@ -143,8 +143,8 @@ export function computeGuideBlockIndex(blocks: readonly CountableBlock[] | undef
   const positionsById = new Map<string, number>();
   const containerEndPositions = new Map<string, number>();
   let sectionCount = 0;
-  let interactiveBlockCount = 0;
-  let finalInteractivePosition = 0;
+  let completableBlockCount = 0;
+  let finalCompletablePosition = 0;
 
   function visit(children: readonly CountableBlock[] | undefined, prefix: readonly number[]): void {
     if (!Array.isArray(children)) {
@@ -175,15 +175,15 @@ export function computeGuideBlockIndex(blocks: readonly CountableBlock[] | undef
         continue;
       }
 
-      const interactive = emitsCompletionEvidence(block);
+      const completable = emitsCompletionEvidence(block);
       const position = counted.length + 1;
-      counted.push({ position, type: block.type, ...(block.id ? { id: block.id } : {}), path, interactive });
+      counted.push({ position, type: block.type, ...(block.id ? { id: block.id } : {}), path, completable });
       if (typeof block.id === 'string' && block.id.length > 0 && !positionsById.has(block.id)) {
         positionsById.set(block.id, position);
       }
-      if (interactive) {
-        interactiveBlockCount++;
-        finalInteractivePosition = position;
+      if (completable) {
+        completableBlockCount++;
+        finalCompletablePosition = position;
       }
     }
   }
@@ -196,7 +196,7 @@ export function computeGuideBlockIndex(blocks: readonly CountableBlock[] | undef
     positionsById,
     containerEndPositions,
     sectionCount,
-    interactiveBlockCount,
-    finalInteractivePosition,
+    completableBlockCount,
+    finalCompletablePosition,
   };
 }

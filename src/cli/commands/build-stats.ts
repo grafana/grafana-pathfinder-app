@@ -106,9 +106,7 @@ export async function buildStats(
     return result;
   }
 
-  for (const pkg of ordered) {
-    collectMilestoneStructureErrors(pkg, packages, result.errors);
-  }
+  collectMilestoneStructureErrors(ordered, packages, result.errors);
 
   const resolved = new Map<string, GuideStatsSummary>();
   const failed = new Set<string>();
@@ -324,31 +322,35 @@ function statsMatch(current: unknown, computed: GuideStatsSummary): boolean {
  * never be evidenced — so the reader is permanently stuck below 100%. That is
  * the same failure this command avoids by refusing to descend into a
  * `conditional`, so it gets the same treatment: an error, not a silent dedup.
+ *
+ * Every defect is attributed to the package whose `milestones` array holds it
+ * and reported exactly once, however many rollups reach that package. A
+ * subtree is otherwise inspected once per ancestor, which duplicated stderr
+ * lines and blamed a diamond on a different package on each pass.
  */
 function collectMilestoneStructureErrors(
-  root: DiscoveredPackage,
+  ordered: readonly DiscoveredPackage[],
   packages: ReadonlyMap<string, DiscoveredPackage>,
   errors: string[]
 ): void {
-  const isMetapackage = root.type === 'path' || root.type === 'journey';
-  if (root.milestones.length > 0 && !isMetapackage) {
-    errors.push(
-      `${root.dirName}: type "${root.type}" cannot carry milestones, but lists ${root.milestones.length} — ` +
-        `they would be rolled into its own denominator`
-    );
-    return;
-  }
-  if (!isMetapackage) {
-    return;
-  }
+  const metapackages: DiscoveredPackage[] = [];
 
-  const reachedBy = new Map<string, string>();
-  const ancestry: string[] = [];
-
-  function walk(pkg: DiscoveredPackage): void {
-    if (ancestry.includes(pkg.id)) {
-      return; // resolveStats reports the cycle
+  for (const pkg of ordered) {
+    const isMetapackage = pkg.type === 'path' || pkg.type === 'journey';
+    if (pkg.milestones.length > 0 && !isMetapackage) {
+      errors.push(
+        `${pkg.dirName}: type "${pkg.type}" cannot carry milestones, but lists ${pkg.milestones.length} — ` +
+          `they would be rolled into its own denominator`
+      );
+      continue;
     }
+    if (isMetapackage) {
+      metapackages.push(pkg);
+    }
+  }
+
+  const listedAsMilestone = new Set<string>();
+  for (const pkg of metapackages) {
     const seenInList = new Set<string>();
     for (const milestoneId of pkg.milestones) {
       if (seenInList.has(milestoneId)) {
@@ -356,27 +358,69 @@ function collectMilestoneStructureErrors(
         continue;
       }
       seenInList.add(milestoneId);
-
-      const previous = reachedBy.get(milestoneId);
-      if (previous !== undefined) {
-        errors.push(
-          `${root.dirName}: milestone "${milestoneId}" is reachable twice (via "${previous}" and "${pkg.id}"), ` +
-            `so its blocks would be counted twice and could never be completed`
-        );
-        continue;
-      }
-      reachedBy.set(milestoneId, pkg.id);
-
-      const milestone = packages.get(milestoneId);
-      if (milestone) {
-        ancestry.push(pkg.id);
-        walk(milestone);
-        ancestry.pop();
-      }
+      listedAsMilestone.add(milestoneId);
     }
   }
 
-  walk(root);
+  const reported = new Set<string>();
+  const inspected = new Set<string>();
+
+  function walkFrom(root: DiscoveredPackage): void {
+    const reachedBy = new Map<string, string>();
+    const ancestry: string[] = [];
+
+    function walk(pkg: DiscoveredPackage): void {
+      if (ancestry.includes(pkg.id)) {
+        return; // resolveStats reports the cycle
+      }
+      inspected.add(pkg.id);
+      const seenInList = new Set<string>();
+
+      for (const milestoneId of pkg.milestones) {
+        if (seenInList.has(milestoneId)) {
+          continue; // already reported against this package
+        }
+        seenInList.add(milestoneId);
+
+        const previous = reachedBy.get(milestoneId);
+        if (previous !== undefined) {
+          const key = JSON.stringify([pkg.id, milestoneId]);
+          if (!reported.has(key)) {
+            reported.add(key);
+            errors.push(
+              `${pkg.dirName}: milestone "${milestoneId}" is reachable twice (also via "${previous}"), ` +
+                `so its blocks would be counted twice and could never be completed`
+            );
+          }
+          continue;
+        }
+        reachedBy.set(milestoneId, pkg.id);
+
+        const milestone = packages.get(milestoneId);
+        if (milestone) {
+          ancestry.push(pkg.id);
+          walk(milestone);
+          ancestry.pop();
+        }
+      }
+    }
+
+    walk(root);
+  }
+
+  // Walking from top-level roots only keeps `previous` — and so the reported
+  // attribution — the same whichever ancestor a shared subtree hangs under.
+  // The second pass covers metapackages no root reaches, which means a cycle.
+  for (const pkg of metapackages) {
+    if (!listedAsMilestone.has(pkg.id)) {
+      walkFrom(pkg);
+    }
+  }
+  for (const pkg of metapackages) {
+    if (!inspected.has(pkg.id)) {
+      walkFrom(pkg);
+    }
+  }
 }
 
 export const buildStatsCommand = new Command('build-stats')

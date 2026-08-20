@@ -17,7 +17,7 @@
     "version": 1,
     "blockCount": 16,
     "sectionCount": 3,
-    "interactiveBlockCount": 7,
-    "finalInteractivePosition": 11
+    "completableBlockCount": 7,
+    "finalCompletablePosition": 11
   }
 }

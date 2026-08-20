@@ -29,7 +29,7 @@ describe('computeGuideBlockIndex', () => {
 
     expect(index.totalBlockCount).toBe(0);
     expect(index.blocks).toEqual([]);
-    expect(index.finalInteractivePosition).toBe(0);
+    expect(index.finalCompletablePosition).toBe(0);
   });
 
   it('tolerates missing and malformed block arrays', () => {
@@ -111,8 +111,8 @@ describe('computeGuideBlockIndex', () => {
       { type: 'conditional', whenTrue: [interactive('hidden')], whenFalse: [] },
     ]);
 
-    expect(index.finalInteractivePosition).toBe(1);
-    expect(index.interactiveBlockCount).toBe(1);
+    expect(index.finalCompletablePosition).toBe(1);
+    expect(index.completableBlockCount).toBe(1);
   });
 
   it('never descends into an opaque parent, whatever child key it uses', () => {
@@ -128,8 +128,8 @@ describe('computeGuideBlockIndex', () => {
   it('tracks interactive blocks and the final interactive position', () => {
     const index = computeGuideBlockIndex([markdown(), interactive(), markdown(), interactive(), markdown()]);
 
-    expect(index.interactiveBlockCount).toBe(2);
-    expect(index.finalInteractivePosition).toBe(4);
+    expect(index.completableBlockCount).toBe(2);
+    expect(index.finalCompletablePosition).toBe(4);
   });
 
   it('maps a container id to the position of its last counted descendant', () => {
@@ -171,7 +171,7 @@ describe('computeGuideBlockIndex', () => {
     expect(index.totalBlockCount).toBe(3);
     expect(index.blocks.map((block) => block.id)).toEqual(['before', 'ref', 'after']);
     expect(index.positionsById.has('s3')).toBe(false);
-    expect(index.finalInteractivePosition).toBe(0);
+    expect(index.finalCompletablePosition).toBe(0);
   });
 });
 

@@ -29,13 +29,13 @@ export interface GuideStatsSummary {
   /** Section containers. Reported for authoring insight; not in the denominator. */
   sectionCount: number;
   /** Counted blocks carrying a completion affordance. */
-  interactiveBlockCount: number;
+  completableBlockCount: number;
   /**
-   * Position of the last interactive block, 0 when there is none. Equal to
-   * `blockCount` when the final counted block is interactive, which is the
+   * Position of the last completable block, 0 when there is none. Equal to
+   * `blockCount` when the final counted block is completable, which is the
    * signal that the guide needs no "Mark as complete" button at its foot.
    */
-  finalInteractivePosition: number;
+  finalCompletablePosition: number;
 }
 
 export function summarizeGuideBlockIndex(index: GuideBlockIndex): GuideStatsSummary {
@@ -43,8 +43,8 @@ export function summarizeGuideBlockIndex(index: GuideBlockIndex): GuideStatsSumm
     version: GUIDE_STATS_VERSION,
     blockCount: index.totalBlockCount,
     sectionCount: index.sectionCount,
-    interactiveBlockCount: index.interactiveBlockCount,
-    finalInteractivePosition: index.finalInteractivePosition,
+    completableBlockCount: index.completableBlockCount,
+    finalCompletablePosition: index.finalCompletablePosition,
   };
 }
 
@@ -59,9 +59,15 @@ export function summarizeGuideBlocks(blocks: readonly CountableBlock[] | undefin
  * A path or journey rolls up as `[its own content, ...its milestones]`, which
  * needs no special case: a metapackage with no body of its own contributes a
  * zero part. Positions are offsets into the concatenation, so
- * `finalInteractivePosition` comes from the last part that has one, and equals
- * `blockCount` only when the concatenation genuinely ends on an interactive
+ * `finalCompletablePosition` comes from the last part that has one, and equals
+ * `blockCount` only when the concatenation genuinely ends on a completable
  * block.
+ *
+ * Only totals roll up: per-block positions stay per guide, on the
+ * `computeGuideBlockIndex` of each part. A consumer recording a percentage
+ * against a rolled-up `blockCount` therefore needs its numerator from
+ * somewhere else — see issue #1666, which carries the tier-0 schema and the
+ * first consumer.
  *
  * Callers must summarize every milestone before its parent; the ordering is
  * load-bearing, not incidental.
@@ -69,17 +75,17 @@ export function summarizeGuideBlocks(blocks: readonly CountableBlock[] | undefin
 export function rollUpGuideStats(parts: readonly GuideStatsSummary[]): GuideStatsSummary {
   let blockCount = 0;
   let sectionCount = 0;
-  let interactiveBlockCount = 0;
-  let finalInteractivePosition = 0;
+  let completableBlockCount = 0;
+  let finalCompletablePosition = 0;
 
   for (const part of parts) {
-    if (part.finalInteractivePosition > 0) {
-      finalInteractivePosition = blockCount + part.finalInteractivePosition;
+    if (part.finalCompletablePosition > 0) {
+      finalCompletablePosition = blockCount + part.finalCompletablePosition;
     }
     blockCount += part.blockCount;
     sectionCount += part.sectionCount;
-    interactiveBlockCount += part.interactiveBlockCount;
+    completableBlockCount += part.completableBlockCount;
   }
 
-  return { version: GUIDE_STATS_VERSION, blockCount, sectionCount, interactiveBlockCount, finalInteractivePosition };
+  return { version: GUIDE_STATS_VERSION, blockCount, sectionCount, completableBlockCount, finalCompletablePosition };
 }

@@ -45,7 +45,7 @@ describe('guideProgressAtPosition', () => {
   it('reaches 100% from the final block when that block is interactive', () => {
     const index = computeGuideBlockIndex([markdown(), markdown(), interactive('doit')]);
 
-    expect(index.finalInteractivePosition).toBe(index.totalBlockCount);
+    expect(index.finalCompletablePosition).toBe(index.totalBlockCount);
     expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 100, fraction: 1, complete: true });
   });
 
@@ -53,7 +53,7 @@ describe('guideProgressAtPosition', () => {
     const index = computeGuideBlockIndex([markdown(), interactive('doit'), markdown(), markdown()]);
 
     expect(index.totalBlockCount).toBe(4);
-    expect(index.finalInteractivePosition).toBe(2);
+    expect(index.finalCompletablePosition).toBe(2);
     expect(guideProgressAtPosition(index, 2)).toMatchObject({ percent: 50, complete: false });
   });
 
@@ -71,17 +71,19 @@ describe('guideProgressAtPosition', () => {
     expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 75, complete: false });
   });
 
-  it('treats a non-finite position as no progress rather than leaking NaN', () => {
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
+  ])('treats a %s position as no progress rather than leaking NaN or a false 100%%', (_label, bad) => {
     const index = computeGuideBlockIndex([markdown(), markdown(), markdown()]);
 
-    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY * 0]) {
-      expect(guideProgressAtPosition(index, bad)).toMatchObject({
-        position: 0,
-        fraction: 0,
-        percent: 0,
-        complete: false,
-      });
-    }
+    expect(guideProgressAtPosition(index, bad)).toMatchObject({
+      position: 0,
+      fraction: 0,
+      percent: 0,
+      complete: false,
+    });
   });
 
   it('never reports 100% while incomplete, however large the denominator', () => {
