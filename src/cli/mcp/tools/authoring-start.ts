@@ -89,16 +89,10 @@ const AUTHORING_CONTEXT = {
       'Never mix modes — pass EITHER `artifact` OR `sessionToken`, never both. Mixing returns INPUT_MODE_AMBIGUOUS.',
     ],
   },
-  // The two halves agents most often conflate. `parameters` is ours: a
-  // projection of the CLI's option surface, published for convenience and
-  // keyed the way the tool accepts it. `responses` is the CLI's own output,
-  // passed through verbatim — nothing in it was authored for MCP, which is
-  // why it reads like terminal tooling. Stated once here so no tool
-  // description has to restate the translation rules.
   interfaceContract: {
     parameters: [
       "JSON in, always. pathfinder_help({ command }) returns the parameter interface for that tool's `opts`. It is a convenience projection of the CLI option surface into the JSON shape the tool accepts — it is not CLI syntax, and you never build a command line.",
-      'Names are camelCase (`--parent-id` → `parentId`). Values are JSON: boolean flags become booleans (`list: true`), repeatable flags become arrays. Never send `--flag` names.',
+      'Names are camelCase (`--if-absent` → `ifAbsent`). Values are JSON: boolean flags become booleans (`list: true`), repeatable flags become arrays. Never send `--flag` names.',
       'Positional CLI arguments are republished as ordinary named parameters, so positional order never matters to you.',
       'When help returns `subcommands`, pass your chosen value in `opts` and call help again with that value as `subcommand` to get the full per-subcommand surface.',
       'Parameters a tool owns itself, or cannot honor, are withheld from help and rejected as UNSUPPORTED_PARAMETER. The `exposed` list on that error is authoritative — read it rather than guessing.',

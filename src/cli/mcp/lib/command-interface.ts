@@ -28,8 +28,11 @@ export interface CommandInterfaceConfig {
   optBlacklist?: readonly string[];
   /**
    * Extra agent-facing guidance appended to a CLI-owned option description.
-   * Use only when the Commander text is not enough for the MCP caller — do
-   * not restate required-ness, parent kind, or other facts help already carries.
+   * Use only for something true of one parameter, on MCP alone, that no other
+   * surface can carry — not required-ness, parent kind, or other facts help
+   * already publishes. A fact about the command belongs in its Commander
+   * description, where CLI users get it too; recovery advice belongs in the
+   * outcome raised at the moment it applies.
    */
   optContext?: Readonly<Record<string, string>>;
   /**
