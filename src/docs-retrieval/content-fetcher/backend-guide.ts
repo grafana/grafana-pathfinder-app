@@ -16,7 +16,31 @@ export interface BackendGuideResource {
     title?: string;
     schemaVersion?: string;
     blocks?: unknown[];
+    manifest?: Record<string, unknown>;
   };
+}
+
+const APP_PLATFORM_REPOSITORY = 'app-platform';
+
+/**
+ * The completion identity for content loaded straight off this scheme.
+ *
+ * Every launch that carries a resolved package hands its own manifest down
+ * instead (fetchPackageContent overwrites this one), so what this covers is the
+ * launches that carry none: an orphan custom guide started from the Custom
+ * Guides list, a `?doc=api:<id>` share link, auto-dock tab restore. Those reach
+ * the recorder with no manifest at all, and it fails closed on a missing id
+ * rather than key a record on a loader URL — so the completion is simply lost.
+ *
+ * `id` and `repository` are forced over any persisted value per
+ * `repository-identity-authority` (docs/design/CONCERNS.md): a stray manifest
+ * field must not outrank the resource actually being loaded, and everything
+ * served here is App Platform-sourced whatever the manifest claims. `type` is
+ * carried through unforced — it is what keeps a path/journey cover out of the
+ * standalone-guide fact that the journey trigger owns.
+ */
+function buildLoaderManifest(guideId: string, spec: BackendGuideResource['spec']): Record<string, unknown> {
+  return { type: 'guide', ...spec?.manifest, id: guideId, repository: APP_PLATFORM_REPOSITORY };
 }
 
 /**
@@ -61,6 +85,8 @@ export function buildBackendGuideContent(
       content: JSON.stringify(guide),
       metadata: {
         title: guide.title,
+        packageManifest: buildLoaderManifest(guide.id, guideResource.spec),
+        repository: APP_PLATFORM_REPOSITORY,
       },
       type: 'interactive',
       url,

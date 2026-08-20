@@ -33,7 +33,9 @@ jest.mock('../learning-paths', () => ({
   getPathsData: () => getPathsDataMock(),
 }));
 
+import { of } from 'rxjs';
 import { config, setBackendSrv, type BackendSrv } from '@grafana/runtime';
+import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import {
   recordStandaloneGuideCompletion,
   setJourneyCompletionPercentage,
@@ -633,5 +635,64 @@ describe('catalogue-launched path (App Platform provenance)', () => {
       guideSource: 'app-platform',
       guideId: 'fe-alerting-path',
     });
+  });
+});
+
+// A private guide started from the "other guides" list, a `?doc=api:<id>` share
+// link, or auto-dock tab restore carries no packageInfo, so the loader is the
+// only thing that can supply an identity. Drives the real loader rather than a
+// hand-written manifest so the two halves cannot drift apart silently.
+describe('standalone private guide opened straight off the backend-guide: scheme', () => {
+  async function loadStandalonePrivateGuide(id: string, spec: Record<string, unknown> = {}) {
+    (config as { namespace?: string }).namespace = 'stacks-123';
+    setBackendSrv({
+      fetch: () =>
+        of({
+          data: { spec: { id, title: 'Solo guide', blocks: [{ type: 'markdown', content: '# hi' }], ...spec } },
+        }),
+    } as unknown as BackendSrv);
+
+    const result = await fetchBackendInteractive(`backend-guide:${id}`);
+    return result.content!;
+  }
+
+  it('records the completion keyed on the App Platform guide id', async () => {
+    const content = await loadStandalonePrivateGuide('fe-solo-01');
+
+    recordGuideCompletionForSurface({
+      baseUrl: `backend-guide:fe-solo-01`,
+      contentUrl: content.url,
+      currentUrl: content.url,
+      contentType: content.type,
+      metadata: content.metadata,
+      guideTitle: 'Solo guide',
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({
+      kind: 'guide',
+      guideSource: 'app-platform',
+      guideId: 'fe-solo-01',
+      guideCategory: 'interactive',
+      completionPercent: 100,
+    });
+    expect(journeySetMock).not.toHaveBeenCalled();
+  });
+
+  it('leaves a path cover to the journey trigger instead of emitting a guide fact', async () => {
+    const content = await loadStandalonePrivateGuide('fe-alerting-path', {
+      manifest: { type: 'path', milestones: ['m1', 'm2'] },
+    });
+
+    recordGuideCompletionForSurface({
+      baseUrl: `backend-guide:fe-alerting-path`,
+      contentUrl: content.url,
+      currentUrl: content.url,
+      contentType: content.type,
+      metadata: content.metadata,
+      guideTitle: 'Alerting path',
+    });
+
+    expect(emitted).toHaveLength(0);
   });
 });
