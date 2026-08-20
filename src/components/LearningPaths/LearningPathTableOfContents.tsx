@@ -133,6 +133,7 @@ export function LearningPathTableOfContents({
                 className={styles.ctaButton}
                 data-journey-start="true"
                 data-milestone-url={ctaTarget.url}
+                data-interaction-location={progress === 0 ? 'get_started_cta' : 'resume_cta'}
                 data-testid={testIds.learningPaths.tableOfContentsCta}
               >
                 <Icon name="play" size="sm" />

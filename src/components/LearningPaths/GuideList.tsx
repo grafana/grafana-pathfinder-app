@@ -36,7 +36,15 @@ export function GuideList({ guides, isLoading = false, className }: GuideListPro
             // The current row is the only clickable one — data-journey-start is
             // the same attribute contract the cover page's own CTA button uses,
             // picked up by the shared global click handler (link-handler.hook.ts).
-            {...(guide.isCurrent && guide.url ? { 'data-journey-start': 'true', 'data-milestone-url': guide.url } : {})}
+            // data-interaction-location keeps this distinguishable from that
+            // CTA and from a fresh-start click in the click handler's analytics.
+            {...(guide.isCurrent && guide.url
+              ? {
+                  'data-journey-start': 'true',
+                  'data-milestone-url': guide.url,
+                  'data-interaction-location': 'module_row_click',
+                }
+              : {})}
           >
             <span
               className={cx(

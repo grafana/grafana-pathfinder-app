@@ -45,6 +45,7 @@ describe('GuideList', () => {
 
     const currentRow = screen.getByText('Current module').closest('div[data-journey-start]');
     expect(currentRow).toHaveAttribute('data-milestone-url', 'bundled:a/content.json');
+    expect(currentRow).toHaveAttribute('data-interaction-location', 'module_row_click');
     expect(screen.getByText('Other module').closest('div')).not.toHaveAttribute('data-journey-start');
   });
 

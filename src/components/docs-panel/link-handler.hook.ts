@@ -80,11 +80,17 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
         const activeTab = model.getActiveTab();
 
         if (milestoneUrl && activeTab) {
+          // Cover-page producers (LearningPathTableOfContents, GuideList) tag
+          // their own trigger via data-interaction-location so a fresh start,
+          // a resume, and a direct module-row click stay distinguishable in
+          // analytics; the legacy injected HTML button carries none, so it
+          // keeps its original label.
+          const interactionLocation = startElement.getAttribute('data-interaction-location') || 'ready_to_begin_button';
           // Track analytics for starting journey
           reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
             content_title: activeTab.title,
             content_url: activeTab.baseUrl,
-            interaction_location: 'ready_to_begin_button',
+            interaction_location: interactionLocation,
             total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
           });
 
