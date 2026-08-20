@@ -12,5 +12,12 @@
   "testEnvironment": {
     "tier": "local",
     "minVersion": "12.2.0"
+  },
+  "stats": {
+    "version": 1,
+    "blockCount": 33,
+    "sectionCount": 6,
+    "interactiveBlockCount": 12,
+    "finalInteractivePosition": 31
   }
 }

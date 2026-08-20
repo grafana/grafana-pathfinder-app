@@ -50,7 +50,9 @@ export interface GuideProgress {
  */
 export function guideProgressAtPosition(index: GuideBlockIndex, position: number): GuideProgress {
   const total = index.totalBlockCount;
-  const clamped = Math.max(0, Math.min(Math.floor(position), total));
+  // `Math.min`/`Math.max` pass NaN straight through, so the clamp has to reject
+  // a non-finite position outright: `percent` feeds a durable record.
+  const clamped = Number.isFinite(position) ? Math.max(0, Math.min(Math.floor(position), total)) : 0;
 
   const complete = total > 0 && clamped >= total;
   const fraction = total === 0 ? 0 : clamped / total;

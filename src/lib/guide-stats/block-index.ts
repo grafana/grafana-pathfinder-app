@@ -23,8 +23,8 @@
  * structurally incapable of disagreeing.
  */
 
-import { isInteractiveBlockType } from '../../constants/json-guide-classification';
 import type { JsonBlock } from '../../types/json-guide.types';
+import { emitsCompletionEvidence } from './completion-affordance';
 
 /**
  * The narrowest block shape the counter needs. `JsonBlock` satisfies it; so
@@ -37,6 +37,10 @@ export interface CountableBlock {
   whenTrue?: readonly CountableBlock[];
   whenFalse?: readonly CountableBlock[];
   id?: string;
+  /** Read only for `input`, whose completion affordance depends on its shape. */
+  inputType?: string;
+  dataCheckQuery?: string;
+  dataCheckBlocking?: boolean;
 }
 
 /**
@@ -63,8 +67,9 @@ export const TRANSPARENT_CONTAINER_BLOCK_TYPES = [
  * `snippet-ref` counts as one and its resolved contents inherit that single
  * position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in
  * before the parser sees the guide, so the denominator here is the
- * PRE-INLINING count: a consumer must index the pre-inlining tree, or map an
- * inlined block back to the position of the ref it came from.
+ * PRE-INLINING count and a consumer must index the pre-inlining tree. Mapping
+ * an inlined block back to its ref is not available: the splice carries no
+ * provenance field, so there is nothing to map back from.
  */
 export const OPAQUE_PARENT_BLOCK_TYPES = [
   'multistep',
@@ -87,7 +92,10 @@ export interface CountedBlock {
    * the third top-level block. Always available, unlike `id`.
    */
   path: readonly number[];
-  /** Whether the block carries a completion affordance ("Do it" and friends). */
+  /**
+   * Whether the block can emit evidence that the reader completed it. Not the
+   * same as "renders interactively" — see `completion-affordance.ts`.
+   */
   interactive: boolean;
 }
 
@@ -105,7 +113,10 @@ export interface GuideBlockIndex {
   /**
    * For each container carrying an id, the position of the last counted block
    * inside it — the position "mark as complete" on that container evidences.
-   * Containers with no counted descendants are absent.
+   * Containers with no counted descendants are absent. First occurrence wins
+   * when ids are duplicated, matching `positionsById`: last-wins would let a
+   * click on the earlier container permanently over-credit progress, and
+   * progress is monotonic so it could never be corrected downward.
    */
   containerEndPositions: ReadonlyMap<string, number>;
   /** Transparent `section` containers encountered. Not part of the denominator. */
@@ -153,13 +164,18 @@ export function computeGuideBlockIndex(blocks: readonly CountableBlock[] | undef
         }
         const before = counted.length;
         visit(block.blocks, path);
-        if (typeof block.id === 'string' && block.id.length > 0 && counted.length > before) {
+        if (
+          typeof block.id === 'string' &&
+          block.id.length > 0 &&
+          counted.length > before &&
+          !containerEndPositions.has(block.id)
+        ) {
           containerEndPositions.set(block.id, counted.length);
         }
         continue;
       }
 
-      const interactive = isInteractiveBlockType(block.type);
+      const interactive = emitsCompletionEvidence(block);
       const position = counted.length + 1;
       counted.push({ position, type: block.type, ...(block.id ? { id: block.id } : {}), path, interactive });
       if (typeof block.id === 'string' && block.id.length > 0 && !positionsById.has(block.id)) {

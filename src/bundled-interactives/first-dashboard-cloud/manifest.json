@@ -13,11 +13,25 @@
   "provides": ["first-dashboard-created-cloud"],
   "targeting": {
     "match": {
-      "and": [{ "urlPrefix": "/" }, { "targetPlatform": "cloud" }]
+      "and": [
+        {
+          "urlPrefix": "/"
+        },
+        {
+          "targetPlatform": "cloud"
+        }
+      ]
     }
   },
   "testEnvironment": {
     "tier": "cloud",
     "minVersion": "12.2.0"
+  },
+  "stats": {
+    "version": 1,
+    "blockCount": 25,
+    "sectionCount": 3,
+    "interactiveBlockCount": 19,
+    "finalInteractivePosition": 23
   }
 }

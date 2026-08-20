@@ -12,7 +12,7 @@ alwaysApply: false
 
 The plugin tracks "interactive step component types" — the React components rendered inside an interactive section that count as completable steps the user must execute (as opposed to passive content like markdown, image, or video).
 
-Authoritative definition lives in **one source**: `src/components/interactive-tutorial/step-type-registry.ts` (`STEP_TYPE_SCHEMAS`). Its `parseTypeKey` field feeds `STEP_TYPE_PARSE_KEYS`, which `content-renderer.tsx` re-uses for its parse-time `INTERACTIVE_STEP_TYPES` set. Adding a new step type requires editing **two sites**: the registry (parse + orchestration metadata) and the React-component classifier.
+Authoritative definition lives in **one source**: `src/components/interactive-tutorial/step-type-registry.ts` (`STEP_TYPE_SCHEMAS`). Its `parseTypeKey` field feeds `STEP_TYPE_PARSE_KEYS`, which `content-renderer.tsx` re-uses for its parse-time `INTERACTIVE_STEP_TYPES` set. Adding a new step type requires editing **three sites**: the registry (parse + orchestration metadata), the React-component classifier, and `src/lib/guide-stats/completion-affordance.ts` — the stamped completion denominator's notion of which block types can emit completion evidence. That third site is tier 1 and cannot import the tier-4 registry, so `completion-affordance.parity.test.ts` holds the two in step instead; it fails when a parse key is added, removed, or remapped. Note it answers a narrower question than the other two: "can this block emit completion evidence", not "does it render interactively" — counting a block that emits none can make a guide permanently uncompletable, which is why `input` counts only in its blocking-datasource-check shape and `grot-guide` never counts at all.
 
 ## The two registry sites
 

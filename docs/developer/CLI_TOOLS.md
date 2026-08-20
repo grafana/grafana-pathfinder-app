@@ -306,7 +306,7 @@ node dist/cli/cli/index.js build-stats packages/
 node dist/cli/cli/index.js build-repository packages/ -o dist/repository.json
 ```
 
-Run `build-stats` first. `build-repository` reads each manifest to build `repository.json`, so once the manifest-stats passthrough lands (a separate change owns that field) the stats have to be on disk before it runs. Today `repository.json` carries no `stats` field, so the ordering is forward-looking rather than load-bearing.
+Run `build-stats` first — the ordering is load-bearing. `build-repository` reads each manifest to build `repository.json` and carries the `stats` field through, so a `repository.json` built before the manifests are stamped omits stats for every package.
 
 **Fail CI when a committed manifest is stale:**
 
@@ -319,13 +319,21 @@ node dist/cli/cli/index.js build-stats packages/ --check
 - Every block counts once, except containers (`section`, `assistant`, `collapsible`), which contribute their contents and nothing of their own. A section holding five blocks contributes five, not six.
 - `multistep` and `guided` count as exactly one block each. Their inner steps are deliberately outside the denominator.
 - `conditional` counts as one block, and neither branch is descended into. Descending into both would put blocks in the denominator the reader can never see.
-- `snippet-ref` counts as one block, and its resolved contents inherit that single position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in before the parser sees the guide, so the stamped denominator is the **pre-inlining** count: a consumer must index the pre-inlining tree, or map an inlined block back to the position of the ref it came from.
+- `snippet-ref` counts as one block, and its resolved contents inherit that single position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in before the parser sees the guide, so the stamped denominator is the **pre-inlining** count and a consumer must index the pre-inlining tree. Mapping an inlined block back to its ref is not an option today: the splice carries no provenance, so there is nothing to map back from.
 - Completion is `n / total` with no special case. A "Do it" yields 100% only when its block is the guide's last counted one — `finalInteractivePosition === blockCount`. Anything less means the guide needs a "Mark as complete" button at its foot, and that field is the signal for it.
 - A `path` or `journey` rolls up as its own body followed by its milestones in declared order. Milestones are measured before their parents.
 
 ### Strictness
 
 A milestone missing from the tree, and a manifest that fails schema validation, both abort the run with a non-zero exit and nothing written. That is knowingly stricter than the sibling tooling — `build-graph` warns on an unresolvable milestone, `build-repository` degrades a manifest schema failure to a warning, and `docs-retrieval`'s package content keeps an unresolvable milestone as a locked placeholder. Those tolerate a partial tree at read time; this command's whole purpose is to produce a denominator that is never wrong, and a rollup silently missing a milestone would publish one that is. No manifest is written until every package in the tree has resolved, so a failed run leaves the tree completely unstamped rather than half-stamped.
+
+One consequence worth knowing before putting `build-stats` ahead of `build-repository` in a pipeline that uses `--exclude`: if an excluded subtree holds a package that a path lists as a milestone, that milestone is now missing from the tree, so the run aborts and leaves _unrelated_ packages unstamped too. `build-repository` with the same `--exclude` omits the entry and succeeds. The strictness is deliberate, but it converts a tree shape the sibling tolerates into a hard stop.
+
+A duplicated milestone, and a milestone reachable through two parents, are both errors as well. Summing a package twice inflates the denominator, and because positions are first-occurrence-wins the second copy's blocks can never be evidenced — so the reader would be permanently stuck below 100%.
+
+### `stats.blockCount` is not `inspect`'s `blockCount`
+
+`pathfinder-cli inspect --format json` also emits a `blockCount`, counted over the whole tree — containers included, conditional branches descended. `manifest.stats.blockCount` is the completion denominator and counts neither. The two therefore disagree by design on the same guide: `inspect` answers "how many blocks are in this file", `stats` answers "what is the reader measured against".
 
 ### Determinism
 

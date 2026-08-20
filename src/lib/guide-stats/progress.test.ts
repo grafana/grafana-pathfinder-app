@@ -71,6 +71,19 @@ describe('guideProgressAtPosition', () => {
     expect(guideProgressAtPosition(index, 3)).toMatchObject({ percent: 75, complete: false });
   });
 
+  it('treats a non-finite position as no progress rather than leaking NaN', () => {
+    const index = computeGuideBlockIndex([markdown(), markdown(), markdown()]);
+
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY * 0]) {
+      expect(guideProgressAtPosition(index, bad)).toMatchObject({
+        position: 0,
+        fraction: 0,
+        percent: 0,
+        complete: false,
+      });
+    }
+  });
+
   it('never reports 100% while incomplete, however large the denominator', () => {
     const index = computeGuideBlockIndex(Array.from({ length: 250 }, () => markdown()));
 

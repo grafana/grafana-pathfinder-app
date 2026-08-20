@@ -12,11 +12,25 @@
   "provides": ["grafana-tour-oss"],
   "targeting": {
     "match": {
-      "and": [{ "urlPrefix": "/" }, { "targetPlatform": "oss" }]
+      "and": [
+        {
+          "urlPrefix": "/"
+        },
+        {
+          "targetPlatform": "oss"
+        }
+      ]
     }
   },
   "testEnvironment": {
     "tier": "local",
     "minVersion": "12.2.0"
+  },
+  "stats": {
+    "version": 1,
+    "blockCount": 10,
+    "sectionCount": 1,
+    "interactiveBlockCount": 7,
+    "finalInteractivePosition": 9
   }
 }

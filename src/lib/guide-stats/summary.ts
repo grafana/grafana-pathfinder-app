@@ -11,8 +11,14 @@
 import { computeGuideBlockIndex, type CountableBlock, type GuideBlockIndex } from './block-index';
 
 /**
- * Schema version of the stats object. Bumped when these fields change shape —
- * NOT a content version, so it says nothing about whether the guide changed.
+ * Version of the stamped stats object. Bump it when the COUNTING RULE changes,
+ * or when these fields change shape — the rule being the load-bearing trigger,
+ * because a rule change leaves the shapes untouched while restating the
+ * denominator of every already-stamped manifest and every percentage already
+ * recorded against it. Without a bump, an old-rule stamp and a new-rule stamp
+ * are byte-indistinguishable.
+ *
+ * NOT a content version: it says nothing about whether the guide changed.
  */
 export const GUIDE_STATS_VERSION = 1;
 

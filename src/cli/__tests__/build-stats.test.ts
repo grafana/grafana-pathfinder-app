@@ -235,6 +235,106 @@ describe('buildStats', () => {
     expect(readManifest(tmpDir, 'zzz-path').stats).toBeUndefined();
   });
 
+  it('errors on a duplicate milestone rather than summing it twice', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown, interactive] });
+    writeGuide(tmpDir, 'the-path', { type: 'path', milestones: ['leaf', 'leaf'], blocks: [] });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual(['the-path: lists milestone "leaf" more than once']);
+    expect(readManifest(tmpDir, 'the-path').stats).toBeUndefined();
+    expect(readManifest(tmpDir, 'leaf').stats).toBeUndefined();
+  });
+
+  it('errors on a diamond milestone reachable through two parents', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown] });
+    writeGuide(tmpDir, 'mid', { type: 'path', milestones: ['leaf'], blocks: [] });
+    writeGuide(tmpDir, 'top', { type: 'journey', milestones: ['mid', 'leaf'], blocks: [] });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors.some((error) => error.includes('reachable twice'))).toBe(true);
+    expect(readManifest(tmpDir, 'top').stats).toBeUndefined();
+  });
+
+  it('errors when a guide-typed manifest carries milestones', async () => {
+    writeGuide(tmpDir, 'leaf', { blocks: [markdown, markdown, markdown] });
+    writeJson(path.join(tmpDir, 'sneaky', 'content.json'), { id: 'sneaky', title: 'x', blocks: [markdown] });
+    writeJson(path.join(tmpDir, 'sneaky', 'manifest.json'), {
+      id: 'sneaky',
+      type: 'guide',
+      milestones: ['leaf'],
+    });
+
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors.some((error) => error.includes('cannot carry milestones'))).toBe(true);
+    expect(readManifest(tmpDir, 'sneaky').stats).toBeUndefined();
+  });
+
+  it('reports a missing milestone once, however many parents reference it', async () => {
+    writeGuide(tmpDir, 'p1', { type: 'path', milestones: ['nowhere'], blocks: [] });
+    writeGuide(tmpDir, 'p2', { type: 'path', milestones: ['p1'], blocks: [] });
+
+    const result = await buildStats(tmpDir);
+
+    const missing = result.errors.filter((error) => error.includes('"nowhere" not found'));
+
+    expect(missing).toHaveLength(1);
+  });
+
+  it('does not report drift when only the stats key order differs', async () => {
+    writeGuide(tmpDir, 'guide-a', { blocks: [markdown, interactive] });
+    await buildStats(tmpDir);
+
+    const manifestPath = path.join(tmpDir, 'guide-a', 'manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    const stats = manifest.stats;
+    manifest.stats = {
+      finalInteractivePosition: stats.finalInteractivePosition,
+      interactiveBlockCount: stats.interactiveBlockCount,
+      sectionCount: stats.sectionCount,
+      blockCount: stats.blockCount,
+      version: stats.version,
+    };
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
+
+    const result = await buildStats(tmpDir, { check: true });
+
+    expect(result.written).toEqual([]);
+    expect(result.unchanged).toEqual(['guide-a']);
+  });
+
+  it('fails --check on a tree with no packages rather than reporting success', async () => {
+    const result = await buildStats(tmpDir, { check: true });
+
+    expect(result.errors.some((error) => error.includes('verified nothing'))).toBe(true);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('still only warns on an empty tree when not checking', async () => {
+    const result = await buildStats(tmpDir);
+
+    expect(result.errors).toEqual([]);
+    expect(result.warnings[0]).toContain('No package directories');
+  });
+
+  it('omits a package from written when its write fails', async () => {
+    writeGuide(tmpDir, 'aaa-guide');
+    writeGuide(tmpDir, 'zzz-guide');
+    const blocked = path.join(tmpDir, 'zzz-guide', 'manifest.json');
+    fs.chmodSync(blocked, 0o444);
+
+    try {
+      const result = await buildStats(tmpDir);
+
+      expect(result.errors.some((error) => error.includes('cannot write manifest.json'))).toBe(true);
+      expect(result.written).toEqual(['aaa-guide']);
+    } finally {
+      fs.chmodSync(blocked, 0o644);
+    }
+  });
+
   it('errors on a milestone cycle instead of recursing forever', async () => {
     writeGuide(tmpDir, 'path-a', { type: 'path', milestones: ['path-b'], blocks: [] });
     writeGuide(tmpDir, 'path-b', { type: 'path', milestones: ['path-a'], blocks: [] });

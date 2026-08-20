@@ -150,6 +150,17 @@ describe('computeGuideBlockIndex', () => {
     expect(index.positionsById.get('dup')).toBe(1);
   });
 
+  it('keeps the first container end when container ids are duplicated', () => {
+    const index = computeGuideBlockIndex([
+      section([markdown('a'), markdown('b')], 'dup'),
+      markdown(),
+      markdown(),
+      section([markdown('c'), markdown('d')], 'dup'),
+    ]);
+
+    expect(index.containerEndPositions.get('dup')).toBe(2);
+  });
+
   it('counts a snippet-ref as one block and does not descend into it', () => {
     const index = computeGuideBlockIndex([
       markdown('before'),

@@ -12,11 +12,25 @@
   "provides": ["grafana-tour-cloud"],
   "targeting": {
     "match": {
-      "and": [{ "urlPrefix": "/" }, { "targetPlatform": "cloud" }]
+      "and": [
+        {
+          "urlPrefix": "/"
+        },
+        {
+          "targetPlatform": "cloud"
+        }
+      ]
     }
   },
   "testEnvironment": {
     "tier": "cloud",
     "minVersion": "12.2.0"
+  },
+  "stats": {
+    "version": 1,
+    "blockCount": 10,
+    "sectionCount": 1,
+    "interactiveBlockCount": 7,
+    "finalInteractivePosition": 9
   }
 }
