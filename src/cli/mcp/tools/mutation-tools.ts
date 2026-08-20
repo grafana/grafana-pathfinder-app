@@ -272,19 +272,6 @@ export function registerMutationTools(
 ): void {
   const { sessionStore, mcpSessionId } = options;
 
-  // MCP deviations from the passive Commander interface live beside the tool
-  // bindings that require them — which, for these commands, is the blacklist
-  // and nothing else.
-  //
-  // `optContext` is deliberately unused here. Per-field agent prose was
-  // either restating Commander's own text or teaching a mechanic that is
-  // generic across every command, so it moved to whichever surface owns it:
-  // translation mechanics to `pathfinder_help` and `authoring_start`'s
-  // `interfaceContract`, facts about a command to that command's Commander
-  // description (where CLI users get them too), and recovery advice to the
-  // outcome message raised at the moment it applies (see
-  // `adaptContainerHasChildren`). Reach for `optContext` only for something
-  // true of one parameter, on MCP alone, that no other surface can carry.
   registerCommandInterfaceConfig('add-block', {
     optBlacklist: ['dir', 'before', 'after', 'position'],
     subcommandOpt: 'type',

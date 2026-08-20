@@ -17,13 +17,8 @@
  * exist so call sites read as the intent (`sessionNotFoundResult(token)`)
  * rather than open-coded code strings.
  *
- * This module is the *outbound* half of the agent contract, and none of it is
- * authored for MCP: `CommandOutcome` is the CLI's own shape and reaches the
- * agent verbatim apart from argv-shaped hints. The inbound half — the
- * convenience projection an agent fills in — belongs to `pathfinder_help` and
- * `lib/command-interface.ts`. Read both halves together in
- * `authoring_start`'s `interfaceContract`, which is where agents are told
- * which side of the line they are looking at.
+ * `CommandOutcome` is the CLI's own shape and reaches the agent verbatim apart
+ * from argv-shaped hints; see `authoring_start`'s `interfaceContract`.
  */
 
 import type { TreeNode } from '../../utils/package-io';
