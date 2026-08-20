@@ -272,7 +272,7 @@ The command walks the directory tree starting at `<root>`. Any subdirectory at a
 
 ### Output format
 
-The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.). The output is formatted with Prettier using the project's configuration.
+The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.). Every `build-*` command writes JSON through the same formatter, so the same Prettier-where-available caveat applies — see [determinism](#determinism).
 
 ---
 
@@ -295,7 +295,7 @@ node dist/cli/cli/index.js build-stats <root> [options]
 ### Options
 
 - `-e, --exclude <paths...>`: Path(s) to exclude from the scan, relative to `<root>`. Excluded trees are not descended into.
-- `--check`: Report packages whose committed stats have drifted from their content and exit non-zero. Writes nothing.
+- `--check`: Report packages whose committed stats have drifted from their content and exit non-zero. Writes nothing. A `<root>` holding no packages at all is an error under `--check` — a gate pointed at a moved root would otherwise report success having verified nothing.
 
 ### Examples
 
@@ -313,6 +313,23 @@ Run `build-stats` first. Today the ordering is inert: `build-repository` builds 
 ```bash
 node dist/cli/cli/index.js build-stats packages/ --check
 ```
+
+There are convenience npm scripts for the bundled tree:
+
+```bash
+npm run stats:build   # Stamp every manifest under src/bundled-interactives
+npm run stats:check   # Fail if a committed manifest's stats have drifted
+```
+
+### What gets written
+
+The `stats` key holds a fixed set of numbers in a fixed key order, so unchanged content re-stamps byte-identically:
+
+- `version` — the stamp's rule version, bumped when the counting rule or these fields change. It is what lets a reader tell an old-rule stamp from a new-rule one; it says nothing about whether the guide changed.
+- `blockCount` — the completion denominator.
+- `sectionCount` — section containers, reported for authoring insight and not part of the denominator.
+- `completableBlockCount` — counted blocks that can emit completion evidence.
+- `finalCompletablePosition` — position of the last completable block, `0` when there is none.
 
 ### What gets counted
 
@@ -339,7 +356,7 @@ A duplicated milestone, and a milestone reachable through two parents, are both 
 
 Re-running on unchanged content is a byte-for-byte no-op: the command compares the computed stats against what is on disk and skips the write when they match. Stats keys are emitted in a fixed order and carry no timestamps. An existing `stats` key is replaced in place, so a manifest's authored key order survives a rewrite.
 
-Output is formatted with Prettier using the project's configuration wherever Prettier resolves — a repo checkout, or any environment that has it installed. The published CLI image does not: Prettier is a devDependency and is absent from `RUNTIME_DEPS`, so the command degrades to two-space `JSON.stringify` output with a trailing newline rather than failing. Both forms are valid JSON and `--check` compares stats field by field, so neither reads as drift against the other; a tree stamped from the image and then re-stamped locally will show a formatting-only diff, though.
+Output is formatted with Prettier using the project's configuration wherever Prettier resolves — a repo checkout, or any environment that has it installed. The published CLI image does not: Prettier is a devDependency and is absent from `RUNTIME_DEPS`, so every `build-*` command degrades to two-space `JSON.stringify` output with a trailing newline rather than failing. Both forms are valid JSON and `--check` compares stats field by field, so neither reads as drift against the other; a tree stamped from the image and then re-stamped locally will show a formatting-only diff, though.
 
 The run that first stamps a manifest can re-expand nested objects an author had collapsed onto one line — both forms are Prettier-clean, and the file is stable from that run onward.
 
@@ -520,7 +537,7 @@ Consumers in other languages should reimplement these rules in their own validat
 
 ## CI workflow example with package validation
 
-This GitHub Actions snippet validates packages and checks `repository.json` freshness — the pattern used in this repository's `.github/workflows/ci.yml`:
+This GitHub Actions snippet validates packages and checks `repository.json` and manifest-stats freshness — the pattern used in this repository's `.github/workflows/ci.yml`:
 
 ```yaml
 validate-packages:
@@ -547,6 +564,9 @@ validate-packages:
 
     - name: Check repository.json freshness
       run: npm run repository:check
+
+    - name: Check manifest stats freshness
+      run: npm run stats:check
 ```
 
-The `repository:check` script rebuilds `repository.json` to a temp file and diffs it against the committed version. If the committed file is stale (a manifest was changed without rebuilding), the diff fails and CI reports an error.
+The `repository:check` script rebuilds `repository.json` to a temp file and diffs it against the committed version. If the committed file is stale (a manifest was changed without rebuilding), the diff fails and CI reports an error. `stats:check` does the same job for the `stats` key stamped into each `manifest.json`, without writing anything.
