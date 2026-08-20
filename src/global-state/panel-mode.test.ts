@@ -6,8 +6,9 @@
  * event as floating, and round-trip pendingGuide / priorPath handoffs.
  */
 
-import { panelModeManager } from './panel-mode';
+import { panelModeManager, requestSidebarHandoff } from './panel-mode';
 import { StorageKeys } from '../lib/storage-keys';
+import { REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
 
 const publishMock = jest.fn();
 
@@ -395,6 +396,27 @@ describe('panelModeManager', () => {
       } finally {
         document.removeEventListener('pathfinder-panel-mode-change', handler);
       }
+    });
+  });
+
+  describe('requestSidebarHandoff', () => {
+    it('dispatches REQUEST_SIDEBAR_HANDOFF_EVENT on document', () => {
+      const handler = jest.fn();
+      document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handler);
+      try {
+        requestSidebarHandoff();
+        expect(handler).toHaveBeenCalledTimes(1);
+      } finally {
+        document.removeEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handler);
+      }
+    });
+
+    it('does not publish a confirmation toast itself — dispatchEvent cannot tell it a listener actually reacted', () => {
+      // A listener-free dispatch (nobody mounted to handle it) must not still
+      // report success; only the real listener, once its handoff completes,
+      // may do that. See FullScreenPanel.tsx's handleSidebarHandoffRequest.
+      requestSidebarHandoff();
+      expect(publishMock).not.toHaveBeenCalled();
     });
   });
 });

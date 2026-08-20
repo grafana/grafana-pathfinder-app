@@ -1,0 +1,98 @@
+/**
+ * Tripwire (Pattern J — contract-surface preservation)
+ *
+ * Pins the wiring shape of the full-screen sidebar-handoff and full-screen
+ * relaunch event contracts: which effect owns each `document` listener, that
+ * the listener reads the latest callback through a ref (not a dependency
+ * array) so a same-tick automatic dispatch can't be handled by a stale
+ * closure, that add/remove use the same event name, and that the
+ * confirmation toast only fires after the real handoff completes rather than
+ * unconditionally on dispatch.
+ *
+ * Why source-assertion (not runtime mount): `@grafana/scenes` + `@grafana/ui`
+ * require a theme provider not available in the Jest environment, so
+ * `FullScreenPanel.tsx` can't be rendered here (see
+ * `panel-mode-surface-toggles.contract.test.ts`, established for the same
+ * reason). The dispatch-side behavior (does `requestSidebarHandoff` fire the
+ * event, does it avoid publishing its own toast) is proven behaviorally in
+ * `global-state/panel-mode.test.ts`; this file only pins the listener side.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+
+function read(rel: string): string {
+  return fs.readFileSync(path.resolve(__dirname, '..', '..', rel), 'utf-8');
+}
+
+describe('full-screen sidebar-handoff and relaunch listener wiring', () => {
+  const fullScreenPanel = read('components/full-screen/FullScreenPanel.tsx');
+
+  it('the REQUEST_SIDEBAR_HANDOFF_EVENT listener subscribes once (empty deps), not on every handleExitToSidebar identity change', () => {
+    // A `[handleExitToSidebar]` dependency array would re-subscribe on every
+    // render where the callback's identity changes, and — more importantly —
+    // would let the effect close over a stale `handleExitToSidebar` between
+    // an automatic dispatch and the next re-render. Pin the empty array.
+    expect(fullScreenPanel).toMatch(
+      /useEffect\(\(\) => \{\s*const handleSidebarHandoffRequest = \(\) => \{[\s\S]*?\}, \[\]\);/
+    );
+  });
+
+  it('the handoff handler reads handleExitToSidebarRef.current(), not handleExitToSidebar directly', () => {
+    const handlerBlock = fullScreenPanel.match(/const handleSidebarHandoffRequest = \(\) => \{[\s\S]*?\n {4}\};/)?.[0];
+    expect(handlerBlock).toBeDefined();
+    expect(handlerBlock).toContain("handleExitToSidebarRef.current('content_requires_grafana_ui')");
+    expect(handlerBlock).not.toMatch(/[^.]handleExitToSidebar\(/);
+  });
+
+  it('adds and removes the same REQUEST_SIDEBAR_HANDOFF_EVENT listener', () => {
+    expect(fullScreenPanel).toContain(
+      'document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleSidebarHandoffRequest)'
+    );
+    expect(fullScreenPanel).toContain(
+      'document.removeEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleSidebarHandoffRequest)'
+    );
+  });
+
+  it('publishes the confirmation toast only after handleExitToSidebarRef.current() resolves, not unconditionally on dispatch', () => {
+    // dispatchEvent succeeds whether or not a listener is attached, so a toast
+    // fired directly from requestSidebarHandoff() (panel-mode.ts) would lie
+    // whenever FullScreenPanel isn't there to receive it. The toast must be
+    // gated on this listener's own callback actually running to completion.
+    const handlerBlock = fullScreenPanel.match(/const handleSidebarHandoffRequest = \(\) => \{[\s\S]*?\n {4}\};/)?.[0];
+    expect(handlerBlock).toBeDefined();
+    expect(handlerBlock).toMatch(
+      /handleExitToSidebarRef\.current\('content_requires_grafana_ui'\)\.then\(\(\) => \{[\s\S]*getAppEvents\(\)\.publish/
+    );
+  });
+
+  it('every handleExitToSidebar call site passes an explicit reason (regression guard for the analytics conflation fix)', () => {
+    expect(fullScreenPanel).toContain("void handleExitToSidebar('manual_exit')");
+    expect(fullScreenPanel).toContain("void handleExitToSidebarRef.current('empty_state_fallback')");
+    expect(fullScreenPanel).toContain("void handleExitToSidebar('dock_request')");
+    expect(fullScreenPanel).toContain("void handleExitToSidebarRef.current('content_requires_grafana_ui')");
+  });
+
+  it('panel-mode.ts does not publish a toast from requestSidebarHandoff itself (regression guard)', () => {
+    const panelMode = read('global-state/panel-mode.ts');
+    const fnBody = panelMode.match(/export function requestSidebarHandoff\(\): void \{[\s\S]*?\n\}/)?.[0];
+    expect(fnBody).toBeDefined();
+    expect(fnBody).toContain('document.dispatchEvent(new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT))');
+    expect(fnBody).not.toContain('getAppEvents()');
+  });
+
+  it('the REQUEST_FULLSCREEN_GUIDE_EVENT listener is added and removed alongside the legacy pathfinder-request-full-screen event', () => {
+    expect(fullScreenPanel).toContain(
+      "document.addEventListener('pathfinder-request-full-screen', handleFullScreenRequest)"
+    );
+    expect(fullScreenPanel).toContain(
+      'document.addEventListener(REQUEST_FULLSCREEN_GUIDE_EVENT, handleFullScreenRequest)'
+    );
+    expect(fullScreenPanel).toContain(
+      "document.removeEventListener('pathfinder-request-full-screen', handleFullScreenRequest)"
+    );
+    expect(fullScreenPanel).toContain(
+      'document.removeEventListener(REQUEST_FULLSCREEN_GUIDE_EVENT, handleFullScreenRequest)'
+    );
+  });
+});
