@@ -91,6 +91,9 @@ export const ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES = [
   'interactive-learning.grafana-dev.net',
   'interactive-learning.grafana.net',
   'interactive-learning.grafana-ops.net',
+  'interactive-learning-private.grafana-dev.net',
+  'interactive-learning-private.grafana-ops.net',
+  'interactive-learning-private.grafana.net',
 ];
 
 // Security: Allowed recommender service domains
