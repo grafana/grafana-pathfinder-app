@@ -25,6 +25,7 @@
 
 import { summarizeGuideBlocks, TRANSPARENT_CONTAINER_BLOCK_TYPES } from '../../../lib/guide-stats';
 import { ParameterizedRequirementPrefix } from '../../../types/requirements.types';
+import { readAliasedField } from '../../../validation/normalize-guide-aliases';
 import type { JsonBlock, JsonGuide } from '../types';
 
 /** Every App Platform guide is app-platform-sourced; see `repository-identity-authority`. */
@@ -47,9 +48,21 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 const NAVIGATE_ACTION = 'navigate';
+const FORMFILL_ACTION = 'formfill';
 
 /** Requirement carrier — a block or a step both expose `action` and `requirements`. */
 type RequirementCarrier = Record<string, unknown>;
+
+/**
+ * Guides reach the editor unnormalized — `GuideLibraryModal` loads `spec.blocks`
+ * straight into editor state without `validateGuide` — so the camelCase
+ * `targetAction` alias has to be read here or a self-navigating guide looks like
+ * one with no navigation at all.
+ */
+function actionOf(carrier: RequirementCarrier): string | undefined {
+  const action = readAliasedField(carrier, 'action');
+  return typeof action === 'string' ? action : undefined;
+}
 
 /**
  * `undefined` means "keep looking"; `STOP` means the walk hit navigation and no
@@ -87,7 +100,10 @@ type Scan = string | undefined | typeof STOP;
  * substring match, so a relative `on-page:dashboards` works as a requirement,
  * but `pathMatchesStartingLocation` compares segments and `confirmAlignment`
  * pushes the value as a route — so a relative one would both mis-prompt an
- * already-aligned reader and navigate to a nested path.
+ * already-aligned reader and navigate to a nested path. A comma-packed entry such
+ * as `on-page:/explore, navmenu-open` — which `isValidRequirement` accepts on its
+ * prefix alone, and which the parser round-trips by joining the array with `,` —
+ * contributes only its leading token, never the joined string.
  */
 function deriveStartingLocation(blocks: readonly JsonBlock[] | undefined): string | undefined {
   const found = scanBlocks(blocks);
@@ -103,8 +119,8 @@ function scanBlocks(blocks: readonly JsonBlock[] | undefined): Scan {
       return own;
     }
 
-    // A multistep's or guided block's first step is where the suggester puts the
-    // page declaration for that group.
+    // A hand-authored multistep or guided block can declare the page on one of
+    // its steps rather than on the container.
     if (Array.isArray(record.steps)) {
       for (const step of record.steps) {
         const stepRecord = asRecord(step);
@@ -115,7 +131,7 @@ function scanBlocks(blocks: readonly JsonBlock[] | undefined): Scan {
         if (fromStep) {
           return fromStep;
         }
-        if (stepRecord.action === NAVIGATE_ACTION) {
+        if (actionOf(stepRecord) === NAVIGATE_ACTION) {
           return STOP;
         }
       }
@@ -128,7 +144,7 @@ function scanBlocks(blocks: readonly JsonBlock[] | undefined): Scan {
       }
     }
 
-    if (record.action === NAVIGATE_ACTION) {
+    if (actionOf(record) === NAVIGATE_ACTION) {
       return STOP;
     }
   }
@@ -140,7 +156,7 @@ function scanBlocks(blocks: readonly JsonBlock[] | undefined): Scan {
  * narrowing 2 above.
  */
 function declaredOnPage(carrier: RequirementCarrier): string | undefined {
-  if (carrier.action === 'formfill') {
+  if (actionOf(carrier) === FORMFILL_ACTION) {
     return undefined;
   }
   return firstOnPage(carrier.requirements);
@@ -154,8 +170,9 @@ function firstOnPage(requirements: unknown): string | undefined {
     if (typeof requirement !== 'string' || !requirement.startsWith(ON_PAGE_PREFIX)) {
       continue;
     }
-    const path = requirement.slice(ON_PAGE_PREFIX.length).trim();
-    if (path.startsWith('/')) {
+    const [leading = ''] = requirement.slice(ON_PAGE_PREFIX.length).split(',');
+    const path = leading.trim();
+    if (path.startsWith('/') && !/\s/.test(path)) {
       return path;
     }
   }

@@ -313,6 +313,40 @@ describe('deriveManifest — startingLocation', () => {
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
+  // `isValidRequirement` accepts `on-page:` on its prefix alone and the parser
+  // joins the requirements array with `,`, so a single entry can pack several
+  // checks. The joined string is not a route: `confirmAlignment` would push it
+  // verbatim at a path that does not exist.
+  it('takes only the leading token of a comma-packed on-page requirement', () => {
+    const result = deriveManifest(guide([highlight(['on-page:/explore, navmenu-open'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+  });
+
+  it('takes only the leading token of a comma-packed on-page STEP requirement', () => {
+    const multistep = {
+      type: 'multistep',
+      content: 'Do these',
+      steps: [{ action: 'highlight', reftarget: 'a', requirements: ['on-page:/alerting/list, navmenu-open'] }],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([multistep]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/alerting/list');
+  });
+
+  it('ignores an on-page whose leading token is not a clean path, and keeps scanning', () => {
+    const result = deriveManifest(guide([highlight(['on-page:/explore extra']), highlight(['on-page:/dashboards'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/dashboards');
+  });
+
+  it('ignores a comma-packed on-page whose leading token is relative', () => {
+    const result = deriveManifest(guide([highlight(['on-page:dashboards, navmenu-open'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
   it('ignores non-on-page requirements', () => {
     const result = deriveManifest(guide([highlight(['navmenu-open', 'exists-reftarget'])]));
 
@@ -473,6 +507,81 @@ describe('deriveManifest — startingLocation stops at navigation', () => {
     const result = deriveManifest(guide([formfill(['on-page:/form']), highlight(['on-page:/explore'])]));
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+  });
+
+  // A guide uploaded with the camelCase `targetAction` alias never passes through
+  // `validateGuide` on its way into editor state, so the scan has to read the
+  // alias or it sees no navigation and stamps the page the guide navigates TO.
+  it('stops at a navigate block written with the targetAction alias', () => {
+    const aliased = {
+      type: 'interactive',
+      targetAction: 'navigate',
+      reftarget: '/dashboards',
+      content: 'Go there',
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([aliased, highlight(['on-page:/dashboards'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('stops at a navigate STEP written with the targetAction alias', () => {
+    const multistep = {
+      type: 'multistep',
+      content: 'Do these',
+      steps: [
+        { targetAction: 'navigate', reftarget: '/dashboards' },
+        { action: 'highlight', reftarget: 'a', requirements: ['on-page:/dashboards'] },
+      ],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([multistep]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('ignores the on-page of a formfill written with the targetAction alias', () => {
+    const aliased = {
+      type: 'interactive',
+      targetAction: 'formfill',
+      reftarget: 'input[name=q]',
+      targetvalue: 'x',
+      content: 'Type it',
+      requirements: ['on-page:/some-form-page'],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([aliased]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('ignores the on-page of a formfill STEP written with the targetAction alias', () => {
+    const multistep = {
+      type: 'multistep',
+      content: 'Do these',
+      steps: [
+        { targetAction: 'formfill', reftarget: 'input', targetvalue: 'x', requirements: ['on-page:/form'] },
+        { action: 'highlight', reftarget: 'a', requirements: ['on-page:/explore'] },
+      ],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([multistep]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+  });
+
+  it('prefers the canonical action over the alias when a block carries both', () => {
+    const both = {
+      type: 'interactive',
+      action: 'navigate',
+      targetAction: 'highlight',
+      reftarget: '/dashboards',
+      content: 'Go there',
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([both, highlight(['on-page:/dashboards'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
   it('ignores a formfill STEP on-page inside a multistep', () => {
