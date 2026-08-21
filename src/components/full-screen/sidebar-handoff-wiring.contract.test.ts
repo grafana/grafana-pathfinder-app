@@ -82,6 +82,40 @@ describe('full-screen sidebar-handoff and relaunch listener wiring', () => {
     expect(fnBody).not.toContain('getAppEvents()');
   });
 
+  it('requestSidebarHandoffAndWait resolves on either mount signal, not just the sidebar one (regression guard)', () => {
+    // handleExitToSidebar can fall back to floating mode (extension-sidebar
+    // ownership conflict), which dispatches 'pathfinder-panel-mounted' on
+    // `document`, never 'pathfinder-sidebar-mounted' on `window` — listening
+    // for only the sidebar event meant a floating fallback always burned the
+    // full safety timeout instead of resolving on the real mount.
+    const panelMode = read('global-state/panel-mode.ts');
+    const fnBody = panelMode.match(/export function requestSidebarHandoffAndWait\([\s\S]*?\n\}/)?.[0];
+    expect(fnBody).toBeDefined();
+    expect(fnBody).toContain("window.addEventListener('pathfinder-sidebar-mounted', onMounted, { once: true })");
+    expect(fnBody).toContain("document.addEventListener('pathfinder-panel-mounted', onMounted, { once: true })");
+  });
+
+  it('reports the FullScreenExit destination that isExtensionSidebarOwnedByOther actually chose (regression guard)', () => {
+    // The exit-analytics destination used to be hardcoded to 'sidebar' before
+    // the ownership check ran, so a floating fallback still reported
+    // destination: 'sidebar' — wrong telemetry, not just a missed accommodation.
+    const exitBlock = fullScreenPanel.match(
+      /const handleExitToSidebar = useCallback\(\s*async[\s\S]*?\n {4}\},\s*\[panel\]\s*\);/
+    )?.[0];
+    expect(exitBlock).toBeDefined();
+    expect(exitBlock).toMatch(
+      /const destination = isExtensionSidebarOwnedByOther\(pluginJson\.id\) \? 'floating' : 'sidebar';/
+    );
+    // The reportAppInteraction call must come after that computation and use
+    // the computed variable, not a literal.
+    const destinationDeclIndex = exitBlock!.indexOf('const destination =');
+    const reportIndex = exitBlock!.indexOf('reportAppInteraction(');
+    expect(destinationDeclIndex).toBeGreaterThan(-1);
+    expect(destinationDeclIndex).toBeLessThan(reportIndex);
+    expect(exitBlock).toContain('destination,');
+    expect(exitBlock).not.toContain("destination: 'sidebar',");
+  });
+
   it('validates targetPath through resolveSafeTargetPath before it reaches locationService.push, falling back to priorPath then PLUGIN_BASE_URL', () => {
     // Regression guard: targetPath is author-controlled manifest data with no
     // user confirmation gate (see resolve-safe-target-path.ts) — it must never

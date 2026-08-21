@@ -428,6 +428,20 @@ describe('panelModeManager', () => {
       await expect(promise).resolves.toBeUndefined();
     });
 
+    // Regression test: handleExitToSidebar can fall back to floating mode
+    // (when another plugin owns the extension sidebar), which dispatches
+    // 'pathfinder-panel-mounted' on `document`, never 'pathfinder-sidebar-mounted'
+    // on `window`. Before this fix, that meant every floating fallback burned
+    // the full 3s safety timeout instead of resolving on the real mount.
+    it('resolves once pathfinder-panel-mounted fires (the floating-mode mount signal), without waiting for the safety timeout', async () => {
+      const promise = requestSidebarHandoffAndWait();
+      document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted'));
+      jest.advanceTimersByTime(300);
+      await expect(promise).resolves.toBeUndefined();
+      // Confirms this resolved via the mount event, not the 3s safety timeout.
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
     it('resolves via the safety timeout when pathfinder-sidebar-mounted never fires', async () => {
       const promise = requestSidebarHandoffAndWait();
       jest.advanceTimersByTime(3000);

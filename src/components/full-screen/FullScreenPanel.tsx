@@ -249,8 +249,12 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       // synchronously by setState, so this is always current.
       const currentTab = panel.getActiveTab();
       const isCurrentEditorTab = currentTab?.type === 'editor';
+      // Computed before reporting (not just before the mode branch below) so
+      // the analytics destination matches where this actually lands — the
+      // extension-sidebar ownership check can redirect to floating.
+      const destination = isExtensionSidebarOwnedByOther(pluginJson.id) ? 'floating' : 'sidebar';
       reportAppInteraction(UserInteraction.FullScreenExit, {
-        destination: 'sidebar',
+        destination,
         guide_url: (isCurrentEditorTab ? undefined : currentTab?.currentUrl || currentTab?.baseUrl) || '',
         guide_title: isCurrentEditorTab ? EDITOR_FULL_SCREEN_TITLE : currentTab?.title || 'Interactive learning',
         // FullScreenExitReason (full-screen-autodock.ts) is shared with that
@@ -274,7 +278,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       // as a floating overlay instead. Tabs are already saved above, so the
       // floating surface restores the same guide from tabStorage the sidebar
       // branch would have, mirroring dockOnLeavingFullScreen's floating path.
-      if (isExtensionSidebarOwnedByOther(pluginJson.id)) {
+      if (destination === 'floating') {
         panelModeManager.setMode('floating');
       } else {
         panelModeManager.setMode('sidebar');

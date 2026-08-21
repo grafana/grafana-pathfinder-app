@@ -345,9 +345,9 @@ export function requestSidebarHandoffAndWait(options?: { targetPath?: string }):
   // event — the sidebar's own docs-panel mount effect still needs a tick to
   // register its listeners.
   const SETTLE_DELAY_MS = 300;
-  // Safety net for cases where 'pathfinder-sidebar-mounted' never fires (the
-  // sidebar was already mounted, or the listener is gone in the mode/mount
-  // desync window) — covers the async save-then-dock work in
+  // Safety net for cases where neither mount event below ever fires (the
+  // destination surface was already mounted, or the listener is gone in the
+  // mode/mount desync window) — covers the async save-then-dock work in
   // handleExitToSidebar without blocking the click indefinitely.
   const SAFETY_TIMEOUT_MS = 3000;
 
@@ -360,12 +360,22 @@ export function requestSidebarHandoffAndWait(options?: { targetPath?: string }):
       }
       settled = true;
       window.removeEventListener('pathfinder-sidebar-mounted', onMounted);
+      document.removeEventListener('pathfinder-panel-mounted', onMounted);
       clearTimeout(timeoutId);
       resolve();
     };
     const onMounted = () => setTimeout(finish, SETTLE_DELAY_MS);
 
+    // The destination isn't always the sidebar despite this function's name:
+    // handleExitToSidebar falls back to floating when another plugin owns the
+    // extension sidebar slot, and floating mounts dispatch
+    // 'pathfinder-panel-mounted' (document), never 'pathfinder-sidebar-mounted'
+    // (window) — listening for only the latter meant a floating fallback
+    // always burned the full safety timeout. Same dual-listener shape already
+    // used by sidebar.ts/pathfinder-deep-link-handler.ts for this exact
+    // sidebar-vs-floating race.
     window.addEventListener('pathfinder-sidebar-mounted', onMounted, { once: true });
+    document.addEventListener('pathfinder-panel-mounted', onMounted, { once: true });
     timeoutId = setTimeout(finish, SAFETY_TIMEOUT_MS);
 
     document.dispatchEvent(
