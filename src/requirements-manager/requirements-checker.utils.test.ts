@@ -574,6 +574,93 @@ describe('requirements-checker.utils', () => {
     });
   });
 
+  describe('hasEscalationChainCHECK', () => {
+    beforeEach(() => {
+      (getBackendSrv as jest.Mock).mockReturnValue({
+        get: jest.fn(),
+      });
+    });
+
+    function mockOnCallBackend(
+      chains: Array<{ id: string; name: string }>,
+      policies: Array<{ id: string; escalation_chain: string }>
+    ) {
+      const mockBackend = getBackendSrv();
+      (mockBackend.get as jest.Mock).mockImplementation((url: string) => {
+        if (url.endsWith('/escalation_chains/')) {
+          return Promise.resolve(chains);
+        }
+        if (url.endsWith('/escalation_policies/')) {
+          return Promise.resolve(policies);
+        }
+        return Promise.reject(new Error(`Unexpected URL: ${url}`));
+      });
+      return mockBackend;
+    }
+
+    it('should pass (bare form) when at least one chain has escalation steps', async () => {
+      mockOnCallBackend(
+        [{ id: 'chain-1', name: 'Production - Default' }],
+        [{ id: 'policy-1', escalation_chain: 'chain-1' }]
+      );
+
+      const result = await checkRequirements({ requirements: 'has-escalation-chains' });
+      expect(result.pass).toBe(true);
+    });
+
+    it('should fail (bare form) when no chain has escalation steps', async () => {
+      mockOnCallBackend([{ id: 'chain-1', name: 'Production - Default' }], []);
+
+      const result = await checkRequirements({ requirements: 'has-escalation-chains' });
+      expect(result.pass).toBe(false);
+      expect(result.error[0]!.error).toContain('No escalation chain with configured steps was found');
+    });
+
+    it('should fail (bare form) when no chains exist at all', async () => {
+      mockOnCallBackend([], []);
+
+      const result = await checkRequirements({ requirements: 'has-escalation-chains' });
+      expect(result.pass).toBe(false);
+    });
+
+    it('should pass (named form) when the named chain has escalation steps', async () => {
+      mockOnCallBackend(
+        [{ id: 'chain-1', name: 'Production - Default' }],
+        [{ id: 'policy-1', escalation_chain: 'chain-1' }]
+      );
+
+      const result = await checkRequirements({ requirements: 'has-escalation-chain:production - default' });
+      expect(result.pass).toBe(true);
+    });
+
+    it('should fail (named form) when the named chain exists but has no escalation steps', async () => {
+      mockOnCallBackend([{ id: 'chain-1', name: 'Production - Default' }], []);
+
+      const result = await checkRequirements({ requirements: 'has-escalation-chain:Production - Default' });
+      expect(result.pass).toBe(false);
+      expect(result.error[0]!.error).toContain('no escalation steps configured');
+    });
+
+    it('should fail (named form) when no chain with that name exists', async () => {
+      mockOnCallBackend(
+        [{ id: 'chain-1', name: 'Production - Default' }],
+        [{ id: 'policy-1', escalation_chain: 'chain-1' }]
+      );
+
+      const result = await checkRequirements({ requirements: 'has-escalation-chain:Nonexistent Chain' });
+      expect(result.pass).toBe(false);
+    });
+
+    it('should fail gracefully on a network/plugin error', async () => {
+      const mockBackend = getBackendSrv();
+      (mockBackend.get as jest.Mock).mockRejectedValue(new Error('plugin not installed'));
+
+      const result = await checkRequirements({ requirements: 'has-escalation-chains' });
+      expect(result.pass).toBe(false);
+      expect(result.error[0]!.error).toContain('Escalation chain check failed');
+    });
+  });
+
   describe('formValidCHECK', () => {
     beforeEach(() => {
       // Clear DOM before each test
@@ -1062,6 +1149,8 @@ describe('CHECK_HANDLERS routing parity', () => {
     ['plugin-enabled:my-app', 'plugin-enabled:'],
     ['has-dashboard-named:My Dashboard', 'has-dashboard-named:'],
     ['dashboard-exists', 'dashboard-exists'],
+    ['has-escalation-chains', 'has-escalation-chains'],
+    ['has-escalation-chain:Production - Default', 'has-escalation-chain:'],
     ['on-page:/explore', 'on-page:'],
     ['has-feature:my-toggle', 'has-feature:'],
     ['in-environment:cloud', 'in-environment:'],
