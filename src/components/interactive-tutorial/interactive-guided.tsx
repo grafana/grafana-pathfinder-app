@@ -375,12 +375,14 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
         }
 
-        // The handoff's navigation can unmount this instance while the await
-        // above was pending — don't resume (or setState) on a dead component.
-        if (!isMountedRef.current) {
-          return false;
-        }
-
+        // Deliberately no isMountedRef bail-out here: the handoff's own
+        // navigation unmounts this full-screen instance on every successful
+        // run, not just a stale/raced one — bailing out here would mean the
+        // guided step never actually executes after docking, breaking the
+        // same continue-after-the-wait contract simple steps and code-block
+        // Insert already honor. isExecutingRef (untouched by the unmount
+        // cleanup effect) already fully serializes re-entrant calls on its
+        // own, so there's no race left for a mounted-check to guard against.
         setIsExecuting(true);
         setExecutionError(null);
         setCurrentStepIndex(0);

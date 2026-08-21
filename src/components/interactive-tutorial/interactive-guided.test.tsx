@@ -760,7 +760,14 @@ describe('InteractiveGuided — full-screen sidebar handoff', () => {
     await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
   });
 
-  it('does not call executeGuidedStep after the component unmounts during the handoff wait', async () => {
+  it('still calls executeGuidedStep after the component unmounts during the handoff wait (the handoff is expected to unmount full screen)', async () => {
+    // Regression test (Cursor Bugbot, "Guided handoff aborts after dock"):
+    // the handoff's own navigation unmounts this full-screen instance on
+    // EVERY successful run, not just a raced one. An earlier version of this
+    // fix bailed out on !isMountedRef.current here, which meant the guided
+    // step never actually ran after docking — the user had to click Start
+    // again in the sidebar. Simple steps and code-block Insert both continue
+    // after the wait; guided steps must too.
     mockGetMode.mockReturnValue('fullscreen');
     let resolveHandoff!: () => void;
     mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
@@ -782,8 +789,7 @@ describe('InteractiveGuided — full-screen sidebar handoff', () => {
 
     unmount();
     resolveHandoff();
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
   });
 });
