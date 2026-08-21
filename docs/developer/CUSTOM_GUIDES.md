@@ -64,6 +64,8 @@ The **•••** menu provides the alternative action:
 
 When saving a new guide for the first time, if a guide with the same resource name already exists in the library, you are prompted to confirm an overwrite. The editor avoids known library names when it generates an ID, but a collision can still occur if the library changed after it was loaded. To keep both guides, cancel, start a new guide, and commit a distinct title so the editor generates a new ID before saving.
 
+Confirming an overwrite replaces the stored resource with your guide alone: it inherits neither the previous resource's `spec.manifest` nor its provenance annotations, so overwriting a learning path's cover page flattens that path and detaches it from the upload script. Nothing warns you at the prompt — cancel if the colliding name might belong to a path.
+
 ---
 
 ## Editing a published guide
@@ -123,7 +125,7 @@ scripts/upsert-learning-path.sh \
   --package ./drilldown-logs-lj
 ```
 
-Guides uploaded this way can be loaded and edited in the editor like any other, with two caveats for a path's **cover page**. The editor's guide model has no `manifest` field, so saving a cover page drops `spec.manifest` and collapses the path into a flat guide — the resolver then treats it as `type: "guide"` and the milestones stop rendering, with no warning. Save, publish, and unpublish also replace `metadata` wholesale, which erases the provenance annotations `upsert-learning-path.sh` writes, so a later re-run refuses the package until you pass `--overwrite`. Re-upload with the script rather than editing a cover page in place.
+Guides uploaded this way can be loaded and edited in the editor like any other, including a path's **cover page**. Save, publish, and unpublish each layer the editor-owned fields over the spec last read and carry `metadata.annotations` and `metadata.labels` through, so `spec.manifest` survives the write and a later `upsert-learning-path.sh` run still recognises the package as its own. The exception is the overwrite-confirm prompt described under [collision detection](#collision-detection): confirming an overwrite writes a guide that did not come from the stored resource, so it deliberately inherits neither the manifest nor the provenance annotations.
 
 See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, the `spec.manifest` field table, error codes, and curl recipes for each operation.
 

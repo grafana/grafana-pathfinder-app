@@ -167,15 +167,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * it after content fetch and classify the launch. There are two ways to
    * populate it:
    *
-   *   1. Preferred: pass `{ source }` to `openDocsPage` /
-   *      `openLearningJourney`. The wrapper records the source for you,
+   *   1. Preferred: pass `{ source }` to `openDocsPage`,
+   *      `openLearningJourney`, or `loadTab`. Each records the source for you,
    *      keeping the contract visible at the call site.
    *   2. Legacy: call `_recordAutoLaunchSource(source)` directly, then call
-   *      `openDocsPage` / `openLearningJourney` / `loadDocsTabContent`. Used
-   *      where (a) a callback signature can't carry the source (e.g.
-   *      `ContextPanel`'s recommender callbacks), or (b) `loadDocsTabContent`
-   *      is called without going through the public open methods (e.g.
-   *      `useContentReset`'s reload path).
+   *      one of those. Only needed where a callback signature can't carry the
+   *      source (e.g. `ContextPanel`'s recommender callbacks).
    *
    * Mirrors the consume-once pattern in `sidebarState.consumePendingOpenSource`.
    */
@@ -234,8 +231,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     // Wire the composite PackageResolver into docs-retrieval so that
     // fetchPackageContent() and fetchPackageById() can resolve bundled and
-    // remote packages. This is the Tier 3/4 injection point described in Phase 4g.
-    setPackageResolver(createCompositeResolver(pluginConfig));
+    // remote packages — the Tier 3/4 injection point.
+    //
+    // Seed from the published global, not this surface's snapshot — the resolver is one app-wide singleton.
+    const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: DocsPluginConfig })
+      .__pathfinderPluginConfig;
+    setPackageResolver(createCompositeResolver(resolverConfig ?? pluginConfig));
 
     // Note: Tab restoration now happens from React component after storage is initialized
     // to avoid race condition with useUserStorage hook
@@ -372,16 +373,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
 
     if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-      // Tag the loader call so the implied-0th-step evaluator sees
-      // `browser_restore` (an aligned-by-construction source) instead of an
-      // undefined source. Without this, a restored tab whose path no longer
-      // matches its guide's `startingLocation` would incorrectly trigger the
-      // alignment prompt — second-guessing a user mid-tutorial, which is
-      // exactly what `browser_restore` is meant to suppress. The unified
-      // `loadTab` routes to the docs pipeline iff the tab needs it
-      // (matches the old `shouldUseDocsLoader` branch).
-      this._recordAutoLaunchSource('browser_restore');
-      this.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+      // `browser_restore` is aligned-by-construction. Without it, a restored
+      // tab whose path no longer matches its guide's `startingLocation` would
+      // incorrectly trigger the alignment prompt — second-guessing a user
+      // mid-tutorial, which is exactly what `browser_restore` suppresses.
+      this.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl, { source: 'browser_restore' });
     }
   }
 
@@ -446,8 +442,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // legacy stash is overwritten and we have a single source of truth for
     // the drain below.
     if (options?.source) {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
-      this._recordAutoLaunchSource(options.source);
+      this._pendingLaunchSource = options.source;
     }
     // Drain any auto-launch source that the listener (or options.source above)
     // recorded before branching here. Learning journeys go through
@@ -521,8 +516,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public async loadTab(
     tabId: string,
     url: string,
-    options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo; prefetched?: RawContent }
+    options?: {
+      skipReadyToBegin?: boolean;
+      packageInfo?: PackageOpenInfo;
+      prefetched?: RawContent;
+      source?: LaunchSource;
+    }
   ): Promise<void> {
+    if (options?.source) {
+      this._pendingLaunchSource = options.source;
+    }
     // Loaders resolve on failure (failTab stores the error in tab state), so
     // their returned outcome — not promise settlement — stamps the action.
     await withGuideOpenAction(url, async () => {
@@ -583,6 +586,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
               ...(tab.packageInfo?.packageManifest != null && {
                 packageManifest: tab.packageInfo.packageManifest,
               }),
+              ...(tab.packageInfo?.repository != null && {
+                repository: tab.packageInfo.repository,
+              }),
             },
           };
         }
@@ -597,6 +603,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
           setJourneyCompletionPercentage(completionKey, progress, {
             packageManifest: updatedTab.content.metadata.packageManifest,
+            repository: updatedTab.content.metadata.repository,
             guideTitle: updatedTab.title,
           });
         }
@@ -834,8 +841,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // would now manifest as a missing `options.source` (visible in code
     // review) instead of a silent default-to-"needs-check".
     if (source) {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
-      this._recordAutoLaunchSource(source);
+      this._pendingLaunchSource = source;
     }
 
     const finalTitle = title || 'Documentation';
@@ -1198,12 +1204,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // `ALIGNED_BY_CONSTRUCTION_SOURCES` for the semantics.
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
-      // The unified `loadTab` dispatches on `shouldUseDocsLoader` internally.
-      // `_recordAutoLaunchSource` only matters for the docs branch — the
-      // plain branch never consumes it, so an unconditional record is a
-      // no-op when not needed.
-      model._recordAutoLaunchSource('internal_reload');
-      model.loadTab(tab.id, tab.currentUrl || tab.baseUrl);
+      model.loadTab(tab.id, tab.currentUrl || tab.baseUrl, { source: 'internal_reload' });
     },
     [model]
   );

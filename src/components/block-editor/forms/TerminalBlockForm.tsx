@@ -36,7 +36,7 @@ export function TerminalBlockForm({
   const [hint, setHint] = useState(initial?.hint ?? '');
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
 
       const parsedRequirements = requirements

@@ -48,6 +48,8 @@ export {
 // Error Classification
 // ============================================
 export { classifyError } from './classification';
+export { createBrowserTerminationMonitor } from './termination-monitor';
+export type { BrowserTermination, BrowserTerminationMonitor } from './termination-monitor';
 
 // ============================================
 // Artifact Collection
@@ -83,9 +85,12 @@ export {
 // Execution
 // ============================================
 export type { GuidedCommentBoxWaitOutcome } from './execution';
+export type { BoundedSettlement } from './execution';
 export {
+  STEP_DEADLINE_CLEANUP_GRACE_MS,
   scrollStepIntoView,
   calculateGuideTimeout,
+  calculateStepDeadline,
   calculateStepTimeout,
   determineUnmetRequirementOutcome,
   parseNthMatchSelector,
@@ -102,4 +107,5 @@ export {
   summarizeResults,
   skippableFailuresAffectSuccess,
   logExecutionSummary,
+  settleWithin,
 } from './execution';

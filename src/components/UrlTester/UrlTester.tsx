@@ -76,7 +76,7 @@ export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterPr
   const [testSuccess, setTestSuccess] = useState(false);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
+    (e: React.SubmitEvent<HTMLFormElement>) => {
       e.preventDefault();
       const cleanedUrl = testUrl.trim();
       const validation = validateContentUrl(cleanedUrl);

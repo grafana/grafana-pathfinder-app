@@ -11,7 +11,12 @@ import {
   AnalyticsLinkType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { countUnlockedMilestones, getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
+import {
+  getJourneyProgress,
+  getMilestoneSlug,
+  markMilestoneDone,
+  resolveExpectedMilestoneIds,
+} from '../../docs-retrieval';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -24,7 +29,7 @@ import { LearningJourneyTab } from '../../types/content-panel.types';
 import type { OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 interface UseLinkClickHandlerProps {
-  contentRef: React.RefObject<HTMLDivElement>;
+  contentRef: React.RefObject<HTMLDivElement | null>;
   activeTab: LearningJourneyTab | null;
   theme: GrafanaTheme2;
   model: {
@@ -531,10 +536,16 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             if (!hasInteractiveSteps) {
               const slug = getMilestoneSlug(activeTab.currentUrl);
               if (slug) {
-                markMilestoneDone(journey.baseUrl, slug, countUnlockedMilestones(journey.milestones ?? []), {
-                  packageManifest: activeTab.content?.metadata?.packageManifest,
-                  guideTitle: activeTab.title,
-                });
+                markMilestoneDone(
+                  journey.baseUrl,
+                  slug,
+                  resolveExpectedMilestoneIds(activeTab.content?.metadata?.learningJourney),
+                  {
+                    packageManifest: activeTab.content?.metadata?.packageManifest,
+                    repository: activeTab.content?.metadata?.repository,
+                    guideTitle: activeTab.title,
+                  }
+                );
               }
             }
           }

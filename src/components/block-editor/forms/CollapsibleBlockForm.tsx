@@ -52,7 +52,7 @@ export function CollapsibleBlockForm({
   }, [title, collapsed, blocks, initialId]);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
       onSubmit(buildBlock());
     },

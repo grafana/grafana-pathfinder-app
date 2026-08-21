@@ -51,6 +51,13 @@ const (
 
 	reasonIdentityUnavailable = "identity-unavailable"
 	reasonBackendUnavailable  = "backend-unavailable"
+
+	// reasonIdentityUnverifiable separates "this stack can never check a
+	// caller's ID token" — no app URL to resolve signing keys from — from "the
+	// caller has no valid one". Both fail closed and both are standing
+	// conditions; a JWKS endpoint that is merely unreachable is retryable and
+	// takes the transient 503 path instead (identitySigningKeysDown).
+	reasonIdentityUnverifiable = "identity-unverifiable"
 )
 
 // completionListMaxTotalRecords is the aggregate budget across all LIST pages
@@ -60,13 +67,14 @@ const (
 var completionListMaxTotalRecords = 50_000
 
 // deriveCompletionUserID is the canonical identity contract for the whole
-// Completion Records epic: the caller's ID-token `sub` claim VERBATIM, typed
-// prefix included (e.g. "user:abc123"). Reads and writes must join on the
+// Completion Records epic: the caller's VERIFIED ID-token `sub` claim VERBATIM,
+// typed prefix included (e.g. "user:abc123"). Reads and writes must join on the
 // same key — epic PR 4's write hook MUST stamp `spec.userId` with this exact
-// helper. Fail closed with no login/numeric fallback; see
-// app_platform_identity.go and the trust boundary in docs/developer/CODA.md.
-func deriveCompletionUserID(r *http.Request) (string, bool) {
-	return subjectFromIDToken(r)
+// helper. Returns the identity-gate status alongside it, fail closed with no
+// login/numeric fallback; see app_platform_identity.go and the trust boundary
+// in docs/design/BACKEND_PROXY_PATTERN.md §3.
+func (a *App) deriveCompletionUserID(r *http.Request) (string, identityStatus) {
+	return a.subjectFromIDToken(r)
 }
 
 // completionCapability is the availability signal the front-end and epic PRs
@@ -112,6 +120,11 @@ type completionIndex struct {
 
 type completionCacheEntry struct {
 	index *completionIndex
+
+	// stale marks an entry a write has superseded: too old to serve on the TTL
+	// fast path, but still worth keeping as the fallback when the refresh it
+	// forces fails. See invalidateCompletionIndex.
+	stale bool
 }
 
 // completionFailure records the most recent namespace-global upstream refresh
@@ -125,9 +138,10 @@ type completionFailure struct {
 // completionRefreshFlight is a single-flight handle: concurrent cache-miss
 // callers for a namespace wait on `done` and share one upstream LIST.
 type completionRefreshFlight struct {
-	done  chan struct{}
-	index *completionIndex
-	err   error
+	done       chan struct{}
+	generation uint64
+	index      *completionIndex
+	err        error
 }
 
 // completionCacheStats are per-namespace vital signs, included in refresh-time
@@ -150,12 +164,18 @@ var (
 	completionLastForced   map[string]time.Time
 	completionLastFailure  map[string]completionFailure
 	completionStats        map[string]*completionCacheStats
+	completionGenerations  map[string]uint64
 
 	// completionListerOverride injects a fake lister in tests. nil selects the
 	// real per-request HTTP client. Config resolution (feature toggle, app
 	// URL, namespace) is checked BEFORE this override so the structural-
 	// unavailability path stays testable.
 	completionListerOverride completionRecordLister
+
+	// completionCreatorOverride injects a fake creator in tests (write path),
+	// mirroring completionListerOverride. Config resolution is checked BEFORE
+	// this override so the structural-unavailability path stays testable.
+	completionCreatorOverride completionRecordCreator
 )
 
 func completionCacheInit() {
@@ -173,6 +193,9 @@ func completionCacheInit() {
 	}
 	if completionStats == nil {
 		completionStats = map[string]*completionCacheStats{}
+	}
+	if completionGenerations == nil {
+		completionGenerations = map[string]uint64{}
 	}
 }
 
@@ -194,6 +217,33 @@ func resetCompletionRecordsCache() {
 	completionLastForced = nil
 	completionLastFailure = nil
 	completionStats = nil
+	completionGenerations = nil
+}
+
+// invalidateCompletionIndex stales a namespace's collated read cache so the
+// next GET /completion-records/my refreshes from upstream. Called after a
+// successful write so the new record surfaces promptly rather than after the
+// TTL. The failure cooldown is cleared too: a successful create is fresh proof
+// the upstream is reachable, and a lingering cooldown would replay a stale
+// error to exactly the post-write read this invalidation serves. Forced/stats
+// bookkeeping is left intact.
+//
+// The entry is marked stale rather than deleted, and that distinction is the
+// whole point: getCompletionIndex serves a warm-but-stale index when a refresh
+// fails, so deleting here would throw that fallback away on every write —
+// turning the next upstream blip into a cold 503 for a reader who could have
+// had a slightly-stale 200. Marking it skips the TTL fast path (which is what
+// actually forces the refresh — the generation bump only coalesces in-flight
+// refreshes) while leaving the fallback intact.
+func invalidateCompletionIndex(namespace string) {
+	completionCacheMu.Lock()
+	defer completionCacheMu.Unlock()
+	completionCacheInit()
+	completionGenerations[namespace]++
+	if entry := completionCacheEntries[namespace]; entry != nil {
+		completionCacheEntries[namespace] = &completionCacheEntry{index: entry.index, stale: true}
+	}
+	delete(completionLastFailure, namespace)
 }
 
 // getCompletionIndex returns the collated index for a namespace, refreshing at
@@ -220,7 +270,7 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		}
 	}
 
-	if entry != nil && !effectiveForced && timeNow().Sub(entry.index.asOf) < completionCacheTTL {
+	if entry != nil && !entry.stale && !effectiveForced && timeNow().Sub(entry.index.asOf) < completionCacheTTL {
 		stats.hits++
 		idx := entry.index
 		completionCacheMu.Unlock()
@@ -246,7 +296,8 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		}
 	}
 
-	if fl := completionFlights[namespace]; fl != nil {
+	generation := completionGenerations[namespace]
+	if fl := completionFlights[namespace]; fl != nil && fl.generation == generation {
 		completionCacheMu.Unlock()
 		select {
 		case <-fl.done:
@@ -256,7 +307,7 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 		}
 	}
 
-	fl := &completionRefreshFlight{done: make(chan struct{})}
+	fl := &completionRefreshFlight{done: make(chan struct{}), generation: generation}
 	completionFlights[namespace] = fl
 	completionCacheMu.Unlock()
 
@@ -269,6 +320,22 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 
 	completionCacheMu.Lock()
 	stats = completionStatsFor(namespace)
+	if completionGenerations[namespace] != fl.generation {
+		if err == nil {
+			fl.index = idx
+		} else if entry != nil {
+			fl.index = entry.index
+			fl.err = err
+		} else {
+			fl.err = err
+		}
+		if completionFlights[namespace] == fl {
+			delete(completionFlights, namespace)
+		}
+		completionCacheMu.Unlock()
+		close(fl.done)
+		return fl.index, fl.err
+	}
 	if err == nil {
 		stats.refreshes++
 		if _, hadFailure := completionLastFailure[namespace]; hadFailure {
@@ -302,7 +369,9 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 			fl.err = err
 		}
 	}
-	delete(completionFlights, namespace)
+	if completionFlights[namespace] == fl {
+		delete(completionFlights, namespace)
+	}
 	completionCacheMu.Unlock()
 	close(fl.done)
 
@@ -459,11 +528,17 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	// an unauthenticated caller. Missing identity on a GET read is a soft-200
 	// capability envelope (not 401): these routes gate whether a feature
 	// renders at all, and a bare error status conflates "never works here"
-	// with a transient blip.
-	userID, ok := deriveCompletionUserID(r)
-	if !ok {
+	// with a transient blip. An unreachable JWKS is that blip, so it takes the
+	// transient path instead.
+	userID, status := a.deriveCompletionUserID(r)
+	switch status {
+	case identityVerified:
+	case identitySigningKeysDown:
+		a.writeCompletionUnavailable(w)
+		return
+	default:
 		a.writeMyCompletions(w, myCompletionsResponse{
-			Capability:  completionCapability{Available: false, Reason: reasonIdentityUnavailable},
+			Capability:  completionCapability{Available: false, Reason: status.capabilityReason()},
 			Completions: []collatedCompletion{},
 		})
 		return
@@ -491,8 +566,7 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.ctxLogger(r.Context()).Debug("completion records unavailable (cold)", "error", err)
-		w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
-		a.writeError(w, "completion-records-unavailable", http.StatusServiceUnavailable)
+		a.writeCompletionUnavailable(w)
 		return
 	}
 
@@ -519,8 +593,13 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if _, ok := deriveCompletionUserID(r); !ok {
-		a.writeJSON(w, completionCapability{Available: false, Reason: reasonIdentityUnavailable}, http.StatusOK)
+	switch _, status := a.deriveCompletionUserID(r); status {
+	case identityVerified:
+	case identitySigningKeysDown:
+		a.writeCompletionUnavailable(w)
+		return
+	default:
+		a.writeJSON(w, completionCapability{Available: false, Reason: status.capabilityReason()}, http.StatusOK)
 		return
 	}
 
@@ -538,8 +617,7 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 			a.writeJSON(w, completionCapability{Available: false, Reason: reasonBackendUnavailable}, http.StatusOK)
 			return
 		}
-		w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
-		a.writeError(w, "completion-records-unavailable", http.StatusServiceUnavailable)
+		a.writeCompletionUnavailable(w)
 		return
 	}
 	a.writeJSON(w, completionCapability{Available: true}, http.StatusOK)
@@ -549,38 +627,80 @@ func (a *App) writeMyCompletions(w http.ResponseWriter, resp myCompletionsRespon
 	a.writeJSON(w, resp, http.StatusOK)
 }
 
+// writeCompletionUnavailable serves BACKEND_PROXY_PATTERN.md §7's transient
+// hiccup — 503 plus a Retry-After hint, never a capability envelope — so both
+// completion routes answer every retryable failure in one shape.
+func (a *App) writeCompletionUnavailable(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", strconv.Itoa(completionRetryAfterSeconds))
+	a.writeError(w, "completion-records-unavailable", http.StatusServiceUnavailable)
+}
+
 // resolveCompletionBackend determines whether the aggregated CRUD API is
 // structurally reachable for this request and returns a lister to use.
-// "Structurally unavailable" (feature toggle off, no app URL, no namespace) is
-// a "never works here" condition surfaced as capability=false, distinct from a
-// transient LIST failure. The namespace comes from the trusted plugin context,
-// never from a query parameter. Config resolution runs before the test-only
-// lister override so the structural-unavailability branch stays testable.
+// "Structurally unavailable" (feature toggle off, no app URL, no namespace, no
+// provisioned on-behalf-of credential) is a "never works here" condition
+// surfaced as capability=false, distinct from a transient LIST failure. The
+// namespace comes from the trusted plugin context, never from a query
+// parameter. Config resolution runs before the test-only lister override so the
+// structural-unavailability branch stays testable.
 func (a *App) resolveCompletionBackend(r *http.Request) (lister completionRecordLister, namespace string, available bool, reason string) {
+	appURL, namespace, idToken, available, reason := a.resolveCompletionConfig(r)
+	if !available {
+		return nil, namespace, false, reason
+	}
+	if completionListerOverride != nil {
+		return completionListerOverride, namespace, true, ""
+	}
+	if a.oboExchanger == nil {
+		return nil, namespace, false, reasonOBOUnavailable
+	}
+	return newCompletionHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+}
+
+// resolveCompletionWriteBackend is the write-path companion to
+// resolveCompletionBackend: same structural-availability gate, but it returns a
+// creator (POST) and honors completionCreatorOverride for tests.
+//
+// The nil-exchanger guard is repeated here rather than folded into
+// resolveCompletionConfig because each resolver applies it AFTER its own test
+// override, and because it must not be possible to add a third resolver that
+// silently inherits a real client with no credential. A stack with no
+// provisioned on-behalf-of token takes the structural path (→ 404 → the front
+// end disarms the session and keeps its queued facts), never a hard failure.
+func (a *App) resolveCompletionWriteBackend(r *http.Request) (creator completionRecordCreator, namespace string, available bool, reason string) {
+	appURL, namespace, idToken, available, reason := a.resolveCompletionConfig(r)
+	if !available {
+		return nil, namespace, false, reason
+	}
+	if completionCreatorOverride != nil {
+		return completionCreatorOverride, namespace, true, ""
+	}
+	if a.oboExchanger == nil {
+		return nil, namespace, false, reasonOBOUnavailable
+	}
+	return newCompletionHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+}
+
+// resolveCompletionConfig resolves the shared "is the aggregated CRUD API
+// structurally reachable?" gate for both the read and write proxies: feature
+// toggle on, an app URL, and a trusted-context namespace (never a query param).
+// Returns available=false with a machine reason when any is missing.
+func (a *App) resolveCompletionConfig(r *http.Request) (appURL, namespace, idToken string, available bool, reason string) {
 	namespace = backend.PluginConfigFromContext(r.Context()).Namespace
 
 	cfg := config.GrafanaConfigFromContext(r.Context())
 	if cfg == nil {
-		return nil, namespace, false, reasonBackendUnavailable
+		return "", namespace, "", false, reasonBackendUnavailable
 	}
-	if !cfg.FeatureToggles().IsEnabled(pathfinderBackendAggregationToggle) {
-		return nil, namespace, false, reasonBackendUnavailable
+	if !cfg.FeatureToggles().IsEnabled(completionRecordsAggregationToggle) {
+		return "", namespace, "", false, reasonBackendUnavailable
 	}
 	appURL, err := cfg.AppURL()
 	if err != nil || appURL == "" || namespace == "" {
-		return nil, namespace, false, reasonBackendUnavailable
+		return "", namespace, "", false, reasonBackendUnavailable
 	}
-
-	if completionListerOverride != nil {
-		return completionListerOverride, namespace, true, ""
-	}
-
-	if a.oboExchanger == nil {
-		return nil, namespace, false, reasonOBOUnavailable
-	}
-
-	idToken := r.Header.Get(backend.GrafanaUserSignInTokenHeaderName)
-	return newCompletionHTTPClient(appURL, a.oboExchanger, idToken, a.ctxLogger(r.Context())), namespace, true, ""
+	idToken = r.Header.Get(backend.GrafanaUserSignInTokenHeaderName)
+	return appURL, namespace, idToken, true, ""
 }
 
 // isTerminalCompletionError reports whether an upstream failure is terminal

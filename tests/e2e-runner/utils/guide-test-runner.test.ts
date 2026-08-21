@@ -17,6 +17,7 @@ jest.mock('@playwright/test', () => ({
 
 import {
   calculateGuideTimeout,
+  calculateStepDeadline,
   calculateStepTimeout,
   determineUnmetRequirementOutcome,
   summarizeResults,
@@ -29,6 +30,7 @@ import {
   GUIDE_INITIAL_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+  STEP_DEADLINE_CLEANUP_GRACE_MS,
 } from './guide-runner';
 import { printDetailedSummary } from './console-reporter';
 import type { AllStepsResult, StepTestResult, TestableStep } from './guide-runner';
@@ -275,10 +277,12 @@ describe('calculateGuideTimeout', () => {
   });
 
   it('includes guided substep budgets', () => {
+    const guidedStep = createTestableStep({ isGuided: true, guidedStepCount: 3 });
     const simple = calculateGuideTimeout([createTestableStep()]);
-    const guided = calculateGuideTimeout([createTestableStep({ isGuided: true, guidedStepCount: 3 })]);
+    const guided = calculateGuideTimeout([guidedStep]);
 
     expect(guided).toBeGreaterThan(simple);
+    expect(guided - GUIDE_INITIAL_TIMEOUT_MS).toBe(calculateStepDeadline(guidedStep) + STEP_DEADLINE_CLEANUP_GRACE_MS);
   });
 });
 

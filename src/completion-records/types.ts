@@ -11,9 +11,10 @@
 /**
  * Durable guide identity: the pair `(guideSource, guideId)`.
  *
- * Sourced from the resolved package manifest — `guideSource = manifest.repository`,
- * `guideId = manifest.id` — never derived from a loader URL. This is the joint
- * key shared with the Custom Guide Packages RFC
+ * Sourced from the resolved package — `guideSource` is the explicit/resolved
+ * repository (which wins over the manifest's own, since the schema defaults an
+ * absent repository), `guideId = manifest.id` — never derived from a loader URL.
+ * This is the joint key shared with the Custom Guide Packages RFC
  * (https://github.com/grafana/pathfinder-rfcs/pull/11).
  */
 export interface CompletionKey {
@@ -53,5 +54,5 @@ export type GuideCompletionFact = CompletionFact & { kind: 'guide' };
 /** A fact whose `kind` is pinned to 'journey' — the only shape `recordJourneyCompletion` accepts. */
 export type JourneyCompletionFact = CompletionFact & { kind: 'journey' };
 
-/** Subscriber signature for the emitter seam (Track 1 / Track 2 attach here in later PRs). */
+/** Subscriber signature for the emitter seam (the durable write hook attaches here). */
 export type CompletionListener = (fact: CompletionFact) => void;

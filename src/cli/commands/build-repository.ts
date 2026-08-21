@@ -17,6 +17,7 @@ import type { RepositoryEntry, RepositoryJson } from '../../types/package.types'
 // refinement (ManifestJsonSchema) for strict correctness checking.
 import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryJsonSchema } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
+import { preserveAuthoredStartingLocation } from '../e2e/starting-location';
 import { resolveCliPath } from '../utils/file-loader';
 import { formatJsonWithPrettier } from '../utils/output';
 
@@ -40,8 +41,12 @@ function isExcluded(dir: string, excludePaths: string[]): boolean {
  * Discover package directories under a root.
  * A package directory is any directory containing manifest.json.
  * Recurses arbitrarily deep, excluding assets/ subtrees and any paths in excludePaths (absolute).
+ *
+ * Exported so `build-stats` walks the tree with identical semantics — the two
+ * commands run over the same root in the same pipeline and must agree on what
+ * a package is.
  */
-function discoverPackages(root: string, excludePaths: string[] = []): string[] {
+export function discoverPackages(root: string, excludePaths: string[] = []): string[] {
   if (!fs.existsSync(root)) {
     return [];
   }
@@ -128,7 +133,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
       return { id, dirName, entry, warnings, errors };
     }
 
-    const manifest = manifestRead.data;
+    const manifest = preserveAuthoredStartingLocation(manifestRead.parsed, manifestRead.data);
 
     if (manifest.id !== id) {
       errors.push(`ID mismatch: content.json has "${id}", manifest.json has "${manifest.id}"`);
@@ -138,7 +143,9 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.description = manifest.description;
     entry.category = manifest.category;
     entry.author = manifest.author;
-    entry.startingLocation = manifest.startingLocation;
+    if (manifest.startingLocation !== undefined) {
+      entry.startingLocation = manifest.startingLocation;
+    }
     entry.milestones = manifest.milestones;
     entry.depends = manifest.depends?.length ? manifest.depends : undefined;
     entry.recommends = manifest.recommends?.length ? manifest.recommends : undefined;

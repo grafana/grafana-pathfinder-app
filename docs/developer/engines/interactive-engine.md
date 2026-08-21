@@ -17,7 +17,7 @@ The Interactive Engine provides the core automation and interaction capabilities
 - **`interactive-state-manager.ts`** - Tracks execution state and dispatches completion events
 - **`global-interaction-blocker.ts`** - Singleton that blocks user interactions during section execution using overlays
 - **`auto-completion/`** - Optional system for detecting and auto-completing user-performed actions
-- **`use-sequential-step-state.hook.ts`** - React 18 hook for subscribing to sequential step state changes
+- **`use-sequential-step-state.hook.ts`** - `useSyncExternalStore`-based hook for subscribing to sequential step state changes
 
 ## Main Hook
 

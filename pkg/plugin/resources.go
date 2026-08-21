@@ -10,6 +10,7 @@ import (
 // docs/design/BACKEND_PROXY_PATTERN.md.
 func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/package-recommendations", a.handlePackageRecommendations)
+	mux.HandleFunc("/completion-records", a.handleCreateCompletionRecord)
 	mux.HandleFunc("/completion-records/my", a.handleMyCompletions)
 	mux.HandleFunc("/completion-records/capability", a.handleCompletionCapability)
 	mux.HandleFunc("/custom-guide-repository", a.handleCustomGuideRepository)

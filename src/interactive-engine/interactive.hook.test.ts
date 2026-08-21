@@ -102,7 +102,7 @@ describe('useInteractiveElements', () => {
 
   // Create a container div for our tests
   let container: HTMLDivElement;
-  let containerRef: React.RefObject<HTMLDivElement>;
+  let containerRef: React.RefObject<HTMLDivElement | null>;
 
   // Helper function to set up the test environment with our example HTML
   const setupTestEnvironment = () => {

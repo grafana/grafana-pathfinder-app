@@ -59,6 +59,7 @@ export const ROOT_LEVEL_TIER_MAP: Record<string, number> = {
   'constants.ts': 0,
   'constants.test.ts': 0,
   'module.tsx': 4,
+  'module.bootstrap.test.ts': 4,
 };
 
 export const ROOT_LEVEL_ALLOWED_FILES = new Set(Object.keys(ROOT_LEVEL_TIER_MAP));
@@ -267,7 +268,9 @@ function isTypeOnlyImportDeclaration(node: ts.ImportDeclaration): boolean {
   if (!clause) {
     return false;
   }
-  if (clause.isTypeOnly) {
+  // `phaseModifier` is also set for `import defer`, which still evaluates the
+  // module at runtime — only the type phase is erased.
+  if (clause.phaseModifier === ts.SyntaxKind.TypeKeyword) {
     return true;
   }
   if (clause.name || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) {
