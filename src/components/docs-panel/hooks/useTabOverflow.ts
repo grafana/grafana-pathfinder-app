@@ -26,7 +26,7 @@ export interface UseTabOverflowResult {
   setIsDropdownOpen: React.Dispatch<React.SetStateAction<boolean>>;
   dropdownRef: React.RefObject<HTMLDivElement | null>;
   chevronButtonRef: React.RefObject<HTMLButtonElement | null>;
-  dropdownOpenTimeRef: React.MutableRefObject<number>;
+  dropdownOpenTimeRef: React.RefObject<number>;
 }
 
 export function useTabOverflow(tabs: LearningJourneyTab[], activeTabId: string): UseTabOverflowResult {

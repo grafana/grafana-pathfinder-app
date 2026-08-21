@@ -52,7 +52,7 @@ export interface DocsPanelTabBarProps {
   tabListRef: React.RefObject<HTMLDivElement | null>;
   dropdownRef: React.RefObject<HTMLDivElement | null>;
   chevronButtonRef: React.RefObject<HTMLButtonElement | null>;
-  dropdownOpenTimeRef: React.MutableRefObject<number>;
+  dropdownOpenTimeRef: React.RefObject<number>;
   onSetActiveTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   reloadActiveTab: (tab: LearningJourneyTab) => void;
