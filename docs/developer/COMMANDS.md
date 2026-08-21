@@ -122,6 +122,8 @@ npm run validate:packages   # validate package manifests
 # Bundled-interactives repository
 npm run repository:build    # regenerate index.json + content snapshots
 npm run repository:check    # validate repository integrity
+npm run stats:build         # stamp each manifest.json with its completion block stats
+npm run stats:check         # CI drift check for the stamped stats (writes nothing)
 
 # JSON guide schema export
 npm run schema:export       # export schema to dist/

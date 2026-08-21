@@ -147,6 +147,8 @@ jobs:
         run: npm run validate:packages
       - name: Check repository.json freshness
         run: npm run repository:check
+      - name: Check manifest stats freshness
+        run: npm run stats:check
 
   # No node_modules: the authoring scripts are bash, curl and jq, and the suite
   # stubs curl so nothing reaches a stack.
