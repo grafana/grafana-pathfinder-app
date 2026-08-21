@@ -83,7 +83,7 @@ export function ConfirmDeleteButton({
         dismissText="Cancel"
         onConfirm={handleConfirm}
         onDismiss={handleDismiss}
-        confirmButtonVariant="destructive"
+        confirmVariant="destructive"
       />
     </>
   );

@@ -11,7 +11,7 @@ globs:
 
 ## Technologies Used
 
-- **Frontend**: React 18.3.1 + TypeScript 5.9.3 + Grafana Scenes 7.0.3
+- **Frontend**: React 19.2.8 + TypeScript 5.9.3 + Grafana Scenes 8.13.4
 - **Backend**: Go 1.23+ with grafana-plugin-sdk-go v0.290.0
 - **Styling**: Emotion CSS-in-JS with Grafana UI theming system
 - **State Management**: Grafana Scenes for complex scene-based state
