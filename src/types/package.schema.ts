@@ -140,10 +140,16 @@ export const ManifestJsonObjectSchema = z.object({
   milestones: z.array(z.string().min(1)).optional(),
 
   description: z.string().optional(),
+  /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
+  estimatedMinutes: z.number().positive().optional().catch(undefined),
   language: z.string().default('en'),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
-  startingLocation: z.string().default('/'),
+  // No `.default('/')`: a schema-applied default would be indistinguishable
+  // from an author explicitly declaring `/`, and `recovery/starting-location.ts`'s
+  // alignment prompt treats any truthy value as an author-declared target —
+  // an unauthored manifest must parse to `undefined`, not a fabricated `/`.
+  startingLocation: z.string().optional(),
 
   depends: DependencyListSchema.default([]),
   recommends: DependencyListSchema.default([]),
@@ -202,6 +208,9 @@ const packageMetadataSchemaFields = {
   type: PackageTypeSchema,
   title: z.string().optional(),
   description: z.string().optional(),
+  /** Same graceful-degrade as ManifestJsonObjectSchema's field above — a bad
+   * value drops only this field instead of failing the whole repository entry. */
+  estimatedMinutes: z.number().positive().optional().catch(undefined),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
   startingLocation: z.string().optional(),

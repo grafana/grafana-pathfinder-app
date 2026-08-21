@@ -20,7 +20,20 @@
     "viewDocumentation": "View documentation"
   },
   "coverPage": {
-    "tableOfContents": "In this path"
+    "tableOfContents": "In this path",
+    "getStarted": "Get started",
+    "resume": "Resume",
+    "earnsBadge": "Earns {{badge}} badge",
+    "moduleCount_one": "{{count}} module",
+    "moduleCount_other": "{{count}} modules",
+    "estimatedMinutes_one": "{{count}} min",
+    "estimatedMinutes_other": "{{count}} min",
+    "totalMinutes_one": "{{count}} min",
+    "totalMinutes_other": "{{count}} min",
+    "totalHours_one": "~{{count}} hr",
+    "totalHours_other": "~{{count}} hr",
+    "upNext": "Up next",
+    "locked": "Locked"
   },
   "docsPanel": {
     "closeTab": "Close {{title}}",
@@ -32,6 +45,8 @@
     "loading": "Loading...",
     "menuAriaLabel": "More options",
     "menuTooltip": "More options",
+    "milestoneEstimatedMinutes_one": "{{count}} min",
+    "milestoneEstimatedMinutes_other": "{{count}} min",
     "milestoneProgress": "Milestone {{current}} of {{total}}",
     "milestonesCount_one": "{{count}} milestone",
     "milestonesCount_other": "{{count}} milestones",

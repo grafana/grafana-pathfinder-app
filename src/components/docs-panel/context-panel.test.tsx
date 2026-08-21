@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { RecommendationsSection } from './context-panel';
 import { PLUGIN_BASE_URL } from '../../constants';
+import { testIds } from '../../constants/testIds';
 
 jest.mock('@grafana/scenes', () => ({
   SceneObjectBase: class {},
@@ -148,6 +149,52 @@ describe('RecommendationsSection', () => {
 
     expect(screen.getByText('Learning path')).toBeInTheDocument();
     expect(screen.queryByText('Interactive guide')).not.toBeInTheDocument();
+  });
+
+  it('shows the milestone duration only when estimatedMinutes is authored, omitting it entirely otherwise', () => {
+    render(
+      <RecommendationsSection
+        recommendations={[
+          {
+            title: 'Prometheus learning path',
+            url: '',
+            contentUrl: 'https://interactive-learning.grafana.net/packages/prometheus-lj/content.json',
+            type: 'package',
+            summary: 'Learn Prometheus step by step.',
+            manifest: { id: 'prometheus-lj', type: 'path', milestones: ['step-1', 'step-2'] },
+            totalSteps: 2,
+            summaryExpanded: true,
+            milestones: [
+              { number: 1, title: 'Install Prometheus', url: 'https://example.com/step-1', estimatedMinutes: 12 },
+              { number: 2, title: 'Add a dashboard', url: 'https://example.com/step-2' },
+            ],
+          },
+        ]}
+        featuredRecommendations={[]}
+        customGuides={[]}
+        customGuidePaths={[]}
+        customGuideOrphans={[]}
+        isLoadingCustomGuides={false}
+        customGuidesExpanded
+        suggestedGuidesExpanded
+        isLoadingRecommendations={false}
+        isLoadingContext={false}
+        recommendationsError={null}
+        otherDocsExpanded={false}
+        showEnableRecommenderBanner={false}
+        openLearningJourney={jest.fn()}
+        openDocsPage={jest.fn()}
+        toggleCustomGuidesExpansion={jest.fn()}
+        toggleSuggestedGuidesExpansion={jest.fn()}
+        toggleSummaryExpansion={jest.fn()}
+        toggleOtherDocsExpansion={jest.fn()}
+      />
+    );
+
+    const milestonesList = screen.getByTestId(testIds.contextPanel.recommendationMilestones(0));
+    expect(milestonesList).toHaveTextContent('(12 min)');
+    expect(milestonesList).not.toHaveTextContent('(undefined min)');
+    expect(milestonesList).not.toHaveTextContent('NaN');
   });
 
   it('still routes path-type packages through openDocsPage (not openLearningJourney)', () => {

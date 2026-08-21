@@ -775,6 +775,23 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     flex: 1,
     textAlign: 'center',
   }),
+  milestoneSubtitle: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightRegular,
+    color: theme.colors.text.secondary,
+    textAlign: 'center',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }),
+  milestoneSubtitleMeta: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    marginLeft: theme.spacing(1),
+    color: theme.colors.text.disabled,
+    whiteSpace: 'nowrap',
+  }),
   milestoneActions: css({
     display: 'flex',
     alignItems: 'center',

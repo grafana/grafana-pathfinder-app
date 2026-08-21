@@ -160,7 +160,6 @@ export function buildPathPackageInfo(inputs: PathPackageBuildInputs): PathPackag
     milestones.push({
       number: index + 1,
       title: resolved.title,
-      duration: '',
       url: resolved.url,
       isActive: false,
     });

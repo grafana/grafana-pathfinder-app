@@ -114,6 +114,44 @@ describe('useLinkClickHandler', () => {
       // route through the docs loader internally).
       expect(mockModel.loadTab).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1');
     });
+
+    // Regression test: the cover-page CTA and GuideList's clickable current
+    // row (both added this PR) route through this same handler with no
+    // guard of their own — a rapid double-click could re-enter loadTab before
+    // isLoading's React state update was ever visible.
+    it('ignores a second click while the first loadTab call is still in flight', async () => {
+      let resolveLoadTab!: () => void;
+      mockModel.loadTab.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveLoadTab = resolve;
+        })
+      );
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const startButton = document.createElement('button');
+      startButton.setAttribute('data-journey-start', 'true');
+      startButton.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone1');
+      contentDiv.appendChild(startButton);
+
+      fireEvent.click(startButton);
+      fireEvent.click(startButton);
+      expect(mockModel.loadTab).toHaveBeenCalledTimes(1);
+
+      resolveLoadTab();
+      await Promise.resolve();
+
+      // Once settled, a further click is allowed through again.
+      fireEvent.click(startButton);
+      expect(mockModel.loadTab).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('Grafana Documentation Links', () => {
@@ -641,7 +679,37 @@ describe('useLinkClickHandler', () => {
           content_title: 'Test Journey',
           content_url: 'https://grafana.com/docs/test-journey',
           total_milestones: 5,
+          interaction_location: 'ready_to_begin_button',
         })
+      );
+    });
+
+    it('reports the caller-supplied interaction_location when a data-journey-start element carries data-interaction-location', () => {
+      // The cover-page CTA and current-module row both reuse this attribute
+      // contract but tag themselves distinctly, so a fresh start, a resume,
+      // and a direct row click stay separable from the legacy button's label.
+      const { reportAppInteraction } = require('../../lib/analytics');
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const resumeButton = document.createElement('button');
+      resumeButton.setAttribute('data-journey-start', 'true');
+      resumeButton.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone1');
+      resumeButton.setAttribute('data-interaction-location', 'resume_cta');
+      contentDiv.appendChild(resumeButton);
+
+      fireEvent.click(resumeButton);
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.StartLearningJourneyClick,
+        expect.objectContaining({ interaction_location: 'resume_cta' })
       );
     });
   });

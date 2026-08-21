@@ -141,7 +141,10 @@ describe('ManifestJsonSchema', () => {
     expect(result.data.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(result.data.repository).toBe('interactive-tutorials');
     expect(result.data.language).toBe('en');
-    expect(result.data.startingLocation).toBe('/');
+    // No default: an unauthored value must stay distinguishable from an
+    // author explicitly setting '/' (see package.schema.ts's comment) —
+    // downstream consumers like recovery/starting-location.ts rely on this.
+    expect(result.data.startingLocation).toBeUndefined();
     expect(result.data.depends).toEqual([]);
     expect(result.data.recommends).toEqual([]);
     expect(result.data.suggests).toEqual([]);
@@ -149,6 +152,16 @@ describe('ManifestJsonSchema', () => {
     expect(result.data.conflicts).toEqual([]);
     expect(result.data.replaces).toEqual([]);
     expect(result.data.testEnvironment).toEqual({ tier: 'cloud' });
+  });
+
+  it('should drop a malformed estimatedMinutes instead of failing the whole manifest', () => {
+    const result = ManifestJsonObjectSchema.safeParse({ ...minimalGuideManifest, estimatedMinutes: 'not-a-number' });
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.estimatedMinutes).toBeUndefined();
+    expect(result.data.id).toBe('test-guide');
   });
 
   it('should accept a fully populated manifest', () => {
@@ -487,6 +500,23 @@ describe('RepositoryEntrySchema', () => {
   it('should reject entries without type', () => {
     const result = RepositoryEntrySchema.safeParse({ path: 'foo/' });
     expect(result.success).toBe(false);
+  });
+
+  // Regression test (Cursor Bugbot, "Repository schema drops bad estimates"):
+  // packageMetadataSchemaFields.estimatedMinutes lacked the same .catch(undefined)
+  // ManifestJsonObjectSchema's own estimatedMinutes has, so a malformed value in
+  // repository.json failed the whole entry instead of just dropping the field.
+  it('should drop a malformed estimatedMinutes instead of failing the whole entry', () => {
+    const result = RepositoryEntrySchema.safeParse({
+      path: 'welcome-to-grafana/',
+      type: 'guide',
+      estimatedMinutes: 'not-a-number',
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.estimatedMinutes).toBeUndefined();
   });
 });
 

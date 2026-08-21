@@ -203,10 +203,13 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
           let processedHtml = htmlFetchResult.html;
 
           if (contentType === 'learning-journey' && htmlMetadata.learningJourney) {
+            // Defaults to skipped: the React cover-page TOC now renders its own
+            // progress-aware Start/Resume CTA; an explicit `false` still opts
+            // back into the legacy HTML button if a caller ever needs it.
             processedHtml = generateJourneyContentWithExtras(
               processedHtml,
               htmlMetadata.learningJourney,
-              options.skipReadyToBegin
+              options.skipReadyToBegin ?? true
             );
           }
 
@@ -252,7 +255,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         processedHtml = generateJourneyContentWithExtras(
           processedHtml,
           metadata.learningJourney,
-          options.skipReadyToBegin
+          options.skipReadyToBegin ?? true
         );
       }
 

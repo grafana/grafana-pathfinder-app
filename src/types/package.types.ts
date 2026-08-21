@@ -125,6 +125,8 @@ export interface PackageMetadataFields {
   type: PackageType;
   title?: string;
   description?: string;
+  /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
+  estimatedMinutes?: number;
   category?: string;
   author?: Author;
   startingLocation?: string;
@@ -153,6 +155,8 @@ export interface ManifestJson {
   milestones?: string[];
 
   description?: string;
+  /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
+  estimatedMinutes?: number;
   language?: string;
   category?: string;
   author?: Author;
@@ -217,6 +221,12 @@ export interface PackageResolutionSuccess {
   manifest?: ManifestJson;
   /** Populated when resolve options request content loading */
   content?: ContentJson;
+  /**
+   * Short title from the online CDN package index entry (OnlinePackageEntry.title),
+   * when the resolver has one. Populated only by OnlineCdnPackageResolver — the
+   * recommender's by-id endpoint carries no title field.
+   */
+  entryTitle?: string;
   /**
    * Raw resource the `verifyPublished` probe already fetched, when the resolver
    * had to GET it to check publish status. Lets the caller's content load reuse

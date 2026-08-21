@@ -523,7 +523,6 @@ describe('resolvePackageMilestones', () => {
     expect(result[0]).toEqual({
       number: 1,
       title: 'Title for step-one',
-      duration: '5-10 min',
       url: 'bundled:step-one/content.json',
       isActive: false,
     });
@@ -566,6 +565,73 @@ describe('resolvePackageMilestones', () => {
     expect(result[2]!.isLocked).toBeUndefined();
   });
 
+  it('surfaces the manifest description as a subtitle when content already has its own title', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'data-sources',
+        contentUrl: 'bundled:data-sources/content.json',
+        manifestUrl: 'bundled:data-sources/manifest.json',
+        repository: 'bundled',
+        content: { id: 'data-sources', title: 'Data sources', blocks: [] },
+        manifest: { id: 'data-sources', description: 'How connections and plugins work.', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['data-sources']);
+    expect(result[0]!.title).toBe('Data sources');
+    expect(result[0]!.description).toBe('How connections and plugins work.');
+  });
+
+  it("surfaces the manifest's author-provided estimatedMinutes, and omits it when absent", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title for ${id}`, blocks: [] },
+          manifest:
+            id === 'timed'
+              ? { id, type: 'guide', estimatedMinutes: 12 }
+              : { id, type: 'guide' /* no estimatedMinutes authored */ },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['timed', 'untimed']);
+    expect(result[0]!.estimatedMinutes).toBe(12);
+    expect(result[1]!.estimatedMinutes).toBeUndefined();
+  });
+
+  it("surfaces the manifest's author-provided startingLocation, and omits it when absent", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title for ${id}`, blocks: [] },
+          manifest:
+            id === 'located'
+              ? { id, type: 'guide', startingLocation: '/connections' }
+              : { id, type: 'guide' /* no startingLocation authored */ },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['located', 'unlocated']);
+    expect(result[0]!.startingLocation).toBe('/connections');
+    expect(result[1]!.startingLocation).toBeUndefined();
+  });
+
   it('falls back to description then ID when content title is missing', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockResolvedValue({
@@ -581,6 +647,28 @@ describe('resolvePackageMilestones', () => {
 
     const result = await resolvePackageMilestones(['no-title']);
     expect(result[0]!.title).toBe('A description');
+    // Title and description are the same string here (no separate short
+    // title exists) — showing it twice would just duplicate the heading.
+    expect(result[0]!.description).toBeUndefined();
+  });
+
+  it('prefers the CDN index entryTitle over the manifest description, and surfaces the description distinctly', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'install-datasources',
+        contentUrl: 'bundled:install-datasources/content.json',
+        manifestUrl: 'bundled:install-datasources/manifest.json',
+        repository: 'online-cdn',
+        entryTitle: 'Install data sources',
+        manifest: { id: 'install-datasources', description: 'Connect Prometheus and Loki.', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['install-datasources']);
+    expect(result[0]!.title).toBe('Install data sources');
+    expect(result[0]!.description).toBe('Connect Prometheus and Loki.');
   });
 
   it('falls back to package ID when manifest has no title or description', async () => {
@@ -745,6 +833,37 @@ describe('fetchPackageContent path-type enrichment', () => {
 
     expect(result.content).not.toBeNull();
     expect(result.content!.metadata.repository).toBe('app-platform');
+  });
+
+  it('suppresses the legacy Ready to Begin button on the cover, keeping the bottom nav', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+    };
+
+    // The React cover-page TOC (LearningPathTableOfContents) owns the
+    // Start/Resume affordance now; the legacy HTML button always said "Ready
+    // to Begin" and always targeted milestone 1, regardless of progress.
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content!.content).not.toContain('journey-ready-to-begin');
+    expect(result.content!.content).toContain('journey-bottom-navigation');
   });
 
   it('does not add learningJourney for guide-type packages', async () => {
@@ -1009,6 +1128,24 @@ describe('resolvePackageNavLinks', () => {
       repository: 'bundled',
     });
     expect(result[1]!.packageId).toBe('beta');
+  });
+
+  it('falls back to entryTitle when content has no title', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'install-datasources',
+        contentUrl: 'bundled:install-datasources/content.json',
+        manifestUrl: 'bundled:install-datasources/manifest.json',
+        repository: 'online-cdn',
+        entryTitle: 'Install data sources',
+        manifest: { id: 'install-datasources', description: 'Connect Prometheus and Loki.', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageNavLinks(['install-datasources']);
+    expect(result[0]!.title).toBe('Install data sources');
   });
 
   it('falls back to description then ID for the title, and skips unresolvable IDs', async () => {
