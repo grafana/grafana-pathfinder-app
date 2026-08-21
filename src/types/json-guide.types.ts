@@ -618,6 +618,8 @@ export interface JsonTerminalConnectBlock extends AuthorAnnotated {
   vmApp?: string;
   /** Scenario name for alloy-scenario template. Only used with vm-aws-alloy-scenario. */
   vmScenario?: string;
+  /** Also install a Grafana credential for the `gcx` CLI shipped in the VM. */
+  gcx?: boolean;
 }
 
 // ============ CHALLENGE BLOCK ============
