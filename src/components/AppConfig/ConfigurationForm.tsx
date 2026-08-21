@@ -18,7 +18,7 @@ import {
   getDefaultRecommenderUrl,
   isKnownRecommenderUrl,
 } from '../../constants';
-import { fetchPluginJsonData, updatePluginSettings } from '../../utils/utils.plugin';
+import { fetchPluginSettings, updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
 import { config } from '@grafana/runtime';
@@ -65,6 +65,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const s = useStyles2(getStyles);
   const { enabled, pinned, jsonData: pluginJsonData } = plugin.meta;
   const [resolvedJsonData, setResolvedJsonData] = useState<DocsPluginConfig>(pluginJsonData || {});
+  const [resolvedEnabled, setResolvedEnabled] = useState(enabled);
+  const [resolvedPinned, setResolvedPinned] = useState(pinned);
   const [state, setState] = useState<State>(() => buildStateFromJsonData(pluginJsonData));
   const [isSaving, setIsSaving] = useState(false);
   const isDraftEdited = useRef(false);
@@ -79,15 +81,17 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   useEffect(() => {
     let cancelled = false;
 
-    fetchPluginJsonData(plugin.meta.id)
-      .then((freshJsonData) => {
+    fetchPluginSettings(plugin.meta.id)
+      .then((fresh) => {
         if (cancelled) {
           return;
         }
 
-        setResolvedJsonData(freshJsonData);
+        setResolvedJsonData(fresh.jsonData);
+        setResolvedEnabled(fresh.enabled);
+        setResolvedPinned(fresh.pinned);
         if (!isDraftEdited.current) {
-          setState(buildStateFromJsonData(freshJsonData));
+          setState(buildStateFromJsonData(fresh.jsonData));
         }
       })
       .catch((error) => {
@@ -164,8 +168,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       const newValue = event.target.checked;
 
       await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
+        enabled: resolvedEnabled,
+        pinned: resolvedPinned,
         jsonData: {
           ...(resolvedJsonData || {}),
           ...getConfigWithDefaults(resolvedJsonData || {}),
@@ -246,8 +250,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       };
 
       await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
+        enabled: resolvedEnabled,
+        pinned: resolvedPinned,
         jsonData: newJsonData,
       });
 
