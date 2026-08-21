@@ -347,17 +347,29 @@ anything reads that location:
 
 `src/recovery/starting-location.ts` reads both locations, typed field first, so
 `startingLocation` takes effect wherever the manifest reaches it with
-`additionalFields` intact. That is the `backend-guide:` loader
-(`src/docs-retrieval/content-fetcher/backend-guide.ts`), which spreads
-`spec.manifest` through unchanged: a standalone guide opened from the custom
-guides list, a `?doc=api:<id>` share link, and auto-dock tab restore all get the
-implied-0th-step prompt.
+`additionalFields` intact.
 
-A **path member does not.** Its manifest arrives through the catalogue proxy,
-whose `customGuideManifest` (`pkg/plugin/custom_guide_repository_client.go`)
-declares no `additionalFields`, so `encoding/json` drops the key at the wire
-boundary before the reader ever sees it. Promoting `startingLocation` to a typed
-CUE field is the fix for that half.
+The rule is about the ROUTE, not the guide: only the `backend-guide:` loader
+(`src/docs-retrieval/content-fetcher/backend-guide.ts`) spreads `spec.manifest`
+through unchanged, so only launches that go through it can align. Known routes
+today — not a closed list, so check the launch path rather than assuming a new
+one behaves like these:
+
+| Launch route                                 | Gets the prompt? |
+| -------------------------------------------- | ---------------- |
+| Standalone guide from the Custom guides list | Yes              |
+| `?doc=api:<id>` share link                   | Yes              |
+| Auto-dock tab restore                        | Yes              |
+| Path **member** opened from a path card      | No               |
+| Path **cover page** opened from a path card  | No               |
+
+Neither path route works, for the same single reason: both take their manifest
+from the catalogue proxy, whose `customGuideManifest`
+(`pkg/plugin/custom_guide_repository_client.go`) declares no `additionalFields`,
+so `encoding/json` drops the key at the wire boundary before the reader ever sees
+it. `packageInfoForPath` builds the cover page's `packageManifest` from that same
+proxy entry, so a cover is no better off than a member. Promoting
+`startingLocation` to a typed CUE field is the fix for both.
 
 Promoting a key out of `additionalFields` into a real CUE field is additive and
 safe, and is the fix for the inert rows generally.

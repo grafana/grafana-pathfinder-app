@@ -319,13 +319,37 @@ describe('deriveManifest — startingLocation', () => {
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
-  it('leaves an inherited startingLocation alone when the content declares none', () => {
+  // Written unconditionally: a skipped write would leave a stale value outliving
+  // the content that justified it, with no in-product way to clear it.
+  it('CLEARS an inherited startingLocation when the content no longer declares one', () => {
     const result = deriveManifest(guide([markdown()]), {
       type: 'guide',
-      additionalFields: { startingLocation: '/authored-by-hand' },
+      additionalFields: { startingLocation: '/stale-from-a-removed-requirement' },
     });
 
-    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/authored-by-hand');
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('drops additionalFields entirely when clearing leaves nothing behind', () => {
+    const result = deriveManifest(guide([markdown()]), {
+      type: 'path',
+      milestones: ['m1'],
+      additionalFields: { startingLocation: '/stale' },
+    });
+
+    expect(result.additionalFields).toBeUndefined();
+  });
+
+  it('keeps sibling additionalFields keys when it clears startingLocation', () => {
+    const result = deriveManifest(guide([markdown()]), {
+      type: 'path',
+      milestones: ['m1'],
+      additionalFields: { startingLocation: '/stale', stats: { version: 1, blockCount: 9 } },
+    });
+
+    const additional = result.additionalFields as Record<string, unknown>;
+    expect(additional.startingLocation).toBeUndefined();
+    expect(additional.stats).toEqual({ version: 1, blockCount: 9 });
   });
 
   it('updates an inherited startingLocation when the content now declares a different one', () => {
@@ -346,6 +370,124 @@ describe('deriveManifest — startingLocation', () => {
     const additional = result.additionalFields as Record<string, unknown>;
     expect(additional.startingLocation).toBe('/alerting');
     expect(additional.stats).toBeUndefined();
+  });
+});
+
+describe('deriveManifest — startingLocation stops at navigation', () => {
+  const navigate = (reftarget = '/dashboards/new'): JsonBlock =>
+    ({ type: 'interactive', action: 'navigate', reftarget, content: 'Go there' }) as unknown as JsonBlock;
+
+  const formfill = (requirements?: string[]): JsonBlock =>
+    ({
+      type: 'interactive',
+      action: 'formfill',
+      reftarget: 'input[name=q]',
+      targetvalue: 'x',
+      content: 'Type it',
+      ...(requirements ? { requirements } : {}),
+    }) as unknown as JsonBlock;
+
+  // The whole point of the navigate exclusion: the page after a navigation is
+  // where the guide TOOK the reader, so stamping it prompts them to go somewhere
+  // the guide was about to send them anyway.
+  it('ignores an on-page that appears after a navigate block', () => {
+    const result = deriveManifest(guide([navigate('/dashboards'), highlight(['on-page:/dashboards'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('still takes an on-page declared before the navigate block', () => {
+    const result = deriveManifest(guide([highlight(['on-page:/home']), navigate('/dashboards')]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/home');
+  });
+
+  // A requirement carried BY the navigate block is a precondition evaluated
+  // before the navigation happens, so it does describe where the guide starts.
+  it('takes an on-page carried by the navigate block itself', () => {
+    const navigateWithPrecondition = {
+      type: 'interactive',
+      action: 'navigate',
+      reftarget: '/dashboards',
+      content: 'Go',
+      requirements: ['on-page:/home'],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([navigateWithPrecondition, highlight(['on-page:/dashboards'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/home');
+  });
+
+  it('stops at a navigate STEP inside a multistep', () => {
+    const multistep = {
+      type: 'multistep',
+      content: 'Do these',
+      steps: [
+        { action: 'navigate', reftarget: '/dashboards' },
+        { action: 'highlight', reftarget: 'a', requirements: ['on-page:/dashboards'] },
+      ],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([multistep]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('takes a step on-page declared before the navigate step', () => {
+    const multistep = {
+      type: 'multistep',
+      content: 'Do these',
+      steps: [
+        { action: 'highlight', reftarget: 'a', requirements: ['on-page:/alerting'] },
+        { action: 'navigate', reftarget: '/dashboards' },
+      ],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([multistep]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/alerting');
+  });
+
+  it('stops at a navigate nested inside a section, not just at root level', () => {
+    const section = {
+      type: 'section',
+      title: 'Setup',
+      blocks: [navigate('/dashboards'), highlight(['on-page:/dashboards'])],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([section, highlight(['on-page:/explore'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  // suggestRequirementsFromContext adds on-page:<currentPath> to EVERY formfill
+  // regardless of position, so it says a form is page-bound — not where the guide
+  // begins.
+  it('ignores the on-page the editor auto-suggests on a formfill', () => {
+    const result = deriveManifest(guide([formfill(['on-page:/some-form-page'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('ignores a formfill on-page but still takes a later non-formfill one', () => {
+    const result = deriveManifest(guide([formfill(['on-page:/form']), highlight(['on-page:/explore'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+  });
+
+  it('ignores a formfill STEP on-page inside a multistep', () => {
+    const multistep = {
+      type: 'multistep',
+      content: 'Do these',
+      steps: [
+        { action: 'formfill', reftarget: 'input', targetvalue: 'x', requirements: ['on-page:/form'] },
+        { action: 'highlight', reftarget: 'a', requirements: ['on-page:/explore'] },
+      ],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([multistep]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
   });
 });
 

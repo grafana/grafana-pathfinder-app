@@ -46,20 +46,42 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
+const NAVIGATE_ACTION = 'navigate';
+
+/** Requirement carrier — a block or a step both expose `action` and `requirements`. */
+type RequirementCarrier = Record<string, unknown>;
+
+/**
+ * `undefined` means "keep looking"; `STOP` means the walk hit navigation and no
+ * later declaration can speak for where the guide STARTS.
+ */
+const STOP = Symbol('navigation-reached');
+type Scan = string | undefined | typeof STOP;
+
 /**
  * The `on-page:<path>` requirement of the first block that declares one, in
- * document order.
+ * document order, stopping at the first navigation.
  *
  * This is the guide's starting location: the block editor already suggests
  * `on-page:<currentPath>` on the first DOM-targeting step precisely so a guide
  * self-declares where it begins (`forms/requirements-suggester.ts`), which makes
  * it authored data rather than a guess.
  *
- * Deliberately narrow. A `navigate` action's `reftarget` is NOT used as a
- * fallback: that is where the guide *takes* the reader, not where it expects
- * them to be, and a self-navigating guide correctly needs no alignment prompt
- * at all. Conditional branches are not descended into either — their contents
- * are mutually exclusive, so neither branch speaks for the guide.
+ * Three deliberate narrowings, each of which exists to avoid stamping a page the
+ * guide navigates TO rather than the page it starts ON.
+ *
+ * 1. A `navigate` action's `reftarget` is not a fallback, and the walk STOPS at
+ *    the first navigation. Past that point the reader's location is whatever the
+ *    guide put them at, so a later `on-page:` describes the guide's interior, not
+ *    its entry. A requirement carried BY the navigate block still counts — that
+ *    is a precondition evaluated before the navigation happens. A self-navigating
+ *    guide therefore yields nothing and correctly gets no alignment prompt.
+ * 2. An `on-page:` on a `formfill` is ignored. `suggestRequirementsFromContext`
+ *    adds `on-page:<currentPath>` to EVERY formfill regardless of position, so
+ *    the requirement is evidence that a form is page-bound, not evidence about
+ *    where the guide begins.
+ * 3. Conditional branches are not descended into — their contents are mutually
+ *    exclusive, so neither branch speaks for the guide.
  *
  * Only an absolute `on-page:` value qualifies. `onPageCheck` passes on a
  * substring match, so a relative `on-page:dashboards` works as a requirement,
@@ -68,10 +90,15 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
  * already-aligned reader and navigate to a nested path.
  */
 function deriveStartingLocation(blocks: readonly JsonBlock[] | undefined): string | undefined {
-  for (const block of blocks ?? []) {
-    const record = block as unknown as Record<string, unknown>;
+  const found = scanBlocks(blocks);
+  return typeof found === 'string' ? found : undefined;
+}
 
-    const own = firstOnPage(record.requirements);
+function scanBlocks(blocks: readonly JsonBlock[] | undefined): Scan {
+  for (const block of blocks ?? []) {
+    const record = block as unknown as RequirementCarrier;
+
+    const own = declaredOnPage(record);
     if (own) {
       return own;
     }
@@ -80,21 +107,43 @@ function deriveStartingLocation(blocks: readonly JsonBlock[] | undefined): strin
     // page declaration for that group.
     if (Array.isArray(record.steps)) {
       for (const step of record.steps) {
-        const fromStep = firstOnPage(asRecord(step)?.requirements);
+        const stepRecord = asRecord(step);
+        if (!stepRecord) {
+          continue;
+        }
+        const fromStep = declaredOnPage(stepRecord);
         if (fromStep) {
           return fromStep;
+        }
+        if (stepRecord.action === NAVIGATE_ACTION) {
+          return STOP;
         }
       }
     }
 
     if (TRANSPARENT_CONTAINERS.has(String(record.type)) && Array.isArray(record.blocks)) {
-      const nested = deriveStartingLocation(record.blocks as JsonBlock[]);
-      if (nested) {
+      const nested = scanBlocks(record.blocks as JsonBlock[]);
+      if (nested !== undefined) {
         return nested;
       }
     }
+
+    if (record.action === NAVIGATE_ACTION) {
+      return STOP;
+    }
   }
   return undefined;
+}
+
+/**
+ * The absolute `on-page:` this carrier declares, ignoring a `formfill`'s — see
+ * narrowing 2 above.
+ */
+function declaredOnPage(carrier: RequirementCarrier): string | undefined {
+  if (carrier.action === 'formfill') {
+    return undefined;
+  }
+  return firstOnPage(carrier.requirements);
 }
 
 function firstOnPage(requirements: unknown): string | undefined {
@@ -129,12 +178,16 @@ function firstOnPage(requirements: unknown): string | undefined {
  * - `additionalFields.stats` — the canonical block count, only for a plain
  *   guide. A path or journey's stats are a rollup over every milestone's blocks
  *   (`rollUpGuideStats`), which the editor cannot see from a cover page.
- * - `additionalFields.startingLocation` — when the content declares one.
+ * - `additionalFields.startingLocation` — set when the content declares one and
+ *   CLEARED when it does not, so an author who removes the requirement removes
+ *   the prompt with it.
  *
  * Everything else in `inherited` survives byte-identical, including any
- * `additionalFields` key this function does not own. A field this function
- * cannot derive is left exactly as inherited rather than cleared — an absent
- * derivation is "no new information", not "delete what was there".
+ * `additionalFields` key this function does not own. The one exception is
+ * `startingLocation`, which the content fully determines: there, an absent
+ * derivation IS the information, so it clears rather than preserves. `stats` keeps
+ * the preserve semantics, because a metapackage's rollup is computed elsewhere and
+ * the editor's silence about it means "I cannot see this", not "it is gone".
  */
 export function deriveManifest(guide: JsonGuide, inherited?: unknown): Record<string, unknown> {
   const base = { ...(asRecord(inherited) ?? {}) };
@@ -149,9 +202,14 @@ export function deriveManifest(guide: JsonGuide, inherited?: unknown): Record<st
     additionalFields.stats = summarizeGuideBlocks(guide.blocks);
   }
 
+  // Written unconditionally, so removing the requirement removes the prompt. A
+  // skipped write would leave a stale value outliving the content that justified
+  // it, with no in-product way to clear it.
   const startingLocation = deriveStartingLocation(guide.blocks);
   if (startingLocation !== undefined) {
     additionalFields.startingLocation = startingLocation;
+  } else {
+    delete additionalFields.startingLocation;
   }
 
   const manifest: Record<string, unknown> = { ...base, type };
@@ -160,8 +218,13 @@ export function deriveManifest(guide: JsonGuide, inherited?: unknown): Record<st
     manifest.repository = APP_PLATFORM_REPOSITORY;
   }
 
+  // Assigned or removed, never left to the `...base` spread: the spread carries the
+  // INHERITED additionalFields, so skipping the write here would resurrect the very
+  // key the clear above just removed.
   if (Object.keys(additionalFields).length > 0) {
     manifest.additionalFields = additionalFields;
+  } else {
+    delete manifest.additionalFields;
   }
 
   return manifest;
