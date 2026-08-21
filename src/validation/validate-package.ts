@@ -306,13 +306,9 @@ function emitManifestMessages(
   const warnFields = ['description', 'category', 'targeting', 'startingLocation'];
   for (const field of warnFields) {
     if (raw[field] === undefined) {
-      const msg =
-        field === 'startingLocation'
-          ? `manifest.json: "${field}" not specified, defaulting to "/"`
-          : `manifest.json: "${field}" not specified`;
       messages.push({
         severity: 'warn',
-        message: msg,
+        message: `manifest.json: "${field}" not specified`,
         path: ['manifest.json', field],
         remediation: remediationFor(field),
       });

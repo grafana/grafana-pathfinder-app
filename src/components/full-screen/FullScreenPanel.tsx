@@ -1,7 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SceneObjectBase, type SceneComponentProps, type SceneObjectState } from '@grafana/scenes';
 import { getAppEvents, locationService } from '@grafana/runtime';
-import { t } from '@grafana/i18n';
 import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
@@ -21,9 +20,11 @@ import { REQUEST_FULLSCREEN_GUIDE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '.
 import { findDocPage } from '../../utils/find-doc-page';
 import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import pluginJson from '../../plugin.json';
+import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { FullScreenLayout } from './FullScreenLayout';
 import { getFullScreenStyles } from './full-screen.styles';
 import { dockOnLeavingFullScreen, type HistoryAction, type FullScreenExitReason } from './full-screen-autodock';
+import { resolveSafeTargetPath, extractTargetPathFromEventDetail } from './resolve-safe-target-path';
 
 // Lazy-loaded so the editor only ships when the user actually opens it full screen.
 const BlockEditor = lazy(() =>
@@ -238,7 +239,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   });
 
   const handleExitToSidebar = useCallback(
-    async (reason: FullScreenExitReason) => {
+    async (reason: FullScreenExitReason, targetPath?: string) => {
       // Read fresh from the model, not the render-time guideUrl/title closure:
       // an automatic handoff (REQUEST_SIDEBAR_HANDOFF_EVENT) can dispatch in the
       // same synchronous tick as the state update that just loaded the new
@@ -248,8 +249,12 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       // synchronously by setState, so this is always current.
       const currentTab = panel.getActiveTab();
       const isCurrentEditorTab = currentTab?.type === 'editor';
+      // Computed before reporting (not just before the mode branch below) so
+      // the analytics destination matches where this actually lands — the
+      // extension-sidebar ownership check can redirect to floating.
+      const destination = isExtensionSidebarOwnedByOther(pluginJson.id) ? 'floating' : 'sidebar';
       reportAppInteraction(UserInteraction.FullScreenExit, {
-        destination: 'sidebar',
+        destination,
         guide_url: (isCurrentEditorTab ? undefined : currentTab?.currentUrl || currentTab?.baseUrl) || '',
         guide_title: isCurrentEditorTab ? EDITOR_FULL_SCREEN_TITLE : currentTab?.title || 'Interactive learning',
         // FullScreenExitReason (full-screen-autodock.ts) is shared with that
@@ -267,14 +272,27 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       if (getGuideStripTabs(panel.state.tabs).length > 0) {
         await panel.saveTabsToStorage();
       }
-      panelModeManager.setMode('sidebar');
-      sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
-      sidebarState.openSidebar('Interactive learning');
-      // Land the user back on the page they were on before they entered full
-      // screen. Falls back to the plugin home for cold-loaded `/fullscreen`
-      // URLs (no captured prior path).
+      // Same ownership check `full-screen-autodock.ts` already applies for
+      // its own (navigation-away) trigger: don't steal the extension
+      // sidebar slot from another plugin (e.g. Grafana Assistant) — co-exist
+      // as a floating overlay instead. Tabs are already saved above, so the
+      // floating surface restores the same guide from tabStorage the sidebar
+      // branch would have, mirroring dockOnLeavingFullScreen's floating path.
+      if (destination === 'floating') {
+        panelModeManager.setMode('floating');
+      } else {
+        panelModeManager.setMode('sidebar');
+        sidebarState.setPendingOpenSource('fullscreen_handoff', 'open');
+        sidebarState.openSidebar('Interactive learning');
+      }
+      // Prefer a resolved step/milestone/course location (the click-triggered
+      // handoff — see interactive.hook.ts) so the user lands somewhere the
+      // clicked step can act on. Otherwise land back on the page they were on
+      // before they entered full screen, falling back to the plugin home for
+      // cold-loaded `/fullscreen` URLs (no captured prior path).
       const priorPath = panelModeManager.consumePriorPath();
-      locationService.push(priorPath ?? PLUGIN_BASE_URL);
+      const safeTargetPath = targetPath != null ? resolveSafeTargetPath(targetPath) : undefined;
+      locationService.push(safeTargetPath ?? priorPath ?? PLUGIN_BASE_URL);
     },
     [panel]
   );
@@ -372,28 +390,21 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     };
   }, [handleExitToSidebar]);
 
-  // Fired by docs-panel.tsx's loadDocsTabContent, via the standalone
-  // requestSidebarHandoff() in global-state/panel-mode.ts, when a
-  // newly-loaded milestone turns out to need the live Grafana UI — full
-  // screen has none for it to act on. Reuses the same exit-to-sidebar
-  // mechanics as the manual back-arrow, just triggered by navigation instead
-  // of the user leaving deliberately. Reads the latest callback through the
-  // ref above (not a `[handleExitToSidebar]` dep) for the same reason as the
-  // empty-state effect: this can fire in the same tick as the state update
-  // that just loaded the new tab, before this component re-renders.
+  // Fired by interactive.hook.ts's executeInteractiveAction, via the
+  // standalone requestSidebarHandoffAndWait() in global-state/panel-mode.ts,
+  // when the user clicks "Do it" on a step whose action needs the live
+  // Grafana UI — full screen has none for it to act on. Reuses the same
+  // exit-to-sidebar mechanics as the manual back-arrow, just triggered by the
+  // click instead of the user leaving deliberately. Reads the latest callback
+  // through the ref above (not a `[handleExitToSidebar]` dep) for the same
+  // reason as the empty-state effect: a same-tick dispatch (from the click's
+  // own render pass) can't be handled by a stale closure. No confirmation
+  // toast: the handoff is a direct result of the user's own click, not a
+  // surprise the app needs to explain.
   useEffect(() => {
-    const handleSidebarHandoffRequest = () => {
-      // Confirmation toast lives here, not in requestSidebarHandoff() itself:
-      // dispatchEvent succeeds whether or not this listener is even attached
-      // (e.g. FullScreenPanel already unmounted in the mode/mount desync
-      // window documented in full-screen-autodock.ts), so only a real
-      // handleExitToSidebar completion earns the "switched to sidebar" message.
-      void handleExitToSidebarRef.current('content_requires_grafana_ui').then(() => {
-        getAppEvents().publish({
-          type: 'alert-info',
-          payload: [t('panelMode.sidebarHandoffTitle', 'Switched to the sidebar so you can complete this step')],
-        });
-      });
+    const handleSidebarHandoffRequest = (event: Event) => {
+      const targetPath = extractTargetPathFromEventDetail((event as CustomEvent<unknown>).detail);
+      void handleExitToSidebarRef.current('content_requires_grafana_ui', targetPath);
     };
     document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleSidebarHandoffRequest);
     return () => {

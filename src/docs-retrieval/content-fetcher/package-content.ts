@@ -94,6 +94,7 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
     // already doing double duty as the title fallback above.
     const description = resolution.manifest?.description !== title ? resolution.manifest?.description : undefined;
     const estimatedMinutes = resolution.manifest?.estimatedMinutes;
+    const startingLocation = resolution.manifest?.startingLocation;
 
     milestones.push({
       number,
@@ -102,6 +103,7 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
       isActive: false,
       ...(description != null && { description }),
       ...(typeof estimatedMinutes === 'number' && { estimatedMinutes }),
+      ...(typeof startingLocation === 'string' && { startingLocation }),
       ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
     });
   }

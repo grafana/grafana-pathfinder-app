@@ -1,8 +1,11 @@
 /**
- * Tests for the full-screen sidebar handoff triggered by milestone-to-milestone
- * navigation (`loadDocsTabContent`) — reclassifying newly-loaded content and
- * handing off to the sidebar before the user ever clicks into it, rather than
- * relying solely on the click-triggered guard in the interactive engine.
+ * Regression guard: full-screen surface reclassification used to happen
+ * proactively in `loadDocsTabContent` the moment a newly-loaded milestone
+ * turned out to need the live Grafana UI — before the user clicked anything.
+ * That's been replaced by the click-triggered handoff in
+ * `interactive-engine/interactive.hook.ts` (see
+ * `interactive.hook.test.ts`); loading content in full screen must never, by
+ * itself, dispatch a sidebar handoff anymore.
  */
 
 // ---------------------------------------------------------------------------
@@ -11,11 +14,9 @@
 
 const mockLoadDocsTabContentResult = jest.fn();
 const mockGetMode = jest.fn(() => 'sidebar');
-const mockRequestSidebarHandoff = jest.fn();
-const mockLoggerWarn = jest.fn();
 
 jest.mock('../../lib/logging', () => ({
-  logger: { error: jest.fn(), warn: (...args: unknown[]) => mockLoggerWarn(...args), info: jest.fn() },
+  logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn() },
 }));
 
 jest.mock('@grafana/scenes', () => {
@@ -146,7 +147,6 @@ jest.mock('../../lib/telemetry', () => ({
 
 jest.mock('../../global-state/panel-mode', () => ({
   panelModeManager: { getMode: () => mockGetMode(), setMode: jest.fn() },
-  requestSidebarHandoff: (...args: unknown[]) => mockRequestSidebarHandoff(...args),
 }));
 
 jest.mock('../LearningPaths', () => ({
@@ -255,6 +255,7 @@ jest.mock(
 // ---------------------------------------------------------------------------
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import { REQUEST_SIDEBAR_HANDOFF_EVENT } from '../../lib/event-names';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -272,12 +273,6 @@ function makeContentResult(guide: { id: string; title: string; blocks: unknown[]
   };
 }
 
-const NON_INTERACTIVE_GUIDE = {
-  id: 'guide-1',
-  title: 'Milestone',
-  blocks: [{ type: 'markdown', content: 'Just reading.' }],
-};
-
 const INTERACTIVE_GUIDE = {
   id: 'guide-1',
   title: 'Milestone',
@@ -288,90 +283,29 @@ const INTERACTIVE_GUIDE = {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('CombinedLearningJourneyPanel — full-screen sidebar handoff on navigation', () => {
+describe('CombinedLearningJourneyPanel — loading content in full screen no longer proactively hands off', () => {
+  let dispatchEventSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetMode.mockReturnValue('sidebar');
+    mockGetMode.mockReturnValue('fullscreen');
+    dispatchEventSpy = jest.spyOn(document, 'dispatchEvent');
   });
 
-  it('hands off to the sidebar when a newly-loaded milestone is interactive and the surface is full screen', async () => {
-    mockGetMode.mockReturnValue('fullscreen');
+  afterEach(() => {
+    dispatchEventSpy.mockRestore();
+  });
+
+  it('does not dispatch REQUEST_SIDEBAR_HANDOFF_EVENT merely from loading Grafana-UI-requiring content in full screen', async () => {
     mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult(INTERACTIVE_GUIDE));
     const panel = new CombinedLearningJourneyPanel();
 
     await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(mockRequestSidebarHandoff).toHaveBeenCalledTimes(1);
-  });
-
-  it('does NOT hand off when the newly-loaded milestone is non-interactive, even in full screen', async () => {
-    mockGetMode.mockReturnValue('fullscreen');
-    mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult(NON_INTERACTIVE_GUIDE));
-    const panel = new CombinedLearningJourneyPanel();
-
-    await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(mockRequestSidebarHandoff).not.toHaveBeenCalled();
-  });
-
-  it('does NOT hand off for interactive content when already in the sidebar', async () => {
-    mockGetMode.mockReturnValue('sidebar');
-    mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult(INTERACTIVE_GUIDE));
-    const panel = new CombinedLearningJourneyPanel();
-
-    await panel.openDocsPage('bundled:connections-guide', 'Test Guide');
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(mockRequestSidebarHandoff).not.toHaveBeenCalled();
-  });
-
-  it('does not throw, does not hand off, and does not log when content is plain non-JSON (e.g. a legacy HTML doc)', async () => {
-    mockGetMode.mockReturnValue('fullscreen');
-    mockLoadDocsTabContentResult.mockResolvedValue({
-      content: {
-        url: 'https://grafana.com/docs/some-page/',
-        type: 'docs',
-        content: '<html><body>Not a guide</body></html>',
-        metadata: {},
-        lastFetched: new Date().toISOString(),
-      },
-    });
-    const panel = new CombinedLearningJourneyPanel();
-
-    await expect(panel.openDocsPage('https://grafana.com/docs/some-page/', 'Test Guide')).resolves.not.toThrow();
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(mockRequestSidebarHandoff).not.toHaveBeenCalled();
-    expect(mockLoggerWarn).not.toHaveBeenCalled();
-  });
-
-  // Regression: requiresGrafanaUi recurses through blocks/steps unguarded, so
-  // classifying unvalidated JSON risks a thrown exception instead of a
-  // classification — validateGuideFromString must gate it, same as
-  // prepareGuideLaunch does for the initial-launch classification.
-  it('does not throw, does not hand off, and logs a warning when content is JSON but fails guide validation', async () => {
-    mockGetMode.mockReturnValue('fullscreen');
-    mockLoadDocsTabContentResult.mockResolvedValue({
-      content: {
-        url: 'bundled:connections-guide/content.json',
-        type: 'interactive',
-        // Valid JSON, but not guide-shaped: no id/title, blocks is a string.
-        content: JSON.stringify({ blocks: 'not-an-array' }),
-        metadata: {},
-        lastFetched: new Date().toISOString(),
-      },
-    });
-    const panel = new CombinedLearningJourneyPanel();
-
-    await expect(panel.openDocsPage('bundled:connections-guide', 'Test Guide')).resolves.not.toThrow();
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(mockRequestSidebarHandoff).not.toHaveBeenCalled();
-    expect(mockLoggerWarn).toHaveBeenCalledWith(
-      '[DocsPanel] Could not classify newly-loaded content for full-screen handoff',
-      expect.objectContaining({ url: 'bundled:connections-guide' })
+    const handoffDispatches = dispatchEventSpy.mock.calls.filter(
+      ([event]) => (event as Event).type === REQUEST_SIDEBAR_HANDOFF_EVENT
     );
+    expect(handoffDispatches).toHaveLength(0);
   });
 });

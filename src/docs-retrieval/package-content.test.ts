@@ -608,6 +608,30 @@ describe('resolvePackageMilestones', () => {
     expect(result[1]!.estimatedMinutes).toBeUndefined();
   });
 
+  it("surfaces the manifest's author-provided startingLocation, and omits it when absent", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title for ${id}`, blocks: [] },
+          manifest:
+            id === 'located'
+              ? { id, type: 'guide', startingLocation: '/connections' }
+              : { id, type: 'guide' /* no startingLocation authored */ },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['located', 'unlocated']);
+    expect(result[0]!.startingLocation).toBe('/connections');
+    expect(result[1]!.startingLocation).toBeUndefined();
+  });
+
   it('falls back to description then ID when content title is missing', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockResolvedValue({

@@ -6,7 +6,7 @@
  * event as floating, and round-trip pendingGuide / priorPath handoffs.
  */
 
-import { panelModeManager, requestSidebarHandoff } from './panel-mode';
+import { panelModeManager, requestSidebarHandoffAndWait } from './panel-mode';
 import { StorageKeys } from '../lib/storage-keys';
 import { REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
 
@@ -399,23 +399,60 @@ describe('panelModeManager', () => {
     });
   });
 
-  describe('requestSidebarHandoff', () => {
-    it('dispatches REQUEST_SIDEBAR_HANDOFF_EVENT on document', () => {
+  describe('requestSidebarHandoffAndWait', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('dispatches REQUEST_SIDEBAR_HANDOFF_EVENT on document with the given targetPath', () => {
       const handler = jest.fn();
       document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handler);
       try {
-        requestSidebarHandoff();
+        void requestSidebarHandoffAndWait({ targetPath: '/explore' });
         expect(handler).toHaveBeenCalledTimes(1);
+        const event = handler.mock.calls[0][0] as CustomEvent<{ targetPath?: string }>;
+        expect(event.detail).toEqual({ targetPath: '/explore' });
       } finally {
         document.removeEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handler);
       }
+    });
+
+    it('resolves once pathfinder-sidebar-mounted fires and the settle delay elapses', async () => {
+      const promise = requestSidebarHandoffAndWait();
+      window.dispatchEvent(new CustomEvent('pathfinder-sidebar-mounted'));
+      jest.advanceTimersByTime(300);
+      await expect(promise).resolves.toBeUndefined();
+    });
+
+    // Regression test: handleExitToSidebar can fall back to floating mode
+    // (when another plugin owns the extension sidebar), which dispatches
+    // 'pathfinder-panel-mounted' on `document`, never 'pathfinder-sidebar-mounted'
+    // on `window`. Before this fix, that meant every floating fallback burned
+    // the full 3s safety timeout instead of resolving on the real mount.
+    it('resolves once pathfinder-panel-mounted fires (the floating-mode mount signal), without waiting for the safety timeout', async () => {
+      const promise = requestSidebarHandoffAndWait();
+      document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted'));
+      jest.advanceTimersByTime(300);
+      await expect(promise).resolves.toBeUndefined();
+      // Confirms this resolved via the mount event, not the 3s safety timeout.
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('resolves via the safety timeout when pathfinder-sidebar-mounted never fires', async () => {
+      const promise = requestSidebarHandoffAndWait();
+      jest.advanceTimersByTime(3000);
+      await expect(promise).resolves.toBeUndefined();
     });
 
     it('does not publish a confirmation toast itself — dispatchEvent cannot tell it a listener actually reacted', () => {
       // A listener-free dispatch (nobody mounted to handle it) must not still
       // report success; only the real listener, once its handoff completes,
       // may do that. See FullScreenPanel.tsx's handleSidebarHandoffRequest.
-      requestSidebarHandoff();
+      void requestSidebarHandoffAndWait();
       expect(publishMock).not.toHaveBeenCalled();
     });
   });

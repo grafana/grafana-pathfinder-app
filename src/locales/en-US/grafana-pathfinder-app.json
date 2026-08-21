@@ -104,9 +104,6 @@
     "privatePathsDescription": "Paths published for your organization",
     "subtitle": "Track your progress, earn badges, and master Grafana"
   },
-  "panelMode": {
-    "sidebarHandoffTitle": "Switched to the sidebar so you can complete this step"
-  },
   "userProfileBar": {
     "allComplete": "All paths complete!",
     "allCompleteTooltip": "You've completed every learning path — nice work!",
