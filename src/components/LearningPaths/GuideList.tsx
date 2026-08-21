@@ -11,13 +11,15 @@ export interface GuideListProps {
   isLoading?: boolean;
   className?: string;
   /**
-   * Whether the current row's "click to start" affordance and
-   * `data-journey-start` contract apply here. Only the cover page's own
-   * `contentRef` subtree has a click handler (link-handler.hook.ts) that
-   * reacts to `data-journey-start` — GuideList also renders inside
+   * Whether the current row's cover-page-only treatment applies here: the
+   * "click to start" affordance/`data-journey-start` contract, the accent
+   * card background, the play icon, and the "Up next" label. Only the cover
+   * page's own `contentRef` subtree has a click handler (link-handler.hook.ts)
+   * that reacts to `data-journey-start` — GuideList also renders inside
    * LearningPathCard on My Learning, a separate tree with no such listener,
    * where the row would otherwise look clickable (cursor + accent) but do
-   * nothing on click. Defaults to `false` so a caller must opt in.
+   * nothing on click, and where the richer cover-page chrome was never
+   * intended to appear. Defaults to `false` so a caller must opt in.
    */
   enableCurrentRowLink?: boolean;
 }
@@ -39,7 +41,7 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
             className={cx(
               styles.guideItem,
               guide.isCurrent && styles.guideItemCurrent,
-              guide.isCurrent && styles.guideItemCurrentCard,
+              guide.isCurrent && enableCurrentRowLink && styles.guideItemCurrentCard,
               guide.isCurrent && enableCurrentRowLink && styles.guideItemCurrentClickable,
               guide.locked && styles.guideItemLocked,
               guide.description && styles.guideItemWithDescription
@@ -62,15 +64,16 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
               className={cx(
                 styles.guideIconBadge,
                 guide.completed && styles.guideIconBadgeCompleted,
-                guide.isCurrent && styles.guideIconBadgeCurrent,
-                (guide.locked || (!guide.completed && !guide.isCurrent)) && styles.guideIconBadgeLocked
+                guide.isCurrent && enableCurrentRowLink && styles.guideIconBadgeCurrent,
+                (guide.locked || (!guide.completed && !(guide.isCurrent && enableCurrentRowLink))) &&
+                  styles.guideIconBadgeLocked
               )}
             >
               {guide.completed ? (
                 <Icon name="check" size="md" />
               ) : guide.locked ? (
                 <Icon name="lock" size="md" />
-              ) : guide.isCurrent ? (
+              ) : guide.isCurrent && enableCurrentRowLink ? (
                 <Icon name="play" size="md" />
               ) : (
                 <Icon name="circle" size="md" />
@@ -92,7 +95,9 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
                 </span>
               )}
             </span>
-            {guide.isCurrent && <span className={styles.guideUpNext}>{t('coverPage.upNext', 'Up next')}</span>}
+            {guide.isCurrent && enableCurrentRowLink && (
+              <span className={styles.guideUpNext}>{t('coverPage.upNext', 'Up next')}</span>
+            )}
           </div>
         ))
       )}

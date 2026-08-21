@@ -208,7 +208,9 @@ const packageMetadataSchemaFields = {
   type: PackageTypeSchema,
   title: z.string().optional(),
   description: z.string().optional(),
-  estimatedMinutes: z.number().positive().optional(),
+  /** Same graceful-degrade as ManifestJsonObjectSchema's field above — a bad
+   * value drops only this field instead of failing the whole repository entry. */
+  estimatedMinutes: z.number().positive().optional().catch(undefined),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
   startingLocation: z.string().optional(),

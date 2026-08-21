@@ -21,8 +21,8 @@ const guides: PathGuide[] = [
 ];
 
 describe('GuideList', () => {
-  it('renders a row per guide: check when completed, play when current, circle when pending, lock when locked', () => {
-    render(<GuideList guides={guides} />);
+  it('renders a row per guide: check when completed, play when current, circle when pending, lock when locked (cover-page treatment)', () => {
+    render(<GuideList guides={guides} enableCurrentRowLink />);
 
     expect(screen.getByText('First module')).toBeInTheDocument();
     expect(screen.getByText('Second module')).toBeInTheDocument();
@@ -34,6 +34,19 @@ describe('GuideList', () => {
     expect(document.querySelectorAll('[data-icon="circle"]')).toHaveLength(1);
     expect(document.querySelectorAll('[data-icon="lock"]')).toHaveLength(1);
     expect(screen.getByText('Locked')).toBeInTheDocument();
+  });
+
+  // Regression test (Cursor Bugbot, "Cover chrome leaks into cards"):
+  // the play icon, accent card background, and "Up next" label are cover-page
+  // treatment, gated by enableCurrentRowLink — same as the click affordance.
+  // LearningPathCard on My Learning renders GuideList without that flag, so
+  // its current row must fall back to a plain circle with no extra chrome.
+  it('shows a plain circle (not play) for the current row by default, with no "Up next" label', () => {
+    render(<GuideList guides={guides} />);
+
+    expect(document.querySelectorAll('[data-icon="play"]')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-icon="circle"]')).toHaveLength(2);
+    expect(screen.queryByText('Up next')).not.toBeInTheDocument();
   });
 
   it('marks only the current row as a journey-start target, when it has a url and enableCurrentRowLink is set', () => {
@@ -83,8 +96,8 @@ describe('GuideList', () => {
     expect(row).toHaveTextContent('Locked');
   });
 
-  it('shows an "Up next" label on the current row only', () => {
-    render(<GuideList guides={guides} />);
+  it('shows an "Up next" label on the current row only, when enableCurrentRowLink is set', () => {
+    render(<GuideList guides={guides} enableCurrentRowLink />);
 
     expect(screen.getByText('Up next')).toBeInTheDocument();
     expect(screen.getByText('Second module').closest('div')).toHaveTextContent('Up next');

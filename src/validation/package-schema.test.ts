@@ -501,6 +501,23 @@ describe('RepositoryEntrySchema', () => {
     const result = RepositoryEntrySchema.safeParse({ path: 'foo/' });
     expect(result.success).toBe(false);
   });
+
+  // Regression test (Cursor Bugbot, "Repository schema drops bad estimates"):
+  // packageMetadataSchemaFields.estimatedMinutes lacked the same .catch(undefined)
+  // ManifestJsonObjectSchema's own estimatedMinutes has, so a malformed value in
+  // repository.json failed the whole entry instead of just dropping the field.
+  it('should drop a malformed estimatedMinutes instead of failing the whole entry', () => {
+    const result = RepositoryEntrySchema.safeParse({
+      path: 'welcome-to-grafana/',
+      type: 'guide',
+      estimatedMinutes: 'not-a-number',
+    });
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.estimatedMinutes).toBeUndefined();
+  });
 });
 
 // ============ Graph Schemas ============

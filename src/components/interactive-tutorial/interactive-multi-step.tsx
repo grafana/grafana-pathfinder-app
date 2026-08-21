@@ -407,7 +407,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           // Execute the action (show first, then do)
           try {
             // Show mode (highlight what will be acted upon, with comment if available)
-            await executeInteractiveAction({ ...action, buttonType: 'show' });
+            await executeInteractiveAction({ ...action, buttonType: 'show', fullScreenFallbackLocation });
 
             // Delay between show and do with cancellation check
             for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
