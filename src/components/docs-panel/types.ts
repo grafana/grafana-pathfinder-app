@@ -140,7 +140,7 @@ export interface DocsPanelContentProps {
 
   // Content and rendering
   stableContent: RawContent | null;
-  contentRef: RefObject<HTMLDivElement>;
+  contentRef: RefObject<HTMLDivElement | null>;
 
   // Interactive progress state
   progressKey: string;

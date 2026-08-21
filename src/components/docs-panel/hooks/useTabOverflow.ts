@@ -18,14 +18,14 @@ import { LearningJourneyTab } from '../../../types/content-panel.types';
 import { computeTabVisibility } from '../utils';
 
 export interface UseTabOverflowResult {
-  tabBarRef: React.RefObject<HTMLDivElement>;
-  tabListRef: React.RefObject<HTMLDivElement>;
+  tabBarRef: React.RefObject<HTMLDivElement | null>;
+  tabListRef: React.RefObject<HTMLDivElement | null>;
   visibleTabs: LearningJourneyTab[];
   overflowedTabs: LearningJourneyTab[];
   isDropdownOpen: boolean;
   setIsDropdownOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  dropdownRef: React.RefObject<HTMLDivElement>;
-  chevronButtonRef: React.RefObject<HTMLButtonElement>;
+  dropdownRef: React.RefObject<HTMLDivElement | null>;
+  chevronButtonRef: React.RefObject<HTMLButtonElement | null>;
   dropdownOpenTimeRef: React.MutableRefObject<number>;
 }
 

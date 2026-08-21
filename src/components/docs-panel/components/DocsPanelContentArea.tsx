@@ -86,7 +86,7 @@ export interface DocsPanelContentAreaProps {
   progressKey: string | null;
   alignmentPendingValue: { isPending: boolean; startingLocation: string | null };
 
-  contentRef: React.RefObject<HTMLDivElement>;
+  contentRef: React.RefObject<HTMLDivElement | null>;
   handleResetGuide: (progressKey: string, activeTab: LearningJourneyTab) => Promise<void>;
   reloadActiveTab: (tab: LearningJourneyTab) => void;
   restoreScrollPosition: () => void;
