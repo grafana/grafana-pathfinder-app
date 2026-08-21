@@ -43,7 +43,7 @@ export const SERVER_INSTRUCTIONS: string = [
   // Session-mode primer. Reaches the model before tool selection so agents
   // do not default to threading full artifacts back through every mutation.
   // Detailed shape/rules live in `pathfinder_authoring_start`.
-  'Authoring is session-token based. `pathfinder_create_package` mints a `sessionToken`; pass `{sessionToken}` on every subsequent mutation, read, and finalize call. Mutation responses are ACKS (`{sessionToken, generation, summary, outcome}`) — they do NOT include the artifact body. Use the `summary` tree for navigation; call `pathfinder_list_blocks` / `pathfinder_get_block` / `pathfinder_get_manifest_session` / `pathfinder_inspect` for explicit on-demand reads. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session. Stateless `{artifact}` mode is an OSS / airgap fallback — do not use it when a `sessionToken` is available.',
+  'Authoring is session-token based. `pathfinder_create_package` mints a `sessionToken`; pass `{sessionToken}` on every subsequent mutation, read, and finalize call. Mutation responses are ACKS (`{sessionToken, generation, summary, outcome}`) — they do NOT include the artifact body. Use the `summary` tree for navigation; call `pathfinder_read_session` / `pathfinder_inspect` for explicit on-demand reads. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session. Stateless `{artifact}` mode is an OSS / airgap fallback — do not use it when a `sessionToken` is available.',
   '',
   'Two rules that bite agents in production — observe them before writing blocks:',
   '',
