@@ -4,12 +4,13 @@ The `pathfinder-cli` is a command-line interface for working with interactive JS
 
 - **validate** — Validates guide definitions and package directories against schemas and best practices
 - **build-repository** — Generates `repository.json` from a package tree
+- **build-stats** — Writes the computed completion block stats into every package's `manifest.json`
 - **build-graph** — Generates a D3-compatible dependency graph from repository indexes
 - **build-snippets** — Generates a snippet catalog (`index.json`) from a directory of snippet bodies
 - **schema** — Exports Zod validation schemas as JSON Schema for cross-language consumers
 - **e2e** — Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
 
-This document covers the `validate`, `build-repository`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
+This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
 
 ---
 
@@ -271,7 +272,93 @@ The command walks the directory tree starting at `<root>`. Any subdirectory at a
 
 ### Output format
 
-The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.). The output is formatted with Prettier using the project's configuration.
+The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.). Every `build-*` command writes JSON through the same formatter, so the same Prettier-where-available caveat applies — see [determinism](#determinism).
+
+---
+
+## Build-stats command
+
+Computes the block stats that completion tracking uses as its denominator and writes them into each package's `manifest.json` under a `stats` key. Authors never assert these numbers, so they cannot be wrong.
+
+The arithmetic is not implemented here. It lives in `src/lib/guide-stats` (Tier 1, pure, dependency-free) so the CLI, an upload script, the plugin frontend, and a Go port all inherit one rule. This command is argument parsing, file IO, and ordering.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js build-stats <root> [options]
+```
+
+### Arguments
+
+- `<root>` (required): Root directory containing package directories. Discovery is identical to `build-repository`.
+
+### Options
+
+- `-e, --exclude <paths...>`: Path(s) to exclude from the scan, relative to `<root>`. Excluded trees are not descended into.
+- `--check`: Report packages whose committed stats have drifted from their content and exit non-zero. Writes nothing. A `<root>` holding no packages at all is an error under `--check` — a gate pointed at a moved root would otherwise report success having verified nothing.
+
+### Examples
+
+**Stamp every manifest under a package tree, then index it:**
+
+```bash
+node dist/cli/cli/index.js build-stats packages/
+node dist/cli/cli/index.js build-repository packages/ -o dist/repository.json
+```
+
+Run `build-stats` first. Today the ordering is inert: `build-repository` builds each `RepositoryEntry` field by field and never assigns `stats`, so `repository.json` carries none either way. It becomes load-bearing once the manifest-extension passthrough of PR #1662 lands, after which `build-repository` forwards unknown top-level manifest keys — `stats` among them — into `repository.json`, and an index built before the manifests are stamped omits stats for every package. Ordering the two this way now costs nothing and is already correct for after.
+
+**Fail CI when a committed manifest is stale:**
+
+```bash
+node dist/cli/cli/index.js build-stats packages/ --check
+```
+
+There are convenience npm scripts for the bundled tree:
+
+```bash
+npm run stats:build   # Stamp every manifest under src/bundled-interactives
+npm run stats:check   # Fail if a committed manifest's stats have drifted
+```
+
+### What gets written
+
+The `stats` key holds a fixed set of numbers in a fixed key order, so unchanged content re-stamps byte-identically:
+
+- `version` — the stamp's rule version, bumped when the counting rule or these fields change. It is what lets a reader tell an old-rule stamp from a new-rule one; it says nothing about whether the guide changed.
+- `blockCount` — the completion denominator.
+- `sectionCount` — section containers, reported for authoring insight and not part of the denominator.
+- `completableBlockCount` — counted blocks that can emit completion evidence.
+- `finalCompletablePosition` — position of the last completable block, `0` when there is none.
+
+### What gets counted
+
+- Every block counts once, except containers (`section`, `assistant`, `collapsible`), which contribute their contents and nothing of their own. A section holding five blocks contributes five, not six.
+- `multistep` and `guided` count as exactly one block each. Their inner steps are deliberately outside the denominator.
+- `conditional` counts as one block, and neither branch is descended into. Descending into both would put blocks in the denominator the reader can never see.
+- `snippet-ref` counts as one block, and its resolved contents inherit that single position. `src/snippet-engine/inline-refs.ts` splices the resolved blocks in before the parser sees the guide, so the stamped denominator is the **pre-inlining** count and a consumer must index the pre-inlining tree. Mapping an inlined block back to its ref is not an option today: the splice carries no provenance, so there is nothing to map back from.
+- Completion is `n / total` with no special case. A "Do it" yields 100% only when its block is the guide's last counted one — `finalCompletablePosition === blockCount`. Anything less means the guide needs a "Mark as complete" button at its foot, and that field is the signal for it.
+- A `path` or `journey` rolls up as its own body followed by its milestones in declared order. Milestones are measured before their parents.
+
+### Strictness
+
+A milestone missing from the tree, and a manifest that fails schema validation, both abort the run with a non-zero exit and nothing written. That is knowingly stricter than the sibling tooling — `build-graph` warns on an unresolvable milestone, `build-repository` degrades a manifest schema failure to a warning, and `docs-retrieval`'s package content keeps an unresolvable milestone as a locked placeholder. Those tolerate a partial tree at read time; this command's whole purpose is to produce a denominator that is never wrong, and a rollup silently missing a milestone would publish one that is. No manifest is written until every package in the tree has resolved, so a failed run leaves the tree completely unstamped rather than half-stamped.
+
+One consequence worth knowing before putting `build-stats` ahead of `build-repository` in a pipeline that uses `--exclude`. This one is true today, independently of #1662: if an excluded subtree holds a package that a path lists as a milestone, that milestone is missing from the tree, so `build-stats` aborts and leaves _unrelated_ packages unstamped too. `build-repository` with the same `--exclude` omits the entry and succeeds. The strictness is deliberate, but it converts a tree shape the sibling tolerates into a hard stop.
+
+A duplicated milestone, and a milestone reachable through two parents, are both errors as well. Summing a package twice inflates the denominator, and because positions are first-occurrence-wins the second copy's blocks can never be evidenced — so the reader would be permanently stuck below 100%.
+
+### `stats.blockCount` is not `inspect`'s `blockCount`
+
+`pathfinder-cli inspect --format json` also emits a `blockCount`, counted over the whole tree — containers included, conditional branches descended. `manifest.stats.blockCount` is the completion denominator and counts neither. The two therefore disagree by design on the same guide: `inspect` answers "how many blocks are in this file", `stats` answers "what is the reader measured against".
+
+### Determinism
+
+Re-running on unchanged content is a byte-for-byte no-op: the command compares the computed stats against what is on disk and skips the write when they match. Stats keys are emitted in a fixed order and carry no timestamps. An existing `stats` key is replaced in place, so a manifest's authored key order survives a rewrite.
+
+Output is formatted with Prettier using the project's configuration wherever Prettier resolves — a repo checkout, or any environment that has it installed. The published CLI image does not: Prettier is a devDependency and is absent from `RUNTIME_DEPS`, so every `build-*` command degrades to two-space `JSON.stringify` output with a trailing newline rather than failing. Both forms are valid JSON and `--check` compares stats field by field, so neither reads as drift against the other; a tree stamped from the image and then re-stamped locally will show a formatting-only diff, though.
+
+The run that first stamps a manifest can re-expand nested objects an author had collapsed onto one line — both forms are Prettier-clean, and the file is stable from that run onward.
 
 ---
 
@@ -450,7 +537,7 @@ Consumers in other languages should reimplement these rules in their own validat
 
 ## CI workflow example with package validation
 
-This GitHub Actions snippet validates packages and checks `repository.json` freshness — the pattern used in this repository's `.github/workflows/ci.yml`:
+This GitHub Actions snippet validates packages and checks `repository.json` and manifest-stats freshness — the pattern used in this repository's `.github/workflows/ci.yml`:
 
 ```yaml
 validate-packages:
@@ -477,6 +564,9 @@ validate-packages:
 
     - name: Check repository.json freshness
       run: npm run repository:check
+
+    - name: Check manifest stats freshness
+      run: npm run stats:check
 ```
 
-The `repository:check` script rebuilds `repository.json` to a temp file and diffs it against the committed version. If the committed file is stale (a manifest was changed without rebuilding), the diff fails and CI reports an error.
+The `repository:check` script rebuilds `repository.json` to a temp file and diffs it against the committed version. If the committed file is stale (a manifest was changed without rebuilding), the diff fails and CI reports an error. `stats:check` does the same job for the `stats` key stamped into each `manifest.json`, without writing anything.

@@ -127,7 +127,7 @@ The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was remove
 
 Each layer owns its own types — there is no central re-export module. Import directly from the authoritative location:
 
-- `StepCompletionEntry`, `GuideProgress`, `UseStepCompletionResult` — `src/global-state/completion-store.ts`
+- `StepCompletionEntry`, `GuideProgress`, `UseStepCompletionResult` — `src/global-state/completion-store.ts`. `src/lib/guide-stats` exports a same-named `GuideProgress` for the position-based completion denominator; the two are distinct models, so import the one for the layer you are in.
 - `ProgressEventDetail` — `src/global-state/progress-events.ts`
 - `CompletionReason` — `src/requirements-manager` (barrel)
 - `InteractiveElementData`, `InteractiveActionType` — `src/types/interactive.types.ts`

@@ -37,6 +37,9 @@ COPY src/cli ./src/cli
 # here is brittle because schema files transitively import siblings.
 COPY src/types ./src/types
 COPY src/validation ./src/validation
+# src/lib/guide-stats is the canonical block-count computation the
+# build-stats command calls.
+COPY src/lib/guide-stats ./src/lib/guide-stats
 
 RUN npm ci --no-audit --no-fund
 
