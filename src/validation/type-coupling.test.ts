@@ -20,6 +20,7 @@ import {
   KNOWN_FIELDS,
   type InferredJsonGuide,
 } from '../types/json-guide.schema';
+import { ManifestJsonObjectSchema } from '../types/package.schema';
 import { z } from 'zod';
 
 describe('Type Coupling: TypeScript <-> Zod', () => {
@@ -202,5 +203,11 @@ describe('KNOWN_FIELDS sync', () => {
 
   it('should match step schema fields', () => {
     verifyFieldsFromEffects(JsonStepSchema, '_step');
+  });
+
+  // `_manifest` mirrors a schema in a different file, which is how it silently
+  // fell a key behind when `stats` was added to the manifest schema.
+  it('should match manifest schema fields', () => {
+    verifyFields(ManifestJsonObjectSchema, '_manifest');
   });
 });

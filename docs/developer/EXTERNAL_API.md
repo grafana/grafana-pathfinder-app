@@ -349,11 +349,13 @@ anything reads that location:
 `startingLocation` takes effect wherever the manifest reaches it with
 `additionalFields` intact.
 
-The rule is about the ROUTE, not the guide: only the `backend-guide:` loader
-(`src/docs-retrieval/content-fetcher/backend-guide.ts`) spreads `spec.manifest`
-through unchanged, so only launches that go through it can align. Known routes
-today — not a closed list, so check the launch path rather than assuming a new
-one behaves like these:
+The rule is about the ROUTE, not the guide, and two things have to hold. The
+manifest has to reach the reader with `additionalFields` intact — only the
+`backend-guide:` loader (`src/docs-retrieval/content-fetcher/backend-guide.ts`)
+spreads `spec.manifest` through unchanged — and nothing earlier in the launch
+must supply a manifest that takes precedence over it. Known routes today — not a
+closed list, so check the launch path rather than assuming a new one behaves like
+these:
 
 | Launch route                                 | Gets the prompt? |
 | -------------------------------------------- | ---------------- |
@@ -363,13 +365,32 @@ one behaves like these:
 | Path **member** opened from a path card      | No               |
 | Path **cover page** opened from a path card  | No               |
 
-Neither path route works, for the same single reason: both take their manifest
-from the catalogue proxy, whose `customGuideManifest`
-(`pkg/plugin/custom_guide_repository_client.go`) declares no `additionalFields`,
-so `encoding/json` drops the key at the wire boundary before the reader ever sees
-it. `packageInfoForPath` builds the cover page's `packageManifest` from that same
-proxy entry, so a cover is no better off than a member. Promoting
-`startingLocation` to a typed CUE field is the fix for both.
+Both path rows read "No", but for two different reasons, and only one of them is
+a transport problem.
+
+**Path cover page — the value never arrives.** `packageInfoForPath`
+(`src/components/docs-panel/CustomGuidesSection.tsx`) builds the cover's
+`packageManifest` from the catalogue-proxy entry, and that proxy's
+`customGuideManifest` (`pkg/plugin/custom_guide_repository_client.go`) declares
+no `additionalFields`, so `encoding/json` drops the key at the wire boundary
+before the reader ever sees it. Promoting `startingLocation` to a typed CUE field
+is the fix for this one.
+
+**Path member — the value arrives intact and is then shadowed.** `openMember`
+opens `member.url`, which `resolvePackageMilestones` takes from the resolution's
+`contentUrl` — `backend-guide:<memberId>` for an App Platform package
+(`src/package-engine/app-platform-resolver.ts`). So the member's own resource is
+fetched through the `backend-guide:` loader, whose `buildLoaderManifest` spreads
+`spec.manifest` through with `additionalFields` intact. The value is at the
+reader. It is then discarded at the panel seam: `openMember` also passes the
+PATH's `packageInfo`, and `docs-panel.tsx` reads `packageInfo?.packageManifest`
+ahead of `fetchedContent.metadata.packageManifest`, so the stripped catalogue
+manifest — truthy, and therefore never falling back — wins over the complete
+one. The CUE
+promotion does NOT fix this: the problem is precedence, not transport. Worse,
+once the path's `startingLocation` is a typed field it would win at that same
+seam and prompt a member towards the cover's entry page. Tracked as
+[#1681](https://github.com/grafana/grafana-pathfinder-app/issues/1681).
 
 Promoting a key out of `additionalFields` into a real CUE field is additive and
 safe, and is the fix for the inert rows generally.

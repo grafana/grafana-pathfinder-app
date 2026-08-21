@@ -1343,6 +1343,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'replaces',
     'targeting',
     'testEnvironment',
+    'stats',
   ]),
 } satisfies Record<JsonBlock['type'] | KnownFieldsMetaKey, ReadonlySet<string>>;
 
