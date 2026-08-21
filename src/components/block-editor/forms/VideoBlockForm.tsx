@@ -52,7 +52,7 @@ export function VideoBlockForm({
   const [end, setEnd] = useState(initial?.end?.toString() ?? '');
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
       const block: JsonVideoBlock = {
         type: 'video',

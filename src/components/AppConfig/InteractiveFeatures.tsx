@@ -122,7 +122,7 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setValidationErrors({});
   };
 
-  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (event: React.SubmitEvent) => {
     event.preventDefault();
 
     // Check for validation errors

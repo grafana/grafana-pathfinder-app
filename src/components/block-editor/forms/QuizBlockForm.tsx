@@ -276,7 +276,7 @@ export function QuizBlockForm({
 
   // Form submission
   const handleSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
 
       // Parse requirements

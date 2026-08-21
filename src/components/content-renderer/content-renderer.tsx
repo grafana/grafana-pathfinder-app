@@ -108,7 +108,7 @@ interface ContentRendererProps {
   onContentReady?: () => void;
   onGuideComplete?: () => void;
   className?: string;
-  containerRef?: React.RefObject<HTMLDivElement>;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 // Style to hide default browser selection highlight
@@ -452,7 +452,7 @@ interface ContentWithVariablesProps {
   title: string;
   isNativeJson: boolean;
   onContentReady?: () => void;
-  activeRef: React.RefObject<HTMLDivElement>;
+  activeRef: React.RefObject<HTMLDivElement | null>;
   className?: string;
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;

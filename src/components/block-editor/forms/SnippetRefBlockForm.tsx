@@ -22,7 +22,7 @@ export function SnippetRefBlockForm({ initialData, onSubmit, onCancel, isEditing
   const [authorNote, setAuthorNote] = useState(initial?.authorNote ?? '');
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
       const trimmedId = snippetId.trim();
       if (!trimmedId) {

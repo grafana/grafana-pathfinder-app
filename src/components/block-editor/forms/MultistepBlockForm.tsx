@@ -52,7 +52,7 @@ export function MultistepBlockForm({
   const [skippable, setSkippable] = useState(initial?.skippable ?? false);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
 
       // Parse requirements and objectives

@@ -99,7 +99,7 @@ export function InputBlockForm({
 
   // Form submission
   const handleSubmit = useCallback(
-    (e: React.FormEvent<HTMLFormElement>) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
 
       if (inputType === 'text' && pattern.trim().length > 0 && !isValidRegexPattern(pattern.trim())) {
