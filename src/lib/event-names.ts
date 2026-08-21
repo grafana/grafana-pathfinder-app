@@ -25,11 +25,11 @@ export const REQUEST_FLOATING_GUIDE_EVENT = 'pathfinder-request-floating-guide';
 // consume listener (shared with `pathfinder-request-full-screen`).
 export const REQUEST_FULLSCREEN_GUIDE_EVENT = 'pathfinder-request-fullscreen-guide';
 
-// Dispatched by docs-panel.tsx's loadDocsTabContent when a newly-loaded
-// milestone turns out to need the live Grafana UI while in full-screen mode —
-// full screen has no live Grafana UI behind it for that content to act on.
-// Fires at milestone-load time, before the user clicks anything; surface is a
-// property of which milestone was navigated to, not of any step's action.
+// Dispatched by global-state/panel-mode.ts's requestSidebarHandoffAndWait
+// when the user clicks "Do it" on a step whose action needs the live Grafana
+// UI while in full-screen mode — full screen has no live Grafana UI behind it
+// for that action to act on. Fires at click time, not proactively when a
+// milestone loads: surface is a property of what the user is about to do.
 // Consumed by FullScreenPanel, which reuses its existing handleExitToSidebar.
 export const REQUEST_SIDEBAR_HANDOFF_EVENT = 'pathfinder-request-sidebar-handoff';
 

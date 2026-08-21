@@ -16,10 +16,15 @@ jest.mock('@grafana/runtime', () => ({
 
 const mockGetMode = jest.fn(() => 'sidebar');
 const mockRequestSidebarHandoffAndWait = jest.fn().mockResolvedValue(undefined);
-jest.mock('../global-state/panel-mode', () => ({
-  panelModeManager: { getMode: () => mockGetMode() },
-  requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
-}));
+jest.mock('../global-state/panel-mode', () => {
+  const { GRAFANA_DRIVING_ACTIONS } = jest.requireActual('../constants/interactive-actions');
+  return {
+    panelModeManager: { getMode: () => mockGetMode() },
+    requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
+    isGrafanaDrivingHandoffNeeded: (targetAction: string, buttonType?: 'show' | 'do') =>
+      buttonType !== 'show' && mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
+  };
+});
 
 // Mock requirements checker
 jest.mock('../requirements-manager', () => {

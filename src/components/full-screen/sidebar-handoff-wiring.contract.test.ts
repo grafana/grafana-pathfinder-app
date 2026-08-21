@@ -4,8 +4,8 @@
  * Pins the wiring shape of the full-screen sidebar-handoff and full-screen
  * relaunch event contracts: which effect owns each `document` listener, that
  * the listener reads the latest callback through a ref (not a dependency
- * array) so a same-tick automatic dispatch can't be handled by a stale
- * closure, and that add/remove use the same event name.
+ * array) so a dispatch firing in the same tick as the triggering click can't
+ * be handled by a stale closure, and that add/remove use the same event name.
  *
  * Why source-assertion (not runtime mount): `@grafana/scenes` + `@grafana/ui`
  * require a theme provider not available in the Jest environment, so
@@ -45,6 +45,19 @@ describe('full-screen sidebar-handoff and relaunch listener wiring', () => {
     expect(handlerBlock).not.toMatch(/[^.]handleExitToSidebar\(/);
   });
 
+  it('extracts targetPath through extractTargetPathFromEventDetail rather than a bare cast (regression guard)', () => {
+    // Regression guard: a bare `(event as CustomEvent<{ targetPath?: string }>).detail?.targetPath`
+    // cast has zero runtime validation — any script sharing the page can
+    // dispatch this event with a malformed detail, which would crash
+    // resolveSafeTargetPath's `.startsWith` after handleExitToSidebar already
+    // committed side effects. extractTargetPathFromEventDetail is unit-tested
+    // in resolve-safe-target-path.test.ts.
+    expect(fullScreenPanel).toContain(
+      'const targetPath = extractTargetPathFromEventDetail((event as CustomEvent<unknown>).detail);'
+    );
+    expect(fullScreenPanel).not.toMatch(/detail\?\.\s*targetPath/);
+  });
+
   it('adds and removes the same REQUEST_SIDEBAR_HANDOFF_EVENT listener', () => {
     expect(fullScreenPanel).toContain(
       'document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleSidebarHandoffRequest)'
@@ -75,7 +88,8 @@ describe('full-screen sidebar-handoff and relaunch listener wiring', () => {
     // reach locationService.push unvalidated, and a rejected/absent value must
     // still fall through to priorPath/PLUGIN_BASE_URL rather than dropping the
     // handoff entirely.
-    expect(fullScreenPanel).toContain("import { resolveSafeTargetPath } from './resolve-safe-target-path';");
+    expect(fullScreenPanel).toContain("from './resolve-safe-target-path';");
+    expect(fullScreenPanel).toMatch(/import \{[^}]*resolveSafeTargetPath[^}]*\} from '.\/resolve-safe-target-path';/);
     expect(fullScreenPanel).toContain(
       'const safeTargetPath = targetPath != null ? resolveSafeTargetPath(targetPath) : undefined;'
     );

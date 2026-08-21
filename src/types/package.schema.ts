@@ -145,7 +145,11 @@ export const ManifestJsonObjectSchema = z.object({
   language: z.string().default('en'),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
-  startingLocation: z.string().default('/'),
+  // No `.default('/')`: a schema-applied default would be indistinguishable
+  // from an author explicitly declaring `/`, and `recovery/starting-location.ts`'s
+  // alignment prompt treats any truthy value as an author-declared target —
+  // an unauthored manifest must parse to `undefined`, not a fabricated `/`.
+  startingLocation: z.string().optional(),
 
   depends: DependencyListSchema.default([]),
   recommends: DependencyListSchema.default([]),

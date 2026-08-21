@@ -5,6 +5,7 @@ import { PANEL_MODE_CHANGE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/e
 // entry-eager, and the barrel would pull the telemetry package into module.js.
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
+import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import type { RawContent } from '../types/content.types';
 import type { LaunchSource } from '../recovery';
@@ -322,9 +323,10 @@ export const panelModeManager = new PanelModeManager();
  *
  * Called the moment the user clicks "Do it" on a step whose action drives the
  * live Grafana UI while full screen is active — see the gate in
- * `interactive-engine/interactive.hook.ts`, the sole caller: surface is a
- * property of what the user is about to do, decided at that click, not
- * proactively when a milestone loads.
+ * `interactive-engine/interactive.hook.ts`, plus the same gate applied
+ * directly by `interactive-guided.tsx` and `code-block-step.tsx` for their
+ * own execution paths: surface is a property of what the user is about to
+ * do, decided at that click, not proactively when a milestone loads.
  *
  * `targetPath`, when resolved (step/milestone/course fallback chain), is
  * forwarded to `handleExitToSidebar` so the user lands somewhere the clicked
@@ -335,11 +337,8 @@ export const panelModeManager = new PanelModeManager();
  * after a safety timeout), so the caller's subsequent DOM lookup runs against
  * the destination page rather than racing the dock/navigate.
  *
- * Deliberately no confirmation toast here: `dispatchEvent` succeeds whether
- * or not a listener exists, so it can't tell us the handoff actually
- * happened (e.g. FullScreenPanel already unmounted in the documented
- * mode/mount desync window — see `full-screen-autodock.ts`). FullScreenPanel
- * publishes the toast itself, after its real exit-to-sidebar effects run.
+ * No confirmation toast: the handoff is a direct result of the user's own
+ * click, not a surprise the app needs to explain.
  */
 export function requestSidebarHandoffAndWait(options?: { targetPath?: string }): Promise<void> {
   // Mirrors GlobalSidebarState.openWithGuide's settle delay after the mount
@@ -373,4 +372,19 @@ export function requestSidebarHandoffAndWait(options?: { targetPath?: string }):
       new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT, { detail: { targetPath: options?.targetPath } })
     );
   });
+}
+
+/**
+ * Single source of truth for "does this click need the full-screen -> sidebar
+ * handoff": every caller of `requestSidebarHandoffAndWait` (the hook's own
+ * gate, `interactive-guided.tsx`, `code-block-step.tsx`) and every caller
+ * that needs to know the handoff is about to happen *before* it runs its own
+ * DOM-resolution attempt (`interactive-step.tsx`'s `executeWithLazyScroll`,
+ * which would otherwise fail fast against full screen's nonexistent Grafana
+ * DOM and never reach the gate at all) must agree on the same condition.
+ */
+export function isGrafanaDrivingHandoffNeeded(targetAction: string, buttonType?: 'show' | 'do'): boolean {
+  return (
+    buttonType !== 'show' && panelModeManager.getMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction)
+  );
 }

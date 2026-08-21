@@ -12,8 +12,7 @@ import { useGuideRequirements, RequirementsCheckOptions } from '../requirements-
 import { extractInteractiveDataFromElement } from '../lib/dom';
 import { InteractiveActionRequest, InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
-import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
-import { panelModeManager, requestSidebarHandoffAndWait } from '../global-state/panel-mode';
+import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../global-state/panel-mode';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
 import { NavigationManager } from './navigation-manager';
@@ -427,7 +426,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // handler's own resolveWithRetry budget. The target may still not be
       // there yet (navigation itself can be slow) — skipCompletionOnEmptyTarget
       // stops that from being silently reported as done.
-      if (!isShowMode && panelModeManager.getMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction)) {
+      if (isGrafanaDrivingHandoffNeeded(targetAction, buttonType)) {
         await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
         elementData.skipCompletionOnEmptyTarget = true;
       }
@@ -500,7 +499,11 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         targetAction === 'sequence' ? USER_ACTION_TIMEOUT_LONG_MS : undefined,
         {
           critical: !isShowMode,
-          outcomeFrom: () => outcomeFromSequenceRun(sequenceResult),
+          // Checked here (not just after the span closes below) so a handler
+          // that suppressed its own completion doesn't get its Faro span
+          // stamped 'ok' before the suppression is known — completionSuppressed
+          // is set synchronously inside the awaited handler, before this runs.
+          outcomeFrom: () => (elementData.completionSuppressed ? 'error' : outcomeFromSequenceRun(sequenceResult)),
         }
       );
       // A handler that suppressed its own completion (skipCompletionOnEmptyTarget)

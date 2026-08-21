@@ -1,4 +1,5 @@
 import { resolveStartingLocation } from './starting-location';
+import { ManifestJsonObjectSchema } from '../types/package.schema';
 
 // Mock the bundled index so the test does not depend on real content drift.
 jest.mock(
@@ -78,6 +79,22 @@ describe('resolveStartingLocation', () => {
 
   it('falls through to the bundled index when manifest startingLocation is empty', () => {
     const result = resolveStartingLocation('bundled:array-shape', { startingLocation: '' });
+    expect(result).toBe('/explore');
+  });
+
+  // Regression test through the REAL schema, not a hand-built fixture: a
+  // manifest that never authors startingLocation used to get schema-defaulted
+  // to '/' during parsing, which this function's `typeof === 'string'` check
+  // couldn't distinguish from an author actually declaring '/' — treating an
+  // unauthored guide as if it had a real starting location, which fed
+  // evaluateAlignment's confirmation-gated "Navigate to start this guide?"
+  // prompt for guides that never set the field. package.schema.ts no longer
+  // applies that default, so this must fall through instead.
+  it('falls through to the bundled index for a manifest that never authored startingLocation (real schema parse)', () => {
+    const parsed = ManifestJsonObjectSchema.parse({ id: 'array-shape', type: 'guide' });
+    expect(parsed.startingLocation).toBeUndefined();
+
+    const result = resolveStartingLocation('bundled:array-shape', parsed);
     expect(result).toBe('/explore');
   });
 });

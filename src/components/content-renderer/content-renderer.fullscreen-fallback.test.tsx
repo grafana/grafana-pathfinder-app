@@ -15,6 +15,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { RawContent } from '../../types/content.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { ContentRenderer } from './content-renderer';
+import { resetCompletionStoreForTests } from '../../global-state/completion-store';
 
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
@@ -28,8 +29,9 @@ jest.mock('@grafana/i18n', () => ({
 // resolution entirely for navigate/noop/popout, so this test isn't coupled
 // to jsdom's selector/visibility behavior for an unrelated concern.
 const mockExecute = jest.fn().mockResolvedValue(undefined);
+const mockButtonExecute = jest.fn().mockResolvedValue(undefined);
 jest.mock('../../interactive-engine/action-handlers', () => ({
-  ButtonHandler: jest.fn().mockImplementation(() => ({ execute: jest.fn().mockResolvedValue(undefined) })),
+  ButtonHandler: jest.fn().mockImplementation(() => ({ execute: mockButtonExecute })),
   FocusHandler: jest.fn().mockImplementation(() => ({ execute: jest.fn().mockResolvedValue(undefined) })),
   NavigateHandler: jest.fn().mockImplementation(() => ({ execute: mockExecute })),
   FormFillHandler: jest.fn().mockImplementation(() => ({ execute: jest.fn().mockResolvedValue(undefined) })),
@@ -41,6 +43,18 @@ jest.mock('../../interactive-engine/action-handlers', () => ({
   })),
   PopoutHandler: jest.fn().mockImplementation(() => ({ execute: jest.fn().mockResolvedValue(undefined) })),
 }));
+
+const mockGetMode = jest.fn<string, []>(() => 'sidebar');
+const mockRequestSidebarHandoffAndWait = jest.fn().mockResolvedValue(undefined);
+jest.mock('../../global-state/panel-mode', () => {
+  const { GRAFANA_DRIVING_ACTIONS } = jest.requireActual('../../constants/interactive-actions');
+  return {
+    panelModeManager: { getMode: () => mockGetMode() },
+    requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
+    isGrafanaDrivingHandoffNeeded: (targetAction: string, buttonType?: 'show' | 'do') =>
+      buttonType !== 'show' && mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
+  };
+});
 
 const GUIDE = {
   id: 'fullscreen-fallback-guide',
@@ -110,5 +124,71 @@ describe('fullScreenFallbackLocation reaches a rendered InteractiveStep', () => 
     await waitFor(() => expect(mockExecute).toHaveBeenCalled());
     const elementData = mockExecute.mock.calls[0]![0] as InteractiveElementData;
     expect(elementData.fullScreenFallbackLocation).toBeUndefined();
+  });
+});
+
+const BUTTON_GUIDE = {
+  id: 'fullscreen-handoff-button-guide',
+  title: 'Fullscreen handoff button guide',
+  blocks: [
+    {
+      type: 'interactive',
+      action: 'button',
+      reftarget: 'button.does-not-exist-in-fullscreen',
+      content: 'Save the thing',
+    },
+  ],
+};
+
+function renderButtonGuide(): void {
+  const raw: RawContent = {
+    content: JSON.stringify(BUTTON_GUIDE),
+    type: 'single-doc',
+    url: 'https://grafana.com/docs/guide',
+    lastFetched: '2026-08-14T00:00:00.000Z',
+    metadata: { title: 'Fullscreen handoff button guide' },
+  };
+  render(<ContentRenderer content={raw} />);
+}
+
+describe('full-screen handoff gate reaches the handler for non-navigate actions', () => {
+  beforeEach(() => {
+    mockButtonExecute.mockClear();
+    mockRequestSidebarHandoffAndWait.mockClear();
+    mockGetMode.mockReturnValue('sidebar');
+    localStorage.clear();
+    resetCompletionStoreForTests();
+  });
+
+  // Regression test for a real bug: executeWithLazyScroll's fast DOM-existence
+  // precheck ran before the fullscreen gate for every action except
+  // navigate/noop/popout, so in full screen (no live Grafana DOM to find a
+  // button in) the precheck always failed first and the gate — and the
+  // handler — were never reached. Only navigate ever worked. This proves a
+  // `button` step's "Do it" click now reaches both the handoff and the
+  // handler even though no matching element exists in jsdom.
+  it('reaches the handoff and the handler for a "button" action with no live DOM target', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    renderButtonGuide();
+
+    fireEvent.click(screen.getByText('Do it'));
+
+    await waitFor(() => expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalled());
+    await waitFor(() => expect(mockButtonExecute).toHaveBeenCalled());
+  });
+
+  it('does not perform the handoff outside full screen, and the real precheck still runs (regression guard)', async () => {
+    mockGetMode.mockReturnValue('sidebar');
+    renderButtonGuide();
+
+    fireEvent.click(screen.getByText('Do it'));
+
+    // Outside full screen, isGrafanaDrivingHandoffNeeded is false, so
+    // executeWithLazyScroll's real precheck runs unmodified — it correctly
+    // reports the element as not found (same as before this fix), proving
+    // the bypass is scoped to the fullscreen+driving-action case only.
+    await waitFor(() => expect(screen.getByText(/Element not found/)).toBeInTheDocument());
+    expect(mockButtonExecute).not.toHaveBeenCalled();
+    expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
   });
 });

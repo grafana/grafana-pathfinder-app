@@ -141,7 +141,10 @@ describe('ManifestJsonSchema', () => {
     expect(result.data.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(result.data.repository).toBe('interactive-tutorials');
     expect(result.data.language).toBe('en');
-    expect(result.data.startingLocation).toBe('/');
+    // No default: an unauthored value must stay distinguishable from an
+    // author explicitly setting '/' (see package.schema.ts's comment) —
+    // downstream consumers like recovery/starting-location.ts rely on this.
+    expect(result.data.startingLocation).toBeUndefined();
     expect(result.data.depends).toEqual([]);
     expect(result.data.recommends).toEqual([]);
     expect(result.data.suggests).toEqual([]);

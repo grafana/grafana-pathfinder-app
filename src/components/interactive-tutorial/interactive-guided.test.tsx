@@ -723,4 +723,67 @@ describe('InteractiveGuided — full-screen sidebar handoff', () => {
     });
     expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
   });
+
+  // Regression tests for a real race: the handoff wait (300-3000ms) used to
+  // run before `setIsExecuting(true)`, so the button stayed clickable the
+  // whole time and a second click could start a second run — or, if the
+  // handoff's navigation unmounted the component mid-wait, the resumed
+  // continuation would call executeGuidedStep on a dead instance.
+  it('does not start a second run when clicked again while the handoff is still pending', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    let resolveHandoff!: () => void;
+    mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveHandoff = resolve;
+      })
+    );
+
+    render(
+      <InteractiveGuided
+        stepId="guided-double-click"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]}
+        fullScreenFallbackLocation="/connections"
+      />
+    );
+
+    const startButton = screen.getByRole('button', { name: /start guided interaction/i });
+    fireEvent.click(startButton);
+    await waitFor(() => expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledTimes(1));
+
+    // Second click while the first is still awaiting the handoff — the
+    // synchronous isExecutingRef latch should bail this one out immediately,
+    // not queue a second handoff/run.
+    fireEvent.click(startButton);
+    expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledTimes(1);
+
+    resolveHandoff();
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not call executeGuidedStep after the component unmounts during the handoff wait', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    let resolveHandoff!: () => void;
+    mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveHandoff = resolve;
+      })
+    );
+
+    const { unmount } = render(
+      <InteractiveGuided
+        stepId="guided-unmount-mid-handoff"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]}
+        fullScreenFallbackLocation="/connections"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledTimes(1));
+
+    unmount();
+    resolveHandoff();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+  });
 });

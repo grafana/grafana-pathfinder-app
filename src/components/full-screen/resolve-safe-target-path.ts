@@ -23,3 +23,19 @@ export function resolveSafeTargetPath(candidate: string): string | undefined {
   // way rather than forcing a navigate to the plugin root on rejection.
   return safePath !== '/' ? safePath : undefined;
 }
+
+/**
+ * `REQUEST_SIDEBAR_HANDOFF_EVENT`'s `detail` is whatever a dispatcher put
+ * there — a TypeScript cast at the listener doesn't guarantee it's actually
+ * shaped right at runtime. Any script sharing the page can dispatch this
+ * custom event, so a malformed `targetPath` (e.g. a number) must be treated
+ * as "no path provided" rather than reaching `resolveSafeTargetPath`, which
+ * assumes a string and would throw on `.startsWith`.
+ */
+export function extractTargetPathFromEventDetail(detail: unknown): string | undefined {
+  if (!detail || typeof detail !== 'object') {
+    return undefined;
+  }
+  const targetPath = (detail as Record<string, unknown>).targetPath;
+  return typeof targetPath === 'string' ? targetPath : undefined;
+}
