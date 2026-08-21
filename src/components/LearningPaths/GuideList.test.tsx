@@ -36,17 +36,31 @@ describe('GuideList', () => {
     expect(screen.getByText('Locked')).toBeInTheDocument();
   });
 
-  it('marks only the current row as a journey-start target, when it has a url', () => {
+  it('marks only the current row as a journey-start target, when it has a url and enableCurrentRowLink is set', () => {
     const withUrl: PathGuide[] = [
       { id: 'a', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:a/content.json' },
       { id: 'b', title: 'Other module', completed: false, isCurrent: false, url: 'bundled:b/content.json' },
     ];
-    render(<GuideList guides={withUrl} />);
+    render(<GuideList guides={withUrl} enableCurrentRowLink />);
 
     const currentRow = screen.getByText('Current module').closest('div[data-journey-start]');
     expect(currentRow).toHaveAttribute('data-milestone-url', 'bundled:a/content.json');
     expect(currentRow).toHaveAttribute('data-interaction-location', 'module_row_click');
     expect(screen.getByText('Other module').closest('div')).not.toHaveAttribute('data-journey-start');
+  });
+
+  // Regression test (Cursor Bugbot, "GuideList click affordance leaks"):
+  // GuideList also renders inside LearningPathCard on My Learning, a
+  // separate DOM tree with no listener for data-journey-start (only the
+  // cover page's contentRef subtree has one) — without enableCurrentRowLink,
+  // the current row used to look clickable there but do nothing on click.
+  it('does not mark the current row as a journey-start target by default (enableCurrentRowLink defaults to false)', () => {
+    const withUrl: PathGuide[] = [
+      { id: 'a', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:a/content.json' },
+    ];
+    render(<GuideList guides={withUrl} />);
+
+    expect(screen.getByText('Current module').closest('div')).not.toHaveAttribute('data-journey-start');
   });
 
   it('shows the estimated minutes tag when present and not locked', () => {

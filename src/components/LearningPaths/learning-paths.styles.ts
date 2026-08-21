@@ -361,6 +361,11 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
     guideItemCurrent: css({
       color: theme.colors.text.primary,
       fontWeight: theme.typography.fontWeightMedium,
+    }),
+    // Separate from guideItemCurrent because the click affordance only holds
+    // where GuideList's own consumer wires up a handler for it (the cover
+    // page's shared link-handler contract) — see enableCurrentRowLink.
+    guideItemCurrentClickable: css({
       cursor: 'pointer',
     }),
     // Same accent-card idiom as getLearningPathCardStyles.card, scoped here

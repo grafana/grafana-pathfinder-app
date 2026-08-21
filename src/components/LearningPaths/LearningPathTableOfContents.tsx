@@ -142,7 +142,7 @@ export function LearningPathTableOfContents({
             )}
           </div>
         </div>
-        <GuideList guides={guides} />
+        <GuideList guides={guides} enableCurrentRowLink />
       </div>
     </>
   );
