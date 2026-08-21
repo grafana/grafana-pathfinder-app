@@ -5,17 +5,15 @@
  * relaunch event contracts: which effect owns each `document` listener, that
  * the listener reads the latest callback through a ref (not a dependency
  * array) so a same-tick automatic dispatch can't be handled by a stale
- * closure, that add/remove use the same event name, and that the
- * confirmation toast only fires after the real handoff completes rather than
- * unconditionally on dispatch.
+ * closure, and that add/remove use the same event name.
  *
  * Why source-assertion (not runtime mount): `@grafana/scenes` + `@grafana/ui`
  * require a theme provider not available in the Jest environment, so
  * `FullScreenPanel.tsx` can't be rendered here (see
  * `panel-mode-surface-toggles.contract.test.ts`, established for the same
  * reason). The dispatch-side behavior (does `requestSidebarHandoff` fire the
- * event, does it avoid publishing its own toast) is proven behaviorally in
- * `global-state/panel-mode.test.ts`; this file only pins the listener side.
+ * event) is proven behaviorally in `global-state/panel-mode.test.ts`; this
+ * file only pins the listener side.
  */
 
 import * as fs from 'fs';
@@ -53,20 +51,6 @@ describe('full-screen sidebar-handoff and relaunch listener wiring', () => {
     );
     expect(fullScreenPanel).toContain(
       'document.removeEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleSidebarHandoffRequest)'
-    );
-  });
-
-  it('publishes the confirmation toast only after handleExitToSidebarRef.current() resolves, not unconditionally on dispatch', () => {
-    // dispatchEvent succeeds whether or not a listener is attached, so a toast
-    // fired directly from requestSidebarHandoff() (panel-mode.ts) would lie
-    // whenever FullScreenPanel isn't there to receive it. The toast must be
-    // gated on this listener's own callback actually running to completion.
-    const handlerBlock = fullScreenPanel.match(
-      /const handleSidebarHandoffRequest = \(event: Event\) => \{[\s\S]*?\n {4}\};/
-    )?.[0];
-    expect(handlerBlock).toBeDefined();
-    expect(handlerBlock).toMatch(
-      /handleExitToSidebarRef\.current\('content_requires_grafana_ui', targetPath\)\.then\(\(\) => \{[\s\S]*getAppEvents\(\)\.publish/
     );
   });
 

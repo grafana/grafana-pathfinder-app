@@ -1,7 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SceneObjectBase, type SceneComponentProps, type SceneObjectState } from '@grafana/scenes';
 import { getAppEvents, locationService } from '@grafana/runtime';
-import { t } from '@grafana/i18n';
 import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
@@ -385,21 +384,12 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // through the ref above (not a `[handleExitToSidebar]` dep) for the same
   // reason as the empty-state effect: this can fire in the same tick as the
   // state update that just loaded the new tab, before this component
-  // re-renders.
+  // re-renders. No confirmation toast: the handoff is now a direct result of
+  // the user's own click, not a surprise the app needs to explain.
   useEffect(() => {
     const handleSidebarHandoffRequest = (event: Event) => {
       const targetPath = (event as CustomEvent<{ targetPath?: string }>).detail?.targetPath;
-      // Confirmation toast lives here, not in requestSidebarHandoffAndWait()
-      // itself: dispatchEvent succeeds whether or not this listener is even
-      // attached (e.g. FullScreenPanel already unmounted in the mode/mount
-      // desync window documented in full-screen-autodock.ts), so only a real
-      // handleExitToSidebar completion earns the "switched to sidebar" message.
-      void handleExitToSidebarRef.current('content_requires_grafana_ui', targetPath).then(() => {
-        getAppEvents().publish({
-          type: 'alert-info',
-          payload: [t('panelMode.sidebarHandoffTitle', 'Switched to the sidebar so you can complete this step')],
-        });
-      });
+      void handleExitToSidebarRef.current('content_requires_grafana_ui', targetPath);
     };
     document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handleSidebarHandoffRequest);
     return () => {
