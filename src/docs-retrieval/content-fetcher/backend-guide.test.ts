@@ -174,6 +174,9 @@ describe('fetchBackendInteractive — completion identity', () => {
 
     expect(result.content!.metadata.repository).toBe('app-platform');
     expect(result.content!.metadata.packageManifest).toEqual({
+      // spec.title fills in for a missing description, matching the app-platform resolver's
+      // inference so both synthesis sites hand a reader the same shape.
+      description: 'My Guide',
       id: 'guide-id',
       type: 'guide',
       repository: 'app-platform',
@@ -210,6 +213,7 @@ describe('fetchBackendInteractive — completion identity', () => {
       milestones: ['m1', 'm2'],
       category: 'alerting',
       repository: 'app-platform',
+      description: 'Alerting path',
     });
   });
 

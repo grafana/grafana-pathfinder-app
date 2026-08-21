@@ -920,7 +920,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
         // Implied 0th step: decide whether to prompt the user to navigate to
         // the guide's declared starting location before step 1 begins.
-        const startingLocation = resolveStartingLocation(url, packageInfo?.packageManifest);
+        const startingLocation = resolveStartingLocation(
+          url,
+          packageInfo?.packageManifest ?? fetchedContent.metadata.packageManifest
+        );
         const currentPath = locationService.getLocation().pathname;
         const evaluation = evaluateAlignment({
           currentPath,

@@ -8,6 +8,7 @@
  * @coupling Zod schemas: package.schema.ts - schemas must stay in sync
  */
 
+import type { GuideStatsSummary } from './guide-stats.schema';
 import type { JsonBlock } from './json-guide.types';
 
 // ============ CONTENT (content.json) ============
@@ -167,6 +168,9 @@ export interface ManifestJson {
 
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
+
+  /** Generated block-count stamp. Written by build tooling, never authored. */
+  stats?: GuideStatsSummary;
 }
 
 // ============ REPOSITORY INDEX ============

@@ -66,6 +66,58 @@ describe('resolveStartingLocation', () => {
     expect(resolveStartingLocation('bundled:string-shape/manifest.json')).toBe('/dashboards');
   });
 
+  // The InteractiveGuide CRD's #Manifest does not declare startingLocation, so a value written at the
+  // top level is pruned on write. The block editor and upsert-learning-path.sh both put it under
+  // additionalFields instead, which means a reader has two locations to handle.
+  describe('additionalFields fallback (App Platform)', () => {
+    it('reads startingLocation from additionalFields when the top level has none', () => {
+      const result = resolveStartingLocation('backend-guide:private', {
+        additionalFields: { startingLocation: '/alerting/list' },
+      });
+      expect(result).toBe('/alerting/list');
+    });
+
+    it('prefers the typed top-level field over additionalFields when both are present', () => {
+      const result = resolveStartingLocation('backend-guide:private', {
+        startingLocation: '/promoted',
+        additionalFields: { startingLocation: '/legacy' },
+      });
+      expect(result).toBe('/promoted');
+    });
+
+    it('falls back to additionalFields when the top-level value is an empty string', () => {
+      const result = resolveStartingLocation('backend-guide:private', {
+        startingLocation: '',
+        additionalFields: { startingLocation: '/alerting/list' },
+      });
+      expect(result).toBe('/alerting/list');
+    });
+
+    it('returns null when additionalFields carries a non-string startingLocation', () => {
+      const result = resolveStartingLocation('backend-guide:private', {
+        additionalFields: { startingLocation: 42 },
+      });
+      expect(result).toBeNull();
+    });
+
+    it('returns null when additionalFields carries an empty startingLocation', () => {
+      const result = resolveStartingLocation('backend-guide:private', {
+        additionalFields: { startingLocation: '' },
+      });
+      expect(result).toBeNull();
+    });
+
+    it('returns null when additionalFields is not an object', () => {
+      expect(resolveStartingLocation('backend-guide:private', { additionalFields: 'nope' })).toBeNull();
+      expect(resolveStartingLocation('backend-guide:private', { additionalFields: ['nope'] })).toBeNull();
+    });
+
+    it('still consults the bundled index when neither location has a value', () => {
+      const result = resolveStartingLocation('bundled:array-shape', { additionalFields: { other: 1 } });
+      expect(result).toBe('/explore');
+    });
+  });
+
   it('returns null when manifest has a non-string startingLocation', () => {
     const result = resolveStartingLocation('https://example/foo', { startingLocation: 42 });
     expect(result).toBeNull();

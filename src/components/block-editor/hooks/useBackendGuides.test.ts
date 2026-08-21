@@ -23,14 +23,20 @@ import { getBackendSrv } from '@grafana/runtime';
 import { of } from 'rxjs';
 
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
+import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import type { JsonGuide } from '../types';
 import { hasManageableBackendGuides, useBackendGuides } from './useBackendGuides';
 
 const mockFetch = jest.fn();
 
+// `type` is deliberately not one of the CRD's three values: it proves the editor passes an inherited
+// type through rather than recognising a whitelist, and that an unrecognised type gets no stats stamp.
 const MANIFEST = {
   id: 'alerting-path',
   type: 'learning-journey',
+  // The CRD defaults `repository` on write, so a manifest read back off a resource always carries
+  // one. Modelling that is what keeps the byte-identical replay below honest.
+  repository: 'app-platform',
   milestones: [
     { id: 'alerting-intro', title: 'Intro' },
     { id: 'alerting-rules', title: 'Rules' },
@@ -103,6 +109,8 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
 
     const request = lastRequest();
     expect(request.method).toBe('PUT');
+    // Byte-identical: the derived manifest owns nothing on a metapackage cover page, so a save that
+    // changed no content replays the stored spec exactly.
     expect(request.data.spec).toEqual(resource.spec);
     expect(request.data.metadata).toEqual({
       name: 'alerting-path',
@@ -153,8 +161,11 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     });
 
     const { spec, metadata } = lastRequest().data;
-    // Inheriting would render this flat guide as the old path, with the old milestones.
-    expect(spec.manifest).toBeUndefined();
+    // Inheriting would render this flat guide as the old path, with the old milestones. It gets a
+    // freshly derived guide manifest instead — the point is that nothing comes from the old resource.
+    expect(spec.manifest.type).toBe('guide');
+    expect(spec.manifest.milestones).toBeUndefined();
+    expect(spec.manifest.id).toBeUndefined();
     // Inheriting would let the upload script's ownership guard pass on content it never wrote.
     expect(metadata.annotations).toBeUndefined();
     expect(metadata.labels).toBeUndefined();
@@ -248,7 +259,7 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(metadata.labels).toEqual({ tier: 'gold' });
   });
 
-  it('creates a brand-new guide with no manifest and no annotations', async () => {
+  it('creates a brand-new guide as a complete package, with no inherited annotations', async () => {
     const result = await renderLoaded([]);
 
     const guide = { id: 'fresh', title: 'Fresh guide', blocks: [{ id: 'b1', type: 'markdown', content: 'hi' }] };
@@ -261,9 +272,16 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(request.data.spec).toEqual({
       id: 'fresh',
       title: 'Fresh guide',
-      schemaVersion: '1.0',
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       blocks: guide.blocks,
       status: 'draft',
+      manifest: {
+        type: 'guide',
+        repository: 'app-platform',
+        additionalFields: {
+          stats: { version: 1, blockCount: 1, sectionCount: 0, completableBlockCount: 0, finalCompletablePosition: 0 },
+        },
+      },
     });
     expect(request.data.metadata).toEqual({ name: 'fresh', namespace: 'stacks-1' });
   });
@@ -277,7 +295,11 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
       await result.current.saveGuide(guide as JsonGuide);
     });
 
-    expect(lastRequest().data.spec.manifest).toBeUndefined();
+    // A freshly derived guide manifest, carrying nothing from the path in the list.
+    const { manifest } = lastRequest().data.spec;
+    expect(manifest.type).toBe('guide');
+    expect(manifest.milestones).toBeUndefined();
+    expect(manifest.id).toBeUndefined();
   });
 });
 

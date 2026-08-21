@@ -273,6 +273,87 @@ describe('ManifestJsonSchema', () => {
 
 // ============ DependencyClauseSchema ============
 
+describe('ManifestJsonSchema — stats stamp', () => {
+  const wellFormed = {
+    version: 1,
+    blockCount: 4,
+    sectionCount: 1,
+    completableBlockCount: 2,
+    finalCompletablePosition: 4,
+  };
+
+  it('round-trips a well-formed stamp through a strict parse', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'g', type: 'guide', stats: wellFormed });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toEqual(wellFormed);
+  });
+
+  // Before stats was declared, a strict parse silently dropped it. The point of
+  // declaring it is that a well-formed stamp now survives — this is the
+  // regression that would return if the field were removed from the schema.
+  it('no longer drops a stamp the way an undeclared field would', () => {
+    const parsed = ManifestJsonSchema.parse({ id: 'g', type: 'guide', stats: wellFormed });
+
+    expect(parsed).toHaveProperty('stats');
+  });
+
+  // `pathfinder-cli build-stats` exists to repair a stale or hand-edited stamp,
+  // so it has to be able to READ one. Failing the manifest would break the only
+  // tool that fixes the problem.
+  it('reads a partial stamp as absent instead of failing the whole manifest', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'g',
+      type: 'guide',
+      stats: { version: 1, blockCount: 99 },
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toBeUndefined();
+  });
+
+  it('reads a non-object stamp as absent instead of failing the whole manifest', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'g', type: 'guide', stats: 'nonsense' });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toBeUndefined();
+  });
+
+  it('rejects a negative count inside an otherwise complete stamp', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'g',
+      type: 'guide',
+      stats: { ...wellFormed, blockCount: -1 },
+    });
+
+    // Caught, so it reads as absent rather than as a denominator of -1.
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toBeUndefined();
+  });
+
+  it('leaves stats absent when the manifest carries none', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'g', type: 'guide' });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toBeUndefined();
+  });
+});
+
 describe('DependencyClauseSchema', () => {
   it('should accept a bare string', () => {
     expect(DependencyClauseSchema.safeParse('welcome-to-grafana').success).toBe(true);

@@ -274,6 +274,28 @@ function makeContentResult(overrides?: { startingLocation?: string }) {
   };
 }
 
+/**
+ * A private App Platform guide as the `backend-guide:` loader shapes it: the
+ * synthesized manifest spreads `spec.manifest` through, so `startingLocation`
+ * arrives under `additionalFields` (the CRD prunes it at the top level).
+ */
+function makeAppPlatformContentResult(startingLocation?: string) {
+  return {
+    content: {
+      url: 'backend-guide:my-private-guide',
+      type: 'interactive',
+      content: [],
+      metadata: {
+        packageManifest: {
+          type: 'guide',
+          repository: 'app-platform',
+          ...(startingLocation ? { additionalFields: { startingLocation } } : {}),
+        },
+      },
+    },
+  };
+}
+
 async function openTabAndLoad(
   panel: CombinedLearningJourneyPanel,
   url: string,
@@ -467,6 +489,43 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    // A standalone private guide is opened from the custom guides list with no packageInfo at all,
+    // so the fetched content's own manifest is the only place its startingLocation can come from.
+    it('sets pendingAlignment from content metadata additionalFields when the launch carries no packageInfo', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult('/alerting'));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      const tab = getTab(panel, tabId);
+      expect(tab.pendingAlignment).toBeDefined();
+      expect(tab.pendingAlignment.startingLocation).toBe('/alerting');
+      expect(tab.pendingAlignment.currentPath).toBe('/explore');
+    });
+
+    it('does NOT set pendingAlignment when the private guide declares no startingLocation', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    it('prefers an explicit packageInfo manifest over the fetched content metadata', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult('/alerting'));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment.startingLocation).toBe('/connections');
     });
 
     it('fires AlignmentPromptShown telemetry when a prompt is set', async () => {

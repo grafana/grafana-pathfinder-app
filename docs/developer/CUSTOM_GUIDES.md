@@ -60,6 +60,8 @@ The **•••** menu provides the alternative action:
 - When published → the menu offers **Unpublish** (revert to draft, removing it from the docs panel).
 - When not saved → the menu offers **Publish** (save and go live in one step).
 
+Every save stamps a derived `spec.manifest`, so a guide authored here is a complete package rather than bare content. One consequence is worth knowing while authoring: when the first block that declares an `on-page:` requirement names an absolute path, and nothing navigates before it, that path is saved as the guide's starting location, and a reader who opens the guide somewhere else is prompted to navigate there first. Remove the requirement and the prompt goes with it. The prompt does not reach a guide opened from inside a learning path; [`EXTERNAL_API.md`](EXTERNAL_API.md#manifest) lists the launch routes it does reach. Which manifest fields the derivation owns, and which it inherits untouched, is under [external import](#external-import-ci--terraform--scripts).
+
 ### Collision detection
 
 When saving a new guide for the first time, if a guide with the same resource name already exists in the library, you are prompted to confirm an overwrite. The editor avoids known library names when it generates an ID, but a collision can still occur if the library changed after it was loaded. To keep both guides, cancel, start a new guide, and commit a distinct title so the editor generates a new ID before saving.
@@ -125,7 +127,7 @@ scripts/upsert-learning-path.sh \
   --package ./drilldown-logs-lj
 ```
 
-Guides uploaded this way can be loaded and edited in the editor like any other, including a path's **cover page**. Save, publish, and unpublish each layer the editor-owned fields over the spec last read and carry `metadata.annotations` and `metadata.labels` through, so `spec.manifest` survives the write and a later `upsert-learning-path.sh` run still recognises the package as its own. The exception is the overwrite-confirm prompt described under [collision detection](#collision-detection): confirming an overwrite writes a guide that did not come from the stored resource, so it deliberately inherits neither the manifest nor the provenance annotations.
+Guides uploaded this way can be loaded and edited in the editor like any other, including a path's **cover page**. Save, publish, and unpublish each layer the editor-owned fields over the spec last read and carry `metadata.annotations` and `metadata.labels` through, so `spec.manifest` survives the write and a later `upsert-learning-path.sh` run still recognises the package as its own. The editor additionally _derives_ the manifest fields the content determines — `type` (only when there was none), `repository` (only when minting a fresh manifest), and `additionalFields.stats` / `additionalFields.startingLocation` — and leaves every other manifest field exactly as it read it. A cover page's `type` and `milestones` are never rewritten, and a path keeps its rolled-up stats rather than gaining the cover page's own counts. The exception is the overwrite-confirm prompt described under [collision detection](#collision-detection): confirming an overwrite writes a guide that did not come from the stored resource, so it deliberately inherits neither the manifest nor the provenance annotations.
 
 See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, the `spec.manifest` field table, error codes, and curl recipes for each operation.
 

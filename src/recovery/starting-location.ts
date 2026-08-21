@@ -3,9 +3,14 @@
  *
  * Resolution order:
  *   1. `manifest.startingLocation` — for migrated package guides
- *   2. `bundled-interactives/index.json` `url[0]` — fallback for unmigrated bundled guides
+ *   2. `manifest.additionalFields.startingLocation` — the App Platform location. The
+ *      `InteractiveGuide` CRD's `#Manifest` does not declare `startingLocation`, so a
+ *      value written at the top level is pruned on write; both the block editor and
+ *      `scripts/upsert-learning-path.sh` put it under `additionalFields` instead. Two
+ *      locations to handle until the CUE field is promoted (see `docs/design/CONCERNS.md`).
+ *   3. `bundled-interactives/index.json` `url[0]` — fallback for unmigrated bundled guides
  *      (URLs of the form `bundled:<id>`)
- *   3. `null` — for remote guides without a manifest; caller skips prompting and
+ *   4. `null` — for remote guides without a manifest; caller skips prompting and
  *      relies on the existing location `Fix this` as a safety net
  *
  * @see docs/design/AUTORECOVERY_DESIGN.md § "The implied 0th step"
@@ -31,11 +36,28 @@ export function resolveStartingLocation(url: string, packageManifest?: Record<st
     return fromManifest;
   }
 
+  // The typed field wins when both are present: a promoted CUE field is the more
+  // specific declaration, and `additionalFields` is where a value waits for that
+  // promotion.
+  const fromAdditional = readAdditionalStartingLocation(packageManifest);
+  if (fromAdditional) {
+    return fromAdditional;
+  }
+
   if (url.startsWith(BUNDLED_PREFIX)) {
     return resolveFromBundledIndex(extractBundledId(url));
   }
 
   return null;
+}
+
+function readAdditionalStartingLocation(packageManifest?: Record<string, unknown>): string | null {
+  const additional = packageManifest?.additionalFields;
+  if (!additional || typeof additional !== 'object' || Array.isArray(additional)) {
+    return null;
+  }
+  const value = (additional as Record<string, unknown>).startingLocation;
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 /**
