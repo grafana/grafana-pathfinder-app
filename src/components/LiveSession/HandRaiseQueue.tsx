@@ -22,7 +22,7 @@ interface HandRaiseQueueProps {
   /** Callback to close the modal */
   onClose: () => void;
   /** Reference to the anchor element for positioning */
-  anchorRef: React.RefObject<HTMLElement>;
+  anchorRef: React.RefObject<HTMLElement | null>;
 }
 
 /**

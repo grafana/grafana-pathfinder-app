@@ -268,7 +268,9 @@ function isTypeOnlyImportDeclaration(node: ts.ImportDeclaration): boolean {
   if (!clause) {
     return false;
   }
-  if (clause.isTypeOnly) {
+  // `phaseModifier` is also set for `import defer`, which still evaluates the
+  // module at runtime — only the type phase is erased.
+  if (clause.phaseModifier === ts.SyntaxKind.TypeKeyword) {
     return true;
   }
   if (clause.name || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) {
