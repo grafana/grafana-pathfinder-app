@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 
+import { GuideStatsSummarySchema } from './guide-stats.schema';
 import { JsonBlockSchema, CURRENT_SCHEMA_VERSION } from './json-guide.schema';
 import type {
   Author,
@@ -154,6 +155,21 @@ export const ManifestJsonObjectSchema = z.object({
 
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.default(DEFAULT_TEST_ENVIRONMENT),
+
+  /**
+   * Generated, never hand-authored. Declared positively so a consumer reading a
+   * stamped manifest back validates it instead of trusting an untyped
+   * passthrough — before this, only `.loose()` kept the field alive on read and
+   * a strict parse silently dropped it.
+   *
+   * `.catch(undefined)` because a malformed stamp must not invalidate the whole
+   * manifest. A partial or hand-edited `stats` is precisely the input
+   * `pathfinder-cli build-stats` exists to repair, so failing the read there
+   * would break the one tool that fixes it. Reading as absent is also the
+   * honest answer: a stamp missing fields is not a denominator anyone should
+   * trust, and every consumer already handles no stamp at all.
+   */
+  stats: GuideStatsSummarySchema.optional().catch(undefined),
 });
 
 /**
@@ -164,6 +180,7 @@ export const ManifestJsonObjectSchema = z.object({
  * - ERROR: id, type (hard requirements)
  * - WARN: description, category, targeting, startingLocation (missing but recommended)
  * - INFO: repository, language, schemaVersion, dependency fields, author, testEnvironment (defaults applied)
+ * - GENERATED: stats (stamped by `pathfinder-cli build-stats` or the block editor; never authored)
  * - Conditional ERROR: milestones required when type is "path" or "journey" (Rule 1)
  * - Conditional ERROR: milestones only valid when type is "path" or "journey" (Rule 2)
  *
