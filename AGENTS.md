@@ -117,3 +117,4 @@ Use `/create-experiment`. Experiments are remote-configured through MTFF, alloca
 ## `npx` examples
 
 Namespace every `npx` example under `pathfinder-cli@...` — for a hypothetical `pathfinder-example` package, write `npx pathfinder-cli@... example`. This keeps us from being namesquatted.
+- Security issues should be reported via [Grafana's security issue reporting page](https://grafana.com/legal/report-a-security-issue/) and not directly in this repository.
