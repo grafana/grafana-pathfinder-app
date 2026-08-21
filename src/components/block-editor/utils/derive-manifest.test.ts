@@ -295,6 +295,18 @@ describe('deriveManifest — startingLocation', () => {
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
+  it('ignores a relative on-page: value rather than stamping a non-absolute path', () => {
+    const result = deriveManifest(guide([highlight(['on-page:dashboards'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('keeps scanning past a relative on-page: and stamps a later absolute one', () => {
+    const result = deriveManifest(guide([highlight(['on-page:dashboards']), highlight(['on-page:/alerting/list'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/alerting/list');
+  });
+
   it('ignores a bare on-page: requirement with no path', () => {
     const result = deriveManifest(guide([highlight(['on-page:'])]));
 

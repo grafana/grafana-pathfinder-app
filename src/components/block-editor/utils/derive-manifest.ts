@@ -24,12 +24,13 @@
  */
 
 import { summarizeGuideBlocks, TRANSPARENT_CONTAINER_BLOCK_TYPES } from '../../../lib/guide-stats';
+import { ParameterizedRequirementPrefix } from '../../../types/requirements.types';
 import type { JsonBlock, JsonGuide } from '../types';
 
 /** Every App Platform guide is app-platform-sourced; see `repository-identity-authority`. */
 const APP_PLATFORM_REPOSITORY = 'app-platform';
 
-const ON_PAGE_PREFIX = 'on-page:';
+const ON_PAGE_PREFIX = ParameterizedRequirementPrefix.ON_PAGE;
 
 /**
  * The only type whose stats the editor can compute. Checked positively rather
@@ -59,6 +60,12 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
  * them to be, and a self-navigating guide correctly needs no alignment prompt
  * at all. Conditional branches are not descended into either — their contents
  * are mutually exclusive, so neither branch speaks for the guide.
+ *
+ * Only an absolute `on-page:` value qualifies. `onPageCheck` passes on a
+ * substring match, so a relative `on-page:dashboards` works as a requirement,
+ * but `pathMatchesStartingLocation` compares segments and `confirmAlignment`
+ * pushes the value as a route — so a relative one would both mis-prompt an
+ * already-aligned reader and navigate to a nested path.
  */
 function deriveStartingLocation(blocks: readonly JsonBlock[] | undefined): string | undefined {
   for (const block of blocks ?? []) {
@@ -99,7 +106,7 @@ function firstOnPage(requirements: unknown): string | undefined {
       continue;
     }
     const path = requirement.slice(ON_PAGE_PREFIX.length).trim();
-    if (path.length > 0) {
+    if (path.startsWith('/')) {
       return path;
     }
   }

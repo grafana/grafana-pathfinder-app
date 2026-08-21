@@ -1,5 +1,11 @@
 import { of, throwError } from 'rxjs';
 import { AppPlatformPackageResolver } from './app-platform-resolver';
+import { resolveStartingLocation } from '../recovery/starting-location';
+import type { ManifestJson } from '../types/package.types';
+
+/** `PackageOpenInfo.packageManifest` is an untyped record; widen at the same seam the panel does. */
+const asPanelManifest = (manifest?: ManifestJson): Record<string, unknown> | undefined =>
+  manifest as Record<string, unknown> | undefined;
 
 let mockNamespace: string | undefined = 'stacks-123';
 let mockFeatureToggles: Record<string, boolean> = { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true };
@@ -279,6 +285,53 @@ describe('AppPlatformPackageResolver — metadata-only', () => {
       return;
     }
     expect(result.manifest?.stats).toEqual(stats);
+  });
+
+  // ManifestJsonObjectSchema defaults `startingLocation` to '/', and
+  // resolveStartingLocation reads the typed field before additionalFields — so a
+  // materialised default would shadow the authored value and prompt for the root.
+  it('does not let the schema default shadow additionalFields.startingLocation', async () => {
+    mockFetch.mockReturnValue(
+      of(okResource({ manifest: { type: 'guide', additionalFields: { startingLocation: '/alerting' } } }))
+    );
+
+    const resolver = new AppPlatformPackageResolver();
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest).not.toHaveProperty('startingLocation');
+    expect(resolveStartingLocation('app-platform:stacks-123/fe-alerting-01', asPanelManifest(result.manifest))).toBe(
+      '/alerting'
+    );
+  });
+
+  it('keeps a startingLocation the persisted manifest genuinely declares', async () => {
+    mockFetch.mockReturnValue(
+      of(
+        okResource({
+          manifest: {
+            type: 'guide',
+            startingLocation: '/dashboards',
+            additionalFields: { startingLocation: '/alerting' },
+          },
+        })
+      )
+    );
+
+    const resolver = new AppPlatformPackageResolver();
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest?.startingLocation).toBe('/dashboards');
+    expect(resolveStartingLocation('app-platform:stacks-123/fe-alerting-01', asPanelManifest(result.manifest))).toBe(
+      '/dashboards'
+    );
   });
 
   it('returns not-found on 404 without throwing', async () => {

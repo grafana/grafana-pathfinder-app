@@ -155,6 +155,13 @@ async function probePublishedGuide(namespace: string, packageId: string): Promis
  * A persisted manifest carrying no description gets the same fallback, so this
  * site and `buildLoaderManifest` in docs-retrieval agree on the shape they
  * synthesize for one resource.
+ *
+ * `startingLocation` is dropped again when the raw `spec.manifest` did not
+ * declare one: the schema defaults it to `'/'`, and `resolveStartingLocation`
+ * reads the typed field before `additionalFields`, so that synthetic value would
+ * shadow the real authored one and prompt the reader to navigate to the root.
+ * Same reasoning as forcing `repository` above — a schema default must not
+ * masquerade as authored data.
  */
 function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']): ManifestJson {
   if (spec?.manifest) {
@@ -172,7 +179,12 @@ function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']
     });
     if (parsed.success) {
       const resolved = parsed.data as ManifestJson;
-      return resolved.description ? resolved : { ...resolved, description: spec?.title };
+      const described = resolved.description ? resolved : { ...resolved, description: spec?.title };
+      if (typeof spec.manifest.startingLocation === 'string') {
+        return described;
+      }
+      const { startingLocation: _synthetic, ...withoutStartingLocation } = described;
+      return withoutStartingLocation;
     }
     // A malformed persisted manifest silently falls through to the inferred guide
     // shape below — so a path would render as a plain guide with no milestone
