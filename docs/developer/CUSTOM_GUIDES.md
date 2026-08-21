@@ -60,6 +60,8 @@ The **•••** menu provides the alternative action:
 - When published → the menu offers **Unpublish** (revert to draft, removing it from the docs panel).
 - When not saved → the menu offers **Publish** (save and go live in one step).
 
+Every save stamps a derived `spec.manifest`, so a guide authored here is a complete package rather than bare content. One consequence is worth knowing while authoring: when the first block that declares an `on-page:` requirement names an absolute path, and nothing navigates before it, that path is saved as the guide's starting location, and a reader who opens the guide somewhere else is prompted to navigate there first. Remove the requirement and the prompt goes with it. The prompt does not reach a guide opened from inside a learning path; [`EXTERNAL_API.md`](EXTERNAL_API.md#manifest) lists the launch routes it does reach. Which manifest fields the derivation owns, and which it inherits untouched, is under [external import](#external-import-ci--terraform--scripts).
+
 ### Collision detection
 
 When saving a new guide for the first time, if a guide with the same resource name already exists in the library, you are prompted to confirm an overwrite. The editor avoids known library names when it generates an ID, but a collision can still occur if the library changed after it was loaded. To keep both guides, cancel, start a new guide, and commit a distinct title so the editor generates a new ID before saving.
