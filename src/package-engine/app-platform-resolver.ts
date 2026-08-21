@@ -152,6 +152,9 @@ async function probePublishedGuide(namespace: string, packageId: string): Promis
  * resolution runs metadata-only (no `content`), so the label chain
  * (`content?.title ?? manifest?.description ?? id`) would otherwise fall back
  * to the bare package ID instead of a human-readable title (RFC Appendix A3).
+ * A persisted manifest carrying no description gets the same fallback, so this
+ * site and `buildLoaderManifest` in docs-retrieval agree on the shape they
+ * synthesize for one resource.
  */
 function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']): ManifestJson {
   if (spec?.manifest) {
@@ -168,7 +171,8 @@ function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']
       repository: APP_PLATFORM_REPOSITORY,
     });
     if (parsed.success) {
-      return parsed.data as ManifestJson;
+      const resolved = parsed.data as ManifestJson;
+      return resolved.description ? resolved : { ...resolved, description: spec?.title };
     }
     // A malformed persisted manifest silently falls through to the inferred guide
     // shape below — so a path would render as a plain guide with no milestone
