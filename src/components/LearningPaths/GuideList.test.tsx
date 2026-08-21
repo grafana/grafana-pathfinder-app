@@ -49,6 +49,20 @@ describe('GuideList', () => {
     expect(screen.queryByText('Up next')).not.toBeInTheDocument();
   });
 
+  // Regression test (Cursor Bugbot, "Current row loses accent styling"):
+  // enableCurrentRowLink gates the play icon, card background, click
+  // affordance, and "Up next" label — but the icon badge's own accent color
+  // (guideIconBadgeCurrent) is not cover-only chrome and must stay on by
+  // default, or the current module looks identical to a pending one on
+  // My Learning cards.
+  it('keeps the current row icon badge accented by default (not gated by enableCurrentRowLink)', () => {
+    render(<GuideList guides={guides} />);
+
+    const currentBadge = screen.getByText('Second module').closest('div')!.querySelector('span');
+    expect(currentBadge?.className).toContain('guideIconBadgeCurrent');
+    expect(currentBadge?.className).not.toContain('guideIconBadgeLocked');
+  });
+
   it('marks only the current row as a journey-start target, when it has a url and enableCurrentRowLink is set', () => {
     const withUrl: PathGuide[] = [
       { id: 'a', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:a/content.json' },

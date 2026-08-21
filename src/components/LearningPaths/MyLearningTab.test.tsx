@@ -16,6 +16,7 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { pushFaroLog } from '../../lib/telemetry/bridge';
+import { reportAppInteraction } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
 import { learningProgressStorage, milestoneCompletionStorage } from '../../lib/user-storage';
 import { discardQueuedCompletionWrites } from '../../completion-records';
@@ -607,6 +608,12 @@ describe('MyLearningTab — online course package cover launch', () => {
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
     expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['core-grafana-concepts-lj']);
+    // A real navLink.contentUrl resolved, so this is a genuine cover launch —
+    // contrasts with the 'first_guide_fallback' case below.
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'OpenResourceClick',
+      expect.objectContaining({ launch_target: 'cover_page' })
+    );
     expect(prepareMock).toHaveBeenCalledWith('bundled:core-grafana-concepts-lj/content.json', {
       title: 'Core Grafana concepts',
       source: 'home_page',
@@ -729,6 +736,13 @@ describe('MyLearningTab — online course package cover launch', () => {
     expect(mockGetGuideUrlForPath).toHaveBeenCalledWith(
       'core-grafana-concepts-data-sources',
       'core-grafana-concepts-lj'
+    );
+    // Regression test (Cursor Bugbot, "Fallback launch mislabeled cover"):
+    // this fallback opens the first member guide, not the cover — the
+    // analytics discriminator must reflect what actually opened.
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'OpenResourceClick',
+      expect.objectContaining({ launch_target: 'first_guide_fallback' })
     );
     expect(prepareMock).toHaveBeenCalledWith(
       'https://grafana.com/docs/core-grafana-concepts-data-sources/',

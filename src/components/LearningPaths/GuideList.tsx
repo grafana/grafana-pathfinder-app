@@ -64,9 +64,8 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
               className={cx(
                 styles.guideIconBadge,
                 guide.completed && styles.guideIconBadgeCompleted,
-                guide.isCurrent && enableCurrentRowLink && styles.guideIconBadgeCurrent,
-                (guide.locked || (!guide.completed && !(guide.isCurrent && enableCurrentRowLink))) &&
-                  styles.guideIconBadgeLocked
+                guide.isCurrent && styles.guideIconBadgeCurrent,
+                (guide.locked || (!guide.completed && !guide.isCurrent)) && styles.guideIconBadgeLocked
               )}
             >
               {guide.completed ? (

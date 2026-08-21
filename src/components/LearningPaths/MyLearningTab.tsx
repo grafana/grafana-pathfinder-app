@@ -196,7 +196,9 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
           content_url: coverUrl || `package:${path.id}`,
           content_type: AnalyticsContentType.LearningJourney,
           interaction_location: 'my_learning_tab',
-          launch_target: 'cover_page',
+          // The fallback opens the first member guide, not the cover — the
+          // discriminator must reflect what actually opened, not what was intended.
+          launch_target: navLink?.contentUrl ? 'cover_page' : 'first_guide_fallback',
         });
 
         if (!coverUrl) {
