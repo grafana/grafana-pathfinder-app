@@ -658,6 +658,83 @@ describe('MyLearningTab — online course package cover launch', () => {
       },
     });
   });
+
+  // Regression test (Cursor Bugbot, "Cover launch lock starts too late"): the
+  // in-flight lock used to be acquired inside `launch`, which only runs after
+  // resolvePackageNavLinks resolves — leaving the Continue button clickable
+  // (launchingId stays null) for that whole window. A second click during
+  // the resolve could start a second resolve/launch, potentially opening a
+  // different path if the second click hit another path's Continue button.
+  it('does not start a second resolve/launch when clicked again while resolvePackageNavLinks is still pending', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(0);
+    let resolveNavLinks!: (value: Array<{ packageId: string; title: string; contentUrl: string }>) => void;
+    resolvePackageNavLinksMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveNavLinks = resolve;
+      })
+    );
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const continueButton = screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj'));
+    fireEvent.click(continueButton);
+    await waitFor(() => expect(resolvePackageNavLinksMock).toHaveBeenCalledTimes(1));
+
+    // Second click while the resolve is still pending — the lock must
+    // already be held at this point, before resolvePackageNavLinks settles.
+    fireEvent.click(continueButton);
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledTimes(1);
+
+    resolveNavLinks([
+      {
+        packageId: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        contentUrl: 'bundled:core-grafana-concepts-lj/content.json',
+      },
+    ]);
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
+  });
+
+  // Regression test (Cursor Bugbot, "Empty cover URL still launches"):
+  // openPathCover used to call launch unconditionally even when
+  // resolvePackageNavLinks resolved with no contentUrl, sending an empty URL
+  // through prepareGuideLaunch to fail with only a generic error toast.
+  it('falls back to the first member guide when resolvePackageNavLinks resolves with no contentUrl', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(0);
+    resolvePackageNavLinksMock.mockResolvedValue([]);
+    mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/core-grafana-concepts-data-sources/');
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(mockGetGuideUrlForPath).toHaveBeenCalledWith(
+      'core-grafana-concepts-data-sources',
+      'core-grafana-concepts-lj'
+    );
+    expect(prepareMock).toHaveBeenCalledWith(
+      'https://grafana.com/docs/core-grafana-concepts-data-sources/',
+      expect.objectContaining({ title: 'Core Grafana concepts' })
+    );
+  });
 });
 
 describe('MyLearningTab — App Platform guide launch', () => {

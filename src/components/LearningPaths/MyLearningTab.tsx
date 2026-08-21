@@ -104,6 +104,42 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   // launch to the host so it can pick the surface without re-fetching. The
   // fetch happens while My Learning stays mounted; on failure My Learning stays
   // visible and the error is surfaced rather than committing a surface.
+  // Shared by every launch path (URL-based, manifest cover, static/App
+  // Platform guide) — assumes the caller already holds launchInFlightRef.
+  const performLaunch = useCallback(
+    async (url: string, title: string, packageInfo?: PackageOpenInfo) => {
+      const result = await prepareGuideLaunch(url, { title, source: 'home_page', packageInfo });
+      // The prepare step can outlive this page (the fetches are bounded but
+      // slow-CDN cases run tens of seconds). If the user navigated away,
+      // drop the result — launching now would yank them to /fullscreen from
+      // wherever they landed.
+      if (!mountedRef.current) {
+        return;
+      }
+      if (result.ok) {
+        onOpenGuide(result.launch);
+      } else {
+        // Log context reaches Faro attributes verbatim, so only stable,
+        // low-cardinality values go in: the URL loses its query and fragment,
+        // and the classification code stands in for `result.error`, whose free
+        // text can echo fetched-guide values. The user sees a translated
+        // generic message either way.
+        logger.error('[MyLearning] Guide launch preparation failed', {
+          content_url: normalizeTelemetryUrl(url),
+          error_code: result.errorCode,
+        });
+        getAppEvents().publish({
+          type: 'alert-error',
+          payload: [
+            t('myLearning.launchErrorTitle', 'Could not open the guide'),
+            t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
+          ],
+        });
+      }
+    },
+    [onOpenGuide]
+  );
+
   const launch = useCallback(
     async (url: string, title: string, launchId: string, packageInfo?: PackageOpenInfo) => {
       if (launchInFlightRef.current) {
@@ -112,34 +148,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       launchInFlightRef.current = true;
       setLaunchingId(launchId);
       try {
-        const result = await prepareGuideLaunch(url, { title, source: 'home_page', packageInfo });
-        // The prepare step can outlive this page (the fetches are bounded but
-        // slow-CDN cases run tens of seconds). If the user navigated away,
-        // drop the result — launching now would yank them to /fullscreen from
-        // wherever they landed.
-        if (!mountedRef.current) {
-          return;
-        }
-        if (result.ok) {
-          onOpenGuide(result.launch);
-        } else {
-          // Log context reaches Faro attributes verbatim, so only stable,
-          // low-cardinality values go in: the URL loses its query and fragment,
-          // and the classification code stands in for `result.error`, whose free
-          // text can echo fetched-guide values. The user sees a translated
-          // generic message either way.
-          logger.error('[MyLearning] Guide launch preparation failed', {
-            content_url: normalizeTelemetryUrl(url),
-            error_code: result.errorCode,
-          });
-          getAppEvents().publish({
-            type: 'alert-error',
-            payload: [
-              t('myLearning.launchErrorTitle', 'Could not open the guide'),
-              t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
-            ],
-          });
-        }
+        await performLaunch(url, title, packageInfo);
       } finally {
         launchInFlightRef.current = false;
         if (mountedRef.current) {
@@ -147,33 +156,70 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         }
       }
     },
-    [onOpenGuide]
+    [performLaunch]
   );
 
   // Manifest-backed (package) paths — App Platform or online packages alike —
   // have no cover `url` the way URL-based cloud paths do, so a fresh launch
   // has to resolve the path's own cover contentUrl before opening it. Mirrors
   // the URL-based branch in handleOpenGuide below, which already has one.
+  //
+  // The lock is acquired here, before resolvePackageNavLinks, rather than
+  // inside `launch` — Continue/Start buttons disable purely on `launchingId`,
+  // so a lock acquired only inside `launch` would leave that whole resolve
+  // window unguarded, letting a second click start another resolve (and
+  // potentially open a different path) before the first one ever reaches
+  // `launch`'s own lock.
   const openPathCover = useCallback(
     async (path: LearningPath) => {
-      const packageInfo: PackageOpenInfo = {
-        packageId: path.id,
-        packageManifest: { ...path.manifest, id: path.id },
-      };
-      const [navLink] = await resolvePackageNavLinks([path.id]);
-      const coverUrl = navLink?.contentUrl ?? '';
+      if (launchInFlightRef.current) {
+        return;
+      }
+      launchInFlightRef.current = true;
+      setLaunchingId(path.id);
+      try {
+        const packageInfo: PackageOpenInfo = {
+          packageId: path.id,
+          packageManifest: { ...path.manifest, id: path.id },
+        };
+        const [navLink] = await resolvePackageNavLinks([path.id]);
+        if (!mountedRef.current) {
+          return;
+        }
+        // A resolver miss shouldn't fail the whole launch: fall back to the
+        // first member guide, same as a manifest-backed path used to do via
+        // getGuideUrlForPath before the cover page had its own contentUrl.
+        const coverUrl = navLink?.contentUrl || getGuideUrlForPath(path.guides[0] ?? '', path.id) || '';
 
-      reportAppInteraction(UserInteraction.OpenResourceClick, {
-        content_title: path.title,
-        content_url: coverUrl || `package:${path.id}`,
-        content_type: AnalyticsContentType.LearningJourney,
-        interaction_location: 'my_learning_tab',
-        launch_target: 'cover_page',
-      });
+        reportAppInteraction(UserInteraction.OpenResourceClick, {
+          content_title: path.title,
+          content_url: coverUrl || `package:${path.id}`,
+          content_type: AnalyticsContentType.LearningJourney,
+          interaction_location: 'my_learning_tab',
+          launch_target: 'cover_page',
+        });
 
-      void launch(coverUrl, path.title, path.id, packageInfo);
+        if (!coverUrl) {
+          logger.error('[MyLearning] Could not resolve a cover or fallback URL for path', { path_id: path.id });
+          getAppEvents().publish({
+            type: 'alert-error',
+            payload: [
+              t('myLearning.launchErrorTitle', 'Could not open the guide'),
+              t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
+            ],
+          });
+          return;
+        }
+
+        await performLaunch(coverUrl, path.title, packageInfo);
+      } finally {
+        launchInFlightRef.current = false;
+        if (mountedRef.current) {
+          setLaunchingId(null);
+        }
+      }
     },
-    [launch]
+    [performLaunch, getGuideUrlForPath]
   );
 
   const handleOpenGuide = useCallback(
