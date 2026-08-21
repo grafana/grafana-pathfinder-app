@@ -36,7 +36,7 @@ export function HtmlBlockForm({
   const [content, setContent] = useState(initial?.content ?? '');
 
   const handleSubmit = useCallback(
-    (e: React.SubmitEvent) => {
+    (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       const block: JsonHtmlBlock = {
         type: 'html',

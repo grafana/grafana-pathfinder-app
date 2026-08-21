@@ -222,7 +222,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     editDraft({ peerjsSecure: event.target.checked });
   };
 
-  const onSubmit = async (event: React.SubmitEvent) => {
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSaving(true);
 

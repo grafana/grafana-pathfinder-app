@@ -30,7 +30,7 @@ export interface LiveSessionTopBarProps {
   sessionInfo: SessionInfo | null;
   sessionManager: SessionManager | null;
   handRaises: HandRaiseInfo[];
-  handRaiseIndicatorRef: RefObject<HTMLDivElement | null>;
+  handRaiseIndicatorRef: RefObject<HTMLDivElement>;
   attendeeMode: AttendeeMode | null;
   setAttendeeMode: (mode: AttendeeMode) => void;
   actionReplayRef: RefObject<{ setMode: (mode: AttendeeMode) => void } | null>;

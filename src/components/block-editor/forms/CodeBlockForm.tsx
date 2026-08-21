@@ -74,7 +74,7 @@ export function CodeBlockForm({
   }, [onPickerModeChange]);
 
   const handleSubmit = useCallback(
-    (e: React.SubmitEvent) => {
+    (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
 
       const parsedRequirements = requirements

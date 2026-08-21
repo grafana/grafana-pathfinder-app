@@ -94,7 +94,7 @@ export function SectionBlockForm({
   }, [sectionId, title, requirements, objectives, autoCollapse]);
 
   const handleSubmit = useCallback(
-    (e: React.SubmitEvent) => {
+    (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       onSubmit(buildBlock());
     },

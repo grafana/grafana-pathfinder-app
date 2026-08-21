@@ -19,7 +19,7 @@ import {
 export function useDodgeSession(setPosition: (x: number, y: number) => void): {
   view: FloatingPanelView;
   isDodging: boolean;
-  contentRef: React.RefObject<HTMLDivElement | null>;
+  contentRef: React.RefObject<HTMLDivElement>;
   minimize: () => void;
   restoreFromPill: () => void;
 } {

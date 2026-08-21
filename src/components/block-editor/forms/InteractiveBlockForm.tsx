@@ -130,7 +130,7 @@ export function InteractiveBlockForm({
   }, [onPickerModeChange, action]);
 
   const handleSubmit = useCallback(
-    (e: React.SubmitEvent) => {
+    (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
 
       // Parse requirements and objectives from comma-separated strings

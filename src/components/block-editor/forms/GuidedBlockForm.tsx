@@ -54,7 +54,7 @@ export function GuidedBlockForm({
   const [completeEarly, setCompleteEarly] = useState(initial?.completeEarly ?? false);
 
   const handleSubmit = useCallback(
-    (e: React.SubmitEvent) => {
+    (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
 
       // Parse requirements and objectives

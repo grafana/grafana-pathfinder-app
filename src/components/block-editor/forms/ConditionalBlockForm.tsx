@@ -215,7 +215,7 @@ export function ConditionalBlockForm({
   ]);
 
   const handleSubmit = useCallback(
-    (e: React.SubmitEvent) => {
+    (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       onSubmit(buildBlock());
     },

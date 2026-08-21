@@ -576,7 +576,7 @@ export function MarkdownBlockForm({
   }, [editor, rawContent]);
 
   const handleSubmit = useCallback(
-    (e: React.SubmitEvent) => {
+    (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
 
       let markdown: string;

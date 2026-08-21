@@ -133,7 +133,7 @@ export function GrotGuideBlockForm({ initialData, onSubmit, onCancel, isEditing 
   const [yamlError, setYamlError] = useState<string | null>(null);
 
   const handleSubmit = useCallback(
-    (e: React.SubmitEvent) => {
+    (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       setError(null);
 
