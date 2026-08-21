@@ -5,15 +5,26 @@ import { EventEmitter } from 'events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
+import { createMinimalResultsData } from './e2e-reporter';
 
 import { ExitCode } from './exit-codes';
 import { findRunnerRoot, processPlaywrightResults, resolveStartingUrl, runPlaywrightTests } from './playwright-runner';
+import { PLAYWRIGHT_EARLY_FAILURE_MESSAGE } from './structured-failure-reporter';
 
 jest.mock('child_process', () => ({
   spawn: jest.fn(),
 }));
 
 const spawnMock = spawn as jest.MockedFunction<typeof spawn>;
+
+function structuredFailureFallback() {
+  return createMinimalResultsData({
+    guide: { id: 'guide', title: 'Guide', path: 'guide.json' },
+    outcome: 'infrastructure_error',
+    errorCode: 'UNKNOWN',
+    errorMessage: PLAYWRIGHT_EARLY_FAILURE_MESSAGE,
+  });
+}
 
 describe('findRunnerRoot', () => {
   let tempRoot: string;
@@ -122,6 +133,60 @@ describe('processPlaywrightResults', () => {
       exitCode: ExitCode.TEST_FAILURE,
       errorCode: 'REPORT_MISSING',
     });
+  });
+
+  it('keeps REPORT_MISSING for unreadable child output', () => {
+    const paths = filePaths();
+    writeFileSync(paths.resultsFilePath, '{not-json');
+
+    expect(processPlaywrightResults(1, { trace: false }, paths)).toMatchObject({
+      success: false,
+      exitCode: ExitCode.TEST_FAILURE,
+      errorCode: 'REPORT_MISSING',
+    });
+  });
+
+  it('uses a structured early-runner failure instead of REPORT_MISSING', () => {
+    const paths = filePaths();
+    writeFileSync(paths.resultsFilePath, JSON.stringify(structuredFailureFallback()));
+
+    expect(processPlaywrightResults(1, { trace: false }, paths)).toMatchObject({
+      success: false,
+      exitCode: ExitCode.TEST_FAILURE,
+      resultsData: {
+        outcome: 'infrastructure_error',
+        errorCode: 'UNKNOWN',
+        errorMessage: PLAYWRIGHT_EARLY_FAILURE_MESSAGE,
+      },
+    });
+  });
+
+  it('does not replace real final guide results with abort metadata', () => {
+    const paths = filePaths();
+    const finalResults = createMinimalResultsData({
+      guide: { id: 'guide', title: 'Guide', path: 'guide.json' },
+      outcome: 'failed',
+      errorCode: 'MANDATORY_FAILURE',
+      errorMessage: 'Final mandatory result',
+      abortReason: 'MANDATORY_FAILURE',
+    });
+    finalResults.results = [
+      {
+        stepId: 'step-1',
+        status: 'failed',
+        durationMs: 1,
+        currentUrl: 'http://localhost:3000',
+        consoleErrors: [],
+        skippable: false,
+      },
+    ];
+    writeFileSync(paths.resultsFilePath, JSON.stringify(finalResults));
+    writeFileSync(
+      paths.abortFilePath,
+      JSON.stringify({ abortReason: 'MANDATORY_FAILURE', message: 'Later abort metadata' })
+    );
+
+    expect(processPlaywrightResults(1, { trace: false }, paths).resultsData).toEqual(finalResults);
   });
   it('ignores structurally invalid abort metadata', () => {
     const paths = filePaths();
@@ -346,10 +411,11 @@ describe('runPlaywrightTests', () => {
   it.each([
     ['AUTH_EXPIRED', 'aborted'],
     ['MANDATORY_FAILURE', 'failed'],
-  ] as const)('preserves %s when only an abort file is produced', async (abortReason, outcome) => {
+  ] as const)('normalizes a reporter fallback to %s abort metadata', async (abortReason, outcome) => {
     const child = new EventEmitter();
     spawnMock.mockImplementation((_command, _args, spawnOptions) => {
       const env = (spawnOptions as { env?: NodeJS.ProcessEnv }).env;
+      writeFileSync(env?.RESULTS_FILE_PATH as string, JSON.stringify(structuredFailureFallback()));
       writeFileSync(env?.ABORT_FILE_PATH as string, JSON.stringify({ abortReason, message: `${abortReason} message` }));
       queueMicrotask(() => child.emit('close', 1));
       return child as never;

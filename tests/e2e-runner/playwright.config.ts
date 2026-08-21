@@ -35,7 +35,10 @@ export default defineConfig<PluginOptions>({
   fullyParallel: false, // Sequential execution for guide tests
   forbidOnly: !!process.env.CI,
   retries: 0, // No retries - failures should be investigated
-  reporter: isEnvFlagEnabled(process.env[E2E_ENV.VERBOSE]) ? 'list' : 'line',
+  reporter: [
+    [isEnvFlagEnabled(process.env[E2E_ENV.VERBOSE]) ? 'list' : 'line'],
+    [join(projectRoot, 'src', 'cli', 'e2e', 'structured-failure-reporter.ts')],
+  ],
   use: {
     channel: 'chromium',
     baseURL: process.env[E2E_ENV.GRAFANA_URL] || 'http://localhost:3000',

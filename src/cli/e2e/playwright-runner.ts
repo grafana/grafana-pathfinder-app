@@ -14,6 +14,7 @@ import type { LoadedGuide } from '../utils/file-loader';
 import type { E2EErrorCode } from './schemas/e2e-report.schema';
 import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
 import { resolveStartingPath } from './starting-location';
+import { isStructuredFailureFallback } from './structured-failure-reporter';
 
 export { resolveStartingUrl } from './starting-location';
 
@@ -173,6 +174,17 @@ export function processPlaywrightResults(
   const abortContent = isAbortFileContent(abortValue) ? abortValue : undefined;
   if (abortContent) {
     const abortExitCode = abortContent.abortReason === 'AUTH_EXPIRED' ? ExitCode.AUTH_FAILURE : ExitCode.TEST_FAILURE;
+    const normalizedResultsData = isStructuredFailureFallback(resultsData)
+      ? {
+          ...resultsData,
+          outcome: abortContent.abortReason === 'AUTH_EXPIRED' ? ('aborted' as const) : ('failed' as const),
+          errorCode: abortContent.abortReason,
+          errorMessage: abortContent.message,
+          aborted: true,
+          abortReason: abortContent.abortReason,
+          abortMessage: abortContent.message,
+        }
+      : resultsData;
 
     return {
       success: false,
@@ -181,7 +193,7 @@ export function processPlaywrightResults(
       abortReason: abortContent.abortReason,
       abortMessage: abortContent.message,
       errorCode: abortContent.abortReason,
-      resultsData,
+      resultsData: normalizedResultsData,
     };
   }
 

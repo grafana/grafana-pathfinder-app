@@ -233,7 +233,12 @@ The report contract's single source of truth is the Zod schema in `src/cli/e2e/s
 Key contract fields:
 
 - `outcome`: one of `passed`, `failed`, `aborted`, `skipped`, `infrastructure_error`, or `configuration_error`. Multi-guide reports surface `aborted` when any guide's session expired.
-- `errorCode`: structured failure code present on non-passing reports. Notable values: `TIER_MISMATCH` (guide requires a different environment tier), `SKIPPED_PREREQ` (a prerequisite guide failed), `REPORT_MISSING` (Playwright exited but wrote no results file), `AUTH_EXPIRED`, `NO_CAPACITY`, `PLAYWRIGHT_SPAWN_FAILED`.
+- `errorCode`: structured failure code present on non-passing reports. Notable values:
+  - `TIER_MISMATCH`: The guide requires a different environment tier.
+  - `SKIPPED_PREREQ`: A prerequisite guide failed.
+  - `UNKNOWN`: Playwright failed before final guide-result persistence.
+  - `REPORT_MISSING`: The child output was missing or unreadable.
+  - `AUTH_EXPIRED`, `NO_CAPACITY`, and `PLAYWRIGHT_SPAWN_FAILED`.
 - `guide.contentDigest`: SHA-256 digest of the exact guide content executed
 - `guide.sourceUrl`: remote package source URL when available
 - `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
@@ -242,7 +247,7 @@ Key contract fields:
 
 The runner always attempts to write a report, even when self-validation fails, so a diagnostic artifact is not lost. A failed validation logs the schema error, writes the original object, and exits with code 2. Consumers must validate the report against the schema matching the producing runner before processing it.
 
-Catchable setup, preflight, provisioning, and Playwright spawn failures still write zero-step reports that validate against the schema. Observable browser termination during step execution produces a runner report. A container OOM or SIGKILL that prevents report creation remains the worker's responsibility.
+Catchable setup, preflight, provisioning, and Playwright spawn failures still write zero-step reports that validate against the schema. The Playwright reporter writes a structured fallback before browser setup. This fallback has a fixed message and does not contain Playwright error details. Final guide results overwrite the fallback. Abort metadata replaces only the fallback. Observable browser termination during step execution produces a runner report. A container OOM or SIGKILL that prevents report creation remains the worker's responsibility.
 
 Consumers that need a language-agnostic contract can extract the JSON Schema from the CLI, so the artifact always matches the binary that produced the report:
 
