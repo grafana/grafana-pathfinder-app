@@ -114,6 +114,44 @@ describe('useLinkClickHandler', () => {
       // route through the docs loader internally).
       expect(mockModel.loadTab).toHaveBeenCalledWith('tab1', 'https://grafana.com/docs/test-journey/milestone1');
     });
+
+    // Regression test: the cover-page CTA and GuideList's clickable current
+    // row (both added this PR) route through this same handler with no
+    // guard of their own — a rapid double-click could re-enter loadTab before
+    // isLoading's React state update was ever visible.
+    it('ignores a second click while the first loadTab call is still in flight', async () => {
+      let resolveLoadTab!: () => void;
+      mockModel.loadTab.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveLoadTab = resolve;
+        })
+      );
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const startButton = document.createElement('button');
+      startButton.setAttribute('data-journey-start', 'true');
+      startButton.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone1');
+      contentDiv.appendChild(startButton);
+
+      fireEvent.click(startButton);
+      fireEvent.click(startButton);
+      expect(mockModel.loadTab).toHaveBeenCalledTimes(1);
+
+      resolveLoadTab();
+      await Promise.resolve();
+
+      // Once settled, a further click is allowed through again.
+      fireEvent.click(startButton);
+      expect(mockModel.loadTab).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('Grafana Documentation Links', () => {

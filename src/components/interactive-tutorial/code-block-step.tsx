@@ -203,14 +203,24 @@ export const CodeBlockStep = forwardRef<
       }
       setIsShowRunning(true);
       try {
-        // Highlight the target Monaco editor using the interactive engine
-        await executeInteractiveAction({ targetAction: 'highlight', refTarget, buttonType: 'show' });
+        // Highlight the target Monaco editor using the interactive engine.
+        // Threading fullScreenFallbackLocation lets executeInteractiveAction's
+        // own gate dock + navigate first when in full screen — mirrors
+        // handleInsert's handOffFromFullScreenIfNeeded below, but for real
+        // this time: "highlight" is a Grafana-driving action, so the gate
+        // handles it automatically instead of needing its own explicit call.
+        await executeInteractiveAction({
+          targetAction: 'highlight',
+          refTarget,
+          buttonType: 'show',
+          fullScreenFallbackLocation,
+        });
       } catch (err) {
         logger.error('[CodeBlockStep] Show me failed', { error: err });
       } finally {
         setIsShowRunning(false);
       }
-    }, [refTarget, isShowRunning, executeInteractiveAction]);
+    }, [refTarget, isShowRunning, executeInteractiveAction, fullScreenFallbackLocation]);
 
     // "Insert" targets a live Monaco editor unconditionally — full screen has
     // none behind it (mirrors requires-grafana-ui.ts's `code-block` case) — so

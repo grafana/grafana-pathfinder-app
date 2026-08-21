@@ -51,8 +51,8 @@ jest.mock('../../global-state/panel-mode', () => {
   return {
     panelModeManager: { getMode: () => mockGetMode() },
     requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
-    isGrafanaDrivingHandoffNeeded: (targetAction: string, buttonType?: 'show' | 'do') =>
-      buttonType !== 'show' && mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
+    isGrafanaDrivingHandoffNeeded: (targetAction: string) =>
+      mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
   };
 });
 
@@ -172,6 +172,21 @@ describe('full-screen handoff gate reaches the handler for non-navigate actions'
     renderButtonGuide();
 
     fireEvent.click(screen.getByText('Do it'));
+
+    await waitFor(() => expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalled());
+    await waitFor(() => expect(mockButtonExecute).toHaveBeenCalled());
+  });
+
+  // "Show me" applies the exact same rule as "Do it": it has nothing to
+  // preview until the live Grafana UI is docked into view either. Before this
+  // fix, isGrafanaDrivingHandoffNeeded excluded buttonType 'show' entirely, so
+  // a "Show me" click in full screen never handed off and just failed with
+  // "Element not found".
+  it('reaches the handoff and the handler for a "button" action\'s "Show me" click too', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    renderButtonGuide();
+
+    fireEvent.click(screen.getByText('Show me'));
 
     await waitFor(() => expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalled());
     await waitFor(() => expect(mockButtonExecute).toHaveBeenCalled());

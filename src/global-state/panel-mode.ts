@@ -1,9 +1,10 @@
 import { getAppEvents } from '@grafana/runtime';
 import { StorageKeys } from '../lib/storage-keys';
 import { PANEL_MODE_CHANGE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
-// Surgical import (not the ../lib/telemetry barrel): panel-mode is
+// Surgical imports (not the ../lib/telemetry barrel): panel-mode is
 // entry-eager, and the barrel would pull the telemetry package into module.js.
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
+import { pushFaroUserAction } from '../lib/telemetry/bridge';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
 import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
 import type { PackageOpenInfo } from '../types/content-panel.types';
@@ -339,6 +340,11 @@ export const panelModeManager = new PanelModeManager();
  *
  * No confirmation toast: the handoff is a direct result of the user's own
  * click, not a surprise the app needs to explain.
+ *
+ * Reports a `pathfinder_fullscreen_handoff` Faro user action stamped with
+ * which branch resolved it (`mounted` vs `timeout`) — the safety timeout is a
+ * silent degradation (the destination never confirmed it mounted) that would
+ * otherwise be indistinguishable from a normal handoff in telemetry.
  */
 export function requestSidebarHandoffAndWait(options?: { targetPath?: string }): Promise<void> {
   // Mirrors GlobalSidebarState.openWithGuide's settle delay after the mount
@@ -354,7 +360,7 @@ export function requestSidebarHandoffAndWait(options?: { targetPath?: string }):
   return new Promise((resolve) => {
     let settled = false;
     let timeoutId: ReturnType<typeof setTimeout>;
-    const finish = () => {
+    const finish = (outcome: 'mounted' | 'timeout') => {
       if (settled) {
         return;
       }
@@ -362,9 +368,10 @@ export function requestSidebarHandoffAndWait(options?: { targetPath?: string }):
       window.removeEventListener('pathfinder-sidebar-mounted', onMounted);
       document.removeEventListener('pathfinder-panel-mounted', onMounted);
       clearTimeout(timeoutId);
+      pushFaroUserAction('pathfinder_fullscreen_handoff', { outcome });
       resolve();
     };
-    const onMounted = () => setTimeout(finish, SETTLE_DELAY_MS);
+    const onMounted = () => setTimeout(() => finish('mounted'), SETTLE_DELAY_MS);
 
     // The destination isn't always the sidebar despite this function's name:
     // handleExitToSidebar falls back to floating when another plugin owns the
@@ -376,7 +383,7 @@ export function requestSidebarHandoffAndWait(options?: { targetPath?: string }):
     // sidebar-vs-floating race.
     window.addEventListener('pathfinder-sidebar-mounted', onMounted, { once: true });
     document.addEventListener('pathfinder-panel-mounted', onMounted, { once: true });
-    timeoutId = setTimeout(finish, SAFETY_TIMEOUT_MS);
+    timeoutId = setTimeout(() => finish('timeout'), SAFETY_TIMEOUT_MS);
 
     document.dispatchEvent(
       new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT, { detail: { targetPath: options?.targetPath } })
@@ -392,9 +399,13 @@ export function requestSidebarHandoffAndWait(options?: { targetPath?: string }):
  * DOM-resolution attempt (`interactive-step.tsx`'s `executeWithLazyScroll`,
  * which would otherwise fail fast against full screen's nonexistent Grafana
  * DOM and never reach the gate at all) must agree on the same condition.
+ *
+ * Applies equally to "Show me" and "Do it": both need the live Grafana UI in
+ * place before they can find anything to preview or act on, so both dock and
+ * navigate to the resolved fallback location first. Callers that invoke a
+ * Grafana-driving action in "show" mode must also thread their own
+ * `fullScreenFallbackLocation` through so the navigation has a destination.
  */
-export function isGrafanaDrivingHandoffNeeded(targetAction: string, buttonType?: 'show' | 'do'): boolean {
-  return (
-    buttonType !== 'show' && panelModeManager.getMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction)
-  );
+export function isGrafanaDrivingHandoffNeeded(targetAction: string): boolean {
+  return panelModeManager.getMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction);
 }

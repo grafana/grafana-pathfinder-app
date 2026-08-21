@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import {
@@ -62,6 +62,14 @@ function isValidGrafanaContentUrl(url: string): boolean {
 }
 
 export function useLinkClickHandler({ contentRef, activeTab, theme, model }: UseLinkClickHandlerProps) {
+  // Synchronous re-entrancy guard for data-journey-start clicks: loadTab's own
+  // isLoading is React state (not readable until the next render), so a rapid
+  // double-click on the cover-page CTA or a module row could re-enter before
+  // the first call's loading state ever becomes visible. Both clicks target
+  // the same (tabId, url) pair, so this is a wasted-fetch/duplicate-analytics
+  // concern rather than a correctness one — a ref latch is enough.
+  const journeyStartInFlightRef = useRef(false);
+
   useEffect(() => {
     const handleLinkClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -74,6 +82,17 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           preventDefault: true,
           stopPropagation: true,
         });
+
+        if (journeyStartInFlightRef.current) {
+          return;
+        }
+
+        const loadJourneyTab = (tabId: string, url: string) => {
+          journeyStartInFlightRef.current = true;
+          model.loadTab(tabId, url).finally(() => {
+            journeyStartInFlightRef.current = false;
+          });
+        };
 
         // Get the milestone URL from the button's data attribute
         const milestoneUrl = startElement.getAttribute('data-milestone-url');
@@ -96,7 +115,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
           // Navigate directly to the first milestone URL. Use the unified
           // dispatcher so package-backed journeys re-run their docs loader.
-          model.loadTab(activeTab.id, milestoneUrl);
+          loadJourneyTab(activeTab.id, milestoneUrl);
         } else if (
           activeTab?.content?.metadata?.learningJourney?.milestones &&
           activeTab.content.metadata.learningJourney.milestones.length > 0
@@ -111,7 +130,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               total_milestones: activeTab.content.metadata.learningJourney.milestones.length,
             });
 
-            model.loadTab(activeTab.id, firstMilestone.url);
+            loadJourneyTab(activeTab.id, firstMilestone.url);
           }
         } else {
           logger.warn('No milestone URL found to navigate to');

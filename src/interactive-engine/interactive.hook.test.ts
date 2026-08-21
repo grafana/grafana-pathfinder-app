@@ -21,8 +21,8 @@ jest.mock('../global-state/panel-mode', () => {
   return {
     panelModeManager: { getMode: () => mockGetMode() },
     requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
-    isGrafanaDrivingHandoffNeeded: (targetAction: string, buttonType?: 'show' | 'do') =>
-      buttonType !== 'show' && mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
+    isGrafanaDrivingHandoffNeeded: (targetAction: string) =>
+      mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
   };
 });
 
@@ -1002,8 +1002,9 @@ describe('useInteractiveElements', () => {
       expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
     });
 
-    it('does not hand off for "Show me" even in full screen', async () => {
+    it('hands off for "Show me" too — neither button type has anything to preview or act on without it', async () => {
       mockGetMode.mockReturnValue('fullscreen');
+      const { ButtonHandler } = require('./action-handlers');
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
@@ -1011,10 +1012,14 @@ describe('useInteractiveElements', () => {
           targetAction: 'button',
           refTarget: 'test-target',
           buttonType: 'show',
+          fullScreenFallbackLocation: '/connections',
         });
       });
 
-      expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
+      expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
+      const buttonHandlerInstance = ButtonHandler.mock.results[0]!.value;
+      const elementData = buttonHandlerInstance.execute.mock.calls[0]![0];
+      expect(elementData.skipCompletionOnEmptyTarget).toBe(true);
     });
 
     it('does not hand off for a non-Grafana-driving action in full screen', async () => {

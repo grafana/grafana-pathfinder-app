@@ -152,10 +152,15 @@ jest.mock('../../interactive-engine', () => ({
 // ─── Mock panel-mode (full-screen -> sidebar handoff) ────────────────────────
 const mockGetMode = jest.fn(() => 'sidebar');
 const mockRequestSidebarHandoffAndWait = jest.fn().mockResolvedValue(undefined);
-jest.mock('../../global-state/panel-mode', () => ({
-  panelModeManager: { getMode: () => mockGetMode() },
-  requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
-}));
+jest.mock('../../global-state/panel-mode', () => {
+  const { GRAFANA_DRIVING_ACTIONS } = jest.requireActual('../../constants/interactive-actions');
+  return {
+    panelModeManager: { getMode: () => mockGetMode() },
+    requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
+    isGrafanaDrivingHandoffNeeded: (targetAction: string) =>
+      mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
+  };
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {

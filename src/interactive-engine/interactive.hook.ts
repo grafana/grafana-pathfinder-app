@@ -417,16 +417,16 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
       // No DOM element needed - React components manage their own state
       const isShowMode = buttonType === 'show';
 
-      // Full screen has no live Grafana UI behind it. "Show me" stays put
-      // (nothing to relocate for); "Do it" on a Grafana-driving action hands
-      // off to the sidebar first, navigating to the resolved fallback
-      // location (step/milestone/course — see content-renderer.tsx) so the
-      // click has something to act on once docked. Waits for the sidebar to
+      // Full screen has no live Grafana UI behind it. A Grafana-driving
+      // action — "Show me" or "Do it" alike — hands off to the sidebar
+      // first, navigating to the resolved fallback location
+      // (step/milestone/course — see content-renderer.tsx) so the click has
+      // something to preview or act on once docked. Waits for the sidebar to
       // actually mount before proceeding, rather than expanding the action
       // handler's own resolveWithRetry budget. The target may still not be
       // there yet (navigation itself can be slow) — skipCompletionOnEmptyTarget
       // stops that from being silently reported as done.
-      if (isGrafanaDrivingHandoffNeeded(targetAction, buttonType)) {
+      if (isGrafanaDrivingHandoffNeeded(targetAction)) {
         await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
         elementData.skipCompletionOnEmptyTarget = true;
       }

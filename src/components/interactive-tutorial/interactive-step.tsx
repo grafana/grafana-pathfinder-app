@@ -83,8 +83,7 @@ export async function executeWithLazyScroll(
   lazyRender: boolean,
   scrollContainer: string | undefined,
   action: () => Promise<boolean>,
-  targetAction?: string,
-  buttonType?: 'show' | 'do'
+  targetAction?: string
 ): Promise<LazyScrollResult> {
   // Navigate, noop, and popout actions don't target DOM elements - execute immediately without element checking
   if (targetAction === 'navigate' || targetAction === 'noop' || targetAction === 'popout') {
@@ -97,8 +96,9 @@ export async function executeWithLazyScroll(
   // fail fast and `action()` would never run, silently skipping the handoff
   // gate entirely. Skip straight to the real action; its handler does its
   // own full-retry DOM resolution against the destination page once the
-  // handoff completes.
-  if (targetAction && isGrafanaDrivingHandoffNeeded(targetAction, buttonType)) {
+  // handoff completes. Applies to "Show me" as well as "Do it" — both need
+  // the live Grafana UI in place before they have anything to preview or act on.
+  if (targetAction && isGrafanaDrivingHandoffNeeded(targetAction)) {
     return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
@@ -761,11 +761,11 @@ export const InteractiveStep = forwardRef<
               targetState,
               targetComment,
               buttonType: 'show',
+              fullScreenFallbackLocation,
             });
             return outcome !== 'error';
           },
-          targetAction,
-          'show'
+          targetAction
         );
 
         if (result.outcome === 'error') {
@@ -801,6 +801,7 @@ export const InteractiveStep = forwardRef<
       finalIsEnabled,
       lazyRender,
       scrollContainer,
+      fullScreenFallbackLocation,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -863,14 +864,7 @@ export const InteractiveStep = forwardRef<
       const stepExecStart = performance.now();
       let stepOutcome: 'ok' | 'error' = 'error';
       try {
-        const result = await executeWithLazyScroll(
-          refTarget,
-          lazyRender,
-          scrollContainer,
-          executeStep,
-          targetAction,
-          'do'
-        );
+        const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, executeStep, targetAction);
 
         stepOutcome = result.outcome;
         if (!result.elementFound) {

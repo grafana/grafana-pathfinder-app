@@ -6,7 +6,7 @@
  * event as floating, and round-trip pendingGuide / priorPath handoffs.
  */
 
-import { panelModeManager, requestSidebarHandoffAndWait } from './panel-mode';
+import { panelModeManager, requestSidebarHandoffAndWait, isGrafanaDrivingHandoffNeeded } from './panel-mode';
 import { StorageKeys } from '../lib/storage-keys';
 import { REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
 
@@ -16,10 +16,16 @@ jest.mock('@grafana/runtime', () => ({
   getAppEvents: () => ({ publish: publishMock }),
 }));
 
+const mockPushFaroUserAction = jest.fn();
+jest.mock('../lib/telemetry/bridge', () => ({
+  pushFaroUserAction: (...args: unknown[]) => mockPushFaroUserAction(...args),
+}));
+
 describe('panelModeManager', () => {
   beforeEach(() => {
     localStorage.clear();
     publishMock.mockClear();
+    mockPushFaroUserAction.mockClear();
     // Reset to default 'sidebar' for each test
     localStorage.removeItem(StorageKeys.PANEL_MODE);
   });
@@ -399,6 +405,38 @@ describe('panelModeManager', () => {
     });
   });
 
+  describe('isGrafanaDrivingHandoffNeeded', () => {
+    it('is true for a Grafana-driving action in full screen', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'fullscreen');
+      expect(isGrafanaDrivingHandoffNeeded('button')).toBe(true);
+      expect(isGrafanaDrivingHandoffNeeded('highlight')).toBe(true);
+      expect(isGrafanaDrivingHandoffNeeded('formfill')).toBe(true);
+      expect(isGrafanaDrivingHandoffNeeded('navigate')).toBe(true);
+      expect(isGrafanaDrivingHandoffNeeded('hover')).toBe(true);
+    });
+
+    it('is false for a non-driving action in full screen (e.g. noop, sequence)', () => {
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'fullscreen');
+      expect(isGrafanaDrivingHandoffNeeded('noop')).toBe(false);
+      expect(isGrafanaDrivingHandoffNeeded('sequence')).toBe(false);
+    });
+
+    it('is false for a Grafana-driving action outside full screen (sidebar or floating)', () => {
+      expect(isGrafanaDrivingHandoffNeeded('button')).toBe(false);
+      localStorage.setItem(StorageKeys.PANEL_MODE, 'floating');
+      expect(isGrafanaDrivingHandoffNeeded('button')).toBe(false);
+    });
+
+    // "Show me" and "Do it" apply the same rule — neither has anything to
+    // preview or act on until the live Grafana UI is docked into view.
+    // isGrafanaDrivingHandoffNeeded takes no buttonType; this documents that
+    // deliberately, so a future signature change doesn't quietly reintroduce
+    // a show/do split.
+    it('has no buttonType parameter — "Show me" and "Do it" share the exact same rule', () => {
+      expect(isGrafanaDrivingHandoffNeeded.length).toBe(1);
+    });
+  });
+
   describe('requestSidebarHandoffAndWait', () => {
     beforeEach(() => {
       jest.useFakeTimers();
@@ -426,6 +464,9 @@ describe('panelModeManager', () => {
       window.dispatchEvent(new CustomEvent('pathfinder-sidebar-mounted'));
       jest.advanceTimersByTime(300);
       await expect(promise).resolves.toBeUndefined();
+      // A real mount is a normal outcome, distinguishable from the safety-timeout
+      // degradation below — otherwise both look identical in telemetry.
+      expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_fullscreen_handoff', { outcome: 'mounted' });
     });
 
     // Regression test: handleExitToSidebar can fall back to floating mode
@@ -440,12 +481,16 @@ describe('panelModeManager', () => {
       await expect(promise).resolves.toBeUndefined();
       // Confirms this resolved via the mount event, not the 3s safety timeout.
       expect(jest.getTimerCount()).toBe(0);
+      expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_fullscreen_handoff', { outcome: 'mounted' });
     });
 
     it('resolves via the safety timeout when pathfinder-sidebar-mounted never fires', async () => {
       const promise = requestSidebarHandoffAndWait();
       jest.advanceTimersByTime(3000);
       await expect(promise).resolves.toBeUndefined();
+      // The safety timeout is a silent degradation (destination never
+      // confirmed it mounted) — must be countable separately from a real mount.
+      expect(mockPushFaroUserAction).toHaveBeenCalledWith('pathfinder_fullscreen_handoff', { outcome: 'timeout' });
     });
 
     it('does not publish a confirmation toast itself — dispatchEvent cannot tell it a listener actually reacted', () => {

@@ -27,10 +27,9 @@ import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
-import { panelModeManager, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
+import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
-import { GRAFANA_DRIVING_ACTIONS } from '../../constants/interactive-actions';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -367,11 +366,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // Guided steps never route through executeInteractiveAction's own gate
         // (see interactive.hook.ts), so a guided step needs the same full-screen
         // -> sidebar handoff applied here directly, keyed off its inner actions'
-        // targetAction rather than the 'guided' container tag itself.
-        if (
-          panelModeManager.getMode() === 'fullscreen' &&
-          internalActions.some((action) => GRAFANA_DRIVING_ACTIONS.has(action.targetAction))
-        ) {
+        // targetAction rather than the 'guided' container tag itself. Uses the
+        // shared predicate (not a local reimplementation) so this can't drift
+        // from the hook's own gate condition.
+        if (internalActions.some((action) => isGrafanaDrivingHandoffNeeded(action.targetAction))) {
           await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
         }
 
