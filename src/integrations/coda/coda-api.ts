@@ -79,12 +79,9 @@ export function isRoleForbidden(err: unknown): boolean {
 }
 
 /**
- * Grafana declined to let this user mint a service account token. Not a fault,
- * and not the same as `role_forbidden`: `serviceaccounts:create` is an Admin
- * permission by default while sandbox sessions are open to Editors, so this is
- * the *expected* answer for most learners. Branch to a pasted token.
- *
- * The code is synthesised by the client, never sent by the Coda backend.
+ * Grafana declined the mint — not a fault, and not `role_forbidden`. The
+ * expected answer below Admin, so branch to a pasted token. The code is
+ * synthesised by the client, never sent by the Coda backend.
  */
 export function isMintForbidden(err: unknown): boolean {
   return toCodaError(err).code === 'mint_forbidden';
@@ -174,14 +171,10 @@ export function execInSession(sessionId: string, req: ExecRequest) {
 }
 
 /**
- * Give a session's VM a Grafana credential, so the `gcx` CLI baked into every
- * sandbox image can talk to this Grafana as the learner.
- *
- * Wrapped here because `provisionGcxCredential` takes the client, and this
- * module owns the only instance. Pass `token` to install one the user supplied
- * rather than minting — the path that works for everyone, since minting needs
- * Admin. The session's terminal must already be connected; the backend has no
- * other route to the box and answers 409 before then.
+ * Give a session's VM a Grafana credential for the `gcx` CLI. Wrapped here
+ * because `provisionGcxCredential` takes the client and this module owns the
+ * only instance. The session's terminal must already be connected — the backend
+ * has no other route to the box and answers 409 before then.
  */
 export function provisionGcx(sessionId: string, options: MintTokenOptions & { token?: string } = {}) {
   return provisionGcxCredential(client, sessionId, options);

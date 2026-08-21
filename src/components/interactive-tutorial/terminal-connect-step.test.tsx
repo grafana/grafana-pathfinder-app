@@ -14,6 +14,7 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { CodaError } from '@grafana/coda-client';
 
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
+import { resetGcxCredential } from '../../integrations/coda/gcx-credential-store';
 import { testIds } from '../../constants/testIds';
 
 jest.mock('@grafana/ui', () => ({
@@ -40,6 +41,14 @@ jest.mock('@grafana/runtime', () => ({
 jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
 }));
+
+const mockReportAppInteraction = jest.fn();
+jest.mock('../../lib/analytics', () => ({
+  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+  UserInteraction: { GcxCredentialInstalled: 'gcx_credential_installed', GcxSetupSkipped: 'gcx_setup_skipped' },
+}));
+
+jest.mock('../../lib/telemetry', () => ({ recordGcxCredentialDegradation: jest.fn() }));
 
 const mockMarkStepCompleted = jest.fn();
 jest.mock('../../global-state/completion-store', () => ({
@@ -112,6 +121,8 @@ beforeEach(() => {
   mockSandboxUnavailable = null;
   mockCanMint = true;
   mockProvisionGcx.mockReset();
+  // The credential state is module-scoped, shared with the terminal toolbar.
+  resetGcxCredential();
 });
 
 describe('without gcx', () => {
@@ -229,14 +240,17 @@ describe('with gcx', () => {
     expect(screen.getByTestId(testIds.interactive.gcxInstallButton(STEP_ID))).toBeDisabled();
   });
 
-  it('offers only the paste field when this user cannot mint', async () => {
+  it('still offers minting when Grafana is unlikely to allow it', async () => {
+    // The role check is a hint, not an authorisation answer — RBAC can grant
+    // `serviceaccounts:create` without the Admin basic role.
     mockCanMint = false;
     mockTerminalStatus = 'connected';
     mockSessionId = 's_abc';
     renderStep({ gcx: true });
 
-    expect(screen.queryByTestId(testIds.interactive.gcxMintButton(STEP_ID))).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.gcxMintButton(STEP_ID))).toBeInTheDocument();
     expect(screen.getByTestId(testIds.interactive.gcxTokenInput(STEP_ID))).toBeInTheDocument();
+    expect(screen.getByText(/usually needs an admin/i)).toBeInTheDocument();
   });
 
   it('names an old Coda plugin when the route 404s on a live session', async () => {
@@ -270,10 +284,14 @@ describe('with gcx', () => {
     renderStep({ gcx: true, onComplete });
 
     fireEvent.click(screen.getByText('Try in terminal'));
-    const skip = await screen.findByTestId(testIds.interactive.gcxSkipButton(STEP_ID));
-    fireEvent.click(skip);
+    // Wait for the refusal to land before taking the button: the skip is
+    // offered from `idle` too, and that node is replaced when the form
+    // re-renders around the error.
+    await screen.findByTestId(testIds.interactive.gcxError(STEP_ID));
+    fireEvent.click(screen.getByTestId(testIds.interactive.gcxSkipButton(STEP_ID)));
 
     expect(onComplete).toHaveBeenCalled();
+    expect(mockReportAppInteraction).toHaveBeenCalledWith('gcx_setup_skipped', { state: 'needs-token' });
   });
 
   it('does not offer Continue while the credential is still outstanding', async () => {
@@ -300,7 +318,11 @@ describe('with gcx', () => {
   });
 });
 
-describe('executeStep, driven by Do Section', () => {
+// Do Section never reaches this handle for a `terminal-connect` step — the
+// schema's `refTarget` is 'none', so no ref is attached, and `pausesSectionRun`
+// stops the run before execution (see `step-type-registry.test.ts`). These
+// cover the handle for any direct caller.
+describe('the executeStep handle', () => {
   it('refuses to report success while the credential is outstanding', async () => {
     mockTerminalStatus = 'connected';
     mockSessionId = 's_abc';
@@ -308,8 +330,6 @@ describe('executeStep, driven by Do Section', () => {
     const ref = React.createRef<{ executeStep: () => Promise<boolean> }>();
     render(<TerminalConnectStep stepId={STEP_ID} gcx ref={ref} />);
 
-    // A `true` here is how Do Section forges a completion for a step only the
-    // user can perform.
     await act(async () => {
       await expect(ref.current!.executeStep()).resolves.toBe(false);
     });

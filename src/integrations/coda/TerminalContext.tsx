@@ -10,8 +10,9 @@
  */
 
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect } from 'react';
-import { TERMINAL_STATUS_CHANGED_EVENT } from '../../types/requirements.types';
+import { TERMINAL_STATUS_CHANGED_EVENT } from '../../lib/event-names';
 import type { ConnectionStatus, TerminalVMOptions } from './useTerminalLive.hook';
+import { invalidateGcxCredentialForSession } from './gcx-credential-store';
 import { setLastVmOpts } from './terminal-storage';
 import { logger } from '../../lib/logging';
 
@@ -154,6 +155,7 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
 
   useEffect(() => {
     _moduleTerminalSessionId = registeredSessionId;
+    invalidateGcxCredentialForSession(registeredSessionId);
   }, [registeredSessionId]);
 
   useEffect(() => {

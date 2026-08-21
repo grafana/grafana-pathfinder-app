@@ -32,7 +32,8 @@ import { stepReducer, createInitialState, toLegacyState, type StepAction } from 
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: requirements-manager -> interactive-engine
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
-import { TERMINAL_STATUS_CHANGED_EVENT } from '../types/requirements.types';
+import { TERMINAL_STATUS_CHANGED_EVENT } from '../lib/event-names';
+import { FixedRequirementType, ParameterizedRequirementPrefix } from '../types/requirements.types';
 import { logger } from '../lib/logging';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
@@ -1072,6 +1073,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     // every terminal step has long since answered "not connected". No delay
     // here — unlike navigation there is no DOM to settle, and the module state
     // this reads is already written when the event fires.
+    //
+    // Only steps that actually read the terminal subscribe. Every step in the
+    // guide holds one of these listeners, and a reconnect is three status
+    // changes, so an ungated listener would run a full requirements check for
+    // every blocked step in the guide three times over a connect that concerns
+    // two of them.
     const handleTerminalStatusChange = () => {
       if (!isSubscribed) {
         return;
@@ -1087,7 +1094,15 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
       triggerRecheckIfBlocked();
     };
-    window.addEventListener(TERMINAL_STATUS_CHANGED_EVENT, handleTerminalStatusChange);
+    const readsTerminalStatus = [requirements, objectivesRef.current].some(
+      (clause) =>
+        typeof clause === 'string' &&
+        (clause.includes(FixedRequirementType.IS_TERMINAL_ACTIVE) ||
+          clause.includes(ParameterizedRequirementPrefix.CODA_EXIT_ZERO))
+    );
+    if (readsTerminalStatus) {
+      window.addEventListener(TERMINAL_STATUS_CHANGED_EVENT, handleTerminalStatusChange);
+    }
 
     return () => {
       isSubscribed = false;
@@ -1099,7 +1114,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       window.removeEventListener(TERMINAL_STATUS_CHANGED_EVENT, handleTerminalStatusChange);
       clearInterval(urlCheckInterval);
     };
-  }, [isEligibleForChecking, state.isCompleted, state.fixType, lazyRender, stepId]); // Only re-subscribe when eligibility, completion, or lazy-scroll state changes (objectives tracked via ref)
+  }, [isEligibleForChecking, state.isCompleted, state.fixType, lazyRender, stepId, requirements]); // Only re-subscribe when eligibility, completion, lazy-scroll state, or the requirement text changes (objectives tracked via ref)
 
   // Drain a terminal status change that arrived while a check was in flight.
   useEffect(() => {

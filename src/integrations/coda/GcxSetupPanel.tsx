@@ -1,11 +1,7 @@
 /**
- * The mint-or-paste form for giving a sandbox VM a gcx credential, and the line
- * that reports the result.
- *
- * Presentation only — the flow is `useGcxCredential`. Shared by the guide's
- * `terminal-connect` step and the terminal panel's toolbar button, which is why
- * it lives in `integrations/` and takes its test ids as a prop: the step keys
- * them by step id and the toolbar has no step id.
+ * The mint-or-paste form for giving a sandbox VM a gcx credential. Presentation
+ * only — the flow is `useGcxCredential`. Test ids come in as a prop because the
+ * step keys them by step id and the toolbar has no step id.
  */
 
 import React, { useState } from 'react';
@@ -22,6 +18,21 @@ export interface GcxPanelTestIds {
   install: string;
   error: string;
   skip?: string;
+}
+
+export interface GcxSetupPanelProps {
+  state: GcxState;
+  error: string | null;
+  /** Whether a mint has yet to be tried or refused for this session. */
+  offerMint: boolean;
+  /** Whether Grafana is likely to allow it — how prominently to offer it. */
+  mintLikely: boolean;
+  onMint: () => void;
+  onInstall: (token: string) => void;
+  /** Omit where dismissing is the way out, as in a modal. */
+  onSkip?: () => void;
+  skipLabel?: string;
+  testIds: GcxPanelTestIds;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -61,11 +72,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-/**
- * What was written, and where. Separate from the form so each caller can place
- * it — the step keeps it above its own actions, the modal shows it in place of
- * the form.
- */
 export function GcxReadyLine({ credential, testId }: { credential: GcxCredential; testId: string }) {
   const styles = useStyles2(getStyles);
   return (
@@ -79,22 +85,11 @@ export function GcxReadyLine({ credential, testId }: { credential: GcxCredential
   );
 }
 
-export interface GcxSetupPanelProps {
-  state: GcxState;
-  error: string | null;
-  canMint: boolean;
-  onMint: () => void;
-  onInstall: (token: string) => void;
-  /** Omit where dismissing is the way out, as in a modal. */
-  onSkip?: () => void;
-  skipLabel?: string;
-  testIds: GcxPanelTestIds;
-}
-
 export function GcxSetupPanel({
   state,
   error,
-  canMint,
+  offerMint,
+  mintLikely,
   onMint,
   onInstall,
   onSkip,
@@ -127,18 +122,18 @@ export function GcxSetupPanel({
         role and expires with the VM.
       </span>
 
-      {canMint && (
+      {offerMint && (
         <div className={styles.row}>
-          <Button size="sm" variant="primary" onClick={onMint} data-testid={testIds.mint}>
+          <Button size="sm" variant={mintLikely ? 'primary' : 'secondary'} onClick={onMint} data-testid={testIds.mint}>
             Set up gcx
           </Button>
         </div>
       )}
 
       <span className={styles.hint}>
-        {canMint
+        {mintLikely
           ? 'Or paste a service account token — Administration → Service accounts.'
-          : 'Paste a Grafana service account token — Administration → Service accounts. Minting one here needs an admin.'}
+          : 'Minting usually needs an admin. Paste a Grafana service account token instead — Administration → Service accounts.'}
       </span>
 
       <div className={styles.row}>
@@ -153,14 +148,17 @@ export function GcxSetupPanel({
           size="sm"
           variant="secondary"
           disabled={pastedToken.trim() === ''}
-          onClick={() => onInstall(pastedToken.trim())}
+          onClick={() => {
+            onInstall(pastedToken.trim());
+            setPastedToken('');
+          }}
           data-testid={testIds.install}
         >
           Install
         </Button>
       </div>
 
-      {onSkip && testIds.skip && (
+      {onSkip && (
         <div className={styles.row}>
           <Button size="sm" variant="secondary" fill="text" onClick={onSkip} data-testid={testIds.skip}>
             {skipLabel}

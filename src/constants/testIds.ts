@@ -392,11 +392,11 @@ export const testIds = {
     searchNext: 'coda-terminal-search-next',
     searchClose: 'coda-terminal-search-close',
     gcxButton: 'coda-terminal-gcx',
-    gcxModal: 'coda-terminal-gcx-modal',
     gcxMint: 'coda-terminal-gcx-mint',
     gcxToken: 'coda-terminal-gcx-token',
     gcxInstall: 'coda-terminal-gcx-install',
     gcxReady: 'coda-terminal-gcx-ready',
+    gcxRedo: 'coda-terminal-gcx-redo',
     gcxError: 'coda-terminal-gcx-error',
   },
 

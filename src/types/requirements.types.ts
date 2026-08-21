@@ -16,21 +16,6 @@ export enum FixedRequirementType {
   IS_TERMINAL_ACTIVE = 'is-terminal-active',
 }
 
-/**
- * Fired on `window` when the Coda terminal's connection status changes.
- *
- * `is-terminal-active` and `coda-exit-zero:` read live module state, so they can
- * always *see* a connection — but a step that checked while the terminal was
- * disconnected keeps that answer until something asks it to look again, and the
- * heartbeat watchdog only polls DOM-fragile requirements. Connecting a VM takes
- * around a minute, so by then every terminal step in the guide has long since
- * settled on "not connected". This event is what re-opens the question.
- *
- * Lives here, in tier 0, because the emitter is `integrations/coda` (tier 3) and
- * the listener is `requirements-manager` (tier 2): they cannot import each other.
- */
-export const TERMINAL_STATUS_CHANGED_EVENT = 'pathfinder-terminal-status-changed';
-
 // Parameterized requirement prefixes
 export enum ParameterizedRequirementPrefix {
   HAS_PERMISSION = 'has-permission:',

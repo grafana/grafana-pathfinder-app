@@ -8,7 +8,7 @@ import {
   useTerminalContext,
 } from './TerminalContext';
 import type { ConnectionStatus } from './useTerminalLive.hook';
-import { TERMINAL_STATUS_CHANGED_EVENT } from '../../types/requirements.types';
+import { TERMINAL_STATUS_CHANGED_EVENT } from '../../lib/event-names';
 
 jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },

@@ -4,7 +4,7 @@ import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
-import { TERMINAL_STATUS_CHANGED_EVENT } from '../types/requirements.types';
+import { TERMINAL_STATUS_CHANGED_EVENT } from '../lib/event-names';
 
 // Raise the per-test timeout from jest's 5000ms default. This file exercises
 // real timer-driven fix flows (`timeoutManager.setTimeout(fix-recheck-…)`,
@@ -938,5 +938,44 @@ describe('terminal status change recheck', () => {
     });
 
     expect(mockCheckRequirements.mock.calls.length).toBe(callsAfterUnmount);
+  });
+
+  it('leaves a step that does not read the terminal alone', async () => {
+    // Every step in the guide holds one of these listeners, and a reconnect is
+    // three status changes, so an ungated listener means a full requirements
+    // check for every blocked step in the guide, three times over.
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-admin',
+      error: [failedRequirement({ requirement: 'is-admin' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-admin' });
+    await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+    const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBe(callsWhileBlocked);
+  });
+
+  it('subscribes a step whose objectives read the terminal, not only its requirements', async () => {
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-admin',
+      error: [failedRequirement({ requirement: 'is-admin' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-admin', objectives: 'coda-exit-zero:test -f /tmp/x' });
+    await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+    const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBeGreaterThan(callsWhileBlocked);
   });
 });

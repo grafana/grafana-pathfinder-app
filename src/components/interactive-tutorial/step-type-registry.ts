@@ -243,6 +243,11 @@ export const TERMINAL_CONNECT_STEP_SCHEMA: StepTypeSchema = {
     skippable: props.skippable,
     isMultiStep: false,
     isGuided: false,
+    // `terminal-connect` has no `executeInteractiveAction` case, so Do Section
+    // would take the `default:` branch and forge the completion. With `gcx` the
+    // credential needs a click and often a pasted token, so the run has to stop
+    // here — see `.cursor/rules/tracked-step-types.mdc`.
+    pausesSectionRun: props.gcx === true,
   }),
   toEnhancedProps: INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps,
 };

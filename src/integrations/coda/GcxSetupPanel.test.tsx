@@ -34,7 +34,8 @@ function renderPanel(props: Partial<React.ComponentProps<typeof GcxSetupPanel>> 
     <GcxSetupPanel
       state="idle"
       error={null}
-      canMint
+      offerMint
+      mintLikely
       onMint={onMint}
       onInstall={onInstall}
       onSkip={onSkip}
@@ -52,11 +53,28 @@ describe('GcxSetupPanel', () => {
     expect(screen.getByTestId('token')).toBeInTheDocument();
   });
 
-  it('offers only the paste field when this user cannot mint, and says why', () => {
-    renderPanel({ canMint: false });
+  it('still offers minting when Grafana is unlikely to allow it, and says so', () => {
+    // `canMintGrafanaToken` is a role hint, not an authorisation answer: RBAC
+    // can grant `serviceaccounts:create` without the Admin basic role, so
+    // hiding the button entirely locks those users out of a path they have.
+    renderPanel({ mintLikely: false });
+    expect(screen.getByTestId('mint')).toBeInTheDocument();
+    expect(screen.getByTestId('token')).toBeInTheDocument();
+    expect(screen.getByText(/usually needs an admin/i)).toBeInTheDocument();
+  });
+
+  it('stops offering to mint once one has been tried or refused', () => {
+    renderPanel({ offerMint: false, state: 'needs-token' });
     expect(screen.queryByTestId('mint')).not.toBeInTheDocument();
     expect(screen.getByTestId('token')).toBeInTheDocument();
-    expect(screen.getByText(/needs an admin/i)).toBeInTheDocument();
+  });
+
+  it('clears the pasted token once it has been handed over', () => {
+    const { onInstall } = renderPanel();
+    fireEvent.change(screen.getByTestId('token'), { target: { value: 'glsa_secret' } });
+    fireEvent.click(screen.getByTestId('install'));
+    expect(onInstall).toHaveBeenCalledWith('glsa_secret');
+    expect(screen.getByTestId('token')).toHaveValue('');
   });
 
   it('warns that the token is readable inside the VM', () => {
@@ -85,7 +103,7 @@ describe('GcxSetupPanel', () => {
   });
 
   it('renders an error and keeps the paste path open', () => {
-    renderPanel({ state: 'needs-token', error: 'Grafana would not let this account mint a token.', canMint: false });
+    renderPanel({ state: 'needs-token', error: 'Grafana would not let this account mint a token.', offerMint: false });
     expect(screen.getByTestId('error')).toHaveTextContent('would not let this account mint');
     expect(screen.getByTestId('token')).toBeInTheDocument();
   });
@@ -97,13 +115,30 @@ describe('GcxSetupPanel', () => {
       <GcxSetupPanel
         state="idle"
         error={null}
-        canMint
+        offerMint
+        mintLikely
         onMint={jest.fn()}
         onInstall={jest.fn()}
         testIds={{ mint: 'mint', tokenInput: 'token', install: 'install', error: 'error' }}
       />
     );
-    expect(screen.queryByTestId('skip')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /continue without gcx/i })).not.toBeInTheDocument();
+  });
+
+  it('offers the skip on onSkip alone, so a missing test id cannot drop it', () => {
+    render(
+      <GcxSetupPanel
+        state="idle"
+        error={null}
+        offerMint
+        mintLikely
+        onMint={jest.fn()}
+        onInstall={jest.fn()}
+        onSkip={jest.fn()}
+        testIds={{ mint: 'mint', tokenInput: 'token', install: 'install', error: 'error' }}
+      />
+    );
+    expect(screen.getByRole('button', { name: /continue without gcx/i })).toBeInTheDocument();
   });
 
   it('calls onSkip when offered', () => {

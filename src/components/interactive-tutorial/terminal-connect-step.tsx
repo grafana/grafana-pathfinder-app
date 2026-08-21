@@ -4,13 +4,8 @@
  * Renders a "Try in terminal" button that opens and connects to the Coda terminal.
  * Use this as a guided entry point for users to start using the terminal feature.
  *
- * With `gcx`, the step also installs a Grafana credential into the VM so the
- * `gcx` CLI baked into every sandbox image can talk to this Grafana as the
- * learner. Minting that credential happens in the browser with the user's own
- * session — the Coda backend cannot mint one, by design — and needs
- * `serviceaccounts:create`, which is an Admin permission by default while
- * sandbox sessions are open to Editors. So the pasted-token path is not a
- * fallback for edge cases: it is the path most learners take.
+ * With `gcx`, the step also installs a Grafana credential into the VM. See
+ * `docs/developer/CODA.md` for why a pasted token is the primary path there.
  */
 
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
@@ -19,6 +14,7 @@ import { testIds } from '../../constants/testIds';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 
+import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { GcxReadyLine, GcxSetupPanel } from '../../integrations/coda/GcxSetupPanel';
 import { useGcxCredential } from '../../integrations/coda/useGcxCredential.hook';
@@ -163,9 +159,15 @@ export const TerminalConnectStep = forwardRef<
       onComplete?.();
     }, [isCompleted, onStepComplete, onComplete, renderedStepId, sectionId, isStandalone]);
 
-    // `markComplete` is the step's own semantics, injected rather than baked
-    // into the shared flow — the toolbar button has nothing to complete.
-    const gcxCredential = useGcxCredential(markComplete);
+    const {
+      state: gcxState,
+      error: gcxError,
+      credential: gcxCredential,
+      offerMint,
+      mintLikely,
+      isPending: gcxCredentialPending,
+      run: runGcxCredential,
+    } = useGcxCredential(markComplete);
 
     const handleConnect = useCallback(async () => {
       if (!terminalCtx) {
@@ -189,14 +191,19 @@ export const TerminalConnectStep = forwardRef<
       // The id `openTerminal` resolved, not the rendered one: when the requested
       // VM differs from the live one this tears the old session down, and the
       // render still carries the session being deleted.
-      await gcxCredential.run(sessionId);
-    }, [terminalCtx, vmTemplate, vmApp, vmScenario, gcx, gcxCredential]);
+      await runGcxCredential(sessionId);
+    }, [terminalCtx, vmTemplate, vmApp, vmScenario, gcx, runGcxCredential]);
 
     /** Provision against the live session, for a terminal connected elsewhere. */
     const handleGcxOnly = useCallback(
-      (token?: string) => gcxCredential.run(terminalCtx?.sessionId ?? null, token),
-      [terminalCtx?.sessionId, gcxCredential]
+      (token?: string) => runGcxCredential(terminalCtx?.sessionId ?? null, token),
+      [terminalCtx?.sessionId, runGcxCredential]
     );
+
+    const handleGcxSkip = useCallback(() => {
+      reportAppInteraction(UserInteraction.GcxSetupSkipped, { state: gcxState });
+      markComplete();
+    }, [gcxState, markComplete]);
 
     // React to terminal status changes while waiting for connection.
     // Handles: success (connected), failure (error), and cancellation (disconnected).
@@ -218,7 +225,7 @@ export const TerminalConnectStep = forwardRef<
       }
     }, [isConnecting, terminalCtx?.status, markComplete, gcx]);
 
-    const isGcxPending = gcx && gcxCredential.isPending;
+    const isGcxPending = gcx && gcxCredentialPending;
 
     useImperativeHandle(
       ref,
@@ -232,8 +239,6 @@ export const TerminalConnectStep = forwardRef<
             return true;
           }
           void handleConnect();
-          // Reporting success here would forge a completion: the credential
-          // needs a click, and may need a pasted token.
           return false;
         },
         markSkipped: () => {
@@ -258,7 +263,7 @@ export const TerminalConnectStep = forwardRef<
     let stepState: StepStateValue = STEP_STATES.IDLE;
     if (isCompleted) {
       stepState = STEP_STATES.COMPLETED;
-    } else if (isTerminalConnecting || isCurrentlyExecuting || gcxCredential.state === 'provisioning') {
+    } else if (isTerminalConnecting || isCurrentlyExecuting || gcxState === 'provisioning') {
       stepState = STEP_STATES.EXECUTING;
     } else if (!isEnabled) {
       stepState = STEP_STATES.REQUIREMENTS_UNMET;
@@ -276,12 +281,13 @@ export const TerminalConnectStep = forwardRef<
 
     const gcxPanel = (
       <GcxSetupPanel
-        state={gcxCredential.state}
-        error={gcxCredential.error}
-        canMint={gcxCredential.canMint}
+        state={gcxState}
+        error={gcxError}
+        offerMint={offerMint}
+        mintLikely={mintLikely}
         onMint={() => void handleGcxOnly()}
         onInstall={(token) => void handleGcxOnly(token)}
-        onSkip={markComplete}
+        onSkip={handleGcxSkip}
         testIds={{
           mint: testIds.interactive.gcxMintButton(renderedStepId),
           tokenInput: testIds.interactive.gcxTokenInput(renderedStepId),
@@ -300,8 +306,8 @@ export const TerminalConnectStep = forwardRef<
       >
         {children && <div className={styles.content}>{children}</div>}
 
-        {gcxCredential.credential && (
-          <GcxReadyLine credential={gcxCredential.credential} testId={testIds.interactive.gcxReady(renderedStepId)} />
+        {gcxCredential && (
+          <GcxReadyLine credential={gcxCredential} testId={testIds.interactive.gcxReady(renderedStepId)} />
         )}
 
         {isEnabled && !isCompleted && !isTerminalConnected && sandboxUnavailable && (

@@ -71,7 +71,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
-  // No `onReady`: unlike a guide step, the toolbar has nothing to complete.
   const gcxCredential = useGcxCredential();
   useEffect(() => {
     terminalCtx?._register({ status, sessionId, error, connect, disconnect, sendCommand });
@@ -546,9 +545,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               </Button>
             )}
 
-            {/* Give the VM a Grafana credential, so the gcx CLI in the image can
-                talk to this Grafana as this user. Needs a live session: the
-                backend writes over the SSH channel the stream already owns. */}
+            {/* Needs a live session: the backend writes over the SSH channel
+                the stream already owns. */}
             <Button
               size="sm"
               variant="secondary"
@@ -636,12 +634,26 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
       <Modal title="Use gcx in this sandbox" isOpen={showGcx} onDismiss={() => setShowGcx(false)}>
         {gcxCredential.credential ? (
-          <GcxReadyLine credential={gcxCredential.credential} testId={testIds.codaTerminal.gcxReady} />
+          <>
+            <GcxReadyLine credential={gcxCredential.credential} testId={testIds.codaTerminal.gcxReady} />
+            {/* Tokens expire well inside a long session, and the VM cannot be
+                re-provisioned from here, so the form has to stay reachable. */}
+            <Button
+              size="sm"
+              variant="secondary"
+              fill="text"
+              onClick={gcxCredential.reset}
+              data-testid={testIds.codaTerminal.gcxRedo}
+            >
+              Set up again
+            </Button>
+          </>
         ) : (
           <GcxSetupPanel
             state={gcxCredential.state}
             error={gcxCredential.error}
-            canMint={gcxCredential.canMint}
+            offerMint={gcxCredential.offerMint}
+            mintLikely={gcxCredential.mintLikely}
             onMint={() => void gcxCredential.run(sessionId)}
             onInstall={(token) => void gcxCredential.run(sessionId, token)}
             testIds={{

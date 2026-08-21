@@ -101,8 +101,13 @@ token field — not an error to surface raw. Use `isMintForbidden`, never a stat
 
 **Do not complete the step on connection alone.** With `gcx` set, the step is done when the credential is
 in; ticking it off at `connected` marks success while every command it exists to enable would still fail
-unauthenticated. `executeStep` must likewise return `false` while the credential is outstanding, or Do
-Section forges the completion.
+unauthenticated.
+
+**Do Section must stop at a gcx step, via `pausesSectionRun`.** `executeInteractiveAction` has no
+`terminal-connect` case, so the runner takes its `default:` branch and *reports success* — and the step's
+own `executeStep` handle is not the guard, because `refTarget: 'none'` means no ref is ever attached to
+it. `TERMINAL_CONNECT_STEP_SCHEMA` therefore sets `pausesSectionRun: props.gcx === true`. See
+`.cursor/rules/tracked-step-types.mdc`.
 
 **A `404` on the credential route means an old plugin, not a bad session.** There is no capability flag
 for it — `features` is still `["exec.readyFile"]` — and the call only ever follows a session we just
@@ -113,6 +118,14 @@ arithmetic on `pluginVersion` instead.
 `integrations/coda/` because `TerminalPanel` (tier 3) cannot import from `components/` (tier 4). Do not
 move them up; add consumers instead. The hook takes `onReady` rather than calling `markComplete` itself —
 step semantics do not belong in it.
+
+**The credential state is module-scoped and keyed to the session.** `gcx-credential-store.ts`, not
+component state: the guide step and the toolbar offer the same install, and Grafana rejects a second
+`coda-<sessionId>` token on the name, so two independent copies would let one surface mint over the
+other. `onReady` fires for whichever surface installed it. `TerminalProvider` calls
+`invalidateGcxCredentialForSession` when the registered session id changes, because a reconnect
+provisions a fresh VM that holds no credential — reporting the old one would name a box that is gone. A
+`null` id is only a disconnect and does not discard it.
 
 **Never answer OSC 10/11/12.** xterm replies through `onData`, `onData` goes to the PTY, and a late reply
 is echoed by the shell as text. `TerminalPanel` registers suppressing handlers after `open()`; keep them.
@@ -125,8 +138,12 @@ without gcx" and let `is-terminal-active` steps proceed.
 `is-terminal-active` and `coda-exit-zero:` read live module state, so they can see a connection — but
 nothing tells them to look again when one arrives. The checker runs outside React, the heartbeat polls
 only DOM-fragile requirements, and retries are bounded. `TerminalProvider` therefore dispatches
-`TERMINAL_STATUS_CHANGED_EVENT` (declared in `types/requirements.types.ts`, tier 0, because tier 3 and
-tier 2 cannot import each other) and `step-checker.hook.ts` rechecks blocked steps on it.
+`TERMINAL_STATUS_CHANGED_EVENT` (declared with every other `pathfinder-*` window event in
+`lib/event-names.ts`) and `step-checker.hook.ts` rechecks blocked steps on it.
+
+**Only steps that read the terminal subscribe.** Every step in the guide holds one of these listeners and
+a reconnect is three status changes, so an ungated listener runs a full requirements check for every
+blocked step in the guide, three times, for a connect that concerns two of them.
 
 **Do not drop the event when a check is in flight.** It is a one-shot; a status that arrives mid-check is
 stored in `pendingTerminalRecheckRef` and drained when the check settles. `openTerminal` reconnects on a
@@ -194,6 +211,7 @@ on a connection must check `isTerminalRegistered` or it hangs (issue #1541).
 | File | Purpose |
 |------|---------|
 | `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `provisionGcx`, `sessionChannelAddress` |
+| `src/integrations/coda/gcx-credential-store.ts` | One gcx credential per session, shared by the step and the toolbar; session-keyed invalidation |
 | `src/integrations/coda/useTerminalLive.hook.ts` | Live subscription, publish, animated provision progress bar, 35 s handshake timeout |
 | `src/integrations/coda/TerminalContext.tsx` | Shared context (`isTerminalRegistered`, `error`) + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` for the requirements checker |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |

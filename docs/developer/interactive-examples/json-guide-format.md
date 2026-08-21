@@ -1045,6 +1045,11 @@ sessions are open to editors — so the step offers a pasted service account tok
 path most learners take. A refusal never blocks the guide: the terminal is connected either way, so the
 step offers "Continue without gcx" and later `is-terminal-active` steps still run.
 
+> **`gcx` does not survive an upload through `scripts/upsert-guide.sh` yet.** The backend CRD's `#Block`
+> does not declare it, and the API server prunes an undeclared field with a `200` and no message — so the
+> guide uploads, the step connects, and no credential is installed. Until the CUE declares it, a guide
+> that needs `gcx` has to be served from a bundled package or a local file.
+
 See [`CODA.md`](../CODA.md) for the full VM template catalog and lifecycle details.
 
 #### Grot Guide block

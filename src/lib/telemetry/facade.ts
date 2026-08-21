@@ -136,3 +136,20 @@ export type SandboxUnavailableReason =
 export function recordSandboxUnavailable(reason: SandboxUnavailableReason, blockType: string): void {
   pushFaroEvent(TELEMETRY_EVENTS.sandboxUnavailable, { reason, blockType });
 }
+
+/**
+ * A gcx credential install did not mint, with the rung that stopped it.
+ *
+ * `mint-forbidden` is the ordinary answer rather than a fault —
+ * `serviceaccounts:create` is Admin by default while sandbox sessions are open
+ * to Editors — and the whole shape of the surface follows from how often it
+ * happens. Without this the rate is unmeasurable, and "nobody sets up gcx" and
+ * "nobody on this stack is allowed to" produce identical telemetry.
+ *
+ * A closed set of rungs. No token, session id, or backend error text.
+ */
+export type GcxCredentialDegradation = 'mint-forbidden' | 'plugin-too-old' | 'refused';
+
+export function recordGcxCredentialDegradation(reason: GcxCredentialDegradation): void {
+  pushFaroEvent(TELEMETRY_EVENTS.gcxCredentialDegraded, { reason });
+}

@@ -155,6 +155,33 @@ there, not in `components/`: `TerminalPanel` is tier 3 and cannot import from ti
 `terminal-connect-step` is tier 4 and can import from tier 3. The hook takes `onReady` as an injected
 callback because marking a step complete is the step's business and means nothing to a toolbar button.
 
+**One credential per session, shared by both.** The state lives in
+`integrations/coda/gcx-credential-store.ts`, not in either component. Two independent copies would let
+one surface offer a mint the other has already made — and Grafana rejects a second `coda-<sessionId>`
+token on the name, so that second mint fails with a message about token names rather than anything a
+learner can act on. Sharing it also means a credential installed from the toolbar completes a `gcx` step
+that is waiting on one: `onReady` fires for whichever surface installed it.
+
+**The store is keyed to the session, and a new session clears it.** `TerminalProvider` calls
+`invalidateGcxCredentialForSession` whenever the registered session id changes, because a reconnect
+provisions a _fresh_ VM holding no credential — keeping the old state would report gcx as ready for a
+box that no longer exists, and the ready line would name its path. A `null` id is only a disconnect,
+which may still reconnect to the same session, so it does not discard anything. Tokens also expire well
+inside a long session, so the modal keeps a **Set up again** control next to the ready line; without it
+the form is unreachable once a credential exists.
+
+**Do Section stops at a gcx step.** Not by the step's `executeStep` handle — `terminal-connect` is
+`refTarget: 'none'`, so no ref is attached to it and that handle has no runner-side caller. The runner
+routes the step through `executeInteractiveAction`, which has no `terminal-connect` case and so takes its
+`default:` branch and _reports success_. `TERMINAL_CONNECT_STEP_SCHEMA` sets
+`pausesSectionRun: props.gcx === true`, which stops the run cleanly at the step and hands the learner
+back the controls.
+
+**The ladder is measured.** `recordGcxCredentialDegradation` emits the rung that stopped an install
+(`mint-forbidden`, `plugin-too-old`, `refused`) and `gcx_credential_installed` / `gcx_setup_skipped`
+count the outcomes. The whole shape of this surface rests on how often `mint_forbidden` comes back, so
+that rate cannot be left unmeasurable — no token, session id, or backend error text goes with it.
+
 **`gcx` does not survive an upload through `scripts/upsert-guide.sh` yet.** The `InteractiveGuide` CRD in
 `grafana-pathfinder-backend` (`kinds/interactiveguide.cue`) declares `vmTemplate`, `vmApp` and
 `vmScenario` but not `gcx`, and the API server prunes an undeclared field with a `200` and no message —
@@ -335,6 +362,7 @@ Grafana restart.
 | `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` |
 | `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                         |
 | `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                 |
+| `src/integrations/coda/gcx-credential-store.ts`                 | One gcx credential per session; session-keyed invalidation, and the ladder's telemetry   |
 | `src/integrations/coda/GcxSetupPanel.tsx`                       | The gcx form and its result line; test ids come in as a prop                             |
 | `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                    |
 | `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                    |
