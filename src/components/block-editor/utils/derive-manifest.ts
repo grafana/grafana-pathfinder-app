@@ -42,9 +42,7 @@ const PLAIN_GUIDE_TYPE = 'guide';
 const TRANSPARENT_CONTAINERS: ReadonlySet<string> = new Set(TRANSPARENT_CONTAINER_BLOCK_TYPES);
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 /**
@@ -131,10 +129,7 @@ function firstOnPage(requirements: unknown): string | undefined {
  * cannot derive is left exactly as inherited rather than cleared — an absent
  * derivation is "no new information", not "delete what was there".
  */
-export function deriveManifest(
-  guide: JsonGuide,
-  inherited?: Record<string, unknown> | null
-): Record<string, unknown> {
+export function deriveManifest(guide: JsonGuide, inherited?: Record<string, unknown> | null): Record<string, unknown> {
   const base = inherited ? { ...inherited } : {};
 
   const inheritedType = typeof base.type === 'string' && base.type.length > 0 ? base.type : undefined;

@@ -335,15 +335,15 @@ than dropping them — as it does for any manifest key the CRD doesn't
 declare, including surplus `author` subkeys. The block editor writes the two it
 derives, `stats` and `startingLocation`, to the same place.
 
-Which of them actually *work* from `additionalFields` depends on whether
+Which of them actually _work_ from `additionalFields` depends on whether
 anything reads that location:
 
-| Key                | Read from `additionalFields`?                                                                        |
-| ------------------ | --------------------------------------------------------------------------------------------------- |
-| `startingLocation` | Yes — `src/recovery/starting-location.ts` checks both locations, typed field first.                 |
-| `stats`            | Not yet. Written by both App Platform writers; the first consumer reads both locations.              |
-| `recommends`, `suggests` | No — the frontend reads these from the manifest's top level, so they are inert here.           |
-| `provides`, `targeting`, `testEnvironment` | No consumer on the App Platform path at all.                                  |
+| Key                                        | Read from `additionalFields`?                                                           |
+| ------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `startingLocation`                         | Yes — `src/recovery/starting-location.ts` checks both locations, typed field first.     |
+| `stats`                                    | Not yet. Written by both App Platform writers; the first consumer reads both locations. |
+| `recommends`, `suggests`                   | No — the frontend reads these from the manifest's top level, so they are inert here.    |
+| `provides`, `targeting`, `testEnvironment` | No consumer on the App Platform path at all.                                            |
 
 Promoting a key out of `additionalFields` into a real CUE field is additive and
 safe, and is the fix for the inert rows.

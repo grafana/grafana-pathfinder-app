@@ -232,9 +232,7 @@ describe('deriveManifest — startingLocation', () => {
   });
 
   it('takes the first declaration in document order when several blocks declare one', () => {
-    const result = deriveManifest(
-      guide([highlight(['on-page:/explore']), highlight(['on-page:/dashboards'])])
-    );
+    const result = deriveManifest(guide([highlight(['on-page:/explore']), highlight(['on-page:/dashboards'])]));
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
   });

@@ -249,9 +249,7 @@ describe('AppPlatformPackageResolver — metadata-only', () => {
   });
 
   it('leaves a persisted description alone rather than overwriting it with the title', async () => {
-    mockFetch.mockReturnValue(
-      of(okResource({ manifest: { type: 'guide', description: 'Authored summary' } }))
-    );
+    mockFetch.mockReturnValue(of(okResource({ manifest: { type: 'guide', description: 'Authored summary' } })));
 
     const resolver = new AppPlatformPackageResolver();
     const result = await resolver.resolve('fe-alerting-01', { loadContent: 'metadata-only' });
@@ -271,9 +269,7 @@ describe('AppPlatformPackageResolver — metadata-only', () => {
       completableBlockCount: 2,
       finalCompletablePosition: 4,
     };
-    mockFetch.mockReturnValue(
-      of(okResource({ manifest: { type: 'guide', stats } }))
-    );
+    mockFetch.mockReturnValue(of(okResource({ manifest: { type: 'guide', stats } })));
 
     const resolver = new AppPlatformPackageResolver();
     const result = await resolver.resolve('fe-alerting-01', { loadContent: 'metadata-only' });
