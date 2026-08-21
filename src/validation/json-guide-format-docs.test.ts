@@ -11,7 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { JsonBlockSchema } from '../types/json-guide.schema';
+import { JsonBlockSchema, JsonChallengeBlockSchema, JsonSnippetRefBlockSchema } from '../types/json-guide.schema';
 
 const DOC_RELATIVE_PATH = 'docs/developer/interactive-examples/json-guide-format.md';
 const DOC_PATH = path.resolve(__dirname, '../..', DOC_RELATIVE_PATH);
@@ -85,6 +85,20 @@ function claimedByLongerType(heading: string, blockType: string): boolean {
 }
 
 describe('JSON guide format reference', () => {
+  it('describes snippet references as resolving after validation and before render', () => {
+    expect(JsonSnippetRefBlockSchema.shape.snippetId.description).toContain(
+      'resolved after validation and before render'
+    );
+  });
+
+  it('describes the challenge mode fallback without claiming a schema default', () => {
+    const description = JsonChallengeBlockSchema.shape.mode.description;
+
+    expect(description).toContain('The schema has no default');
+    expect(description).toContain("JSON that omits mode resolves to 'coda' at runtime");
+    expect(description).not.toContain("'coda' (default)");
+  });
+
   it('reads every block type out of the schema union', () => {
     expect(blockTypes).toContain('markdown');
     expect(blockTypes).toHaveLength(EXPECTED_BLOCK_TYPE_COUNT);

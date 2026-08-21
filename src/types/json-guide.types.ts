@@ -844,10 +844,10 @@ export interface JsonGrotGuideBlock extends AuthorAnnotated {
 // ============ SNIPPET REFERENCE BLOCK ============
 
 /**
- * Reference to a reusable snippet. The block resolves at parse time:
- * the parser fetches the snippet by id (CDN-first, bundled fallback),
- * validates its content, and splices the snippet's blocks into this
- * block's position. The renderer never sees a snippet-ref.
+ * Reference to a reusable snippet. The guide is validated with the block
+ * intact; the snippet engine then fetches the snippet by id (CDN-first,
+ * bundled fallback), validates its content, and splices its blocks into
+ * this block's position before render. The renderer never sees a snippet-ref.
  *
  * Snippets are authored upstream in `grafana/interactive-tutorials` and
  * are immutable from the consumer's perspective. To customize an
