@@ -31,7 +31,7 @@ grafana-coda-app backend (Go)
     └─ WSS  ──→ Relay ──→ SSH ──→ EC2 VM
 ```
 
-There is **no Go code in this repo for Coda**. `pkg/` is an App Platform read proxy only. If a task
+There is **no Go code in this repo for Coda**. `pkg/` is an App Platform proxy only. If a task
 mentions `CodaClient`, `RunStream`, `ConnectSSHViaRelay`, or `WSConn`, that work belongs in the
 `grafana-coda-app` repo, not here.
 
