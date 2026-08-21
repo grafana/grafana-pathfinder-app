@@ -633,7 +633,7 @@ export const JsonChallengeBlockSchema = z.object({
     .enum(['coda', 'standard'])
     .optional()
     .describe(
-      "Execution model. 'standard' runs against the learner's own Grafana — successCriteria is any Pathfinder requirement (e.g. has-dashboard-named:Foo). 'coda' (default) runs in a Coda VM with a terminal — successCriteria is typically coda-exit-zero:<command>."
+      "Execution model. 'standard' runs against the learner's own Grafana — successCriteria is any Pathfinder requirement (e.g. has-dashboard-named:Foo). 'coda' (runtime default when omitted; the editor seeds 'standard') runs in a Coda VM with a terminal — successCriteria is typically coda-exit-zero:<command>."
     ),
   title: z.string().min(1, 'Challenge title is required').describe('Short title shown above the brief'),
   brief: z.string().min(1, 'Challenge brief is required').describe('Markdown problem statement'),
@@ -821,7 +821,7 @@ const SnippetIdSchema = z
 export const JsonSnippetRefBlockSchema = z.object({
   type: z.literal('snippet-ref'),
   id: z.string().optional().describe('Stable identifier for this snippet-ref instance'),
-  snippetId: SnippetIdSchema.describe('Upstream snippet ID to resolve at parse time'),
+  snippetId: SnippetIdSchema.describe('Upstream snippet ID, resolved after validation and before render'),
   ...AuthorAnnotatedSchema.shape,
 });
 
