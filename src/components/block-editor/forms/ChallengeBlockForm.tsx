@@ -270,7 +270,7 @@ export function ChallengeBlockForm({
   }, []);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
 
       const trimmedScript = setupScript.trim();

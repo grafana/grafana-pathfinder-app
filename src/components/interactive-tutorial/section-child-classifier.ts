@@ -15,11 +15,13 @@ import type { ChildKind } from './step-section-utils';
  * React component types whose presence as a direct child of an interactive
  * section counts as an "interactive" step the user must actually execute.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 2. Adding a new interactive step
- * component type requires updates in 2 places:
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 3. Adding a new interactive step
+ * component type requires updates in 3 places:
  *   1. step-type-registry.ts `STEP_TYPE_SCHEMAS` (parse + orchestration)
  *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES (this set,
  *      lazily realised below)
+ *   3. lib/guide-stats/completion-affordance.ts (the stamped denominator's
+ *      notion of "can emit completion evidence")
  *
  * Forgetting this set: the issue-#842 acknowledgement gate misclassifies the
  * new type as *passive*, so sections containing it will wrongly require

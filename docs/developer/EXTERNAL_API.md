@@ -329,7 +329,7 @@ and what makes a path a path.
 | `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. Anything not typed above goes here.                                                                            |
 
 `recommends`, `suggests`, `provides`, `targeting`, `testEnvironment`,
-and `startingLocation` have no typed home yet, so
+`startingLocation`, and the generated `stats` stamp have no typed home yet, so
 `upsert-learning-path.sh` writes them under `additionalFields` rather
 than dropping them — as it does for any manifest key the CRD doesn't
 declare, including surplus `author` subkeys. Note that the frontend reads `recommends` and

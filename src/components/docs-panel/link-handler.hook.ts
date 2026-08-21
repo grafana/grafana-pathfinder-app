@@ -29,7 +29,7 @@ import { LearningJourneyTab } from '../../types/content-panel.types';
 import type { OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
 interface UseLinkClickHandlerProps {
-  contentRef: React.RefObject<HTMLDivElement>;
+  contentRef: React.RefObject<HTMLDivElement | null>;
   activeTab: LearningJourneyTab | null;
   theme: GrafanaTheme2;
   model: {

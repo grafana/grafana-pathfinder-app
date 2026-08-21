@@ -27,7 +27,7 @@ export interface LiveSessionModalsProps {
   showAttendeeJoin: boolean;
   showHandRaiseQueue: boolean;
   handRaises: HandRaiseInfo[];
-  handRaiseIndicatorRef: RefObject<HTMLDivElement>;
+  handRaiseIndicatorRef: RefObject<HTMLDivElement | null>;
   presenterTutorialUrl: string;
   onClosePresenterControls: () => void;
   onCloseAttendeeJoin: () => void;
