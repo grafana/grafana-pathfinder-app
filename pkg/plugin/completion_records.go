@@ -321,12 +321,19 @@ func getCompletionIndex(ctx context.Context, namespace string, lister completion
 	completionCacheMu.Lock()
 	stats = completionStatsFor(namespace)
 	if completionGenerations[namespace] != fl.generation {
+		// Fenced off by a concurrent write: this result serves its own waiters but
+		// must not repopulate the cache. It is still counted, or the per-namespace
+		// vital signs (§9) stop reconciling against stats.misses exactly when the
+		// write path is busiest — the condition an operator would be diagnosing.
 		if err == nil {
+			stats.refreshes++
 			fl.index = idx
-		} else if entry != nil {
-			fl.index = entry.index
-			fl.err = err
 		} else {
+			stats.refreshFailures++
+			if entry != nil {
+				stats.staleServes++
+				fl.index = entry.index
+			}
 			fl.err = err
 		}
 		if completionFlights[namespace] == fl {
