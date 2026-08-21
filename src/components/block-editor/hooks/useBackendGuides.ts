@@ -90,13 +90,8 @@ export function preservedSpec(
     schemaVersion: guide.schemaVersion || CURRENT_SCHEMA_VERSION,
     blocks: guide.blocks,
     status,
-    manifest: deriveManifest(guide, asManifestRecord(existingSpec?.manifest)),
+    manifest: deriveManifest(guide, existingSpec?.manifest),
   };
-}
-
-/** `spec.manifest` is untyped on the wire; narrow it before merging. */
-function asManifestRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 export interface UseBackendGuidesReturn {

@@ -340,13 +340,27 @@ anything reads that location:
 
 | Key                                        | Read from `additionalFields`?                                                           |
 | ------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `startingLocation`                         | Yes — `src/recovery/starting-location.ts` checks both locations, typed field first.     |
+| `startingLocation`                         | On some routes only — see below.                                                        |
 | `stats`                                    | Not yet. Written by both App Platform writers; the first consumer reads both locations. |
 | `recommends`, `suggests`                   | No — the frontend reads these from the manifest's top level, so they are inert here.    |
 | `provides`, `targeting`, `testEnvironment` | No consumer on the App Platform path at all.                                            |
 
+`src/recovery/starting-location.ts` reads both locations, typed field first, so
+`startingLocation` takes effect wherever the manifest reaches it with
+`additionalFields` intact. That is the `backend-guide:` loader
+(`src/docs-retrieval/content-fetcher/backend-guide.ts`), which spreads
+`spec.manifest` through unchanged: a standalone guide opened from the custom
+guides list, a `?doc=api:<id>` share link, and auto-dock tab restore all get the
+implied-0th-step prompt.
+
+A **path member does not.** Its manifest arrives through the catalogue proxy,
+whose `customGuideManifest` (`pkg/plugin/custom_guide_repository_client.go`)
+declares no `additionalFields`, so `encoding/json` drops the key at the wire
+boundary before the reader ever sees it. Promoting `startingLocation` to a typed
+CUE field is the fix for that half.
+
 Promoting a key out of `additionalFields` into a real CUE field is additive and
-safe, and is the fix for the inert rows.
+safe, and is the fix for the inert rows generally.
 
 ## Examples
 

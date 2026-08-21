@@ -129,8 +129,8 @@ function firstOnPage(requirements: unknown): string | undefined {
  * cannot derive is left exactly as inherited rather than cleared — an absent
  * derivation is "no new information", not "delete what was there".
  */
-export function deriveManifest(guide: JsonGuide, inherited?: Record<string, unknown> | null): Record<string, unknown> {
-  const base = inherited ? { ...inherited } : {};
+export function deriveManifest(guide: JsonGuide, inherited?: unknown): Record<string, unknown> {
+  const base = { ...(asRecord(inherited) ?? {}) };
 
   const inheritedType = typeof base.type === 'string' && base.type.length > 0 ? base.type : undefined;
   const type = inheritedType ?? 'guide';
