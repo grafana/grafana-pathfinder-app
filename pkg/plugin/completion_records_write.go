@@ -37,18 +37,21 @@ import (
 // successful create, and the transient/terminal retry taxonomy the front-end
 // queue depends on.
 //
-// Response contract for the front-end retry queue (RFC §6.9), stated identically
-// here, in the PR body, and in .cursor/rules/{systemPatterns,coda}.mdc:
+// Response contract for the front-end retry queue (RFC §6.9). Owned by
+// docs/design/BACKEND_PROXY_PATTERN.md §11; restated here because it is what this
+// handler implements:
 //   - 201  created (durable).
 //   - 401  transient: an expired session or forwarded token recovers after
 //          re-auth, so the client retries it with backoff.
 //   - 404  structural "route not served on this stack" signal; the front end
 //          disarms writes for the session (pending items persist for the next
-//          load) rather than dropping. Two ways in: an upstream 404 (the create
+//          load) rather than dropping. Three ways in: an upstream 404 (the create
 //          POSTs to the completionrecords COLLECTION, so it means the whole
-//          group/route is absent, never a per-record miss), and a stack with no
+//          group/route is absent, never a per-record miss), a stack with no
 //          provisioned on-behalf-of credential (reasonOBOUnavailable) — the
-//          production case in ops/prod today (#1503).
+//          production case in ops/prod today (#1503) — and an inbound identity
+//          this stack can never verify (reasonIdentityUnverifiable: no app URL,
+//          so no signing keys to check the token against).
 //   - 403  the caller's identity holds no grant for this route. Echoed verbatim
 //          from upstream. Like 404 it disarms writes for the session and KEEPS
 //          the pending records for a later drain — a grant can be added without
@@ -154,16 +157,29 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Identity is REQUIRED for a write and fails closed: unlike the soft-200 read
-	// routes, a write with no verifiable caller is a 401. The client retries it
-	// with backoff — an expired forwarded token is time-recoverable after re-auth.
-	// An unreachable JWKS is a retryable outage rather than a verdict on the
-	// caller, so it takes §7's transient 503 instead of reporting a bad token.
+	// routes, a write with no verifiable caller serves no data. The three failing
+	// statuses are NOT interchangeable, because 401 is defined below as TRANSIENT —
+	// the client retries it after re-auth — so only a time-recoverable verdict may
+	// take it:
+	//   - identityRejected: an expired/absent forwarded token recovers after
+	//     re-auth, so it is the 401.
+	//   - identitySigningKeysDown: a retryable outage, not a verdict on the caller,
+	//     so it takes §7's transient 503 instead of reporting a bad token.
+	//   - identityUnverifiable: no signing-keys URL is resolvable on this stack, so
+	//     verification can NEVER succeed here. Served as the structural 404 — a
+	//     401 would make every queued write retry until the 30-day horizon and
+	//     never disarm. The 404 disarms the session while RETAINING the records,
+	//     and the read path already treats this status as a standing condition.
 	userID, userLogin, userDisplayName, status := a.completionWriterIdentity(r)
 	switch status {
 	case identityVerified:
 	case identitySigningKeysDown:
 		w.Header().Set("Retry-After", strconv.Itoa(completionWriteRetryAfterSeconds))
 		a.writeError(w, "completion-write-unavailable", http.StatusServiceUnavailable)
+		return
+	case identityUnverifiable:
+		a.ctxLogger(r.Context()).Info("completion write route unavailable (structural)", "reason", reasonIdentityUnverifiable)
+		a.writeError(w, reasonIdentityUnverifiable, http.StatusNotFound)
 		return
 	default:
 		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
