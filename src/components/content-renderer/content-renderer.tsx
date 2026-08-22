@@ -1106,6 +1106,9 @@ function renderParsedElement(
           requirements={element.props.requirements}
           objectives={element.props.objectives}
           postVerify={element.props.postVerify}
+          formHint={element.props.formHint}
+          validateInput={element.props.validateInput}
+          openGuide={element.props.openGuide}
           title={sub(element.props.title)}
           lazyRender={element.props.lazyRender}
           scrollContainer={element.props.scrollContainer}

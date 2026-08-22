@@ -54,6 +54,6 @@ export interface InteractiveElementData {
  * blind clicking whenever a call site forgot the tail argument.
  */
 export type InteractiveActionRequest = Pick<InteractiveElementData, 'targetAction'> &
-  Partial<Pick<InteractiveElementData, 'refTarget' | 'targetValue' | 'targetState' | 'targetComment'>> & {
+  Partial<Pick<InteractiveElementData, 'refTarget' | 'targetValue' | 'targetState' | 'targetComment' | 'openGuide'>> & {
     buttonType?: 'show' | 'do';
   };

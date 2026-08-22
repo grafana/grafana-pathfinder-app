@@ -691,12 +691,17 @@ describe('useInteractiveElements', () => {
         await result.current.executeInteractiveAction({
           targetAction: 'navigate',
           refTarget: '/test-route',
+          openGuide: 'bundled:destination-guide',
           buttonType: 'do',
         });
       });
 
-      // Should call interactiveNavigate
-      expect(result.current.interactiveNavigate).toBeDefined();
+      const { NavigateHandler } = require('./action-handlers');
+      const navigateHandler = NavigateHandler.mock.results.at(-1)?.value;
+      expect(navigateHandler.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ openGuide: 'bundled:destination-guide' }),
+        true
+      );
     });
 
     it('should execute sequence action', async () => {

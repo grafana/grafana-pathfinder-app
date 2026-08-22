@@ -122,6 +122,7 @@ export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
     targetValue: props.targetValue,
     targetState: props.targetState,
     targetComment: props.targetComment,
+    openGuide: props.openGuide,
     requirements: props.requirements,
     postVerify: props.postVerify,
     skippable: props.skippable,
