@@ -767,6 +767,36 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(1),
   }),
+  titleBlock: css({
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    textAlign: 'left',
+  }),
+  milestoneTitle: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '100%',
+  }),
+  milestoneSubtitle: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    whiteSpace: 'nowrap',
+  }),
+  moreButton: css({
+    '& > button': {
+      padding: '4px 8px',
+    },
+  }),
+  // Used by the loading-skeleton milestone header in DocsPanelContentArea.tsx
+  // (rendered while a journey tab's content is still fetching), not by the
+  // loaded LearningJourneyMilestoneToolbar below.
   milestoneText: css({
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
@@ -774,19 +804,6 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'nowrap',
     flex: 1,
     textAlign: 'center',
-  }),
-  milestoneActions: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: theme.spacing(0.75),
-    padding: theme.spacing(1, 0, 0),
-    borderTop: `1px solid ${theme.colors.border.weak}`,
-    // Same container-query trick as `contentMeta` — when the journey's
-    // bottom action row (Open / Reset / Pop out / Full screen) outgrows
-    // the panel width, `secondaryActionButton`'s rule collapses the
-    // labels and only the icons remain.
-    containerType: 'inline-size',
   }),
   navButton: css({
     display: 'flex',
@@ -830,6 +847,9 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
       flexShrink: 0,
     },
   }),
+  // Continuous fill bar used by the loading-skeleton milestone header (see
+  // `milestoneText` above) — pre-existing, unrelated to the segmented bar
+  // below.
   progressBar: css({
     width: '100%',
     height: '3px',
@@ -842,6 +862,26 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     height: '100%',
     backgroundColor: theme.colors.success.main,
     transition: 'width 0.3s ease',
+  }),
+  progressSegments: css({
+    display: 'flex',
+    gap: theme.spacing(0.5),
+    width: '100%',
+    marginTop: theme.spacing(1),
+  }),
+  progressSegment: css({
+    flex: 1,
+    height: '3px',
+    borderRadius: '2px',
+    backgroundColor: theme.colors.background.secondary,
+    transition: 'background-color 0.2s ease',
+
+    '&[data-segment-state="done"]': {
+      backgroundColor: theme.colors.success.main,
+    },
+    '&[data-segment-state="current"]': {
+      backgroundColor: theme.colors.warning.main,
+    },
   }),
 });
 
