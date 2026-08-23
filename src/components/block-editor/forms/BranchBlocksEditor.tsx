@@ -46,6 +46,7 @@ import {
   isImageBlock,
   isVideoBlock,
   isInputBlock,
+  isCalloutBlock,
   type JsonInteractiveBlock,
 } from '../../../types/json-guide.types';
 import { getBlockPreview } from '../utils';
@@ -291,6 +292,8 @@ export function createDefaultBlock(type: BlockType): JsonBlock {
       return { type: 'guided', content: '', steps: [] };
     case 'challenge':
       return { type: 'challenge', title: '', brief: '', successCriteria: '' };
+    case 'callout':
+      return { type: 'callout', title: '', content: '' };
     default:
       return { type: 'markdown', content: '' };
   }
@@ -306,6 +309,7 @@ const BRANCH_INLINE_CREATABLE_TYPES: BlockType[] = [
   'image',
   'video',
   'input',
+  'callout',
   'quiz',
   'multistep',
   'guided',
@@ -315,7 +319,7 @@ export const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BRANCH_INLINE_CREATABLE_T
 
 // Block types that support inline form editing in BranchBlocksEditor
 // quiz, multistep, and guided require the dedicated editors and cannot be edited inline
-const INLINE_EDITABLE_TYPES: BlockType[] = ['markdown', 'interactive', 'image', 'video', 'input'];
+const INLINE_EDITABLE_TYPES: BlockType[] = ['markdown', 'interactive', 'image', 'video', 'input', 'callout'];
 
 const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
   value: a.value as JsonInteractiveAction,
@@ -408,6 +412,7 @@ export function BranchBlocksEditor({
   const [formAlt, setFormAlt] = useState('');
   const [formPrompt, setFormPrompt] = useState('');
   const [formVariableName, setFormVariableName] = useState('');
+  const [formTitle, setFormTitle] = useState('');
 
   // DnD sensors
   const pointerSensor = useSensor(PointerSensor, {
@@ -432,6 +437,7 @@ export function BranchBlocksEditor({
     setFormAlt('');
     setFormPrompt('');
     setFormVariableName('');
+    setFormTitle('');
   }, []);
 
   // Populate form fields from a block
@@ -454,6 +460,9 @@ export function BranchBlocksEditor({
       } else if (isInputBlock(block)) {
         setFormPrompt(block.prompt);
         setFormVariableName(block.variableName);
+      } else if (isCalloutBlock(block)) {
+        setFormTitle(block.title);
+        setFormContent(block.content);
       }
     },
     [resetFormFields]
@@ -498,6 +507,8 @@ export function BranchBlocksEditor({
             inputType: 'text',
             variableName: formVariableName,
           };
+        case 'callout':
+          return { type: 'callout', title: formTitle, content: formContent };
         default:
           return createDefaultBlock(type);
       }
@@ -512,6 +523,7 @@ export function BranchBlocksEditor({
       formAlt,
       formPrompt,
       formVariableName,
+      formTitle,
     ]
   );
 
@@ -753,6 +765,23 @@ export function BranchBlocksEditor({
                 value={formVariableName}
                 onChange={(e) => setFormVariableName(e.currentTarget.value)}
                 placeholder="myVariable"
+              />
+            </Field>
+          </>
+        );
+
+      case 'callout':
+        return (
+          <>
+            <Field label="Label" required description="Shown at the top of the box, e.g. Objective">
+              <Input value={formTitle} onChange={(e) => setFormTitle(e.currentTarget.value)} placeholder="Objective" />
+            </Field>
+            <Field label="Content" required description="Markdown body shown inside the callout">
+              <TextArea
+                value={formContent}
+                onChange={(e) => setFormContent(e.currentTarget.value)}
+                rows={3}
+                placeholder="In this section you will learn..."
               />
             </Field>
           </>

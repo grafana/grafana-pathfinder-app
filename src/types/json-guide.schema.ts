@@ -283,6 +283,18 @@ export const JsonVideoBlockSchema = z.object({
   ...AuthorAnnotatedSchema.shape,
 });
 
+/**
+ * Schema for callout block.
+ * @coupling Type: JsonCalloutBlock
+ */
+export const JsonCalloutBlockSchema = z.object({
+  type: z.literal('callout'),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  title: z.string().min(1, 'Callout title is required').describe('Label shown at the top of the box, e.g. "Objective"'),
+  content: z.string().min(1, 'Callout content is required').describe('Markdown-formatted body content'),
+  ...AuthorAnnotatedSchema.shape,
+});
+
 // ============ INTERACTIVE BLOCK SCHEMAS ============
 
 /**
@@ -836,6 +848,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
+  JsonCalloutBlockSchema,
   JsonInteractiveBlockSchema,
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
@@ -859,6 +872,7 @@ const NonRecursiveBlockSchemaNoRef = z.union([
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
+  JsonCalloutBlockSchema,
   JsonInteractiveBlockSchema,
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
@@ -882,6 +896,7 @@ export const PresentationalBlockSchema = z.union([
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
+  JsonCalloutBlockSchema,
 ]);
 
 // ============ RECURSIVE BLOCK SCHEMAS ============
@@ -1175,6 +1190,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   html: new Set(['type', 'id', 'content', 'authorNote']),
   image: new Set(['type', 'id', 'src', 'alt', 'width', 'height', 'authorNote']),
   video: new Set(['type', 'id', 'src', 'provider', 'title', 'start', 'end', 'authorNote']),
+  callout: new Set(['type', 'id', 'title', 'content', 'authorNote']),
   interactive: new Set([
     'type',
     'id',
