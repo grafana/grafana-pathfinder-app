@@ -59,6 +59,12 @@ export interface InteractiveQuizProps {
 
 // ============ Component ============
 
+// Thresholds for the compact side-by-side pill layout — short questions
+// (True/False, single-word choices) read better as pills; anything longer
+// or more numerous falls back to the stacked full-width rows.
+const PILL_LAYOUT_MAX_CHOICES = 4;
+const PILL_LAYOUT_MAX_CHOICE_LENGTH = 20;
+
 // Counter for generating unique quiz IDs
 let quizCounter = 0;
 
@@ -256,43 +262,15 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     }
   }, [selectedIds, correctIds, multiSelect]);
 
-  // Handle choice selection
-  const handleChoiceClick = useCallback(
-    (choiceId: string) => {
-      if (isCompleted || isRevealed || !isEnabled) {
-        return;
-      }
-
-      setSelectedIds((prev) => {
-        const newSet = new Set(prev);
-        if (multiSelect) {
-          // Toggle for multi-select
-          if (newSet.has(choiceId)) {
-            newSet.delete(choiceId);
-          } else {
-            newSet.add(choiceId);
-          }
-        } else {
-          // Replace for single-select
-          newSet.clear();
-          newSet.add(choiceId);
-        }
-        return newSet;
-      });
-
-      // Clear previous result/hint when selection changes
-      setLastResult('none');
-      setShowHint(null);
-    },
-    [isCompleted, isRevealed, isEnabled, multiSelect]
-  );
-
-  // Build analytics properties for quiz interactions
+  // Build analytics properties for quiz interactions. `selectedIdsForAnalytics`
+  // is passed explicitly rather than read from `selectedIds` state — for the
+  // single-select instant-check path (see `handleChoiceClick`), the check runs
+  // in the same tick as the click, before React has flushed the state update.
   const buildQuizAnalyticsProps = useCallback(
-    (isCorrect: boolean, attemptCount: number, revealed = false) => {
+    (isCorrect: boolean, attemptCount: number, selectedIdsForAnalytics: Set<string>, revealed = false) => {
       // Get selected answer texts (truncate if too long)
       const selectedAnswers = choices
-        .filter((c) => selectedIds.has(c.id))
+        .filter((c) => selectedIdsForAnalytics.has(c.id))
         .map((c) => c.text)
         .join(', ');
       const truncatedSelected = selectedAnswers.length > 200 ? selectedAnswers.slice(0, 200) + '...' : selectedAnswers;
@@ -330,70 +308,101 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         sectionTitle,
       });
     },
-    [choices, selectedIds, question, stepId, multiSelect, stepIndex, totalSteps, sectionId, sectionTitle]
+    [choices, question, stepId, multiSelect, stepIndex, totalSteps, sectionId, sectionTitle]
   );
 
-  // Handle check answer
+  // Shared "was this correct" outcome handling for both interaction paths:
+  // multi-select's explicit Check Answer button, and single-select's
+  // instant-on-click check. Keeping this in one place means the two paths
+  // can't drift on attempts/hint/reveal/analytics behavior.
+  const evaluateAndApply = useCallback(
+    (isCorrect: boolean, wrongChoice: QuizChoice | undefined, selectedIdsForAnalytics: Set<string>) => {
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+
+      if (isCorrect) {
+        setLastResult('correct');
+        persistCompletion();
+        setShowHint(null);
+
+        reportAppInteraction(
+          UserInteraction.StepAutoCompleted,
+          buildQuizAnalyticsProps(true, newAttempts, selectedIdsForAnalytics)
+        );
+
+        if (onStepComplete && stepId) {
+          onStepComplete(stepId);
+        }
+      } else {
+        setLastResult('incorrect');
+        setShakeKey((k) => k + 1);
+        setShowHint(wrongChoice?.hint ?? "That's not quite right. Try again!");
+
+        // Check if max attempts reached (for max-attempts mode)
+        if (completionMode === 'max-attempts' && newAttempts >= maxAttempts) {
+          setIsRevealed(true);
+          persistCompletion();
+
+          reportAppInteraction(
+            UserInteraction.StepAutoCompleted,
+            buildQuizAnalyticsProps(false, newAttempts, selectedIdsForAnalytics, true)
+          );
+
+          if (onStepComplete && stepId) {
+            onStepComplete(stepId);
+          }
+        }
+      }
+    },
+    [attempts, persistCompletion, buildQuizAnalyticsProps, onStepComplete, stepId, completionMode, maxAttempts]
+  );
+
+  // Handle choice selection. Multi-select only ever toggles — the answer
+  // isn't complete until the user has picked everything they mean to and
+  // clicks "Check Answer" (see `handleCheckAnswer`). Single-select has no
+  // such ambiguity: the clicked choice IS the whole answer, so the click
+  // both selects and checks it in one step, with no separate submit.
+  const handleChoiceClick = useCallback(
+    (choiceId: string) => {
+      if (isCompleted || isRevealed || !isEnabled) {
+        return;
+      }
+
+      if (multiSelect) {
+        setSelectedIds((prev) => {
+          const newSet = new Set(prev);
+          if (newSet.has(choiceId)) {
+            newSet.delete(choiceId);
+          } else {
+            newSet.add(choiceId);
+          }
+          return newSet;
+        });
+        setLastResult('none');
+        setShowHint(null);
+        return;
+      }
+
+      const newSelection = new Set([choiceId]);
+      setSelectedIds(newSelection);
+      const clickedChoice = choices.find((c) => c.id === choiceId);
+      const isCorrect = Boolean(clickedChoice?.correct);
+      evaluateAndApply(isCorrect, isCorrect ? undefined : clickedChoice, newSelection);
+    },
+    [isCompleted, isRevealed, isEnabled, multiSelect, choices, evaluateAndApply]
+  );
+
+  // Handle check answer (multi-select only — see `handleChoiceClick` for the
+  // single-select instant-check path).
   const handleCheckAnswer = useCallback(() => {
     if (selectedIds.size === 0) {
       return;
     }
 
-    const newAttempts = attempts + 1;
-    setAttempts(newAttempts);
-
     const isCorrect = checkAnswer();
-
-    if (isCorrect) {
-      setLastResult('correct');
-      persistCompletion();
-      setShowHint(null);
-
-      // Report analytics with detailed quiz data
-      reportAppInteraction(UserInteraction.StepAutoCompleted, buildQuizAnalyticsProps(true, newAttempts));
-
-      // Notify parent
-      if (onStepComplete && stepId) {
-        onStepComplete(stepId);
-      }
-    } else {
-      setLastResult('incorrect');
-      setShakeKey((k) => k + 1);
-
-      // Find hint for selected wrong answer
-      const selectedWrong = choices.find((c) => selectedIds.has(c.id) && !c.correct);
-      if (selectedWrong?.hint) {
-        setShowHint(selectedWrong.hint);
-      } else {
-        setShowHint("That's not quite right. Try again!");
-      }
-
-      // Check if max attempts reached (for max-attempts mode)
-      if (completionMode === 'max-attempts' && newAttempts >= maxAttempts) {
-        setIsRevealed(true);
-        persistCompletion();
-
-        // Report analytics with detailed quiz data (revealed = true)
-        reportAppInteraction(UserInteraction.StepAutoCompleted, buildQuizAnalyticsProps(false, newAttempts, true));
-
-        // Notify parent
-        if (onStepComplete && stepId) {
-          onStepComplete(stepId);
-        }
-      }
-    }
-  }, [
-    selectedIds,
-    attempts,
-    checkAnswer,
-    stepId,
-    onStepComplete,
-    completionMode,
-    maxAttempts,
-    choices,
-    buildQuizAnalyticsProps,
-    persistCompletion,
-  ]);
+    const wrongChoice = choices.find((c) => selectedIds.has(c.id) && !c.correct);
+    evaluateAndApply(isCorrect, wrongChoice, selectedIds);
+  }, [selectedIds, checkAnswer, choices, evaluateAndApply]);
 
   // Handle skip
   const handleSkip = useCallback(() => {
@@ -447,22 +456,40 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
   // Determine if we should show the blocked state
   const isBlocked = !isEnabled && !isCompleted;
-  const showCheckButton = !isCompleted && !isRevealed && displayedSelection.size > 0;
+  // Multi-select only — single-select checks instantly on click (see
+  // `handleChoiceClick`), so it never needs an explicit submit button.
+  const showCheckButton = multiSelect && !isCompleted && !isRevealed && displayedSelection.size > 0;
   const attemptsRemaining = completionMode === 'max-attempts' ? maxAttempts - attempts : null;
+  const showAttemptsRemaining = attemptsRemaining !== null && !isCompleted && !isRevealed;
+  // Compact pill layout only for short questions — a handful of short
+  // choices (True/False, single words) reads better side-by-side; longer or
+  // more numerous choices keep the stacked full-width rows.
+  const useCompactChoiceLayout =
+    displayChoices.length <= PILL_LAYOUT_MAX_CHOICES &&
+    displayChoices.every((c) => c.text.length <= PILL_LAYOUT_MAX_CHOICE_LENGTH);
 
   return (
     <div
       className={cx(styles.container, {
-        [styles.completed]: isCompleted,
         [styles.blocked]: isBlocked,
       })}
       data-testid={testIds.interactive.quiz(stepId)}
     >
-      {/* Question */}
-      <div className={styles.question}>
-        <Icon name="question-circle" className={styles.questionIcon} />
-        <div className={styles.questionContent}>{children}</div>
+      {/* Label header */}
+      <div className={styles.header}>
+        <div className={styles.headerLabel}>
+          <Icon name="pen" size="sm" className={styles.headerIcon} />
+          <span>Knowledge check</span>
+        </div>
+        {showAttemptsRemaining && (
+          <span className={styles.attempts}>
+            {attemptsRemaining} attempt{attemptsRemaining !== 1 ? 's' : ''} remaining
+          </span>
+        )}
       </div>
+
+      {/* Question */}
+      <div className={styles.questionContent}>{children}</div>
 
       {/* Blocked message */}
       {isBlocked && (
@@ -475,6 +502,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       {/* Choices */}
       <div
         className={cx(styles.choices, {
+          [styles.choicesCompact]: useCompactChoiceLayout,
           [styles.shake]: displayedResult === 'incorrect',
         })}
         key={shakeKey}
@@ -487,21 +515,25 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
             <button
               key={choice.id}
               type="button"
-              className={cx(styles.choice, getChoiceClassName(state))}
+              className={cx(styles.choice, getChoiceClassName(state), {
+                [styles.choiceCompact]: useCompactChoiceLayout,
+              })}
               onClick={() => handleChoiceClick(choice.id)}
               disabled={isCompleted || isRevealed || isBlocked}
               aria-pressed={isSelected}
               data-testid={testIds.interactive.quizChoice(stepId, choice.id)}
             >
-              <span className={styles.choiceIndicator}>
-                {multiSelect ? (
-                  <span className={cx(styles.checkbox, { [styles.checked]: isSelected })}>
-                    {isSelected && <Icon name="check" size="xs" />}
-                  </span>
-                ) : (
-                  <span className={cx(styles.radio, { [styles.radioSelected]: isSelected })} />
-                )}
-              </span>
+              {!useCompactChoiceLayout && (
+                <span className={styles.choiceIndicator}>
+                  {multiSelect ? (
+                    <span className={cx(styles.checkbox, { [styles.checked]: isSelected })}>
+                      {isSelected && <Icon name="check" size="xs" />}
+                    </span>
+                  ) : (
+                    <span className={cx(styles.radio, { [styles.radioSelected]: isSelected })} />
+                  )}
+                </span>
+              )}
               <span className={styles.choiceText}>{choice.text}</span>
               {state === 'correct' && <Icon name="check-circle" className={styles.correctIcon} />}
               {state === 'revealed' && <Icon name="check-circle" className={styles.revealedIcon} />}
@@ -536,31 +568,27 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       )}
 
       {/* Actions */}
-      <div className={styles.actions}>
-        {showCheckButton && (
-          <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
-            Check Answer
-          </Button>
-        )}
+      {(showCheckButton || (canSkip && !isCompleted)) && (
+        <div className={styles.actions}>
+          {showCheckButton && (
+            <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
+              Check Answer
+            </Button>
+          )}
 
-        {attemptsRemaining !== null && !isCompleted && !isRevealed && (
-          <span className={styles.attempts}>
-            {attemptsRemaining} attempt{attemptsRemaining !== 1 ? 's' : ''} remaining
-          </span>
-        )}
-
-        {canSkip && !isCompleted && (
-          <Button
-            variant="secondary"
-            fill="text"
-            onClick={handleSkip}
-            disabled={disabled}
-            data-testid={testIds.interactive.quizSkipButton(stepId)}
-          >
-            Skip
-          </Button>
-        )}
-      </div>
+          {canSkip && !isCompleted && (
+            <Button
+              variant="secondary"
+              fill="text"
+              onClick={handleSkip}
+              disabled={disabled}
+              data-testid={testIds.interactive.quizSkipButton(stepId)}
+            >
+              Skip
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -579,249 +607,277 @@ const pulse = keyframes`
   100% { transform: scale(1); }
 `;
 
-const getQuizStyles = (theme: GrafanaTheme2) => ({
-  container: css`
-    background: ${theme.colors.background.secondary};
-    border: 1px solid ${theme.colors.border.weak};
-    border-radius: ${theme.shape.radius.default};
-    padding: ${theme.spacing(2)};
-    margin: ${theme.spacing(1.5)} 0;
-    transition: all 0.2s ease;
-  `,
+const getQuizStyles = (theme: GrafanaTheme2) => {
+  // Purple label to match Callout's "colored label" treatment (see
+  // content-html.styles.ts) with a different accent so the two read as
+  // distinct at a glance — but scoped to the label text only. The container
+  // itself stays neutral regardless of answer state: a left-border accent or
+  // a success-tinted background here would compete with the per-choice
+  // correct/incorrect highlighting and the success message box, all in the
+  // same small area.
+  const accent = theme.visualization.getColorByName('purple');
 
-  completed: css`
-    border-color: ${theme.colors.success.border};
-    background: ${theme.colors.success.transparent};
-  `,
+  return {
+    container: css`
+      background: ${theme.colors.background.secondary};
+      border: 1px solid ${theme.colors.border.weak};
+      border-radius: ${theme.shape.radius.default};
+      padding: ${theme.spacing(2)};
+      margin: ${theme.spacing(1.5)} 0;
+      transition: all 0.2s ease;
+    `,
 
-  blocked: css`
-    opacity: 0.7;
-    pointer-events: none;
-  `,
+    blocked: css`
+      opacity: 0.7;
+      pointer-events: none;
+    `,
 
-  question: css`
-    display: flex;
-    gap: ${theme.spacing(1)};
-    margin-bottom: ${theme.spacing(2)};
-  `,
+    header: css`
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: ${theme.spacing(1)};
+      margin-bottom: ${theme.spacing(1)};
+    `,
 
-  questionIcon: css`
-    color: ${theme.colors.primary.text};
-    flex-shrink: 0;
-    margin-top: 2px;
-  `,
+    headerLabel: css`
+      display: flex;
+      align-items: center;
+      gap: ${theme.spacing(0.5)};
+      color: ${accent};
+      font-weight: ${theme.typography.fontWeightBold};
+      font-size: ${theme.typography.bodySmall.fontSize};
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    `,
 
-  questionContent: css`
-    flex: 1;
-    font-weight: ${theme.typography.fontWeightMedium};
-
-    p {
-      margin: 0;
-    }
-  `,
-
-  blockedMessage: css`
-    display: flex;
-    align-items: center;
-    gap: ${theme.spacing(1)};
-    padding: ${theme.spacing(1)} ${theme.spacing(1.5)};
-    background: ${theme.colors.warning.transparent};
-    border-radius: ${theme.shape.radius.default};
-    color: ${theme.colors.warning.text};
-    font-size: ${theme.typography.bodySmall.fontSize};
-    margin-bottom: ${theme.spacing(1.5)};
-  `,
-
-  choices: css`
-    display: flex;
-    flex-direction: column;
-    gap: ${theme.spacing(1)};
-    margin-bottom: ${theme.spacing(2)};
-  `,
-
-  shake: css`
-    animation: ${shake} 0.5s ease;
-  `,
-
-  choice: css`
-    display: flex;
-    align-items: center;
-    gap: ${theme.spacing(1.5)};
-    padding: ${theme.spacing(1.5)} ${theme.spacing(2)};
-    background: ${theme.colors.background.primary};
-    border: 1px solid ${theme.colors.border.weak};
-    border-radius: ${theme.shape.radius.default};
-    cursor: pointer;
-    transition: all 0.15s ease;
-    text-align: left;
-    width: 100%;
-
-    &:hover:not(:disabled) {
-      border-color: ${theme.colors.border.medium};
-      background: ${theme.colors.action.hover};
-    }
-
-    &:focus-visible {
-      outline: 2px solid ${theme.colors.primary.main};
-      outline-offset: 2px;
-    }
-
-    &:disabled {
-      cursor: default;
-    }
-  `,
-
-  choiceDefault: css``,
-
-  choiceSelected: css`
-    border-color: ${theme.colors.primary.border};
-    background: ${theme.colors.primary.transparent};
-  `,
-
-  choiceCorrect: css`
-    border-color: ${theme.colors.success.border};
-    background: ${theme.colors.success.transparent};
-    animation: ${pulse} 0.3s ease;
-  `,
-
-  choiceIncorrect: css`
-    border-color: ${theme.colors.error.border};
-    background: ${theme.colors.error.transparent};
-  `,
-
-  choiceRevealed: css`
-    border-color: ${theme.colors.success.border};
-    background: ${theme.colors.success.transparent};
-  `,
-
-  choiceIndicator: css`
-    flex-shrink: 0;
-  `,
-
-  checkbox: css`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border: 2px solid ${theme.colors.border.strong};
-    border-radius: 3px;
-    background: ${theme.colors.background.primary};
-    transition: all 0.15s ease;
-  `,
-
-  checked: css`
-    background: ${theme.colors.primary.main};
-    border-color: ${theme.colors.primary.main};
-    color: ${theme.colors.primary.contrastText};
-  `,
-
-  radio: css`
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border: 2px solid ${theme.colors.border.strong};
-    border-radius: 50%;
-    background: ${theme.colors.background.primary};
-    transition: all 0.15s ease;
-    box-sizing: border-box;
-
-    &::after {
-      content: '';
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: ${theme.colors.primary.main};
-      transform: scale(0);
-      transition: transform 0.15s ease;
-    }
-  `,
-
-  radioSelected: css`
-    border-color: ${theme.colors.primary.main};
-
-    &::after {
-      transform: scale(1);
-    }
-  `,
-
-  choiceText: css`
-    flex: 1;
-  `,
-
-  correctIcon: css`
-    color: ${theme.colors.success.text};
-    flex-shrink: 0;
-  `,
-
-  incorrectIcon: css`
-    color: ${theme.colors.error.text};
-    flex-shrink: 0;
-  `,
-
-  revealedIcon: css`
-    color: ${theme.colors.success.text};
-    flex-shrink: 0;
-  `,
-
-  hint: css`
-    display: flex;
-    align-items: flex-start;
-    gap: ${theme.spacing(1)};
-    padding: ${theme.spacing(1.5)};
-    background: ${theme.colors.warning.transparent};
-    border: 1px solid ${theme.colors.warning.border};
-    border-radius: ${theme.shape.radius.default};
-    color: ${theme.colors.warning.text};
-    font-size: ${theme.typography.bodySmall.fontSize};
-    margin-bottom: ${theme.spacing(2)};
-
-    svg {
+    headerIcon: css`
       flex-shrink: 0;
-      margin-top: 2px;
-    }
-  `,
+    `,
 
-  success: css`
-    display: flex;
-    align-items: center;
-    gap: ${theme.spacing(1)};
-    padding: ${theme.spacing(1.5)};
-    background: ${theme.colors.success.transparent};
-    border: 1px solid ${theme.colors.success.border};
-    border-radius: ${theme.shape.radius.default};
-    color: ${theme.colors.success.text};
-    font-weight: ${theme.typography.fontWeightMedium};
-    margin-bottom: ${theme.spacing(2)};
-    animation: ${pulse} 0.3s ease;
-  `,
+    questionContent: css`
+      font-weight: ${theme.typography.fontWeightMedium};
+      margin-bottom: ${theme.spacing(2)};
 
-  revealed: css`
-    display: flex;
-    align-items: center;
-    gap: ${theme.spacing(1)};
-    padding: ${theme.spacing(1.5)};
-    background: ${theme.colors.info.transparent};
-    border: 1px solid ${theme.colors.info.border};
-    border-radius: ${theme.shape.radius.default};
-    color: ${theme.colors.text.secondary};
-    font-size: ${theme.typography.bodySmall.fontSize};
-    margin-bottom: ${theme.spacing(2)};
-  `,
+      p {
+        margin: 0;
+      }
+    `,
 
-  actions: css`
-    display: flex;
-    align-items: center;
-    gap: ${theme.spacing(1.5)};
-  `,
+    blockedMessage: css`
+      display: flex;
+      align-items: center;
+      gap: ${theme.spacing(1)};
+      padding: ${theme.spacing(1)} ${theme.spacing(1.5)};
+      background: ${theme.colors.warning.transparent};
+      border-radius: ${theme.shape.radius.default};
+      color: ${theme.colors.warning.text};
+      font-size: ${theme.typography.bodySmall.fontSize};
+      margin-bottom: ${theme.spacing(1.5)};
+    `,
 
-  attempts: css`
-    color: ${theme.colors.text.secondary};
-    font-size: ${theme.typography.bodySmall.fontSize};
-    margin-left: auto;
-  `,
-});
+    choices: css`
+      display: flex;
+      flex-direction: column;
+      gap: ${theme.spacing(1)};
+      margin-bottom: ${theme.spacing(2)};
+    `,
+
+    choicesCompact: css`
+      flex-direction: row;
+      flex-wrap: wrap;
+    `,
+
+    shake: css`
+      animation: ${shake} 0.5s ease;
+    `,
+
+    choice: css`
+      display: flex;
+      align-items: center;
+      gap: ${theme.spacing(1.5)};
+      padding: ${theme.spacing(1.5)} ${theme.spacing(2)};
+      background: ${theme.colors.background.primary};
+      border: 1px solid ${theme.colors.border.weak};
+      border-radius: ${theme.shape.radius.default};
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-align: left;
+      width: 100%;
+
+      &:hover:not(:disabled) {
+        border-color: ${theme.colors.border.medium};
+        background: ${theme.colors.action.hover};
+      }
+
+      &:focus-visible {
+        outline: 2px solid ${theme.colors.primary.main};
+        outline-offset: 2px;
+      }
+
+      &:disabled {
+        cursor: default;
+      }
+    `,
+
+    choiceCompact: css`
+      width: auto;
+      flex: 0 1 auto;
+      justify-content: center;
+    `,
+
+    choiceDefault: css``,
+
+    choiceSelected: css`
+      border-color: ${theme.colors.primary.border};
+      background: ${theme.colors.primary.transparent};
+    `,
+
+    choiceCorrect: css`
+      border-color: ${theme.colors.success.border};
+      background: ${theme.colors.success.transparent};
+      animation: ${pulse} 0.3s ease;
+    `,
+
+    choiceIncorrect: css`
+      border-color: ${theme.colors.error.border};
+      background: ${theme.colors.error.transparent};
+    `,
+
+    choiceRevealed: css`
+      border-color: ${theme.colors.success.border};
+      background: ${theme.colors.success.transparent};
+    `,
+
+    choiceIndicator: css`
+      flex-shrink: 0;
+    `,
+
+    checkbox: css`
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border: 2px solid ${theme.colors.border.strong};
+      border-radius: 3px;
+      background: ${theme.colors.background.primary};
+      transition: all 0.15s ease;
+    `,
+
+    checked: css`
+      background: ${theme.colors.primary.main};
+      border-color: ${theme.colors.primary.main};
+      color: ${theme.colors.primary.contrastText};
+    `,
+
+    radio: css`
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border: 2px solid ${theme.colors.border.strong};
+      border-radius: 50%;
+      background: ${theme.colors.background.primary};
+      transition: all 0.15s ease;
+      box-sizing: border-box;
+
+      &::after {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: ${theme.colors.primary.main};
+        transform: scale(0);
+        transition: transform 0.15s ease;
+      }
+    `,
+
+    radioSelected: css`
+      border-color: ${theme.colors.primary.main};
+
+      &::after {
+        transform: scale(1);
+      }
+    `,
+
+    choiceText: css`
+      flex: 1;
+    `,
+
+    correctIcon: css`
+      color: ${theme.colors.success.text};
+      flex-shrink: 0;
+    `,
+
+    incorrectIcon: css`
+      color: ${theme.colors.error.text};
+      flex-shrink: 0;
+    `,
+
+    revealedIcon: css`
+      color: ${theme.colors.success.text};
+      flex-shrink: 0;
+    `,
+
+    hint: css`
+      display: flex;
+      align-items: flex-start;
+      gap: ${theme.spacing(1)};
+      padding: ${theme.spacing(1.5)};
+      background: ${theme.colors.warning.transparent};
+      border: 1px solid ${theme.colors.warning.border};
+      border-radius: ${theme.shape.radius.default};
+      color: ${theme.colors.warning.text};
+      font-size: ${theme.typography.bodySmall.fontSize};
+      margin-bottom: ${theme.spacing(2)};
+
+      svg {
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+    `,
+
+    success: css`
+      display: flex;
+      align-items: center;
+      gap: ${theme.spacing(1)};
+      padding: ${theme.spacing(1.5)};
+      background: ${theme.colors.success.transparent};
+      border: 1px solid ${theme.colors.success.border};
+      border-radius: ${theme.shape.radius.default};
+      color: ${theme.colors.success.text};
+      font-weight: ${theme.typography.fontWeightMedium};
+      margin-bottom: ${theme.spacing(2)};
+      animation: ${pulse} 0.3s ease;
+    `,
+
+    revealed: css`
+      display: flex;
+      align-items: center;
+      gap: ${theme.spacing(1)};
+      padding: ${theme.spacing(1.5)};
+      background: ${theme.colors.info.transparent};
+      border: 1px solid ${theme.colors.info.border};
+      border-radius: ${theme.shape.radius.default};
+      color: ${theme.colors.text.secondary};
+      font-size: ${theme.typography.bodySmall.fontSize};
+      margin-bottom: ${theme.spacing(2)};
+    `,
+
+    actions: css`
+      display: flex;
+      align-items: center;
+      gap: ${theme.spacing(1.5)};
+    `,
+
+    attempts: css`
+      color: ${theme.colors.text.secondary};
+      font-size: ${theme.typography.bodySmall.fontSize};
+      white-space: nowrap;
+    `,
+  };
+};
 
 export default InteractiveQuiz;

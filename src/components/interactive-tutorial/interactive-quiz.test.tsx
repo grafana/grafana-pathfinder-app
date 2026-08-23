@@ -219,10 +219,10 @@ describe('InteractiveQuiz: shuffle behavior', () => {
       );
 
       // Find the rendered "Bravo" button (correct=true) — its visual position
-      // is whatever the shuffle produced; we look up by text.
+      // is whatever the shuffle produced; we look up by text. Single-select
+      // checks instantly on click — there is no separate Check Answer step.
       const correctButton = screen.getByRole('button', { name: 'Bravo' });
       fireEvent.click(correctButton);
-      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
 
       expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
     } finally {
@@ -248,7 +248,6 @@ describe('InteractiveQuiz: shuffle behavior', () => {
         </InteractiveQuiz>
       );
       fireEvent.click(screen.getByRole('button', { name: 'Charlie' }));
-      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
       expect(screen.getByText('Charlie hint')).toBeInTheDocument();
     } finally {
       spy.mockRestore();
@@ -317,9 +316,8 @@ describe('InteractiveQuiz: render-order stability', () => {
       );
       const orderBefore = readChoiceOrder();
 
-      // Answer correctly.
+      // Answer correctly — single-select checks instantly on click.
       fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
-      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
       expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
 
       // Force a parent re-render with an unrelated prop change (and a fresh choices reference).
@@ -360,9 +358,8 @@ describe('InteractiveQuiz: render-order stability', () => {
         .map((b) => b.textContent)
         .filter((t): t is string => !!t && /^(Alpha|Bravo|Charlie)$/.test(t));
 
-      // Pick a wrong answer so the hint surfaces.
+      // Pick a wrong answer so the hint surfaces — instant on click.
       fireEvent.click(screen.getByRole('button', { name: 'Charlie' }));
-      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
       expect(screen.getByText('Charlie hint')).toBeInTheDocument();
 
       // Force a re-render with a new choices reference.
@@ -468,12 +465,153 @@ describe('InteractiveQuiz: skip reason', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
-    fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
 
     const store = require('../../global-state/completion-store') as {
       __getStoredReason: (stepId: string) => string | null;
     };
     expect(store.__getStoredReason('quiz-correct-test')).toBe('manual');
+  });
+});
+
+// ─── Restyle: header label, pill vs. stacked layout, multi-select button ────
+
+describe('InteractiveQuiz: header label and attempts placement', () => {
+  beforeEach(() => {
+    resetQuizCounter();
+    (require('../../global-state/completion-store') as { __resetMockStore: () => void }).__resetMockStore();
+  });
+
+  it('renders the "Knowledge check" label', () => {
+    const choices: QuizChoice[] = [
+      { id: 'a', text: 'True', correct: false },
+      { id: 'b', text: 'False', correct: true },
+    ];
+    render(
+      <InteractiveQuiz question="Q" choices={choices} shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    expect(screen.getByText('Knowledge check')).toBeInTheDocument();
+  });
+
+  it('shows attempts remaining (max-attempts mode) alongside the label, with no Check Answer button for single-select', () => {
+    const choices: QuizChoice[] = [
+      { id: 'a', text: 'True', correct: false },
+      { id: 'b', text: 'False', correct: true },
+    ];
+    render(
+      <InteractiveQuiz question="Q" choices={choices} shuffle={false} completionMode="max-attempts" maxAttempts={2}>
+        Q
+      </InteractiveQuiz>
+    );
+    expect(screen.getByText('2 attempts remaining')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Check Answer/i })).not.toBeInTheDocument();
+  });
+
+  it('does not show an attempts indicator in correct-only mode (the default)', () => {
+    const choices: QuizChoice[] = [
+      { id: 'a', text: 'True', correct: false },
+      { id: 'b', text: 'False', correct: true },
+    ];
+    render(
+      <InteractiveQuiz question="Q" choices={choices} shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    expect(screen.queryByText(/attempts? remaining/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('InteractiveQuiz: compact pill layout vs. stacked layout', () => {
+  beforeEach(() => {
+    resetQuizCounter();
+    (require('../../global-state/completion-store') as { __resetMockStore: () => void }).__resetMockStore();
+  });
+
+  // The leading radio/checkbox indicator renders as a `span` nested inside
+  // another `span` (see `choiceIndicator` in the component). Pill layout
+  // omits that wrapper entirely, so counting nested spans is a reliable,
+  // markup-based way to assert presence/absence without depending on
+  // emotion's hashed class names.
+  const hasLeadingIndicator = (button: HTMLElement) => button.querySelectorAll('span span').length > 0;
+
+  it('uses the compact pill layout (no leading indicator) for a short True/False question', () => {
+    const choices: QuizChoice[] = [
+      { id: 'a', text: 'True', correct: false },
+      { id: 'b', text: 'False', correct: true },
+    ];
+    render(
+      <InteractiveQuiz question="Q" choices={choices} shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    expect(hasLeadingIndicator(screen.getByRole('button', { name: 'True' }))).toBe(false);
+    expect(hasLeadingIndicator(screen.getByRole('button', { name: 'False' }))).toBe(false);
+  });
+
+  it('falls back to the stacked layout (leading indicator present) when choice text is long', () => {
+    const choices: QuizChoice[] = [
+      { id: 'a', text: 'This is a much longer answer choice than a short label', correct: true },
+      { id: 'b', text: 'Also a fairly long second choice for this question', correct: false },
+    ];
+    render(
+      <InteractiveQuiz question="Q" choices={choices} shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    expect(hasLeadingIndicator(screen.getByRole('button', { name: /This is a much longer answer choice/ }))).toBe(true);
+  });
+
+  it('falls back to the stacked layout (leading indicator present) when there are more than 4 short choices', () => {
+    const choices: QuizChoice[] = [
+      { id: 'a', text: 'One', correct: false },
+      { id: 'b', text: 'Two', correct: true },
+      { id: 'c', text: 'Three', correct: false },
+      { id: 'd', text: 'Four', correct: false },
+      { id: 'e', text: 'Five', correct: false },
+    ];
+    render(
+      <InteractiveQuiz question="Q" choices={choices} shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    expect(hasLeadingIndicator(screen.getByRole('button', { name: 'One' }))).toBe(true);
+  });
+});
+
+describe('InteractiveQuiz: multi-select keeps the explicit Check Answer button', () => {
+  beforeEach(() => {
+    resetQuizCounter();
+    (require('../../global-state/completion-store') as { __resetMockStore: () => void }).__resetMockStore();
+  });
+
+  const choices: QuizChoice[] = [
+    { id: 'a', text: 'Alpha', correct: true },
+    { id: 'b', text: 'Bravo', correct: true },
+    { id: 'c', text: 'Charlie', correct: false },
+  ];
+
+  it('does not complete on the first choice click — requires an explicit Check Answer click', () => {
+    render(
+      <InteractiveQuiz question="Q" choices={choices} multiSelect shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
+    expect(screen.queryByText(/Correct! Well done\./i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Check Answer/i })).toBeInTheDocument();
+  });
+
+  it('completes once all correct choices are selected and Check Answer is clicked', () => {
+    render(
+      <InteractiveQuiz question="Q" choices={choices} multiSelect shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
+    fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
+    expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
   });
 });
 
