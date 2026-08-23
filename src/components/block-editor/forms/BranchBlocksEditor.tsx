@@ -507,8 +507,18 @@ export function BranchBlocksEditor({
             inputType: 'text',
             variableName: formVariableName,
           };
-        case 'callout':
-          return { type: 'callout', title: formTitle, content: formContent };
+        case 'callout': {
+          // Mirrors the interactive case above: carry over fields this reduced
+          // form doesn't manage (id, authorNote) instead of dropping them.
+          const carried =
+            existing && isCalloutBlock(existing)
+              ? {
+                  ...(existing.id && { id: existing.id }),
+                  ...(existing.authorNote && { authorNote: existing.authorNote }),
+                }
+              : {};
+          return { ...carried, type: 'callout', title: formTitle, content: formContent };
+        }
         default:
           return createDefaultBlock(type);
       }

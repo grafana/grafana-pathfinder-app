@@ -36,4 +36,26 @@ describe('CalloutBlockForm', () => {
       content: 'Learn the thing.',
     });
   });
+
+  it('preserves the id and authorNote of the block being edited', () => {
+    const onSubmit = jest.fn();
+    const initialData: JsonBlock = {
+      type: 'callout',
+      id: 'callout-1',
+      title: 'Objective',
+      content: 'Learn the thing.',
+      authorNote: 'TODO: revisit wording',
+    };
+    render(<CalloutBlockForm initialData={initialData} onSubmit={onSubmit} onCancel={jest.fn()} isEditing />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update block' }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      type: 'callout',
+      id: 'callout-1',
+      title: 'Objective',
+      content: 'Learn the thing.',
+      authorNote: 'TODO: revisit wording',
+    });
+  });
 });

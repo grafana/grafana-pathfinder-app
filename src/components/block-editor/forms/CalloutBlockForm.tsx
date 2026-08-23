@@ -31,6 +31,7 @@ export function CalloutBlockForm({
 
   const initial = initialData && isCalloutBlock(initialData) ? initialData : null;
   const initialId = initial?.id;
+  const initialAuthorNote = initial?.authorNote;
   const [title, setTitle] = useState(initial?.title ?? '');
   const [content, setContent] = useState(initial?.content ?? '');
 
@@ -42,10 +43,11 @@ export function CalloutBlockForm({
         title: title.trim(),
         content: content.trim(),
         ...(initialId && { id: initialId }),
+        ...(initialAuthorNote && { authorNote: initialAuthorNote }),
       };
       onSubmit(block);
     },
-    [title, content, initialId, onSubmit]
+    [title, content, initialId, initialAuthorNote, onSubmit]
   );
 
   const isValid = title.trim().length > 0 && content.trim().length > 0;
