@@ -17,7 +17,7 @@ import type { JsonCollapsibleBlock, PresentationalBlock } from '../../../types/j
 // Content-only block types offered in a collapsible's add menu. Mirrors
 // PresentationalBlock in json-guide.types.ts (html is authored via markdown,
 // not the palette).
-const PRESENTATIONAL_ADDABLE_TYPES: BlockType[] = ['markdown', 'image', 'video'];
+const PRESENTATIONAL_ADDABLE_TYPES: BlockType[] = ['markdown', 'image', 'video', 'callout'];
 
 function isCollapsibleBlock(block: JsonBlock): block is JsonCollapsibleBlock {
   return block.type === 'collapsible';

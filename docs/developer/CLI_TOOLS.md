@@ -272,7 +272,9 @@ The command walks the directory tree starting at `<root>`. Any subdirectory at a
 
 ### Output format
 
-The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.). Every `build-*` command writes JSON through the same formatter, so the same Prettier-where-available caveat applies — see [determinism](#determinism).
+The output is a JSON object mapping bare package IDs to `RepositoryEntry` objects. Each entry contains the package path and denormalized metadata from `manifest.json` (type, description, category, author, dependencies, targeting, testEnvironment, etc.), plus any unknown top-level manifest key forwarded verbatim as extension metadata — see [extension fields](./package-authoring.md#extension-fields) for the forwarding rules and the names the build refuses. Every `build-*` command writes JSON through the same formatter, so the same Prettier-where-available caveat applies — see [determinism](#determinism).
+
+Diagnostics are printed to stderr — the per-package `forwarding N extension field(s): …` line, warnings, and errors — so the JSON on stdout stays parseable when piped.
 
 ---
 
@@ -306,7 +308,7 @@ node dist/cli/cli/index.js build-stats packages/
 node dist/cli/cli/index.js build-repository packages/ -o dist/repository.json
 ```
 
-Run `build-stats` first. Today the ordering is inert: `build-repository` builds each `RepositoryEntry` field by field and never assigns `stats`, so `repository.json` carries none either way. It becomes load-bearing once the manifest-extension passthrough of PR #1662 lands, after which `build-repository` forwards unknown top-level manifest keys — `stats` among them — into `repository.json`, and an index built before the manifests are stamped omits stats for every package. Ordering the two this way now costs nothing and is already correct for after.
+Run `build-stats` first. The ordering is load-bearing: `build-repository` forwards every unknown top-level manifest key — `stats` among them — into `repository.json`, so an index built before the manifests are stamped omits stats for every package.
 
 **Fail CI when a committed manifest is stale:**
 
@@ -344,7 +346,7 @@ The `stats` key holds a fixed set of numbers in a fixed key order, so unchanged 
 
 A milestone missing from the tree, and a manifest that fails schema validation, both abort the run with a non-zero exit and nothing written. That is knowingly stricter than the sibling tooling — `build-graph` warns on an unresolvable milestone, `build-repository` degrades a manifest schema failure to a warning, and `docs-retrieval`'s package content keeps an unresolvable milestone as a locked placeholder. Those tolerate a partial tree at read time; this command's whole purpose is to produce a denominator that is never wrong, and a rollup silently missing a milestone would publish one that is. No manifest is written until every package in the tree has resolved, so a failed run leaves the tree completely unstamped rather than half-stamped.
 
-One consequence worth knowing before putting `build-stats` ahead of `build-repository` in a pipeline that uses `--exclude`. This one is true today, independently of #1662: if an excluded subtree holds a package that a path lists as a milestone, that milestone is missing from the tree, so `build-stats` aborts and leaves _unrelated_ packages unstamped too. `build-repository` with the same `--exclude` omits the entry and succeeds. The strictness is deliberate, but it converts a tree shape the sibling tolerates into a hard stop.
+One consequence worth knowing before putting `build-stats` ahead of `build-repository` in a pipeline that uses `--exclude`, and it is independent of the passthrough: if an excluded subtree holds a package that a path lists as a milestone, that milestone is missing from the tree, so `build-stats` aborts and leaves _unrelated_ packages unstamped too. `build-repository` with the same `--exclude` omits the entry and succeeds. The strictness is deliberate, but it converts a tree shape the sibling tolerates into a hard stop.
 
 A duplicated milestone, and a milestone reachable through two parents, are both errors as well. Summing a package twice inflates the denominator, and because positions are first-occurrence-wins the second copy's blocks can never be evidenced — so the reader would be permanently stuck below 100%.
 
@@ -474,6 +476,8 @@ node dist/cli/cli/index.js schema <name> [options]
 
 ### Available schemas
 
+These mirror the `description` strings in `SCHEMA_REGISTRY` (`src/cli/commands/schema.ts`), which is authoritative — `pathfinder-cli schema --list` prints them verbatim.
+
 | Name               | Description                                                                 |
 | ------------------ | --------------------------------------------------------------------------- |
 | `guide`            | Root JSON guide schema (strict, no extra fields)                            |
@@ -484,6 +488,8 @@ node dist/cli/cli/index.js schema <name> [options]
 | `graph`            | Dependency graph schema (D3-compatible output)                              |
 | `e2e-report`       | E2E single-guide test report (open-world: no `additionalProperties: false`) |
 | `e2e-multi-report` | E2E multi-guide aggregate test report (open-world)                          |
+
+The `manifest` and `repository` exports are open at the top level only (`additionalProperties: {}` on the manifest root and on each repository entry); see [extension fields](./package-authoring.md#extension-fields).
 
 ### Examples
 

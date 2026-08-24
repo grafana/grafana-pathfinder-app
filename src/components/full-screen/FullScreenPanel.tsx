@@ -10,6 +10,7 @@ import { consumePendingGuideOnMount, initializePanelTabsOnMount } from '../docs-
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
 import { getGuideStripTabs, isNonContentTab } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
+import { enrollInteractiveLearningBannerExperiment } from '../../utils/experiments/interactive-learning-banner';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -89,6 +90,11 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     document.addEventListener('pathfinder-auto-launch-pending', handlePending, { once: true });
 
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
+    // Enrollment seam for this surface, mirroring ContextSidebar in module.tsx.
+    // Reading the flag emits the exposure, so it belongs where the surface comes up:
+    // this one renders the banner above guide content and may never see the sidebar.
+    enrollInteractiveLearningBannerExperiment();
+
     // Mirror the floating panel: tell `sidebarState` that a Pathfinder
     // surface is mounted. Without this, the link-interception auto-open
     // path and `HomePanel`'s open-guide flow gate on

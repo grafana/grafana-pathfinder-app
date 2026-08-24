@@ -85,6 +85,10 @@
       "toggleViewMode": "Ansichtsmodus umschalten"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "Alle Lernpfade abgeschlossen!",
     "allCompleteTooltip": "Sie haben alle Lernpfade abgeschlossen – gut gemacht!",

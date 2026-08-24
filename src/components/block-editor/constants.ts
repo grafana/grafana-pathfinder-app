@@ -42,6 +42,13 @@ export const BLOCK_TYPE_METADATA: Record<BlockType, BlockTypeMetadata> = {
     name: 'Video',
     description: 'YouTube or native video embed',
   },
+  callout: {
+    type: 'callout',
+    icon: '🎯',
+    grafanaIcon: 'star',
+    name: 'Callout',
+    description: 'Highlighted, labeled box for calling out anything you want to set apart',
+  },
   section: {
     type: 'section',
     icon: '📂',
@@ -161,7 +168,7 @@ export const BLOCK_TYPE_GROUPS = [
   {
     id: 'content',
     label: 'Content',
-    types: ['markdown', 'image', 'video', 'code-block'],
+    types: ['markdown', 'image', 'video', 'code-block', 'callout'],
   },
   {
     id: 'interactive',

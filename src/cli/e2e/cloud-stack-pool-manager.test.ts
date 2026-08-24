@@ -71,11 +71,60 @@ describe('createCloudStackPoolManagerConfig', () => {
 
   it('exhausts retry budget correctly when the injected clock advances with each wait', async () => {
     let now = 0;
+    const waits: number[] = [];
     const fetchImpl = jest
       .fn()
       .mockResolvedValue(
         jsonResponse({ error: { code: 'no_capacity', message: 'capacity is temporarily exhausted' } }, 503)
       );
+    const manager = new CloudStackPoolManager(
+      { ...CONFIG, maxWaitSeconds: 1 },
+      false,
+      fetchImpl as unknown as typeof fetch,
+      async (ms) => {
+        waits.push(ms);
+        now += ms;
+      },
+      () => 0,
+      () => now
+    );
+
+    await expect(manager.leaseForChain({ chain: [{ id: 'a' }], packageMetaById: new Map() })).rejects.toMatchObject({
+      code: 'no_capacity',
+    });
+    expect(waits).toEqual([125, 250, 500, 125]);
+    expect(now).toBe(1_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it('bounds a hanging retry request by the remaining retry budget', async () => {
+    let now = 0;
+    const retryController = new AbortController();
+    const timeoutSpy = jest
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValueOnce(new AbortController().signal)
+      .mockImplementationOnce(() => {
+        queueMicrotask(() => retryController.abort());
+        return retryController.signal;
+      });
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { code: 'no_capacity', message: 'capacity is temporarily exhausted' } }, 503)
+      )
+      .mockImplementationOnce((_url, init: RequestInit | undefined) => {
+        return new Promise<Response>((_resolve, reject) => {
+          if (!init?.signal) {
+            reject(new Error('Missing retry timeout signal'));
+            return;
+          }
+          init.signal.addEventListener(
+            'abort',
+            () => reject(Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' })),
+            { once: true }
+          );
+        });
+      });
     const manager = new CloudStackPoolManager(
       { ...CONFIG, maxWaitSeconds: 1 },
       false,
@@ -87,13 +136,17 @@ describe('createCloudStackPoolManagerConfig', () => {
       () => now
     );
 
-    await expect(manager.leaseForChain({ chain: [{ id: 'a' }], packageMetaById: new Map() })).rejects.toMatchObject({
-      code: 'no_capacity',
-    });
-    // With random=0 and budget=1000ms the delays are 125, 250, 500, 125 (clamped) before
-    // the 5th attempt finds remaining=0 and throws. If the budget were double-counted the
-    // run would stop after only 2 attempts.
-    expect(fetchImpl).toHaveBeenCalledTimes(5);
+    try {
+      await expect(manager.leaseForChain({ chain: [{ id: 'a' }], packageMetaById: new Map() })).rejects.toThrow(
+        'Pool manager request failed: The operation timed out'
+      );
+      expect(timeoutSpy).toHaveBeenNthCalledWith(1, 90_000);
+      expect(timeoutSpy).toHaveBeenNthCalledWith(2, 875);
+      expect((fetchImpl.mock.calls[1]![1] as RequestInit).signal).toBe(retryController.signal);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
   });
 
   it('does not retry non-capacity errors', async () => {
@@ -164,6 +217,51 @@ describe('createCloudStackPoolManagerConfig', () => {
 });
 
 describe('CloudStackPoolManager', () => {
+  it('uses a 90-second acquisition timeout and a 15-second retirement timeout', async () => {
+    const acquisitionSignal = new AbortController().signal;
+    const retirementSignal = new AbortController().signal;
+    const timeoutSpy = jest
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValueOnce(acquisitionSignal)
+      .mockReturnValueOnce(retirementSignal);
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(leaseResponse(), 201, 'Created'))
+      .mockResolvedValueOnce(jsonResponse({ leaseId: 'lease-1', status: 'retired' }));
+    const manager = new CloudStackPoolManager(CONFIG, false, fetchImpl as unknown as typeof fetch);
+
+    try {
+      const lease = await manager.leaseForChain({ chain: [{ id: 'a' }], packageMetaById: new Map() });
+      await lease.teardownChain();
+
+      expect(timeoutSpy).toHaveBeenNthCalledWith(1, 90_000);
+      expect(timeoutSpy).toHaveBeenNthCalledWith(2, 15_000);
+      expect((fetchImpl.mock.calls[0]![1] as RequestInit).signal).toBe(acquisitionSignal);
+      expect((fetchImpl.mock.calls[1]![1] as RequestInit).signal).toBe(retirementSignal);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it('does not retry ambiguous lease acquisition timeouts', async () => {
+    const fetchImpl = jest
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' }));
+    const waitImpl = jest.fn(async () => undefined);
+    const manager = new CloudStackPoolManager(
+      { ...CONFIG, maxWaitSeconds: 5 },
+      false,
+      fetchImpl as unknown as typeof fetch,
+      waitImpl
+    );
+
+    await expect(manager.leaseForChain({ chain: [{ id: 'a' }], packageMetaById: new Map() })).rejects.toThrow(
+      'Pool manager request failed: The operation timed out'
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(waitImpl).not.toHaveBeenCalled();
+  });
+
   it('creates and retires a lease with chain metadata', async () => {
     const fetchImpl = jest
       .fn()

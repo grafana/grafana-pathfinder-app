@@ -13,6 +13,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 16,
+      "sectionCount": 3,
+      "completableBlockCount": 7,
+      "finalCompletablePosition": 11
     }
   },
   "e2e-framework-test": {
@@ -29,6 +36,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 5,
+      "sectionCount": 0,
+      "completableBlockCount": 3,
+      "finalCompletablePosition": 4
     }
   },
   "first-dashboard": {
@@ -59,6 +73,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 19,
+      "sectionCount": 2,
+      "completableBlockCount": 14,
+      "finalCompletablePosition": 17
     }
   },
   "first-dashboard-cloud": {
@@ -89,6 +110,13 @@
     "testEnvironment": {
       "tier": "cloud",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 25,
+      "sectionCount": 3,
+      "completableBlockCount": 19,
+      "finalCompletablePosition": 23
     }
   },
   "json-guide-demo": {
@@ -105,6 +133,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 33,
+      "sectionCount": 6,
+      "completableBlockCount": 12,
+      "finalCompletablePosition": 31
     }
   },
   "loki-grafana-101": {
@@ -135,6 +170,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 26,
+      "sectionCount": 2,
+      "completableBlockCount": 21,
+      "finalCompletablePosition": 25
     }
   },
   "prometheus-advanced-queries": {
@@ -157,6 +199,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 70,
+      "sectionCount": 0,
+      "completableBlockCount": 20,
+      "finalCompletablePosition": 68
     }
   },
   "prometheus-grafana-101": {
@@ -187,6 +236,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 33,
+      "sectionCount": 3,
+      "completableBlockCount": 27,
+      "finalCompletablePosition": 32
     }
   },
   "welcome-to-grafana": {
@@ -216,6 +272,13 @@
     "testEnvironment": {
       "tier": "local",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 10,
+      "sectionCount": 1,
+      "completableBlockCount": 7,
+      "finalCompletablePosition": 9
     }
   },
   "welcome-to-grafana-cloud": {
@@ -245,6 +308,13 @@
     "testEnvironment": {
       "tier": "cloud",
       "minVersion": "12.2.0"
+    },
+    "stats": {
+      "version": 1,
+      "blockCount": 10,
+      "sectionCount": 1,
+      "completableBlockCount": 7,
+      "finalCompletablePosition": 9
     }
   }
 }

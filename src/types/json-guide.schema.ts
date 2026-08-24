@@ -283,6 +283,18 @@ export const JsonVideoBlockSchema = z.object({
   ...AuthorAnnotatedSchema.shape,
 });
 
+/**
+ * Schema for callout block.
+ * @coupling Type: JsonCalloutBlock
+ */
+export const JsonCalloutBlockSchema = z.object({
+  type: z.literal('callout'),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  title: z.string().min(1, 'Callout title is required').describe('Label shown at the top of the box, e.g. "Objective"'),
+  content: z.string().min(1, 'Callout content is required').describe('Markdown-formatted body content'),
+  ...AuthorAnnotatedSchema.shape,
+});
+
 // ============ INTERACTIVE BLOCK SCHEMAS ============
 
 /**
@@ -836,6 +848,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
+  JsonCalloutBlockSchema,
   JsonInteractiveBlockSchema,
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
@@ -859,6 +872,7 @@ const NonRecursiveBlockSchemaNoRef = z.union([
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
+  JsonCalloutBlockSchema,
   JsonInteractiveBlockSchema,
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
@@ -882,6 +896,7 @@ export const PresentationalBlockSchema = z.union([
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
+  JsonCalloutBlockSchema,
 ]);
 
 // ============ RECURSIVE BLOCK SCHEMAS ============
@@ -1134,10 +1149,9 @@ export type InferredJsonQuizChoice = z.infer<typeof JsonQuizChoiceSchema>;
 
 /**
  * Non-block registry keys — nested shapes that are validated positionally
- * (`steps[]`, `choices[]`) or are not blocks at all (the guide root, the
- * package manifest).
+ * (`steps[]`, `choices[]`) or are not blocks at all (the guide root).
  */
-type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_manifest' | '_conditionalSectionConfig';
+type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_conditionalSectionConfig';
 
 /**
  * Known fields for each block type.
@@ -1175,6 +1189,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   html: new Set(['type', 'id', 'content', 'authorNote']),
   image: new Set(['type', 'id', 'src', 'alt', 'width', 'height', 'authorNote']),
   video: new Set(['type', 'id', 'src', 'provider', 'title', 'start', 'end', 'authorNote']),
+  callout: new Set(['type', 'id', 'title', 'content', 'authorNote']),
   interactive: new Set([
     'type',
     'id',
@@ -1324,27 +1339,6 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
   'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),
   'snippet-ref': new Set(['type', 'id', 'snippetId', 'authorNote']),
-  _manifest: new Set([
-    'schemaVersion',
-    'id',
-    'type',
-    'repository',
-    'milestones',
-    'description',
-    'language',
-    'category',
-    'author',
-    'startingLocation',
-    'depends',
-    'recommends',
-    'suggests',
-    'provides',
-    'conflicts',
-    'replaces',
-    'targeting',
-    'testEnvironment',
-    'stats',
-  ]),
 } satisfies Record<JsonBlock['type'] | KnownFieldsMetaKey, ReadonlySet<string>>;
 
 /**

@@ -104,6 +104,7 @@ export const testIds = {
     featuredCard: (index: number) => `context-panel-featured-card-${index}`,
     featuredStartButton: (index: number) => `context-panel-featured-start-${index}`,
     featuredSummaryButton: (index: number) => `context-panel-featured-summary-${index}`,
+    interactiveLearningBanner: 'context-panel-interactive-learning-banner',
   },
 
   // Dev Tools / Block Editor
@@ -267,6 +268,9 @@ export const testIds = {
     // Collapsible form
     collapsibleTitleInput: 'block-editor-collapsible-title-input',
     collapsibleCollapsedToggle: 'block-editor-collapsible-collapsed-toggle',
+    // Callout form
+    calloutTitleInput: 'block-editor-callout-title-input',
+    calloutContentInput: 'block-editor-callout-content-input',
     addAndRecordButton: 'block-editor-add-and-record-button',
     // Section empty state and nested add button
     sectionEmptyState: 'block-editor-section-empty-state',

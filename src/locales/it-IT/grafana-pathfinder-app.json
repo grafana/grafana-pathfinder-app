@@ -89,6 +89,10 @@
       "toggleViewMode": "Attiva/disattiva modalità di visualizzazione"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "Tutti i percorsi completati!",
     "allCompleteTooltip": "Hai completato tutti i percorsi di apprendimento — ottimo lavoro!",

@@ -143,9 +143,15 @@ export interface PackageMetadataFields {
 /**
  * Manifest file schema — metadata, dependencies, and targeting.
  * Authored by product, enablement, or recommender teams.
+ *
+ * The index signature carries extension metadata: any top-level key not named
+ * below survives parsing and is forwarded into the package's repository entry.
+ *
  * @coupling Zod schema: ManifestJsonSchema in package.schema.ts
  */
 export interface ManifestJson {
+  [key: string]: unknown;
+
   schemaVersion?: string;
   id: string;
   type: PackageType;
@@ -181,6 +187,8 @@ export interface ManifestJson {
  * without re-reading every manifest.json.
  */
 export interface RepositoryEntry extends PackageMetadataFields {
+  [key: string]: unknown;
+
   path: string;
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
