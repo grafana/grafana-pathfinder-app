@@ -79,7 +79,8 @@ const completionWriteMaxBytes = 256 * 1024
 // Every field is required by the CRD (kinds/completionrecord.cue enforces
 // presence on all fields — it is the only enforcement surface that ships under
 // the manifest-only posture), so the handler must populate all of them. Field
-// names track the generated Go spec (pkg/generated/completionrecord). The first
+// names track pathfinder-backend's generated Go spec (its
+// pkg/generated/completionrecord, not this repo's pkg/). The first
 // block is client-supplied (WHAT was completed); the second is stamped by this
 // trusted writer from its verified request context (never from the body).
 type completionRecordWriteSpec struct {

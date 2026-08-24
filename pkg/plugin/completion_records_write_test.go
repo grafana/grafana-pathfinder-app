@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 	sdkconfig "github.com/grafana/grafana-plugin-sdk-go/config"
+	"github.com/grafana/grafana-plugin-sdk-go/experimental/featuretoggles"
 )
 
 const testOrgID = int64(7)
@@ -376,6 +377,85 @@ func TestCompletionWrite_Unauthenticated(t *testing.T) {
 	}
 	if creator.n != 0 {
 		t.Fatalf("must not reach upstream on auth failure")
+	}
+}
+
+// The write path's identity gate has four arms and they are NOT interchangeable,
+// because the status IS the client's retry instruction. 401 means "retry after
+// re-auth", so it belongs only to a time-recoverable verdict; a stack that can
+// never verify a token (no app URL → no signing keys) would otherwise retry every
+// queued write until the 30-day horizon and never disarm. The distinct reason
+// string keeps the 404 diagnosable apart from obo-unavailable/backend-unavailable.
+func TestCompletionWrite_IdentityGateArms(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	deadJWKS, _ := startJWKSServer(t)
+	deadJWKS.Close()
+
+	// Both configs enable the aggregation toggle, so a 404 here can only come from
+	// the identity gate that runs before the structural resolver.
+	noAppURL := map[string]string{featuretoggles.EnabledFeatures: completionRecordsAggregationToggle}
+	signingKeysDown := map[string]string{
+		featuretoggles.EnabledFeatures: completionRecordsAggregationToggle,
+		sdkconfig.AppURL:               deadJWKS.URL,
+	}
+
+	cases := []struct {
+		name           string
+		sub            string
+		cfg            map[string]string
+		wantStatus     int
+		wantReason     string
+		wantRetryAfter bool
+		wantCreates    int
+	}{
+		{
+			name: "verified caller creates", sub: "user:abc", cfg: testGrafanaConfig(),
+			wantStatus: http.StatusCreated, wantCreates: 1,
+		},
+		{
+			name: "rejected token is the transient 401 the client retries after re-auth",
+			sub:  "", cfg: testGrafanaConfig(), wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name: "unverifiable stack disarms with the structural 404",
+			sub:  "user:abc", cfg: noAppURL,
+			wantStatus: http.StatusNotFound, wantReason: reasonIdentityUnverifiable,
+		},
+		{
+			name: "signing-keys outage is the transient 503",
+			sub:  "user:abc", cfg: signingKeysDown,
+			wantStatus: http.StatusServiceUnavailable, wantRetryAfter: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			creator := &fakeCreator{}
+			withCreator(t, creator)
+
+			rec := doWrite(t, nil, writeRequest(t, tc.sub, validWriteBody(), tc.cfg))
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d (body: %s)", rec.Code, tc.wantStatus, rec.Body.String())
+			}
+			if creator.n != tc.wantCreates {
+				t.Errorf("upstream creates = %d, want %d", creator.n, tc.wantCreates)
+			}
+			if ra := rec.Header().Get("Retry-After"); tc.wantRetryAfter != (ra != "") {
+				t.Errorf("Retry-After = %q, want present = %v", ra, tc.wantRetryAfter)
+			}
+			if tc.wantReason == "" {
+				return
+			}
+			var envelope struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("decoding response: %v (body: %s)", err, rec.Body.String())
+			}
+			if envelope.Error != tc.wantReason {
+				t.Errorf("error = %q, want %q", envelope.Error, tc.wantReason)
+			}
+		})
 	}
 }
 
@@ -765,7 +845,7 @@ func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
 		{"terminal 422 schema", &appPlatformUpstreamError{status: 422, msg: "unprocessable"}, 422, "-"},
 		{"collection 404 preserved as structural disarm signal", &appPlatformUpstreamError{status: 404, msg: "not found"}, http.StatusNotFound, "-"},
 		{"identity-scoped 401 echoed for client-side re-auth retry", &appPlatformUpstreamError{status: 401, msg: "unauthorized"}, http.StatusUnauthorized, "-"},
-		{"identity-scoped 403 is terminal", &appPlatformUpstreamError{status: 403, msg: "forbidden"}, http.StatusForbidden, "-"},
+		{"identity-scoped 403 echoed for client-side disarm-and-keep", &appPlatformUpstreamError{status: 403, msg: "forbidden"}, http.StatusForbidden, "-"},
 		{"unexpected success status", &appPlatformUpstreamError{status: 202, msg: "not created"}, http.StatusBadGateway, ""},
 		{"unfollowed redirect mapped to retryable 502", &appPlatformUpstreamError{status: 302, msg: "moved"}, http.StatusBadGateway, ""},
 		{"network error is transient", fmt.Errorf("dial tcp: connection refused"), http.StatusServiceUnavailable, ""},
@@ -788,7 +868,7 @@ func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
 			switch tc.wantRetryAfter {
 			case "-":
 				if ra != "" {
-					t.Errorf("Retry-After = %q, want absent on terminal", ra)
+					t.Errorf("Retry-After = %q, want absent (not retried server-side)", ra)
 				}
 			case "":
 				if ra == "" {
@@ -803,21 +883,23 @@ func TestCompletionWrite_UpstreamErrorTaxonomy(t *testing.T) {
 	}
 }
 
-// An upstream 403 is TERMINAL and drops the completion (write-403-policy): it is
-// echoed verbatim so the front-end classifier drops it, carries no Retry-After
-// (no retry), and never reaches the create-success path. A 403 is not treated as
-// transient — a systemic RBAC/grant denial will not fix itself by retrying.
-func TestCompletionWrite_Forbidden403IsTerminalDrop(t *testing.T) {
+// An upstream 403 is echoed VERBATIM and nothing is dropped: the front end maps
+// it to disarm-and-keep — writes stop for the session, the queued records stay
+// persisted for a later drain, because a missing grant can be added without the
+// completion ever happening again. It carries no Retry-After and is not
+// classified transient: a systemic RBAC/grant denial will not clear by retrying,
+// so the server does not invite one.
+func TestCompletionWrite_Forbidden403DisarmsAndRetains(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	creator := &fakeCreator{err: &appPlatformUpstreamError{status: http.StatusForbidden, msg: "forbidden"}}
 	withCreator(t, creator)
 
 	rec := doWrite(t, nil, writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig()))
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want 403 (terminal, dropped)", rec.Code)
+		t.Fatalf("status = %d, want the upstream 403 echoed verbatim (disarms, records retained)", rec.Code)
 	}
 	if ra := rec.Header().Get("Retry-After"); ra != "" {
-		t.Errorf("Retry-After = %q, want absent (403 is terminal, no retry)", ra)
+		t.Errorf("Retry-After = %q, want absent (403 is not retried server-side)", ra)
 	}
 	if isTransientUpstreamStatus(http.StatusForbidden) {
 		t.Errorf("403 must not be classified transient")
@@ -860,7 +942,7 @@ func TestCompletionWrite_Upstream401IsLoud(t *testing.T) {
 // one bad shape it can hide — a provisioned credential in an environment whose
 // delegated-permissions grant is missing — retries every queued write until the
 // 30-day retention horizon, so it is logged at warn (the same Faro-visible bar
-// as the terminal-403 decision), never at debug alongside ordinary network blips.
+// as the 403 disarm decision), never at debug alongside ordinary network blips.
 func TestCompletionWrite_TokenExchangeFailureIsLoudAndRetryable(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 	withCreator(t, &fakeCreator{err: &tokenExchangeError{err: fmt.Errorf("auth-api unavailable")}})

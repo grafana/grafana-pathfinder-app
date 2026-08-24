@@ -273,6 +273,9 @@ export const testIds = {
     // Collapsible form
     collapsibleTitleInput: 'block-editor-collapsible-title-input',
     collapsibleCollapsedToggle: 'block-editor-collapsible-collapsed-toggle',
+    // Callout form
+    calloutTitleInput: 'block-editor-callout-title-input',
+    calloutContentInput: 'block-editor-callout-content-input',
     addAndRecordButton: 'block-editor-add-and-record-button',
     // Section empty state and nested add button
     sectionEmptyState: 'block-editor-section-empty-state',

@@ -151,6 +151,23 @@ Embed YouTube or native HTML5 video.
 }
 ```
 
+#### Callout Block
+
+A labeled, colored box for calling out anything the author wants to set apart — an objective, a summary, a call to action. Presentational only, with no completion state. Not to be confused with the unrelated `objectives` field present on other block types (e.g. `section`, `interactive`), which drives auto-completion and is never rendered.
+
+```json
+{
+  "type": "callout",
+  "title": "Objective",
+  "content": "In this section you will learn how to build your first dashboard."
+}
+```
+
+| Field     | Type   | Required | Description                       |
+| --------- | ------ | -------- | --------------------------------- |
+| `title`   | string | ✅       | Label shown at the top of the box |
+| `content` | string | ✅       | Markdown-formatted body content   |
+
 ---
 
 ### Interactive Blocks
@@ -1211,6 +1228,7 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 | `image`            | Content     | Embedded images with optional dimensions                                        |
 | `video`            | Content     | YouTube, Vimeo, or native HTML5 video embeds                                    |
 | `code-block`       | Content     | Code snippet with copy and Monaco-editor insert                                 |
+| `callout`          | Content     | Labeled, colored box for calling out anything you want to set apart             |
 | `section`          | Structure   | Container for grouped interactive steps with "Do Section"                       |
 | `collapsible`      | Structure   | Hides nested content behind a toggle                                            |
 | `conditional`      | Structure   | Shows different content based on runtime conditions                             |

@@ -33,6 +33,7 @@ export type JsonBlock =
   | JsonHtmlBlock
   | JsonSectionBlock
   | JsonCollapsibleBlock
+  | JsonCalloutBlock
   | JsonConditionalBlock
   | JsonInteractiveBlock
   | JsonMultistepBlock
@@ -209,7 +210,30 @@ export interface JsonCollapsibleBlock extends AuthorAnnotated {
  * Content-only blocks — the only blocks a collapsible may hold.
  * Mirrors `PresentationalBlockSchema` in json-guide.schema.ts.
  */
-export type PresentationalBlock = JsonMarkdownBlock | JsonHtmlBlock | JsonImageBlock | JsonVideoBlock;
+export type PresentationalBlock =
+  JsonMarkdownBlock | JsonHtmlBlock | JsonImageBlock | JsonVideoBlock | JsonCalloutBlock;
+
+// ============ CALLOUT BLOCK ============
+
+/**
+ * Callout block: a highlighted, labeled box for calling out anything the
+ * author wants to set apart (an objective, a summary, a call to action —
+ * the author writes the label, not a fixed vocabulary). Presentational
+ * only, like `image`/`video`/`markdown` — it carries no completion state.
+ *
+ * Not to be confused with the unrelated `objectives?: string[]` field
+ * present on other block types (e.g. `JsonSectionBlock`), which drives
+ * auto-completion and is never rendered.
+ */
+export interface JsonCalloutBlock extends AuthorAnnotated {
+  type: 'callout';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
+  /** Label shown at the top of the box, e.g. "Objective" */
+  title: string;
+  /** Markdown-formatted body content */
+  content: string;
+}
 
 // ============ CONDITIONAL BLOCK ============
 
@@ -894,6 +918,13 @@ export function isSectionBlock(block: JsonBlock): block is JsonSectionBlock {
  */
 export function isCollapsibleBlock(block: JsonBlock): block is JsonCollapsibleBlock {
   return block.type === 'collapsible';
+}
+
+/**
+ * Type guard for JsonCalloutBlock
+ */
+export function isCalloutBlock(block: JsonBlock): block is JsonCalloutBlock {
+  return block.type === 'callout';
 }
 
 /**

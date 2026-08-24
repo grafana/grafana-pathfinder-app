@@ -58,7 +58,7 @@ function extractOutline(container: HTMLElement): OutlineItem[] {
 }
 
 export function useDocumentOutline(
-  containerRef: React.RefObject<HTMLDivElement>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
   contentKey: string | null,
   ready: boolean
 ): OutlineItem[] {

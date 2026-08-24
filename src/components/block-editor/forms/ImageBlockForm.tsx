@@ -66,7 +66,7 @@ export function ImageBlockForm({
     (imageLoadError ? 'Unable to load image preview. Check that the URL points to an image.' : undefined);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
       if (!trimmedSrc || imageFieldError) {
         return;

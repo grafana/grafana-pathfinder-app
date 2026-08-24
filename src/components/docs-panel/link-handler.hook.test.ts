@@ -61,7 +61,7 @@ describe('useLinkClickHandler', () => {
 
   // Create a div to hold our content and links
   let contentDiv: HTMLDivElement;
-  let contentRef: React.RefObject<HTMLDivElement>;
+  let contentRef: React.RefObject<HTMLDivElement | null>;
 
   beforeEach(() => {
     // Reset all mocks

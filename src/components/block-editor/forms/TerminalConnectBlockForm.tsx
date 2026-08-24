@@ -52,7 +52,7 @@ export function TerminalConnectBlockForm({
   const { options: templateOptions, isLoading: templatesLoading } = useCodaTemplateOptions(vmTemplate);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
 
       const block: JsonTerminalConnectBlock = {

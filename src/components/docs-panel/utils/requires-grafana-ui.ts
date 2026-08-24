@@ -90,6 +90,7 @@ function blockRequiresGrafanaUi(block: JsonBlock): boolean {
     case 'html':
     case 'image':
     case 'video':
+    case 'callout':
       return false;
     default: {
       // Exhaustiveness: adding a JsonBlock member without classifying it here

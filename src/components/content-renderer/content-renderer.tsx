@@ -13,6 +13,7 @@ import {
   resolveRelativeUrls,
   CodeBlock,
   CollapsibleBlock,
+  CalloutBlock,
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
@@ -106,7 +107,7 @@ interface ContentRendererProps {
   onContentReady?: () => void;
   onGuideComplete?: () => void;
   className?: string;
-  containerRef?: React.RefObject<HTMLDivElement>;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 // Style to hide default browser selection highlight
@@ -429,7 +430,7 @@ interface ContentWithVariablesProps {
   title: string;
   isNativeJson: boolean;
   onContentReady?: () => void;
-  activeRef: React.RefObject<HTMLDivElement>;
+  activeRef: React.RefObject<HTMLDivElement | null>;
   className?: string;
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
@@ -1373,6 +1374,12 @@ function renderParsedElement(
         >
           {renderChildren(element.children)}
         </CollapsibleBlock>
+      );
+    case 'callout':
+      return (
+        <CalloutBlock key={key} id={element.props.id} title={sub(element.props.title) ?? ''}>
+          {renderChildren(element.children)}
+        </CalloutBlock>
       );
     case 'expandable-table':
       return (
