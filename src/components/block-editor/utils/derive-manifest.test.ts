@@ -625,6 +625,59 @@ describe('deriveManifest — startingLocation stops at navigation', () => {
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
   });
+
+  // The lint's walkBlocks never descends into `steps`, so a formfill past the
+  // first step is not a declaration it ever accepted. Honouring one would stamp
+  // the form's page over the page the group actually starts on — the same
+  // asymmetry root level already avoids for `highlight` then `formfill`.
+  it('ignores a formfill STEP on-page when an earlier step in the same multistep runs first', () => {
+    const multistep = {
+      type: 'multistep',
+      content: 'Do these',
+      steps: [
+        { action: 'highlight', reftarget: 'a' },
+        { action: 'formfill', reftarget: 'input', targetvalue: 'x', requirements: ['on-page:/form'] },
+      ],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([multistep]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('takes the first step own declaration rather than a later formfill step', () => {
+    const multistep = {
+      type: 'multistep',
+      content: 'Do these',
+      steps: [
+        { action: 'highlight', reftarget: 'a', requirements: ['on-page:/explore'] },
+        { action: 'formfill', reftarget: 'input', targetvalue: 'x', requirements: ['on-page:/form'] },
+      ],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([multistep]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+  });
+
+  // Root level and step level answer the same question the same way.
+  it('agrees with root level on a leading highlight followed by a formfill', () => {
+    const asSteps = {
+      type: 'multistep',
+      content: 'Do these',
+      steps: [
+        { action: 'highlight', reftarget: 'a' },
+        { action: 'formfill', reftarget: 'input', targetvalue: 'x', requirements: ['on-page:/form'] },
+      ],
+    } as unknown as JsonBlock;
+
+    const atRoot = deriveManifest(guide([highlight(), formfill(['on-page:/form'])]));
+    const inSteps = deriveManifest(guide([asSteps]));
+
+    expect((inSteps.additionalFields as Record<string, unknown>).startingLocation).toBe(
+      (atRoot.additionalFields as Record<string, unknown>).startingLocation
+    );
+  });
 });
 
 describe('deriveManifest — who owns startingLocation', () => {

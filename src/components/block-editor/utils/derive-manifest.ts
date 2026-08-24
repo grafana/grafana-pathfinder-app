@@ -113,7 +113,11 @@ interface ScanState {
  *    page-bound, not evidence about where the guide begins. In first position it
  *    is both, and `firstStepMissingOnPage` accepts it as the entry declaration —
  *    so discarding it would leave a guide the lint calls complete with no
- *    alignment prompt and a first requirement it can fail on arrival.
+ *    alignment prompt and a first requirement it can fail on arrival. Inside a
+ *    `multistep` or `guided` block that means the FIRST step only: the lint's
+ *    `walkBlocks` never descends into `steps`, so a later step's formfill is not
+ *    something it ever accepted, and honouring one here would stamp the form's
+ *    page over the page the group actually starts on.
  *
  * Only an absolute `on-page:` value qualifies. `onPageCheck` passes on a
  * substring match, so a relative `on-page:dashboards` works as a requirement,
@@ -145,15 +149,18 @@ function scanBlocks(blocks: readonly JsonBlock[] | undefined, state: ScanState):
     }
 
     // A hand-authored multistep or guided block can declare the page on one of
-    // its steps rather than on the container. The container is the executable
-    // unit, so its steps inherit its first-executable standing.
+    // its steps rather than on the container. Only the FIRST step of the first
+    // executable block inherits its first-executable standing: a formfill in a
+    // later step runs after something else already has, so its `on-page:` is the
+    // same "this form is page-bound" evidence it is at root level, not a
+    // statement about where the guide begins.
     if (Array.isArray(record.steps)) {
-      for (const step of record.steps) {
+      for (const [stepIndex, step] of record.steps.entries()) {
         const stepRecord = asRecord(step);
         if (!stepRecord) {
           continue;
         }
-        const fromStep = declaredOnPage(stepRecord, isFirstExecutable);
+        const fromStep = declaredOnPage(stepRecord, isFirstExecutable && stepIndex === 0);
         if (fromStep) {
           return fromStep;
         }
