@@ -924,9 +924,17 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
         // Implied 0th step: decide whether to prompt the user to navigate to
         // the guide's declared starting location before step 1 begins.
+        // Two manifests can describe this launch and they are not equally complete.
+        // `packageInfo` comes from the catalogue proxy, whose Go `customGuideManifest`
+        // declares no starting location, so the key is dropped at the wire boundary;
+        // the loader's manifest on the fetched content carries it intact. Passing both
+        // keeps `packageInfo` authoritative wherever it actually declares a value and
+        // only falls back where it previously resolved to null — so a guide opened
+        // from inside a learning path gets the same prompt as the same guide opened
+        // standalone.
         const startingLocation = resolveStartingLocation(
           url,
-          packageInfo?.packageManifest ?? fetchedContent.metadata.packageManifest,
+          [packageInfo?.packageManifest, fetchedContent.metadata.packageManifest],
           { isAdmin: currentUserIsAdmin() }
         );
         const currentPath = locationService.getLocation().pathname;
