@@ -68,6 +68,7 @@ import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
+import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
@@ -922,7 +923,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         // the guide's declared starting location before step 1 begins.
         const startingLocation = resolveStartingLocation(
           url,
-          packageInfo?.packageManifest ?? fetchedContent.metadata.packageManifest
+          packageInfo?.packageManifest ?? fetchedContent.metadata.packageManifest,
+          { isAdmin: currentUserIsAdmin() }
         );
         const currentPath = locationService.getLocation().pathname;
         const evaluation = evaluateAlignment({

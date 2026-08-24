@@ -528,6 +528,36 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(getTab(panel, tabId).pendingAlignment.startingLocation).toBe('/connections');
     });
 
+    // A manifest is authored data, and `confirmAlignment` pushes what the prompt
+    // carries. A value that would not pass as an authored navigate target must
+    // not become a prompt either.
+    it.each([
+      ['a protocol-relative value', '//evil.com'],
+      ['an absolute external URL', 'https://evil.com/explore'],
+      ['a backslash-smuggled authority', '/\\evil.com'],
+      ['an encoded traversal', '/foo/..%2Fbar'],
+      ['an always-denied route', '/logout'],
+    ])('does NOT set pendingAlignment for %s', async (_label, startingLocation) => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult(startingLocation));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    // config.bootData.user in this suite is a plain viewer.
+    it('does NOT set pendingAlignment for an admin-only route when the reader is not an admin', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult('/admin/users'));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
     it('fires AlignmentPromptShown telemetry when a prompt is set', async () => {
       mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult({ startingLocation: '/connections' }));
       const panel = new CombinedLearningJourneyPanel();

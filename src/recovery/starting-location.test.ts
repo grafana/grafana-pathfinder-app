@@ -10,6 +10,7 @@ jest.mock(
       { id: 'empty-array-shape', url: [] },
       { id: 'no-url' },
       { id: 'non-string-url', url: [42] },
+      { id: 'hostile-shape', url: ['//evil.com'] },
     ],
   }),
   { virtual: true }
@@ -131,5 +132,74 @@ describe('resolveStartingLocation', () => {
   it('falls through to the bundled index when manifest startingLocation is empty', () => {
     const result = resolveStartingLocation('bundled:array-shape', { startingLocation: '' });
     expect(result).toBe('/explore');
+  });
+});
+
+// The manifest is authored data that ends up at `locationService.push` via
+// `confirmAlignment`, so it clears the same bar as an authored navigate action.
+// A rejected value resolves to null — no prompt — rather than to the redirect
+// validator's `/` fallback, which would steer the reader to the home page.
+describe('resolveStartingLocation — navigation safety', () => {
+  const fromManifest = (startingLocation: unknown, isAdmin?: boolean) =>
+    resolveStartingLocation('backend-guide:my-guide', { startingLocation } as Record<string, unknown>, { isAdmin });
+
+  const fromAdditionalFields = (startingLocation: unknown, isAdmin?: boolean) =>
+    resolveStartingLocation(
+      'backend-guide:my-guide',
+      { additionalFields: { startingLocation } } as Record<string, unknown>,
+      { isAdmin }
+    );
+
+  it.each([
+    ['a protocol-relative value', '//evil.com'],
+    ['a protocol-relative value carrying a path', '//evil.com/grafana/explore'],
+    ['a backslash-smuggled authority', '/\\evil.com'],
+    ['an absolute external URL', 'https://evil.com/explore'],
+    ['a javascript: scheme', 'javascript:alert(1)'],
+    ['a relative path with no leading slash', 'explore'],
+    ['an encoded traversal that survives normalization', '/foo/..%2Fbar'],
+    ['an always-denied route', '/logout'],
+  ])('refuses to prompt for %s', (_label, value) => {
+    expect(fromManifest(value)).toBeNull();
+  });
+
+  it('applies the same rules to the additionalFields location', () => {
+    expect(fromAdditionalFields('//evil.com')).toBeNull();
+    expect(fromAdditionalFields('https://evil.com/explore')).toBeNull();
+    expect(fromAdditionalFields('/\\evil.com')).toBeNull();
+    expect(fromAdditionalFields('/foo/..%2Fbar')).toBeNull();
+  });
+
+  it('normalizes a plain traversal to its same-origin resolution', () => {
+    expect(fromManifest('/../../../etc/passwd')).toBe('/etc/passwd');
+  });
+
+  it('passes a legitimate internal path through untouched', () => {
+    expect(fromManifest('/connections/datasources')).toBe('/connections/datasources');
+    expect(fromAdditionalFields('/explore')).toBe('/explore');
+  });
+
+  it('keeps a query string and fragment on an accepted path', () => {
+    expect(fromManifest('/explore?left=metrics#panel')).toBe('/explore?left=metrics#panel');
+  });
+
+  it('withholds an admin-only starting location from a non-admin reader', () => {
+    expect(fromManifest('/admin/users')).toBeNull();
+    expect(fromManifest('/admin/users', false)).toBeNull();
+  });
+
+  it('allows an admin-only starting location for an admin reader', () => {
+    expect(fromManifest('/admin/users', true)).toBe('/admin/users');
+  });
+
+  it('defaults to the stricter answer when the caller supplies no role', () => {
+    expect(resolveStartingLocation('backend-guide:my-guide', { startingLocation: '/admin/users' })).toBeNull();
+  });
+
+  // The bundled index is build-time content, but it exits through the same gate
+  // so there is one answer to "what may become a prompt", not two.
+  it('validates the bundled-index fallback on the same terms', () => {
+    expect(resolveStartingLocation('bundled:array-shape')).toBe('/explore');
+    expect(resolveStartingLocation('bundled:hostile-shape')).toBeNull();
   });
 });

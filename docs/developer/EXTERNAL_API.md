@@ -349,6 +349,14 @@ anything reads that location:
 `startingLocation` takes effect wherever the manifest reaches it with
 `additionalFields` intact.
 
+Whichever location it came from, the value is authored data on its way to
+`locationService.push`, so it leaves the resolver only if
+`validateInternalNavigationPath` accepts it: a same-origin, single-leading-slash
+internal path that is not a denied route for this reader. A value that fails
+produces no prompt at all. Writing a `startingLocation` that is an absolute URL,
+a protocol-relative value, or `/admin/...` for non-admin readers is therefore
+inert rather than dangerous — but it is also silent, so keep it a plain path.
+
 The rule is about the ROUTE, not the guide, and two things have to hold. The
 manifest has to reach the reader with `additionalFields` intact — only the
 `backend-guide:` loader (`src/docs-retrieval/content-fetcher/backend-guide.ts`)

@@ -13,8 +13,21 @@
  *   4. `null` — for remote guides without a manifest; caller skips prompting and
  *      relies on the existing location `Fix this` as a safety net
  *
+ * Whatever wins, it leaves here only if `validateInternalNavigationPath` accepts
+ * it. A manifest is authored data that reaches `locationService.push` through
+ * `confirmAlignment`, so it is held to the same same-origin / denied-route bar as
+ * an authored `navigate` action — one validator, not a parallel check. A rejected
+ * value resolves to `null` rather than to the validator's `/` fallback: prompting
+ * a reader to navigate to the root is a worse answer than not prompting at all.
+ *
+ * This is the single gate. `pendingAlignment` is written from this return value
+ * and from nowhere else, so validating here covers what gets stored, what the
+ * prompt shows, what telemetry reports, and what is eventually pushed.
+ *
  * @see docs/design/AUTORECOVERY_DESIGN.md § "The implied 0th step"
  */
+
+import { validateInternalNavigationPath } from '../security/url-validator';
 
 // Synchronous import: this JSON is bundled at build time.
 const bundledIndex = require('../bundled-interactives/index.json') as BundledIndexShape;
@@ -30,7 +43,27 @@ interface BundledIndexShape {
 
 const BUNDLED_PREFIX = 'bundled:';
 
-export function resolveStartingLocation(url: string, packageManifest?: Record<string, unknown>): string | null {
+export interface ResolveStartingLocationOptions {
+  /**
+   * Whether the reader holds admin privileges. Omitted means "not an admin",
+   * so a caller that forgets it gets the stricter answer.
+   */
+  isAdmin?: boolean;
+}
+
+export function resolveStartingLocation(
+  url: string,
+  packageManifest?: Record<string, unknown>,
+  options?: ResolveStartingLocationOptions
+): string | null {
+  const candidate = resolveCandidate(url, packageManifest);
+  if (candidate === null) {
+    return null;
+  }
+  return validateInternalNavigationPath(candidate, options?.isAdmin);
+}
+
+function resolveCandidate(url: string, packageManifest?: Record<string, unknown>): string | null {
   const fromManifest = packageManifest?.startingLocation;
   if (typeof fromManifest === 'string' && fromManifest.length > 0) {
     return fromManifest;
