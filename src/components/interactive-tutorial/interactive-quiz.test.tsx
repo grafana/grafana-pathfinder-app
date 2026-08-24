@@ -569,13 +569,12 @@ describe('InteractiveQuiz: compact pill layout vs. stacked layout', () => {
     expect(hasLeadingIndicator(screen.getByRole('button', { name: /This is a much longer answer choice/ }))).toBe(true);
   });
 
-  it('falls back to the stacked layout (leading indicator present) when there are more than 4 short choices', () => {
+  it('falls back to the stacked layout (leading indicator present) when there are more than 3 short choices', () => {
     const choices: QuizChoice[] = [
       { id: 'a', text: 'One', correct: false },
       { id: 'b', text: 'Two', correct: true },
       { id: 'c', text: 'Three', correct: false },
       { id: 'd', text: 'Four', correct: false },
-      { id: 'e', text: 'Five', correct: false },
     ];
     render(
       <InteractiveQuiz question="Q" choices={choices} shuffle={false}>
