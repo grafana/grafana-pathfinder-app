@@ -190,6 +190,7 @@ describe('block-type classification', () => {
     'html',
     'image',
     'video',
+    'callout',
     'interactive',
     'quiz',
     'input',

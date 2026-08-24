@@ -18,4 +18,16 @@ describe('BranchBlocksEditor createDefaultBlock', () => {
     // html is legacy / palette-excluded and not in the creatable list
     expect(createDefaultBlock('html' as any)).toEqual({ type: 'markdown', content: '' });
   });
+
+  it('offers callout in the inline add picker', () => {
+    expect(ALLOWED_BRANCH_BLOCK_TYPES).toContain('callout');
+  });
+
+  it('builds an empty callout block, not empty markdown', () => {
+    expect(createDefaultBlock('callout')).toEqual({
+      type: 'callout',
+      title: '',
+      content: '',
+    });
+  });
 });

@@ -20,6 +20,7 @@ import {
   type JsonHtmlBlock,
   type JsonSectionBlock,
   type JsonCollapsibleBlock,
+  type JsonCalloutBlock,
   type JsonConditionalBlock,
   type JsonInteractiveBlock,
   type JsonMultistepBlock,
@@ -283,6 +284,8 @@ function convertBlockByType(
       return convertSectionBlock(block, path, baseUrl);
     case 'collapsible':
       return convertCollapsibleBlock(block, path, baseUrl);
+    case 'callout':
+      return convertCalloutBlock(block, path, baseUrl);
     case 'conditional':
       return convertConditionalBlock(block, path, baseUrl);
     case 'interactive':
@@ -570,6 +573,26 @@ function convertCollapsibleBlock(block: JsonCollapsibleBlock, path: string, base
         title: block.title,
         id: block.id,
         collapsed: block.collapsed ?? true,
+      },
+      children,
+    },
+  };
+}
+
+/**
+ * Convert a callout block to a ParsedElement. Presentational only — the
+ * author-authored `title` is shown as the box's label; body content is
+ * parsed as markdown, same as other content-bearing blocks.
+ */
+function convertCalloutBlock(block: JsonCalloutBlock, path: string, baseUrl?: string): ConversionResult {
+  const children = parseMarkdownToElements(block.content, baseUrl);
+
+  return {
+    element: {
+      type: 'callout',
+      props: {
+        title: block.title,
+        id: block.id,
       },
       children,
     },
@@ -1106,6 +1129,7 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
   switch (block.type) {
     case 'markdown':
     case 'html':
+    case 'callout':
       return block.content;
     case 'interactive':
       // Prefer targetvalue for queries, fall back to content
