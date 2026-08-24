@@ -5,7 +5,7 @@ import { EXTENSION_SIDEBAR_DOCKED_KEY } from '../../../../src/lib/storage/extens
 import pluginJson from '../../../../src/plugin.json';
 
 const PATHFINDER_COMPONENT_TITLE = 'Interactive learning';
-const DEFAULT_PANEL_OPEN_TIMEOUT_MS = 10_000;
+const DEFAULT_PANEL_OPEN_TIMEOUT_MS = 20_000;
 const OPEN_CONFIRMATION_TIMEOUT_MS = 2_000;
 const MAX_DOCKED_VALUE_PARSE_DEPTH = 2;
 const MAX_HELP_OPEN_ATTEMPTS = 2;

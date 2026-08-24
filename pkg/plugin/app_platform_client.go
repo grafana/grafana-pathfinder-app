@@ -95,7 +95,9 @@ var errAccessTokenMintFailed = errors.New("mint access token")
 // nil exchanger and report reasonOBOUnavailable instead.
 type tokenExchangeError struct{ err error }
 
-func (e *tokenExchangeError) Error() string { return errAccessTokenMintFailed.Error() + ": " + e.err.Error() }
+func (e *tokenExchangeError) Error() string {
+	return errAccessTokenMintFailed.Error() + ": " + e.err.Error()
+}
 
 // Unwrap yields the sentinel alongside the cause so errors.Is finds
 // errAccessTokenMintFailed — the marker the failure-scope classifier keys on to

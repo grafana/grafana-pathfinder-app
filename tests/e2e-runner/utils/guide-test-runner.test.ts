@@ -28,6 +28,7 @@ import {
   selectStepAction,
   DEFAULT_STEP_TIMEOUT_MS,
   GUIDE_INITIAL_TIMEOUT_MS,
+  GUIDE_SETUP_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
   STEP_DEADLINE_CLEANUP_GRACE_MS,
@@ -267,9 +268,20 @@ describe('parseNthMatchSelector', () => {
 });
 
 describe('calculateGuideTimeout', () => {
+  it('keeps the initial timeout above the complete bounded setup path', () => {
+    const panelAttemptsTimeout = 2 * 20_000;
+    const retryCallbackTimeout = 2 * 10_000;
+    const guideRenderTimeout = 1_000 + 15_000;
+
+    expect(GUIDE_INITIAL_TIMEOUT_MS).toBeGreaterThanOrEqual(
+      GUIDE_SETUP_TIMEOUT_MS + panelAttemptsTimeout + retryCallbackTimeout + guideRenderTimeout
+    );
+  });
+
   it('preserves the full initial setup allowance after discovery', () => {
     expect(calculateGuideTimeout([])).toBe(GUIDE_INITIAL_TIMEOUT_MS);
   });
+
   it('allows the aggregate budget for multiple simple steps to exceed two minutes', () => {
     const steps = Array.from({ length: 5 }, (_, index) => createTestableStep({ stepId: `step-${index}`, index }));
 

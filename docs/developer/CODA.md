@@ -22,7 +22,7 @@ constraints, and the `grafana-coda-app` repo's `docs/API.md` for the authoritati
 | SSH, relay handshake, credential handling                       | `grafana-coda-app`                        |
 | Coda API URL, relay URL, enrollment key, refresh token          | `grafana-coda-app`                        |
 
-**There is no Coda Go code in this repo.** `pkg/` is an App Platform read proxy only, and
+**There is no Coda Go code in this repo.** `pkg/` is an App Platform proxy only, and
 `plugin.json` no longer declares `"streaming": true`.
 
 ```

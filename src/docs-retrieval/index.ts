@@ -57,6 +57,7 @@ export { parseMarkdownToElements } from './json-parser';
 export {
   CodeBlock,
   CollapsibleBlock,
+  CalloutBlock,
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
