@@ -67,9 +67,9 @@ The `useLearningPaths()` hook merges these dynamically fetched guides into the p
 
 ### App Platform paths
 
-`fetchAppPlatformLearningPaths()` reads the stack's private custom-guide catalogue through `fetchCustomGuideRepository()`. It includes only published packages whose manifest type is `path` or `journey`, and includes only published milestone members in each synthesized path. The adapter also builds metadata for every published catalogue entry, using `backend-guide:{id}` URLs so path members launch through the App Platform content resolver.
+`fetchAppPlatformLearningPaths()` reads the stack's private custom-guide catalogue through `fetchCustomGuideRepository()`. It includes only published packages whose manifest type is `path` or `journey`, and includes only published milestone members in each synthesized path. The adapter marks every synthesized path with `isPrivate: true` and builds metadata for every published catalogue entry, using `backend-guide:{id}` URLs so path members launch through the App Platform content resolver.
 
-These paths are fetched when `config.namespace` is available and appended after the bundled and URL-based paths. Their package manifest is carried on the `LearningPath` so the My Learning launch flow can preserve milestone context.
+These paths are fetched when `config.namespace` is available and appended after the bundled and URL-based paths. Their package manifest is carried on the `LearningPath` so the My Learning launch flow can preserve milestone context. In-progress private paths appear in the separate **Private paths** section, completed private paths join the shared **Completed** section, and their titles remain excluded from **Discover more**.
 
 ## Platform selection
 
@@ -184,7 +184,7 @@ If more than one day has elapsed since the last activity, the streak is reported
 
 After either reset path, the hook dispatches `CustomEvent('interactive-progress-cleared')` and reloads learning progress so UI components refresh.
 
-The My Learning **Reset all progress** action is broader: it clears all learning progress, journey completion, milestone checklists, interactive steps, interactive completion, and in-memory completion caches before dispatching the same refresh event. Clearing milestone storage prevents an old checklist from immediately re-crossing the whole-path completion threshold after the reset.
+The My Learning **Reset all progress** action is broader: it discards queued durable completion writes, then clears all learning progress, journey completion, milestone checklists, interactive steps, interactive completion, and in-memory completion caches before dispatching the same refresh event. Clearing milestone storage prevents an old checklist from immediately re-crossing the whole-path completion threshold after the reset. The `discardQueuedCompletionWrites()` call runs first, before the reset's first `await`: a completion write that has not left the browser is still the user's to withdraw, and a drain scheduled before the reset would otherwise fire inside that window and mint durable records for the guides they just asked us to forget.
 
 ## Key hooks and exports
 
@@ -239,7 +239,7 @@ From the highest-priority path, it selects the first guide with `isCurrent: true
 
 ### `useDiscoverMore()`
 
-Surfaces novel external learning paths for the My Learning "Discover more" section. It deliberately bypasses the context recommender's path-targeting — which returns few or zero packages on the home surface — and instead pulls the full upstream package index (`repository.json`, proxied by the backend) via `fetchOnlinePackageRecommendations`. It keeps only `path`-typed entries (whole learning paths, not individual guides), mapping each to a `DiscoverMoreItem` whose `contentUrl` points at the package's `content.json`. It returns up to `count` items (default 5), skipping any whose title is already shown elsewhere on the page (via `excludeTitles`). Fails soft: the client never throws and yields an empty index when offline, so the UI renders an empty state rather than an error.
+Surfaces novel external learning paths for the My Learning "Discover more" section. It deliberately bypasses the context recommender's path-targeting — which returns few or zero packages on the home surface — and instead pulls the full upstream package index (`repository.json`, proxied by the backend) via `fetchOnlinePackageRecommendations`. It keeps only `path`-typed entries (whole learning paths, not individual guides), mapping each to a `DiscoverMoreItem` whose `contentUrl` points at the package's `content.json`. When an entry has an inlined manifest, the hook validates it with `ManifestJsonObjectSchema` and carries the valid result on the item. My Learning passes that manifest to `prepareGuideLaunch()` as `packageInfo`, avoiding a redundant manifest fetch while preserving milestone context; when it is absent or invalid, launch preparation can derive package context from the content URL. The hook returns up to `count` items (default 5), skipping any whose title is already shown elsewhere on the page (via `excludeTitles`). It fails soft: the client never throws and yields an empty index when offline, so the UI renders an empty state rather than an error.
 
 ## Integration points
 
@@ -257,7 +257,7 @@ Static guide completion flows through `markGuideCompleted()` in `badge-coordinat
 
 ### UI components (`src/components/LearningPaths/`)
 
-The components consume the hooks exported from this module to render learning path cards, badge collections, streak indicators, and the learning dashboard. The module provides the data and actions; the components handle rendering and user interaction.
+The components consume the hooks exported from this module to render learning path cards, badge collections, streak indicators, and the learning dashboard. `MyLearningTab` separates incomplete paths by `isPrivate`: `PrivatePathsSection` renders organization-published paths above the curated courses and badges, while returning nothing when there are no private paths. The module provides the data and actions; the components handle rendering and user interaction.
 
 ### Content system (`src/docs-retrieval/`)
 
@@ -266,6 +266,8 @@ The components consume the hooks exported from this module to render learning pa
 ### App Platform package system
 
 `app-platform-paths.ts` consumes the private catalogue exposed by `src/lib/custom-guide-repository-client.ts`. That client calls the backend `/custom-guide-repository` proxy, applies a short per-namespace cache with in-flight request deduplication, and fails soft to an empty catalogue when the capability or request is unavailable. My Learning launches `backend-guide:` member URLs through the package-content resolver while carrying the parent manifest as package context.
+
+The shared resolver lifecycle lives in `src/docs-retrieval/content-fetcher/package-resolver-registry.ts`. During synchronous plugin initialization, `module.tsx` registers a factory before any panel mounts. The factory dynamically imports and constructs the composite resolver only on the first `getPackageResolver()` call, and the registry memoizes that promise. Package-content consumers use it to resolve milestones, related package links, path base URLs, and bare package IDs. A refreshed plugin configuration re-registers the factory so the next read uses the current settings.
 
 ### Events
 

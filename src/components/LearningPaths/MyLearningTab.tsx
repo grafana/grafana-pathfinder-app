@@ -29,6 +29,7 @@ import {
   milestoneCompletionStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
+import { discardQueuedCompletionWrites } from '../../completion-records';
 import type { EarnedBadge } from '../../types';
 
 import { getBadgeProgress } from './badge-utils';
@@ -244,6 +245,13 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
+      // Durable completion writes that are queued but not yet sent are dropped
+      // first, before any await below yields: a drain scheduled before the reset
+      // would otherwise fire inside that window and mint records for exactly the
+      // guides the user just asked us to forget — and the dialog gives them no
+      // second lever to stop it.
+      discardQueuedCompletionWrites();
+
       await learningProgressStorage.clear();
 
       // Clear journey completion percentages

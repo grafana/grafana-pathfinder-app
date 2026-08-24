@@ -16,6 +16,27 @@ export interface BackendGuideResource {
     title?: string;
     schemaVersion?: string;
     blocks?: unknown[];
+    manifest?: Record<string, unknown>;
+  };
+}
+
+const APP_PLATFORM_REPOSITORY = 'app-platform';
+
+/**
+ * Completion identity for a launch that carries no resolved package — an orphan
+ * guide from the custom guides list, a `?doc=api:<id>` share link, auto-dock tab
+ * restore. `id` and `repository` are forced over any persisted manifest value per
+ * `repository-identity-authority` (docs/design/CONCERNS.md); a resource with no
+ * id of its own gets none, so the recorder fails closed rather than keying on the
+ * loader URL. `type` is carried through unforced so a path cover is not recorded
+ * as a standalone guide.
+ */
+function buildLoaderManifest(guideResource: BackendGuideResource): Record<string, unknown> {
+  return {
+    type: 'guide',
+    ...guideResource.spec?.manifest,
+    id: guideResource.spec?.id || guideResource.metadata?.name,
+    repository: APP_PLATFORM_REPOSITORY,
   };
 }
 
@@ -61,6 +82,8 @@ export function buildBackendGuideContent(
       content: JSON.stringify(guide),
       metadata: {
         title: guide.title,
+        packageManifest: buildLoaderManifest(guideResource),
+        repository: APP_PLATFORM_REPOSITORY,
       },
       type: 'interactive',
       url,

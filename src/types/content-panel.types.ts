@@ -79,6 +79,10 @@ export interface PersistedTabData {
 export interface PackageOpenInfo {
   packageId?: string;
   packageManifest?: Record<string, unknown>;
+  /** Recommendation-level repository (sibling of manifest in the V1 wire shape;
+   *  V1PackageManifest carries no repository of its own). Threaded to the durable
+   *  completion key so real V1 / online-cdn guides persist under their true source. */
+  repository?: string;
   /** Pre-resolved milestones from context panel to avoid redundant resolution in fetchPackageContent */
   resolvedMilestones?: Milestone[];
 }

@@ -201,14 +201,14 @@ replaced.
 
 `upsert-guide.sh` merges its annotations over whatever the resource
 already carries, so an update through the scripts preserves annotations
-another tool set. **Nothing else does.** The block editor's save,
-publish, and unpublish each send `metadata` as
-`{name, namespace, resourceVersion}`, and a PUT replaces the whole
-object — so one **unpublish** click on a script-uploaded milestone
-erases `managed-by`, and the next run refuses the entire package as
-foreign. Neither the refusal message nor `--overwrite` can distinguish
-that self-inflicted detachment from a genuine collision, so if you know
-the guides are yours, `--overwrite` is the answer.
+another tool set. The block editor's save, publish, and unpublish do the
+same — each carries `metadata.annotations` and `metadata.labels` through
+from the resource it last read, so editing a script-uploaded guide no
+longer detaches it from the package. The exception is a confirmed
+name-collision overwrite, which intentionally inherits neither the
+previous resource's `spec.manifest` nor its annotations; after one of
+those the next run refuses the package as foreign, and `--overwrite` is
+the answer.
 
 `--dry-run` performs the same LIST, so the preview marks each resource
 as new, an update, or a collision. It exits non-zero on any validation
@@ -329,7 +329,7 @@ and what makes a path a path.
 | `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. Anything not typed above goes here.                                                                            |
 
 `recommends`, `suggests`, `provides`, `targeting`, `testEnvironment`,
-and `startingLocation` have no typed home yet, so
+`startingLocation`, and the generated `stats` stamp have no typed home yet, so
 `upsert-learning-path.sh` writes them under `additionalFields` rather
 than dropping them — as it does for any manifest key the CRD doesn't
 declare, including surplus `author` subkeys. Note that the frontend reads `recommends` and

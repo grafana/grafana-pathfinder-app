@@ -41,8 +41,12 @@ function isExcluded(dir: string, excludePaths: string[]): boolean {
  * Discover package directories under a root.
  * A package directory is any directory containing manifest.json.
  * Recurses arbitrarily deep, excluding assets/ subtrees and any paths in excludePaths (absolute).
+ *
+ * Exported so `build-stats` walks the tree with identical semantics — the two
+ * commands run over the same root in the same pipeline and must agree on what
+ * a package is.
  */
-function discoverPackages(root: string, excludePaths: string[] = []): string[] {
+export function discoverPackages(root: string, excludePaths: string[] = []): string[] {
   if (!fs.existsSync(root)) {
     return [];
   }

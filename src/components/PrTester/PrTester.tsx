@@ -150,9 +150,9 @@ export function PrTester({ onOpenDocsPage }: PrTesterProps) {
   const [testSuccess, setTestSuccess] = useState(false);
 
   // REACT: refs for cleanup on unmount (R1, R4)
-  const abortControllerRef = useRef<AbortController>();
-  const metaAbortRef = useRef<AbortController>();
-  const successTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const abortControllerRef = useRef<AbortController | undefined>(undefined);
+  const metaAbortRef = useRef<AbortController | undefined>(undefined);
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     return () => {

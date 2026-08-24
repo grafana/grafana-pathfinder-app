@@ -35,7 +35,7 @@ jest.mock('../../lib/analytics', () => ({
 }));
 
 // Spy only markMilestoneDone; every other docs-retrieval export (getMilestoneSlug,
-// countUnlockedMilestones, getJourneyProgress) stays real.
+// resolveExpectedMilestoneIds, getJourneyProgress) stays real.
 jest.mock('../../docs-retrieval', () => ({
   ...jest.requireActual('../../docs-retrieval'),
   markMilestoneDone: jest.fn(),
@@ -61,7 +61,7 @@ describe('useLinkClickHandler', () => {
 
   // Create a div to hold our content and links
   let contentDiv: HTMLDivElement;
-  let contentRef: React.RefObject<HTMLDivElement>;
+  let contentRef: React.RefObject<HTMLDivElement | null>;
 
   beforeEach(() => {
     // Reset all mocks
@@ -205,7 +205,7 @@ describe('useLinkClickHandler', () => {
       expect(mockModel.navigateToPreviousMilestone).toHaveBeenCalled();
     });
 
-    it('completes a step-free milestone against the UNLOCKED count, not the locked-inclusive total', () => {
+    it('completes a step-free milestone against the UNLOCKED milestones, not the locked-inclusive total', () => {
       const { markMilestoneDone } = jest.requireMock('../../docs-retrieval');
       mockModel.getActiveTab.mockReturnValue({
         id: 'tab1',
@@ -242,11 +242,12 @@ describe('useLinkClickHandler', () => {
       contentDiv.appendChild(nextButton);
       fireEvent.click(nextButton);
 
-      // 2 (unlocked), not 3 — a locked trailing member must not block completion.
+      // The two unlocked slugs, not all 3 declared — a locked trailing member
+      // carries `url: ''`, yields no slug, and must not block completion.
       expect(markMilestoneDone).toHaveBeenCalledWith(
         'backend-guide:fe-alerting-path',
         'fe-alerting-01',
-        2,
+        ['fe-alerting-01', 'fe-alerting-02'],
         expect.any(Object)
       );
     });

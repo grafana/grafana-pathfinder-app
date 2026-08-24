@@ -11,7 +11,7 @@ const SELECTION_DEBOUNCE_MS = 400;
  * Debounces updates so the popover appears after the user finishes selecting,
  * not while they are still dragging.
  */
-export const useTextSelection = (containerRef: RefObject<HTMLElement>): TextSelectionState => {
+export const useTextSelection = (containerRef: RefObject<HTMLElement | null>): TextSelectionState => {
   const [selectionState, setSelectionState] = useState<TextSelectionState>({
     selectedText: '',
     position: null,

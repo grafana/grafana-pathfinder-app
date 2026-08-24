@@ -47,7 +47,7 @@ export function FullScreenLayout({
 }: FullScreenLayoutProps) {
   const styles = useStyles2(getFullScreenStyles);
   const [linkCopied, setLinkCopied] = useState(false);
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleCopyLink = useCallback(() => {
     if (!guideUrl) {
