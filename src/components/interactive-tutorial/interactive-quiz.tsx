@@ -445,7 +445,9 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   const showAttemptsRemaining = attemptsRemaining !== null && !isCompleted && !isRevealed;
   // Compact pill layout only for short single-select questions — a handful
   // of short choices (True/False, single words) reads better side-by-side;
-  // longer or more numerous choices keep the stacked full-width rows.
+  // longer or more numerous choices keep the stacked full-width rows. Exactly
+  // 4 short choices get a 2x2 grid instead of a single row of 4 — one row
+  // stays readable up to 3 pills, but a 4-wide row starts feeling cramped.
   // Multi-select always keeps the stacked layout too: pills drop the leading
   // indicator, and without the checkbox there's no visual cue that more than
   // one choice can be selected.
@@ -453,6 +455,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     !multiSelect &&
     displayChoices.length <= PILL_LAYOUT_MAX_CHOICES &&
     displayChoices.every((c) => c.text.length <= PILL_LAYOUT_MAX_CHOICE_LENGTH);
+  const useGridChoiceLayout = useCompactChoiceLayout && displayChoices.length === 4;
 
   return (
     <div
@@ -488,7 +491,8 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       {/* Choices */}
       <div
         className={cx(styles.choices, {
-          [styles.choicesCompact]: useCompactChoiceLayout,
+          [styles.choicesCompact]: useCompactChoiceLayout && !useGridChoiceLayout,
+          [styles.choicesGrid]: useGridChoiceLayout,
           [styles.shake]: displayedResult === 'incorrect',
         })}
         key={shakeKey}
@@ -502,7 +506,8 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
               key={choice.id}
               type="button"
               className={cx(styles.choice, getChoiceClassName(state), {
-                [styles.choiceCompact]: useCompactChoiceLayout,
+                [styles.choiceCompact]: useCompactChoiceLayout && !useGridChoiceLayout,
+                [styles.choiceGridItem]: useGridChoiceLayout,
               })}
               onClick={() => handleChoiceClick(choice.id)}
               disabled={isCompleted || isRevealed || isBlocked}
@@ -674,6 +679,11 @@ const getQuizStyles = (theme: GrafanaTheme2) => {
       flex-wrap: wrap;
     `,
 
+    choicesGrid: css`
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+    `,
+
     shake: css`
       animation: ${shake} 0.5s ease;
     `,
@@ -710,6 +720,12 @@ const getQuizStyles = (theme: GrafanaTheme2) => {
       width: auto;
       flex: 1 1 0;
       min-width: 0;
+      justify-content: center;
+      text-align: center;
+    `,
+
+    choiceGridItem: css`
+      width: 100%;
       justify-content: center;
       text-align: center;
     `,
