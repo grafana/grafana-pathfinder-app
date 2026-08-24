@@ -75,7 +75,8 @@ export function preservedMetadata(
  * `manifest` is derived rather than passed through untouched: an editor-authored guide has to be a
  * complete package, not manifest-less content. `deriveManifest` merges over the inherited manifest and
  * owns only what it can compute from the blocks, so a path cover page keeps its `type` and
- * `milestones`.
+ * `milestones`. It gets the previously-read BLOCKS as well as the previously-read manifest, because
+ * deciding whether the editor owns `startingLocation` means asking what that content derived.
  */
 export function preservedSpec(
   guide: JsonGuide,
@@ -90,7 +91,7 @@ export function preservedSpec(
     schemaVersion: guide.schemaVersion || CURRENT_SCHEMA_VERSION,
     blocks: guide.blocks,
     status,
-    manifest: deriveManifest(guide, existingSpec?.manifest),
+    manifest: deriveManifest(guide, existingSpec?.manifest, existingSpec?.blocks),
   };
 }
 

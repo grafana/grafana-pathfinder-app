@@ -28,7 +28,7 @@ The directory name should match the package `id`.
 | `manifest.json` | No       | Product, enablement, recommender teams | Flat metadata, dependencies, `targeting`, `testEnvironment` |
 | `assets/`       | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources          |
 
-Content and metadata are separate files because they serve different consumers, are authored by different roles, and change for different reasons. Git diffs stay scoped to the concern being changed. The block editor authors `content.json`; the manifest fields it can compute from the content — `type`, `repository`, the `stats` stamp, and `startingLocation` — it derives, and everything else in an existing manifest it leaves untouched (see [Custom guides](./CUSTOM_GUIDES.md)).
+Content and metadata are separate files because they serve different consumers, are authored by different roles, and change for different reasons. Git diffs stay scoped to the concern being changed. The block editor authors `content.json`; the manifest fields it can compute from the content — `type`, `repository`, the `stats` stamp, and `startingLocation` — it derives, and everything else in an existing manifest it leaves untouched. A `startingLocation` it did not author counts as untouchable too (see [Custom guides](./CUSTOM_GUIDES.md)).
 
 ### Cross-file consistency rule
 

@@ -355,44 +355,51 @@ describe('deriveManifest — startingLocation', () => {
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
-  // Written unconditionally: a skipped write would leave a stale value outliving
-  // the content that justified it, with no in-product way to clear it.
-  it('CLEARS an inherited startingLocation when the content no longer declares one', () => {
-    const result = deriveManifest(guide([markdown()]), {
-      type: 'guide',
-      additionalFields: { startingLocation: '/stale-from-a-removed-requirement' },
-    });
+  // The author removed the requirement, so the prompt the editor put there goes
+  // with it. The blocks read alongside the manifest derived exactly the stored
+  // value, which is what makes it the editor's to clear.
+  it('CLEARS an editor-derived startingLocation when the content no longer declares one', () => {
+    const result = deriveManifest(
+      guide([markdown()]),
+      { type: 'guide', additionalFields: { startingLocation: '/explore' } },
+      [highlight(['on-page:/explore'])]
+    );
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
   it('drops additionalFields entirely when clearing leaves nothing behind', () => {
-    const result = deriveManifest(guide([markdown()]), {
-      type: 'path',
-      milestones: ['m1'],
-      additionalFields: { startingLocation: '/stale' },
-    });
+    const result = deriveManifest(
+      guide([markdown()]),
+      { type: 'path', milestones: ['m1'], additionalFields: { startingLocation: '/explore' } },
+      [highlight(['on-page:/explore'])]
+    );
 
     expect(result.additionalFields).toBeUndefined();
   });
 
   it('keeps sibling additionalFields keys when it clears startingLocation', () => {
-    const result = deriveManifest(guide([markdown()]), {
-      type: 'path',
-      milestones: ['m1'],
-      additionalFields: { startingLocation: '/stale', stats: { version: 1, blockCount: 9 } },
-    });
+    const result = deriveManifest(
+      guide([markdown()]),
+      {
+        type: 'path',
+        milestones: ['m1'],
+        additionalFields: { startingLocation: '/explore', stats: { version: 1, blockCount: 9 } },
+      },
+      [highlight(['on-page:/explore'])]
+    );
 
     const additional = result.additionalFields as Record<string, unknown>;
     expect(additional.startingLocation).toBeUndefined();
     expect(additional.stats).toEqual({ version: 1, blockCount: 9 });
   });
 
-  it('updates an inherited startingLocation when the content now declares a different one', () => {
-    const result = deriveManifest(guide([highlight(['on-page:/explore'])]), {
-      type: 'guide',
-      additionalFields: { startingLocation: '/stale' },
-    });
+  it('updates an editor-derived startingLocation when the content now declares a different one', () => {
+    const result = deriveManifest(
+      guide([highlight(['on-page:/explore'])]),
+      { type: 'guide', additionalFields: { startingLocation: '/dashboards' } },
+      [highlight(['on-page:/dashboards'])]
+    );
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
   });
@@ -617,6 +624,88 @@ describe('deriveManifest — startingLocation stops at navigation', () => {
     const result = deriveManifest(guide([highlight(), multistep]));
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+  });
+});
+
+describe('deriveManifest — who owns startingLocation', () => {
+  // The reader-visible harm: a package uploaded with its own startingLocation
+  // lost it the first time anyone opened it in the editor and changed a title.
+  it('preserves an inherited startingLocation the editor never authored', () => {
+    const result = deriveManifest(
+      guide([markdown()]),
+      { type: 'guide', additionalFields: { startingLocation: '/d/abc/externally-authored' } },
+      [markdown()]
+    );
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/d/abc/externally-authored');
+  });
+
+  it('preserves an inherited value that disagrees with what its own content derived', () => {
+    const result = deriveManifest(
+      guide([highlight(['on-page:/explore'])]),
+      { type: 'guide', additionalFields: { startingLocation: '/d/abc/deliberate-override' } },
+      [highlight(['on-page:/explore'])]
+    );
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/d/abc/deliberate-override');
+  });
+
+  it('does not overwrite an unowned inherited value even when the content declares one', () => {
+    const result = deriveManifest(
+      guide([highlight(['on-page:/alerting'])]),
+      { type: 'guide', additionalFields: { startingLocation: '/d/abc/externally-authored' } },
+      [markdown()]
+    );
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/d/abc/externally-authored');
+  });
+
+  // No prior content in hand is not proof of provenance, so the safe answer is
+  // to leave the value alone.
+  it('preserves an inherited value when no prior blocks are supplied', () => {
+    const result = deriveManifest(guide([markdown()]), {
+      type: 'guide',
+      additionalFields: { startingLocation: '/d/abc/unknown-provenance' },
+    });
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/d/abc/unknown-provenance');
+  });
+
+  it('preserves a non-string inherited value rather than treating it as its own', () => {
+    const result = deriveManifest(
+      guide([markdown()]),
+      { type: 'guide', additionalFields: { startingLocation: { path: '/explore' } } },
+      [markdown()]
+    );
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toEqual({ path: '/explore' });
+  });
+
+  it('stamps a fresh derivation when there is nothing inherited to lose', () => {
+    const result = deriveManifest(guide([highlight(['on-page:/explore'])]), { type: 'guide' }, [markdown()]);
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+  });
+
+  // Round trip: derive, read back, edit the requirement away. Only the second
+  // save may clear, and only because the first one is what put the value there.
+  it('clears on the save after the one that stamped it', () => {
+    const stamped = deriveManifest(guide([highlight(['on-page:/explore'])]));
+    expect((stamped.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+
+    const cleared = deriveManifest(guide([highlight()]), stamped, [highlight(['on-page:/explore'])]);
+
+    expect((cleared.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('tolerates prior blocks that are not an array', () => {
+    const result = deriveManifest(
+      guide([markdown()]),
+      { type: 'guide', additionalFields: { startingLocation: '/kept' } },
+      'nonsense'
+    );
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/kept');
   });
 });
 

@@ -233,18 +233,53 @@ function firstOnPage(requirements: unknown): string | undefined {
  * - `additionalFields.stats` — the canonical block count, only for a plain
  *   guide. A path or journey's stats are a rollup over every milestone's blocks
  *   (`rollUpGuideStats`), which the editor cannot see from a cover page.
- * - `additionalFields.startingLocation` — set when the content declares one and
- *   CLEARED when it does not, so an author who removes the requirement removes
- *   the prompt with it.
+ * - `additionalFields.startingLocation` — owned CONDITIONALLY; see below.
  *
  * Everything else in `inherited` survives byte-identical, including any
- * `additionalFields` key this function does not own. The one exception is
- * `startingLocation`, which the content fully determines: there, an absent
- * derivation IS the information, so it clears rather than preserves. `stats` keeps
- * the preserve semantics, because a metapackage's rollup is computed elsewhere and
- * the editor's silence about it means "I cannot see this", not "it is gone".
+ * `additionalFields` key this function does not own.
+ *
+ * ## Who owns `startingLocation`
+ *
+ * The field has two possible authors. The editor derives it from block content.
+ * An uploaded or externally scripted package writes it directly — it is untyped
+ * under `additionalFields`, so anything may be there and the editor cannot read
+ * intent off the value itself.
+ *
+ * Both of the obvious rules lose data. Always writing it means a title-only edit
+ * erases a value the editor never authored. Never clearing it means an author who
+ * deletes the `on-page:` requirement is left with a stale prompt and no
+ * in-product way to remove it.
+ *
+ * So ownership is decided per save, from provenance rather than from the value:
+ * the editor owns the field when there is nothing inherited to lose, or when the
+ * inherited value is exactly what this derivation produces from
+ * `inheritedBlocks` — the content read alongside that manifest. That is the
+ * strongest available proof the editor put it there, and it needs no extra
+ * persisted marker that could itself drift from the value it describes.
+ *
+ * When the editor owns the field it writes the newly derived value, or CLEARS it
+ * when the content declares none — so removing the requirement removes the
+ * prompt. When it does not, the inherited value passes through untouched like
+ * every other unowned key, and a save never silently rewrites metadata the
+ * editor did not author.
+ *
+ * A value that diverges once stays the external author's: reclaiming it belongs
+ * to an explicit manifest control, not to a silent overwrite.
+ *
+ * `stats` keeps unconditional preserve semantics for the non-guide case, because
+ * a metapackage's rollup is computed elsewhere and the editor's silence about it
+ * means "I cannot see this", not "it is gone".
+ *
+ * @param inherited - `spec.manifest` last read off the resource.
+ * @param inheritedBlocks - `spec.blocks` last read off the SAME resource. Omitted
+ *   means no prior content is known, which leaves any inherited
+ *   `startingLocation` unowned and therefore preserved.
  */
-export function deriveManifest(guide: JsonGuide, inherited?: unknown): Record<string, unknown> {
+export function deriveManifest(
+  guide: JsonGuide,
+  inherited?: unknown,
+  inheritedBlocks?: unknown
+): Record<string, unknown> {
   const base = { ...(asRecord(inherited) ?? {}) };
 
   const inheritedType = typeof base.type === 'string' && base.type.length > 0 ? base.type : undefined;
@@ -257,14 +292,18 @@ export function deriveManifest(guide: JsonGuide, inherited?: unknown): Record<st
     additionalFields.stats = summarizeGuideBlocks(guide.blocks);
   }
 
-  // Written unconditionally, so removing the requirement removes the prompt. A
-  // skipped write would leave a stale value outliving the content that justified
-  // it, with no in-product way to clear it.
-  const startingLocation = deriveStartingLocation(guide.blocks);
-  if (startingLocation !== undefined) {
-    additionalFields.startingLocation = startingLocation;
-  } else {
-    delete additionalFields.startingLocation;
+  const inheritedStartingLocation = inheritedAdditional?.startingLocation;
+  const editorOwnsStartingLocation =
+    inheritedStartingLocation === undefined ||
+    inheritedStartingLocation === deriveStartingLocation(asBlocks(inheritedBlocks));
+
+  if (editorOwnsStartingLocation) {
+    const startingLocation = deriveStartingLocation(guide.blocks);
+    if (startingLocation !== undefined) {
+      additionalFields.startingLocation = startingLocation;
+    } else {
+      delete additionalFields.startingLocation;
+    }
   }
 
   const manifest: Record<string, unknown> = { ...base, type };
@@ -283,4 +322,9 @@ export function deriveManifest(guide: JsonGuide, inherited?: unknown): Record<st
   }
 
   return manifest;
+}
+
+/** `spec.blocks` arrives off the wire, so anything but an array is "no content". */
+function asBlocks(value: unknown): readonly JsonBlock[] | undefined {
+  return Array.isArray(value) ? (value as JsonBlock[]) : undefined;
 }

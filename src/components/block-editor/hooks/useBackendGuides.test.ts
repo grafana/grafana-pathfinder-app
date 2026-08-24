@@ -303,6 +303,119 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
   });
 });
 
+describe('saveGuide — startingLocation provenance', () => {
+  const highlight = (requirements?: string[]) => ({
+    id: 'b2',
+    type: 'interactive',
+    action: 'highlight',
+    reftarget: 'a[href="/explore"]',
+    content: 'Click it',
+    ...(requirements ? { requirements } : {}),
+  });
+
+  /** A plain guide as some other tool left it on the backend. */
+  function uploadedGuide(manifest: Record<string, unknown>, blocks: unknown[]) {
+    return {
+      metadata: { name: 'my-guide', namespace: 'stacks-1', uid: 'uid-2', resourceVersion: '7' },
+      spec: {
+        id: 'my-guide',
+        title: 'My guide',
+        schemaVersion: '1.0',
+        blocks,
+        status: 'draft' as const,
+        manifest,
+      },
+    };
+  }
+
+  function editedTitle(resource: ReturnType<typeof uploadedGuide>): JsonGuide {
+    return {
+      id: resource.spec.id,
+      title: 'My guide, renamed',
+      schemaVersion: resource.spec.schemaVersion,
+      blocks: resource.spec.blocks,
+    } as JsonGuide;
+  }
+
+  // The data-loss case: an uploaded package declares its own starting location,
+  // nothing in the content derives one, and someone opens it in the editor to fix
+  // a typo in the title. The metadata has to survive that.
+  it('keeps an uploaded startingLocation through a title-only edit', async () => {
+    const resource = uploadedGuide(
+      { type: 'guide', repository: 'app-platform', additionalFields: { startingLocation: '/d/abc/uploaded' } },
+      [{ id: 'b1', type: 'markdown', content: 'Welcome' }]
+    );
+    const result = await renderLoaded([resource as never]);
+
+    await act(async () => {
+      await result.current.saveGuide(editedTitle(resource), 'my-guide', resource.metadata, 'draft');
+    });
+
+    const { spec } = lastRequest().data;
+    expect(spec.title).toBe('My guide, renamed');
+    expect(spec.manifest.additionalFields.startingLocation).toBe('/d/abc/uploaded');
+  });
+
+  it('does not overwrite an uploaded startingLocation with one the content declares', async () => {
+    const resource = uploadedGuide(
+      { type: 'guide', repository: 'app-platform', additionalFields: { startingLocation: '/d/abc/uploaded' } },
+      [highlight(['on-page:/explore'])]
+    );
+    const result = await renderLoaded([resource as never]);
+
+    await act(async () => {
+      await result.current.saveGuide(editedTitle(resource), 'my-guide', resource.metadata, 'draft');
+    });
+
+    expect(lastRequest().data.spec.manifest.additionalFields.startingLocation).toBe('/d/abc/uploaded');
+  });
+
+  // The other half of the same rule: what the editor derived, the editor clears.
+  it('clears its own startingLocation when the author removes the requirement', async () => {
+    const resource = uploadedGuide(
+      { type: 'guide', repository: 'app-platform', additionalFields: { startingLocation: '/explore' } },
+      [highlight(['on-page:/explore'])]
+    );
+    const result = await renderLoaded([resource as never]);
+
+    const withoutRequirement = {
+      id: 'my-guide',
+      title: 'My guide',
+      schemaVersion: '1.0',
+      blocks: [highlight()],
+    } as unknown as JsonGuide;
+
+    await act(async () => {
+      await result.current.saveGuide(withoutRequirement, 'my-guide', resource.metadata, 'draft');
+    });
+
+    const { additionalFields } = lastRequest().data.spec.manifest;
+    expect(additionalFields.startingLocation).toBeUndefined();
+    expect(additionalFields.stats).toBeDefined();
+  });
+
+  it('updates its own startingLocation when the author moves the requirement', async () => {
+    const resource = uploadedGuide(
+      { type: 'guide', repository: 'app-platform', additionalFields: { startingLocation: '/explore' } },
+      [highlight(['on-page:/explore'])]
+    );
+    const result = await renderLoaded([resource as never]);
+
+    const moved = {
+      id: 'my-guide',
+      title: 'My guide',
+      schemaVersion: '1.0',
+      blocks: [highlight(['on-page:/alerting/list'])],
+    } as unknown as JsonGuide;
+
+    await act(async () => {
+      await result.current.saveGuide(moved, 'my-guide', resource.metadata, 'draft');
+    });
+
+    expect(lastRequest().data.spec.manifest.additionalFields.startingLocation).toBe('/alerting/list');
+  });
+});
+
 describe('publishGuide / unpublishGuide — annotation passthrough', () => {
   it('publishGuide keeps annotations, labels and manifest', async () => {
     const resource = pathCoverPage();
