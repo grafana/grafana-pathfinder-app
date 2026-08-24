@@ -171,6 +171,10 @@ export const ManifestJsonObjectSchema = z.looseObject({
    * would break the one tool that fixes it. Reading as absent is also the
    * honest answer: a stamp missing fields is not a denominator anyone should
    * trust, and every consumer already handles no stamp at all.
+   *
+   * The catch is for readers only. `validate-package` re-checks the raw value
+   * so an author is told the stamp is present and ignored — see
+   * `emitStatsStampMessage`.
    */
   stats: GuideStatsSummarySchema.optional().catch(undefined),
 });
