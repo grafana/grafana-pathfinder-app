@@ -197,6 +197,16 @@ const getCodeBlockStyles = (theme: GrafanaTheme2) => ({
   },
 });
 
+const GUIDE_ACTION_BUTTON_SELECTOR = [
+  '.interactive-step-action-buttons > button',
+  '.interactive-guided-actions > button',
+  '.interactive-guided-executing > button',
+  '.interactive-guided-error-actions > button',
+  '.interactive-guided-cancelled-actions > button',
+  '.interactive-guided-completed > button',
+  '.interactive-section-actions > button',
+].join(', ');
+
 // Interactive component styles (sections and steps)
 const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // Interactive Section styles
@@ -326,6 +336,11 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
+  // Per Figma design, buttons in guides have specialized padding
+  [GUIDE_ACTION_BUTTON_SELECTOR]: {
+    padding: '0px 12px',
+  },
+
   // Interactive Conditional loading styles
   '.interactive-conditional.loading': {
     display: 'flex',
@@ -366,6 +381,9 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-section-content': {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1.5),
     padding: theme.spacing(2),
     opacity: 1,
     maxHeight: '10000px',
@@ -382,47 +400,81 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
       listStyle: 'none',
     },
 
+    // Interactive blocks keep local margins for standalone guide-root and
+    // inline-conditional mounts. Inside a section, this flex container's gap
+    // is the single vertical rhythm, so suppress those component-owned margins.
+    // Scope to data-step=true to preserve authored prose and media spacing.
+    '& > li[data-step="true"] > *': {
+      marginTop: 0,
+      marginBottom: 0,
+    },
+
     '& > li[data-numbered="true"]': {
       counterIncrement: 'step-counter',
-      position: 'relative',
-      paddingLeft: theme.spacing(4), // Space for the number
+    },
 
-      // Add the step number using ::before pseudo-element
+    '& > li[data-numbered="true"][data-step="true"] > :first-child': {
+      position: 'relative',
+      paddingLeft: theme.spacing(4),
+      paddingRight: theme.spacing(4),
+
+      // InteractiveStep owns padding when mounted standalone. In a section,
+      // active steps borrow the section's vertical inset while retaining the
+      // horizontal number gutter above. Terminal states remain self-padded.
+      '&.interactive-step:not(.completed):not(.skipped)': {
+        paddingTop: 0,
+        paddingBottom: 0,
+      },
+
+      // Anchor the number to the block's own top inset so it lines up with the
+      // first line of text. Default assumes a self-padded card (quiz, input,
+      // challenge and grot-guide all use spacing(2)); interactive-step is flush
+      // until it reaches a terminal state, so it opts out below.
       '&::before': {
         content: 'counter(step-counter) "."',
         position: 'absolute',
         left: 0,
-        top: theme.spacing(2), // Aligns with the content start offset (see below)
+        top: theme.spacing(2),
         color: theme.colors.text.secondary,
         fontWeight: theme.typography.fontWeightMedium,
         fontSize: theme.typography.body.fontSize,
         width: theme.spacing(3),
         textAlign: 'right',
       },
+
+      '&.interactive-step::before': {
+        top: 0,
+      },
+
+      '&.interactive-step.completed::before, &.interactive-step.skipped::before': {
+        top: theme.spacing(2),
+      },
     },
 
-    // Interactive step components (InteractiveStep, InteractiveMultiStep, etc.)
-    // carry their own CSS margin-top of theme.spacing(2), which naturally
-    // positions the card 16px below the <li> top — matching the number's
-    // top: theme.spacing(2). They also wrap content in a card with
-    // padding: theme.spacing(2) (16px) and border: 2px solid transparent,
-    // which insets the title text 18px from the card's left edge.
-    // Their <li> therefore needs NO extra padding.
-    //
-    // Plain content blocks (markdown <p>, headings, etc.) have no built-in
-    // margin-top OR card chrome, so they'd start at (top: 0, left: 0 inside
-    // the li padding) while the step's title sits at
-    // (top: theme.spacing(2), left: theme.spacing(2) + 2px) inside the li.
-    // [data-step="false"] marks those <li> items; paddingTop pushes their
-    // content down to align with the number, paddingLeft pushes them right
-    // to align horizontally with the step title text.
-    //
-    // Verified at runtime (issue #841 alignment fix):
-    //   step  title.x = li.x + 32 (li padding) + 2 (step border) + 16 (step padding) = li.x + 50
-    //   plain title.x = li.x + 32 + 18 (extra padding) = li.x + 50  ✓
+    // Plain content has no card to contain the number. Give the list item the
+    // same horizontal inset as a step card, while leaving vertical rhythm to
+    // the section gap just like data-step=true items.
     '& > li[data-numbered="true"][data-step="false"]': {
-      paddingTop: theme.spacing(2),
-      paddingLeft: `calc(${theme.spacing(4)} + ${theme.spacing(2)} + 2px)`,
+      position: 'relative',
+      paddingLeft: theme.spacing(4),
+      paddingRight: theme.spacing(4),
+
+      '& > :first-child': {
+        marginTop: 0,
+        marginBottom: 0,
+      },
+
+      '&::before': {
+        content: 'counter(step-counter) "."',
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        color: theme.colors.text.secondary,
+        fontWeight: theme.typography.fontWeightMedium,
+        fontSize: theme.typography.body.fontSize,
+        width: theme.spacing(3),
+        textAlign: 'right',
+      },
     },
 
     // Step status styles
@@ -444,32 +496,12 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
-  '.interactive-section-requirement-explanation': {
-    color: theme.colors.text.secondary,
-    fontSize: '0.875rem',
-    margin: `${theme.spacing(2)} ${theme.spacing(2)} 0`,
-    padding: theme.spacing(1.5),
-    backgroundColor: theme.colors.warning.transparent,
-    border: `1px solid ${theme.colors.warning.border}`,
-    borderRadius: theme.shape.radius.default,
-    fontStyle: 'italic',
-    lineHeight: '1.4',
-  },
-
   // Section requirements banner (shown when section-level requirements are not met)
-  // Styled to match individual step requirements (interactive-guided-requirement-box)
   '.interactive-section-requirements-banner': {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
     margin: `${theme.spacing(1.5)} ${theme.spacing(2)} 0`,
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.5',
-    color: theme.colors.text.secondary,
   },
 
   '.interactive-section-requirements-content': {
@@ -497,9 +529,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // because the paused state is recoverable via the prompt above.
   '.interactive-section-alignment-banner': {
     margin: `${theme.spacing(1.5)} ${theme.spacing(2)} 0`,
-    padding: '8px 12px',
-    background: theme.colors.info.transparent,
-    border: `1px solid ${theme.colors.info.border}`,
     borderLeft: `3px solid ${theme.colors.info.main}`,
     borderRadius: '4px',
   },
@@ -562,9 +591,15 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   // Interactive Step styles
+  // Keep outer margin for standalone / guide-root mounts. Inside a section,
+  // `.interactive-section-content > li[data-step="true"] > *` zeroes it so the
+  // section gap owns vertical rhythm.
   '.interactive-step': {
+    display: 'flex',
+    flexDirection: 'column',
     margin: `${theme.spacing(2)} 0`,
     padding: theme.spacing(2),
+    gap: theme.spacing(1),
     backgroundColor: theme.colors.background.primary,
     borderRadius: '8px',
     border: '2px solid transparent',
@@ -581,8 +616,8 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
-  '.interactive-step-content': {
-    marginBottom: theme.spacing(1.5),
+  '.interactive-step-content > p': {
+    marginBottom: 0,
   },
 
   '.interactive-step-title': {
@@ -601,7 +636,10 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   '.interactive-step-actions': {
     display: 'flex',
     flexDirection: 'column',
-    gap: theme.spacing(1),
+
+    '&:not(:has(button)):not(:has(.interactive-guided-completed))': {
+      display: 'none',
+    },
   },
 
   '.interactive-step-action-buttons': {
@@ -622,15 +660,48 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // REQUIREMENT/INFO STYLES - Subtle box for sequential step messaging
   // ═══════════════════════════════════════════════════════════════════════════
 
-  '.interactive-step-requirement-explanation': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
+  // Shared compact shell for status/feedback chrome across guide block types.
+  // May contain action buttons; components add only layout or deviant chrome.
+  '.interactive-feedback-box': {
+    padding: theme.spacing(0.5, 1.5),
     borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.5',
+    border: '1px solid transparent',
+    fontSize: theme.typography.bodySmall.fontSize,
+    lineHeight: 1.4,
+    minWidth: 0,
+  },
+
+  '.interactive-feedback-box--neutral': {
+    background: theme.colors.background.secondary,
+    borderColor: theme.colors.border.medium,
     color: theme.colors.text.secondary,
+  },
+
+  '.interactive-feedback-box--warning': {
+    background: theme.colors.warning.transparent,
+    borderColor: theme.colors.warning.border,
+    color: theme.colors.warning.text,
+  },
+
+  '.interactive-feedback-box--info': {
+    background: theme.colors.info.transparent,
+    borderColor: theme.colors.info.border,
+    color: theme.colors.info.text,
+  },
+
+  '.interactive-feedback-box--success': {
+    background: theme.colors.success.transparent,
+    borderColor: theme.colors.success.border,
+    color: theme.colors.success.text,
+  },
+
+  '.interactive-feedback-box--muted': {
+    background: theme.colors.secondary.transparent,
+    borderColor: theme.colors.border.medium,
+    color: theme.colors.text.secondary,
+  },
+
+  '.interactive-step-requirement-explanation': {
     position: 'relative',
     // Add footprints icon via ::before with inline layout
     '&::before': {
@@ -645,7 +716,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   '.interactive-requirement-spinner': {
     position: 'absolute',
-    top: '8px',
+    top: theme.spacing(0.5),
     right: '8px',
     fontSize: '0.85rem',
     color: theme.colors.text.secondary,
@@ -662,6 +733,10 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1),
     marginTop: theme.spacing(1),
     width: '100%',
+
+    '&:empty': {
+      display: 'none',
+    },
   },
 
   '.interactive-requirement-retry-btn': {
@@ -703,14 +778,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // ═══════════════════════════════════════════════════════════════════════════
 
   '.interactive-step-execution-error': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.warning.transparent,
-    border: `1px solid ${theme.colors.warning.border}`,
-    borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.4',
-    color: theme.colors.warning.text,
     display: 'flex',
     alignItems: 'flex-start',
     gap: '8px',
@@ -729,14 +796,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // ═══════════════════════════════════════════════════════════════════════════
 
   '.interactive-step-lazy-error': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.5',
-    color: theme.colors.text.secondary,
     // Add scroll icon via ::before with inline layout
     '&::before': {
       content: '"↕"',
@@ -776,14 +835,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   // Form checking indicator (shown during 2s debounce)
   '.interactive-step-form-checking': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.5',
-    color: theme.colors.text.secondary,
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
@@ -801,14 +852,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   // Form validation hint warning (shown when regex pattern doesn't match)
   '.interactive-step-form-hint-warning': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.warning.transparent,
-    border: `1px solid ${theme.colors.warning.border}`,
-    borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.4',
-    color: theme.colors.warning.text,
     display: 'flex',
     alignItems: 'flex-start',
     gap: '8px',
@@ -836,9 +879,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   // ─── IDLE STATE ───────────────────────────────────────────────────────────
-  '.interactive-guided-idle': {
-    marginTop: '12px',
-  },
 
   '.interactive-guided-actions': {
     display: 'flex',
@@ -851,10 +891,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   // ─── CHECKING STATE ───────────────────────────────────────────────────────
-  '.interactive-guided-checking': {
-    marginTop: '12px',
-  },
-
   '.interactive-guided-status': {
     display: 'flex',
     alignItems: 'center',
@@ -874,7 +910,10 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   // ─── REQUIREMENTS NOT MET STATE (subtle - part of normal flow) ────────────
   '.interactive-guided-requirements': {
-    marginTop: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+
     '&.rechecking': {
       opacity: 0.85,
     },
@@ -884,11 +923,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'flex-start',
     gap: '8px',
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: '6px',
-    marginBottom: '10px',
     position: 'relative',
   },
 
@@ -900,9 +934,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-guided-requirement-text': {
-    color: theme.colors.text.secondary,
-    fontSize: '0.875rem',
-    lineHeight: 1.4,
+    color: 'inherit',
   },
 
   '.interactive-guided-fix-btn': {
@@ -946,15 +978,15 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   // ─── EXECUTING STATE ──────────────────────────────────────────────────────
   '.interactive-guided-executing': {
-    marginTop: '12px',
-    padding: '12px 0',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1.5),
   },
 
   '.interactive-guided-step-indicator': {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    marginBottom: '8px',
   },
 
   '.interactive-guided-step-badge': {
@@ -980,7 +1012,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'flex-start',
     gap: '10px',
-    marginBottom: '14px',
     paddingLeft: '2px',
   },
 
@@ -1005,7 +1036,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     height: '3px',
     background: theme.colors.border.weak,
     borderRadius: '2px',
-    marginBottom: '14px',
     overflow: 'hidden',
   },
 
@@ -1038,18 +1068,15 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   // ─── ERROR/TIMEOUT STATE (uses warning colors - not critical) ─────────────
   '.interactive-guided-error': {
-    marginTop: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1.5),
   },
 
   '.interactive-guided-error-box': {
     display: 'flex',
     alignItems: 'flex-start',
     gap: '10px',
-    padding: '12px 14px',
-    background: theme.colors.warning.transparent,
-    border: `1px solid ${theme.colors.warning.border}`,
-    borderRadius: '6px',
-    marginBottom: '12px',
   },
 
   '.interactive-guided-error-icon': {
@@ -1094,20 +1121,13 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   // ─── CANCELLED STATE ──────────────────────────────────────────────────────
   '.interactive-guided-cancelled': {
-    marginTop: '12px',
-  },
-
-  '.interactive-guided-cancelled-box': {
-    padding: '10px 14px',
-    background: theme.colors.secondary.transparent,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: '6px',
-    marginBottom: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
   },
 
   '.interactive-guided-cancelled-text': {
-    color: theme.colors.text.secondary,
-    fontSize: '0.875rem',
+    color: 'inherit',
   },
 
   '.interactive-guided-cancelled-actions': {
@@ -1117,7 +1137,6 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   // ─── COMPLETED STATE ──────────────────────────────────────────────────────
   '.interactive-guided-completed': {
-    marginTop: '12px',
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
@@ -1127,7 +1146,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     display: 'inline-flex',
     alignItems: 'center',
     gap: '6px',
-    padding: '6px 12px',
+    padding: '2px 12px',
     background: theme.colors.success.transparent,
     border: `1px solid ${theme.colors.success.border}`,
     borderRadius: '16px',

@@ -466,7 +466,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
       {/* Blocked message */}
       {isBlocked && (
-        <div className={styles.blockedMessage}>
+        <div className={`${styles.blockedMessage} interactive-feedback-box interactive-feedback-box--warning`}>
           <Icon name="lock" size="sm" />
           <span>{explanation || 'Complete previous step'}</span>
         </div>
@@ -513,7 +513,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
       {/* Hint/Feedback */}
       {showHint && !isCompleted && (
-        <div className={styles.hint}>
+        <div className={`${styles.hint} interactive-feedback-box interactive-feedback-box--warning`}>
           <Icon name="info-circle" size="sm" />
           <span>{showHint}</span>
         </div>
@@ -521,7 +521,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
       {/* Success message */}
       {isCompleted && displayedResult === 'correct' && (
-        <div className={styles.success}>
+        <div className={`${styles.success} interactive-feedback-box interactive-feedback-box--success`}>
           <Icon name="check-circle" size="lg" />
           <span>Correct! Well done.</span>
         </div>
@@ -529,7 +529,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
       {/* Revealed message */}
       {isRevealed && (
-        <div className={styles.revealed}>
+        <div className={`${styles.revealed} interactive-feedback-box interactive-feedback-box--info`}>
           <Icon name="info-circle" size="sm" />
           <span>The correct answer{correctIds.size > 1 ? 's have' : ' has'} been revealed above.</span>
         </div>
@@ -624,11 +624,6 @@ const getQuizStyles = (theme: GrafanaTheme2) => ({
     display: flex;
     align-items: center;
     gap: ${theme.spacing(1)};
-    padding: ${theme.spacing(1)} ${theme.spacing(1.5)};
-    background: ${theme.colors.warning.transparent};
-    border-radius: ${theme.shape.radius.default};
-    color: ${theme.colors.warning.text};
-    font-size: ${theme.typography.bodySmall.fontSize};
     margin-bottom: ${theme.spacing(1.5)};
   `,
 
@@ -770,12 +765,6 @@ const getQuizStyles = (theme: GrafanaTheme2) => ({
     display: flex;
     align-items: flex-start;
     gap: ${theme.spacing(1)};
-    padding: ${theme.spacing(1.5)};
-    background: ${theme.colors.warning.transparent};
-    border: 1px solid ${theme.colors.warning.border};
-    border-radius: ${theme.shape.radius.default};
-    color: ${theme.colors.warning.text};
-    font-size: ${theme.typography.bodySmall.fontSize};
     margin-bottom: ${theme.spacing(2)};
 
     svg {
@@ -788,11 +777,6 @@ const getQuizStyles = (theme: GrafanaTheme2) => ({
     display: flex;
     align-items: center;
     gap: ${theme.spacing(1)};
-    padding: ${theme.spacing(1.5)};
-    background: ${theme.colors.success.transparent};
-    border: 1px solid ${theme.colors.success.border};
-    border-radius: ${theme.shape.radius.default};
-    color: ${theme.colors.success.text};
     font-weight: ${theme.typography.fontWeightMedium};
     margin-bottom: ${theme.spacing(2)};
     animation: ${pulse} 0.3s ease;
@@ -802,12 +786,6 @@ const getQuizStyles = (theme: GrafanaTheme2) => ({
     display: flex;
     align-items: center;
     gap: ${theme.spacing(1)};
-    padding: ${theme.spacing(1.5)};
-    background: ${theme.colors.info.transparent};
-    border: 1px solid ${theme.colors.info.border};
-    border-radius: ${theme.shape.radius.default};
-    color: ${theme.colors.text.secondary};
-    font-size: ${theme.typography.bodySmall.fontSize};
     margin-bottom: ${theme.spacing(2)};
   `,
 

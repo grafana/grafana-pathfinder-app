@@ -122,12 +122,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'flex-start',
     gap: theme.spacing(1),
     marginBottom: theme.spacing(1.5),
-    padding: theme.spacing(1, 1.5),
-    backgroundColor: theme.colors.warning.transparent,
-    border: `1px solid ${theme.colors.warning.border}`,
-    borderRadius: theme.shape.radius.default,
-    color: theme.colors.text.primary,
-    fontSize: theme.typography.bodySmall.fontSize,
     '& > svg': {
       flexShrink: 0,
       marginTop: '2px',
@@ -146,12 +140,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
     borderTop: `1px solid ${theme.colors.border.weak}`,
   }),
   hint: css({
-    padding: theme.spacing(1, 1.5),
     marginBottom: theme.spacing(1),
     background: theme.colors.background.primary,
+    borderColor: 'transparent',
     borderLeft: `3px solid ${theme.colors.info.border}`,
-    borderRadius: theme.shape.radius.default,
-    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
   }),
   hintIndex: css({
     fontWeight: theme.typography.fontWeightBold,
@@ -568,7 +561,11 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       )}
 
       {state === 'failed-check' && (
-        <div className={styles.failedCheck} role="status" aria-live="polite">
+        <div
+          className={`${styles.failedCheck} interactive-feedback-box interactive-feedback-box--warning`}
+          role="status"
+          aria-live="polite"
+        >
           <Icon name="exclamation-triangle" />
           <div>{failureMessage || errorDetail || "The check didn't pass — adjust and try again."}</div>
         </div>
@@ -605,7 +602,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       {hintLevels.length > 0 && (state === 'ready' || state === 'failed-check') && (
         <div className={styles.hints}>
           {hintLevels.slice(0, hintsRevealed).map((hint, idx) => (
-            <div key={idx} className={styles.hint}>
+            <div key={idx} className={`${styles.hint} interactive-feedback-box`}>
               <span className={styles.hintIndex}>Hint {idx + 1}:</span>
               {hint.text}
             </div>
