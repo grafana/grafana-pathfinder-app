@@ -584,6 +584,20 @@ describe('InteractiveQuiz: compact pill layout vs. stacked layout', () => {
     );
     expect(hasLeadingIndicator(screen.getByRole('button', { name: 'One' }))).toBe(true);
   });
+
+  it('falls back to the stacked layout (leading checkbox present) for multi-select, even with few short choices', () => {
+    const choices: QuizChoice[] = [
+      { id: 'a', text: 'One', correct: true },
+      { id: 'b', text: 'Two', correct: true },
+    ];
+    render(
+      <InteractiveQuiz question="Q" choices={choices} multiSelect shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    expect(hasLeadingIndicator(screen.getByRole('button', { name: 'One' }))).toBe(true);
+    expect(hasLeadingIndicator(screen.getByRole('button', { name: 'Two' }))).toBe(true);
+  });
 });
 
 describe('InteractiveQuiz: multi-select requires an explicit Check Answer click', () => {

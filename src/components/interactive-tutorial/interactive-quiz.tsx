@@ -443,10 +443,14 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   const showCheckButton = !isCompleted && !isRevealed && displayedSelection.size > 0;
   const attemptsRemaining = completionMode === 'max-attempts' ? maxAttempts - attempts : null;
   const showAttemptsRemaining = attemptsRemaining !== null && !isCompleted && !isRevealed;
-  // Compact pill layout only for short questions — a handful of short
-  // choices (True/False, single words) reads better side-by-side; longer or
-  // more numerous choices keep the stacked full-width rows.
+  // Compact pill layout only for short single-select questions — a handful
+  // of short choices (True/False, single words) reads better side-by-side;
+  // longer or more numerous choices keep the stacked full-width rows.
+  // Multi-select always keeps the stacked layout too: pills drop the leading
+  // indicator, and without the checkbox there's no visual cue that more than
+  // one choice can be selected.
   const useCompactChoiceLayout =
+    !multiSelect &&
     displayChoices.length <= PILL_LAYOUT_MAX_CHOICES &&
     displayChoices.every((c) => c.text.length <= PILL_LAYOUT_MAX_CHOICE_LENGTH);
 
