@@ -360,7 +360,6 @@ describe('buildRepository', () => {
     writeJson(path.join(tmpDir, 'guide-with-extensions', 'manifest.json'), {
       id: 'guide-with-extensions',
       type: 'guide',
-      stats: { steps: 4, blocks: 12, sections: 3 },
       estimatedMinutes: 15,
       owningTeam: 'enablement',
       flags: ['beta', 'internal'],
@@ -371,11 +370,60 @@ describe('buildRepository', () => {
 
     const entry = repository['guide-with-extensions'];
     expect(entry).toBeDefined();
-    expect(entry!.stats).toEqual({ steps: 4, blocks: 12, sections: 3 });
     expect(entry!.estimatedMinutes).toBe(15);
     expect(entry!.owningTeam).toBe('enablement');
     expect(entry!.flags).toEqual(['beta', 'internal']);
     expect(warnings).toHaveLength(0);
+  });
+
+  // `stats` was this suite's example of an unknown key until #1682 declared it on
+  // the manifest schema. It is now a NAMED field, so the extension forwarding
+  // skips it and `build-repository` has to carry it deliberately — the case that
+  // silently dropped the stamp from repository.json when only half of that
+  // landed.
+  it('should carry a well-formed stats stamp onto the entry as a named field', () => {
+    const stamp = {
+      version: 1,
+      blockCount: 12,
+      sectionCount: 3,
+      completableBlockCount: 7,
+      finalCompletablePosition: 11,
+    };
+    writeJson(path.join(tmpDir, 'guide-with-stats-stamp', 'content.json'), {
+      id: 'guide-with-stats-stamp',
+      title: 'Guide with a stats stamp',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-stats-stamp', 'manifest.json'), {
+      id: 'guide-with-stats-stamp',
+      type: 'guide',
+      stats: stamp,
+    });
+
+    const { repository, info, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-with-stats-stamp']?.stats).toEqual(stamp);
+    // Named, so it is not announced as a forwarded extension field.
+    expect(info).toEqual([]);
+  });
+
+  // The manifest schema catches a malformed stamp, so a wrong denominator never
+  // reaches repository.json in the first place.
+  it('should drop a malformed stats stamp rather than publishing a wrong denominator', () => {
+    writeJson(path.join(tmpDir, 'guide-with-bad-stats', 'content.json'), {
+      id: 'guide-with-bad-stats',
+      title: 'Guide with a bad stats stamp',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-bad-stats', 'manifest.json'), {
+      id: 'guide-with-bad-stats',
+      type: 'guide',
+      stats: { steps: 4, blocks: 12, sections: 3 },
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-with-bad-stats']?.stats).toBeUndefined();
   });
 
   it('should survive a repository.json serialization round-trip with unknown keys intact', () => {
@@ -387,7 +435,7 @@ describe('buildRepository', () => {
     writeJson(path.join(tmpDir, 'guide-with-stats', 'manifest.json'), {
       id: 'guide-with-stats',
       type: 'guide',
-      stats: { steps: 4, blocks: 12, sections: 3 },
+      owningTeam: 'enablement',
     });
 
     writeJson(path.join(tmpDir, 'journey-with-stats', 'content.json'), {
@@ -399,15 +447,15 @@ describe('buildRepository', () => {
       id: 'journey-with-stats',
       type: 'journey',
       milestones: ['guide-with-stats'],
-      stats: { steps: 9, blocks: 27, sections: 6, milestones: 1 },
+      owningTeam: { name: 'enablement', slack: '#enablement' },
     });
 
     const { repository, errors } = buildRepository(tmpDir);
     expect(errors).toHaveLength(0);
 
     const roundTripped = RepositoryJsonSchema.parse(JSON.parse(JSON.stringify(repository)));
-    expect(roundTripped['guide-with-stats']?.stats).toEqual({ steps: 4, blocks: 12, sections: 3 });
-    expect(roundTripped['journey-with-stats']?.stats).toEqual({ steps: 9, blocks: 27, sections: 6, milestones: 1 });
+    expect(roundTripped['guide-with-stats']?.owningTeam).toBe('enablement');
+    expect(roundTripped['journey-with-stats']?.owningTeam).toEqual({ name: 'enablement', slack: '#enablement' });
   });
 
   it('should leave the entry free of extension keys when the manifest has none', () => {
@@ -441,14 +489,14 @@ describe('buildRepository', () => {
     writeJson(path.join(tmpDir, 'noisy', 'manifest.json'), {
       id: 'noisy',
       type: 'guide',
-      stats: { steps: 4 },
+      owningTeam: 'enablement',
       estimatedMinutes: 15,
     });
 
     const { info, warnings, errors } = buildRepository(tmpDir);
     expect(errors).toHaveLength(0);
     expect(warnings).toHaveLength(0);
-    expect(info).toEqual(['noisy: forwarding 2 extension field(s): stats, estimatedMinutes']);
+    expect(info).toEqual(['noisy: forwarding 2 extension field(s): owningTeam, estimatedMinutes']);
   });
 
   it('should surface a misspelled known field as a forwarded extension field', () => {
@@ -721,7 +769,11 @@ describe('buildRepositoryCommand streams', () => {
 
   it('should keep stdout parseable JSON and put the forwarded-keys line on stderr', async () => {
     writeJson(path.join(tmpDir, 'noisy', 'content.json'), { id: 'noisy', title: 'Noisy', blocks: [] });
-    writeJson(path.join(tmpDir, 'noisy', 'manifest.json'), { id: 'noisy', type: 'guide', stats: { steps: 4 } });
+    writeJson(path.join(tmpDir, 'noisy', 'manifest.json'), {
+      id: 'noisy',
+      type: 'guide',
+      owningTeam: 'enablement',
+    });
 
     const stdoutChunks: string[] = [];
     const stdoutLines: string[] = [];
@@ -747,6 +799,6 @@ describe('buildRepositoryCommand streams', () => {
 
     expect(JSON.parse(stdoutChunks.join(''))).toHaveProperty('noisy');
     expect(stdoutLines).toEqual([]);
-    expect(stderrLines.join('\n')).toContain('noisy: forwarding 1 extension field(s): stats');
+    expect(stderrLines.join('\n')).toContain('noisy: forwarding 1 extension field(s): owningTeam');
   });
 });

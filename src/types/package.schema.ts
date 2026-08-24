@@ -249,6 +249,15 @@ export const RepositoryEntrySchema = z.looseObject({
   ...packageMetadataSchemaFields,
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.optional(),
+
+  /**
+   * Carried from the manifest by `build-repository`, not forwarded as an
+   * extension key — declared here so the entry states it and so a hand-edited
+   * `repository.json` gets the same sanitising read as the manifest does.
+   * Not part of `packageMetadataSchemaFields`: a `GraphNode` shares those and
+   * has no use for a block-count stamp.
+   */
+  stats: GuideStatsSummarySchema.optional().catch(undefined),
 }) satisfies z.ZodType<RepositoryEntry>;
 
 /**

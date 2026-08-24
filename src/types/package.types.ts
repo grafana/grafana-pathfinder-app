@@ -192,6 +192,8 @@ export interface RepositoryEntry extends PackageMetadataFields {
   path: string;
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
+  /** Generated block-count stamp, carried from the package's manifest. */
+  stats?: GuideStatsSummary;
 }
 
 /**
