@@ -22,11 +22,6 @@ jest.mock('../../lib/analytics', () => ({
   UserInteraction: { FeatureFlagEvaluated: 'feature_flag_evaluated' },
 }));
 
-const mockStampSessionExperiments = jest.fn();
-jest.mock('../../lib/telemetry/session', () => ({
-  stampSessionExperiments: () => mockStampSessionExperiments(),
-}));
-
 import { createIsolatedReactSdkMock, createIsolatedWebSdkMock } from '../../test-utils/openfeature-mock';
 
 const FLAG = 'pathfinder.interactive-learning-banner-experiment';
@@ -45,7 +40,6 @@ describe('interactive-learning banner experiment', () => {
   beforeEach(() => {
     localStorage.clear();
     mockReportFeatureFlagExposure.mockClear();
-    mockStampSessionExperiments.mockReset();
   });
 
   it('does not evaluate the flag until enrollment is requested', () => {
@@ -156,29 +150,67 @@ describe('interactive-learning banner experiment', () => {
     });
   });
 
-  it('re-stamps the Faro session cohorts once, after the arm is memoised', async () => {
-    await jest.isolateModulesAsync(async () => {
+  it('notifies subscribers once, after the arm is memoised', () => {
+    jest.isolateModules(() => {
       setup({ variant: 'treatment' });
 
+      const { subscribeToEnrollment } = require('./enrollment-notifier');
       const {
         enrollInteractiveLearningBannerExperiment,
         getEnrolledInteractiveLearningBannerConfig,
       } = require('./interactive-learning-banner');
 
       // initFaro stamps before any arm is known, so enrollment owns the re-stamp.
-      // Reading the memo from inside the stamp is what pins the ordering: a stamp
+      // Reading the memo from inside the listener is what pins the ordering: a stamp
       // that ran first would see null and re-publish the pre-enrollment cohorts.
-      let armAtStampTime: unknown = 'stamp-never-ran';
-      mockStampSessionExperiments.mockImplementation(() => {
+      let armAtStampTime: unknown = 'listener-never-ran';
+      const listener = jest.fn(() => {
         armAtStampTime = getEnrolledInteractiveLearningBannerConfig();
+      });
+      subscribeToEnrollment(listener);
+
+      enrollInteractiveLearningBannerExperiment();
+      enrollInteractiveLearningBannerExperiment();
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(armAtStampTime).toEqual({ variant: 'treatment' });
+    });
+  });
+
+  it('wakes subscribers when the arm resolves, and stops after unsubscribe', () => {
+    jest.isolateModules(() => {
+      setup({ variant: 'treatment' });
+
+      const { subscribeToEnrollment } = require('./enrollment-notifier');
+      const {
+        enrollInteractiveLearningBannerExperiment,
+        getEnrolledInteractiveLearningBannerConfig,
+      } = require('./interactive-learning-banner');
+
+      // This is what lets the banner read rather than enroll: it re-renders off the
+      // notification instead of evaluating the flag itself.
+      let armAtNotify: unknown = 'never-notified';
+      const unsubscribe = subscribeToEnrollment(() => {
+        armAtNotify = getEnrolledInteractiveLearningBannerConfig();
       });
 
       enrollInteractiveLearningBannerExperiment();
-      enrollInteractiveLearningBannerExperiment();
-      await new Promise(process.nextTick);
+      expect(armAtNotify).toEqual({ variant: 'treatment' });
 
-      expect(mockStampSessionExperiments).toHaveBeenCalledTimes(1);
-      expect(armAtStampTime).toEqual({ variant: 'treatment' });
+      armAtNotify = 'never-notified';
+      unsubscribe();
+      enrollInteractiveLearningBannerExperiment();
+      expect(armAtNotify).toBe('never-notified');
+    });
+  });
+
+  it('enrolls with nothing subscribed, so telemetry being off cannot block the arm', () => {
+    jest.isolateModules(() => {
+      setup({ variant: 'treatment' });
+
+      const { enrollInteractiveLearningBannerExperiment } = require('./interactive-learning-banner');
+
+      expect(enrollInteractiveLearningBannerExperiment()).toEqual({ variant: 'treatment' });
     });
   });
 

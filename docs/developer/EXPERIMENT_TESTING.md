@@ -6,10 +6,10 @@ All overrides go through `window.__pathfinderExperiment`, the debug surface crea
 
 ## Current experiments
 
-| Flag                                                | Variants                             | What treatment does                                                                                                     |
-| --------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `pathfinder.highlighted-guide-experiment`           | `excluded` / `control` / `treatment` | Both `control` and `treatment` keep Pathfinder visible — they differ only in which `guideId` is auto-opened + featured. |
-| `pathfinder.interactive-learning-banner-experiment` | `excluded` / `control` / `treatment` | `treatment` shows a dismissible explanatory banner at the top of the context page. `control` renders nothing.           |
+| Flag                                                | Variants                             | What treatment does                                                                                                        |
+| --------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `pathfinder.highlighted-guide-experiment`           | `excluded` / `control` / `treatment` | Both `control` and `treatment` keep Pathfinder visible — they differ only in which `guideId` is auto-opened + featured.    |
+| `pathfinder.interactive-learning-banner-experiment` | `excluded` / `control` / `treatment` | `treatment` shows a dismissible explanatory banner on the context page and above opened guides. `control` renders nothing. |
 
 See [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) for the full flag shapes and variant tables.
 
@@ -192,7 +192,7 @@ Variant reassignment is the **only** condition where the event auto-refires acro
 
 ## `pathfinder.interactive-learning-banner-experiment`
 
-Tests whether explaining interactive learning up front increases guide engagement. `treatment` renders a dismissible explanatory banner at the top of the context page; `control` and `excluded` render nothing.
+Tests whether explaining interactive learning up front increases guide engagement. `treatment` renders a dismissible explanatory banner on the context page and above opened guide content; `control` and `excluded` render nothing.
 
 ### Treatment
 
@@ -202,6 +202,19 @@ location.reload();
 ```
 
 Open the sidebar. The banner sits above the profile bar, and its only control is the dismiss affordance.
+
+### Above an opened guide
+
+The banner has a second placement, above rendered guide content, so a guide reached without ever passing through the context page still explains itself. Auto-open is the case worth checking:
+
+```js
+// With the treatment override set, load a guide directly — no sidebar visit first.
+location.href = '/?doc=<guide-url>';
+```
+
+The banner appears above the guide content, and the shown event carries `interaction_location: interactive_learning_banner_guide` rather than `interactive_learning_banner`. Both placements share one dismissal: close it above the guide, hit "Return to my learning", and it is gone from the context page too (and the reverse).
+
+For the floating and full-screen surfaces, add `&panelMode=floating` or `&panelMode=fullscreen`. Those enroll from their own mount effects, so the exposure fires even though the sidebar never mounted.
 
 ### Control
 
@@ -214,10 +227,10 @@ No banner. The exposure event still fires on first sidebar open — that is the 
 
 ### Enrollment fires on panel open, not on boot
 
-This is the one thing that behaves differently from the highlighted-guide experiment. The flag is evaluated lazily the first time a Pathfinder panel mounts, so:
+This is the one thing that behaves differently from the highlighted-guide experiment. The flag is evaluated lazily the first time any Pathfinder surface mounts (sidebar, floating, or full-screen), so:
 
 - `__pathfinderExperiment.bannerVariant()` returns `'not-enrolled'` until you open Pathfinder, then the arm.
-- `pathfinder_feature_flag_evaluated` for this flag appears on first sidebar open, not on page load. If you are watching the network tab from boot expecting it immediately, that is why it is missing.
+- `pathfinder_feature_flag_evaluated` for this flag appears on first panel open, not on page load. If you are watching the network tab from boot expecting it immediately, that is why it is missing.
 - Reloading without opening Pathfinder produces no exposure at all. That is intended — a user who never opened the panel never had the chance to see the banner.
 
 ### Resetting the dismissal

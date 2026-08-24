@@ -61,6 +61,7 @@ const {
   enrollInteractiveLearningBannerExperiment,
   initializeHighlightedGuideExperiment,
   setupHighlightedGuideAutoOpen,
+  subscribeToEnrollment,
 } = await import('./utils/experiments');
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
@@ -79,6 +80,12 @@ try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
     // Session enrichment (identity, surface, experiment cohorts) is owned by initFaro.
     const { initFaro, resolveSessionReplayOptions } = await import('./lib/faro');
+    // initFaro stamps the session cohorts before any arm is known, so a lazily
+    // enrolled experiment has to re-stamp. Subscribed from inside this block rather
+    // than imported by the enroller: the stamper sits behind a static Faro import, so
+    // reaching for it there would load the telemetry chunk even with the flag off.
+    const { stampSessionExperiments } = await import('./lib/telemetry/session');
+    subscribeToEnrollment(stampSessionExperiments);
     // Session replay is a second remote switch on top — also default-on, so a
     // missing flag means recording. It captures the whole page, masked, from
     // the first time Pathfinder is opened. The rate is a volume dial on top of

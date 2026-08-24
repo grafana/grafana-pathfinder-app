@@ -19,6 +19,7 @@ import {
   type FeatureFlagName,
 } from '../openfeature';
 import { reportFeatureFlagExposure } from '../openfeature-tracking';
+import { notifyEnrollment } from './enrollment-notifier';
 import { logger } from '../../lib/logging';
 
 export const INTERACTIVE_LEARNING_BANNER_FLAG: FeatureFlagName = 'pathfinder.interactive-learning-banner-experiment';
@@ -73,8 +74,8 @@ function readConfig(): InteractiveLearningBannerConfig {
  *
  * Evaluating this flag is what emits the `pathfinder_feature_flag_evaluated`
  * exposure, so the call site *is* the enrollment timing contract: call it only
- * when a Pathfinder panel opens, never at boot. Memoised, so remounts and a
- * second panel surface enroll once.
+ * when a Pathfinder panel opens, never at boot. Memoised, so a reopened panel —
+ * or a second surface — enrolls once.
  *
  * @returns The enrolled arm
  */
@@ -85,12 +86,11 @@ export function enrollInteractiveLearningBannerExperiment(): InteractiveLearning
   enrolledConfig = readConfig();
 
   // initFaro stamped the session cohorts before any arm was known, so the stamp has
-  // to be redone here rather than at a panel-open seam: only this point is ordered
-  // after the arm resolves, and it covers every surface. Dynamic import keeps the
-  // Faro adapter out of this chunk.
-  void import('../../lib/telemetry/session')
-    .then(({ stampSessionExperiments }) => stampSessionExperiments())
-    .catch((error) => logger.error('[OpenFeature] Session experiment re-stamp failed', { error }));
+  // to be redone once the arm resolves. Subscribers rather than direct calls: the
+  // stamper lives behind a static Faro import, and reaching for it here would pull
+  // the telemetry chunk in even when frontend telemetry is switched off. The banner
+  // is the other subscriber — it reads this memo instead of enrolling.
+  notifyEnrollment();
 
   return enrolledConfig;
 }

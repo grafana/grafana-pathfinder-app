@@ -22,11 +22,16 @@ const ALLOWED_CALLERS = new Set([
   'utils/experiments/interactive-learning-banner.ts',
   // Re-exports it.
   'utils/experiments/index.ts',
-  // The sidebar-mount seam: "first sidebar open".
+  // One seam per surface that can show the banner: "first Pathfinder panel open".
+  // The sidebar carries both placements (context page and above guide content); the
+  // other two have no context page, but do render the guide placement.
   'module.tsx',
-  // The banner itself, covering the floating and full-screen surfaces where the
-  // sidebar mount effect never runs.
-  'components/InteractiveLearningBanner/InteractiveLearningBanner.tsx',
+  'components/floating-panel/FloatingPanelManager.tsx',
+  'components/full-screen/FullScreenPanel.tsx',
+  // The banner component deliberately is NOT here: it reads the memo through
+  // subscribeToEnrollment, because enrolling from render would let a render React
+  // replays or abandons burn the exposure on a banner nobody saw. Surface coverage is
+  // pinned separately, by components/InteractiveLearningBanner/surface-coverage.test.ts.
 ]);
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -47,7 +52,7 @@ describe('interactive-learning banner enrollment boundary', () => {
     .map((abs) => path.relative(SRC_ROOT, abs).split(path.sep).join('/'))
     .sort();
 
-  it('is referenced only from its definition, its barrel, and the two panel-open seams', () => {
+  it('is referenced only from its definition, its barrel, and the panel-mount seams', () => {
     const unexpected = referencing.filter((rel) => !ALLOWED_CALLERS.has(rel));
 
     if (unexpected.length > 0) {
