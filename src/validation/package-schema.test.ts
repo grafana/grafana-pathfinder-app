@@ -282,7 +282,10 @@ describe('ManifestJsonSchema — stats stamp', () => {
     finalCompletablePosition: 4,
   };
 
-  it('round-trips a well-formed stamp through a strict parse', () => {
+  /** Missing three of the five counts — a stamp no consumer should trust. */
+  const partialStamp = { version: 1, blockCount: 99 };
+
+  it('round-trips a well-formed stamp', () => {
     const result = ManifestJsonSchema.safeParse({ id: 'g', type: 'guide', stats: wellFormed });
 
     expect(result.success).toBe(true);
@@ -292,13 +295,36 @@ describe('ManifestJsonSchema — stats stamp', () => {
     expect(result.data.stats).toEqual(wellFormed);
   });
 
-  // Before stats was declared, a strict parse silently dropped it. The point of
-  // declaring it is that a well-formed stamp now survives — this is the
-  // regression that would return if the field were removed from the schema.
-  it('no longer drops a stamp the way an undeclared field would', () => {
-    const parsed = ManifestJsonSchema.parse({ id: 'g', type: 'guide', stats: wellFormed });
+  // Why `stats` is still declared positively even though #1662 made the manifest
+  // top level a `z.looseObject`.
+  //
+  // The open namespace forwards an unknown key VERBATIM — that is the whole
+  // point of it, and the extension case below pins that. Survival is therefore
+  // no longer what the declaration buys. Validation is: without it, a partial or
+  // hand-edited stamp reaches every consumer unchanged and a wrong denominator
+  // reads as a real one. `.catch(undefined)` is what turns a malformed stamp
+  // into an absent one, and only a declared field can catch.
+  //
+  // Delete `stats` from ManifestJsonObjectSchema and this test fails while the
+  // extension test still passes. That asymmetry IS the contract.
+  it('sanitizes a malformed stamp, which the open namespace alone would not do', () => {
+    const asExtensionKey = ManifestJsonSchema.parse({ id: 'g', type: 'guide', vendorThing: partialStamp });
+    const asDeclaredStats = ManifestJsonSchema.parse({ id: 'g', type: 'guide', stats: partialStamp });
 
-    expect(parsed).toHaveProperty('stats');
+    expect((asExtensionKey as Record<string, unknown>).vendorThing).toEqual(partialStamp);
+    expect(asDeclaredStats.stats).toBeUndefined();
+  });
+
+  // The other half: an undeclared key is forwarded untouched and its shape is
+  // never checked (#1662). Consumers own that validation.
+  it('forwards an undeclared extension key verbatim', () => {
+    const parsed = ManifestJsonSchema.parse({
+      id: 'g',
+      type: 'guide',
+      vendorThing: { anything: true, nested: [1, 'two'] },
+    });
+
+    expect((parsed as Record<string, unknown>).vendorThing).toEqual({ anything: true, nested: [1, 'two'] });
   });
 
   // `pathfinder-cli build-stats` exists to repair a stale or hand-edited stamp,
@@ -308,7 +334,7 @@ describe('ManifestJsonSchema — stats stamp', () => {
     const result = ManifestJsonSchema.safeParse({
       id: 'g',
       type: 'guide',
-      stats: { version: 1, blockCount: 99 },
+      stats: partialStamp,
     });
 
     expect(result.success).toBe(true);
