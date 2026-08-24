@@ -34,6 +34,7 @@
 ### Chore
 
 - **`create-experiment` skill**: The end-to-end recipe for setting up an A/B experiment — flag shape, variant validation, enrollment seam, exposure and behaviour analytics, QA overrides, tests, docs, and a teardown list. It exists because four of the platform's constraints are silent when violated: a boolean flag emits no exposure event and yields no readout, MTFF allocates per stack rather than per user, the registry's `values` array validates nothing at runtime, and a flag's first read is what defines enrollment. (#1629)
+- **Release workflow pinned to Node 24**: `grafana/plugin-actions/build-plugin` defaults its `node-version` to 20, which this repo has required Node 24 to build since well before the React 19 migration. Every tag-triggered release run had failed since December 2025, dying while loading `webpack.config.ts` because `undici` calls a Node 22+ API that Node 20 does not provide. (#1694)
 - **Resolver and learning-path docs refreshed**: A documentation maintenance pass corrected the package resolver chain, documented the lazy resolver registry and published-only App Platform bare-id resolution, and updated the learning-path reference for private-path routing and launch-context propagation. (#1659)
 
 ## 2.16.0
