@@ -1,4 +1,6 @@
 /**
+ * Contract: mcp-native
+ *
  * `pathfinder_finalize_for_app_platform` — produces the publish handoff
  * payload defined in `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md`.
  *
@@ -17,11 +19,10 @@
  * Platform write payload — clients must not be tempted to publish an
  * invalid artifact.
  *
- * P7 session-mode: accepts `{sessionToken}` in place of `{artifact}` using
- * the shared `resolveReadOnlyInput` helper. On a successful finalize the
- * server deletes the session — the token is single-use through here. A
- * failed delete logs but does not fail the response: the sliding session
- * TTL is the safety net so we cannot strand a session.
+ * Accepts `{sessionToken}` in place of `{artifact}` using
+ * `resolveReadOnlyInput`. On a successful finalize the server deletes the
+ * session — the token is single-use through here. A failed delete logs but
+ * does not fail the response: the sliding session TTL is the safety net.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -34,7 +35,7 @@ import { tokenLogPrefix } from '../lib/session-token';
 import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
-import { textResult, withToolErrorEnvelope } from './result';
+import { textResult, withToolErrorEnvelope, type ToolResult } from './result';
 import { ArtifactInputBase, SessionTokenBase } from './two-mode-input';
 
 const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.app/v1alpha1';
@@ -85,7 +86,7 @@ async function finalizeImpl(args: {
   status: 'draft' | 'published';
   sessionStore: AuthoringSessionStore;
   mcpSessionId: string | undefined;
-}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+}): Promise<ToolResult> {
   const { artifact, sessionToken, status, sessionStore, mcpSessionId } = args;
   const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
   if (!resolved.ok) {

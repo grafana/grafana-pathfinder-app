@@ -1,16 +1,13 @@
 /**
- * MCP authoring mutation tools.
+ * Contract: cli-routed
  *
- * Each tool accepts the in-flight artifact ({ content, manifest }) and
- * mutation arguments, dispatches to the corresponding CLI `runX` function
- * via the per-call tmpdir bridge in `state-bridge.ts`, and returns the
- * updated artifact alongside the CLI's `CommandOutcome` verbatim.
+ * Thin wrap of CLI tree/manifest commands. `operation` is the Commander
+ * command name; `opts` is the help-derived bag. Shared MCP plumbing
+ * (tmpdir bridge, `artifact` | `sessionToken`) sits around the runner and
+ * is not a second command interface.
  *
- * The input schemas here are intentionally **permissive** — fields like
- * `flagValues` (and the nested per-block-type fields) pass through as
- * `record<string, unknown>` so the CLI is the sole validator. This is what
- * the design calls out as the MCP's defining property: schema-illegal
- * output is impossible because it is impossible in the CLI.
+ * `opts` is intentionally permissive (`record<string, unknown>`) so the CLI
+ * remains the sole content validator.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -22,11 +19,12 @@ import { runAddStep } from '../../commands/add-step';
 import { runEditBlock } from '../../commands/edit-block';
 import { runRemoveBlock } from '../../commands/remove-block';
 import { runSetManifest } from '../../commands/set-manifest';
-import { BLOCK_SCHEMA_MAP, type BlockType } from '../../utils/block-registry';
+import type { BlockType } from '../../utils/block-registry';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
+import { registerCommandInterfaceConfig, validateCommandArgs } from '../lib/command-interface';
 import type { AuthoringSessionStore } from '../lib/session-store';
-import { writeAppend, writeDestructive } from './annotations';
+import { writeAppend } from './annotations';
 import { resolveAndPinToken } from './read-input';
 import {
   concurrentModificationResult,
@@ -35,6 +33,7 @@ import {
   sessionOutcomeResult,
   sessionTooLargeResult,
   withToolErrorEnvelope,
+  type ToolResult,
 } from './result';
 import {
   dispatchSessionMutation,
@@ -63,7 +62,7 @@ const ArtifactInputSchema = {
     'STATELESS MODE. In-flight authoring artifact returned by the previous authoring tool. Echo it back verbatim — including `__etag`. Do not re-serialize, reformat, re-key, or "fix" any field; even fields that look wrong are valid CLI output. The server hashes content+manifest and checks it against the echoed `__etag`; a mismatch returns ARTIFACT_MUTATED before the schema validator runs. Pass EITHER `artifact` OR `sessionToken`, not both.'
   ),
   sessionToken: SessionTokenBase.describe(
-    'SESSION MODE. Opaque token returned by pathfinder_create_package or a previous mutation ack. The server loads the artifact from session storage, runs the mutation, and writes the result back — the full artifact does not return to your context. Use pathfinder_inspect / pathfinder_get_block / pathfinder_list_blocks to read state on demand. Pass EITHER `artifact` OR `sessionToken`, not both.'
+    'SESSION MODE. Opaque token returned by pathfinder_create_package or a previous mutation ack. The server loads the artifact from session storage, runs the mutation, and writes the result back — the full artifact does not return to your context. Use pathfinder_inspect / pathfinder_read_session to read state on demand. Pass EITHER `artifact` OR `sessionToken`, not both.'
   ),
   expectedGeneration: ExpectedGenerationBase.describe(
     'OPTIONAL with sessionToken. The generation you observed on a previous call. When set, the server surfaces CONCURRENT_MODIFICATION immediately on mismatch instead of retrying. Omit this if you do not have specific concurrency expectations — the server will retry-once silently on a race.'
@@ -82,7 +81,7 @@ function verifyArtifactEtag(artifact: {
   content: Record<string, unknown>;
   manifest?: Record<string, unknown>;
   __etag?: string;
-}): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } | null {
+}): ToolResult | null {
   if (typeof artifact.__etag !== 'string' || artifact.__etag.length === 0) {
     return null;
   }
@@ -103,11 +102,36 @@ function verifyArtifactEtag(artifact: {
   });
 }
 
-const FlagValuesSchema = z
+const OptsSchema = z
   .record(z.string(), z.unknown())
-  .describe('Block field values keyed by field name (e.g. content, action, target). The CLI is the sole validator.');
+  .describe(
+    'Opaque CLI runner parameters keyed exactly as pathfinder_help returns them (camelCase). The CLI is the sole content validator.'
+  );
 
-const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as BlockType[];
+const MANAGE_BLOCK_OPERATIONS = ['add-block', 'edit-block', 'remove-block', 'add-step', 'add-choice'] as const;
+const MANAGE_GUIDE_OPERATIONS = ['set-manifest'] as const;
+
+type ManageBlockOperation = (typeof MANAGE_BLOCK_OPERATIONS)[number];
+type ManageGuideOperation = (typeof MANAGE_GUIDE_OPERATIONS)[number];
+type MutationOperation = ManageBlockOperation | ManageGuideOperation;
+
+/**
+ * Stable MCP transport plus a CLI operation and its opaque parameter bag.
+ * Operation-specific shape and validation belong to the command interface and
+ * imported CLI runner, not this MCP schema.
+ */
+function mutationSuiteSchema<T extends readonly [string, ...string[]]>(operations: T) {
+  return z.object({
+    ...ArtifactInputSchema,
+    operation: z.enum(operations).describe(`CLI command to run: ${operations.map((name) => `"${name}"`).join(' | ')}.`),
+    opts: OptsSchema.describe(
+      'Parameters for the selected CLI command, keyed exactly as pathfinder_help returns them.'
+    ),
+  });
+}
+
+const ManageBlockInputSchema = mutationSuiteSchema(MANAGE_BLOCK_OPERATIONS);
+const ManageGuideInputSchema = mutationSuiteSchema(MANAGE_GUIDE_OPERATIONS);
 
 /**
  * Shared dispatch for every mutation tool's two-mode input. Validates
@@ -121,6 +145,7 @@ const BlockTypeEnum = Object.keys(BLOCK_SCHEMA_MAP) as BlockType[];
 async function dispatchMutation(
   store: AuthoringSessionStore,
   mcpSessionId: string | undefined,
+  envelopeName: string,
   inputs: {
     artifact?: {
       content: Record<string, unknown>;
@@ -131,7 +156,7 @@ async function dispatchMutation(
     expectedGeneration?: number;
   },
   runner: (dir: string) => Promise<CommandOutcome> | CommandOutcome
-): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+): Promise<ToolResult> {
   const classified = classifyTwoModeInput({ artifact: inputs.artifact, sessionToken: inputs.sessionToken });
   if (classified.kind === 'error') {
     return classified.response;
@@ -141,7 +166,7 @@ async function dispatchMutation(
   // throw can escape, so the catch-all envelope can echo it back.
   const rawToken = classified.kind === 'session' ? classified.token : undefined;
 
-  return withToolErrorEnvelope(rawToken, 'mutation-tools', async () => {
+  return withToolErrorEnvelope(rawToken, envelopeName, async () => {
     if (classified.kind === 'session') {
       const resolution = await resolveAndPinToken(store, classified.token, mcpSessionId);
       if (!resolution.ok) {
@@ -174,154 +199,152 @@ async function dispatchMutation(
   });
 }
 
+/**
+ * The CLI's CONTAINER_HAS_CHILDREN remedy names `--orphan-children`, which
+ * the MCP surface withholds (append-only procedure — see the remove-block
+ * `optBlacklist` below). Re-word the remedy in MCP terms so agents are not
+ * told to retry with a parameter the validator will reject as unsupported.
+ */
+function adaptContainerHasChildren(outcome: CommandOutcome): CommandOutcome {
+  if (outcome.status !== 'error' || outcome.code !== 'CONTAINER_HAS_CHILDREN') {
+    return outcome;
+  }
+  // The CLI message's first clause is surface-neutral ('Block "x" has N
+  // child(ren)'); everything after the semicolon is CLI-flag advice.
+  const factClause = outcome.message.split(';')[0];
+  return {
+    ...outcome,
+    message:
+      `${factClause}. Pass \`cascade: true\` to remove the block and its entire subtree — destructive, no undo. ` +
+      'To keep the children, read them first (pathfinder_read_session with operation "get-block", or pathfinder_inspect), ' +
+      'then cascade-remove and re-add them under the parent in display order.',
+  };
+}
+
+// `before` / `after` / `position` / `orphanChildren` are withheld from the
+// MCP interface (blacklisted below → rejected as UNSUPPORTED_PARAMETER before
+// any runner is called), so the runners bind only the parameters an agent can
+// actually send.
+const MUTATION_RUNNERS: Record<
+  MutationOperation,
+  (dir: string, opts: Record<string, unknown>) => Promise<CommandOutcome> | CommandOutcome
+> = {
+  'add-block': (dir, opts) =>
+    runAddBlock({
+      dir,
+      type: opts.type as BlockType,
+      parentId: opts.parent as string | undefined,
+      branch: opts.branch as 'true' | 'false' | undefined,
+      ifAbsent: opts.ifAbsent === true,
+      explicitId: opts.id as string | undefined,
+      flagValues: opts,
+    }),
+  // The CLI takes the target id positionally, so `editBlock` treats an `id` in
+  // the patch as a rename and rejects it. Here `id` is the address, not a
+  // field, and must not reach the patch.
+  'edit-block': (dir, { id, ...flagValues }) => runEditBlock({ dir, id: id as string, flagValues }),
+  'remove-block': async (dir, opts) =>
+    adaptContainerHasChildren(
+      await runRemoveBlock({
+        dir,
+        id: opts.id as string,
+        cascade: opts.cascade === true,
+      })
+    ),
+  // These runners take the bag as-is and drop `parent` from the projection
+  // themselves, so the binding only lifts out the addressing field.
+  'add-step': (dir, opts) => runAddStep({ dir, parentId: opts.parent as string, flagValues: opts }),
+  'add-choice': (dir, opts) => runAddChoice({ dir, parentId: opts.parent as string, flagValues: opts }),
+  'set-manifest': (dir, opts) => runSetManifest({ dir, flagValues: opts }),
+};
+
+/** Bind a validated command-interface bag to its CLI runner. */
+function mutationRunner(
+  operation: MutationOperation,
+  opts: Record<string, unknown>
+): (dir: string) => Promise<CommandOutcome> | CommandOutcome {
+  return (dir) => MUTATION_RUNNERS[operation](dir, opts);
+}
+
 export function registerMutationTools(
   server: McpServer,
   options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
+
+  registerCommandInterfaceConfig('add-block', {
+    optBlacklist: ['dir', 'before', 'after', 'position'],
+    subcommandOpt: 'type',
+  });
+  registerCommandInterfaceConfig('edit-block', { optBlacklist: ['dir'] });
+  registerCommandInterfaceConfig('remove-block', { optBlacklist: ['dir', 'orphanChildren'] });
+  registerCommandInterfaceConfig('add-step', { optBlacklist: ['dir'] });
+  registerCommandInterfaceConfig('add-choice', { optBlacklist: ['dir'] });
+  registerCommandInterfaceConfig('set-manifest', { optBlacklist: ['dir'] });
+
+  const runSuite = async (args: {
+    operation: MutationOperation;
+    opts: Record<string, unknown>;
+    artifact?: {
+      content: Record<string, unknown>;
+      manifest?: Record<string, unknown>;
+      __etag?: string;
+    };
+    sessionToken?: string;
+    expectedGeneration?: number;
+  }) => {
+    const rejected = validateCommandArgs(args.operation, args.opts);
+    if (rejected) {
+      return rejected;
+    }
+    return dispatchMutation(
+      sessionStore,
+      mcpSessionId,
+      // Faulted mutations log e.g. `mutation:add-block`, not a suite-wide name.
+      `mutation:${args.operation}`,
+      { artifact: args.artifact, sessionToken: args.sessionToken, expectedGeneration: args.expectedGeneration },
+      mutationRunner(args.operation, args.opts)
+    );
+  };
+
+  // Tree writes share one resource-focused tool. `operation` is the CLI
+  // command name; `opts` is the help-derived bag for that command.
   server.registerTool(
-    'pathfinder_add_block',
+    'pathfinder_manage_block',
     {
-      description:
-        'Use this tool when the user wants to add a block (markdown, interactive step, multistep, quiz, section, conditional, video, etc.) to a Pathfinder guide. Block type and field schemas mirror the CLI — call `pathfinder_help` with command "add-block" for per-type fields. Returns the updated artifact.',
-      annotations: writeAppend('Add Pathfinder block'),
-      inputSchema: {
-        ...ArtifactInputSchema,
-        type: z.enum(BlockTypeEnum as [string, ...string[]]).describe('Block type discriminator.'),
-        parentId: z.string().optional().describe('Parent container id (omit for top-level append).'),
-        branch: z.enum(['true', 'false']).optional().describe('Conditional branch when parent is a conditional block.'),
-        ifAbsent: z
-          .boolean()
-          .optional()
-          .describe('Skip the append if a block with the same id already exists at the target location.'),
-        explicitId: z.string().optional().describe('Block id. Required for container blocks; auto-minted for leaves.'),
-        before: z.string().optional().describe('Insert immediately before the block with this id.'),
-        after: z.string().optional().describe('Insert immediately after the block with this id.'),
-        position: z.number().int().nonnegative().optional().describe('Insert at this 0-based index.'),
-        fields: FlagValuesSchema.optional().describe('Block fields keyed by name (e.g. content, action, target).'),
-      },
+      description: [
+        'Use this tool when the user wants to add, edit, or remove a single block, or append a step or quiz choice, in a Pathfinder guide.',
+        'Scope: one block at a time, addressed by id inside the guide tree. Guide-level metadata (description, category, language, targeting) is NOT a block operation — use pathfinder_manage_guide for that.',
+        'Pass `operation` as the CLI command name: "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice".',
+        'Adds append under the parent (reorder = remove-block + add-block). Duplicate ids → DUPLICATE_ID.',
+        'Steps and choices are not individually editable or removable; cascade-remove their parent block and rebuild it instead.',
+        'Call pathfinder_help({ command: <operation> }) for the `opts` interface; for add-block, call help again with the chosen block type as `subcommand`.',
+        'Returns a session ack (or the updated artifact in stateless mode).',
+      ].join(' '),
+      // Deliberately NOT destructive: MCP hints are per-tool (no per-operation
+      // hints), and every operation here mutates an in-flight authoring
+      // artifact, never live Grafana data. Marking the suite destructive
+      // would make hint-respecting clients confirm every append.
+      annotations: writeAppend('Manage Pathfinder block'),
+      inputSchema: ManageBlockInputSchema,
     },
-    async ({
-      artifact,
-      sessionToken,
-      expectedGeneration,
-      type,
-      parentId,
-      branch,
-      ifAbsent,
-      explicitId,
-      before,
-      after,
-      position,
-      fields,
-    }) =>
-      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
-        runAddBlock({
-          dir,
-          type: type as BlockType,
-          parentId,
-          branch,
-          ifAbsent,
-          explicitId,
-          before,
-          after,
-          position,
-          flagValues: fields ?? {},
-        })
-      )
+    runSuite
   );
 
   server.registerTool(
-    'pathfinder_add_step',
+    'pathfinder_manage_guide',
     {
-      description:
-        'Use this tool when the user wants to add a step inside a multistep or guided block in a Pathfinder guide. Returns the updated artifact.',
-      annotations: writeAppend('Add Pathfinder step'),
-      inputSchema: {
-        ...ArtifactInputSchema,
-        parentId: z.string().describe('Parent multistep or guided block id.'),
-        fields: FlagValuesSchema.describe('Step fields (title, instruction, blocks, etc.).'),
-      },
+      description: [
+        'Use this tool when the user wants to set or update the guide as a whole — top-level Pathfinder metadata on the package manifest (description, category, language, tags, targeting).',
+        'Scope: guide-level only, and the usual home for the final metadata pass before validate and finalize. For individual blocks, steps, or choices, use pathfinder_manage_block instead.',
+        'Pass `operation` as the CLI command name: "set-manifest".',
+        'Call pathfinder_help({ command: "set-manifest" }) for the `opts` interface.',
+        'Returns a session ack (or the updated artifact in stateless mode).',
+      ].join(' '),
+      annotations: writeAppend('Manage Pathfinder guide'),
+      inputSchema: ManageGuideInputSchema,
     },
-    async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
-      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
-        runAddStep({ dir, parentId, flagValues: fields })
-      )
-  );
-
-  server.registerTool(
-    'pathfinder_add_choice',
-    {
-      description:
-        'Use this tool when the user wants to add a choice (answer option) to a quiz block in a Pathfinder guide. Returns the updated artifact.',
-      annotations: writeAppend('Add Pathfinder choice'),
-      inputSchema: {
-        ...ArtifactInputSchema,
-        parentId: z.string().describe('Parent quiz block id.'),
-        fields: FlagValuesSchema.describe('Choice fields (text, isCorrect, feedback, etc.).'),
-      },
-    },
-    async ({ artifact, sessionToken, expectedGeneration, parentId, fields }) =>
-      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
-        runAddChoice({ dir, parentId, flagValues: fields })
-      )
-  );
-
-  server.registerTool(
-    'pathfinder_edit_block',
-    {
-      description:
-        'Use this tool when the user wants to edit or update an existing block in a Pathfinder guide. Overwrites the named fields; other fields are left untouched. Returns the updated artifact.',
-      annotations: writeDestructive('Edit Pathfinder block'),
-      inputSchema: {
-        ...ArtifactInputSchema,
-        id: z.string().describe('Block id to edit.'),
-        fields: FlagValuesSchema.describe('Fields to overwrite (others left untouched).'),
-      },
-    },
-    async ({ artifact, sessionToken, expectedGeneration, id, fields }) =>
-      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
-        runEditBlock({ dir, id, flagValues: fields })
-      )
-  );
-
-  server.registerTool(
-    'pathfinder_remove_block',
-    {
-      description:
-        'Use this tool when the user wants to delete a block from a Pathfinder guide. Identifies the block by id. Returns the updated artifact.',
-      annotations: writeDestructive('Remove Pathfinder block'),
-      inputSchema: {
-        ...ArtifactInputSchema,
-        id: z.string().describe('Block id to remove.'),
-        cascade: z.boolean().default(false).describe('When true, also remove children of a non-empty container.'),
-        orphanChildren: z
-          .boolean()
-          .optional()
-          .describe("When true, hoist children up to the removed block's parent instead of deleting them."),
-      },
-    },
-    async ({ artifact, sessionToken, expectedGeneration, id, cascade, orphanChildren }) =>
-      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
-        runRemoveBlock({ dir, id, cascade, orphanChildren })
-      )
-  );
-
-  server.registerTool(
-    'pathfinder_set_manifest',
-    {
-      description:
-        'Use this tool when the user wants to set or update top-level Pathfinder guide metadata (description, category, language, etc.) on the package manifest. Returns the updated artifact.',
-      annotations: writeDestructive('Set Pathfinder manifest', /* idempotent */ true),
-      inputSchema: {
-        ...ArtifactInputSchema,
-        fields: FlagValuesSchema.describe('Manifest fields to set (description, category, language, etc.).'),
-      },
-    },
-    async ({ artifact, sessionToken, expectedGeneration, fields }) =>
-      dispatchMutation(sessionStore, mcpSessionId, { artifact, sessionToken, expectedGeneration }, (dir) =>
-        runSetManifest({ dir, flagValues: fields })
-      )
+    runSuite
   );
 }
 
