@@ -1,9 +1,9 @@
 import React from 'react';
 import { PluginConfigPageProps, AppPluginMeta } from '@grafana/data';
-import { DocsPluginConfig } from '../../constants';
+import { PathfinderPluginConfig } from '../../constants';
 import ConfigurationForm from './ConfigurationForm';
 
-type JsonData = DocsPluginConfig & {
+type JsonData = PathfinderPluginConfig & {
   isDocsPasswordSet?: boolean;
 };
 

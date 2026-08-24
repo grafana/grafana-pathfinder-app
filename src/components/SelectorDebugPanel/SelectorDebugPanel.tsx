@@ -28,21 +28,12 @@ export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: Se
   // Handle leaving dev mode
   const handleLeaveDevMode = useCallback(async () => {
     try {
-      // Get current user ID and user list from global config
-      const globalConfig = (window as any).__pathfinderPluginConfig;
-      const currentUserId = (window as any).grafanaBootData?.user?.id;
-      const currentUserIds = globalConfig?.devModeUserIds ?? [];
-
+      // Clears only this user's opt-in, in their own per-user storage. No user id
+      // needed, and no other user is affected — which is what the old org-wide
+      // `devModeUserIds` write could not promise.
       // Import dynamically to avoid circular dependency
-      const { disableDevModeForUser } = await import('../../utils/dev-mode');
-
-      if (currentUserId) {
-        await disableDevModeForUser(currentUserId, currentUserIds);
-      } else {
-        // Fallback: disable for all if can't determine user
-        const { disableDevMode } = await import('../../utils/dev-mode');
-        await disableDevMode();
-      }
+      const { disableDevMode } = await import('../../utils/dev-mode');
+      await disableDevMode();
 
       window.location.reload();
     } catch (error) {

@@ -8,7 +8,7 @@ import {
 import {
   getConfigWithDefaults,
   isRecommenderEnabled,
-  DocsPluginConfig,
+  PathfinderPluginConfig,
   DEFAULT_RECOMMENDER_TIMEOUT,
   ONLINE_PACKAGES_BOOT_BUDGET_MS,
   ALLOWED_RECOMMENDER_DOMAINS,
@@ -158,7 +158,7 @@ export class ContextService {
    */
   static async fetchRecommendations(
     contextData: ContextData,
-    pluginConfig: DocsPluginConfig = {}
+    pluginConfig: PathfinderPluginConfig = {}
   ): Promise<{
     recommendations: Recommendation[];
     featuredRecommendations: Recommendation[];
@@ -285,7 +285,7 @@ export class ContextService {
    */
   private static async getExternalRecommendations(
     contextData: ContextData,
-    pluginConfig: DocsPluginConfig,
+    pluginConfig: PathfinderPluginConfig,
     bundledRecommendations: Recommendation[]
   ): Promise<{
     recommendations: Recommendation[];
@@ -817,7 +817,7 @@ export class ContextService {
    */
   private static async processLearningJourneys(
     recommendations: Recommendation[],
-    pluginConfig?: DocsPluginConfig
+    pluginConfig?: PathfinderPluginConfig
   ): Promise<Recommendation[]> {
     return Promise.all(
       recommendations.map(async (rec) => {
@@ -1719,7 +1719,7 @@ export class ContextService {
    */
   private static async getBundledInteractiveRecommendations(
     contextData: ContextData,
-    pluginConfig: DocsPluginConfig
+    pluginConfig: PathfinderPluginConfig
   ): Promise<Recommendation[]> {
     const bundledRecommendations: Recommendation[] = [];
 

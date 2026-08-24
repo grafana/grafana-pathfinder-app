@@ -41,6 +41,7 @@ describe('StorageKeys — stable string contract', () => {
       HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
       HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
       FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
+      DEV_MODE_OPT_IN: 'grafana-pathfinder-app-dev-mode-opt-in',
 
       // UI / panel state
       SUGGESTIONS: 'grafana-pathfinder-app-suggestions',

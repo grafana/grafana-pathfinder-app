@@ -98,7 +98,7 @@ The constants directory is organized into specialized files that separate concer
 **Critical Dependencies**:
 
 - **CSS Animations**: The `highlighting` timing constants must stay synchronized with CSS animation durations in `src/styles/interactive.styles.ts`. Changes to one require changes to the other.
-- **Plugin Configuration**: Values can be overridden via `DocsPluginConfig` interface in `src/constants.ts`
+- **Plugin Configuration**: Values can be overridden via `PathfinderPluginConfig` interface in `src/constants.ts`
 - **Action Handlers**: All action handlers depend on delay configurations from this file
 - **Requirements Manager**: Timeout and retry logic directly uses these constants
 
@@ -248,7 +248,7 @@ The constants directory is organized into specialized files that separate concer
 - Network timeouts: `DEFAULT_CONTENT_FETCH_TIMEOUT`, `DEFAULT_RECOMMENDER_TIMEOUT`
 - Dev mode defaults: `DEFAULT_DEV_MODE`, `DEFAULT_DEV_MODE_USER_IDS`
 - PeerJS defaults for live sessions: `DEFAULT_PEERJS_HOST`, `DEFAULT_PEERJS_PORT`, `DEFAULT_PEERJS_KEY`
-- `DocsPluginConfig` - Configuration interface for plugin settings
+- `PathfinderPluginConfig` - Configuration interface for plugin settings
 - Helper functions: `getConfigWithDefaults()`, `isRecommenderEnabled()`, `getRecommenderServiceUrl()`, etc.
 - `ROUTES` enum for routing
 - `TERMS_VERSION` - Terms and conditions version

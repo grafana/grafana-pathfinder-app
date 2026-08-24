@@ -4,7 +4,7 @@ import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/da
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
 import {
-  DocsPluginConfig,
+  PathfinderPluginConfig,
   DEFAULT_TUTORIAL_URL,
   DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
   DEFAULT_OPEN_PANEL_ON_LAUNCH,
@@ -14,17 +14,17 @@ import {
   DEFAULT_PEERJS_KEY,
   DEFAULT_PEERJS_SECURE,
   DEFAULT_ENABLE_CODA_TERMINAL,
-  getConfigWithDefaults,
   getDefaultRecommenderUrl,
   isKnownRecommenderUrl,
 } from '../../constants';
-import { fetchPluginJsonData, updatePluginSettings } from '../../utils/utils.plugin';
+import { fetchPluginJsonData } from '../../utils/utils.plugin';
+import { saveTenantSettings } from './save-settings';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
 import { config } from '@grafana/runtime';
 import { CodaBackendStatus } from './CodaBackendStatus';
 
-type JsonData = DocsPluginConfig;
+type JsonData = PathfinderPluginConfig;
 
 type State = {
   recommenderServiceUrl: string;
@@ -39,7 +39,7 @@ type State = {
   enableCodaTerminal: boolean;
 };
 
-function buildStateFromJsonData(jsonData: DocsPluginConfig | undefined): State {
+function buildStateFromJsonData(jsonData: PathfinderPluginConfig | undefined): State {
   return {
     recommenderServiceUrl:
       jsonData?.recommenderServiceUrl && !isKnownRecommenderUrl(jsonData.recommenderServiceUrl)
@@ -63,8 +63,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
   const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
-  const { enabled, pinned, jsonData: pluginJsonData } = plugin.meta;
-  const [resolvedJsonData, setResolvedJsonData] = useState<DocsPluginConfig>(pluginJsonData || {});
+  // `enabled`/`pinned` are deliberately not read here: echoing a possibly-stale
+  // snapshot of them is what unpinned the plugin (`aa1c2efd`). saveTenantSettings
+  // reads them authoritatively at write time.
+  const { jsonData: pluginJsonData } = plugin.meta;
+  const [resolvedJsonData, setResolvedJsonData] = useState<PathfinderPluginConfig>(pluginJsonData || {});
   const [state, setState] = useState<State>(() => buildStateFromJsonData(pluginJsonData));
   const [isSaving, setIsSaving] = useState(false);
   const isDraftEdited = useRef(false);
@@ -99,13 +102,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     };
   }, [plugin.meta.id]);
 
-  // SECURITY: Dev mode - hybrid approach (jsonData storage, multi-user ID scoping)
-  // Get current user ID for scoping
+  // Dev mode needs two gates: the tenant-level flag in settings, and this user's
+  // own opt-in in per-user storage. `isDevModeEnabled` combines them; the user id
+  // is only still read to label the UI and to warn when it cannot be determined.
   const currentUserId = config.bootData.user?.id;
-  const devModeUserIds = resolvedJsonData?.devModeUserIds ?? [];
 
   // Check if dev mode is enabled for THIS user (synchronous)
-  const devModeEnabledForUser = isDevModeEnabled(resolvedJsonData || {}, currentUserId);
+  const devModeEnabledForUser = isDevModeEnabled(resolvedJsonData || {});
   const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
 
   // Assistant dev mode state
@@ -137,10 +140,11 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       return;
     }
 
-    // SECURITY: Dev mode is now stored in plugin jsonData (server-side, admin-controlled)
+    // This user's opt-in only: it goes to their own per-user storage, never to the
+    // org-wide plugin-settings document. The tenant-level gate stays an admin setting.
     setDevModeToggling(true);
     try {
-      await toggleDevMode(currentUserId, devModeEnabledForUser, devModeUserIds);
+      await toggleDevMode(devModeEnabledForUser);
 
       // Reload page to refresh plugin config and apply changes globally
       setTimeout(() => {
@@ -150,8 +154,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       logger.error('Failed to toggle dev mode', { error });
 
       // Show user-friendly error message
-      const errorMessage =
-        error instanceof Error ? error.message : 'Failed to toggle dev mode. You may need admin permissions.';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to toggle dev mode. Please try again.';
       alert(errorMessage);
 
       setDevModeToggling(false);
@@ -163,14 +166,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     try {
       const newValue = event.target.checked;
 
-      await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
-        jsonData: {
-          ...(resolvedJsonData || {}),
-          ...getConfigWithDefaults(resolvedJsonData || {}),
-          enableAssistantDevMode: newValue,
-        },
+      await saveTenantSettings({
+        pluginId: plugin.meta.id,
+        changes: { enableAssistantDevMode: newValue },
       });
 
       // Reload page to refresh plugin config and apply changes globally
@@ -227,28 +225,23 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     setIsSaving(true);
 
     try {
-      // Preserve ALL existing jsonData fields first (including provisioned fields
-      // like stackId that aren't in DocsPluginConfig), then apply defaults for
-      // known fields, then override with this form's fields.
-      const newJsonData = {
-        ...(resolvedJsonData || {}),
-        ...getConfigWithDefaults(resolvedJsonData || {}),
-        recommenderServiceUrl: state.recommenderServiceUrl,
-        tutorialUrl: state.tutorialUrl,
-        interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
-        openPanelOnLaunch: state.openPanelOnLaunch,
-        enableLiveSessions: state.enableLiveSessions,
-        peerjsHost: state.peerjsHost,
-        peerjsPort: state.peerjsPort,
-        peerjsKey: state.peerjsKey,
-        peerjsSecure: state.peerjsSecure,
-        enableCodaTerminal: state.enableCodaTerminal,
-      };
-
-      await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
-        jsonData: newJsonData,
+      // Only the fields this tab owns. saveTenantSettings reads the current
+      // settings authoritatively and preserves everything else, so this form
+      // cannot clobber another tab's values or the provisioned ones.
+      await saveTenantSettings({
+        pluginId: plugin.meta.id,
+        changes: {
+          recommenderServiceUrl: state.recommenderServiceUrl,
+          tutorialUrl: state.tutorialUrl,
+          interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
+          openPanelOnLaunch: state.openPanelOnLaunch,
+          enableLiveSessions: state.enableLiveSessions,
+          peerjsHost: state.peerjsHost,
+          peerjsPort: state.peerjsPort,
+          peerjsKey: state.peerjsKey,
+          peerjsSecure: state.peerjsSecure,
+          enableCodaTerminal: state.enableCodaTerminal,
+        },
       });
 
       setTimeout(() => {

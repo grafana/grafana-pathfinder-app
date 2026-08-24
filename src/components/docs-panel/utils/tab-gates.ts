@@ -10,7 +10,7 @@
  */
 
 import { config } from '@grafana/runtime';
-import type { DocsPluginConfig } from '../../../constants';
+import type { PathfinderPluginConfig } from '../../../constants';
 import { isDevModeEnabled } from '../../../utils/dev-mode';
 
 export interface TabGates {
@@ -24,7 +24,7 @@ export function isCurrentUserEditor(): boolean {
   return user?.orgRole === 'Editor' || user?.orgRole === 'Admin' || user?.isGrafanaAdmin === true;
 }
 
-export function resolveTabGates(pluginConfig: DocsPluginConfig | undefined): TabGates {
+export function resolveTabGates(pluginConfig: PathfinderPluginConfig | undefined): TabGates {
   return {
     allowEditor: isCurrentUserEditor(),
     allowDevTools: isDevModeEnabled(pluginConfig || {}, config.bootData?.user?.id),

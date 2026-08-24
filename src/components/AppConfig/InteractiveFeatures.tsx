@@ -4,7 +4,7 @@ import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/da
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
 import {
-  DocsPluginConfig,
+  PathfinderPluginConfig,
   DEFAULT_ENABLE_AUTO_DETECTION,
   DEFAULT_REQUIREMENTS_CHECK_TIMEOUT,
   DEFAULT_GUIDED_STEP_TIMEOUT,
@@ -13,12 +13,11 @@ import {
   DEFAULT_KIOSK_RULES_URL,
   DEFAULT_ENABLE_AI_AUTO_HEAL,
   DEFAULT_ENABLE_TWO_TAB_CONTROLLER,
-  getConfigWithDefaults,
 } from '../../constants';
-import { updatePluginSettings } from '../../utils/utils.plugin';
+import { saveTenantSettings } from './save-settings';
 import { logger } from '../../lib/logging';
 
-type JsonData = DocsPluginConfig;
+type JsonData = PathfinderPluginConfig;
 
 type State = {
   enableAutoDetection: boolean;
@@ -35,7 +34,10 @@ export interface InteractiveFeaturesProps extends PluginConfigPageProps<AppPlugi
 
 const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
   const styles = useStyles2(getStyles);
-  const { enabled, pinned, jsonData } = plugin.meta;
+  // `enabled`/`pinned` are deliberately not read here: echoing a possibly-stale
+  // snapshot of them is what unpinned the plugin (`aa1c2efd`). saveTenantSettings
+  // reads them authoritatively at write time.
+  const { jsonData } = plugin.meta;
 
   // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
   // After save, page reload brings fresh jsonData - no sync needed
@@ -133,26 +135,21 @@ const InteractiveFeatures = ({ plugin }: InteractiveFeaturesProps) => {
     setIsSaving(true);
 
     try {
-      // Preserve ALL existing jsonData fields first (including provisioned fields
-      // like stackId that aren't in DocsPluginConfig), then apply defaults for
-      // known fields, then override with this form's fields.
-      const newJsonData = {
-        ...(jsonData || {}),
-        ...getConfigWithDefaults(jsonData || {}),
-        enableAutoDetection: state.enableAutoDetection,
-        requirementsCheckTimeout: state.requirementsCheckTimeout,
-        guidedStepTimeout: state.guidedStepTimeout,
-        disableAutoCollapse: state.disableAutoCollapse,
-        enableKioskMode: state.enableKioskMode,
-        kioskRulesUrl: state.kioskRulesUrl,
-        enableAiAutoHeal: state.enableAiAutoHeal,
-        enableTwoTabController: state.enableTwoTabController,
-      };
-
-      await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
-        jsonData: newJsonData,
+      // Only the fields this tab owns. saveTenantSettings reads current settings
+      // authoritatively first, so the `plugin.meta` snapshot this form was seeded
+      // from can no longer write stale values back over another tab's save.
+      await saveTenantSettings({
+        pluginId: plugin.meta.id,
+        changes: {
+          enableAutoDetection: state.enableAutoDetection,
+          requirementsCheckTimeout: state.requirementsCheckTimeout,
+          guidedStepTimeout: state.guidedStepTimeout,
+          disableAutoCollapse: state.disableAutoCollapse,
+          enableKioskMode: state.enableKioskMode,
+          kioskRulesUrl: state.kioskRulesUrl,
+          enableAiAutoHeal: state.enableAiAutoHeal,
+          enableTwoTabController: state.enableTwoTabController,
+        },
       });
 
       // Reload page to apply new settings

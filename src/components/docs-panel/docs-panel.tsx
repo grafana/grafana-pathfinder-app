@@ -21,7 +21,7 @@ const TerminalProviderLazy = lazy(() =>
 );
 // Lazy so @grafana/assistant stays out of the docs-panel init chain (see AiFixOrchestrator).
 const AiFixOrchestrator = lazy(() => import('./AiFixOrchestrator'));
-import { DocsPluginConfig } from '../../constants';
+import { PathfinderPluginConfig } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
@@ -192,7 +192,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return true;
   }
 
-  public constructor(pluginConfig: DocsPluginConfig = {}) {
+  public constructor(pluginConfig: PathfinderPluginConfig = {}) {
     // Initialize with the recommendations home tab
     const defaultTabs: LearningJourneyTab[] = [
       {
@@ -234,7 +234,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // remote packages — the Tier 3/4 injection point.
     //
     // Seed from the published global, not this surface's snapshot — the resolver is one app-wide singleton.
-    const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: DocsPluginConfig })
+    const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: PathfinderPluginConfig })
       .__pathfinderPluginConfig;
     setPackageResolver(createCompositeResolver(resolverConfig ?? pluginConfig));
 
@@ -291,7 +291,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * indistinguishable from "dev mode off" and would strip an authorized Dev
    * Tools tab.
    */
-  public syncPluginConfig(pluginConfig: DocsPluginConfig | null): void {
+  public syncPluginConfig(pluginConfig: PathfinderPluginConfig | null): void {
     if (pluginConfig && pluginConfig !== this.state.pluginConfig) {
       this.setState({ pluginConfig });
     }

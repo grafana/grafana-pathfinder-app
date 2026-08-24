@@ -44,9 +44,9 @@ The plugin configuration interface that allows administrators to set up the docu
 
 **General Settings:**
 
-- `docsBaseUrl` - Base URL for the documentation service
-- `docsUsername` - Username for authentication (optional)
-- `docsPassword` - Password for authentication (optional, stored securely)
+- `tutorialUrl` - Override for the bundled tutorial index (optional)
+- `enableCodaTerminal` - Show the Coda terminal UI
+- `enableLiveSessions`, `peerjsHost`, `peerjsPort`, `peerjsKey`, `peerjsSecure` - Collaborative sessions
 
 **Recommendations Config:**
 
@@ -118,44 +118,84 @@ The plugin configuration interface that allows administrators to set up the docu
 - `./TermsAndConditions` - Terms acceptance component
 - `./InteractiveFeatures` - Feature flags component
 
+**Where settings are stored**:
+
+Three stores own disjoint slices. See `src/constants.ts` for the authoritative
+shape and `src/utils/pathfinder-settings-api.ts` for the client.
+
+| Slice                                                                           | Store                                                                                                                                    | Written by               |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| Tenant settings (`PathfinderTenantSettings` — every field the config tabs edit) | `PathfinderSettings` App Platform resource, group `pathfinderbackend.ext.grafana.app`, one singleton named `default` per stack namespace | `saveTenantSettings`     |
+| This user's dev-mode opt-in (`devModeOptIn`)                                    | `localStorage`, key `StorageKeys.DEV_MODE_OPT_IN`                                                                                        | `lib/dev-mode-opt-in.ts` |
+| Provisioned fields (`stackId`, `secureJsonData.accessToken`)                    | plugin settings, written by Grafana Cloud stack-state-service                                                                            | provisioning only        |
+
+Plugin `jsonData` also remains the **fallback** store for tenant settings
+wherever the App Platform group is not served — OSS, self-managed, and local dev.
+
+**Why not `jsonData` for everything**: Grafana replaces `jsonData` wholesale on
+write and Cloud provisioning targets the same record, so the two writers
+overwrote each other. A config save erased the provisioned `stackId` and broke
+private guides (#1514), and an instance restart erased every admin setting by
+re-asserting the provisioned blob.
+
 **Configuration Structure**:
 
 ```typescript
-interface DocsPluginConfig {
-  // General Settings
-  docsBaseUrl?: string;
-  docsUsername?: string;
-  docsPassword?: string;
-  isDocsPasswordSet?: boolean;
+// Tenant-owned; stored in the PathfinderSettings resource (jsonData as fallback).
+interface PathfinderTenantSettings {
+  recommenderServiceUrl: string;
+  tutorialUrl: string;
+  acceptedTermsAndConditions: boolean;
+  termsVersion: string;
+  enableAutoDetection: boolean;
+  requirementsCheckTimeout: number;
+  guidedStepTimeout: number;
+  disableAutoCollapse: boolean;
+  interceptGlobalDocsLinks: boolean;
+  openPanelOnLaunch: boolean;
+  enableLiveSessions: boolean;
+  peerjsHost: string;
+  peerjsPort: number;
+  peerjsKey: string;
+  peerjsSecure: boolean;
+  enableCodaTerminal: boolean;
+  enableAiAutoHeal: boolean;
+  enableTwoTabController: boolean;
+  devMode: boolean; // tenant gate; stored as `devModeEnabled`
+  enableAssistantDevMode: boolean;
+  enableKioskMode: boolean;
+  kioskRulesUrl: string;
+}
 
-  // Recommendations
-  acceptedTermsAndConditions?: boolean;
-  recommenderServiceUrl?: string;
+// Per-user; stored in localStorage.
+interface PathfinderUserSettings {
+  devModeOptIn: boolean;
+}
 
-  // Dev Mode
-  devModeUserIds?: number[];
-
-  // Feature Flags
-  [key: string]: any; // Additional feature flags
+// What consumers read: the resolved union, every field optional because a store
+// may not have been written yet.
+interface PathfinderPluginConfig extends Partial<PathfinderTenantSettings>, Partial<PathfinderUserSettings> {
+  devModeUserIds?: number[]; // @deprecated, read-only legacy allow-list
+  stackId?: string; // provisioned; never written by this plugin
 }
 ```
 
 **Configuration Flow**:
 
-1. **Load Existing Config**: Reads current plugin configuration from `jsonData` and `secureJsonData`
+1. **Load Existing Config**: `usePathfinderPluginConfig` resolves the App Platform resource over `jsonData` over defaults, then folds in the per-user opt-in
 2. **Tab Navigation**: Admin selects appropriate configuration tab
 3. **Form Input**: Admin updates settings through form fields in selected tab
 4. **Validation**: Ensures required fields are populated and formats are correct
 5. **Terms Acceptance**: (Recommendations tab) Requires accepting terms to enable recommendations
-6. **Save & Update**: Persists to plugin metadata and updates global `ConfigService`
+6. **Save**: The tab passes only the fields it owns to `saveTenantSettings`, which re-reads current settings authoritatively and writes the resolved result
 7. **Reload**: Refreshes page to apply new configuration across plugin
 
 **Security Features**:
 
-- **Secret Storage**: Passwords stored in `secureJsonData` (encrypted, not queryable)
-- **Masked Input**: Uses `SecretInput` for password fields with masked display
-- **Reset Capability**: Allows clearing stored passwords
-- **Dev Mode Protection**: User-based dev mode access control via user ID list
+- **Secret Storage**: Secrets live in `secureJsonData` (encrypted, not queryable). No config tab writes them — the only value there is the provisioned `accessToken`
+- **Least privilege**: Writing tenant settings requires the `pathfinder-backend:settings-editor` role, bound to admin. Reading is bound to viewer
+- **Ownership isolation**: `configToSpec` projects through `TENANT_SETTING_KEYS`, so per-user and provisioned fields cannot reach the tenant resource
+- **Dev Mode Protection**: two gates — the admin-controlled tenant `devMode` flag and the user's own opt-in. Both must be true
 
 **Default Values**:
 

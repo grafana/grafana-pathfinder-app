@@ -5,7 +5,7 @@
 
 import { SceneObject, SceneObjectState } from '@grafana/scenes';
 import { RawContent, LearningJourneyMetadata, Milestone } from './content.types';
-import { DocsPluginConfig } from '../constants';
+import { PathfinderPluginConfig } from '../constants';
 
 /**
  * Resolved milestone context for path-type packages.
@@ -101,5 +101,5 @@ export interface CombinedPanelState extends SceneObjectState {
   tabs: LearningJourneyTab[];
   activeTabId: string;
   contextPanel: SceneObject<ContextPanelState>;
-  pluginConfig: DocsPluginConfig;
+  pluginConfig: PathfinderPluginConfig;
 }

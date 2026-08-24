@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePluginContext } from '@grafana/data';
-import { DocsPluginConfig, getConfigWithDefaults } from '../constants';
+import { PathfinderPluginConfig, ResolvedPathfinderConfig, getConfigWithDefaults } from '../constants';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import pluginJson from '../plugin.json';
 import { fetchPluginJsonData } from '../utils/utils.plugin';
+import { fetchPathfinderSettings } from '../utils/pathfinder-settings-api';
+import { hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
 
-export type ResolvedPathfinderConfig = ReturnType<typeof getConfigWithDefaults>;
+// Re-exported so existing importers keep a stable path; `constants` owns the shape.
+export type { ResolvedPathfinderConfig };
 
 interface PathfinderConfigWindow extends Window {
   __pathfinderPluginConfig?: ResolvedPathfinderConfig;
@@ -41,15 +44,58 @@ function configEquals(a: ResolvedPathfinderConfig, b: ResolvedPathfinderConfig):
 }
 
 /**
+ * Folds this user's own settings into a tenant-level config.
+ *
+ * Dev-mode surfaces need two gates: the tenant `devMode` flag and this user's
+ * opt-in. The opt-in lives in per-user storage, but every consumer checks it
+ * synchronously, so it is resolved once here and carried on the published config
+ * rather than read at each call site.
+ *
+ * The legacy fall-back reads the deprecated `devModeUserIds` array so a developer
+ * who opted in before the split is not silently dropped out of dev mode on the
+ * first load after upgrade.
+ */
+function withPerUserSettings(jsonData: PathfinderPluginConfig): PathfinderPluginConfig {
+  if (jsonData.devModeOptIn !== undefined) {
+    return jsonData;
+  }
+  return { ...jsonData, devModeOptIn: resolveDevModeOptIn() || hasLegacyDevModeOptIn(jsonData) };
+}
+
+/**
+ * Resolves settings across the three stores that own them, most authoritative
+ * last:
+ *
+ *   1. plugin `jsonData` — the legacy store, and the only one on OSS,
+ *      self-managed, and local dev. Also carries provisioned fields such as
+ *      `stackId`, which nothing else supplies.
+ *   2. the `PathfinderSettings` App Platform resource — authoritative wherever it
+ *      is served. Its CRD defaults every field, so a written resource wins
+ *      outright rather than partially.
+ *   3. per-user storage, applied by `withPerUserSettings` during publish.
+ *
+ * Missing values fall through to `getConfigWithDefaults`.
+ */
+async function resolvePathfinderSettings(): Promise<PathfinderPluginConfig> {
+  const [jsonData, tenantSettings] = await Promise.all([
+    fetchPluginJsonData(pluginJson.id),
+    // Never rejects: returns null when the API is absent or unwritten.
+    fetchPathfinderSettings(),
+  ]);
+
+  return tenantSettings ? { ...jsonData, ...tenantSettings } : jsonData;
+}
+
+/**
  * The only writer of `window.__pathfinderPluginConfig`, which is the readiness
  * signal documented in `docs/developer/E2E_TESTING_CONTRACT.md` and the config
  * source for callers that run outside React (scene construction, dev-mode
  * helpers, url-validator). Returns the published config so callers can use it
  * without re-reading the global.
  */
-export function publishPathfinderPluginConfig(jsonData: DocsPluginConfig): ResolvedPathfinderConfig {
+export function publishPathfinderPluginConfig(jsonData: PathfinderPluginConfig): ResolvedPathfinderConfig {
   const target = configWindow();
-  const next = getConfigWithDefaults(jsonData);
+  const next = getConfigWithDefaults(withPerUserSettings(jsonData));
   const current = target.__pathfinderPluginConfig;
 
   if (current && configEquals(current, next)) {
@@ -66,13 +112,14 @@ export function publishPathfinderPluginConfig(jsonData: DocsPluginConfig): Resol
 let refreshInFlight: Promise<ResolvedPathfinderConfig | undefined> | null = null;
 
 /**
- * Single-flight read of the saved settings. Grafana's `meta.jsonData` snapshot
- * can lag a save, so this is the authoritative value — but nothing waits on it:
- * failure leaves whatever was already published in place.
+ * Single-flight read of the saved settings across every store. Grafana's
+ * `meta.jsonData` snapshot can lag a save, so this is the authoritative value —
+ * but nothing waits on it: failure leaves whatever was already published in
+ * place.
  */
 export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfig | undefined> {
-  refreshInFlight ??= fetchPluginJsonData(pluginJson.id)
-    .then((jsonData) => publishPathfinderPluginConfig(jsonData))
+  refreshInFlight ??= resolvePathfinderSettings()
+    .then((resolved) => publishPathfinderPluginConfig(resolved))
     .catch((error) => {
       logger.warn('Failed to read plugin settings; keeping the plugin meta snapshot', { error });
       return undefined;
