@@ -62,7 +62,7 @@ export interface InteractiveQuizProps {
 // Thresholds for the compact side-by-side pill layout — short questions
 // (True/False, single-word choices) read better as pills; anything longer
 // or more numerous falls back to the stacked full-width rows.
-const PILL_LAYOUT_MAX_CHOICES = 3;
+const PILL_LAYOUT_MAX_CHOICES = 4;
 const PILL_LAYOUT_MAX_CHOICE_LENGTH = 20;
 
 // Counter for generating unique quiz IDs
