@@ -280,9 +280,11 @@ describe('deriveManifest — startingLocation', () => {
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
-  // The branches of a conditional are mutually exclusive, so neither speaks for
-  // the guide as a whole.
-  it('does not infer a starting location from inside a conditional branch', () => {
+  // `walkBlocks` in the cross-block lint descends both branches, and
+  // `firstStepMissingOnPage` accepts a branch declaration as the entry contract.
+  // Skipping branches here would stamp no location on a guide the lint calls
+  // complete.
+  it('descends a conditional branch to find the declaration', () => {
     const conditional = {
       type: 'conditional',
       conditions: ['is-admin'],
@@ -292,7 +294,7 @@ describe('deriveManifest — startingLocation', () => {
 
     const result = deriveManifest(guide([conditional]));
 
-    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/admin');
   });
 
   it('ignores a relative on-page: value rather than stamping a non-absolute path', () => {
@@ -494,17 +496,32 @@ describe('deriveManifest — startingLocation stops at navigation', () => {
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
-  // suggestRequirementsFromContext adds on-page:<currentPath> to EVERY formfill
-  // regardless of position, so it says a form is page-bound — not where the guide
-  // begins.
-  it('ignores the on-page the editor auto-suggests on a formfill', () => {
+  // The editor suggests on-page: for a first-step formfill and
+  // `firstStepMissingOnPage` accepts it as the entry declaration. Discarding it
+  // left such a guide with no alignment prompt and a first requirement it could
+  // fail the moment it opened.
+  it('takes the on-page of a formfill that is the first executable block', () => {
     const result = deriveManifest(guide([formfill(['on-page:/some-form-page'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/some-form-page');
+  });
+
+  it('takes a first-executable formfill declaration even behind leading prose', () => {
+    const result = deriveManifest(guide([markdown(), formfill(['on-page:/some-form-page'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/some-form-page');
+  });
+
+  // Past first position the suggestion says a form is page-bound, not where the
+  // guide begins — suggestRequirementsFromContext adds it to EVERY formfill.
+  it('ignores a formfill on-page once something executable came first', () => {
+    const result = deriveManifest(guide([highlight(), formfill(['on-page:/form'])]));
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
-  it('ignores a formfill on-page but still takes a later non-formfill one', () => {
-    const result = deriveManifest(guide([formfill(['on-page:/form']), highlight(['on-page:/explore'])]));
+  it('ignores a later formfill on-page but still takes a following non-formfill one', () => {
+    const result = deriveManifest(guide([highlight(), formfill(['on-page:/form']), highlight(['on-page:/explore'])]));
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
   });
@@ -540,7 +557,7 @@ describe('deriveManifest — startingLocation stops at navigation', () => {
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
-  it('ignores the on-page of a formfill written with the targetAction alias', () => {
+  it('ignores a later formfill on-page written with the targetAction alias', () => {
     const aliased = {
       type: 'interactive',
       targetAction: 'formfill',
@@ -550,12 +567,15 @@ describe('deriveManifest — startingLocation stops at navigation', () => {
       requirements: ['on-page:/some-form-page'],
     } as unknown as JsonBlock;
 
-    const result = deriveManifest(guide([aliased]));
+    const result = deriveManifest(guide([highlight(), aliased]));
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
-  it('ignores the on-page of a formfill STEP written with the targetAction alias', () => {
+  // A multistep is one executable unit at guide level, so its steps declare for
+  // it. `suggestRequirementsFromContext` never auto-suggests on-page inside a
+  // multistep, which makes a step-level one deliberate rather than incidental.
+  it('takes the on-page of a formfill STEP in the first executable multistep', () => {
     const multistep = {
       type: 'multistep',
       content: 'Do these',
@@ -567,7 +587,7 @@ describe('deriveManifest — startingLocation stops at navigation', () => {
 
     const result = deriveManifest(guide([multistep]));
 
-    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/form');
   });
 
   it('prefers the canonical action over the alias when a block carries both', () => {
@@ -584,7 +604,7 @@ describe('deriveManifest — startingLocation stops at navigation', () => {
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
   });
 
-  it('ignores a formfill STEP on-page inside a multistep', () => {
+  it('ignores a formfill STEP on-page once an earlier block was executable', () => {
     const multistep = {
       type: 'multistep',
       content: 'Do these',
@@ -594,7 +614,53 @@ describe('deriveManifest — startingLocation stops at navigation', () => {
       ],
     } as unknown as JsonBlock;
 
-    const result = deriveManifest(guide([multistep]));
+    const result = deriveManifest(guide([highlight(), multistep]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
+  });
+});
+
+describe('deriveManifest — navigation inside a conditional', () => {
+  const navigate = (reftarget = '/dashboards'): JsonBlock =>
+    ({ type: 'interactive', action: 'navigate', reftarget, content: 'Go there' }) as unknown as JsonBlock;
+
+  // The branch may have run, so the reader may already have been moved. A later
+  // on-page: then describes the guide's interior, not its entry.
+  it('stops at a navigate inside whenTrue', () => {
+    const conditional = {
+      type: 'conditional',
+      conditions: ['is-admin'],
+      whenTrue: [navigate('/admin')],
+      whenFalse: [],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([conditional, highlight(['on-page:/admin'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('stops at a navigate inside whenFalse', () => {
+    const conditional = {
+      type: 'conditional',
+      conditions: ['is-admin'],
+      whenTrue: [],
+      whenFalse: [navigate('/home')],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([conditional, highlight(['on-page:/home'])]));
+
+    expect((result.additionalFields as Record<string, unknown>).startingLocation).toBeUndefined();
+  });
+
+  it('still takes an on-page declared before the conditional', () => {
+    const conditional = {
+      type: 'conditional',
+      conditions: ['is-admin'],
+      whenTrue: [navigate('/admin')],
+      whenFalse: [],
+    } as unknown as JsonBlock;
+
+    const result = deriveManifest(guide([highlight(['on-page:/explore']), conditional]));
 
     expect((result.additionalFields as Record<string, unknown>).startingLocation).toBe('/explore');
   });

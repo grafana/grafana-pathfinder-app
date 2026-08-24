@@ -71,6 +71,16 @@ function actionOf(carrier: RequirementCarrier): string | undefined {
 const STOP = Symbol('navigation-reached');
 type Scan = string | undefined | typeof STOP;
 
+/** Blocks a reader executes. Mirrors `isExecutableBlock` in the cross-block lint. */
+const EXECUTABLE_BLOCK_TYPES: ReadonlySet<string> = new Set(['interactive', 'multistep', 'guided']);
+
+const CONDITIONAL_BLOCK_TYPE = 'conditional';
+
+/** Threaded through the walk so "first executable block" means first in document order. */
+interface ScanState {
+  sawExecutable: boolean;
+}
+
 /**
  * The `on-page:<path>` requirement of the first block that declares one, in
  * document order, stopping at the first navigation.
@@ -80,21 +90,30 @@ type Scan = string | undefined | typeof STOP;
  * self-declares where it begins (`forms/requirements-suggester.ts`), which makes
  * it authored data rather than a guess.
  *
- * Three deliberate narrowings, each of which exists to avoid stamping a page the
- * guide navigates TO rather than the page it starts ON.
+ * The walk follows the same order as `walkBlocks` in
+ * `lint/cross-block-checks.ts`, and "first executable block" means the same
+ * thing here as it does there. The lint is what tells an author their entry
+ * declaration is accepted; a derivation that traversed differently would stamp a
+ * manifest disagreeing with the advice the author acted on.
+ *
+ * Two narrowings, each of which exists to avoid stamping a page the guide
+ * navigates TO rather than the page it starts ON.
  *
  * 1. A `navigate` action's `reftarget` is not a fallback, and the walk STOPS at
- *    the first navigation. Past that point the reader's location is whatever the
- *    guide put them at, so a later `on-page:` describes the guide's interior, not
- *    its entry. A requirement carried BY the navigate block still counts — that
- *    is a precondition evaluated before the navigation happens. A self-navigating
- *    guide therefore yields nothing and correctly gets no alignment prompt.
- * 2. An `on-page:` on a `formfill` is ignored. `suggestRequirementsFromContext`
- *    adds `on-page:<currentPath>` to EVERY formfill regardless of position, so
- *    the requirement is evidence that a form is page-bound, not evidence about
- *    where the guide begins.
- * 3. Conditional branches are not descended into — their contents are mutually
- *    exclusive, so neither branch speaks for the guide.
+ *    the first navigation — including one inside a conditional branch, since a
+ *    branch that may have run may have moved the reader. Past that point the
+ *    reader's location is whatever the guide put them at, so a later `on-page:`
+ *    describes the guide's interior, not its entry. A requirement carried BY the
+ *    navigate block still counts — that is a precondition evaluated before the
+ *    navigation happens. A self-navigating guide therefore yields nothing and
+ *    correctly gets no alignment prompt.
+ * 2. A `formfill`'s `on-page:` counts only on the FIRST executable block.
+ *    `suggestRequirementsFromContext` adds `on-page:<currentPath>` to every
+ *    formfill regardless of position, so a later one is evidence that a form is
+ *    page-bound, not evidence about where the guide begins. In first position it
+ *    is both, and `firstStepMissingOnPage` accepts it as the entry declaration —
+ *    so discarding it would leave a guide the lint calls complete with no
+ *    alignment prompt and a first requirement it can fail on arrival.
  *
  * Only an absolute `on-page:` value qualifies. `onPageCheck` passes on a
  * substring match, so a relative `on-page:dashboards` works as a requirement,
@@ -106,28 +125,35 @@ type Scan = string | undefined | typeof STOP;
  * contributes only its leading token, never the joined string.
  */
 function deriveStartingLocation(blocks: readonly JsonBlock[] | undefined): string | undefined {
-  const found = scanBlocks(blocks);
+  const found = scanBlocks(blocks, { sawExecutable: false });
   return typeof found === 'string' ? found : undefined;
 }
 
-function scanBlocks(blocks: readonly JsonBlock[] | undefined): Scan {
+function scanBlocks(blocks: readonly JsonBlock[] | undefined, state: ScanState): Scan {
   for (const block of blocks ?? []) {
     const record = block as unknown as RequirementCarrier;
+    const type = String(record.type);
 
-    const own = declaredOnPage(record);
+    const isFirstExecutable = EXECUTABLE_BLOCK_TYPES.has(type) && !state.sawExecutable;
+    if (isFirstExecutable) {
+      state.sawExecutable = true;
+    }
+
+    const own = declaredOnPage(record, isFirstExecutable);
     if (own) {
       return own;
     }
 
     // A hand-authored multistep or guided block can declare the page on one of
-    // its steps rather than on the container.
+    // its steps rather than on the container. The container is the executable
+    // unit, so its steps inherit its first-executable standing.
     if (Array.isArray(record.steps)) {
       for (const step of record.steps) {
         const stepRecord = asRecord(step);
         if (!stepRecord) {
           continue;
         }
-        const fromStep = declaredOnPage(stepRecord);
+        const fromStep = declaredOnPage(stepRecord, isFirstExecutable);
         if (fromStep) {
           return fromStep;
         }
@@ -137,10 +163,22 @@ function scanBlocks(blocks: readonly JsonBlock[] | undefined): Scan {
       }
     }
 
-    if (TRANSPARENT_CONTAINERS.has(String(record.type)) && Array.isArray(record.blocks)) {
-      const nested = scanBlocks(record.blocks as JsonBlock[]);
+    if (TRANSPARENT_CONTAINERS.has(type) && Array.isArray(record.blocks)) {
+      const nested = scanBlocks(record.blocks as JsonBlock[], state);
       if (nested !== undefined) {
         return nested;
+      }
+    }
+
+    if (type === CONDITIONAL_BLOCK_TYPE) {
+      for (const branch of [record.whenTrue, record.whenFalse]) {
+        if (!Array.isArray(branch)) {
+          continue;
+        }
+        const nested = scanBlocks(branch as JsonBlock[], state);
+        if (nested !== undefined) {
+          return nested;
+        }
       }
     }
 
@@ -152,11 +190,11 @@ function scanBlocks(blocks: readonly JsonBlock[] | undefined): Scan {
 }
 
 /**
- * The absolute `on-page:` this carrier declares, ignoring a `formfill`'s — see
- * narrowing 2 above.
+ * The absolute `on-page:` this carrier declares. A `formfill`'s counts only when
+ * it sits on the first executable block — see narrowing 2 above.
  */
-function declaredOnPage(carrier: RequirementCarrier): string | undefined {
-  if (actionOf(carrier) === FORMFILL_ACTION) {
+function declaredOnPage(carrier: RequirementCarrier, isFirstExecutable: boolean): string | undefined {
+  if (actionOf(carrier) === FORMFILL_ACTION && !isFirstExecutable) {
     return undefined;
   }
   return firstOnPage(carrier.requirements);
