@@ -219,10 +219,10 @@ describe('InteractiveQuiz: shuffle behavior', () => {
       );
 
       // Find the rendered "Bravo" button (correct=true) — its visual position
-      // is whatever the shuffle produced; we look up by text. Single-select
-      // checks instantly on click — there is no separate Check Answer step.
+      // is whatever the shuffle produced; we look up by text.
       const correctButton = screen.getByRole('button', { name: 'Bravo' });
       fireEvent.click(correctButton);
+      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
 
       expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
     } finally {
@@ -248,6 +248,7 @@ describe('InteractiveQuiz: shuffle behavior', () => {
         </InteractiveQuiz>
       );
       fireEvent.click(screen.getByRole('button', { name: 'Charlie' }));
+      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
       expect(screen.getByText('Charlie hint')).toBeInTheDocument();
     } finally {
       spy.mockRestore();
@@ -316,8 +317,9 @@ describe('InteractiveQuiz: render-order stability', () => {
       );
       const orderBefore = readChoiceOrder();
 
-      // Answer correctly — single-select checks instantly on click.
+      // Answer correctly.
       fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
+      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
       expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
 
       // Force a parent re-render with an unrelated prop change (and a fresh choices reference).
@@ -358,8 +360,9 @@ describe('InteractiveQuiz: render-order stability', () => {
         .map((b) => b.textContent)
         .filter((t): t is string => !!t && /^(Alpha|Bravo|Charlie)$/.test(t));
 
-      // Pick a wrong answer so the hint surfaces — instant on click.
+      // Pick a wrong answer so the hint surfaces.
       fireEvent.click(screen.getByRole('button', { name: 'Charlie' }));
+      fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
       expect(screen.getByText('Charlie hint')).toBeInTheDocument();
 
       // Force a re-render with a new choices reference.
@@ -465,6 +468,7 @@ describe('InteractiveQuiz: skip reason', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
+    fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
 
     const store = require('../../global-state/completion-store') as {
       __getStoredReason: (stepId: string) => string | null;
@@ -494,7 +498,7 @@ describe('InteractiveQuiz: header label and attempts placement', () => {
     expect(screen.getByText('Knowledge check')).toBeInTheDocument();
   });
 
-  it('shows attempts remaining (max-attempts mode) alongside the label, with no Check Answer button for single-select', () => {
+  it('shows attempts remaining (max-attempts mode) alongside the label; Check Answer appears only once a choice is selected', () => {
     const choices: QuizChoice[] = [
       { id: 'a', text: 'True', correct: false },
       { id: 'b', text: 'False', correct: true },
@@ -506,6 +510,9 @@ describe('InteractiveQuiz: header label and attempts placement', () => {
     );
     expect(screen.getByText('2 attempts remaining')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Check Answer/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'True' }));
+    expect(screen.getByRole('button', { name: /Check Answer/i })).toBeInTheDocument();
   });
 
   it('does not show an attempts indicator in correct-only mode (the default)', () => {
@@ -579,7 +586,7 @@ describe('InteractiveQuiz: compact pill layout vs. stacked layout', () => {
   });
 });
 
-describe('InteractiveQuiz: multi-select keeps the explicit Check Answer button', () => {
+describe('InteractiveQuiz: multi-select requires an explicit Check Answer click', () => {
   beforeEach(() => {
     resetQuizCounter();
     (require('../../global-state/completion-store') as { __resetMockStore: () => void }).__resetMockStore();
@@ -610,6 +617,40 @@ describe('InteractiveQuiz: multi-select keeps the explicit Check Answer button',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
     fireEvent.click(screen.getByRole('button', { name: 'Bravo' }));
+    fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
+    expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
+  });
+});
+
+describe('InteractiveQuiz: single-select also requires an explicit Check Answer click', () => {
+  beforeEach(() => {
+    resetQuizCounter();
+    (require('../../global-state/completion-store') as { __resetMockStore: () => void }).__resetMockStore();
+  });
+
+  const choices: QuizChoice[] = [
+    { id: 'a', text: 'True', correct: false },
+    { id: 'b', text: 'False', correct: true },
+  ];
+
+  it("does not complete on the choice click alone — matches multi-select, challenge, and data-check's explicit-submit pattern", () => {
+    render(
+      <InteractiveQuiz question="Q" choices={choices} shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'False' }));
+    expect(screen.queryByText(/Correct! Well done\./i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Check Answer/i })).toBeInTheDocument();
+  });
+
+  it('completes only after Check Answer is clicked', () => {
+    render(
+      <InteractiveQuiz question="Q" choices={choices} shuffle={false}>
+        Q
+      </InteractiveQuiz>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'False' }));
     fireEvent.click(screen.getByRole('button', { name: /Check Answer/i }));
     expect(screen.getByText(/Correct! Well done\./i)).toBeInTheDocument();
   });

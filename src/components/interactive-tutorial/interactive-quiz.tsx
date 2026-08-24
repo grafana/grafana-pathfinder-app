@@ -262,15 +262,12 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     }
   }, [selectedIds, correctIds, multiSelect]);
 
-  // Build analytics properties for quiz interactions. `selectedIdsForAnalytics`
-  // is passed explicitly rather than read from `selectedIds` state — for the
-  // single-select instant-check path (see `handleChoiceClick`), the check runs
-  // in the same tick as the click, before React has flushed the state update.
+  // Build analytics properties for quiz interactions
   const buildQuizAnalyticsProps = useCallback(
-    (isCorrect: boolean, attemptCount: number, selectedIdsForAnalytics: Set<string>, revealed = false) => {
+    (isCorrect: boolean, attemptCount: number, revealed = false) => {
       // Get selected answer texts (truncate if too long)
       const selectedAnswers = choices
-        .filter((c) => selectedIdsForAnalytics.has(c.id))
+        .filter((c) => selectedIds.has(c.id))
         .map((c) => c.text)
         .join(', ');
       const truncatedSelected = selectedAnswers.length > 200 ? selectedAnswers.slice(0, 200) + '...' : selectedAnswers;
@@ -308,15 +305,13 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         sectionTitle,
       });
     },
-    [choices, question, stepId, multiSelect, stepIndex, totalSteps, sectionId, sectionTitle]
+    [choices, selectedIds, question, stepId, multiSelect, stepIndex, totalSteps, sectionId, sectionTitle]
   );
 
-  // Shared "was this correct" outcome handling for both interaction paths:
-  // multi-select's explicit Check Answer button, and single-select's
-  // instant-on-click check. Keeping this in one place means the two paths
-  // can't drift on attempts/hint/reveal/analytics behavior.
+  // Shared "was this correct" outcome handling, used by the single explicit
+  // Check Answer step both quiz modes share (see `handleCheckAnswer`).
   const evaluateAndApply = useCallback(
-    (isCorrect: boolean, wrongChoice: QuizChoice | undefined, selectedIdsForAnalytics: Set<string>) => {
+    (isCorrect: boolean, wrongChoice: QuizChoice | undefined) => {
       const newAttempts = attempts + 1;
       setAttempts(newAttempts);
 
@@ -325,10 +320,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         persistCompletion();
         setShowHint(null);
 
-        reportAppInteraction(
-          UserInteraction.StepAutoCompleted,
-          buildQuizAnalyticsProps(true, newAttempts, selectedIdsForAnalytics)
-        );
+        reportAppInteraction(UserInteraction.StepAutoCompleted, buildQuizAnalyticsProps(true, newAttempts));
 
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
@@ -343,10 +335,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
           setIsRevealed(true);
           persistCompletion();
 
-          reportAppInteraction(
-            UserInteraction.StepAutoCompleted,
-            buildQuizAnalyticsProps(false, newAttempts, selectedIdsForAnalytics, true)
-          );
+          reportAppInteraction(UserInteraction.StepAutoCompleted, buildQuizAnalyticsProps(false, newAttempts, true));
 
           if (onStepComplete && stepId) {
             onStepComplete(stepId);
@@ -357,43 +346,38 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     [attempts, persistCompletion, buildQuizAnalyticsProps, onStepComplete, stepId, completionMode, maxAttempts]
   );
 
-  // Handle choice selection. Multi-select only ever toggles — the answer
-  // isn't complete until the user has picked everything they mean to and
-  // clicks "Check Answer" (see `handleCheckAnswer`). Single-select has no
-  // such ambiguity: the clicked choice IS the whole answer, so the click
-  // both selects and checks it in one step, with no separate submit.
+  // Handle choice selection — both quiz modes only ever select/toggle here.
+  // The answer isn't checked until the user clicks "Check Answer"
+  // (`handleCheckAnswer`), matching every other verification-style
+  // interactive block in the product (`challenge`'s "Check my work",
+  // `input`'s "Run check").
   const handleChoiceClick = useCallback(
     (choiceId: string) => {
       if (isCompleted || isRevealed || !isEnabled) {
         return;
       }
 
-      if (multiSelect) {
-        setSelectedIds((prev) => {
-          const newSet = new Set(prev);
+      setSelectedIds((prev) => {
+        const newSet = new Set(prev);
+        if (multiSelect) {
           if (newSet.has(choiceId)) {
             newSet.delete(choiceId);
           } else {
             newSet.add(choiceId);
           }
-          return newSet;
-        });
-        setLastResult('none');
-        setShowHint(null);
-        return;
-      }
-
-      const newSelection = new Set([choiceId]);
-      setSelectedIds(newSelection);
-      const clickedChoice = choices.find((c) => c.id === choiceId);
-      const isCorrect = Boolean(clickedChoice?.correct);
-      evaluateAndApply(isCorrect, isCorrect ? undefined : clickedChoice, newSelection);
+        } else {
+          newSet.clear();
+          newSet.add(choiceId);
+        }
+        return newSet;
+      });
+      setLastResult('none');
+      setShowHint(null);
     },
-    [isCompleted, isRevealed, isEnabled, multiSelect, choices, evaluateAndApply]
+    [isCompleted, isRevealed, isEnabled, multiSelect]
   );
 
-  // Handle check answer (multi-select only — see `handleChoiceClick` for the
-  // single-select instant-check path).
+  // Handle check answer
   const handleCheckAnswer = useCallback(() => {
     if (selectedIds.size === 0) {
       return;
@@ -401,7 +385,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
     const isCorrect = checkAnswer();
     const wrongChoice = choices.find((c) => selectedIds.has(c.id) && !c.correct);
-    evaluateAndApply(isCorrect, wrongChoice, selectedIds);
+    evaluateAndApply(isCorrect, wrongChoice);
   }, [selectedIds, checkAnswer, choices, evaluateAndApply]);
 
   // Handle skip
@@ -456,9 +440,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
 
   // Determine if we should show the blocked state
   const isBlocked = !isEnabled && !isCompleted;
-  // Multi-select only — single-select checks instantly on click (see
-  // `handleChoiceClick`), so it never needs an explicit submit button.
-  const showCheckButton = multiSelect && !isCompleted && !isRevealed && displayedSelection.size > 0;
+  const showCheckButton = !isCompleted && !isRevealed && displayedSelection.size > 0;
   const attemptsRemaining = completionMode === 'max-attempts' ? maxAttempts - attempts : null;
   const showAttemptsRemaining = attemptsRemaining !== null && !isCompleted && !isRevealed;
   // Compact pill layout only for short questions — a handful of short
@@ -869,6 +851,7 @@ const getQuizStyles = (theme: GrafanaTheme2) => {
     actions: css`
       display: flex;
       align-items: center;
+      justify-content: flex-end;
       gap: ${theme.spacing(1.5)};
     `,
 
