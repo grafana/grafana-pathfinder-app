@@ -19,12 +19,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { renderMachineJson } from '../../utils/output';
-import {
-  formatCommandInterface,
-  isCommandInterfaceError,
-  registeredCommandInterfaceNames,
-} from '../lib/command-interface';
-import { CLI_COMMANDS } from '../program';
+import { boundCommandNames, formatCommandInterface, isCommandInterfaceError } from '../lib/command-interface';
+import { commandSummary } from '../../commands/manifest';
 import { readOnly } from './annotations';
 import { textResult } from './result';
 
@@ -53,15 +49,12 @@ export function registerHelpTool(server: McpServer): void {
     },
     async ({ command, subcommand }) => {
       if (!command) {
-        const registered = registeredCommandInterfaceNames();
+        // The manifest's summary, not a surface's rendering of it: the Commander
+        // group root appends a table of `--flag` names to its description, and an
+        // agent cannot send those.
         return textResult(
           renderMachineJson({
-            commands: Array.from(CLI_COMMANDS.entries())
-              .filter(([name]) => registered.has(name))
-              .map(([name, cmd]) => ({
-                name,
-                description: cmd.description(),
-              })),
+            commands: boundCommandNames().map((name) => ({ name, description: commandSummary(name) })),
           })
         );
       }

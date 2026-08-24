@@ -1,57 +1,48 @@
 /**
  * `pathfinder-cli add-step <dir> --parent <id> [flags]` — append a step to a
- * multistep or guided block. Flags are derived from `JsonStepSchema`.
+ * multistep or guided block. Content fields come from `JsonStepSchema`.
+ *
+ * Composition over a shared runtime schema (RFC CLI-MCP-COMMAND-CONTRACT §8.2): the
+ * step content fields are copied out of `JsonStepSchema` and annotated as content,
+ * and the command adds its own `parent` and `dir` on top. `JsonStepSchema` is left
+ * untouched for the block editor and validation layer, which have no business knowing
+ * about flags.
  */
 
-import { Command, Option } from 'commander';
+import { z } from 'zod';
 
 import { JsonStepSchema } from '../../types/json-guide.schema';
+import { defineCommand, mountCommander, pickContent, shapeKeys, withPolicy } from '../contracts';
 import type { JsonStep } from '../../types/json-guide.types';
 import { assertCliStepFields, CliValidationError } from '../utils/cli-validators';
 import { appendStep, mutateAndValidate, PackageIOError } from '../utils/package-io';
 import {
   issueToOutcome,
   manyIssuesOutcome,
-  printOutcome,
-  readOutputOptions,
   renderError,
   type CommandOutcome,
   type OutcomeWarning,
 } from '../utils/output';
-import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 import { isNonEmptySelector, unverifiedSelectorWarning } from '../utils/warnings';
 
-export const addStepCommand = new Command('add-step')
-  .description('Append a step to a multistep or guided block')
-  .argument('<dir>', 'package directory')
-  .addOption(new Option('--parent <id>', 'Parent multistep or guided block id').makeOptionMandatory());
+// Read without a cast: `.refine()` returns `this` in Zod v4, so `.shape` keeps its
+// per-field types. Casting to `ZodRawShape` would erase them invisibly — the command
+// schema still builds, but `z.output` degrades to `dir` and `parent` alone, making
+// every content field a runner reads an unchecked property access.
+const stepShape = JsonStepSchema.shape;
+const STEP_CONTENT_KEYS = shapeKeys(JsonStepSchema);
 
-// JsonStepSchema is `.refine()`-wrapped; .shape stays accessible in Zod v4.
-registerSchemaOptions(addStepCommand, JsonStepSchema as unknown as Parameters<typeof registerSchemaOptions>[1]);
-
-addStepCommand.action(async function (this: Command, dir: string) {
-  const opts = this.opts() as Record<string, unknown>;
-  const output = readOutputOptions(this);
-  const outcome = await runAddStep({
-    dir,
-    parentId: String(opts.parent),
-    flagValues: opts,
-  });
-  process.exit(printOutcome(outcome, output));
+export const AddStepCommand = z.object({
+  dir: z.string().describe('package directory').meta({ role: 'io' }),
+  parent: z.string().describe('Parent multistep or guided block id').meta({ role: 'addressing' }),
+  ...withPolicy(stepShape, { role: 'content' }),
 });
 
-interface AddStepArgs {
-  dir: string;
-  parentId: string;
-  flagValues: Record<string, unknown>;
-}
+export type AddStepInput = z.output<typeof AddStepCommand>;
 
-export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
-  const projected = parseOptionValues(
-    JsonStepSchema as unknown as Parameters<typeof parseOptionValues>[0],
-    args.flagValues
-  ) as Record<string, unknown>;
-  delete projected.parent;
+export async function runAddStep(args: AddStepInput): Promise<CommandOutcome> {
+  const parentId = args.parent;
+  const projected = pickContent(args as Record<string, unknown>, STEP_CONTENT_KEYS);
 
   try {
     assertCliStepFields(projected);
@@ -71,7 +62,7 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
   let legacyIdsMinted = 0;
   try {
     const result = await mutateAndValidate(args.dir, ({ content }) => {
-      const r = appendStep(content, candidate.data as JsonStep, args.parentId);
+      const r = appendStep(content, candidate.data as JsonStep, parentId);
       position = r.position;
     });
     if (!result.validation.ok) {
@@ -101,7 +92,7 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
 
   return {
     status: 'ok',
-    summary: `Added step (action: ${String(candidate.data.action)}) to "${args.parentId}" at ${position}`,
+    summary: `Added step (action: ${String(candidate.data.action)}) to "${parentId}" at ${position}`,
     details: {
       action: String(candidate.data.action),
       position,
@@ -110,13 +101,25 @@ export async function runAddStep(args: AddStepArgs): Promise<CommandOutcome> {
     },
     ...(warnings.length > 0 ? { warnings } : {}),
     hints: [
-      `Add another step with: pathfinder-cli add-step ${args.dir} --parent ${args.parentId} --action <action>`,
+      `Add another step with: pathfinder-cli add-step ${args.dir} --parent ${parentId} --action <action>`,
       `Or move on with: pathfinder-cli add-block <type> ${args.dir}`,
     ],
     data: {
       position,
-      parent: args.parentId,
+      parent: parentId,
       ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
     },
   };
 }
+
+export const addStepSpec = defineCommand({
+  name: 'add-step',
+  summary: 'Append a step to a multistep or guided block',
+  schema: AddStepCommand,
+  run: runAddStep,
+});
+
+export const addStepCommand = mountCommander(addStepSpec, {
+  positionals: ['dir'],
+  placeholders: { parent: 'id' },
+});

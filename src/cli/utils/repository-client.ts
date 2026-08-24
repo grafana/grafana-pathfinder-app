@@ -1,10 +1,12 @@
 /**
- * CDN repository client for the Pathfinder authoring MCP.
+ * CDN repository client.
  *
- * Read-only fetcher for the public Pathfinder package CDN. Used by the
- * `pathfinder_read_repository` (list-packages/get-package/get-manifest) /
- * `pathfinder_launch_package` tools (P6 in
- * `docs/design/AI-AUTHORING-IMPLEMENTATION.md`).
+ * Read-only fetcher for the public Pathfinder package CDN. Read by the
+ * `pathfinder_read_repository` / `pathfinder_launch_package` MCP tools (P6 in
+ * `docs/design/AI-AUTHORING-IMPLEMENTATION.md`) and by `e2e --remote`, which is why it
+ * sits here rather than under either of them: fetching a public index is not adaptation,
+ * and a runner reaching into an adapter's folder for it was the only place that
+ * dependency ran the wrong way.
  *
  * Design notes:
  *   - No auth — repository is public.
@@ -20,13 +22,13 @@
  *   - Slash-normalization mirrors `buildPackageFileUrl` in
  *     `src/lib/package-recommendations-client.ts`. We do NOT import that
  *     file because it pulls in `@grafana/runtime`, which is not available
- *     to the MCP Node process.
+ *     to a Node process.
  */
 
 import type { z } from 'zod';
 
-import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryEntrySchema } from '../../../types/package.schema';
-import type { RepositoryEntry } from '../../../types/package.types';
+import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryEntrySchema } from '../../types/package.schema';
+import type { RepositoryEntry } from '../../types/package.types';
 
 const DEFAULT_REPOSITORY_URL = 'https://interactive-learning.grafana.net/packages/';
 const REPOSITORY_INDEX_TTL_MS = 60_000;

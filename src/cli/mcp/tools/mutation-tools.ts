@@ -13,16 +13,11 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { runAddBlock } from '../../commands/add-block';
-import { runAddChoice } from '../../commands/add-choice';
-import { runAddStep } from '../../commands/add-step';
-import { runEditBlock } from '../../commands/edit-block';
-import { runRemoveBlock } from '../../commands/remove-block';
-import { runSetManifest } from '../../commands/set-manifest';
-import type { BlockType } from '../../utils/block-registry';
+import { parseCommandInput, variantNames, type CommandSpec } from '../../contracts';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import type { CommandOutcome } from '../../utils/output';
-import { registerCommandInterfaceConfig, validateCommandArgs } from '../lib/command-interface';
+import { bindCommandInterface, commandArgViolations } from '../lib/command-interface';
+import { COMMAND_GROUPS, COMMAND_SPECS } from '../../commands/manifest';
 import type { AuthoringSessionStore } from '../lib/session-store';
 import { writeAppend } from './annotations';
 import { resolveAndPinToken } from './read-input';
@@ -108,19 +103,50 @@ const OptsSchema = z
     'Opaque CLI runner parameters keyed exactly as pathfinder_help returns them (camelCase). The CLI is the sole content validator.'
   );
 
-const MANAGE_BLOCK_OPERATIONS = ['add-block', 'edit-block', 'remove-block', 'add-step', 'add-choice'] as const;
-const MANAGE_GUIDE_OPERATIONS = ['set-manifest'] as const;
+/**
+ * The operations each mutation tool offers, and what each withholds from agents.
+ * The only statement of the exposure decision: the `operation` enum, the interface
+ * bindings, and the dispatch all derive from these tables, so a CLI command is
+ * agent-addressable because it is named here rather than because it has a schema.
+ *
+ * `withhold` narrows the procedure. `pathfinder_manage_block` is append-only, so an
+ * agent that could position a block could reorder by proxy, and `remove-block`'s
+ * child promotion is a tree edit an agent should make by re-adding. The CLI offers
+ * all of them, and the schemas do not know this file exists.
+ */
+const MANAGE_BLOCK_OPERATIONS = {
+  'add-block': { withhold: ['before', 'after', 'position'] },
+  'edit-block': { withhold: ['before', 'after', 'position'] },
+  'remove-block': { withhold: ['orphanChildren'] },
+  'add-step': {},
+  'add-choice': {},
+} as const satisfies Record<string, { withhold?: readonly string[] }>;
 
-type ManageBlockOperation = (typeof MANAGE_BLOCK_OPERATIONS)[number];
-type ManageGuideOperation = (typeof MANAGE_GUIDE_OPERATIONS)[number];
+const MANAGE_GUIDE_OPERATIONS = {
+  'set-manifest': {},
+} as const satisfies Record<string, { withhold?: readonly string[] }>;
+
+type ManageBlockOperation = keyof typeof MANAGE_BLOCK_OPERATIONS;
+type ManageGuideOperation = keyof typeof MANAGE_GUIDE_OPERATIONS;
 type MutationOperation = ManageBlockOperation | ManageGuideOperation;
+
+/**
+ * Operation names as a non-empty tuple, for `z.enum`. `Object.keys` widens to
+ * `string[]`, so the key union is restored by assertion — true by construction,
+ * since the tables are `const`.
+ */
+function operationNames<K extends string>(table: Record<K, unknown>): [K, ...K[]] {
+  const names = Object.keys(table) as K[];
+  return [names[0]!, ...names.slice(1)];
+}
 
 /**
  * Stable MCP transport plus a CLI operation and its opaque parameter bag.
  * Operation-specific shape and validation belong to the command interface and
  * imported CLI runner, not this MCP schema.
  */
-function mutationSuiteSchema<T extends readonly [string, ...string[]]>(operations: T) {
+function mutationSuiteSchema<K extends string>(table: Record<K, { withhold?: readonly string[] }>) {
+  const operations = operationNames(table);
   return z.object({
     ...ArtifactInputSchema,
     operation: z.enum(operations).describe(`CLI command to run: ${operations.map((name) => `"${name}"`).join(' | ')}.`),
@@ -200,10 +226,10 @@ async function dispatchMutation(
 }
 
 /**
- * The CLI's CONTAINER_HAS_CHILDREN remedy names `--orphan-children`, which
- * the MCP surface withholds (append-only procedure — see the remove-block
- * `optBlacklist` below). Re-word the remedy in MCP terms so agents are not
- * told to retry with a parameter the validator will reject as unsupported.
+ * The CLI's CONTAINER_HAS_CHILDREN remedy names `--orphan-children`, a parameter
+ * this surface withholds because the authoring procedure is append-only. Re-word
+ * the remedy in MCP terms so agents are not told to retry with a parameter the
+ * validator will reject as unsupported.
  */
 function adaptContainerHasChildren(outcome: CommandOutcome): CommandOutcome {
   if (outcome.status !== 'error' || outcome.code !== 'CONTAINER_HAS_CHILDREN') {
@@ -221,49 +247,81 @@ function adaptContainerHasChildren(outcome: CommandOutcome): CommandOutcome {
   };
 }
 
-// `before` / `after` / `position` / `orphanChildren` are withheld from the
-// MCP interface (blacklisted below → rejected as UNSUPPORTED_PARAMETER before
-// any runner is called), so the runners bind only the parameters an agent can
-// actually send.
-const MUTATION_RUNNERS: Record<
-  MutationOperation,
-  (dir: string, opts: Record<string, unknown>) => Promise<CommandOutcome> | CommandOutcome
-> = {
-  'add-block': (dir, opts) =>
-    runAddBlock({
-      dir,
-      type: opts.type as BlockType,
-      parentId: opts.parent as string | undefined,
-      branch: opts.branch as 'true' | 'false' | undefined,
-      ifAbsent: opts.ifAbsent === true,
-      explicitId: opts.id as string | undefined,
-      flagValues: opts,
-    }),
-  // The CLI takes the target id positionally, so `editBlock` treats an `id` in
-  // the patch as a rename and rejects it. Here `id` is the address, not a
-  // field, and must not reach the patch.
-  'edit-block': (dir, { id, ...flagValues }) => runEditBlock({ dir, id: id as string, flagValues }),
-  'remove-block': async (dir, opts) =>
-    adaptContainerHasChildren(
-      await runRemoveBlock({
-        dir,
-        id: opts.id as string,
-        cascade: opts.cascade === true,
-      })
-    ),
-  // These runners take the bag as-is and drop `parent` from the projection
-  // themselves, so the binding only lifts out the addressing field.
-  'add-step': (dir, opts) => runAddStep({ dir, parentId: opts.parent as string, flagValues: opts }),
-  'add-choice': (dir, opts) => runAddChoice({ dir, parentId: opts.parent as string, flagValues: opts }),
-  'set-manifest': (dir, opts) => runSetManifest({ dir, flagValues: opts }),
+/**
+ * The whole MCP adapter for a §8 command: add the tmpdir the bridge created, parse,
+ * run. The bag is not rekeyed, coerced, or filtered, because the schema the agent
+ * was shown is the schema the runner is parsed against.
+ */
+function runSpec<S extends z.ZodObject>(
+  spec: CommandSpec<S>,
+  dir: string,
+  opts: Record<string, unknown>
+): Promise<CommandOutcome> | CommandOutcome {
+  const parsed = parseCommandInput(spec, { ...opts, dir });
+  return parsed.ok ? spec.run(parsed.value) : parsed.outcome;
+}
+
+/**
+ * Outcomes this surface re-words on the way out, because a remedy written for a
+ * command line can name a parameter agents are not offered. Translating here lets
+ * the runner keep saying the CLI-true thing.
+ */
+const OUTCOME_ADAPTERS: Partial<Record<MutationOperation, (outcome: CommandOutcome) => CommandOutcome>> = {
+  'remove-block': adaptContainerHasChildren,
 };
+
+/**
+ * Resolve an `operation` to the spec that will parse the bag, from the CLI registry
+ * rather than a table here — so the dispatch knows nothing about any command beyond
+ * its name.
+ *
+ * A group resolves through its discriminator: the block type selects one variant and
+ * `parseCommandInput` validates against that schema alone. The union is never
+ * exposed; see `contracts/group.ts`.
+ */
+function resolveOperationSpec(
+  operation: MutationOperation,
+  opts: Record<string, unknown>
+): CommandSpec | { error: CommandOutcome } {
+  const group = COMMAND_GROUPS.get(operation);
+  if (group) {
+    const selected = opts[group.discriminator];
+    const variant = group.variants.get(String(selected));
+    return (
+      variant ?? {
+        error: {
+          status: 'error',
+          code: 'SCHEMA_VALIDATION',
+          message: `${operation}: unknown ${group.discriminator} "${String(selected)}". Expected one of: ${variantNames(group).join(', ')}.`,
+        },
+      }
+    );
+  }
+  const spec = COMMAND_SPECS.get(operation);
+  return (
+    spec ?? {
+      error: {
+        status: 'error',
+        code: 'UNKNOWN_COMMAND',
+        message: `${operation}: no command spec registered.`,
+      },
+    }
+  );
+}
 
 /** Bind a validated command-interface bag to its CLI runner. */
 function mutationRunner(
   operation: MutationOperation,
   opts: Record<string, unknown>
 ): (dir: string) => Promise<CommandOutcome> | CommandOutcome {
-  return (dir) => MUTATION_RUNNERS[operation](dir, opts);
+  return async (dir) => {
+    const resolved = resolveOperationSpec(operation, opts);
+    if ('error' in resolved) {
+      return resolved.error;
+    }
+    const adapt = OUTCOME_ADAPTERS[operation] ?? ((outcome: CommandOutcome) => outcome);
+    return adapt(await runSpec(resolved, dir, opts));
+  };
 }
 
 export function registerMutationTools(
@@ -272,15 +330,14 @@ export function registerMutationTools(
 ): void {
   const { sessionStore, mcpSessionId } = options;
 
-  registerCommandInterfaceConfig('add-block', {
-    optBlacklist: ['dir', 'before', 'after', 'position'],
-    subcommandOpt: 'type',
-  });
-  registerCommandInterfaceConfig('edit-block', { optBlacklist: ['dir'] });
-  registerCommandInterfaceConfig('remove-block', { optBlacklist: ['dir', 'orphanChildren'] });
-  registerCommandInterfaceConfig('add-step', { optBlacklist: ['dir'] });
-  registerCommandInterfaceConfig('add-choice', { optBlacklist: ['dir'] });
-  registerCommandInterfaceConfig('set-manifest', { optBlacklist: ['dir'] });
+  // These commands are addressable through `pathfinder_help` because this tool asked
+  // for them by name. `dir` needs no mention: the agent view drops `io` plumbing.
+  for (const [command, policy] of [
+    ...Object.entries(MANAGE_BLOCK_OPERATIONS),
+    ...Object.entries(MANAGE_GUIDE_OPERATIONS),
+  ]) {
+    bindCommandInterface(command, policy);
+  }
 
   const runSuite = async (args: {
     operation: MutationOperation;
@@ -293,17 +350,19 @@ export function registerMutationTools(
     sessionToken?: string;
     expectedGeneration?: number;
   }) => {
-    const rejected = validateCommandArgs(args.operation, args.opts);
-    if (rejected) {
-      return rejected;
-    }
+    // A preflight rejection still goes through `dispatchMutation` rather than
+    // returning early, so it comes back with the same envelope — tree summary
+    // included — as a rejection the runner produced. Which layer noticed the
+    // problem is not something the agent should have to account for; it needs
+    // the tree to navigate either way.
+    const rejected = commandArgViolations(args.operation, args.opts);
     return dispatchMutation(
       sessionStore,
       mcpSessionId,
       // Faulted mutations log e.g. `mutation:add-block`, not a suite-wide name.
       `mutation:${args.operation}`,
       { artifact: args.artifact, sessionToken: args.sessionToken, expectedGeneration: args.expectedGeneration },
-      mutationRunner(args.operation, args.opts)
+      rejected ? () => rejected : mutationRunner(args.operation, args.opts)
     );
   };
 

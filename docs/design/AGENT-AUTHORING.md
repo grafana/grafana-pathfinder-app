@@ -422,16 +422,18 @@ The central design challenge is keeping CLI flags tightly coupled to the Zod sch
 
 ### The bridge module
 
-A new module `src/cli/utils/schema-options.ts` provides the Zod-to-Commander bridge.
+`src/cli/utils/schema-options.ts` answers one question about a Zod field — what kind of parameter is this? — and `src/cli/contracts/` renders the answer onto each entrypoint.
 
 ```typescript
-// Conceptual interface — not the final API
-function zodFieldToOption(name: string, field: z.ZodType): commander.Option | null;
+// What kind of value the field holds: string, number, boolean, enum, array,
+// array-enum, literal, or unsupported.
+function describeField(field: z.ZodType): FieldShape;
 
-function registerSchemaOptions(cmd: Command, schema: z.ZodObject): Command;
+// The Commander spelling of one field, or null when it has none.
+function buildOptionForField(name: string, field: z.ZodType): commander.Option | null;
 ```
 
-The bridge walks the `.shape` of a `z.object()` schema and generates a Commander option for each field:
+Which fields become parameters is stated by a command's own schema (`CommandSpec`, see [`CLI-MCP-COMMAND-CONTRACT`](../../../pathfinder-rfcs/rfc/CLI-MCP-COMMAND-CONTRACT.md)), and `mountCommander` walks it. The type mapping below is what `describeField` decides and both entrypoints read, so a parameter cannot be an enum on one surface and an array on the other:
 
 | Zod type                  | Commander option             | Help display                 |
 | ------------------------- | ---------------------------- | ---------------------------- |
@@ -691,16 +693,17 @@ Common requirements:
     has-permission:<perm>, var-<name>:<value>, renderer:<type>
 ```
 
-### `--help --format json` is a stability contract
+### The command's Zod schema is the stability contract
 
-The Pathfinder authoring MCP exposes a `pathfinder_help` tool that returns the output of `pathfinder-cli <command> [<subcommand>] --help --format json` directly to the calling agent (see [Pathfinder authoring MCP service — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)). This makes the JSON shape of `--help` part of the public contract:
+Since #1639, `pathfinder_help` no longer forwards `pathfinder-cli <command> [<subcommand>] --help --format json` verbatim. Every bound command's `CommandSpec` (`src/cli/contracts/spec.ts`) is the single authority for its input shape, and both entrypoints render it rather than one projecting the other: Commander renders it into flags for `--help --format json`, and `src/cli/mcp/lib/command-interface.ts` renders the same schema into the agent-facing interface `pathfinder_help` publishes (see [Pathfinder authoring MCP service — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)). This makes the schema, not either rendering, the public contract:
 
-- The top-level keys (e.g., `command`, `summary`, `required`, `optional`, `constraints`, `addressing`) are stable. New keys may be added as additive fields. Existing keys are not renamed or removed within a major version.
-- Per-flag entries have stable keys (`name`, `valueType`, `enum`, `repeatable`, `description`, `default`).
-- A flag that both accumulates and constrains its values reports `valueType: 'array'`, keeping `enum` alongside `repeatable: true` — the accumulating type wins, because the flag takes a list of enum members rather than one of them. `--target-platform` is the live case; it reported `enum` before schema 1.1.0, which made consumers reject a correct list value.
-- Removing or renaming a flag is a breaking change and rides the schema version.
+- A field's name is its schema field name; its type, enum, requiredness, and description come straight from the Zod shape and its `.describe()` text — nothing is inferred from a flag string.
+- Binding is opt-in: `pathfinder_help` and `validateCommandArgs` only address commands an MCP tool has registered (`bindCommandInterface`); an unbound CLI command reports `UNKNOWN_COMMAND` rather than publishing flags no tool accepts.
+- A binding may withhold parameters the command declares (e.g. `add-block`'s `before`/`after`/`position`) as a narrowing of the agent procedure, not a fact about the command — the CLI still offers them. Withheld or unknown parameters sent in `opts` are rejected with `UNSUPPORTED_PARAMETER`, never silently dropped.
+- `validateCommandArgs` preflights an `opts` bag against the exact interface `pathfinder_help` publishes, so a missing required field, an unknown field, or a withheld field is reported before the runner is called, in the same vocabulary `pathfinder_help` uses.
+- Removing a schema field, changing its role, or renaming it is a breaking change and rides the schema version, same as before.
 
-Agents call `pathfinder_help` instead of carrying field-level guidance locally; promoting `--help --format json` to a contract is what lets the MCP layer be a thin pass-through with no schema knowledge of its own.
+Agents call `pathfinder_help` instead of carrying field-level guidance locally; rendering both the CLI's flags and the agent's `opts` shape from one schema is what keeps them from drifting apart, and is what replaced the old thin pass-through.
 
 ---
 
@@ -727,12 +730,12 @@ The `create` command stamps `schemaVersion: CURRENT_SCHEMA_VERSION` into both `c
 
 The coupling between schema and CLI is maintained at three levels:
 
-| Level               | Mechanism                                                  | What it catches                                                          |
-| ------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **Compile-time**    | `BLOCK_SCHEMA_MAP` keys tested against `VALID_BLOCK_TYPES` | Forgetting to register a new block type                                  |
-| **Runtime (help)**  | `registerSchemaOptions()` walks `schema.shape` dynamically | New fields automatically appear in `--help` and are accepted as flags    |
-| **Runtime (write)** | `validatePackage()` on every mutation                      | Any bug in option parsing, schema introspection, or flag-to-JSON mapping |
-| **Version**         | `program.version(CURRENT_SCHEMA_VERSION)`                  | Version drift between CLI and schema                                     |
+| Level               | Mechanism                                                                | What it catches                                                                           |
+| ------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| **Compile-time**    | `BLOCK_SCHEMA_MAP` keys tested against `VALID_BLOCK_TYPES`               | Forgetting to register a new block type                                                   |
+| **Runtime (help)**  | `mountCommander()` / `renderInterface()` walk the command schema's shape | New fields automatically appear in `--help`, publish to agents, and are accepted as flags |
+| **Runtime (write)** | `validatePackage()` on every mutation                                    | Any bug in option parsing, schema introspection, or flag-to-JSON mapping                  |
+| **Version**         | `program.version(CURRENT_SCHEMA_VERSION)`                                | Version drift between CLI and schema                                                      |
 
 The only thing that requires manual maintenance is `.describe()` text on Zod fields. Fields without descriptions get a generic fallback. This is intentional — descriptions are documentation, not structural coupling, and can be added incrementally without breaking anything.
 

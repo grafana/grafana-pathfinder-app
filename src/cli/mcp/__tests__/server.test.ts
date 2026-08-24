@@ -551,15 +551,30 @@ describe('MCP server', () => {
       expect(requiredByType?.input).not.toContain('input-type');
       expect(requiredByType?.input).not.toContain('variable-name');
 
-      // Positional id and cascade are now part of the generic fields bag;
-      // orphanChildren is the only block-manager exclusion.
+      // Buckets follow declared roles: `id` is the address, requiredness rides on the
+      // parameter rather than the bucket, and `orphanChildren` is withheld.
       const remove = await callTool(client, 'pathfinder_help', { command: 'remove-block' });
-      expect(remove.required).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'id' })]));
-      expect(remove.optional).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'cascade' })]));
-      expect(remove.addressing).toBeUndefined();
+      expect(remove.addressing).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'id', required: true })])
+      );
+      expect(remove.optional).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'cascade', required: false })])
+      );
+      const removeParameters = [
+        ...(remove.required as Array<{ name: string }>),
+        ...(remove.optional as Array<{ name: string }>),
+        ...((remove.addressing as Array<{ name: string }> | undefined) ?? []),
+      ].map((parameter) => parameter.name);
+      for (const withheld of ['dir', 'orphanChildren']) {
+        expect(removeParameters).not.toContain(withheld);
+      }
 
+      // Why `required` is stated per parameter: bucket membership cannot distinguish
+      // `add-step`'s mandatory parent from `add-block`'s optional one.
       const addStep = await callTool(client, 'pathfinder_help', { command: 'add-step' });
-      expect(addStep.addressing).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'parent' })]));
+      expect(addStep.addressing).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'parent', required: true })])
+      );
     } finally {
       await close();
     }
@@ -824,8 +839,8 @@ describe('MCP server', () => {
     const { client, close } = await spinUp();
     try {
       const result = await callTool(client, 'pathfinder_help', { command: 'add-block' });
-      // formatHelpAsJson surfaces `command` and `summary` at minimum; we
-      // don't pin the full shape here (it's a CLI-owned contract).
+      // `command` and `summary` are the minimum; the full shape is pinned by
+      // the CLI's surface-parity snapshot, not here.
       expect(result.command).toBe('add-block');
       expect(typeof result.summary).toBe('string');
     } finally {
@@ -833,14 +848,14 @@ describe('MCP server', () => {
     }
   });
 
-  it('translates every registered CLI command, not just the mutation ones', async () => {
+  it('publishes only CLI commands an MCP tool has bound', async () => {
     const { client, close } = await spinUp();
     try {
-      // A command with no exclusion entry inherits its full Commander surface,
-      // so new CLI capability reaches agents without touching the adapter.
+      // `validate` exists on the CLI, but MCP exposes an artifact-native
+      // validation tool instead of dispatching that disk-oriented command.
       const validate = await callTool(client, 'pathfinder_help', { command: 'validate' });
-      expect(validate.command).toBe('validate');
-      expect(validate.status).not.toBe('error');
+      expect(validate.status).toBe('error');
+      expect(validate.code).toBe('UNKNOWN_COMMAND');
 
       const unknown = await callTool(client, 'pathfinder_help', { command: 'not-a-command' });
       expect(unknown.status).toBe('error');

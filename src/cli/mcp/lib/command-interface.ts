@@ -1,50 +1,159 @@
 /**
- * Agent-facing translation over the Commander command registry.
+ * The agent-facing command surface.
  *
- * Sits between `pathfinder_help` and the agent for *any* CLI command. Commander
- * owns the option surface; this module republishes it under the attribute names
- * imported runners actually receive, minus parameters an MCP tool has taken
- * over or cannot honor.
+ * Sits between `pathfinder_help` and the agent. Binding is opt-in: only a
+ * command an MCP tool has registered is addressable here at all. Commands the
+ * CLI ships but no tool dispatches (`e2e`, `build-graph`, `move-block`, …) are
+ * not part of the agent surface, and describing their flags would only invite an
+ * agent to author against a tool that does not exist.
  *
- * The translation is subtractive on purpose: a command with no binding config
- * exposes its full surface, so new CLI capability reaches agents without a
- * change here. MCP tool modules register their own exclusions and contextual
- * annotations next to the tool binding that requires them.
+ * Two entry points over one source of truth: `formatCommandInterface` publishes
+ * a command's schema-rendered interface, `validateCommandArgs` holds an
+ * invocation to that same interface. What commands exist comes from the runners'
+ * own manifest, so nothing in this module — or anywhere under `mcp/` — reads a
+ * Commander object.
  *
- * Two entry points, both driven by the same projection: `formatCommandInterface`
- * publishes the interface, `validateCommandArgs` holds an invocation to it.
+ * This module used to *project* the surface out of Commander — rekeying flags to
+ * attribute names, inferring value types from flag strings, treating `hideHelp()`
+ * as an interface decision. Every bound command declares its shape as a schema now
+ * (RFC §8), so a parameter's name is its field name, what it accepts is its type,
+ * and what an agent must send is the schema's own requiredness.
+ *
+ * What stays here is what is about *this* surface: which commands it offers and
+ * which of their parameters it withholds. Both are declared by the tool that
+ * dispatches the command and checked against the schema at bind time, so this is a
+ * translation layer with no authority over shape.
  */
 
-import type { Argument, Command, Option } from 'commander';
+import type { z } from 'zod';
 
-import { formatHelpAsJson, type CommandOutcome, type HelpJson, type HelpJsonFlag } from '../../utils/output';
-import { CLI_COMMANDS } from '../program';
+import {
+  renderGroupInterface,
+  resolveParamPolicy,
+  shapeKeys,
+  type CommandGroupSpec,
+  type CommandSpec,
+} from '../../contracts';
+import {
+  carriesRequirementTokens,
+  publishedNames,
+  renderInterface,
+  requiredNames,
+  REQUIREMENT_TOKEN_EXAMPLES,
+  type SurfaceView,
+} from '../../contracts/render-interface';
+import type { CommandOutcome, HelpJson, HelpJsonFlag } from '../../utils/output';
+import { COMMAND_GROUPS, COMMAND_SPECS, commandNames, isCommand } from '../../commands/manifest';
 import { outcomeResult, type ToolResult } from '../tools/result';
 
-// ----------------- binding config -----------------
+// ----------------- bindings -----------------
 
-export interface CommandInterfaceConfig {
-  /** Commander attribute/argument names omitted from agent help and rejected at invocation. */
-  optBlacklist?: readonly string[];
+/** Bound command name → parameters this surface does not offer agents. */
+const BOUND_COMMANDS = new Map<string, ReadonlySet<string>>();
+
+export interface BindOptions {
   /**
-   * Synthetic required option that selects a Commander subcommand. `add-block`
-   * uses `type`, whose enum values are derived from registered subcommands.
+   * Parameters the command accepts that agents are not offered, by field name — a
+   * narrowing of the agent procedure rather than a fact about the command, so the
+   * CLI still offers all of them. Checked against the schema at bind time, which is
+   * what keeps it from rotting the way its ancestor `optBlacklist` could.
    */
-  subcommandOpt?: string;
+  withhold?: readonly string[];
 }
 
-const COMMAND_INTERFACE_CONFIG = new Map<string, CommandInterfaceConfig>();
+/** Every field name a command declares, across all variants if it is a group. */
+function declaredFieldNames(commandName: string): Set<string> {
+  const group = COMMAND_GROUPS.get(commandName);
+  if (group) {
+    const names = new Set<string>([group.discriminator]);
+    for (const variant of group.variants.values()) {
+      for (const name of shapeKeys(variant.schema)) {
+        names.add(name);
+      }
+    }
+    return names;
+  }
+  return new Set(shapeKeys(COMMAND_SPECS.get(commandName)!.schema));
+}
 
 /**
- * Bind MCP-specific interface policy next to the MCP tool that owns it.
+ * Make a CLI command addressable through `pathfinder_help` and
+ * `validateCommandArgs`, from the MCP tool that dispatches it.
+ *
+ * Registration *is* exposure: a command is on the agent surface because a tool
+ * asked for it by name, so shipping a CLI command and exposing it stay separate
+ * steps and withdrawing one is a deleted call rather than a deleted implementation.
+ *
+ * Throws unless the manifest declares the command and it declares every parameter
+ * withheld. Either would otherwise leave a tool reachable but unhelpable — the
+ * agent getting UNKNOWN_COMMAND from the command its own tool description told it
+ * to ask about — so they fail at server boot instead.
  */
-export function registerCommandInterfaceConfig(commandName: string, config: CommandInterfaceConfig): void {
-  COMMAND_INTERFACE_CONFIG.set(commandName, config);
+export function bindCommandInterface(commandName: string, options: BindOptions = {}): void {
+  if (!isCommand(commandName)) {
+    throw new Error(
+      `Cannot bind MCP interface for "${commandName}": no such command. ` +
+        `Known commands: ${commandNames().join(', ')}`
+    );
+  }
+
+  const withhold = options.withhold ?? [];
+  const declared = declaredFieldNames(commandName);
+  const unknown = withhold.filter((name) => !declared.has(name));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Cannot bind MCP interface for "${commandName}": withholds parameter(s) it does not declare: ${unknown.join(', ')}. ` +
+        `Declared: ${[...declared].sort().join(', ')}`
+    );
+  }
+
+  BOUND_COMMANDS.set(commandName, new Set(withhold));
 }
 
 /** CLI command names that currently have an MCP binding. */
 export function registeredCommandInterfaceNames(): ReadonlySet<string> {
-  return new Set(COMMAND_INTERFACE_CONFIG.keys());
+  return new Set(BOUND_COMMANDS.keys());
+}
+
+/**
+ * How agents see a bound command's parameters.
+ *
+ * Two exclusions, both this surface's own business: `io` parameters, because the
+ * transport supplies them — an agent hands over an artifact, not a directory on
+ * the server's disk — and the binding's `withhold` list. Names are the schema's,
+ * since an agent sends a JSON object rather than typing a command line.
+ *
+ * An unbound name throws rather than defaulting to "everything but `io`", which
+ * would be the permissive answer in a layer where exposure is opt-in. Callers go
+ * through `resolveCommandInterface` and get UNKNOWN_COMMAND first, so reaching here
+ * without a binding is a caller bug.
+ */
+export function agentView(commandName: string): SurfaceView {
+  const withheld = BOUND_COMMANDS.get(commandName);
+  if (!withheld) {
+    throw new Error(
+      `No MCP binding for "${commandName}": this surface publishes only commands a tool has bound. ` +
+        `Bound: ${[...BOUND_COMMANDS.keys()].join(', ') || '(none)'}`
+    );
+  }
+  return {
+    name: (field) => field.name,
+    publishes: (field) => field.policy.role !== 'io' && !withheld.has(field.name),
+    // No tool prints the requirement vocabulary and an agent cannot run the command
+    // that does, so the vocabulary is illustrated rather than pointed at. Withholding
+    // the CLI recipe is the point: an agent that reads one tends to try it.
+    describe: (field, stated) =>
+      carriesRequirementTokens(field.name) ? `${stated} | valid tokens include ${REQUIREMENT_TOKEN_EXAMPLES}` : stated,
+  };
+}
+
+/**
+ * Bound command names in manifest order — the same order and membership
+ * `pathfinder_help` lists when called with no command, so a rejection points
+ * at exactly the set the agent can browse.
+ */
+export function boundCommandNames(): string[] {
+  return commandNames().filter((name) => BOUND_COMMANDS.has(name));
 }
 
 // ----------------- command resolution -----------------
@@ -55,12 +164,13 @@ export interface CommandInterfaceError {
   message: string;
 }
 
-/** A Commander command paired with the binding policy that shapes it. */
-interface ResolvedCommand {
-  root: Command;
-  command: Command;
-  config: CommandInterfaceConfig;
-}
+/**
+ * A bound command as its schema declares it: either one spec, or a group and
+ * the variant the caller selected (if any).
+ */
+type ResolvedCommand =
+  | { spec: CommandSpec; group?: undefined; variant?: undefined }
+  | { spec?: undefined; group: CommandGroupSpec; variant: CommandSpec | undefined };
 
 const COMMAND_INTERFACE_ERROR_CODES = new Set<CommandInterfaceError['code']>(['UNKNOWN_COMMAND', 'UNKNOWN_SUBCOMMAND']);
 
@@ -78,217 +188,58 @@ export function isCommandInterfaceError(value: unknown): value is CommandInterfa
   );
 }
 
-/** Look up a command, optionally descending into one of its subcommands. */
+/**
+ * Look up a bound command, optionally descending into one of its variants.
+ *
+ * An unbound CLI command is reported the same as a name the CLI never had. The
+ * distinction is not actionable for an agent — there is no tool to reach it
+ * either way — and naming it would advertise capability the surface deliberately
+ * excludes.
+ */
 function resolveCommandInterface(commandName: string, subcommand?: string): ResolvedCommand | CommandInterfaceError {
-  const root = CLI_COMMANDS.get(commandName);
-  if (!root) {
+  const group = BOUND_COMMANDS.has(commandName) ? COMMAND_GROUPS.get(commandName) : undefined;
+  const spec = BOUND_COMMANDS.has(commandName) ? COMMAND_SPECS.get(commandName) : undefined;
+  if (!group && !spec) {
     return {
       status: 'error',
       code: 'UNKNOWN_COMMAND',
-      message: `Unknown command "${commandName}". Available: ${[...CLI_COMMANDS.keys()].join(', ')}`,
+      message: `Unknown command "${commandName}". Available: ${boundCommandNames().join(', ')}`,
     };
   }
 
-  const config = COMMAND_INTERFACE_CONFIG.get(commandName) ?? {};
   if (!subcommand) {
-    return { root, command: root, config };
+    return group ? { group, variant: undefined } : { spec: spec! };
   }
 
-  const command = root.commands.find((candidate) => candidate.name() === subcommand);
-  if (!command) {
+  const variant = group?.variants.get(subcommand);
+  if (!variant) {
     return {
       status: 'error',
       code: 'UNKNOWN_SUBCOMMAND',
-      message: `Unknown ${commandName} subcommand "${subcommand}". Available: ${root.commands
-        .map((candidate) => candidate.name())
-        .join(', ')}`,
+      message: `Unknown ${commandName} subcommand "${subcommand}". Available: ${[
+        ...(group?.variants.keys() ?? []),
+      ].join(', ')}`,
     };
   }
 
-  return { root, command, config };
-}
-
-// ----------------- interface projection -----------------
-
-/** An option's `--long-flag` name, which is how help output keys it. */
-function optionCliName(option: Option): string {
-  return (option.long ?? option.flags).replace(/^--/, '').split(/\s+/)[0] ?? '';
-}
-
-/** Options the agent is allowed to set: visible to Commander, not blacklisted. */
-function exposedOptions(command: Command, config: CommandInterfaceConfig): Option[] {
-  const blacklist = config.optBlacklist ?? [];
-  return command.options.filter((option) => option.hidden !== true && !blacklist.includes(option.attributeName()));
-}
-
-/** Exposed options keyed for joining against `formatHelpAsJson` output. */
-function exposedOptionsByCliName(command: Command, config: CommandInterfaceConfig): ReadonlyMap<string, Option> {
-  return new Map(exposedOptions(command, config).map((option) => [optionCliName(option), option]));
-}
-
-/** Positional arguments the agent supplies as ordinary named opts. */
-function exposedArguments(command: Command, config: CommandInterfaceConfig): Argument[] {
-  const blacklist = config.optBlacklist ?? [];
-  return command.registeredArguments.filter((argument) => !blacklist.includes(argument.name()));
-}
-
-/** Rekey help flags to attribute names, dropping any the binding filtered out. */
-function translateFlags(
-  flags: HelpJsonFlag[],
-  optionsByCliName: ReadonlyMap<string, Option>,
-  config: CommandInterfaceConfig
-): HelpJsonFlag[] {
-  return flags.flatMap((flag) => {
-    const option = optionsByCliName.get(flag.name);
-    if (!option) {
-      return [];
-    }
-    // Commander's own conversion — the key a runner reads out of `opts()`.
-    return [{ ...flag, name: option.attributeName() }];
-  });
+  return { group: group!, variant };
 }
 
 /**
- * JSON help omits STRUCTURAL_SKIP_FIELDS (`type`, `blocks`, …) even when a
- * command hand-registers a flag of that name. `create --type` is the live
- * case: a package-type enum, not a block discriminator. Publish any exposed
- * Commander option the serializer dropped so the agent can still set it.
- */
-function optionToHelpFlag(option: Option): HelpJsonFlag {
-  const isBoolean = option.isBoolean();
-  const isVariadic = option.variadic === true;
-  const argChoices = (option as unknown as { argChoices?: string[] }).argChoices;
-  let valueType: HelpJsonFlag['valueType'];
-  if (isBoolean) {
-    valueType = 'boolean';
-  } else if (isVariadic || Array.isArray(option.defaultValue)) {
-    valueType = 'array';
-  } else if (argChoices && argChoices.length > 0) {
-    valueType = 'enum';
-  } else if (option.flags.includes('<number>')) {
-    valueType = 'number';
-  } else {
-    valueType = 'string';
-  }
-  return {
-    name: option.attributeName(),
-    valueType,
-    description: option.description,
-    ...(argChoices && argChoices.length > 0 ? { enum: argChoices } : {}),
-    ...(valueType === 'array' ? { repeatable: true } : {}),
-    ...(option.defaultValue !== undefined && !(Array.isArray(option.defaultValue) && option.defaultValue.length === 0)
-      ? { default: option.defaultValue }
-      : {}),
-  };
-}
-
-/** Publish a positional argument as if it were an ordinary opt. */
-function argumentToHelpFlag(argument: Argument): HelpJsonFlag {
-  const choices = argument.argChoices;
-  const valueType: HelpJsonFlag['valueType'] =
-    choices && choices.length > 0 ? 'enum' : argument.variadic ? 'array' : 'string';
-  return {
-    name: argument.name(),
-    valueType,
-    description: argument.description,
-    ...(choices && choices.length > 0 ? { enum: choices } : {}),
-    ...(argument.variadic ? { repeatable: true } : {}),
-    ...(argument.defaultValue !== undefined ? { default: argument.defaultValue } : {}),
-  };
-}
-
-/** Synthesize the enum opt that picks a subcommand, when one is configured. */
-function subcommandSelector(root: Command, config: CommandInterfaceConfig): HelpJsonFlag | undefined {
-  if (!config.subcommandOpt || root.commands.length === 0) {
-    return undefined;
-  }
-  return {
-    name: config.subcommandOpt,
-    valueType: 'enum',
-    enum: root.commands.map((command) => command.name()),
-    description: `Selects the ${root.name()} subcommand.`,
-  };
-}
-
-/** The complete agent-facing opt set — the contract both entry points share. */
-function publishedOpts(resolved: ResolvedCommand): {
-  base: HelpJson;
-  required: HelpJsonFlag[];
-  optional: HelpJsonFlag[];
-  addressing: HelpJsonFlag[];
-} {
-  const base = formatHelpAsJson(resolved.command);
-  const optionsByCliName = exposedOptionsByCliName(resolved.command, resolved.config);
-  const required = translateFlags(base.required, optionsByCliName, resolved.config);
-  const optional = translateFlags(base.optional, optionsByCliName, resolved.config);
-  const addressing = translateFlags(base.addressing ?? [], optionsByCliName, resolved.config);
-
-  for (const argument of exposedArguments(resolved.command, resolved.config)) {
-    (argument.required ? required : optional).push(argumentToHelpFlag(argument));
-  }
-  const selector = subcommandSelector(resolved.root, resolved.config);
-  if (selector) {
-    required.unshift(selector);
-  }
-
-  const publishedNames = new Set([...required, ...optional, ...addressing].map((flag) => flag.name));
-  for (const option of exposedOptions(resolved.command, resolved.config)) {
-    const name = option.attributeName();
-    if (publishedNames.has(name)) {
-      continue;
-    }
-    (option.mandatory ? required : optional).push(optionToHelpFlag(option));
-    publishedNames.add(name);
-  }
-
-  return { base, required, optional, addressing };
-}
-
-/** Rekey the per-subcommand required-flag index to attribute names. */
-function translateRequiredByType(
-  resolved: ResolvedCommand,
-  requiredByType: Record<string, string[]>
-): Record<string, string[]> {
-  const translated: Record<string, string[]> = {};
-  for (const [type, cliNames] of Object.entries(requiredByType)) {
-    const child = resolved.command.commands.find((candidate) => candidate.name() === type);
-    if (!child) {
-      continue;
-    }
-    const childOptions = exposedOptionsByCliName(child, resolved.config);
-    translated[type] = cliNames.flatMap((cliName) => {
-      const option = childOptions.get(cliName);
-      return option ? [option.attributeName()] : [];
-    });
-  }
-  return translated;
-}
-
-/**
- * Republish a CLI command's help under the agent-facing parameter interface.
+ * Publish a bound command's parameter interface.
  *
- * Descriptions, requiredness, value types, choices, and defaults stay exactly
- * as the CLI serializer produced them.
+ * A group publishes its variants flattened into a discriminator enum, since MCP
+ * clients do not reliably consume `oneOf` — see `contracts/group.ts`.
  */
 export function formatCommandInterface(commandName: string, subcommand?: string): HelpJson | CommandInterfaceError {
   const resolved = resolveCommandInterface(commandName, subcommand);
   if (isCommandInterfaceError(resolved)) {
     return resolved;
   }
-
-  const { base, required, optional, addressing } = publishedOpts(resolved);
-  const result: HelpJson = { ...base, required, optional };
-
-  if (addressing.length > 0) {
-    result.addressing = addressing;
-  } else {
-    delete result.addressing;
-  }
-  if (base.requiredByType) {
-    result.requiredByType = translateRequiredByType(resolved, base.requiredByType);
-  }
-
-  return result;
+  const view = agentView(commandName);
+  return resolved.group
+    ? renderGroupInterface(resolved.group, view, resolved.variant?.name)
+    : renderInterface(resolved.spec, view);
 }
 
 // ----------------- argument validation -----------------
@@ -299,12 +250,20 @@ interface OptViolations {
   invalid: Array<{ name: string; expected: string; received: string }>;
   /** Every opt name the interface publishes, echoed back to orient the agent. */
   exposed: string[];
+  /** Domain code for a lone missing parameter that declares one. */
+  missingCode?: string;
 }
 
-/** The subcommand the agent's own opts imply, per the binding config. */
+/**
+ * The variant the agent's own opts select, for a command that is a group.
+ *
+ * The discriminator is the group's, replacing the binding's `subcommandOpt`: the
+ * command that owns the variants is also what names the field that chooses
+ * between them.
+ */
 function derivedSubcommand(commandName: string, opts: Record<string, unknown>): string | undefined {
-  const selector = COMMAND_INTERFACE_CONFIG.get(commandName)?.subcommandOpt;
-  const selected = selector ? opts[selector] : undefined;
+  const discriminator = COMMAND_GROUPS.get(commandName)?.discriminator;
+  const selected = discriminator ? opts[discriminator] : undefined;
   return typeof selected === 'string' && selected !== '' ? selected : undefined;
 }
 
@@ -345,26 +304,12 @@ function plural(count: number, noun: string): string {
   return count === 1 ? noun : `${noun}s`;
 }
 
-/** Diff the agent's bag against the published interface. */
-function commandViolations(resolved: ResolvedCommand, opts: Record<string, unknown>): OptViolations {
-  // MCP reaches the runners without going through Commander's parser, so the
-  // guarantees the parser would have enforced are replicated here: required
-  // positionals, a configured subcommand selector, and options Commander marks
-  // mandatory. Commands that defer required-field reporting to a single Zod
-  // pass (`forceOptional`, notably add-block) register no mandatory options, so
-  // their multi-error reporting still belongs to the runner.
-  const requiredBeforeRunner = [
-    ...exposedArguments(resolved.command, resolved.config)
-      .filter((argument) => argument.required)
-      .map((argument) => argument.name()),
-    ...exposedOptions(resolved.command, resolved.config)
-      .filter((option) => option.mandatory)
-      .map((option) => option.attributeName()),
-    ...(resolved.config.subcommandOpt ? [resolved.config.subcommandOpt] : []),
-  ];
-
-  const { required, optional, addressing } = publishedOpts(resolved);
-  const published = [...required, ...optional, ...addressing];
+/** Diff the agent's bag against a published interface, whatever produced it. */
+function diffViolations(
+  published: HelpJsonFlag[],
+  requiredBeforeRunner: readonly string[],
+  opts: Record<string, unknown>
+): OptViolations {
   const exposed = [...new Set(published.map((flag) => flag.name))].sort();
   const exposedSet = new Set(exposed);
 
@@ -381,11 +326,80 @@ function commandViolations(resolved: ResolvedCommand, opts: Record<string, unkno
   };
 }
 
+/**
+ * Diff the agent's bag against a command's published interface.
+ *
+ * Requiredness comes from the schema rather than from Commander's `mandatory`
+ * bit, which is what let the two disagree: a command that wanted to report every
+ * missing field at once had to register its options as non-mandatory and keep the
+ * truth in a side table, so help said one thing and the parser enforced another.
+ */
+function specViolations(spec: CommandSpec, view: SurfaceView, opts: Record<string, unknown>): OptViolations {
+  const iface = renderInterface(spec, view);
+  const published = [...iface.required, ...iface.optional, ...(iface.addressing ?? [])];
+  // `io` parameters are supplied by the MCP tool, not the agent, so they are
+  // never the agent's obligation even when the schema requires them.
+  const obligations = requiredNames(spec, view).filter((name) => publishedNames(spec, view).includes(name));
+  const violations = diffViolations(published, obligations, opts);
+  return { ...violations, missingCode: declaredMissingCode(spec, violations) };
+}
+
+/**
+ * The same diff for a command group, against the selected variant.
+ *
+ * The discriminator is published as a parameter of every variant, so it counts
+ * as supported and as required. With no variant selected the only thing the
+ * caller can be told is that the selector is missing — reporting their content
+ * parameters as unsupported would be misleading, since they may well be valid
+ * for whichever type they meant.
+ */
+function groupViolations(
+  group: CommandGroupSpec,
+  variant: CommandSpec | undefined,
+  view: SurfaceView,
+  opts: Record<string, unknown>
+): OptViolations {
+  const iface = renderGroupInterface(group, view, variant ? variant.name : undefined);
+  const published = [...iface.required, ...iface.optional, ...(iface.addressing ?? [])];
+
+  if (!variant) {
+    return { missing: [group.discriminator], unsupported: [], invalid: [], exposed: [group.discriminator] };
+  }
+
+  const obligations = [group.discriminator, ...requiredNames(variant, view)];
+  const violations = diffViolations(published, obligations, opts);
+  return { ...violations, missingCode: declaredMissingCode(variant, violations) };
+}
+
+/**
+ * The declared code for a missing parameter, if any missing one names a code.
+ *
+ * Preflight now enforces schema requiredness, so a requirement that used to be
+ * reported by the runner is caught here instead. A published error code must not
+ * change identity depending on which layer noticed the problem.
+ *
+ * A declared code wins over the generic one even when other parameters are also
+ * missing, matching the precedence the runner had: its container-`id` guard ran
+ * ahead of block-schema validation, so `CONTAINER_REQUIRES_ID` was reported for
+ * a container that was missing other fields too. The message still lists every
+ * problem, which the old early return did not.
+ */
+function declaredMissingCode(spec: CommandSpec, violations: OptViolations): string | undefined {
+  const shape = spec.schema.shape as Record<string, z.ZodType>;
+  for (const name of violations.missing) {
+    const declared = shape[name] ? resolveParamPolicy(shape[name]!)?.missingCode : undefined;
+    if (declared) {
+      return declared;
+    }
+  }
+  return undefined;
+}
+
 /** Render violations as a CLI-shaped outcome that points back at help. */
 function violationOutcome(
   commandName: string,
   subcommand: string | undefined,
-  { missing, unsupported, invalid, exposed }: OptViolations
+  { missing, unsupported, invalid, exposed, missingCode }: OptViolations
 ): CommandOutcome {
   const helpArgs = subcommand
     ? `{ command: "${commandName}", subcommand: "${subcommand}" }`
@@ -414,9 +428,10 @@ function violationOutcome(
     // Overreach alone is a different agent mistake than a malformed or
     // incomplete bag, so it gets a code the agent can branch on.
     code:
-      unsupported.length > 0 && missing.length === 0 && invalid.length === 0
+      missingCode ??
+      (unsupported.length > 0 && missing.length === 0 && invalid.length === 0
         ? 'UNSUPPORTED_PARAMETER'
-        : 'SCHEMA_VALIDATION',
+        : 'SCHEMA_VALIDATION'),
     message: `${commandName}: ${lines.join('. ')}`,
     data: {
       ...(missing.length > 0 ? { missing } : {}),
@@ -451,14 +466,35 @@ export function validateCommandArgs(
   opts: Record<string, unknown>,
   options: { subcommand?: string } = {}
 ): ToolResult | undefined {
+  const outcome = commandArgViolations(commandName, opts, options);
+  return outcome ? outcomeResult(outcome) : undefined;
+}
+
+/**
+ * `validateCommandArgs` as a bare outcome rather than a tool envelope.
+ *
+ * A caller that wants to enrich the rejection — attaching the tree summary so a
+ * rejected agent can still navigate, for instance — needs the outcome before it
+ * is wrapped.
+ */
+export function commandArgViolations(
+  commandName: string,
+  opts: Record<string, unknown>,
+  options: { subcommand?: string } = {}
+): CommandOutcome | undefined {
   const subcommand = options.subcommand ?? derivedSubcommand(commandName, opts);
   const resolved = resolveCommandInterface(commandName, subcommand);
   if (isCommandInterfaceError(resolved)) {
-    return outcomeResult(resolved);
+    return resolved;
   }
 
-  const violations = commandViolations(resolved, opts);
+  const view = agentView(commandName);
+  const violations = resolved.group
+    ? // Without a selector there is nothing to validate against but the
+      // selector itself, which is exactly what the caller needs to be told.
+      groupViolations(resolved.group, resolved.variant, view, opts)
+    : specViolations(resolved.spec, view, opts);
   const clean =
     violations.missing.length === 0 && violations.unsupported.length === 0 && violations.invalid.length === 0;
-  return clean ? undefined : outcomeResult(violationOutcome(commandName, subcommand, violations));
+  return clean ? undefined : violationOutcome(commandName, subcommand, violations);
 }

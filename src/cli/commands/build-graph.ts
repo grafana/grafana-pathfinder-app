@@ -10,7 +10,7 @@
  * - Virtual nodes: capability names from `provides` fields (distinguished by virtual: true)
  */
 
-import { Command } from 'commander';
+import { z } from 'zod';
 import * as fs from 'fs';
 
 import type {
@@ -24,13 +24,10 @@ import type {
 } from '../../types/package.types';
 import { RepositoryJsonSchema } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
+import { defineCommand, mountCommander } from '../contracts';
 import { resolveCliPath } from '../utils/file-loader';
 import { detectCycles } from '../utils/graph-cycles';
-
-interface BuildGraphOptions {
-  output?: string;
-  lint?: boolean;
-}
+import type { CommandOutcome } from '../utils/output';
 
 export interface GraphLintMessage {
   severity: 'error' | 'warn';
@@ -302,56 +299,79 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
   return { graph, lintMessages, errors };
 }
 
-export const buildGraphCommand = new Command('build-graph')
-  .description('Build a dependency graph from repository.json files')
-  .argument('<repositories...>', 'Repository entries as name:path pairs (e.g., bundled:path/to/repository.json)')
-  .option('-o, --output <file>', 'Output file path (default: stdout)')
-  .option('--lint', 'Show lint warnings and errors', true)
-  .option('--no-lint', 'Suppress lint output')
-  .action((repositories: string[], options: BuildGraphOptions) => {
-    const repoPaths = repositories.map((entry) => {
-      const colonIndex = entry.indexOf(':');
-      if (colonIndex === -1) {
-        console.error(`Invalid repository entry "${entry}". Expected format: name:path/to/repository.json`);
-        process.exit(1);
-      }
-      const name = entry.slice(0, colonIndex);
-      const repoPath = entry.slice(colonIndex + 1);
-      return { name, path: resolveCliPath(repoPath) };
-    });
+export const BuildGraphCommand = z.object({
+  repositories: z
+    .array(z.string())
+    .min(1)
+    .describe('Repository entries as name:path pairs (e.g., bundled:path/to/repository.json)')
+    .meta({ role: 'io' }),
+  output: z.string().optional().describe('Output file path (default: stdout)').meta({ role: 'io' }),
+  lint: z.boolean().default(true).describe('Show lint warnings and errors').meta({ role: 'control' }),
+});
 
-    const { graph, lintMessages, errors } = buildGraph(repoPaths);
+export type BuildGraphInput = z.output<typeof BuildGraphCommand>;
 
-    for (const error of errors) {
-      console.error(`❌ ${error}`);
+export function runBuildGraph(args: BuildGraphInput): CommandOutcome {
+  const repoPaths: Array<{ name: string; path: string }> = [];
+  for (const entry of args.repositories) {
+    const colonIndex = entry.indexOf(':');
+    if (colonIndex === -1) {
+      const message = `Invalid repository entry "${entry}". Expected format: name:path/to/repository.json`;
+      console.error(message);
+      return { status: 'error', code: 'INVALID_OPTIONS', message };
+    }
+    repoPaths.push({ name: entry.slice(0, colonIndex), path: resolveCliPath(entry.slice(colonIndex + 1)) });
+  }
+
+  const { graph, lintMessages, errors } = buildGraph(repoPaths);
+
+  for (const error of errors) {
+    console.error(`❌ ${error}`);
+  }
+
+  if (args.lint) {
+    for (const msg of lintMessages) {
+      const icon = msg.severity === 'error' ? '❌' : '⚠️ ';
+      console.error(`${icon} ${msg.message}`);
     }
 
-    if (options.lint !== false) {
-      for (const msg of lintMessages) {
-        const icon = msg.severity === 'error' ? '❌' : '⚠️ ';
-        console.error(`${icon} ${msg.message}`);
-      }
-
-      if (lintMessages.length > 0) {
-        const errorCount = lintMessages.filter((m) => m.severity === 'error').length;
-        const warnCount = lintMessages.filter((m) => m.severity === 'warn').length;
-        console.error(`\nLint: ${errorCount} error(s), ${warnCount} warning(s)`);
-      }
+    if (lintMessages.length > 0) {
+      const errorCount = lintMessages.filter((m) => m.severity === 'error').length;
+      const warnCount = lintMessages.filter((m) => m.severity === 'warn').length;
+      console.error(`\nLint: ${errorCount} error(s), ${warnCount} warning(s)`);
     }
+  }
 
-    const json = JSON.stringify(graph, null, 2);
+  const json = JSON.stringify(graph, null, 2);
 
-    if (options.output) {
-      const outputPath = resolveCliPath(options.output);
-      fs.writeFileSync(outputPath, json + '\n', 'utf-8');
-      console.error(
-        `✅ Wrote graph to ${outputPath} (${graph.metadata.nodeCount} nodes, ${graph.metadata.edgeCount} edges)`
-      );
-    } else {
-      console.log(json);
-    }
+  if (args.output) {
+    const outputPath = resolveCliPath(args.output);
+    fs.writeFileSync(outputPath, json + '\n', 'utf-8');
+    console.error(
+      `✅ Wrote graph to ${outputPath} (${graph.metadata.nodeCount} nodes, ${graph.metadata.edgeCount} edges)`
+    );
+  } else {
+    console.log(json);
+  }
 
-    if (errors.length > 0) {
-      process.exit(1);
-    }
-  });
+  if (errors.length > 0) {
+    return { status: 'error', code: 'BUILD_FAILED', message: `${errors.length} error(s) building the graph` };
+  }
+  return { status: 'ok', summary: `${graph.metadata.nodeCount} nodes, ${graph.metadata.edgeCount} edges` };
+}
+
+export const buildGraphSpec = defineCommand({
+  name: 'build-graph',
+  summary: 'Build a dependency graph from repository.json files',
+  schema: BuildGraphCommand,
+  // Deploy pipes stdout into packages/graph.json; lint goes to stderr alongside it.
+  emits: 'stream',
+  run: runBuildGraph,
+});
+
+export const buildGraphCommand = mountCommander(buildGraphSpec, {
+  positionals: ['repositories'],
+  placeholders: { repositories: 'repositories...', output: 'file' },
+  shorts: { output: 'o' },
+  negatable: { lint: 'Suppress lint output' },
+});

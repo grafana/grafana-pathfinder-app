@@ -13,28 +13,21 @@
  * site.
  */
 
-import { Command } from 'commander';
+import { z } from 'zod';
 
 import { PACKAGE_ID_REGEX } from '../../types/package.schema';
+import { defineCommand, mountCommander } from '../contracts';
 import { mutateAndValidate, PackageIOError } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
-export const renameIdCommand = new Command('rename-id')
-  .description('Atomically rename a package id in both content.json and manifest.json')
-  .argument('<dir>', 'package directory')
-  .argument('<new-id>', 'new package id (kebab-case, must match PACKAGE_ID_REGEX)')
-  .action(async function (this: Command, dir: string, newId: string) {
-    const output = readOutputOptions(this);
-    const outcome = await runRenameId({ dir, newId });
-    process.exit(printOutcome(outcome, output));
-  });
+export const RenameIdCommand = z.object({
+  dir: z.string().describe('package directory').meta({ role: 'io' }),
+  newId: z.string().describe('new package id (kebab-case, must match PACKAGE_ID_REGEX)').meta({ role: 'content' }),
+});
 
-interface RenameIdArgs {
-  dir: string;
-  newId: string;
-}
+export type RenameIdInput = z.output<typeof RenameIdCommand>;
 
-export async function runRenameId(args: RenameIdArgs): Promise<CommandOutcome> {
+export async function runRenameId(args: RenameIdInput): Promise<CommandOutcome> {
   if (!PACKAGE_ID_REGEX.test(args.newId)) {
     return {
       status: 'error',
@@ -95,3 +88,17 @@ export async function runRenameId(args: RenameIdArgs): Promise<CommandOutcome> {
     data: { oldId, newId: args.newId, renamed: true },
   };
 }
+
+export const renameIdSpec = defineCommand({
+  name: 'rename-id',
+  summary: 'Atomically rename a package id in both content.json and manifest.json',
+  schema: RenameIdCommand,
+  run: runRenameId,
+});
+
+// `new-id` keeps the hyphenated spelling the usage line has always shown; the schema
+// field is `newId`, which is what Commander would print unaided.
+export const renameIdCommand = mountCommander(renameIdSpec, {
+  positionals: ['dir', 'newId'],
+  placeholders: { newId: 'new-id' },
+});

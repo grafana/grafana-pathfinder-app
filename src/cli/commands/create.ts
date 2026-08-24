@@ -3,49 +3,38 @@
  *
  * Writes a fresh `content.json` and `manifest.json` in `<dir>`, generating a
  * default kebab-case id from the title when `--id` is omitted.
+ *
+ * The id derivation used to be duplicated in the Commander action and the MCP binding,
+ * with two different error messages for the same bad input. It lives in the runner
+ * now, the one place both adapters reach.
  */
 
-import { Command, Option } from 'commander';
+import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { defineCommand, mountCommander } from '../contracts';
 import { defaultPackageId } from '../utils/auto-id';
 import { newPackageState, PackageIOError, validatePackageState, writePackage } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
-export const createCommand = new Command('create')
-  .description('Create a new guide package directory with content.json and manifest.json')
-  .argument('<dir>', 'package directory to create (must not exist or must be empty)')
-  .addOption(new Option('--title <string>', 'Guide title shown to learners').makeOptionMandatory())
-  .addOption(new Option('--id <string>', 'Package identifier (kebab-case). Auto-generated from title when omitted'))
-  .addOption(new Option('--type <type>', 'Package type').choices(['guide', 'path', 'journey']).default('guide'))
-  .addOption(new Option('--description <string>', 'Short description shown in catalogs and recommenders'))
-  .action(async function (this: Command, dir: string) {
-    const opts = this.opts() as {
-      title: string;
-      id?: string;
-      type: 'guide' | 'path' | 'journey';
-      description?: string;
-    };
-    const output = readOutputOptions(this);
+export const CreateCommand = z.object({
+  dir: z.string().describe('package directory to create (must not exist or must be empty)').meta({ role: 'io' }),
+  title: z.string().describe('Guide title shown to learners').meta({ role: 'content' }),
+  id: z
+    .string()
+    .optional()
+    .describe('Package identifier (kebab-case). Auto-generated from title when omitted')
+    .meta({ role: 'content' }),
+  type: z.enum(['guide', 'path', 'journey']).default('guide').describe('Package type').meta({ role: 'content' }),
+  description: z
+    .string()
+    .optional()
+    .describe('Short description shown in catalogs and recommenders')
+    .meta({ role: 'content' }),
+});
 
-    const id = opts.id ?? deriveId(opts.title);
-    if (!id) {
-      const exitCode = printOutcome(
-        {
-          status: 'error',
-          code: 'INVALID_TITLE',
-          message:
-            'Title must contain at least one alphanumeric character so an id can be generated. Pass --id explicitly to override.',
-        },
-        output
-      );
-      process.exit(exitCode);
-    }
-
-    const outcome = await runCreate({ dir, id, title: opts.title, type: opts.type, description: opts.description });
-    process.exit(printOutcome(outcome, output));
-  });
+export type CreateInput = z.output<typeof CreateCommand>;
 
 function deriveId(title: string): string | null {
   try {
@@ -55,22 +44,24 @@ function deriveId(title: string): string | null {
   }
 }
 
-interface CreateArgs {
-  dir: string;
-  id: string;
-  title: string;
-  type: 'guide' | 'path' | 'journey';
-  description?: string;
-}
-
 /**
- * Pure(ish) command body, separated from the Commander wiring so tests can
+ * Pure(ish) command body, separated from the adapter wiring so tests can
  * exercise the read/validate/write flow without spawning a subprocess.
  *
  * Returns a structured `CommandOutcome` rather than printing directly so
  * `printOutcome` owns the rendering decision (text vs --quiet vs JSON).
  */
-export async function runCreate(args: CreateArgs): Promise<CommandOutcome> {
+export async function runCreate(args: CreateInput): Promise<CommandOutcome> {
+  const id = args.id ?? deriveId(args.title);
+  if (!id) {
+    return {
+      status: 'error',
+      code: 'INVALID_TITLE',
+      message:
+        'Title must contain at least one alphanumeric character so an id can be generated. Pass id explicitly to override.',
+    };
+  }
+
   if (fs.existsSync(args.dir)) {
     const entries = fs.readdirSync(args.dir);
     if (entries.length > 0) {
@@ -84,7 +75,7 @@ export async function runCreate(args: CreateArgs): Promise<CommandOutcome> {
 
   let state;
   try {
-    state = newPackageState({ id: args.id, title: args.title, type: args.type, description: args.description });
+    state = newPackageState({ id, title: args.title, type: args.type, description: args.description });
   } catch (err) {
     return {
       status: 'error',
@@ -120,9 +111,9 @@ export async function runCreate(args: CreateArgs): Promise<CommandOutcome> {
 
   return {
     status: 'ok',
-    summary: `Created package ${path.basename(args.dir)}/ (id: ${args.id})`,
+    summary: `Created package ${path.basename(args.dir)}/ (id: ${id})`,
     details: {
-      id: args.id,
+      id,
       title: args.title,
       type: args.type,
       schemaVersion: state.content.schemaVersion ?? '',
@@ -133,9 +124,20 @@ export async function runCreate(args: CreateArgs): Promise<CommandOutcome> {
     },
     hints: [`Add blocks with: pathfinder-cli add-block <type> ${args.dir} [flags]`],
     data: {
-      id: args.id,
+      id,
       dir: args.dir,
       schemaVersion: state.content.schemaVersion,
     },
   };
 }
+
+export const createSpec = defineCommand({
+  name: 'create',
+  summary: 'Create a new guide package directory with content.json and manifest.json',
+  schema: CreateCommand,
+  run: runCreate,
+});
+
+// `<type>` rather than the generated `<guide|path|journey>`: the choices are already
+// spelled out in the description, and the wider token rewraps every other option.
+export const createCommand = mountCommander(createSpec, { positionals: ['dir'], placeholders: { type: 'type' } });

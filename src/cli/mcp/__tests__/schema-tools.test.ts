@@ -76,11 +76,14 @@ describe('pathfinder_get_schema', () => {
       expect(payload.message).toMatch(/nonexistent/);
     });
 
+    // Pins the absence of Commander vocabulary on an agent-facing message (§2), not
+    // one particular wording.
     it('returns MISSING_NAME when no name or mode flag is supplied', async () => {
       const payload = await callTool('pathfinder_get_schema', { opts: {} });
       expect(payload.status).toBe('error');
       expect(payload.code).toBe('MISSING_NAME');
-      expect(String(payload.message)).toMatch(/list: true/);
+      expect(String(payload.message)).toMatch(/"list"/);
+      expect(String(payload.message)).toMatch(/"all"/);
       expect(String(payload.message)).not.toMatch(/--list|--all/);
     });
   });

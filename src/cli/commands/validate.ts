@@ -4,26 +4,19 @@
  * Validates JSON guide files and package directories against Zod schemas.
  */
 
-import { Command } from 'commander';
+import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import type { ContentJson, ManifestJson } from '../../types/package.types';
 import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { validatePackage, validatePackageTree, type PackageValidationResult } from '../../validation/validate-package';
+import { defineCommand, mountCommander } from '../contracts';
 import { loadGuideFiles, loadBundledGuides, resolveCliPath, type LoadedGuide } from '../utils/file-loader';
 import { validatePackageState } from '../utils/package-io';
-import { manyIssuesOutcome, readOutputOptions, type CommandOutcome } from '../utils/output';
+import { manyIssuesOutcome, type CommandOutcome } from '../utils/output';
 
-interface ValidateOptions {
-  bundled?: boolean;
-  stdin?: boolean;
-  strict?: boolean;
-  format?: 'text' | 'json';
-  package?: string;
-  packages?: string;
-  verbose?: boolean;
-}
+type ValidateOptions = ValidateCliInput;
 
 /**
  * Stable message code (defined in `validate-package.ts`) for the six
@@ -168,7 +161,7 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
   }
 }
 
-function runPackageValidation(packageDir: string, options: ValidateOptions): void {
+function runPackageValidation(packageDir: string, options: ValidateOptions): CommandOutcome {
   const absoluteDir = resolveCliPath(packageDir);
   const result = validatePackage(absoluteDir, { strict: options.strict });
 
@@ -178,18 +171,19 @@ function runPackageValidation(packageDir: string, options: ValidateOptions): voi
     formatPackageResult(path.basename(absoluteDir), result, !!options.strict, !!options.verbose);
   }
 
-  if (!result.isValid) {
-    process.exit(1);
-  }
+  return result.isValid
+    ? { status: 'ok', summary: `${path.basename(absoluteDir)} is valid` }
+    : { status: 'error', code: 'PACKAGE_INVALID', message: `${path.basename(absoluteDir)} failed validation` };
 }
 
-function runPackagesValidation(rootDir: string, options: ValidateOptions): void {
+function runPackagesValidation(rootDir: string, options: ValidateOptions): CommandOutcome {
   const absoluteRoot = resolveCliPath(rootDir);
   const results = validatePackageTree(absoluteRoot, { strict: options.strict });
 
   if (results.size === 0) {
-    console.error(`No package directories found under ${absoluteRoot}`);
-    process.exit(1);
+    const message = `No package directories found under ${absoluteRoot}`;
+    console.error(message);
+    return { status: 'error', code: 'NO_PACKAGES', message };
   }
 
   if (options.format === 'json') {
@@ -225,10 +219,10 @@ function runPackagesValidation(rootDir: string, options: ValidateOptions): void 
     }
   }
 
-  const hasInvalid = [...results.values()].some((r) => !r.isValid);
-  if (hasInvalid) {
-    process.exit(1);
-  }
+  const invalidCount = [...results.values()].filter((r) => !r.isValid).length;
+  return invalidCount === 0
+    ? { status: 'ok', summary: `${results.size} package(s) valid` }
+    : { status: 'error', code: 'PACKAGE_INVALID', message: `${invalidCount} package(s) failed validation` };
 }
 
 // --- Stdin validation ---
@@ -242,19 +236,19 @@ export function readStdin(): Promise<string> {
   });
 }
 
-function runFileValidation(guides: LoadedGuide[], options: ValidateOptions): void {
+function runFileValidation(guides: LoadedGuide[], options: ValidateOptions): CommandOutcome {
   const summary = validateGuides(guides, options);
   if (options.format === 'json') {
     formatJsonOutput(summary);
   } else {
     formatTextOutput(summary, options);
   }
-  if (summary.invalidFiles > 0) {
-    process.exit(1);
-  }
+  return summary.invalidFiles === 0
+    ? { status: 'ok', summary: `${summary.validFiles} guide(s) valid` }
+    : { status: 'error', code: 'GUIDE_INVALID', message: `${summary.invalidFiles} guide(s) failed validation` };
 }
 
-function runStdinValidation(input: string, options: ValidateOptions): void {
+function runStdinValidation(input: string, options: ValidateOptions): CommandOutcome {
   const result = validateGuideFromString(input, { strict: options.strict });
   const legacy = toLegacyResult(result);
 
@@ -278,9 +272,9 @@ function runStdinValidation(input: string, options: ValidateOptions): void {
     }
   }
 
-  if (!result.isValid) {
-    process.exit(1);
-  }
+  return result.isValid
+    ? { status: 'ok', summary: 'Valid guide' }
+    : { status: 'error', code: 'GUIDE_INVALID', message: 'Invalid guide' };
 }
 
 /**
@@ -412,62 +406,86 @@ export function runValidate(args: ValidateArgs): CommandOutcome {
   };
 }
 
-export const validateCommand = new Command('validate')
-  .description('Validate JSON guide files or package directories')
-  .arguments('[files...]')
-  .option('--bundled', 'Validate all bundled guides in src/bundled-interactives/')
-  .option('--stdin', 'Read a single JSON guide from stdin instead of files')
-  .option('--strict', 'Treat warnings as errors')
-  // No `.default('text')` here — the action falls back to the root program's
-  // --format via `readOutputOptions` when the local flag isn't set. A local
-  // default would shadow the global because Commander's `optsWithGlobals`
-  // gives child opts precedence over parent opts when both define the same
-  // flag name.
-  .option('--format <format>', 'Output format: text or json')
-  .option('--package <dir>', 'Validate a single package directory (expects content.json)')
-  .option('--packages <dir>', 'Validate a tree of package directories')
-  .option('--verbose', 'Show every INFO message individually (default: collapse default-array INFOs)')
-  .action(async function (this: Command, files: string[]) {
-    const options = this.optsWithGlobals<ValidateOptions>();
-    // Fall back to the root program's --format when the local flag wasn't
-    // passed. Without this, a root-level `pathfinder-cli --format json
-    // validate ...` would be silently dropped by Commander's child-precedence
-    // merge. `readOutputOptions` is what every other CLI command uses to read
-    // the global output contract.
-    if (!options.format) {
-      options.format = readOutputOptions(this).format;
-    }
-    try {
-      const mode = resolveMode(options, files);
-      switch (mode.kind) {
-        case 'error':
-          console.error(mode.message);
-          process.exit(1);
-          return;
-        case 'stdin': {
-          const input = await readStdin();
-          return runStdinValidation(input, options);
+export const ValidateCliCommand = z.object({
+  files: z.array(z.string()).default([]).describe('Guide files or a package directory').meta({ role: 'io' }),
+  bundled: z
+    .boolean()
+    .default(false)
+    .describe('Validate all bundled guides in src/bundled-interactives/')
+    .meta({ role: 'io' }),
+  stdin: z.boolean().default(false).describe('Read a single JSON guide from stdin instead of files').meta({
+    role: 'io',
+  }),
+  strict: z.boolean().default(false).describe('Treat warnings as errors').meta({ role: 'control' }),
+  // Deliberately no default: `--format` is also a root-program option, and a local
+  // default would shadow it. The Commander mount inherits the root's value instead.
+  format: z.enum(['text', 'json']).optional().describe('Output format: text or json').meta({ role: 'io' }),
+  package: z
+    .string()
+    .optional()
+    .describe('Validate a single package directory (expects content.json)')
+    .meta({ role: 'io' }),
+  packages: z.string().optional().describe('Validate a tree of package directories').meta({ role: 'io' }),
+  verbose: z
+    .boolean()
+    .default(false)
+    .describe('Show every INFO message individually (default: collapse default-array INFOs)')
+    .meta({ role: 'control' }),
+});
+
+export type ValidateCliInput = z.output<typeof ValidateCliCommand>;
+
+/**
+ * Disk-oriented validation for CLI users. Each mode prints its own report and the
+ * exit code is the result, so the outcome returned here carries the status only.
+ */
+export async function runValidateCli(args: ValidateCliInput): Promise<CommandOutcome> {
+  const failed = (code: string, message: string): CommandOutcome => ({ status: 'error', code, message });
+  try {
+    const mode = resolveMode(args, args.files);
+    switch (mode.kind) {
+      case 'error':
+        console.error(mode.message);
+        return failed('INVALID_OPTIONS', mode.message);
+      case 'stdin':
+        return runStdinValidation(await readStdin(), args);
+      case 'package':
+        return runPackageValidation(mode.path, args);
+      case 'packages':
+        return runPackagesValidation(mode.path, args);
+      case 'bundled':
+      case 'files': {
+        const guides = mode.kind === 'bundled' ? loadBundledGuides() : loadGuideFiles(mode.paths);
+        if (guides.length === 0) {
+          const message =
+            mode.kind === 'bundled'
+              ? 'No bundled guides found in src/bundled-interactives/'
+              : 'No valid JSON guide files found in the specified paths';
+          console.error(message);
+          return failed('NO_GUIDES', message);
         }
-        case 'package':
-          return runPackageValidation(mode.path, options);
-        case 'packages':
-          return runPackagesValidation(mode.path, options);
-        case 'bundled':
-        case 'files': {
-          const guides = mode.kind === 'bundled' ? loadBundledGuides() : loadGuideFiles(mode.paths);
-          if (guides.length === 0) {
-            console.error(
-              mode.kind === 'bundled'
-                ? 'No bundled guides found in src/bundled-interactives/'
-                : 'No valid JSON guide files found in the specified paths'
-            );
-            process.exit(1);
-          }
-          return runFileValidation(guides, options);
-        }
+        return runFileValidation(guides, args);
       }
-    } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
-      process.exit(1);
     }
-  });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error:', message);
+    return failed('VALIDATE_FAILED', message);
+  }
+}
+
+export const validateCliSpec = defineCommand({
+  name: 'validate',
+  summary: 'Validate JSON guide files or package directories',
+  schema: ValidateCliCommand,
+  // Five report renderings — per-file, per-package, tree summary, stdin, JSON — all
+  // older than the outcome envelope and read by humans and CI as they are.
+  emits: 'stream',
+  run: runValidateCli,
+});
+
+export const validateCommand = mountCommander(validateCliSpec, {
+  positionals: ['files'],
+  placeholders: { files: 'files...', format: 'format', package: 'dir', packages: 'dir' },
+  inherits: ['format'],
+});

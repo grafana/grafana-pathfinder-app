@@ -7,24 +7,28 @@
  * without booting an MCP server.
  */
 
+import { addBlockGroup } from '../../commands/add-block';
+import { describeFor, publishedNames, specFields } from '../../contracts';
 import type { HelpJson } from '../../utils/output';
+import { COMMAND_GROUPS, COMMAND_SPECS, commandNames } from '../../commands/manifest';
 import {
+  agentView,
+  bindCommandInterface,
   formatCommandInterface,
   isCommandInterfaceError,
-  registerCommandInterfaceConfig,
   registeredCommandInterfaceNames,
   validateCommandArgs,
 } from '../lib/command-interface';
 import type { ToolResult } from '../tools/result';
 
 beforeAll(() => {
-  registerCommandInterfaceConfig('create', { optBlacklist: ['dir'] });
-  registerCommandInterfaceConfig('inspect', { optBlacklist: ['dir'] });
-  registerCommandInterfaceConfig('schema', {});
-  registerCommandInterfaceConfig('add-block', {
-    optBlacklist: ['dir', 'before', 'after', 'position'],
-    subcommandOpt: 'type',
-  });
+  for (const command of ['create', 'inspect', 'schema']) {
+    bindCommandInterface(command);
+  }
+  // Bound the way `pathfinder_manage_block` binds it. The placement parameters
+  // belong to the command; withholding them is a decision of the surface that
+  // offers it, so a test about withholding has to make that decision too.
+  bindCommandInterface('add-block', { withhold: ['before', 'after', 'position'] });
 });
 
 function flagNames(help: HelpJson): string[] {
@@ -46,12 +50,93 @@ describe('registeredCommandInterfaceNames', () => {
   });
 });
 
+describe('bindCommandInterface', () => {
+  it('throws on a name the CLI does not ship', () => {
+    // Fails at tool-registration time rather than leaving the tool reachable
+    // but unhelpable, which the agent would see as UNKNOWN_COMMAND from the
+    // command its own tool description told it to ask about.
+    expect(() => bindCommandInterface('add-blcok')).toThrow(/no such command/);
+    expect(registeredCommandInterfaceNames().has('add-blcok')).toBe(false);
+  });
+
+  // Binding reads the manifest, so every entry it can name is a spec or a group by
+  // construction. Asserted anyway: this is the property that lets `agentView` and
+  // `resolveCommandInterface` treat a manifest hit as a declared shape.
+  it('sees a declared shape behind every command it can bind', () => {
+    const shapeless = commandNames().filter((name) => !COMMAND_SPECS.has(name) && !COMMAND_GROUPS.has(name));
+    expect(shapeless).toEqual([]);
+  });
+
+  // Withholding is stated in field names, so it can be checked against the schema —
+  // the whole difference between this and the `optBlacklist` it replaces.
+  it('throws when the withhold list names a parameter the command does not declare', () => {
+    expect(() => bindCommandInterface('inspect', { withhold: ['notAParameter'] })).toThrow(
+      /withholds parameter\(s\) it does not declare: notAParameter/
+    );
+  });
+
+  // A group's parameters live on its variants, so the check has to look there.
+  // Rebound with the same list `beforeAll` used, to leave the registry as found.
+  it('accepts withhold names declared by a group variant', () => {
+    expect(() => bindCommandInterface('add-block', { withhold: ['before', 'after', 'position'] })).not.toThrow();
+  });
+});
+
+describe('agentView', () => {
+  // Defaulting to an empty withhold list would publish everything but `io` for a
+  // command that should not be described at all. The public entrypoints report
+  // UNKNOWN_COMMAND before reaching here, as the suites below cover.
+  it('refuses a command with no binding', () => {
+    expect(() => agentView('e2e')).toThrow(/No MCP binding for "e2e"/);
+  });
+
+  it('offers a bound command everything but its io plumbing and withheld names', () => {
+    const view = agentView('add-block');
+    const spec = addBlockGroup.variants.get('markdown')!;
+    const published = publishedNames(spec, view);
+    expect(published).toContain('parent');
+    expect(published).not.toContain('dir');
+    expect(published).not.toContain('before');
+  });
+
+  // An agent has no shell and no `requirements` tool, so it is shown the vocabulary
+  // rather than told to print it. The command line gets its own pointer from
+  // `CLI_VIEW`; the schema states neither.
+  it('illustrates the requirement vocabulary instead of naming a command', () => {
+    const spec = addBlockGroup.variants.get('interactive')!;
+    const field = specFields(spec).find((entry) => entry.name === 'requirements')!;
+    const described = describeFor(field, agentView('add-block'));
+    expect(described).toContain('valid tokens include is-admin, on-page:/dashboards');
+    expect(described).not.toContain('pathfinder-cli');
+  });
+});
+
 describe('formatCommandInterface', () => {
   it('rejects a command that is not in the CLI registry', () => {
     const result = formatCommandInterface('not-a-command');
     expect(isCommandInterfaceError(result)).toBe(true);
     if (isCommandInterfaceError(result)) {
       expect(result.code).toBe('UNKNOWN_COMMAND');
+    }
+  });
+
+  // `edit-block` is a real CLI command this suite deliberately leaves unbound.
+  // Unbound is indistinguishable from nonexistent on purpose: there is no tool
+  // to reach it either way, and naming it would advertise withheld capability.
+  it('rejects a real CLI command that has no MCP binding', () => {
+    const result = formatCommandInterface('edit-block');
+    expect(isCommandInterfaceError(result)).toBe(true);
+    if (isCommandInterfaceError(result)) {
+      expect(result.code).toBe('UNKNOWN_COMMAND');
+      expect(result.message).not.toMatch(/Available:.*\bedit-block\b/);
+    }
+  });
+
+  it('lists only bound commands, in CLI-registry order, when rejecting', () => {
+    const result = formatCommandInterface('e2e');
+    expect(isCommandInterfaceError(result)).toBe(true);
+    if (isCommandInterfaceError(result)) {
+      expect(result.message).toContain('Available: create, add-block, inspect, schema');
     }
   });
 
@@ -105,6 +190,11 @@ describe('formatCommandInterface', () => {
 });
 
 describe('validateCommandArgs', () => {
+  it('rejects an unbound CLI command rather than validating against it', () => {
+    const result = rejection(validateCommandArgs('edit-block', { id: 'block-1', content: 'hi' }));
+    expect(result).toMatchObject({ status: 'error', code: 'UNKNOWN_COMMAND' });
+  });
+
   it('treats empty string as missing a Commander-mandatory option', () => {
     const result = rejection(validateCommandArgs('create', { title: '' }));
     expect(result).toMatchObject({ status: 'error', code: 'SCHEMA_VALIDATION' });
@@ -125,15 +215,31 @@ describe('validateCommandArgs', () => {
     expect((result.data as { unsupported?: string[] }).unsupported).toEqual(['before']);
   });
 
-  it('reports a missing type selector against the root add-block command', () => {
+  it('reports only the missing type selector when no type was given', () => {
     const result = rejection(validateCommandArgs('add-block', { content: 'hello' }));
     expect(result).toMatchObject({ status: 'error', code: 'SCHEMA_VALIDATION' });
     expect(String(result.message)).toMatch(/missing required parameter: type/);
-    expect((result.data as { unsupported?: string[] }).unsupported).toEqual(['content']);
+    // `content` is not reported as unsupported: without a type there is no
+    // interface to judge it against, and it is in fact valid for markdown.
+    // Calling it unsupported sent the agent to fix the wrong parameter.
+    expect((result.data as { unsupported?: string[] }).unsupported).toBeUndefined();
   });
 
-  it('lets add-block content requiredness fall through to the runner (forceOptional)', () => {
-    expect(validateCommandArgs('add-block', { type: 'markdown' })).toBeUndefined();
+  it('reports missing content requiredness for the selected block type', () => {
+    const result = rejection(validateCommandArgs('add-block', { type: 'markdown' }));
+    expect(result).toMatchObject({ status: 'error', code: 'SCHEMA_VALIDATION' });
+    expect(String(result.message)).toMatch(/missing required parameter: content/);
+  });
+
+  it('reports every missing parameter at once rather than one per round-trip', () => {
+    const result = rejection(validateCommandArgs('add-block', { type: 'input' }));
+    const missing = (result.data as { missing?: string[] }).missing ?? [];
+    expect(missing).toEqual(expect.arrayContaining(['prompt', 'inputType', 'variableName']));
+  });
+
+  it('reports the declared code when a container is added without an id', () => {
+    const result = rejection(validateCommandArgs('add-block', { type: 'section', title: 'S' }));
+    expect(result).toMatchObject({ status: 'error', code: 'CONTAINER_REQUIRES_ID' });
   });
 
   it('rejects a boolean where the CLI enum is the strings true|false', () => {

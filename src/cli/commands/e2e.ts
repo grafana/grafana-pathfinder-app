@@ -8,10 +8,12 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
 
-import { Command, Option } from 'commander';
+import { z } from 'zod';
 
 import { validateGuideFromString, toLegacyResult } from '../../validation';
+import { defineCommand, mountCommander } from '../contracts';
 import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
+import type { CommandOutcome } from '../utils/output';
 import { planGuideExecution, type ExecutionPlan } from '../e2e/guide-chains';
 import { type E2EErrorCode, type E2EExecutionOutcome, type ExecutionSelection } from '../e2e/schemas/e2e-report.schema';
 import {
@@ -23,7 +25,7 @@ import {
   writeReport,
   type TestResultsData,
 } from '../e2e/e2e-reporter';
-import { checkTier, loadManifestFromDir, runManifestPreflight, type CurrentTier } from '../e2e/manifest-preflight';
+import { checkTier, loadManifestFromDir, runManifestPreflight } from '../e2e/manifest-preflight';
 import {
   loadLocalRepositorySource,
   LocalMetapackageResolutionError,
@@ -81,46 +83,114 @@ import {
   applyLocalRepositoryStartingLocations,
 } from '../e2e/local-starting-location';
 
-/**
- * CLI options for the e2e command
- */
-interface E2ECommandOptions {
-  grafanaUrl: string;
-  output?: string;
-  artifacts: string;
-  verbose: boolean;
-  bundled: boolean;
-  package?: string;
-  tier: CurrentTier;
-  trace: boolean;
-  headed: boolean;
-  alwaysScreenshot: boolean;
-  clean: boolean;
-  cleanReadyTimeoutMs: number;
-  repository?: string;
-  /** Resolve and test every package in the CDN repository index. */
-  remote: boolean;
-  /** CDN base URL override for --remote. */
-  repoUrl?: string;
-  /** Recommender base URL for --package <id> resolution. */
-  resolverUrl: string;
-  /** Host-to-env-var mappings for cloud instance admin tokens. */
-  cloudInstanceAdminToken: string[];
-  /** Default cloud instance URL for cloud-tier guides without an `instance`. */
-  cloudUrl: string;
-  cloudStackPoolManagerUrl?: string;
-  cloudStackPoolManagerToken?: string;
-  cloudStackPoolId: string;
-  cloudStackMaxWaitSeconds?: number;
-}
-
-function collectOption(value: string, previous: string[]): string[] {
-  return [...previous, value];
-}
-
 const DEFAULT_GRAFANA_URL = 'http://localhost:3000';
 const DEFAULT_RESOLVER_URL = 'https://recommender.grafana.com';
 const DEFAULT_CLOUD_URL = 'https://learn.grafana.net/';
+
+// Unique per process so concurrent runs cannot overwrite each other's artifacts.
+const defaultArtifactsDir = `/tmp/pathfinder-e2e-${randomUUID().slice(0, 8)}`;
+
+const io = { role: 'io' } as const;
+const control = { role: 'control' } as const;
+
+/**
+ * The e2e command's input. Declaration order is help order.
+ */
+export const E2eCommand = z.object({
+  files: z.array(z.string()).default([]).describe('Guide files to test').meta(io),
+  grafanaUrl: z
+    .string()
+    .default(DEFAULT_GRAFANA_URL)
+    .describe(
+      `Grafana instance URL (default ${DEFAULT_GRAFANA_URL}; ${CLEAN_GRAFANA_URL} when --clean is set and this flag is not passed)`
+    )
+    .meta(io),
+  output: z.string().optional().describe('Path for JSON report output').meta(io),
+  artifacts: z.string().default(defaultArtifactsDir).describe('Directory for artifacts').meta(io),
+  verbose: z.boolean().default(false).describe('Enable verbose logging').meta(control),
+  bundled: z.boolean().default(false).describe('Test all bundled guides').meta(io),
+  package: z
+    .string()
+    .optional()
+    .describe(
+      'Test a guide, path, or journey package: a local directory, or a bare package ID resolved via the recommender'
+    )
+    .meta(io),
+  tier: z.enum(['local', 'cloud']).default('local').describe('Current test environment tier').meta(control),
+  trace: z.boolean().default(false).describe('Generate Playwright trace file').meta(control),
+  headed: z.boolean().default(false).describe('Run browser in headed mode (visible)').meta(control),
+  alwaysScreenshot: z.boolean().default(false).describe('Capture screenshots on success and failure').meta(control),
+  clean: z
+    .boolean()
+    .default(false)
+    .describe(
+      `Run tests against an isolated docker-compose stack (project "${CLEAN_COMPOSE_PROJECT}", Grafana on ${CLEAN_GRAFANA_URL}). Resets between dependency chains (not between guides in the same chain) and tears down at the end.`
+    )
+    .meta(control),
+  cleanReadyTimeoutMs: z
+    .number()
+    .default(120000)
+    .describe('How long to wait for the isolated Grafana to become healthy after a --clean reset')
+    .meta(control),
+  repository: z
+    .string()
+    .optional()
+    .describe(
+      'Path to repository.json (default: bundled index for guide dependencies; required for local path/journey milestones)'
+    )
+    .meta(io),
+  remote: z
+    .boolean()
+    .default(false)
+    .describe('Resolve and test every package from the CDN repository index')
+    .meta(control),
+  repoUrl: z
+    .string()
+    .optional()
+    .describe('CDN base URL for --remote (default: the public Pathfinder package repository)')
+    .meta(io),
+  resolverUrl: z
+    .string()
+    .default(DEFAULT_RESOLVER_URL)
+    .describe('Recommender base URL for --package <id> resolution')
+    .meta(io),
+  cloudInstanceAdminToken: z
+    .array(z.string())
+    .default([])
+    .describe('Admin service-account token env var for a cloud target; repeat for multiple cloud instances')
+    .meta(io),
+  cloudUrl: z
+    .string()
+    .default(DEFAULT_CLOUD_URL)
+    .describe(`Default cloud instance URL for cloud-tier guides without an instance (default ${DEFAULT_CLOUD_URL})`)
+    .meta(io),
+  cloudStackPoolManagerUrl: z
+    .string()
+    .optional()
+    .describe('Pool manager base URL for isolated Grafana Cloud stack leasing')
+    .meta(io),
+  cloudStackPoolManagerToken: z
+    .string()
+    .optional()
+    .describe('Pool manager bearer token env var for isolated Grafana Cloud stack leasing')
+    .meta(io),
+  cloudStackPoolId: z
+    .string()
+    .default(DEFAULT_CLOUD_STACK_POOL_ID)
+    .describe('Pool manager pool id for isolated Grafana Cloud stack leasing')
+    .meta(io),
+  cloudStackMaxWaitSeconds: z
+    .number()
+    .optional()
+    .describe('Maximum wait budget for pool-manager lease requests')
+    .meta(control),
+});
+
+export type E2eInput = z.output<typeof E2eCommand>;
+
+// The run pipeline reads the parsed input under its historical name. `tier` narrows
+// to `CurrentTier` by construction — the enum members are that union.
+type E2ECommandOptions = E2eInput;
 
 /**
  * Everything the run pipeline needs, resolved from CLI inputs regardless of
@@ -987,151 +1057,127 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
   };
 }
 
-// Generate unique run ID for default artifacts path
-const defaultArtifactsDir = `/tmp/pathfinder-e2e-${randomUUID().slice(0, 8)}`;
+/**
+ * Run the suite. Every terminal path exits with an `ExitCode` — `reportResults` for a
+ * completed run, the catch block for a failure — so the returned outcome is a
+ * formality the type system asks for.
+ */
+export async function runE2e(options: E2eInput): Promise<CommandOutcome> {
+  const files = options.files;
+  const cleanEnv = new CleanEnvironment(options.verbose);
+  const cloudChainCleanup = new CloudChainCleanupRegistry();
+  let reportGuide: LoadedGuide | undefined;
+  let reportSelection: ExecutionSelection | undefined;
 
-export const e2eCommand = new Command('e2e')
-  .description('Run E2E tests on JSON guide files')
-  .arguments('[files...]')
-  .option(
-    '--grafana-url <url>',
-    `Grafana instance URL (default ${DEFAULT_GRAFANA_URL}; ${CLEAN_GRAFANA_URL} when --clean is set and this flag is not passed)`,
-    DEFAULT_GRAFANA_URL
-  )
-  .option('--output <path>', 'Path for JSON report output')
-  .option('--artifacts <dir>', 'Directory for artifacts', defaultArtifactsDir)
-  .option('--verbose', 'Enable verbose logging', false)
-  .option('--bundled', 'Test all bundled guides')
-  .option(
-    '--package <dirOrId>',
-    'Test a guide, path, or journey package: a local directory, or a bare package ID resolved via the recommender'
-  )
-  .addOption(new Option('--tier <tier>', 'Current test environment tier').choices(['local', 'cloud']).default('local'))
-  .option('--trace', 'Generate Playwright trace file', false)
-  .option('--headed', 'Run browser in headed mode (visible)', false)
-  .option('--always-screenshot', 'Capture screenshots on success and failure', false)
-  .option(
-    '--clean',
-    `Run tests against an isolated docker-compose stack (project "${CLEAN_COMPOSE_PROJECT}", Grafana on ${CLEAN_GRAFANA_URL}). Resets between dependency chains (not between guides in the same chain) and tears down at the end.`,
-    false
-  )
-  .option(
-    '--clean-ready-timeout-ms <ms>',
-    'How long to wait for the isolated Grafana to become healthy after a --clean reset',
-    (v) => parseInt(v, 10),
-    120000
-  )
-  .option(
-    '--repository <path>',
-    'Path to repository.json (default: bundled index for guide dependencies; required for local path/journey milestones)'
-  )
-  .option('--remote', 'Resolve and test every package from the CDN repository index', false)
-  .option('--repo-url <url>', 'CDN base URL for --remote (default: the public Pathfinder package repository)')
-  .option('--resolver-url <url>', 'Recommender base URL for --package <id> resolution', DEFAULT_RESOLVER_URL)
-  .option(
-    '--cloud-instance-admin-token <host=envVar>',
-    'Admin service-account token env var for a cloud target; repeat for multiple cloud instances',
-    collectOption,
-    []
-  )
-  .option(
-    '--cloud-url <url>',
-    `Default cloud instance URL for cloud-tier guides without an instance (default ${DEFAULT_CLOUD_URL})`,
-    DEFAULT_CLOUD_URL
-  )
-  .option('--cloud-stack-pool-manager-url <url>', 'Pool manager base URL for isolated Grafana Cloud stack leasing')
-  .option(
-    '--cloud-stack-pool-manager-token <envVar>',
-    'Pool manager bearer token env var for isolated Grafana Cloud stack leasing'
-  )
-  .option(
-    '--cloud-stack-pool-id <id>',
-    'Pool manager pool id for isolated Grafana Cloud stack leasing',
-    DEFAULT_CLOUD_STACK_POOL_ID
-  )
-  .option('--cloud-stack-max-wait-seconds <seconds>', 'Maximum wait budget for pool-manager lease requests', (v) =>
-    parseInt(v, 10)
-  )
-  .action(async (files: string[], options: E2ECommandOptions) => {
-    const cleanEnv = new CleanEnvironment(options.verbose);
-    const cloudChainCleanup = new CloudChainCleanupRegistry();
-    let reportGuide: LoadedGuide | undefined;
-    let reportSelection: ExecutionSelection | undefined;
+  installTeardownHandlers(cleanEnv, cloudChainCleanup);
+  if (options.clean && options.grafanaUrl === DEFAULT_GRAFANA_URL) {
+    options.grafanaUrl = CLEAN_GRAFANA_URL;
+  }
 
-    installTeardownHandlers(cleanEnv, cloudChainCleanup);
-    if (options.clean && options.grafanaUrl === DEFAULT_GRAFANA_URL) {
-      options.grafanaUrl = CLEAN_GRAFANA_URL;
+  try {
+    const inputs = await resolveRunInputs(files, options);
+    reportGuide = inputs.guides.length === 1 ? inputs.guides[0] : undefined;
+    reportSelection = inputs.selection;
+
+    // Remote runs can resolve to nothing runnable (e.g. all cloud-tier guides):
+    // report the skips and exit without booting Grafana or Playwright.
+    if (inputs.guides.length === 0) {
+      reportResults(inputs.preRunSkipped, options, [], inputs.selection);
+      return { status: 'ok', summary: 'Nothing to run' };
     }
 
-    try {
-      const inputs = await resolveRunInputs(files, options);
-      reportGuide = inputs.guides.length === 1 ? inputs.guides[0] : undefined;
-      reportSelection = inputs.selection;
+    printRunConfiguration(inputs.guides, options, inputs.mode);
 
-      // Remote runs can resolve to nothing runnable (e.g. all cloud-tier guides):
-      // report the skips and exit without booting Grafana or Playwright.
-      if (inputs.guides.length === 0) {
-        reportResults(inputs.preRunSkipped, options, [], inputs.selection);
-        return;
-      }
+    const plan = inputs.executionPlan ?? buildExecutionPlan(inputs.guides, options, inputs.repoSource);
+    if (inputs.mode === 'local' && inputs.repoSource) {
+      applyLocalRepositoryStartingLocations(plan, inputs.repoSource, inputs.packageMetaById);
+    }
+    assertTierHomogeneousChains(plan, inputs.packageMetaById);
 
-      printRunConfiguration(inputs.guides, options, inputs.mode);
+    await maybeCleanStart(cleanEnv, options);
 
-      const plan = inputs.executionPlan ?? buildExecutionPlan(inputs.guides, options, inputs.repoSource);
-      if (inputs.mode === 'local' && inputs.repoSource) {
-        applyLocalRepositoryStartingLocations(plan, inputs.repoSource, inputs.packageMetaById);
-      }
-      assertTierHomogeneousChains(plan, inputs.packageMetaById);
-
-      await maybeCleanStart(cleanEnv, options);
-
-      await sweepCloudTargets({
-        targetUrls: inputs.cloudAuth?.targets.sharedStackUrls ?? [],
-        cloudAuth: inputs.cloudAuth,
-        verbose: options.verbose,
-      });
-      const localManifest = await runPreflightChecks(
-        options,
-        preflightTargetUrlsForPlan({
-          plan,
-          packageMetaById: inputs.packageMetaById,
-          cloudAuth: inputs.cloudAuth,
-          cloudStackPoolManagerConfig: inputs.cloudStackPoolManagerConfig,
-          globalUrl: options.grafanaUrl,
-        }),
-        inputs.localPackageDir
-      );
-      if (localManifest) {
-        applyLocalManifestStartingLocation(localManifest, inputs.packageMetaById);
-      }
-
-      const outcome = await runChains(
+    await sweepCloudTargets({
+      targetUrls: inputs.cloudAuth?.targets.sharedStackUrls ?? [],
+      cloudAuth: inputs.cloudAuth,
+      verbose: options.verbose,
+    });
+    const localManifest = await runPreflightChecks(
+      options,
+      preflightTargetUrlsForPlan({
         plan,
-        options,
-        cleanEnv,
-        inputs.packageMetaById,
-        inputs.cloudAuth,
-        inputs.cloudStackPoolManagerConfig,
-        cloudChainCleanup
-      );
-
-      reportResults([...inputs.preRunSkipped, ...outcome.results], options, outcome.cleanupWarnings, inputs.selection);
-    } catch (error) {
-      const isSuccessExit = error instanceof E2ECommandError && error.exitCode === ExitCode.SUCCESS;
-      if (!isSuccessExit) {
-        console.error('❌ Error:', error instanceof Error ? error.message : 'Unknown error');
-      }
-      let exitCode: number;
-      try {
-        exitCode = writeCommandFailureReport(
-          options,
-          error,
-          reportGuide,
-          reportSelection ?? (error instanceof E2ECommandError ? error.selection : undefined)
-        );
-      } catch {
-        exitCode = error instanceof E2ECommandError ? error.exitCode : ExitCode.CONFIGURATION_ERROR;
-      }
-      process.exit(exitCode);
+        packageMetaById: inputs.packageMetaById,
+        cloudAuth: inputs.cloudAuth,
+        cloudStackPoolManagerConfig: inputs.cloudStackPoolManagerConfig,
+        globalUrl: options.grafanaUrl,
+      }),
+      inputs.localPackageDir
+    );
+    if (localManifest) {
+      applyLocalManifestStartingLocation(localManifest, inputs.packageMetaById);
     }
-  });
+
+    const outcome = await runChains(
+      plan,
+      options,
+      cleanEnv,
+      inputs.packageMetaById,
+      inputs.cloudAuth,
+      inputs.cloudStackPoolManagerConfig,
+      cloudChainCleanup
+    );
+
+    reportResults([...inputs.preRunSkipped, ...outcome.results], options, outcome.cleanupWarnings, inputs.selection);
+    return { status: 'ok', summary: `${outcome.results.length} guide(s) run` };
+  } catch (error) {
+    const isSuccessExit = error instanceof E2ECommandError && error.exitCode === ExitCode.SUCCESS;
+    if (!isSuccessExit) {
+      console.error('❌ Error:', error instanceof Error ? error.message : 'Unknown error');
+    }
+    let exitCode: number;
+    try {
+      exitCode = writeCommandFailureReport(
+        options,
+        error,
+        reportGuide,
+        reportSelection ?? (error instanceof E2ECommandError ? error.selection : undefined)
+      );
+    } catch {
+      exitCode = error instanceof E2ECommandError ? error.exitCode : ExitCode.CONFIGURATION_ERROR;
+    }
+    process.exit(exitCode);
+  }
+}
+
+export const e2eSpec = defineCommand({
+  name: 'e2e',
+  summary: 'Run E2E tests on JSON guide files',
+  schema: E2eCommand,
+  // Progress, the run summary, and the JSON report are all written by the runner,
+  // which also owns the exit code — `ExitCode` distinguishes eight failure kinds.
+  emits: 'stream',
+  run: runE2e,
+});
+
+export const e2eCommand = mountCommander(e2eSpec, {
+  positionals: ['files'],
+  placeholders: {
+    files: 'files...',
+    grafanaUrl: 'url',
+    output: 'path',
+    artifacts: 'dir',
+    package: 'dirOrId',
+    tier: 'tier',
+    cleanReadyTimeoutMs: 'ms',
+    repository: 'path',
+    repoUrl: 'url',
+    resolverUrl: 'url',
+    cloudInstanceAdminToken: 'host=envVar',
+    cloudUrl: 'url',
+    cloudStackPoolManagerUrl: 'url',
+    cloudStackPoolManagerToken: 'envVar',
+    cloudStackPoolId: 'id',
+    cloudStackMaxWaitSeconds: 'seconds',
+  },
+  // These six have printed `(default: false)` since they were hand-declared.
+  showDefaults: { verbose: true, trace: true, headed: true, alwaysScreenshot: true, clean: true, remote: true },
+});

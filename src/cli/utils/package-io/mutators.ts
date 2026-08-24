@@ -236,6 +236,29 @@ export interface EditBlockOptions {
 }
 
 /**
+ * Block fields `editBlock` refuses to patch.
+ *
+ * `type` is a discriminator and the child collections are structure, both owned
+ * by other commands. `id` is here because a block-level rename is non-trivial:
+ * every conditional / quiz / guided reference and every cross-block link in the
+ * package would need updating (TODO p5.8). Until that walker exists, authors who
+ * guess wrong on a leaf id must remove and re-add; package-id renames have a
+ * dedicated `rename-id` command.
+ *
+ * Exported because `edit-block` omits exactly these from its parameter surface, so the
+ * two cannot disagree about what is editable.
+ */
+export const UNEDITABLE_BLOCK_FIELDS: ReadonlySet<string> = new Set([
+  'type',
+  'blocks',
+  'whenTrue',
+  'whenFalse',
+  'steps',
+  'choices',
+  'id',
+]);
+
+/**
  * Apply a partial update to an existing block. Scalar and array fields use
  * replace-semantics (per the design); structural fields and the `type`
  * discriminator are rejected with a structured error.
@@ -249,23 +272,9 @@ export function editBlock(content: ContentJson, id: string, options: EditBlockOp
     });
   }
 
-  // TODO(p5.8): block-level id rename is non-trivial — every conditional/quiz/
-  // guided reference and every cross-block link in the package would need
-  // updating. Until that walker exists, `id` stays in the forbid-list and
-  // authors who guess wrong on a leaf id must remove + re-add. For package-id
-  // renames there's a dedicated `rename-id` command.
-  const forbidden = new Set(['type', 'blocks', 'whenTrue', 'whenFalse', 'steps', 'choices', 'id']);
   const changed: string[] = [];
   for (const [field, value] of Object.entries(options.patch)) {
-    if (forbidden.has(field)) {
-      // Specialized hint when the user tried to reorder via edit-block; point
-      // them at the structural commands.
-      if (field === 'position' || field === 'before' || field === 'after') {
-        throw new PackageIOError({
-          code: 'SCHEMA_VALIDATION',
-          message: `edit-block does not change block position. Use: pathfinder-cli move-block <dir> ${id} --to-position <n>`,
-        });
-      }
+    if (UNEDITABLE_BLOCK_FIELDS.has(field)) {
       throw new PackageIOError({
         code: 'SCHEMA_VALIDATION',
         message: `Cannot edit field "${field}" via edit-block (structural or discriminator fields are managed by other commands)`,

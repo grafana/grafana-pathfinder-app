@@ -6,7 +6,7 @@
  * denormalized repository.json with bare IDs.
  */
 
-import { Command } from 'commander';
+import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -22,14 +22,10 @@ import {
   RepositoryJsonSchema,
 } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
+import { defineCommand, mountCommander } from '../contracts';
 import { preserveAuthoredStartingLocation } from '../e2e/starting-location';
 import { resolveCliPath } from '../utils/file-loader';
-import { formatJsonWithPrettier } from '../utils/output';
-
-interface BuildRepositoryOptions {
-  output?: string;
-  exclude?: string[];
-}
+import { formatJsonWithPrettier, type CommandOutcome } from '../utils/output';
 
 /**
  * Manifest keys the builder maps onto a repository entry by hand. Everything
@@ -287,49 +283,69 @@ export function buildRepository(
   return { repository, warnings, errors, info };
 }
 
-export const buildRepositoryCommand = new Command('build-repository')
-  .description('Build repository.json from a package tree')
-  .argument('<root>', 'Root directory containing package directories')
-  .option('-o, --output <file>', 'Output file path (default: stdout)')
-  .option(
-    '-e, --exclude <paths...>',
-    'Path(s) to exclude from scan (relative to root); excluded trees are not descended into'
-  )
-  .action(async (root: string, options: BuildRepositoryOptions) => {
-    const absoluteRoot = resolveCliPath(root);
+export const BuildRepositoryCommand = z.object({
+  root: z.string().describe('Root directory containing package directories').meta({ role: 'io' }),
+  output: z.string().optional().describe('Output file path (default: stdout)').meta({ role: 'io' }),
+  exclude: z
+    .array(z.string())
+    .default([])
+    .describe('Path(s) to exclude from scan (relative to root); excluded trees are not descended into')
+    .meta({ role: 'control' }),
+});
 
-    if (!fs.existsSync(absoluteRoot)) {
-      console.error(`Directory not found: ${absoluteRoot}`);
-      process.exit(1);
-    }
+export type BuildRepositoryInput = z.output<typeof BuildRepositoryCommand>;
 
-    const exclude = options.exclude ? (Array.isArray(options.exclude) ? options.exclude : [options.exclude]) : [];
-    const { repository, warnings, errors, info } = buildRepository(absoluteRoot, { exclude });
+export async function runBuildRepository(args: BuildRepositoryInput): Promise<CommandOutcome> {
+  const absoluteRoot = resolveCliPath(args.root);
 
-    for (const line of info) {
-      console.error(`ℹ️  ${line}`);
-    }
+  if (!fs.existsSync(absoluteRoot)) {
+    console.error(`Directory not found: ${absoluteRoot}`);
+    return { status: 'error', code: 'DIR_NOT_FOUND', message: `Directory not found: ${absoluteRoot}` };
+  }
 
-    for (const warning of warnings) {
-      console.warn(`⚠️  ${warning}`);
-    }
+  const { repository, warnings, errors, info } = buildRepository(absoluteRoot, { exclude: args.exclude });
 
-    for (const error of errors) {
-      console.error(`❌ ${error}`);
-    }
+  for (const line of info) {
+    console.error(`ℹ️  ${line}`);
+  }
 
-    if (errors.length > 0) {
-      console.error(`❌ ${errors.length} error(s) prevented building repository.json; no output written.`);
-      process.exit(1);
-    }
+  for (const warning of warnings) {
+    console.warn(`⚠️  ${warning}`);
+  }
 
-    const json = await formatJsonWithPrettier(JSON.stringify(repository, null, 2));
+  for (const error of errors) {
+    console.error(`❌ ${error}`);
+  }
 
-    if (options.output) {
-      const outputPath = resolveCliPath(options.output);
-      fs.writeFileSync(outputPath, json, 'utf-8');
-      console.log(`✅ Wrote repository.json to ${outputPath} (${Object.keys(repository).length} packages)`);
-    } else {
-      process.stdout.write(json);
-    }
-  });
+  if (errors.length > 0) {
+    console.error(`❌ ${errors.length} error(s) prevented building repository.json; no output written.`);
+    return { status: 'error', code: 'BUILD_FAILED', message: `${errors.length} error(s) building repository.json` };
+  }
+
+  const json = await formatJsonWithPrettier(JSON.stringify(repository, null, 2));
+
+  if (args.output) {
+    const outputPath = resolveCliPath(args.output);
+    fs.writeFileSync(outputPath, json, 'utf-8');
+    console.log(`✅ Wrote repository.json to ${outputPath} (${Object.keys(repository).length} packages)`);
+  } else {
+    process.stdout.write(json);
+  }
+  return { status: 'ok', summary: `Built repository.json (${Object.keys(repository).length} packages)` };
+}
+
+export const buildRepositorySpec = defineCommand({
+  name: 'build-repository',
+  summary: 'Build repository.json from a package tree',
+  schema: BuildRepositoryCommand,
+  // Without --output the generated document *is* stdout, and `repository:check`
+  // diffs it; with it, the progress lines are the contract.
+  emits: 'stream',
+  run: runBuildRepository,
+});
+
+export const buildRepositoryCommand = mountCommander(buildRepositorySpec, {
+  positionals: ['root'],
+  placeholders: { output: 'file', exclude: 'paths...' },
+  shorts: { output: 'o', exclude: 'e' },
+});
