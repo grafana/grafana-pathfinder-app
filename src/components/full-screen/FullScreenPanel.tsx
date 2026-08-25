@@ -1,7 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SceneObjectBase, type SceneComponentProps, type SceneObjectState } from '@grafana/scenes';
 import { getAppEvents, locationService } from '@grafana/runtime';
-import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
@@ -21,7 +20,6 @@ import { findDocPage } from '../../utils/find-doc-page';
 import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import pluginJson from '../../plugin.json';
 import { FullScreenLayout } from './FullScreenLayout';
-import { getFullScreenStyles } from './full-screen.styles';
 import { dockOnLeavingFullScreen, type HistoryAction } from './full-screen-autodock';
 
 // Lazy-loaded so the editor only ships when the user actually opens it full screen.
@@ -49,8 +47,6 @@ export class FullScreenPanel extends SceneObjectBase<FullScreenPanelState> {
 }
 
 function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
-  const fullScreenStyles = useStyles2(getFullScreenStyles);
-
   const panel = useMemo(() => {
     const globalConfig = (window as any).__pathfinderPluginConfig;
     const config = getConfigWithDefaults(globalConfig || {});
@@ -394,7 +390,6 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       panel={panel}
       activeTab={activeTab}
       surface="fullscreen"
-      actionButtonClassName={fullScreenStyles.secondaryActionButton}
       hasInteractiveProgress={hasInteractiveProgress}
       progressKey={progressKey}
       onResetGuide={handleResetGuide}

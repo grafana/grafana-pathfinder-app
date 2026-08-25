@@ -175,9 +175,15 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   {
     // Pop out / Full screen buttons were extracted from `docs-panel.tsx` to
     // de-duplicate two near-identical inline blocks. The test ids stay stable;
-    // their owning file moved.
+    // their owning file moved. LearningJourneyMilestoneToolbar.tsx's kebab
+    // menu also renders these same test ids for the same actions — the
+    // exhaustiveness check below only requires one canonical owner.
     file: 'components/PanelModeActionButtons.tsx',
     references: ['testIds.docsPanel.popOutButton', 'testIds.docsPanel.fullScreenButton'],
+  },
+  {
+    file: 'components/LearningJourneyMilestoneToolbar.tsx',
+    references: ['testIds.docsPanel.milestoneMoreActionsButton'],
   },
 ];
 

@@ -384,11 +384,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 activeTab={activeTab}
                 surface="sidebar"
                 contentRoot={contentRef}
-                actionButtonClassName={styles.secondaryActionButton}
                 hasInteractiveProgress={hasInteractiveProgress}
                 progressKey={progressKey}
                 onResetGuide={handleResetGuide}
-                trailingActions={<PanelModeActionButtons className={styles.secondaryActionButton} />}
               />
 
               {/* Unified Content Renderer - works for both learning journeys and docs! */}
