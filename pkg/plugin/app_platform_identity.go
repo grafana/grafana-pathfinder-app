@@ -27,9 +27,10 @@ const idTokenVerifierMaxAge = 5 * time.Minute
 // docs/design/BACKEND_PROXY_PATTERN.md §3.
 
 // identityStatus is the verdict of the identity gate. Three distinct failures,
-// because BACKEND_PROXY_PATTERN.md §7's transient/structural split cuts across
-// them: only one of the three is retryable, and reporting a retryable outage as
-// a standing condition darkens the surface past the end of the outage.
+// each with its own capability reason, because BACKEND_PROXY_PATTERN.md §7 asks
+// the envelope alone to be diagnosable: an operator must be able to tell a
+// caller with no acceptable token from a stack that can never verify one, and
+// both from a signing-keys address the plugin cannot reach.
 type identityStatus int
 
 const (
@@ -45,27 +46,33 @@ const (
 	// `namespace` claim naming some other stack.
 	identityRejected
 
-	// identityUnverifiable: no verifier can be built for this stack (no Grafana
-	// config on the request, or a config carrying no app URL), so verification
-	// can never succeed here.
+	// identityUnverifiable: nothing this stack supplies makes verification
+	// possible — no Grafana config on the request, a config carrying no app URL,
+	// or no server-derived namespace to bind the token to.
 	identityUnverifiable
 
-	// identitySigningKeysDown: no signing-keys endpoint could be reached at all.
-	// Retryable, so routes serve §7's 503 + Retry-After — a capability envelope
-	// would read as "never works here" for the whole client cache TTL.
+	// identitySigningKeysDown: no signing-keys endpoint could be reached at all
+	// (DNS, refused, timeout, non-200). Treated as a STANDING condition, not a
+	// retryable one: a reachable source answering without the `kid` is the
+	// expected Grafana Cloud shape and lands on identityRejected instead, so
+	// arriving here means the configured address is far more likely wrong than
+	// briefly down — and a 503 would darken every proxy route at once for the
+	// whole client cache TTL.
 	identitySigningKeysDown
 )
 
-// capabilityReason is the envelope token for a status served as a soft 200.
-// identitySigningKeysDown has none: it takes each route's transient path. An
+// capabilityReason is the envelope token for a status. Every failing status has
+// one, because none of them is retryable and all three are served in-band. An
 // unrecognized status reports the generic identity failure rather than an empty
 // reason, since every status but identityVerified is served with no data.
 func (s identityStatus) capabilityReason() string {
 	switch s {
-	case identityVerified, identitySigningKeysDown:
+	case identityVerified:
 		return ""
 	case identityUnverifiable:
 		return reasonIdentityUnverifiable
+	case identitySigningKeysDown:
+		return reasonSigningKeysUnreachable
 	default:
 		return reasonIdentityUnavailable
 	}
@@ -184,20 +191,34 @@ func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 
 	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
 	sub, err := verifier.Verify(r.Context(), token, namespace)
+
+	// Every branch logs at Info under its own message. These are the only
+	// visibility an operator has into a gate that serves no data, and the causes
+	// are different faults with different owners: a broken deployment, a caller
+	// presenting a sibling stack's identity, a signing-keys address that resolves
+	// nowhere, and a token the live key sets simply do not know.
 	var mismatch *auth.NamespaceMismatchError
+	var keysErr *auth.SigningKeysError
 	switch {
 	case err == nil:
 		return sub, identityVerified
-	case auth.SigningKeysUnavailable(err):
-		a.ctxLogger(r.Context()).Info("cannot fetch signing keys to verify caller id token", "error", err)
-		return "", identitySigningKeysDown
+	case errors.Is(err, auth.ErrUnknownNamespace):
+		a.ctxLogger(r.Context()).Info("no stack namespace to bind the caller id token to")
+		return "", identityUnverifiable
 	case errors.As(err, &mismatch):
 		a.ctxLogger(r.Context()).Info("caller id token was issued for another namespace",
 			"tokenNamespace", mismatch.Got, "stackNamespace", mismatch.Want)
 		return "", identityRejected
+	case errors.As(err, &keysErr):
+		if auth.SigningKeysUnavailable(err) {
+			a.ctxLogger(r.Context()).Info("no signing-keys source could be reached to verify caller id token",
+				"sources", keysErr.SourceDetail())
+			return "", identitySigningKeysDown
+		}
+		a.ctxLogger(r.Context()).Info("no signing-keys source publishes the key the caller id token names",
+			"sources", keysErr.SourceDetail())
+		return "", identityRejected
 	default:
-		// Info, not Debug: this branch is only reachable when a token was present
-		// and unacceptable, so it must be observable without raising the log level.
 		a.ctxLogger(r.Context()).Info("caller id token rejected", "error", err)
 		return "", identityRejected
 	}

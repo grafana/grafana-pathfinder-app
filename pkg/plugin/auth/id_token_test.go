@@ -650,3 +650,92 @@ func withFetchTimeout(t *testing.T, d time.Duration) {
 	signingKeysFetchTimeout = d
 	t.Cleanup(func() { signingKeysFetchTimeout = previous })
 }
+
+// --- Naming the source that failed -------------------------------------------
+//
+// The identity gate serves no data when a key lookup comes up empty, so its log
+// line is the only diagnosis available. The per-source cause has to survive out
+// of the chain in a form the gate can log as its own field, or an operator is
+// left guessing which of the two endpoints failed and how.
+
+func TestVerify_SigningKeysErrorNamesEverySource(t *testing.T) {
+	signingKey := newSigningKey(t)
+
+	cases := []struct {
+		name string
+		// authAPI and stack describe what each source is doing.
+		authAPI, stack  func(*testing.T) string
+		wantUnreachable bool
+	}{
+		{
+			name:    "no source answers",
+			authAPI: func(t *testing.T) string { return unreachableURL(t) + authAPIKeysPath },
+			stack:   func(t *testing.T) string { return unreachableURL(t) },
+			// Nothing was reached, so the address itself is in question.
+			wantUnreachable: true,
+		},
+		{
+			name: "both sources answer with no keys",
+			authAPI: func(t *testing.T) string {
+				return jwksServer(t, authAPIKeysPath, emptyKeySet).URL + authAPIKeysPath
+			},
+			stack: func(t *testing.T) string { return jwksServer(t, SigningKeysPath, emptyKeySet).URL },
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			verifier, err := NewIDTokenVerifier(tt.authAPI(t), tt.stack(t))
+			if err != nil {
+				t.Fatalf("NewIDTokenVerifier: %v", err)
+			}
+
+			_, err = verifier.Verify(context.Background(), signToken(t, testKID, signingKey), testNamespace)
+
+			var keysErr *SigningKeysError
+			if !errors.As(err, &keysErr) {
+				t.Fatalf("err = %v, want a *SigningKeysError", err)
+			}
+			if got := SigningKeysUnavailable(err); got != tt.wantUnreachable {
+				t.Fatalf("SigningKeysUnavailable = %v, want %v (err: %v)", got, tt.wantUnreachable, err)
+			}
+
+			names := make([]string, 0, len(keysErr.Sources))
+			for _, source := range keysErr.Sources {
+				if source.Cause == "" {
+					t.Errorf("source %q carries no cause", source.Name)
+				}
+				names = append(names, source.Name)
+			}
+			if len(names) != 2 || names[0] != "auth-api" || names[1] != "stack" {
+				t.Fatalf("sources = %v, want [auth-api stack] in chain order", names)
+			}
+			for _, name := range names {
+				if !strings.Contains(keysErr.SourceDetail(), name+": ") {
+					t.Errorf("SourceDetail() = %q, does not name source %q", keysErr.SourceDetail(), name)
+				}
+			}
+		})
+	}
+}
+
+// A source that answered must never let an unreachable one's fetch failure
+// reach errors.Is: that would report a token no key set knows as an address
+// problem, sending an operator after the wrong fault.
+func TestVerify_AnsweringSourceHidesAnUnreachableOnesFetchError(t *testing.T) {
+	verifier, err := NewIDTokenVerifier(
+		unreachableURL(t)+authAPIKeysPath,
+		jwksServer(t, SigningKeysPath, emptyKeySet).URL,
+	)
+	if err != nil {
+		t.Fatalf("NewIDTokenVerifier: %v", err)
+	}
+
+	_, err = verifier.Verify(context.Background(), signToken(t, testKID, newSigningKey(t)), testNamespace)
+	if SigningKeysUnavailable(err) {
+		t.Fatalf("an answering source must keep this a rejection, got %v", err)
+	}
+	if !errors.Is(err, authn.ErrInvalidSigningKey) {
+		t.Fatalf("err = %v, want ErrInvalidSigningKey", err)
+	}
+}

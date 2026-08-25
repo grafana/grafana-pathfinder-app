@@ -108,20 +108,26 @@ the fixed internal aggregator.
   statuses below are named on the GET-read path; §11 states how the POST-write path serves each:
   - no token, or one the stack will not accept — bad signature, unknown `kid`, wrong `typ`,
     expired, no `exp`, or a `namespace` naming another stack → soft-200 `identity-unavailable`;
-  - **no verifier buildable for this stack** (no app URL in the Grafana config, which is also
-    what a request carrying no config at all resolves to) → soft-200 `identity-unverifiable`,
-    because verification can never succeed on this stack;
+  - **nothing this stack supplies makes verification possible** — no app URL in the Grafana
+    config (which is also what a request carrying no config at all resolves to), or no
+    server-derived namespace to bind the token to → soft-200 `identity-unverifiable`;
   - **no signing-keys endpoint reachable at all** — every source failed to fetch (5xx, timeout,
-    refused, DNS) → §7's transient **503 + `Retry-After`**. This one is retryable, and the
-    front-end caches an empty capability=false result without retrying, so an envelope would
-    darken the surface past the end of the outage. A source that answers with a key set not
-    carrying the token's `kid` is **not** this: that is a rejection.
+    refused, DNS) → soft-200 `signing-keys-unreachable`. A source that answers with a key set not
+    carrying the token's `kid` is **not** this: that is the expected Grafana Cloud shape and lands
+    on `identity-unavailable`. Reaching nothing at all is far more likely to mean the configured
+    address is wrong than that the signing service is briefly down, so it is a standing condition
+    and not a 503 — a 503 would darken every proxy route at once for the whole client cache TTL.
+
+  None of the three is retryable, so all three are served in-band and each carries its own reason
+  token. The gate logs each under its own message, and the two key-lookup causes carry the
+  per-source `<name>: <cause>` detail so an operator can name the endpoint that failed.
+
 - **A write serves the same three statuses in write-path shapes, not soft-200 envelopes**, and the
   standing/transient distinction must survive the translation: rejected → **401** (transient, the
-  client retries after re-auth), signing-keys down → **transient 503 + `Retry-After`**, and
-  unverifiable → the structural **404** carrying `identity-unverifiable`. Unverifiable must not
-  collapse into the 401: it is a standing condition on that stack, and a status the client retries
-  would retry every queued write to the 30-day horizon without ever disarming. See §11.
+  client retries after re-auth), and both unverifiable and signing-keys-unreachable → the
+  structural **404** carrying their own reason token. Neither standing status may collapse into
+  the 401: a status the client retries would retry every queued write to the 30-day horizon
+  without ever disarming. See §11.
 
 ### Outbound (plugin → aggregator)
 
@@ -174,9 +180,13 @@ order, and **both are full ES256 verification — neither is a relaxed check**:
 
 Exhausting both sources splits two ways, and the split is what keeps a misconfigured auth-api from
 being worse than no auth-api: if **any** source served a key set that did not carry the token's
-`kid`, the key is genuinely unknown and the token is **rejected** (soft-200). Only when **no**
-source could be reached at all is it a signing-keys **outage** (transient 503). A wrong auth-api
-host therefore degrades to the soft refusal, not to a 503 on every proxy route. Verified:
+`kid`, the key is genuinely unknown and the token is **rejected** (`identity-unavailable`). That is
+the normal shape on every Grafana Cloud stack, whose own endpoint answers `{"keys":null}`. Only
+when **no** source could be reached at all does the chain report `signing-keys-unreachable`. Both
+are soft-200 standing conditions, so a wrong auth-api host never becomes a 503 on every proxy
+route; they carry different reason tokens and different log lines because they have different
+owners — one is a caller naming a key nobody publishes, the other is very likely our own address.
+Verified:
 ES256 signature against a `kid` in the live key set, `typ: "jwt"` (an access token must not
 authenticate an identity), and `exp`/`nbf` with go-jose's one-minute leeway. `exp` **presence** is
 additionally required here, because go-jose validates expiry only when the claim is present and an
@@ -193,6 +203,13 @@ token minted for a sibling stack is rejected even though it is genuine, correctl
 unexpired; so is a token carrying no `namespace` claim, and so is a request whose plugin context
 carries none. `auth.IDTokenVerifier.Verify` takes the expected namespace as a parameter and
 enforces it internally, so the binding cannot be dropped by a future call site.
+
+The equality is deliberately **raw**, so a `namespace` claim of `"*"` is **refused** rather than
+matched. Authlib documents `*` as "all namespaces" and ships `types.NamespaceMatches`, which would
+treat it as a match against any expected namespace — do not swap that in here. These are
+browser-facing per-user proxy routes: a `*`-namespace identity is an inter-service caller, not a
+panel-open request, and accepting it would reopen exactly the cross-namespace hole this binding
+closes.
 
 Two properties hold together, and both are load-bearing:
 
@@ -300,16 +317,18 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
 ## 7. Availability signaling
 
 - Three states the front-end genuinely needs to distinguish: **available**, **structurally
-  unavailable on this stack** (toggle off / identity not forwarded / no verifier buildable /
-  terminal upstream), and **transient hiccup** (including an unreachable JWKS — see §3).
+  unavailable on this stack** (toggle off / identity not forwarded / no verifier buildable / no
+  signing-keys endpoint reachable / terminal upstream), and **transient hiccup** (a failing
+  upstream LIST on a cold cache). Every identity failure sits in the standing bucket — see §3.
 - Structural unavailability is signaled **in-band**: HTTP 200 with
   `capability: { available: false, reason: "<machine-token>" }`. Split the token by cause rather
   than lumping — the custom-guide route distinguishes missing identity, toggle off, no app URL, no
   namespace, no provisioned on-behalf-of credential, and `upstream-<status>` for a terminal
   upstream, so the envelope alone is diagnosable without backend log access; the completion
   routes still collapse the config causes into the catch-all `backend-unavailable`, while keeping
-  identity itself split into `identity-unavailable` (no acceptable caller token) and
-  `identity-unverifiable` (this stack can never check one — §3). The `reason*`
+  identity itself split three ways into `identity-unavailable` (no acceptable caller token),
+  `identity-unverifiable` (nothing this stack supplies makes verification possible), and
+  `signing-keys-unreachable` (no signing-keys endpoint answered at all — §3). The `reason*`
   constants in `pkg/plugin/` are the definition, and the front-end gates on `available` and
   ignores the string.
   A bare 503 conflates "never works here" with "blip": the front-end already lumps 503 into its
@@ -450,13 +469,14 @@ where a create differs from a read:
   still applies, but a write **fails closed with a status, not the read path's soft-200** — and the
   three failing statuses are not interchangeable, because the status IS the client's retry
   instruction. A **rejected** token is the **401**: the client retries it as transient, since an
-  expired session or forwarded token recovers after re-auth. A **signing-keys outage** is the
-  transient **503 + `Retry-After`**: a retryable outage, not a verdict on the caller. An
-  **unverifiable** stack — no app URL, so no verifier can be built for it — is the
-  structural **404** carrying `identity-unverifiable`, because verification can never succeed there;
-  served as a 401 it would retry every queued write to the 30-day horizon and never disarm, whereas
-  the 404 disarms the session and RETAINS the records, re-arming on a later app load so a stack that
-  gains an app URL starts recording then.
+  expired session or forwarded token recovers after re-auth. The other two are standing conditions
+  and both take the structural **404** carrying their own reason token: an **unverifiable** stack
+  (no app URL to build a verifier from, or no server-derived namespace to bind to →
+  `identity-unverifiable`) and an **unreachable signing-keys chain** (no source answered at all →
+  `signing-keys-unreachable`). Served as a 401 either would retry every queued write to the 30-day
+  horizon and never disarm, whereas the 404 disarms the session and RETAINS the records, re-arming
+  on a later app load so a stack that gains an app URL or a working signing-keys address starts
+  recording then.
 - **`metadata.name` is server-derived, deterministic, and identity-scoped.** A non-blank
   `idempotencyKey` (the completion event's stable client id, #1434) is **required** — a blank or
   missing key is a terminal 400, never a random-name fallback. The name is a DNS-safe
@@ -494,14 +514,16 @@ where a create differs from a read:
   to the completionrecords **collection**, so an upstream 404 means the whole group/route is absent
   (never a per-record miss). The client disarms writes for the session (persisted items survive for
   the next load); the 404 is never a per-record drop and is never remapped to another status. There
-  are **three** ways into that 404: an upstream 404, a stack with no provisioned on-behalf-of
-  credential (`obo-unavailable`), and an inbound identity this stack can never verify
-  (`identity-unverifiable`, §3) — all three are "never works here" on this load, and all three keep
-  the queued records.
+  are **four** ways into that 404: an upstream 404, a stack with no provisioned on-behalf-of
+  credential (`obo-unavailable`), an inbound identity this stack can never verify
+  (`identity-unverifiable`, §3), and no reachable signing-keys endpoint at all
+  (`signing-keys-unreachable`, §3) — all four are "never works here" on this load, and all four
+  keep the queued records.
   The full status/outcome table: **201** created (durable); **401** transient — echoed verbatim and
   retried client-side after re-auth (an expired session/token recovers), the one 4xx that is not a
-  drop; **404** structural disarm/keep (upstream 404, `obo-unavailable`, or
-  `identity-unverifiable`); **408 / 429 / 5xx / 3xx / network / token-exchange failure**
+  drop; **404** structural disarm/keep (upstream 404, `obo-unavailable`,
+  `identity-unverifiable`, or `signing-keys-unreachable`); **408 / 429 / 5xx / 3xx / network /
+  token-exchange failure**
   transient; **403** disarm/keep —
   echoed verbatim; like 404 the client disarms writes for the session and RETAINS the queued
   records for a later drain, because a missing grant can be added without the completion ever
@@ -581,7 +603,7 @@ Delete this section once both PRs conform. Line references are to the PR diffs a
   header slot does not authenticate against the aggregator on a real stack. Both PRs must
   terminate at the same exchanger
 - Missing/invalid identity → soft-200 `identity-unavailable` capability envelope, not 401 (§7);
-  a failed signing-keys fetch takes the transient 503 path instead (§3)
+  an unreachable signing-keys chain is its own soft-200 `signing-keys-unreachable` (§3)
 - Paginate (`limit` + `continue`) + aggregate budget + aggregate deadline (§1) — today a single
   request ignores `metadata.continue` entirely
 - Transient/terminal taxonomy + `Retry-After` — the fetcher already distinguishes 401/403 from

@@ -54,11 +54,16 @@ const (
 
 	// reasonIdentityUnverifiable separates "this stack can never check a
 	// caller's ID token" — no app URL, so no verifier can be built for this
-	// stack — from "the caller has no valid one". Both fail closed and both are
-	// standing conditions; a JWKS endpoint that is merely unreachable is
-	// retryable and takes the transient 503 path instead
-	// (identitySigningKeysDown).
+	// stack, or no server-derived namespace to bind one to — from "the caller
+	// has no valid one".
 	reasonIdentityUnverifiable = "identity-unverifiable"
+
+	// reasonSigningKeysUnreachable separates "we could not reach any
+	// signing-keys endpoint" from both of the above. A source that ANSWERS
+	// without the token's `kid` is the expected Grafana Cloud shape and reports
+	// reasonIdentityUnavailable; arriving here means no source answered at all,
+	// which points at the configured address rather than at the caller.
+	reasonSigningKeysUnreachable = "signing-keys-unreachable"
 )
 
 // completionListMaxTotalRecords is the aggregate budget across all LIST pages
@@ -533,18 +538,13 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Identity gate first — cache hit or miss, warm bytes are never served to
-	// an unauthenticated caller. Missing identity on a GET read is a soft-200
-	// capability envelope (not 401): these routes gate whether a feature
-	// renders at all, and a bare error status conflates "never works here"
-	// with a transient blip. An unreachable JWKS is that blip, so it takes the
-	// transient path instead.
+	// an unauthenticated caller. Every identity failure on a GET read is a
+	// soft-200 capability envelope (not 401, not 503): these routes gate whether
+	// a feature renders at all, and the front-end lumps a 503 into its
+	// not-rolled-out set anyway, so it would darken the surface exactly as a
+	// standing condition would. The reason token carries which failure it was.
 	userID, status := a.deriveCompletionUserID(r)
-	switch status {
-	case identityVerified:
-	case identitySigningKeysDown:
-		a.writeCompletionUnavailable(w)
-		return
-	default:
+	if status != identityVerified {
 		a.writeMyCompletions(w, myCompletionsResponse{
 			Capability:  completionCapability{Available: false, Reason: status.capabilityReason()},
 			Completions: []collatedCompletion{},
@@ -601,12 +601,7 @@ func (a *App) handleCompletionCapability(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	switch _, status := a.deriveCompletionUserID(r); status {
-	case identityVerified:
-	case identitySigningKeysDown:
-		a.writeCompletionUnavailable(w)
-		return
-	default:
+	if _, status := a.deriveCompletionUserID(r); status != identityVerified {
 		a.writeJSON(w, completionCapability{Available: false, Reason: status.capabilityReason()}, http.StatusOK)
 		return
 	}

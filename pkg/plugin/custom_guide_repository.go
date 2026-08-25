@@ -113,17 +113,12 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 
 	// Identity gate first. This is a namespace-global catalogue, so validIDToken
 	// only needs a verified caller; there is no per-user need, so we deliberately
-	// do not extract `sub`. Missing/invalid identity on a GET read is a soft-200
-	// capability envelope (not 401): these routes gate whether a feature renders
-	// at all, and a bare error status conflates "never works here" with a
-	// transient blip (BACKEND_PROXY_PATTERN.md §3, §7). An unreachable JWKS is
-	// that blip, so it takes the transient path instead.
-	switch status := a.validIDToken(r); status {
-	case identityVerified:
-	case identitySigningKeysDown:
-		a.writeCustomGuideUnavailable(w)
-		return
-	default:
+	// do not extract `sub`. Every identity failure on a GET read is a soft-200
+	// capability envelope (not 401, not 503): these routes gate whether a feature
+	// renders at all, and the front-end lumps a 503 into its not-rolled-out set
+	// anyway (BACKEND_PROXY_PATTERN.md §3, §7). The reason token carries which
+	// failure it was.
+	if status := a.validIDToken(r); status != identityVerified {
 		a.writeJSON(w, customGuideRepositoryResponse{
 			Capability: customGuideCapability{Available: false, Reason: status.capabilityReason()},
 			Guides:     []customGuideRepositoryEntry{},

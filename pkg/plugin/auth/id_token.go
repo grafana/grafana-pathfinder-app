@@ -121,6 +121,44 @@ type keySource struct {
 	retriever authn.KeyRetriever
 }
 
+// SigningKeySourceFailure is one source's verdict, named so a log line can say
+// which endpoint failed and how.
+type SigningKeySourceFailure struct {
+	Name  string
+	Cause string
+}
+
+// SigningKeysError reports that no source in the chain could supply the key a
+// token names, and carries the per-source cause. The two ways in are not the
+// same operational event and must stay tellable apart: a source answering with
+// a key set that lacks the `kid` is the expected Grafana Cloud shape
+// (`{"keys":null}`), while no source being reachable at all almost always means
+// the configured address is wrong. SigningKeysUnavailable is the classifier.
+type SigningKeysError struct {
+	Sources  []SigningKeySourceFailure
+	sentinel error
+}
+
+func (e *SigningKeysError) Error() string {
+	return fmt.Sprintf("%s (%s)", e.sentinel, e.SourceDetail())
+}
+
+// Unwrap exposes ONLY the chain's own verdict, never the per-source causes:
+// letting an unreachable source's ErrFetchingSigningKey reach errors.Is would
+// make SigningKeysUnavailable report an outage for a token that a reachable
+// source has already ruled out.
+func (e *SigningKeysError) Unwrap() error { return e.sentinel }
+
+// SourceDetail renders the per-source causes as "<name>: <cause>" pairs, for a
+// log field an operator can read without correlating anything.
+func (e *SigningKeysError) SourceDetail() string {
+	parts := make([]string, 0, len(e.Sources))
+	for _, source := range e.Sources {
+		parts = append(parts, source.Name+": "+source.Cause)
+	}
+	return strings.Join(parts, "; ")
+}
+
 // chainedKeyRetriever resolves a `kid` against each source in order and returns
 // the first key that matches. Both sources verify signatures for real; the chain
 // exists because Grafana Cloud and self-hosted Grafana have different token
@@ -132,14 +170,14 @@ type chainedKeyRetriever struct {
 // Get classifies exhaustion of the chain into the two verdicts the identity gate
 // splits on. A source that served a key set without the `kid` (authlib's
 // ErrInvalidSigningKey) has answered: the key is genuinely unknown, so the token
-// is rejected. Only when NO source answered — every one failed to fetch — is
-// this an outage, which the gate serves as a retryable 503. The narrow test is
-// deliberately on the answered side: a stack publishing `{"keys":null}` while
-// auth-api is misconfigured therefore rejects the token rather than declaring an
-// outage on every proxy route.
+// is rejected. Only when NO source answered — every one failed to fetch — is the
+// signing-keys address itself in question. The narrow test is deliberately on
+// the answered side: a stack publishing `{"keys":null}` while auth-api is
+// misconfigured therefore rejects the token rather than reporting the chain
+// unreachable.
 func (c *chainedKeyRetriever) Get(ctx context.Context, keyID string) (*jose.JSONWebKey, error) {
 	var answered bool
-	details := make([]string, 0, len(c.sources))
+	failures := make([]SigningKeySourceFailure, 0, len(c.sources))
 	for i, source := range c.sources {
 		key, err := c.getFrom(ctx, source, keyID, len(c.sources)-i)
 		if err == nil {
@@ -148,24 +186,21 @@ func (c *chainedKeyRetriever) Get(ctx context.Context, keyID string) (*jose.JSON
 		if errors.Is(err, authn.ErrInvalidSigningKey) {
 			answered = true
 		}
-		details = append(details, source.name+": "+err.Error())
+		failures = append(failures, SigningKeySourceFailure{Name: source.name, Cause: err.Error()})
 	}
 
-	// The causes are folded into the message rather than wrapped: an unreachable
-	// source's ErrFetchingSigningKey must not reach errors.Is when a reachable
-	// one has already ruled the key out, or SigningKeysUnavailable would report
-	// an outage for a token no key set knows.
+	sentinel := authn.ErrFetchingSigningKey
 	if answered {
-		return nil, fmt.Errorf("%w (%s)", authn.ErrInvalidSigningKey, strings.Join(details, "; "))
+		sentinel = authn.ErrInvalidSigningKey
 	}
-	return nil, fmt.Errorf("%w (%s)", authn.ErrFetchingSigningKey, strings.Join(details, "; "))
+	return nil, &SigningKeysError{Sources: failures, sentinel: sentinel}
 }
 
 // getFrom reserves each still-untried source an equal share of the budget left
 // on ctx. Without it one stalling source consumes the whole of Verify's
 // deadline and every source after it fails on an already-expired context — so a
-// self-hosted stack publishing a perfectly good key set would be reported as a
-// signing-keys outage because it never got to answer.
+// self-hosted stack publishing a perfectly good key set would be reported as
+// unreachable because it never got to answer.
 func (c *chainedKeyRetriever) getFrom(ctx context.Context, source keySource, keyID string, untried int) (*jose.JSONWebKey, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok || untried <= 1 {
@@ -204,7 +239,7 @@ func (v *IDTokenVerifier) Verify(ctx context.Context, token, expectedNamespace s
 	// Detached from the caller's cancellation, bounded so detached never means
 	// unkillable: authlib singleflights the key fetch across concurrent callers,
 	// so the leader's canceled request would otherwise fail every waiter with a
-	// spurious signing-keys outage. The key fetch is Verify's only I/O.
+	// spurious unreachable-chain verdict. The key fetch is Verify's only I/O.
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), signingKeysFetchTimeout)
 	defer cancel()
 
