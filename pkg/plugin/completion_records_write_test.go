@@ -1144,3 +1144,24 @@ func TestCompletionWrite_ClearsFailureCooldown(t *testing.T) {
 		t.Fatalf("post-write read = %d with %d completions, want 200 with 1", rr.Code, len(body.Completions))
 	}
 }
+
+// The write path stamps the caller's identity onto a durable, compliance-grade
+// record, so the §3 stack binding has to hold here too: a genuine, correctly
+// signed token from a sibling stack in the same auth-api cell must write
+// nothing. It takes the 401, which is what identityRejected means on this path.
+func TestCompletionWrite_SiblingStackTokenWritesNothing(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	r := writeRequest(t, "", validWriteBody(), testGrafanaConfig())
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
+		makeIDTokenForNamespace(t, "user:abc", "stacks-2"))
+
+	if rr := doWrite(t, nil, r); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (body %s)", rr.Code, rr.Body.String())
+	}
+	if creator.n != 0 {
+		t.Fatalf("wrote %d records for a sibling stack's token, want 0", creator.n)
+	}
+}

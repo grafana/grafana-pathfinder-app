@@ -51,7 +51,7 @@ import (
 //          provisioned on-behalf-of credential (reasonOBOUnavailable) — the
 //          production case in ops/prod today (#1503) — and an inbound identity
 //          this stack can never verify (reasonIdentityUnverifiable: no app URL,
-//          so no signing keys to check the token against).
+//          so no verifier can be built for this stack).
 //   - 403  the caller's identity holds no grant for this route. Echoed verbatim
 //          from upstream. Like 404 it disarms writes for the session and KEEPS
 //          the pending records for a later drain — a grant can be added without
@@ -165,11 +165,12 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	//     re-auth, so it is the 401.
 	//   - identitySigningKeysDown: a retryable outage, not a verdict on the caller,
 	//     so it takes §7's transient 503 instead of reporting a bad token.
-	//   - identityUnverifiable: no signing-keys URL is resolvable on this stack, so
-	//     verification can NEVER succeed here. Served as the structural 404 — a
-	//     401 would make every queued write retry until the 30-day horizon and
-	//     never disarm. The 404 disarms the session while RETAINING the records,
-	//     and the read path already treats this status as a standing condition.
+	//   - identityUnverifiable: no verifier can be built for this stack (no app
+	//     URL), so verification can NEVER succeed here. Served as the structural
+	//     404 — a 401 would make every queued write retry until the 30-day
+	//     horizon and never disarm. The 404 disarms the session while RETAINING
+	//     the records, and the read path already treats this status as a
+	//     standing condition.
 	userID, userLogin, userDisplayName, status := a.completionWriterIdentity(r)
 	switch status {
 	case identityVerified:

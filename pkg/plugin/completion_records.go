@@ -53,10 +53,11 @@ const (
 	reasonBackendUnavailable  = "backend-unavailable"
 
 	// reasonIdentityUnverifiable separates "this stack can never check a
-	// caller's ID token" — no app URL to resolve signing keys from — from "the
-	// caller has no valid one". Both fail closed and both are standing
-	// conditions; a JWKS endpoint that is merely unreachable is retryable and
-	// takes the transient 503 path instead (identitySigningKeysDown).
+	// caller's ID token" — no app URL, so no verifier can be built for this
+	// stack — from "the caller has no valid one". Both fail closed and both are
+	// standing conditions; a JWKS endpoint that is merely unreachable is
+	// retryable and takes the transient 503 path instead
+	// (identitySigningKeysDown).
 	reasonIdentityUnverifiable = "identity-unverifiable"
 )
 

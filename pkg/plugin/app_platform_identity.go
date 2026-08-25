@@ -22,8 +22,9 @@ const idTokenVerifierMaxAge = 5 * time.Minute
 // validIDToken for routes that only need an authenticated caller,
 // subjectFromIDToken for per-user-data routes that additionally key on the
 // caller's subject. Both cryptographically verify the forwarded Grafana ID token
-// (X-Grafana-Id) against the JWKS of whichever authority issued it — see "The
-// identity trust boundary" in docs/design/BACKEND_PROXY_PATTERN.md §3.
+// (X-Grafana-Id) against the JWKS of whichever authority issued it AND bind its
+// `namespace` claim to this stack's — see "The identity trust boundary" in
+// docs/design/BACKEND_PROXY_PATTERN.md §3.
 
 // identityStatus is the verdict of the identity gate. Three distinct failures,
 // because BACKEND_PROXY_PATTERN.md §7's transient/structural split cuts across
@@ -40,7 +41,8 @@ const (
 	identityVerified
 
 	// identityRejected: no token at all, or one this stack will not accept —
-	// forged signature, unknown `kid`, wrong `typ`, expired, or no `exp`.
+	// forged signature, unknown `kid`, wrong `typ`, expired, no `exp`, or a
+	// `namespace` claim naming some other stack.
 	identityRejected
 
 	// identityUnverifiable: no verifier can be built for this stack (no Grafana
@@ -160,7 +162,9 @@ func (a *App) subjectFromIDToken(r *http.Request) (string, identityStatus) {
 	return sub, identityVerified
 }
 
-// verifyIDToken verifies the inbound ID token and returns its `sub` claim.
+// verifyIDToken verifies the inbound ID token and returns its `sub` claim. The
+// namespace it binds the token to is the trusted plugin context's, per §2 —
+// never a header, never the token's own claim.
 func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 	token := strings.TrimSpace(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
 	if token == "" {
@@ -178,13 +182,19 @@ func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 		return "", identityUnverifiable
 	}
 
-	sub, err := verifier.Verify(r.Context(), token)
+	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
+	sub, err := verifier.Verify(r.Context(), token, namespace)
+	var mismatch *auth.NamespaceMismatchError
 	switch {
 	case err == nil:
 		return sub, identityVerified
 	case auth.SigningKeysUnavailable(err):
 		a.ctxLogger(r.Context()).Info("cannot fetch signing keys to verify caller id token", "error", err)
 		return "", identitySigningKeysDown
+	case errors.As(err, &mismatch):
+		a.ctxLogger(r.Context()).Info("caller id token was issued for another namespace",
+			"tokenNamespace", mismatch.Got, "stackNamespace", mismatch.Want)
+		return "", identityRejected
 	default:
 		// Info, not Debug: this branch is only reachable when a token was present
 		// and unacceptable, so it must be observable without raising the log level.

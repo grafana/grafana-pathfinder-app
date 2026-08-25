@@ -81,6 +81,15 @@ the fixed internal aggregator.
   it, **reject `exp == 0`** — a forwarded Grafana ID token always carries `exp`, and go-jose
   validates expiry only when the claim is present, so an `exp`-less token would otherwise verify
   as non-expiring.
+- **Bind the token to this stack.** A signature no longer identifies the stack on its own:
+  auth-api's key set is cell-wide, so every Grafana Cloud stack in a cell is signed by the same
+  keys. Compare the token's `namespace` claim (authlib `IDTokenClaims.Namespace`, Grafana's
+  `<type>-<id>` form) against the **server-derived** namespace from §2 —
+  `backend.PluginConfigFromContext(r.Context()).Namespace` — for exact equality. A token carrying
+  no `namespace` claim, and a request whose plugin context carries no namespace, both **reject**;
+  there is nothing to bind either way, and skipping the comparison would accept a sibling stack's
+  token. The verifier takes the expected namespace as an argument and enforces it internally
+  (`auth.IDTokenVerifier.Verify`), so a new call site cannot forget the binding.
 - **Only per-user-data proxies extract `sub`** (verbatim, typed prefix included). A
   namespace-global catalogue proxy needs a verified caller and nothing more; it has no per-user
   need and must not grow one by accident. Ship this as one shared helper with two layers:
@@ -97,10 +106,11 @@ the fixed internal aggregator.
   them. Route them from one shared decision (`identityStatus` in
   `pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way. The
   statuses below are named on the GET-read path; §11 states how the POST-write path serves each:
-  - no token, or one the stack will not accept → soft-200 `identity-unavailable`;
-  - **no verifier buildable at all** (no app URL in the Grafana config, which is also what a
-    request carrying no config at all resolves to) → soft-200 `identity-unverifiable`, because
-    verification can never succeed on this stack;
+  - no token, or one the stack will not accept — bad signature, unknown `kid`, wrong `typ`,
+    expired, no `exp`, or a `namespace` naming another stack → soft-200 `identity-unavailable`;
+  - **no verifier buildable for this stack** (no app URL in the Grafana config, which is also
+    what a request carrying no config at all resolves to) → soft-200 `identity-unverifiable`,
+    because verification can never succeed on this stack;
   - **no signing-keys endpoint reachable at all** — every source failed to fetch (5xx, timeout,
     refused, DNS) → §7's transient **503 + `Retry-After`**. This one is retryable, and the
     front-end caches an empty capability=false result without retrying, so an envelope would
@@ -173,13 +183,34 @@ additionally required here, because go-jose validates expiry only when the claim
 `exp`-less token would otherwise verify as non-expiring. The `sub` claim is extracted verbatim
 only on routes that serve per-user data (`pkg/plugin/app_platform_identity.go`).
 
+The signature alone does **not** establish which stack the token belongs to. auth-api's key set is
+**cell-wide**: it signs the ID tokens of every Grafana Cloud stack in the cell, so a token minted
+for stack A carries a `kid` present in the very key set stack B's plugin fetches. The gate
+therefore also binds the token's **`namespace` claim** to the server-derived namespace from §2
+(`backend.PluginConfigFromContext(r.Context()).Namespace`), by exact string equality. The expected
+value comes only from the plugin context — never a request header, never the token itself. A
+token minted for a sibling stack is rejected even though it is genuine, correctly signed and
+unexpired; so is a token carrying no `namespace` claim, and so is a request whose plugin context
+carries none. `auth.IDTokenVerifier.Verify` takes the expected namespace as a parameter and
+enforces it internally, so the binding cannot be dropped by a future call site.
+
+Two properties hold together, and both are load-bearing:
+
+1. **The token was issued for this stack** — the `namespace` binding.
+2. **The caller named by `sub` genuinely is that user, per the issuing authority** — the ES256
+   signature against that authority's live key set.
+
 Because the signature is checked, the header's **authenticity** no longer depends on Grafana's
 server→plugin forwarding — which matters, since `X-Grafana-Id` is **not** on
 `ClearAuthHeadersMiddleware`'s strip-list and `ForwardIDMiddleware` overwrites rather than
 deletes, so a client-set value can survive to the plugin whenever the authenticated requester has
-no ID token of its own (#1568). Verification proves the token was **issued** for this stack, not
-that the caller presenting it is its subject: a copied, still-unexpired token replayed on a
-per-user route still verifies. Binding the token to its presenter is tracked separately.
+no ID token of its own (#1568). That gap is what makes property 1 necessary: without it, a caller
+authenticated to stack B by a service-account token could present their own genuine token from
+stack A and be served stack A's identity.
+
+What neither property establishes is that the caller presenting the token is its subject: a
+copied, still-unexpired token replayed on a per-user route **on the stack it was minted for**
+still verifies. Binding the token to its presenter is tracked separately.
 
 Verification failures always fail **closed**, under the three outcomes listed in the inbound
 bullets above, all decided by one shared `identityStatus`
@@ -195,17 +226,19 @@ without re-fetching until the rebuild. That re-fetch merges into the current ver
 rather than replacing it, so it never prunes a retired key and the five-minute rebuild stays the
 revocation bound. The fetch itself is detached from the caller's cancellation and
 separately deadlined, because authlib dedupes it across concurrent callers with singleflight: one
-canceled request would otherwise fail every waiter with a spurious outage.
+canceled request would otherwise fail every waiter with a spurious outage. Within that deadline
+each source gets its own slice of what is left, so a source that stalls to its own timeout cannot
+consume the budget the next one needs — otherwise a self-hosted stack publishing a perfectly good
+key set would be reported as an outage without ever getting to answer.
 
 Outbound, the ID token is **not** forwarded as a credential. It is exchanged for a short-lived
 on-behalf-of access token sent on `X-Access-Token`, per the outbound bullets above — never the
 caller's `Cookie`, and never a replay of the inbound `Authorization` header.
 
 One deliberate omission: `aud` is not validated, because an ID token's audience is `org:<orgID>`,
-which tells a plugin nothing it can act on. This mirrors Grafana's own ExtendedJWT client. Binding
-the token's `namespace` claim to the plugin-context namespace is tracked separately and is not
-required for the signature to make `sub` unforgeable — though unforgeable is not the same as bound
-to the presenter; see the replay caveat above.
+which tells a plugin nothing it can act on. This mirrors Grafana's own ExtendedJWT client. The
+stack binding rides on the `namespace` claim instead, which carries the same information in the
+form §2 already derives server-side.
 
 ## 4. Cache
 

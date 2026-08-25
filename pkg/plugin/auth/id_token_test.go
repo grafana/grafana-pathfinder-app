@@ -82,7 +82,7 @@ func TestVerify_KeyFetchDetachedFromCallerCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if _, err := verifier.Verify(ctx, tokenWithUnpublishedKID(t)); err == nil {
+	if _, err := verifier.Verify(ctx, tokenWithUnpublishedKID(t), testNamespace); err == nil {
 		t.Fatal("expected rejection for a kid the JWKS does not publish")
 	} else if SigningKeysUnavailable(err) {
 		t.Fatalf("caller cancellation leaked into the key fetch: %v", err)
@@ -137,7 +137,7 @@ func TestVerify_SigningKeysRedirect(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewIDTokenVerifier(%q): %v", appURL, err)
 		}
-		_, err = verifier.Verify(context.Background(), tokenWithUnpublishedKID(t))
+		_, err = verifier.Verify(context.Background(), tokenWithUnpublishedKID(t), testNamespace)
 		if err == nil {
 			t.Fatal("expected the off-host redirect to fail the fetch")
 		}
@@ -154,7 +154,7 @@ func TestVerify_SigningKeysRedirect(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewIDTokenVerifier: %v", err)
 		}
-		_, err = verifier.Verify(context.Background(), tokenWithUnpublishedKID(t))
+		_, err = verifier.Verify(context.Background(), tokenWithUnpublishedKID(t), testNamespace)
 		if err == nil {
 			t.Fatal("expected rejection for a kid the JWKS does not publish")
 		}
@@ -221,6 +221,10 @@ func TestSigningKeysUnavailable(t *testing.T) {
 
 const testKID = "pathfinder-test-key"
 
+// testNamespace is the stack this test binary's tokens are minted for, in
+// Grafana's '<type>-<id>' namespace form.
+const testNamespace = "stacks-1"
+
 func newSigningKey(t *testing.T) *ecdsa.PrivateKey {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -279,14 +283,26 @@ func unreachableURL(t *testing.T) string {
 	return server.URL
 }
 
-// signToken ES256-signs a well-formed ID token naming kid.
+// signToken ES256-signs a well-formed ID token naming kid, minted for
+// testNamespace.
 func signToken(t *testing.T, kid string, key *ecdsa.PrivateKey) string {
+	t.Helper()
+	return signTokenForNamespace(t, kid, key, testNamespace)
+}
+
+// signTokenForNamespace is signToken with the `namespace` claim under the
+// caller's control; namespace == "" omits the claim entirely.
+func signTokenForNamespace(t *testing.T, kid string, key *ecdsa.PrivateKey, namespace string) string {
 	t.Helper()
 	header, err := json.Marshal(map[string]string{"alg": "ES256", "typ": "jwt", "kid": kid})
 	if err != nil {
 		t.Fatalf("marshal header: %v", err)
 	}
-	claims, err := json.Marshal(map[string]any{"sub": "user:1", "exp": time.Now().Add(time.Hour).Unix()})
+	claimSet := map[string]any{"sub": "user:1", "exp": time.Now().Add(time.Hour).Unix()}
+	if namespace != "" {
+		claimSet["namespace"] = namespace
+	}
+	claims, err := json.Marshal(claimSet)
 	if err != nil {
 		t.Fatalf("marshal claims: %v", err)
 	}
@@ -405,7 +421,7 @@ func TestNewIDTokenVerifier_SourceChain(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewIDTokenVerifier: %v", err)
 			}
-			sub, err := verifier.Verify(context.Background(), tt.token(t))
+			sub, err := verifier.Verify(context.Background(), tt.token(t), testNamespace)
 
 			if tt.wantVerified {
 				if err != nil {
@@ -440,10 +456,10 @@ func TestNewIDTokenVerifier_AuthAPIWinsOverTheStack(t *testing.T) {
 		t.Fatalf("NewIDTokenVerifier: %v", err)
 	}
 
-	if _, err := verifier.Verify(context.Background(), signToken(t, testKID, authAPIKey)); err != nil {
+	if _, err := verifier.Verify(context.Background(), signToken(t, testKID, authAPIKey), testNamespace); err != nil {
 		t.Fatalf("auth-api-signed token: %v", err)
 	}
-	if _, err := verifier.Verify(context.Background(), signToken(t, testKID, stackKey)); err == nil {
+	if _, err := verifier.Verify(context.Background(), signToken(t, testKID, stackKey), testNamespace); err == nil {
 		t.Fatal("stack-signed token verified under a kid auth-api already claims")
 	}
 }
@@ -454,4 +470,183 @@ func TestNewIDTokenVerifier_NoSource(t *testing.T) {
 	if _, err := NewIDTokenVerifier("", ""); err == nil {
 		t.Fatal("expected an error when neither source is configured")
 	}
+}
+
+// --- The stack binding -------------------------------------------------------
+//
+// auth-api's key set is cell-wide: every Grafana Cloud stack in a cell is signed
+// by the same keys, so a valid signature proves auth-api issued the token and
+// nothing about which stack it was issued FOR. The `namespace` claim carries
+// that, and Verify binds it to the server-derived namespace.
+
+func TestVerify_BindsNamespaceToTheStack(t *testing.T) {
+	signingKey := newSigningKey(t)
+	authAPI := jwksServer(t, authAPIKeysPath, jwksBody(t, testKID, signingKey)).URL + authAPIKeysPath
+
+	cases := []struct {
+		name string
+		// The namespace the token is minted for; "" omits the claim.
+		tokenNamespace string
+		// The server-derived namespace the caller binds against.
+		expected     string
+		wantVerified bool
+	}{
+		{
+			name:           "token minted for this stack verifies",
+			tokenNamespace: testNamespace, expected: testNamespace, wantVerified: true,
+		},
+		{
+			// The headline case: a genuine, correctly signed, unexpired token
+			// from a sibling stack in the same cell. Nothing about the signature
+			// is wrong — the binding is what refuses it.
+			name:           "genuine token from a sibling stack is refused",
+			tokenNamespace: "stacks-2", expected: testNamespace,
+		},
+		{
+			name:           "token carrying no namespace claim is refused",
+			tokenNamespace: "", expected: testNamespace,
+		},
+		{
+			name:           "no server-derived namespace fails closed",
+			tokenNamespace: testNamespace, expected: "",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			verifier, err := NewIDTokenVerifier(authAPI, "")
+			if err != nil {
+				t.Fatalf("NewIDTokenVerifier: %v", err)
+			}
+			token := signTokenForNamespace(t, testKID, signingKey, tt.tokenNamespace)
+
+			sub, err := verifier.Verify(context.Background(), token, tt.expected)
+			if tt.wantVerified {
+				if err != nil {
+					t.Fatalf("Verify: %v", err)
+				}
+				if sub != "user:1" {
+					t.Fatalf("sub = %q, want %q", sub, "user:1")
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected refusal, got sub %q", sub)
+			}
+			if SigningKeysUnavailable(err) {
+				t.Fatalf("a namespace refusal must not read as an outage: %v", err)
+			}
+		})
+	}
+}
+
+// The gate logs both namespaces, so the mismatch has to be recoverable from the
+// error rather than folded into a message.
+func TestVerify_NamespaceMismatchCarriesBothNamespaces(t *testing.T) {
+	signingKey := newSigningKey(t)
+	authAPI := jwksServer(t, authAPIKeysPath, jwksBody(t, testKID, signingKey)).URL + authAPIKeysPath
+	verifier, err := NewIDTokenVerifier(authAPI, "")
+	if err != nil {
+		t.Fatalf("NewIDTokenVerifier: %v", err)
+	}
+
+	_, err = verifier.Verify(context.Background(),
+		signTokenForNamespace(t, testKID, signingKey, "stacks-2"), testNamespace)
+
+	var mismatch *NamespaceMismatchError
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("err = %v, want a *NamespaceMismatchError", err)
+	}
+	if mismatch.Got != "stacks-2" || mismatch.Want != testNamespace {
+		t.Fatalf("mismatch = {Got: %q, Want: %q}, want {%q, %q}",
+			mismatch.Got, mismatch.Want, "stacks-2", testNamespace)
+	}
+}
+
+func TestVerify_NoExpectedNamespaceIsReportedDistinctly(t *testing.T) {
+	signingKey := newSigningKey(t)
+	authAPI := jwksServer(t, authAPIKeysPath, jwksBody(t, testKID, signingKey)).URL + authAPIKeysPath
+	verifier, err := NewIDTokenVerifier(authAPI, "")
+	if err != nil {
+		t.Fatalf("NewIDTokenVerifier: %v", err)
+	}
+
+	_, err = verifier.Verify(context.Background(), signToken(t, testKID, signingKey), "")
+	if !errors.Is(err, ErrUnknownNamespace) {
+		t.Fatalf("err = %v, want ErrUnknownNamespace", err)
+	}
+}
+
+// --- Per-source budget -------------------------------------------------------
+
+// A stalling first source must not consume the budget the second one needs.
+// Self-hosted Grafana resolving api-lb.auth.svc.cluster.local. to somewhere that
+// accepts and then hangs would otherwise turn a stack publishing a perfectly
+// good key set into a hard 503 on every proxy route.
+func TestVerify_StallingSourceLeavesTheNextOneTimeToAnswer(t *testing.T) {
+	withFetchTimeout(t, 600*time.Millisecond)
+
+	signingKey := newSigningKey(t)
+	// Stalls until its request context is canceled, so the source's own share of
+	// the budget is what ends it — a refused connection would fail fast and prove
+	// nothing.
+	stalling := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(stalling.Close)
+	stack := jwksServer(t, SigningKeysPath, jwksBody(t, testKID, signingKey))
+
+	verifier, err := NewIDTokenVerifier(stalling.URL+authAPIKeysPath, stack.URL)
+	if err != nil {
+		t.Fatalf("NewIDTokenVerifier: %v", err)
+	}
+
+	sub, err := verifier.Verify(context.Background(), signToken(t, testKID, signingKey), testNamespace)
+	if err != nil {
+		t.Fatalf("Verify: %v (signing-keys outage: %v)", err, SigningKeysUnavailable(err))
+	}
+	if sub != "user:1" {
+		t.Fatalf("sub = %q, want %q", sub, "user:1")
+	}
+}
+
+// The per-source share must not lift the ceiling on the chain as a whole: the
+// identity gate runs inline on every proxy route and cannot be allowed to hang.
+func TestVerify_WholeChainStaysBounded(t *testing.T) {
+	const budget = 400 * time.Millisecond
+	withFetchTimeout(t, budget)
+
+	stalling := func(t *testing.T) *httptest.Server {
+		t.Helper()
+		server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			<-r.Context().Done()
+		}))
+		t.Cleanup(server.Close)
+		return server
+	}
+
+	verifier, err := NewIDTokenVerifier(stalling(t).URL+authAPIKeysPath, stalling(t).URL)
+	if err != nil {
+		t.Fatalf("NewIDTokenVerifier: %v", err)
+	}
+
+	start := time.Now()
+	_, err = verifier.Verify(context.Background(), signToken(t, testKID, newSigningKey(t)), testNamespace)
+	elapsed := time.Since(start)
+
+	if !SigningKeysUnavailable(err) {
+		t.Fatalf("err = %v, want a signing-keys outage when no source answers", err)
+	}
+	if elapsed > 4*budget {
+		t.Fatalf("chain took %v, want it bounded near the %v budget", elapsed, budget)
+	}
+}
+
+// withFetchTimeout shrinks the chain's budget for one test, so a stalling source
+// costs milliseconds rather than seconds.
+func withFetchTimeout(t *testing.T, d time.Duration) {
+	t.Helper()
+	previous := signingKeysFetchTimeout
+	signingKeysFetchTimeout = d
+	t.Cleanup(func() { signingKeysFetchTimeout = previous })
 }

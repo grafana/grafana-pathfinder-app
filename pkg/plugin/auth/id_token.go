@@ -29,13 +29,35 @@ const SigningKeysPath = "/api/signing-keys/keys"
 // signingKeysFetchTimeout bounds JWKS fetching. authlib's key retriever defaults
 // to http.DefaultClient, which has no timeout, and the fetch runs inline in the
 // identity gate of every proxy route. Verify applies it to the whole chain, so
-// consulting a second source cannot double the gate's worst case.
-const signingKeysFetchTimeout = 5 * time.Second
+// consulting a second source cannot double the gate's worst case. A var so tests
+// can shrink the budget instead of stalling for whole seconds.
+var signingKeysFetchTimeout = 5 * time.Second
 
 // ErrMissingExpiry rejects an ID token carrying no `exp` claim. go-jose
 // validates expiry only when the claim is present, so without this an
 // `exp`-less token would verify as non-expiring.
 var ErrMissingExpiry = errors.New("id token has no exp claim")
+
+// ErrUnknownNamespace rejects verification the caller cannot bind: with no
+// server-derived namespace there is nothing to compare the token's claim
+// against, and skipping the comparison would accept a sibling stack's token.
+var ErrUnknownNamespace = errors.New("no namespace to bind the id token to")
+
+// NamespaceMismatchError rejects a token minted for a different Grafana
+// namespace. auth-api's key set is CELL-WIDE — every Cloud stack in a cell is
+// signed by the same keys — so the signature proves issuance by that authority
+// but says nothing about which stack the token was issued for. The `namespace`
+// claim is what carries that, and Got == "" is a token that carries none.
+type NamespaceMismatchError struct {
+	// Want is the server-derived namespace, only ever the plugin context's.
+	Want string
+	// Got is the token's `namespace` claim, empty when it carries none.
+	Got string
+}
+
+func (e *NamespaceMismatchError) Error() string {
+	return fmt.Sprintf("id token namespace %q does not match this stack's %q", e.Got, e.Want)
+}
 
 // IDTokenVerifier cryptographically verifies inbound Grafana ID tokens
 // (X-Grafana-Id) against the published signing keys of whichever authority
@@ -118,8 +140,8 @@ type chainedKeyRetriever struct {
 func (c *chainedKeyRetriever) Get(ctx context.Context, keyID string) (*jose.JSONWebKey, error) {
 	var answered bool
 	details := make([]string, 0, len(c.sources))
-	for _, source := range c.sources {
-		key, err := source.retriever.Get(ctx, keyID)
+	for i, source := range c.sources {
+		key, err := c.getFrom(ctx, source, keyID, len(c.sources)-i)
 		if err == nil {
 			return key, nil
 		}
@@ -139,6 +161,21 @@ func (c *chainedKeyRetriever) Get(ctx context.Context, keyID string) (*jose.JSON
 	return nil, fmt.Errorf("%w (%s)", authn.ErrFetchingSigningKey, strings.Join(details, "; "))
 }
 
+// getFrom reserves each still-untried source an equal share of the budget left
+// on ctx. Without it one stalling source consumes the whole of Verify's
+// deadline and every source after it fails on an already-expired context — so a
+// self-hosted stack publishing a perfectly good key set would be reported as a
+// signing-keys outage because it never got to answer.
+func (c *chainedKeyRetriever) getFrom(ctx context.Context, source keySource, keyID string, untried int) (*jose.JSONWebKey, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok || untried <= 1 {
+		return source.retriever.Get(ctx, keyID)
+	}
+	sourceCtx, cancel := context.WithTimeout(ctx, time.Until(deadline)/time.Duration(untried))
+	defer cancel()
+	return source.retriever.Get(sourceCtx, keyID)
+}
+
 // signingKeysURL joins SigningKeysPath onto the stack's app URL. Grafana's
 // root_url conventionally ends in "/", and a doubled slash 404s the JWKS —
 // which would silently fail every request closed — so the join must collapse it.
@@ -150,10 +187,20 @@ func signingKeysURL(appURL string) (string, error) {
 	return keysURL, nil
 }
 
-// Verify checks the token's signature, type, and expiry, and returns its `sub`
-// claim VERBATIM, typed prefix included (e.g. "user:abc123"). A verified token
-// may legitimately carry no subject, so ("", nil) is a success.
-func (v *IDTokenVerifier) Verify(ctx context.Context, token string) (string, error) {
+// Verify checks the token's signature, type, and expiry, binds it to
+// expectedNamespace, and returns its `sub` claim VERBATIM, typed prefix included
+// (e.g. "user:abc123"). A verified token may legitimately carry no subject, so
+// ("", nil) is a success.
+//
+// expectedNamespace must be the SERVER-DERIVED namespace (the plugin context's),
+// never a request header and never the token's own claim. It is a parameter
+// rather than a claim this returns for the caller to check, so the binding
+// cannot be forgotten at a new call site.
+func (v *IDTokenVerifier) Verify(ctx context.Context, token, expectedNamespace string) (string, error) {
+	if expectedNamespace == "" {
+		return "", ErrUnknownNamespace
+	}
+
 	// Detached from the caller's cancellation, bounded so detached never means
 	// unkillable: authlib singleflights the key fetch across concurrent callers,
 	// so the leader's canceled request would otherwise fail every waiter with a
@@ -167,6 +214,9 @@ func (v *IDTokenVerifier) Verify(ctx context.Context, token string) (string, err
 	}
 	if claims.Expiry == nil {
 		return "", ErrMissingExpiry
+	}
+	if claims.Rest.Namespace != expectedNamespace {
+		return "", &NamespaceMismatchError{Want: expectedNamespace, Got: claims.Rest.Namespace}
 	}
 	return claims.Subject, nil
 }

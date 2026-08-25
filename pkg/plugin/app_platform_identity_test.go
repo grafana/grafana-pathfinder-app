@@ -107,6 +107,10 @@ type idToken struct {
 	typ string
 	key *ecdsa.PrivateKey
 
+	// namespace is the stack the token was minted for, in Grafana's
+	// '<type>-<id>' form. Empty omits the claim, which the gate must refuse.
+	namespace string
+
 	// Optional authlib profile claims; empty values are omitted so a test can
 	// pin what an absent claim yields.
 	username string
@@ -127,6 +131,9 @@ func signIDToken(t *testing.T, tok idToken) string {
 	}
 	if tok.exp != 0 {
 		claims["exp"] = tok.exp
+	}
+	if tok.namespace != "" {
+		claims["namespace"] = tok.namespace
 	}
 	if tok.username != "" {
 		claims["username"] = tok.username
@@ -155,7 +162,10 @@ func signIDToken(t *testing.T, tok idToken) string {
 // (exp == 0 omits the claim). Both may be invalid — that is the point.
 func makeIDToken(t *testing.T, sub string, exp int64) string {
 	t.Helper()
-	return signIDToken(t, idToken{sub: sub, exp: exp, kid: testSigningKeyID, typ: "jwt", key: testSigningKey()})
+	return signIDToken(t, idToken{
+		sub: sub, exp: exp, kid: testSigningKeyID, typ: "jwt",
+		key: testSigningKey(), namespace: testNamespace,
+	})
 }
 
 // makeValidIDToken signs a token that verifies against the test JWKS right now.
@@ -174,14 +184,23 @@ func identityRequest(t *testing.T, token string) *http.Request {
 
 func identityRequestWithConfig(t *testing.T, token string, cfg map[string]string) *http.Request {
 	t.Helper()
+	return identityRequestForNamespace(t, token, cfg, testNamespace)
+}
+
+// identityRequestForNamespace is identityRequestWithConfig with the
+// server-derived namespace under the caller's control; "" models a plugin
+// context that carries none.
+func identityRequestForNamespace(t *testing.T, token string, cfg map[string]string, namespace string) *http.Request {
+	t.Helper()
 	r, _ := http.NewRequest(http.MethodGet, "/", nil)
 	if token != "" {
 		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, token)
 	}
-	if cfg == nil {
-		return r
+	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: namespace})
+	if cfg != nil {
+		ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
 	}
-	return r.WithContext(sdkconfig.WithGrafanaConfig(r.Context(), sdkconfig.NewGrafanaCfg(cfg)))
+	return r.WithContext(ctx)
 }
 
 // makeIDTokenWithProfile signs a token carrying sub/exp plus the authlib profile
@@ -191,7 +210,7 @@ func makeIDTokenWithProfile(t *testing.T, sub string, exp int64, username, name 
 	t.Helper()
 	return signIDToken(t, idToken{
 		sub: sub, exp: exp, kid: testSigningKeyID, typ: "jwt", key: testSigningKey(),
-		username: username, name: name,
+		namespace: testNamespace, username: username, name: name,
 	})
 }
 
@@ -284,24 +303,24 @@ func TestDeriveCompletionUserID(t *testing.T) {
 			// The whole point of #1568: a client-forged header naming any subject
 			// is worthless without the stack's signing key.
 			name:       "signature from a foreign key fails closed",
-			token:      signIDToken(t, idToken{sub: "user:victim", exp: validExp, kid: testSigningKeyID, typ: "jwt", key: foreignKey}),
+			token:      signIDToken(t, idToken{sub: "user:victim", exp: validExp, kid: testSigningKeyID, typ: "jwt", key: foreignKey, namespace: testNamespace}),
 			wantStatus: identityRejected,
 		},
 		{
 			name:       "unrecognized kid fails closed",
-			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: "not-a-real-key", typ: "jwt", key: testSigningKey()}),
+			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: "not-a-real-key", typ: "jwt", key: testSigningKey(), namespace: testNamespace}),
 			wantStatus: identityRejected,
 		},
 		{
 			name:       "missing kid fails closed",
-			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, typ: "jwt", key: testSigningKey()}),
+			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, typ: "jwt", key: testSigningKey(), namespace: testNamespace}),
 			wantStatus: identityRejected,
 		},
 		{
 			// An access token is signed by the same keys but is not an identity
 			// attestation; type confusion must not authenticate a caller.
 			name:       "access-token type fails closed",
-			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: testSigningKeyID, typ: "at+jwt", key: testSigningKey()}),
+			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: testSigningKeyID, typ: "at+jwt", key: testSigningKey(), namespace: testNamespace}),
 			wantStatus: identityRejected,
 		},
 	}
@@ -619,9 +638,11 @@ func TestVerifyIDToken_KeySetRefreshBoundsRetiredKeyTrust(t *testing.T) {
 	validExp := time.Now().Add(time.Hour).Unix()
 	retiredToken := signIDToken(t, idToken{
 		sub: "user:1", exp: validExp, kid: "retired-key", typ: "jwt", key: retiredKey,
+		namespace: testNamespace,
 	})
 	activeToken := signIDToken(t, idToken{
 		sub: "user:1", exp: validExp, kid: "active-key", typ: "jwt", key: activeKey,
+		namespace: testNamespace,
 	})
 	cfg := map[string]string{sdkconfig.AppURL: server.URL}
 	app := newTestApp(t)
@@ -677,8 +698,8 @@ func TestVerifyIDToken_NewKeyAcceptedMidWindow(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	validExp := time.Now().Add(time.Hour).Unix()
-	firstToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "first-key", typ: "jwt", key: firstKey})
-	secondToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "second-key", typ: "jwt", key: secondKey})
+	firstToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "first-key", typ: "jwt", key: firstKey, namespace: testNamespace})
+	secondToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "second-key", typ: "jwt", key: secondKey, namespace: testNamespace})
 	cfg := map[string]string{sdkconfig.AppURL: server.URL}
 	app := newTestApp(t)
 	verify := func(token string) identityStatus {
@@ -767,4 +788,135 @@ func TestVerifyIDToken_RebuiltWhenAppURLChanges(t *testing.T) {
 	if firstFetches.Load() != 1 || secondFetches.Load() != 1 {
 		t.Fatalf("fetches = (%d, %d), want (1, 1)", firstFetches.Load(), secondFetches.Load())
 	}
+}
+
+// --- The stack binding -------------------------------------------------------
+//
+// auth-api's key set is CELL-WIDE: every Grafana Cloud stack in a cell is signed
+// by the same keys, so from #1604 onwards a valid signature proves auth-api
+// issued the token and nothing about which stack it was issued FOR. Combined
+// with #1568 — `X-Grafana-Id` survives to the plugin whenever the authenticated
+// requester has no ID token of its own — a caller on stack B could otherwise
+// present their own genuine token from stack A and be served stack A's identity.
+// The `namespace` claim, bound to the trusted plugin-context namespace, is what
+// closes that.
+
+// makeIDTokenForNamespace signs a token that is valid in every respect except
+// that it was minted for the given namespace.
+func makeIDTokenForNamespace(t *testing.T, sub, namespace string) string {
+	t.Helper()
+	return signIDToken(t, idToken{
+		sub: sub, exp: time.Now().Add(time.Hour).Unix(), kid: testSigningKeyID,
+		typ: "jwt", key: testSigningKey(), namespace: namespace,
+	})
+}
+
+func TestVerifyIDToken_BindsTokenNamespaceToThePluginContext(t *testing.T) {
+	cases := []struct {
+		name string
+		// The namespace the token was minted for; "" omits the claim.
+		tokenNamespace string
+		// The server-derived namespace on the plugin context.
+		stackNamespace string
+		wantID         string
+		wantStatus     identityStatus
+	}{
+		{
+			name:           "token minted for this stack verifies",
+			tokenNamespace: testNamespace, stackNamespace: testNamespace,
+			wantID: "user:abc123", wantStatus: identityVerified,
+		},
+		{
+			name:           "genuine token from a sibling stack is rejected",
+			tokenNamespace: "stacks-2", stackNamespace: testNamespace,
+			wantStatus: identityRejected,
+		},
+		{
+			name:           "token carrying no namespace claim is rejected",
+			tokenNamespace: "", stackNamespace: testNamespace,
+			wantStatus: identityRejected,
+		},
+		{
+			name:           "no server-derived namespace fails closed",
+			tokenNamespace: testNamespace, stackNamespace: "",
+			wantStatus: identityRejected,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			r := identityRequestForNamespace(t,
+				makeIDTokenForNamespace(t, "user:abc123", tt.tokenNamespace),
+				testGrafanaConfig(), tt.stackNamespace)
+
+			id, status := newTestApp(t).deriveCompletionUserID(r)
+			if status != tt.wantStatus {
+				t.Fatalf("status = %v, want %v", status, tt.wantStatus)
+			}
+			if id != tt.wantID {
+				t.Fatalf("id = %q, want %q", id, tt.wantID)
+			}
+
+			// The catalogue layer takes the same gate: the binding cannot be
+			// bypassed by picking the route that needs no subject.
+			if got := newTestApp(t).validIDToken(r); got != tt.wantStatus {
+				t.Fatalf("validIDToken = %v, want %v", got, tt.wantStatus)
+			}
+		})
+	}
+}
+
+// The headline cell-wide case, end to end on the routes that serve per-user and
+// per-namespace data: the sibling stack's token is signed by the very key set
+// this plugin fetches, so only the binding can refuse it — and no data may be
+// served when it does.
+func TestIdentityGate_SiblingStackTokenServesNoData(t *testing.T) {
+	withSigningKeysURL(t, authAPIJWKS(t))
+	withLister(t, singlePageLister(
+		rec("user:abc123", "bundled", "guide-a", "Guide A", "interactive", "", "manual", "2026-07-20T14:02:11Z", 100)))
+	withGuideLister(t, singlePageGuideLister(guideEntry("fe-guide-1", "Guide one", "published", "guide")))
+
+	cfg := map[string]string{
+		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
+		sdkconfig.AppURL:               cloudStack(t),
+	}
+	siblingToken := makeIDTokenForNamespace(t, "user:abc123", "stacks-2")
+
+	withToken := func(r *http.Request) *http.Request {
+		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, siblingToken)
+		return r
+	}
+
+	t.Run("custom-guide-repository", func(t *testing.T) {
+		rr, body := doCustomGuideReq(t,
+			withToken(customGuideRequestWithConfig(t, "/custom-guide-repository", "user:abc123", cfg)))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
+		}
+		if body.Capability.Available || body.Capability.Reason != reasonIdentityUnavailable {
+			t.Fatalf("available = %v, reason = %q, want reason %q",
+				body.Capability.Available, body.Capability.Reason, reasonIdentityUnavailable)
+		}
+		if len(body.Guides) != 0 {
+			t.Fatalf("served %d catalogue guides to a sibling stack's token, want 0", len(body.Guides))
+		}
+	})
+
+	t.Run("completion-records/my", func(t *testing.T) {
+		rr, body := doMyCompletionsReq(t,
+			withToken(completionRequestWithConfig(t, "/completion-records/my", "user:abc123", cfg)))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
+		}
+		if body.Capability.Available || body.Capability.Reason != reasonIdentityUnavailable {
+			t.Fatalf("available = %v, reason = %q, want reason %q",
+				body.Capability.Available, body.Capability.Reason, reasonIdentityUnavailable)
+		}
+		if len(body.Completions) != 0 {
+			t.Fatalf("served %d completions to a sibling stack's token, want 0", len(body.Completions))
+		}
+		if body.UserID != "" {
+			t.Fatalf("echoed userId %q for a sibling stack's token, want none", body.UserID)
+		}
+	})
 }
