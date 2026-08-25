@@ -560,4 +560,90 @@ describe('RecommendationsSection', () => {
       packageManifest: { id: 'visualization-metrics-lj', type: 'path' },
     });
   });
+  it('emits the same package context from all four nav-link click sites', () => {
+    const openDocsPage = jest.fn();
+    const navLinkRecommendation = {
+      title: 'Grafana Cloud Tour',
+      url: '',
+      contentUrl: 'https://cdn.example.com/packages/cloud-tour/content.json',
+      type: 'package' as const,
+      summary: 'Tour Grafana Cloud.',
+      summaryExpanded: true,
+      manifest: {
+        id: 'grafana-cloud-tour-lj',
+        type: 'path',
+        recommends: ['alerting-notifications'],
+        suggests: ['visualization-metrics-lj'],
+      },
+      resolvedRecommends: [
+        {
+          packageId: 'alerting-notifications',
+          title: 'Alerting notifications',
+          contentUrl: 'bundled:alerting-notifications/content.json',
+          manifest: { id: 'alerting-notifications', type: 'path' },
+          repository: 'online-cdn',
+        },
+      ],
+      resolvedSuggests: [
+        {
+          packageId: 'visualization-metrics-lj',
+          title: 'Visualize metrics',
+          contentUrl: 'bundled:visualization-metrics-lj/content.json',
+          manifest: { id: 'visualization-metrics-lj', type: 'path' },
+          repository: 'online-cdn',
+        },
+      ],
+    };
+
+    const props = {
+      customGuides: [],
+      customGuidePaths: [],
+      customGuideOrphans: [],
+      isLoadingCustomGuides: false,
+      customGuidesExpanded: true,
+      suggestedGuidesExpanded: true,
+      isLoadingRecommendations: false,
+      isLoadingContext: false,
+      recommendationsError: null,
+      otherDocsExpanded: false,
+      showEnableRecommenderBanner: false,
+      openLearningJourney: jest.fn(),
+      openDocsPage,
+      toggleCustomGuidesExpansion: jest.fn(),
+      toggleSuggestedGuidesExpansion: jest.fn(),
+      toggleSummaryExpansion: jest.fn(),
+      toggleOtherDocsExpansion: jest.fn(),
+    };
+
+    // The same card rendered featured and unfeatured gives all four click sites.
+    const featured = render(
+      <RecommendationsSection recommendations={[]} featuredRecommendations={[navLinkRecommendation]} {...props} />
+    );
+    fireEvent.click(screen.getByText('Alerting notifications'));
+    fireEvent.click(screen.getByText('Visualize metrics'));
+    featured.unmount();
+
+    render(
+      <RecommendationsSection recommendations={[navLinkRecommendation]} featuredRecommendations={[]} {...props} />
+    );
+    fireEvent.click(screen.getByText('Alerting notifications'));
+    fireEvent.click(screen.getByText('Visualize metrics'));
+
+    const [featuredRecommends, featuredSuggests, plainRecommends, plainSuggests] = openDocsPage.mock.calls.map(
+      (call) => call[2]
+    );
+
+    expect(featuredRecommends).toEqual({
+      packageId: 'alerting-notifications',
+      packageManifest: { id: 'alerting-notifications', type: 'path' },
+      repository: 'online-cdn',
+    });
+    expect(plainRecommends).toEqual(featuredRecommends);
+    expect(featuredSuggests).toEqual({
+      packageId: 'visualization-metrics-lj',
+      packageManifest: { id: 'visualization-metrics-lj', type: 'path' },
+      repository: 'online-cdn',
+    });
+    expect(plainSuggests).toEqual(featuredSuggests);
+  });
 });

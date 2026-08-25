@@ -18,6 +18,7 @@ The `src/learning-paths/` module provides the business logic layer for the gamif
 | `fetch-path-guides.ts`                         | Fetches guide lists from remote `index.json` for URL-based paths                                        |
 | `useNextLearningAction.ts`                     | `useNextLearningAction()` hook and pure `computeNextAction()` for the UserProfileBar                    |
 | `useDiscoverMore.ts`                           | `useDiscoverMore()` hook — surfaces external learning paths for the My Learning "Discover more" section |
+| `launch-package-info.ts`                       | Pure `PackageOpenInfo` factories for the two manifest-backed My Learning launches                       |
 | `learning-paths.test.ts`                       | Data-integrity tests for path, badge, and guide metadata definitions                                    |
 | `fetch-path-guides.test.ts`                    | Tests for remote guide fetching                                                                         |
 | `app-platform-paths.test.ts`                   | Tests for App Platform catalogue adaptation                                                             |
