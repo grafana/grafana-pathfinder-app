@@ -154,7 +154,7 @@ describe('metadata-extract', () => {
       expect(milestones[0]!.url).toBe('https://grafana.com/intro/');
     });
 
-    it('falls back through title -> menutitle -> "Step N" and applies a default duration', async () => {
+    it('falls back through title -> menutitle -> "Step N" and leaves estimatedMinutes absent', async () => {
       mockIndexJson([
         { params: { menutitle: 'Menu only' }, permalink: '/a/' },
         { params: {}, permalink: '/b/' },

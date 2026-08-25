@@ -237,8 +237,9 @@ export interface PackageResolutionSuccess {
   content?: ContentJson;
   /**
    * Short title from the online CDN package index entry (OnlinePackageEntry.title),
-   * when the resolver has one. Populated only by OnlineCdnPackageResolver — the
-   * recommender's by-id endpoint carries no title field.
+   * when the resolver has one. Populated by OnlineCdnPackageResolver directly, and
+   * by RecommenderPackageResolver via a cross-reference into the same cached CDN
+   * index — the recommender's own by-id endpoint carries no title field.
    */
   entryTitle?: string;
   /**
