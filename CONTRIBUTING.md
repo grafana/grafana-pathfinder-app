@@ -41,7 +41,7 @@ If you're partway through and realise a change is growing beyond one concern, it
 
 ## Before you open a pull request
 
-- **Run the full check.** `npm run check` runs the same gate as CI (typecheck, lint, prettier, Go lint, Go tests, and frontend tests with coverage). PRs that pass locally move faster.
+- **Run the full check.** `npm run check` runs the local pre-merge gate; `npm run check -- --list` prints what it contains. CI is not the same set — it additionally enforces manifest freshness and the production build — but PRs that pass the local gate move faster.
 - **Add or update tests** for the behaviour you're changing.
 - **Match the existing style.** All UI text and documentation uses [sentence case](https://grafana.com/docs/writers-toolkit/write/style-guide/capitalization-punctuation/#capitalization): capitalise only the first word and proper nouns. Keep comments to what the code can't say for itself.
 - **Link the issue(s)** your PR addresses in the description.
