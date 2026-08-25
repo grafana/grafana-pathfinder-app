@@ -1,16 +1,19 @@
 /**
- * Read-only tools that read the public Pathfinder package CDN repository.
+ * Contract: mcp-native
  *
- * Group registered alongside the authoring tool groups in `./index.ts`.
+ * Read-only tools against the public Pathfinder package CDN. No CLI twins;
+ * explicit top-level Zod is authoritative.
+ *
+ * `pathfinder_read_repository` collapses the former list_packages / get_package / get_manifest tools
+ * into one tool with an operation flag (`list-packages` | `get-package` | `get-manifest`).
+ * `pathfinder_launch_package` stays separate — different output contract and currently PARTIAL (see #855).
+ *
  * Stateless — no artifact in/out, no session token. The repository base
  * URL is read from `PATHFINDER_REPOSITORY_URL` (falls back to the public
  * CDN). See P6 in `docs/design/AI-AUTHORING-IMPLEMENTATION.md`.
  *
- * Naming note: the deferred P5 GCS-sessions design also proposes a
- * `pathfinder_get_manifest` tool, but against a session-scoped artifact.
- * P6 ships first and uses public-CDN semantics. If/when P5 lands it must
- * either rename the session-scoped tool or take an `id?` vs `sessionToken?`
- * discriminator — flagged here so the constraint is inherited.
+ * Session-scoped manifest reads live under `pathfinder_read_session`
+ * (operation "get-manifest") — different data source.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -30,35 +33,64 @@ import { renderMachineJson } from '../../utils/output';
 import { readOnly } from './annotations';
 import { textResult } from './result';
 
+const REPOSITORY_OPERATIONS = ['list-packages', 'get-package', 'get-manifest'] as const;
+
+const RepositoryInputSchema = z
+  .object({
+    operation: z
+      .enum(REPOSITORY_OPERATIONS)
+      .describe(
+        'Repository read: "list-packages" browses/filters the index, "get-package" fetches content.json + manifest.json by id, "get-manifest" fetches metadata only (cheaper when blocks are not needed).'
+      ),
+    type: z.enum(['guide', 'path', 'journey']).optional().describe('[list-packages] Filter by package type.'),
+    category: z.string().optional().describe('[list-packages] Filter by category (exact match).'),
+    q: z.string().optional().describe('[list-packages] Case-insensitive substring on title and description.'),
+    id: z.string().min(1).optional().describe('[get-package|get-manifest] Required package id (kebab-case).'),
+  })
+  .superRefine((args, ctx) => {
+    if (args.operation === 'get-package' || args.operation === 'get-manifest') {
+      if (typeof args.id !== 'string' || args.id.trim() === '') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['id'],
+          message: `operation "${args.operation}" requires \`id\` (package id).`,
+        });
+      }
+    }
+  });
+
+type RepositoryInput = z.infer<typeof RepositoryInputSchema>;
+
 export function registerRepositoryTools(server: McpServer): void {
-  registerListPackages(server);
-  registerGetPackage(server);
-  registerGetManifest(server);
+  registerRepository(server);
   registerLaunchPackage(server);
 }
 
-function registerListPackages(server: McpServer): void {
+function registerRepository(server: McpServer): void {
   server.registerTool(
-    'pathfinder_list_packages',
+    'pathfinder_read_repository',
     {
       description:
-        'Use this tool when the user wants to discover, browse, or search published Pathfinder guides, paths, or journeys from the public Grafana package repository (or a custom one configured via PATHFINDER_REPOSITORY_URL). Optional filters by type, category, and a substring query against title and description.',
-      annotations: readOnly('List Pathfinder packages', /* openWorld */ true),
-      inputSchema: {
-        type: z.enum(['guide', 'path', 'journey']).optional().describe('Filter by package type.'),
-        category: z.string().optional().describe('Filter by category (exact match).'),
-        q: z.string().optional().describe('Case-insensitive substring on title and description.'),
-      },
+        'Use this tool to discover or inspect published Pathfinder packages from the public Grafana package repository (or a custom one via PATHFINDER_REPOSITORY_URL). MCP-native contract: no CLI command or pathfinder_help step. Pass `operation: "list-packages" | "get-package" | "get-manifest"`; list filters (`type`, `category`, `q`) and package `id` are top-level parameters. For shareable deep links use pathfinder_launch_package. For session-stored authoring reads use pathfinder_read_session.',
+      annotations: readOnly('Read Pathfinder repository', /* openWorld */ true),
+      // Explicit MCP-native schema; conditional requireds stay at its boundary.
+      inputSchema: RepositoryInputSchema,
     },
-    async ({ type, category, q }) => {
+    async (args) => handleRepository(args)
+  );
+}
+
+async function handleRepository(args: RepositoryInput): Promise<ReturnType<typeof textResult>> {
+  switch (args.operation) {
+    case 'list-packages': {
       const index = await fetchRepositoryIndex();
       if (!index.ok) {
         return errorResult(index);
       }
-      const needle = typeof q === 'string' ? q.trim().toLowerCase() : '';
+      const needle = typeof args.q === 'string' ? args.q.trim().toLowerCase() : '';
       const packages = index.packages
-        .filter((p) => (type ? p.type === type : true))
-        .filter((p) => (category ? p.category === category : true))
+        .filter((p) => (args.type ? p.type === args.type : true))
+        .filter((p) => (args.category ? p.category === args.category : true))
         .filter((p) => (needle ? matchesQuery(p, needle) : true))
         .map(summarizeEntry);
 
@@ -68,21 +100,8 @@ function registerListPackages(server: McpServer): void {
         validation: index.validation,
       });
     }
-  );
-}
-
-function registerGetPackage(server: McpServer): void {
-  server.registerTool(
-    'pathfinder_get_package',
-    {
-      description:
-        'Use this tool when the user wants to inspect a published Pathfinder package in full (content.json + manifest.json) by id. Reads from the repository CDN. Schema drift surfaces in validation.* but does not hard-fail.',
-      annotations: readOnly('Get Pathfinder package', /* openWorld */ true),
-      inputSchema: {
-        id: z.string().min(1).describe('Package id (kebab-case).'),
-      },
-    },
-    async ({ id }) => {
+    case 'get-package': {
+      const id = args.id!;
       const [content, manifest] = await Promise.all([fetchPackageContent(id), fetchPackageManifest(id)]);
       if (!content.ok) {
         return errorResult(content);
@@ -104,21 +123,8 @@ function registerGetPackage(server: McpServer): void {
         },
       });
     }
-  );
-}
-
-function registerGetManifest(server: McpServer): void {
-  server.registerTool(
-    'pathfinder_get_manifest',
-    {
-      description:
-        "Use this tool when the user wants only the metadata for a published Pathfinder package (cheaper than `pathfinder_get_package` when block content isn't needed — useful for dependency or composition exploration). Reads from the repository CDN.",
-      annotations: readOnly('Get Pathfinder manifest', /* openWorld */ true),
-      inputSchema: {
-        id: z.string().min(1).describe('Package id (kebab-case).'),
-      },
-    },
-    async ({ id }) => {
+    case 'get-manifest': {
+      const id = args.id!;
       const manifest = await fetchPackageManifest(id);
       if (!manifest.ok) {
         return errorResult(manifest);
@@ -132,7 +138,7 @@ function registerGetManifest(server: McpServer): void {
         },
       });
     }
-  );
+  }
 }
 
 // URL of the open issue tracking the partial-tool status. Surfaced to the
@@ -140,13 +146,14 @@ function registerGetManifest(server: McpServer): void {
 const LAUNCH_PACKAGE_BUG_URL = 'https://github.com/grafana/grafana-pathfinder-app/issues/855';
 
 function registerLaunchPackage(server: McpServer): void {
+  // URL construction has no CLI command interface.
   server.registerTool(
     'pathfinder_launch_package',
     {
       description:
         'Use this tool when the user wants a shareable deep-link URL to a published Pathfinder guide. **PARTIAL — see ' +
         LAUNCH_PACKAGE_BUG_URL +
-        "**: the URL shape is correct and resolves to the Pathfinder plugin, but the targeted CDN guide does NOT currently load as an interactive tutorial — it opens to a generic docs view. The bug is in the app-side auto-launch handler, not in this tool. Until that fix lands, prefer pathfinder_get_package or pathfinder_get_manifest for inspecting CDN content; only call this tool when you specifically need the URL shape (e.g., to share a link in a chat) and warn the user about the limitation. Always returns a relative launchPath that the user appends to their own Grafana instance origin. If you already know the user's instance origin (e.g. you are an agent running inside Grafana), pass it as instanceUrl to also receive an absolute launchUrl. If you do not know the instance, omit instanceUrl — do not invent or guess a hostname.",
+        "**: the URL shape is correct and resolves to the Pathfinder plugin, but the targeted CDN guide does NOT currently load as an interactive tutorial — it opens to a generic docs view. The bug is in the app-side auto-launch handler, not in this tool. Until that fix lands, prefer pathfinder_read_repository (operation get-package / get-manifest) for inspecting CDN content; only call this tool when you specifically need the URL shape (e.g., to share a link in a chat) and warn the user about the limitation. Always returns a relative launchPath that the user appends to their own Grafana instance origin. If you already know the user's instance origin (e.g. you are an agent running inside Grafana), pass it as instanceUrl to also receive an absolute launchUrl. If you do not know the instance, omit instanceUrl — do not invent or guess a hostname.",
       annotations: readOnly('Launch Pathfinder package', /* openWorld */ true),
       inputSchema: {
         id: z.string().min(1).describe('Package id (kebab-case).'),
@@ -190,7 +197,7 @@ function registerLaunchPackage(server: McpServer): void {
         warning: {
           status: 'partial',
           message:
-            'The launchPath/launchUrl resolves to the Pathfinder plugin but does NOT currently load the targeted CDN guide as an interactive tutorial — it opens to a generic docs view. This is an app-side bug being tracked separately. When surfacing this URL to a user, include a heads-up that the interactive launch is not yet wired up for CDN packages. For inspecting content, prefer pathfinder_get_package or pathfinder_get_manifest.',
+            'The launchPath/launchUrl resolves to the Pathfinder plugin but does NOT currently load the targeted CDN guide as an interactive tutorial — it opens to a generic docs view. This is an app-side bug being tracked separately. When surfacing this URL to a user, include a heads-up that the interactive launch is not yet wired up for CDN packages. For inspecting content, prefer pathfinder_read_repository (operation get-package or get-manifest).',
           tracking: LAUNCH_PACKAGE_BUG_URL,
         },
       };

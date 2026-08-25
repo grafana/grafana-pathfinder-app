@@ -28,7 +28,7 @@ The directory name should match the package `id`.
 | `manifest.json` | No       | Product, enablement, recommender teams | Flat metadata, dependencies, `targeting`, `testEnvironment` |
 | `assets/`       | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources          |
 
-Content and metadata are separate files because they serve different consumers, are authored by different roles, and change for different reasons. The block editor reads and writes `content.json` without touching `manifest.json`. Git diffs stay scoped to the concern being changed.
+Content and metadata are separate files because they serve different consumers, are authored by different roles, and change for different reasons. Git diffs stay scoped to the concern being changed. The block editor authors `content.json`; the manifest fields it can compute from the content — `type`, `repository`, the `stats` stamp, and `startingLocation` — it derives, and everything else in an existing manifest it leaves untouched. A `startingLocation` it did not author counts as untouchable too (see [Custom guides](./CUSTOM_GUIDES.md)).
 
 ### Cross-file consistency rule
 
@@ -78,7 +78,15 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `targeting`        | `{ match? }`                         | No                            | —                         | Advisory recommendation targeting (see [targeting](#targeting))            |
 | `testEnvironment`  | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment)) |
 
-A stamped manifest also carries a top-level `stats` key. It is generated, never hand-authored — see [build-stats](./CLI_TOOLS.md#what-gets-written).
+### Extension fields
+
+Any top-level key not listed above is extension metadata. It survives validation unchanged and `pathfinder-cli build-repository` forwards it verbatim into that package's entry in `repository.json`, so adding one costs no CLI change. Two names are refused with a warning because the build computes them itself: `path` (from the package directory) and `title` (from `content.json`). `__proto__` is refused as well, though a JSON `__proto__` key is already dropped during parsing. Named manifest fields are never forwarded generically, so `id`, `schemaVersion`, `repository`, and `language` still do not appear in a repository entry.
+
+Because forwarding is silent and unvalidated, an extension key's **shape is never checked** — a consumer reading `entry.stats.blockCount` gets whatever the author typed, including a string, a nested object, or nothing at all. The consumer owns that validation. The same openness means a misspelled known field (`startingLocaton`) is not rejected: it is forwarded as an extension field while the real field quietly takes its default. `build-repository` lists the keys it forwards for each package so a typo is visible in the build log — check that line when a manifest field appears not to take effect.
+
+If a key becomes load-bearing, promote it to a named field in the schema — that is the intended migration path and it needs no rename.
+
+A stamped manifest carries a top-level `stats` key, which reaches `repository.json` by exactly this route. It is generated, never hand-authored — see [build-stats](./CLI_TOOLS.md#what-gets-written).
 
 ### Package IDs must not collide across repositories
 
@@ -205,7 +213,7 @@ Each repository publishes a compiled `repository.json` that maps bare package ID
 
 ### What repository.json contains
 
-Each entry maps a bare package ID to a `RepositoryEntry` with the package's path, type, and all denormalized manifest metadata:
+Each entry maps a bare package ID to a `RepositoryEntry` with the package's path, type, all denormalized manifest metadata, and any [extension fields](#extension-fields) the manifest carried:
 
 ```json
 {

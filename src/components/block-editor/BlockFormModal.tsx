@@ -37,6 +37,7 @@ import { MarkdownBlockForm } from './forms/MarkdownBlockForm';
 import { HtmlBlockForm } from './forms/HtmlBlockForm';
 import { ImageBlockForm } from './forms/ImageBlockForm';
 import { VideoBlockForm } from './forms/VideoBlockForm';
+import { CalloutBlockForm } from './forms/CalloutBlockForm';
 import { SectionBlockForm } from './forms/SectionBlockForm';
 import { CollapsibleBlockForm } from './forms/CollapsibleBlockForm';
 import { ConditionalBlockForm } from './forms/ConditionalBlockForm';
@@ -116,6 +117,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps> | n
   html: HtmlBlockForm,
   image: ImageBlockForm,
   video: VideoBlockForm,
+  callout: CalloutBlockForm,
   section: SectionBlockForm,
   collapsible: CollapsibleBlockForm,
   conditional: ConditionalBlockForm,

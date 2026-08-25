@@ -9,6 +9,8 @@ import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
 import { APP_PLATFORM_API_VERSION, collectionUrl, itemUrl } from '../../../utils/interactive-guides-api';
 import { stripAuthorNotes } from '../utils/block-export';
+import { deriveManifest } from '../utils/derive-manifest';
+import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { logger } from '../../../lib/logging';
 
 export type BackendGuideMetadata = {
@@ -27,6 +29,8 @@ export interface BackendGuideSpec {
   schemaVersion?: string;
   blocks: any[];
   status?: 'draft' | 'published';
+  /** Package metadata. Absent on legacy content-only guides; derived on every editor save. */
+  manifest?: Record<string, unknown>;
   [unownedField: string]: unknown;
 }
 
@@ -65,7 +69,15 @@ export function preservedMetadata(
   return metadata;
 }
 
-/** Editor-owned fields layered over the spec last read, so `spec.manifest` survives the replace. */
+/**
+ * Editor-owned fields layered over the spec last read, so `spec.manifest` survives the replace.
+ *
+ * `manifest` is derived rather than passed through untouched: an editor-authored guide has to be a
+ * complete package, not manifest-less content. `deriveManifest` merges over the inherited manifest and
+ * owns only what it can compute from the blocks, so a path cover page keeps its `type` and
+ * `milestones`. It gets the previously-read BLOCKS as well as the previously-read manifest, because
+ * deciding whether the editor owns `startingLocation` means asking what that content derived.
+ */
 export function preservedSpec(
   guide: JsonGuide,
   status: 'draft' | 'published',
@@ -76,9 +88,10 @@ export function preservedSpec(
     id: guide.id,
     title: guide.title,
     // Normalised deliberately: the editor writes the schema version it emits, not the stored one.
-    schemaVersion: guide.schemaVersion || '1.0',
+    schemaVersion: guide.schemaVersion || CURRENT_SCHEMA_VERSION,
     blocks: guide.blocks,
     status,
+    manifest: deriveManifest(guide, existingSpec?.manifest, existingSpec?.blocks),
   };
 }
 

@@ -89,6 +89,10 @@
       "toggleViewMode": "Basculer le mode d'affichage"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "Tous les parcours terminés !",
     "allCompleteTooltip": "Vous avez terminé tous les parcours d'apprentissage — bravo !",

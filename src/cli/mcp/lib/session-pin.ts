@@ -16,7 +16,7 @@
  */
 
 import type { SessionPinStore } from './session-store';
-import { sessionNotFoundResult } from '../tools/result';
+import { sessionNotFoundResult, type ToolResult } from '../tools/result';
 
 export interface PinEnforcement {
   store: SessionPinStore;
@@ -33,10 +33,7 @@ export interface PinEnforcement {
  * response when the pin check fails. The token is assumed to be
  * already normalized.
  */
-export async function enforceMcpSessionPin(
-  ctx: PinEnforcement,
-  token: string
-): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean } | null> {
+export async function enforceMcpSessionPin(ctx: PinEnforcement, token: string): Promise<ToolResult | null> {
   const pin = await ctx.store.readMcpSessionPin(token);
   if (pin === null) {
     // Unpinned session — nothing to enforce. Covers the stdio mint case

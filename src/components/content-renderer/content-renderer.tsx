@@ -13,6 +13,7 @@ import {
   resolveRelativeUrls,
   CodeBlock,
   CollapsibleBlock,
+  CalloutBlock,
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
@@ -1431,6 +1432,12 @@ function renderParsedElement(
         >
           {renderChildren(element.children)}
         </CollapsibleBlock>
+      );
+    case 'callout':
+      return (
+        <CalloutBlock key={key} id={element.props.id} title={sub(element.props.title) ?? ''}>
+          {renderChildren(element.children)}
+        </CalloutBlock>
       );
     case 'expandable-table':
       return (
