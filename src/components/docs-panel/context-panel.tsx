@@ -899,7 +899,11 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             ) : (
                                               typeof milestone.estimatedMinutes === 'number' && (
                                                 <span className={styles.milestoneDuration}>
-                                                  ({milestone.estimatedMinutes} min)
+                                                  (
+                                                  {t('docsPanel.milestoneEstimatedMinutes', '{{count}} min', {
+                                                    count: milestone.estimatedMinutes,
+                                                  })}
+                                                  )
                                                 </span>
                                               )
                                             )}

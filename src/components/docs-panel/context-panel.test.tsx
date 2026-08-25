@@ -191,8 +191,12 @@ describe('RecommendationsSection', () => {
       />
     );
 
+    // The `t()` mock above returns the fallback string unmodified — same
+    // convention as the percentComplete assertions below — so this checks the
+    // duration renders through the translated key rather than a hardcoded
+    // "min" string, not the interpolated count.
     const milestonesList = screen.getByTestId(testIds.contextPanel.recommendationMilestones(0));
-    expect(milestonesList).toHaveTextContent('(12 min)');
+    expect(milestonesList).toHaveTextContent('({{count}} min)');
     expect(milestonesList).not.toHaveTextContent('(undefined min)');
     expect(milestonesList).not.toHaveTextContent('NaN');
   });
