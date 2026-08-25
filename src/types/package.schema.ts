@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 
+import { GuideStatsSummarySchema } from './guide-stats.schema';
 import { JsonBlockSchema, CURRENT_SCHEMA_VERSION } from './json-guide.schema';
 import type {
   Author,
@@ -157,6 +158,25 @@ export const ManifestJsonObjectSchema = z.looseObject({
 
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.default(DEFAULT_TEST_ENVIRONMENT),
+
+  /**
+   * Generated, never hand-authored. Declared positively so a consumer reading a
+   * stamped manifest back validates it instead of trusting an untyped
+   * passthrough — before this, only `.loose()` kept the field alive on read and
+   * a strict parse silently dropped it.
+   *
+   * `.catch(undefined)` because a malformed stamp must not invalidate the whole
+   * manifest. A partial or hand-edited `stats` is precisely the input
+   * `pathfinder-cli build-stats` exists to repair, so failing the read there
+   * would break the one tool that fixes it. Reading as absent is also the
+   * honest answer: a stamp missing fields is not a denominator anyone should
+   * trust, and every consumer already handles no stamp at all.
+   *
+   * The catch is for readers only. `validate-package` re-checks the raw value
+   * so an author is told the stamp is present and ignored — see
+   * `emitStatsStampMessage`.
+   */
+  stats: GuideStatsSummarySchema.optional().catch(undefined),
 });
 
 /**
@@ -167,6 +187,7 @@ export const ManifestJsonObjectSchema = z.looseObject({
  * - ERROR: id, type (hard requirements)
  * - WARN: description, category, targeting, startingLocation (missing but recommended)
  * - INFO: repository, language, schemaVersion, dependency fields, author, testEnvironment (defaults applied)
+ * - GENERATED: stats (stamped by `pathfinder-cli build-stats` or the block editor; never authored)
  * - Conditional ERROR: milestones required when type is "path" or "journey" (Rule 1)
  * - Conditional ERROR: milestones only valid when type is "path" or "journey" (Rule 2)
  *
@@ -232,6 +253,15 @@ export const RepositoryEntrySchema = z.looseObject({
   ...packageMetadataSchemaFields,
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.optional(),
+
+  /**
+   * Carried from the manifest by `build-repository`, not forwarded as an
+   * extension key — declared here so the entry states it and so a hand-edited
+   * `repository.json` gets the same sanitising read as the manifest does.
+   * Not part of `packageMetadataSchemaFields`: a `GraphNode` shares those and
+   * has no use for a block-count stamp.
+   */
+  stats: GuideStatsSummarySchema.optional().catch(undefined),
 }) satisfies z.ZodType<RepositoryEntry>;
 
 /**

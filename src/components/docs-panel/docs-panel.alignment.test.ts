@@ -274,6 +274,28 @@ function makeContentResult(overrides?: { startingLocation?: string }) {
   };
 }
 
+/**
+ * A private App Platform guide as the `backend-guide:` loader shapes it: the
+ * synthesized manifest spreads `spec.manifest` through, so `startingLocation`
+ * arrives under `additionalFields` (the CRD prunes it at the top level).
+ */
+function makeAppPlatformContentResult(startingLocation?: string) {
+  return {
+    content: {
+      url: 'backend-guide:my-private-guide',
+      type: 'interactive',
+      content: [],
+      metadata: {
+        packageManifest: {
+          type: 'guide',
+          repository: 'app-platform',
+          ...(startingLocation ? { additionalFields: { startingLocation } } : {}),
+        },
+      },
+    },
+  };
+}
+
 async function openTabAndLoad(
   panel: CombinedLearningJourneyPanel,
   url: string,
@@ -464,6 +486,73 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
         'https://interactive-learning.grafana.net/foo/content.json',
         'home_page'
       );
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    // A standalone private guide is opened from the custom guides list with no packageInfo at all,
+    // so the fetched content's own manifest is the only place its startingLocation can come from.
+    it('sets pendingAlignment from content metadata additionalFields when the launch carries no packageInfo', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult('/alerting'));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      const tab = getTab(panel, tabId);
+      expect(tab.pendingAlignment).toBeDefined();
+      expect(tab.pendingAlignment.startingLocation).toBe('/alerting');
+      expect(tab.pendingAlignment.currentPath).toBe('/explore');
+    });
+
+    it('does NOT set pendingAlignment when the private guide declares no startingLocation', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    it('prefers an explicit packageInfo manifest over the fetched content metadata', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult('/alerting'));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page', {
+        packageManifest: { startingLocation: '/connections' },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment.startingLocation).toBe('/connections');
+    });
+
+    // A manifest is authored data, and `confirmAlignment` pushes what the prompt
+    // carries. A value that would not pass as an authored navigate target must
+    // not become a prompt either.
+    it.each([
+      ['a protocol-relative value', '//evil.com'],
+      ['an absolute external URL', 'https://evil.com/explore'],
+      ['a backslash-smuggled authority', '/\\evil.com'],
+      ['an encoded traversal', '/foo/..%2Fbar'],
+      ['an always-denied route', '/logout'],
+    ])('does NOT set pendingAlignment for %s', async (_label, startingLocation) => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult(startingLocation));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();
+    });
+
+    // config.bootData.user in this suite is a plain viewer.
+    it('does NOT set pendingAlignment for an admin-only route when the reader is not an admin', async () => {
+      mockLoadDocsTabContentResult.mockResolvedValue(makeAppPlatformContentResult('/admin/users'));
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'backend-guide:my-private-guide', 'home_page');
       await new Promise((r) => setTimeout(r, 0));
 
       expect(getTab(panel, tabId).pendingAlignment).toBeUndefined();

@@ -3,13 +3,31 @@
  *
  * Resolution order:
  *   1. `manifest.startingLocation` — for migrated package guides
- *   2. `bundled-interactives/index.json` `url[0]` — fallback for unmigrated bundled guides
+ *   2. `manifest.additionalFields.startingLocation` — the App Platform location. The
+ *      `InteractiveGuide` CRD's `#Manifest` does not declare `startingLocation`, so a
+ *      value written at the top level is pruned on write; both the block editor and
+ *      `scripts/upsert-learning-path.sh` put it under `additionalFields` instead. Two
+ *      locations to handle until the CUE field is promoted (see `docs/design/CONCERNS.md`).
+ *   3. `bundled-interactives/index.json` `url[0]` — fallback for unmigrated bundled guides
  *      (URLs of the form `bundled:<id>`)
- *   3. `null` — for remote guides without a manifest; caller skips prompting and
+ *   4. `null` — for remote guides without a manifest; caller skips prompting and
  *      relies on the existing location `Fix this` as a safety net
+ *
+ * Whatever wins, it leaves here only if `validateInternalNavigationPath` accepts
+ * it. A manifest is authored data that reaches `locationService.push` through
+ * `confirmAlignment`, so it is held to the same same-origin / denied-route bar as
+ * an authored `navigate` action — one validator, not a parallel check. A rejected
+ * value resolves to `null` rather than to the validator's `/` fallback: prompting
+ * a reader to navigate to the root is a worse answer than not prompting at all.
+ *
+ * This is the single gate. `pendingAlignment` is written from this return value
+ * and from nowhere else, so validating here covers what gets stored, what the
+ * prompt shows, what telemetry reports, and what is eventually pushed.
  *
  * @see docs/design/AUTORECOVERY_DESIGN.md § "The implied 0th step"
  */
+
+import { validateInternalNavigationPath } from '../security/url-validator';
 
 // Synchronous import: this JSON is bundled at build time.
 const bundledIndex = require('../bundled-interactives/index.json') as BundledIndexShape;
@@ -25,10 +43,38 @@ interface BundledIndexShape {
 
 const BUNDLED_PREFIX = 'bundled:';
 
-export function resolveStartingLocation(url: string, packageManifest?: Record<string, unknown>): string | null {
+export interface ResolveStartingLocationOptions {
+  /**
+   * Whether the reader holds admin privileges. Omitted means "not an admin",
+   * so a caller that forgets it gets the stricter answer.
+   */
+  isAdmin?: boolean;
+}
+
+export function resolveStartingLocation(
+  url: string,
+  packageManifest?: Record<string, unknown>,
+  options?: ResolveStartingLocationOptions
+): string | null {
+  const candidate = resolveCandidate(url, packageManifest);
+  if (candidate === null) {
+    return null;
+  }
+  return validateInternalNavigationPath(candidate, options?.isAdmin);
+}
+
+function resolveCandidate(url: string, packageManifest?: Record<string, unknown>): string | null {
   const fromManifest = packageManifest?.startingLocation;
   if (typeof fromManifest === 'string' && fromManifest.length > 0) {
     return fromManifest;
+  }
+
+  // The typed field wins when both are present: a promoted CUE field is the more
+  // specific declaration, and `additionalFields` is where a value waits for that
+  // promotion.
+  const fromAdditional = readAdditionalStartingLocation(packageManifest);
+  if (fromAdditional) {
+    return fromAdditional;
   }
 
   if (url.startsWith(BUNDLED_PREFIX)) {
@@ -36,6 +82,15 @@ export function resolveStartingLocation(url: string, packageManifest?: Record<st
   }
 
   return null;
+}
+
+function readAdditionalStartingLocation(packageManifest?: Record<string, unknown>): string | null {
+  const additional = packageManifest?.additionalFields;
+  if (!additional || typeof additional !== 'object' || Array.isArray(additional)) {
+    return null;
+  }
+  const value = (additional as Record<string, unknown>).startingLocation;
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 /**

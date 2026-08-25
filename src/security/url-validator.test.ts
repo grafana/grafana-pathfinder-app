@@ -9,6 +9,7 @@ import {
   isInteractiveLearningUrl,
   validateTutorialUrl,
   validateRedirectPath,
+  validateInternalNavigationPath,
   isGitHubRawUrl,
   isTrustedFinalUrl,
 } from './url-validator';
@@ -427,6 +428,110 @@ describe('validateRedirectPath', () => {
     it('should default to most restrictive when isAdmin is omitted', () => {
       expect(validateRedirectPath('/admin/users')).toBe('/');
       expect(validateRedirectPath('/api/datasources')).toBe('/');
+    });
+  });
+});
+
+describe('validateInternalNavigationPath', () => {
+  describe('accepted internal paths', () => {
+    it('should return a simple path unchanged', () => {
+      expect(validateInternalNavigationPath('/explore')).toBe('/explore');
+    });
+
+    it('should keep the query string and fragment alongside the validated pathname', () => {
+      expect(validateInternalNavigationPath('/connections/datasources?search=prom#config')).toBe(
+        '/connections/datasources?search=prom#config'
+      );
+    });
+
+    it('should accept the root path', () => {
+      expect(validateInternalNavigationPath('/')).toBe('/');
+    });
+  });
+
+  describe('rejected values (all return null)', () => {
+    it('should reject a protocol-relative value', () => {
+      expect(validateInternalNavigationPath('//evil.com')).toBeNull();
+    });
+
+    it('should reject a protocol-relative value carrying a path', () => {
+      expect(validateInternalNavigationPath('//evil.com/grafana/explore')).toBeNull();
+    });
+
+    // The URL spec folds a backslash to a slash for http(s), so this is `//evil.com`
+    // without ever matching a `//` prefix test. It parses cross-origin with pathname
+    // `/` — the same value validateRedirectPath returns on rejection — so only the
+    // explicit origin check separates it from a legitimate `/`.
+    it('should reject a backslash-smuggled authority', () => {
+      expect(validateInternalNavigationPath('/\\evil.com')).toBeNull();
+    });
+
+    it('should reject an absolute external URL', () => {
+      expect(validateInternalNavigationPath('https://evil.com/explore')).toBeNull();
+    });
+
+    it('should reject an absolute same-host URL, since only paths are accepted', () => {
+      expect(validateInternalNavigationPath('http://localhost/explore')).toBeNull();
+    });
+
+    it('should reject a javascript: scheme', () => {
+      expect(validateInternalNavigationPath('javascript:alert(1)')).toBeNull();
+    });
+
+    it('should reject a relative path with no leading slash', () => {
+      expect(validateInternalNavigationPath('explore')).toBeNull();
+      expect(validateInternalNavigationPath('evil.com/explore')).toBeNull();
+    });
+
+    it('should reject an empty value', () => {
+      expect(validateInternalNavigationPath('')).toBeNull();
+    });
+
+    it('should reject an always-denied route', () => {
+      expect(validateInternalNavigationPath('/logout')).toBeNull();
+      expect(validateInternalNavigationPath('/profile/password')).toBeNull();
+    });
+
+    it('should reject an encoded traversal that survives normalization', () => {
+      expect(validateInternalNavigationPath('/foo/..%2Fbar')).toBeNull();
+    });
+  });
+
+  // Matches validateRedirectPath rather than diverging from it: the URL API
+  // resolves the traversal to a same-origin route, which is a 404 inside
+  // Grafana's client-side router and no more than that.
+  describe('path traversal that normalizes away', () => {
+    it('should normalize a traversal attempt to its same-origin resolution', () => {
+      expect(validateInternalNavigationPath('/../../../etc/passwd')).toBe('/etc/passwd');
+    });
+
+    it('should normalize an encoded traversal the URL API decodes', () => {
+      expect(validateInternalNavigationPath('/%2e%2e/etc/passwd')).toBe('/etc/passwd');
+    });
+  });
+
+  describe('admin-aware routes', () => {
+    it('should reject admin-only routes for a non-admin', () => {
+      expect(validateInternalNavigationPath('/admin/users')).toBeNull();
+      expect(validateInternalNavigationPath('/api/datasources')).toBeNull();
+    });
+
+    it('should accept admin-only routes for an admin', () => {
+      expect(validateInternalNavigationPath('/admin/users', true)).toBe('/admin/users');
+    });
+
+    it('should still reject always-denied routes for an admin', () => {
+      expect(validateInternalNavigationPath('/logout', true)).toBeNull();
+    });
+
+    it('should default to the stricter answer when the caller omits the role', () => {
+      expect(validateInternalNavigationPath('/admin/users')).toBeNull();
+    });
+
+    // /administration is not /admin — the prefix rule matches on a segment
+    // boundary, and denying it would break real navigation.
+    it('should not treat a route that merely starts with admin as admin-only', () => {
+      expect(validateInternalNavigationPath('/administration/general')).toBe('/administration/general');
     });
   });
 });
