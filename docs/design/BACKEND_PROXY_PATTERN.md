@@ -119,8 +119,12 @@ the fixed internal aggregator.
     and not a 503 — a 503 would darken every proxy route at once for the whole client cache TTL.
 
   None of the three is retryable, so all three are served in-band and each carries its own reason
-  token. The gate logs each under its own message, and the two key-lookup causes carry the
-  per-source `<name>: <cause>` detail so an operator can name the endpoint that failed.
+  token. Note what each channel actually separates: the **logs** tell the two key-lookup causes
+  apart on every deployment — the gate logs each under its own message, and both carry the
+  per-source `<name>: <cause>` detail naming the endpoint that failed — while the **envelope**
+  separates them only where no source answers at all. On a Grafana Cloud stack that is never the
+  case: its own endpoint answers `{"keys":null}`, which counts as an answer, so a dead auth-api
+  address there reports `identity-unavailable` and the logs are the diagnosis.
 
 - **A write serves the same three statuses in write-path shapes, not soft-200 envelopes**, and the
   standing/transient distinction must survive the translation: rejected → **401** (transient, the
@@ -184,9 +188,11 @@ being worse than no auth-api: if **any** source served a key set that did not ca
 the normal shape on every Grafana Cloud stack, whose own endpoint answers `{"keys":null}`. Only
 when **no** source could be reached at all does the chain report `signing-keys-unreachable`. Both
 are soft-200 standing conditions, so a wrong auth-api host never becomes a 503 on every proxy
-route; they carry different reason tokens and different log lines because they have different
-owners — one is a caller naming a key nobody publishes, the other is very likely our own address.
-Verified:
+route. They have different owners — one is a caller naming a key nobody publishes, the other is
+very likely our own address — and the gate's own log line plus its per-source detail tells them
+apart everywhere. The reason tokens differ too, but only where no source answers: a Cloud stack
+always answers its own endpoint, so a dead auth-api address there still reads
+`identity-unavailable` in the envelope. Verified:
 ES256 signature against a `kid` in the live key set, `typ: "jwt"` (an access token must not
 authenticate an identity), and `exp`/`nbf` with go-jose's one-minute leeway. `exp` **presence** is
 additionally required here, because go-jose validates expiry only when the claim is present and an

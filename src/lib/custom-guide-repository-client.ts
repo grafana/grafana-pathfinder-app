@@ -49,12 +49,14 @@ export interface CustomGuideRepositoryEntry {
  * supplies makes verification possible: no app URL to build a verifier from, or
  * no server-derived namespace to bind the token to), `signing-keys-unreachable`
  * (no signing-keys endpoint answered at all, which points at the configured
- * address rather than at the caller), `grafana-config-unavailable`,
- * `feature-toggle-disabled`, `app-url-unavailable`, `obo-unavailable` (no
- * provisioned on-behalf-of token — check this first when the surface is
- * unexpectedly empty), or `upstream-<status>` for an upstream error. The
- * identity gate runs before the backend resolver, so `namespace-unavailable` is
- * not reachable on this route: a stack with no namespace reports
+ * address rather than at the caller), `feature-toggle-disabled`,
+ * `obo-unavailable` (no provisioned on-behalf-of token — check this first when
+ * the surface is unexpectedly empty), or `upstream-<status>` for an upstream
+ * error.
+ *
+ * The identity gate runs before the backend resolver, so that resolver's
+ * `namespace-unavailable`, `app-url-unavailable`, and `grafana-config-unavailable`
+ * are all unreachable on this route — a stack missing any of those reports
  * `identity-unverifiable` first.
  */
 interface CustomGuideCapability {

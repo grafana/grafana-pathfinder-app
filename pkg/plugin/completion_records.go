@@ -539,10 +539,11 @@ func (a *App) handleMyCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Identity gate first — cache hit or miss, warm bytes are never served to
 	// an unauthenticated caller. Every identity failure on a GET read is a
-	// soft-200 capability envelope (not 401, not 503): these routes gate whether
-	// a feature renders at all, and the front-end lumps a 503 into its
-	// not-rolled-out set anyway, so it would darken the surface exactly as a
-	// standing condition would. The reason token carries which failure it was.
+	// soft-200 capability envelope (not 401, not 503), because none of them is
+	// retryable and the reason token says which one it was. A client that caches
+	// `available:false` but not a thrown 503 makes the envelope STICKIER than
+	// the 503 it replaced, which is the accepted cost of the standing-condition
+	// classification (see custom_guide_repository.go for the live case).
 	userID, status := a.deriveCompletionUserID(r)
 	if status != identityVerified {
 		a.writeMyCompletions(w, myCompletionsResponse{

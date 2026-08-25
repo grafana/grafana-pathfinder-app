@@ -538,7 +538,9 @@ func TestIdentityGate_NoReachableSigningKeysSourceIsASoftStandingCondition(t *te
 // The two ways a key lookup comes up empty are different faults with different
 // owners, so they must not collapse into one envelope token. A stack answering
 // `{"keys":null}` is the normal Grafana Cloud shape; nothing answering at all
-// almost always means our own address is wrong.
+// almost always means our own address is wrong. The envelope separates them
+// only where no source answers — a Cloud stack always answers its own endpoint,
+// so there the gate's log line is what tells them apart.
 func TestIdentityGate_KeyLookupCausesReportDistinctReasons(t *testing.T) {
 	withLister(t, singlePageLister())
 	withGuideLister(t, singlePageGuideLister())
@@ -673,7 +675,9 @@ func TestIdentityGate_CloudStackVerifiesAgainstAuthAPI(t *testing.T) {
 // A wrong auth-api host would fail its fetch rather than answer empty. That must
 // not turn every proxy route into a hard 503 on a stack that answers: while any
 // signing-keys endpoint is reachable, an unresolvable `kid` stays the soft-200
-// refusal it was before auth-api was consulted at all.
+// refusal it was before auth-api was consulted at all. This is the Grafana Cloud
+// shape, so the envelope here reads the same as a forged token's; only the gate's
+// log line, carrying `auth-api: <cause>`, separates them.
 func TestIdentityGate_UnreachableAuthAPIWithAnAnsweringStackStaysSoft(t *testing.T) {
 	unreachable, _ := startJWKSServer(t)
 	unreachable.Close()

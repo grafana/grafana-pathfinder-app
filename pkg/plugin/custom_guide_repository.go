@@ -114,10 +114,11 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	// Identity gate first. This is a namespace-global catalogue, so validIDToken
 	// only needs a verified caller; there is no per-user need, so we deliberately
 	// do not extract `sub`. Every identity failure on a GET read is a soft-200
-	// capability envelope (not 401, not 503): these routes gate whether a feature
-	// renders at all, and the front-end lumps a 503 into its not-rolled-out set
-	// anyway (BACKEND_PROXY_PATTERN.md §3, §7). The reason token carries which
-	// failure it was.
+	// capability envelope (not 401, not 503), because none of them is retryable
+	// and the reason token says which one it was (BACKEND_PROXY_PATTERN.md §3,
+	// §7). The envelope is STICKIER than the 503 it replaced, not equivalent to
+	// it: the client caches `available:false` for its TTL but never caches a
+	// thrown 503, so a recovered stack stays dark until the entry expires.
 	if status := a.validIDToken(r); status != identityVerified {
 		a.writeJSON(w, customGuideRepositoryResponse{
 			Capability: customGuideCapability{Available: false, Reason: status.capabilityReason()},
