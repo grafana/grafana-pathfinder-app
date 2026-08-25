@@ -85,6 +85,10 @@
       "toggleViewMode": "Nézetmód váltása"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "Minden útvonal teljesítve!",
     "allCompleteTooltip": "Minden tanulási útvonal teljesítve – szép munka!",

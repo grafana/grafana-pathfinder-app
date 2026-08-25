@@ -93,7 +93,7 @@ describe('useBackendSaveFlow — performSaveDraft', () => {
       await result.current.performSaveDraft();
     });
 
-    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'draft');
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'draft', false);
     expect(result.current.currentGuideResourceName).toBe('g1');
     expect(result.current.lastPublishedJson).toBe(JSON.stringify(g));
     expect(publish).toHaveBeenCalledWith(
@@ -154,7 +154,7 @@ describe('useBackendSaveFlow — handlePostToBackend', () => {
       await result.current.handlePostToBackend();
     });
 
-    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'published');
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, undefined, undefined, 'published', false);
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({ payload: ['Guide published.'] }));
     expect(result.current.publishedStatus).toBe('published');
   });
@@ -185,9 +185,58 @@ describe('useBackendSaveFlow — overwrite conflict', () => {
       await savePromise;
     });
 
-    expect(backendGuides.saveGuide).toHaveBeenCalledWith(g, 'existing-guide', { name: 'existing-guide' }, 'draft');
+    // The last argument is the point: an overwrite replaces a resource this guide did not come
+    // from, so saveGuide must not inherit its manifest or provenance annotations.
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(
+      g,
+      'existing-guide',
+      { name: 'existing-guide' },
+      'draft',
+      true
+    );
     expect(result.current.confirmModal.isOpen).toBe(false);
     expect(result.current.currentGuideResourceName).toBe('existing-guide');
+  });
+
+  it('leaves the guide untracked when the overwrite fails, so the next save re-asks', async () => {
+    const g = guide({ id: 'existing-guide', title: 'Existing guide' });
+    const editor = { getGuide: () => g };
+    const backendGuides = makeBackendGuides({
+      guides: [makeGuideEntry('existing-guide', 'Existing guide (old)', 'draft')],
+      saveGuide: jest.fn().mockRejectedValue(new Error('network down')),
+    });
+    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+
+    let savePromise!: Promise<void>;
+    act(() => {
+      savePromise = result.current.performSaveDraft();
+    });
+    await act(async () => {
+      result.current.confirmModal.onConfirm();
+      await savePromise;
+    });
+
+    // Tracking the foreign resource here would make the retry an ordinary update, which inherits
+    // its manifest and provenance annotations — the fail-open this whole guard exists to prevent.
+    expect(result.current.currentGuideResourceName).toBeNull();
+
+    (backendGuides.saveGuide as jest.Mock).mockClear().mockResolvedValue(undefined);
+    act(() => {
+      savePromise = result.current.performSaveDraft();
+    });
+
+    expect(result.current.confirmModal.isOpen).toBe(true);
+    await act(async () => {
+      result.current.confirmModal.onConfirm();
+      await savePromise;
+    });
+    expect(backendGuides.saveGuide).toHaveBeenCalledWith(
+      g,
+      'existing-guide',
+      { name: 'existing-guide' },
+      'draft',
+      true
+    );
   });
 
   it('cancelling the conflict prompt does not save', async () => {

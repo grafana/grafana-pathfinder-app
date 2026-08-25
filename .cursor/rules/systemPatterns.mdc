@@ -107,23 +107,23 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 
 **Tier 1 — support:**
 
-- `lib/` — Shared utilities. Sub-areas: `analytics.ts`, `user-storage.ts`, `dom/` (selector pipeline: detect → generate → validate → retry), `async-utils.ts`, `package-recommendations-client.ts`.
+- `lib/` — Shared utilities. Sub-areas: `analytics.ts`, `user-storage.ts`, `dom/` (selector pipeline: detect → generate → validate → retry), `async-utils.ts`, `package-recommendations-client.ts`, `guide-stats/` (canonical block-count / completion-denominator computation, pure and Node-safe so `src/cli` and a future Go port inherit one rule; deliberately not re-exported from the `lib/` barrel, which pulls in browser-only code — see the `completion-denominator-authority` invariant in `docs/design/CONCERNS.md`).
 - `security/` — URL allowlists, HTML / log sanitization. Entry: `security/index.ts`. Key: `parseUrlSafely`, `validateTutorialUrl`, `sanitizeDocumentationHTML`. See `.cursor/rules/frontend-security.mdc`.
 - `styles/` — Theme-aware CSS-in-JS factories (Emotion). One `*.styles.ts` per component.
 - `global-state/` — Cross-component stores (Zustand + React context). Files: `sidebar.ts`, `panel-mode.ts`, `link-interception.ts`, `alignment-pending-context.ts`.
 - `utils/` — Business logic and utilities. Files: `dev-mode.ts`, `openfeature.ts`, `timeout-manager.ts`, `variable-substitution.ts`, `experiments.ts`, `find-doc-page.ts`. See `docs/developer/utils/README.md`.
 - `validation/` — Zod schemas + condition validators. Entry: `validate-guide.ts`. Architecture rules enforced by `architecture.test.ts`.
 - `recovery/` — Auto-recovery: decides whether the user is in the right place for a guide. Entry: `alignment-evaluator.ts` (`evaluateAlignment`).
-- `completion-records/` — The single completion-recorder boundary every terminal guide/journey completion flows through. Entry: `completion-recorder.ts` (`recordGuideCompletion`, `recordJourneyCompletion`, `onCompletionRecorded` seam). Deduped exactly-once per `(kind, guideSource, guideId)`; identity comes from the resolved manifest when available, otherwise a stable slug (milestone facts deliberately key on the milestone slug; emission is skipped when no stable identity resolves — never keyed on a loader URL).
+- `completion-records/` — The single completion-recorder boundary every terminal guide/journey completion flows through. Entry: `completion-recorder.ts` (`recordGuideCompletion`, `recordJourneyCompletion`, `onCompletionRecorded`). Emission is once per `(kind, guideSource, guideId)` for the current app load; `guideSource` is the recommendation-level `repository` (a sibling of the manifest in the V1 wire shape, threaded through package/tab metadata) and `guideId` is `manifest.id`, else a stable slug — never a loader URL. `completion-write-hook.ts`, armed once from the universal plugin bootstrap (`module.tsx` `plugin.init`, behind a dynamic `import()` so this background stack stays out of the entry bundle — pinned by `entry-bundle-boundary.test.ts` and `module.bootstrap.test.ts`) so every entry surface (sidebar, floating, full-screen, controller) arms it, subscribes immediately and enqueues each emitted fact off the completion-emission stack: enqueue is an O(1) persist with no storage enumeration, and the async drain does the cross-tab reconciliation. Surface-neutral emission is owned by `recordGuideCompletionForSurface` in `learning-journey-helpers` — each content-owning surface delegates to it so completing a guide in any surface records. `completion-write-queue.ts` stores bounded (per-tab 100-item, eventually-global), per-event retries under a user/org-scoped localStorage prefix, dropped past a 30-day retention horizon matching the backend; tabs coordinate drains with a recoverable lease (capped items per pass, released between passes), the request is bounded below the lease TTL, and each POST carries the event's stable id as a REQUIRED idempotency key so a retried send cannot mint a duplicate durable record. Retry backoff is jitter-then-clamped to a true `maxBackoffMs` ceiling. Write outcomes: `created` durable; `terminal` (4xx other than 401/403/408/429) dropped; `transient` (401/408/429/5xx/network) retried; a structural 404 (`route-missing`) and a 403 (`forbidden`) share one disarm-and-keep path — both are conditions of the environment rather than defects in the record, so they suppress network drains for the session while later facts keep persisting and drain on the next load once the route exists or the grant lands, never a per-item drop. They report distinct reasons (`route-missing` vs `forbidden-hold`) so a stack whose grant never arrives is discoverable rather than accumulating silently. Degradation (route-missing, forbidden-hold, terminal/expired/eviction drop, enqueue/drain failure) surfaces as a Faro-visible `logger.warn` plus one typed low-cardinality telemetry event (`recordCompletionWriteDegradation`). Contract shared with the write proxy (#1433/#1434).
 
 **Tier 2 — engines & hooks:**
 
 - `context-engine/` — Detects Grafana context (URL, datasources, dashboard) and calls the recommender. Entry: `context.service.ts`. Hook: `useContextPanel()`. See `docs/developer/engines/context-engine.md`.
-- `docs-retrieval/` — Multi-strategy content fetcher and renderer. Entry: `content-fetcher.ts` (`fetchUnifiedContent`). Renders via `content-renderer.tsx`. Journey-completion helpers in `learning-journey-helpers.ts`.
+- `docs-retrieval/` — Multi-strategy content fetcher and renderer. Entry: `content-fetcher.ts` (`fetchUnifiedContent`). Renders via `content-renderer.tsx`. `content-fetcher/package-resolver-registry.ts` holds the resolver singleton and lazy factory so the package-engine chunk stays out of the eager plugin entry bundle. Journey-completion helpers live in `learning-journey-helpers.ts`.
 - `interactive-engine/` — Executes interactive step actions. Entry: `interactive.hook.ts` (`useInteractiveElements`). Action handlers under `action-handlers/`. See `docs/developer/engines/interactive-engine.md`.
 - `requirements-manager/` — Prereqs + postconditions for steps. Entry: `requirements-checker.hook.ts` (`useStepChecker`). State machine in `step-state.ts`. See `docs/developer/engines/requirements-manager.md`.
 - `learning-paths/` — Progress / badges / streaks / next-action. Entry: `learning-paths.hook.ts`. Badge definitions in `badges.ts`. See `docs/developer/learning-paths/README.md`.
-- `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → online CDN → recommender API.
+- `package-engine/` — Package resolution + loading. Entry: `composite-resolver.ts` (`createCompositeResolver`). Resolver chain: bundled → (recommender API when enabled, otherwise online CDN) → App Platform. Bare-ID App Platform resolution verifies that a guide is published; direct `backend-guide:` loading deliberately also serves drafts for preview links and tab restore. See `docs/developer/package-authoring.md`.
 - `snippet-engine/` — Resolves `snippet-ref` blocks to their content. Entry: `caching-snippet-resolver.ts` (`getSnippetResolver`). Fetches from CDN at `<host>/guides/shared/snippets/<id>.json` (the `/guides/` prefix reflects the existing interactive-tutorials deploy convention); no bundled fallback. `inline-refs.ts` splices resolved snippets into a guide before parsing.
 - `hooks/` — Cross-cutting hooks: `useGuideProgressState`, `useAutoLaunchTutorial`, `useStepProgressFromEvents`.
 
@@ -162,18 +162,22 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 | `learning-paths` (`useGuideCompletion`) | `components/docs-panel`, `interactive-engine` | Progress events + badge unlock                          |
 | `recovery` (`evaluateAlignment`)       | `components/docs-panel`                  | One-shot alignment evaluation at guide launch                  |
 | `completion-records` (`recordGuideCompletion`, `recordJourneyCompletion`) | `docs-retrieval` (`learning-journey-helpers`) | Single completion-emission boundary; exactly-once per `(kind, guideSource, guideId)` |
+| `completion-records` (`armCompletionWriteHook`) | `module.tsx` (`plugin.init`) | Universal plugin bootstrap arms the durable-write subscriber once for every entry surface — nothing is armed and a warn is logged when no user/org identity resolves, so an anonymous session is distinguishable from a broken one and a later identity can still arm |
+| `completion-records` (`discardQueuedCompletionWrites`) | `components/LearningPaths` (`MyLearningTab`) | "Reset all progress" drops queued-but-unsent durable writes before its first `await`, so a reset is not followed by records minting for the guides it just cleared |
 
 ## Backend architecture (`pkg/`)
 
-The Go backend is a **read proxy for the App Platform aggregator**, and nothing else. No database, no
+The Go backend is a **proxy for the App Platform aggregator**, and nothing else. No database, no
 streaming. Direct dependencies are `grafana-plugin-sdk-go` and `grafana/authlib` (the on-behalf-of
 token exchange).
 
-The **App Platform** routes (`completion_records.go`, `custom_guide_repository.go`) follow one shape:
-drain a paginated namespace-scoped upstream LIST, cache the shaped result per caller, serve it
-availability-first, and ride the caller's own identity end to end — outbound as an on-behalf-of
-access token minted in `pkg/plugin/auth`, never the ID token itself. The canonical pattern —
-including the identity trust boundary — is `docs/design/BACKEND_PROXY_PATTERN.md`.
+The **App Platform** routes (`completion_records.go` + `completion_records_write.go`,
+`custom_guide_repository.go`) follow one shape: drain a paginated namespace-scoped upstream LIST,
+cache the shaped result per caller, serve it availability-first, and ride the caller's own identity
+end to end — outbound as an on-behalf-of access token minted in `pkg/plugin/auth`, never the ID
+token itself. Completion records add the write half of that shape: a POST create on the same
+coordinate, with identity stamped server-side and a deterministic idempotent name. The canonical
+pattern — including the identity trust boundary — is `docs/design/BACKEND_PROXY_PATTERN.md`.
 
 `package_recommendations.go` is the exception and must not be assimilated into that shape: it fetches
 a public CDN index anonymously behind a host allowlist, with no namespace and one process-wide
@@ -184,27 +188,30 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 | File                                | Role                                                                                                              |
 | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `main.go`                           | Plugin entrypoint. Calls `app.Manage("grafana-pathfinder-app", plugin.NewApp, ...)`                                |
-| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger and the on-behalf-of exchanger. |
+| `plugin/app.go`                     | `App` struct (implements `instancemgmt.Instance`, `CallResourceHandler`, `CheckHealthHandler`). Holds a logger, the on-behalf-of exchanger, and the completion-write rate limiter. |
 | `plugin/resources.go`               | Route table — `http.ServeMux` wrapped in `httpadapter.New` — plus `writeJSON` / `writeError`.                      |
 | `plugin/package_recommendations.go` | CDN package-index cache (6h TTL, single-flight dedup, 8-way parallel manifest fetch, bounded memory). Owns `timeNow`. |
-| `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`). Per-user collation of a full-namespace LIST, 5-min TTL cache with single-flight refresh + negative-cache cooldown, stale-serve/503/capability=false error paths. |
-| `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform LIST client for `completionrecords`: supplies group/version + resource and decodes each `items[].spec`. |
+| `plugin/completion_records.go`      | Completion Records read proxy (`/completion-records/my`, `/completion-records/capability`). Per-user collation of a full-namespace LIST, 5-min TTL cache with single-flight refresh, invalidation generations, negative-cache cooldown, and stale-serve/503/capability=false error paths. |
+| `plugin/completion_records_client.go` | Per-kind wrapper over the shared App Platform client for `completionrecords`: supplies group/version + resource, decodes each `items[].spec` for LISTs, and issues the create (POST) for the write path. |
+| `plugin/completion_records_write.go` | Completion Records durable write proxy (`POST /completion-records`). Fails closed on the identity gate, but each status keeps its own shape — rejected → 401 (the client retries after re-auth), signing-keys outage → transient 503, unverifiable stack → structural 404 carrying `identity-unverifiable` (verification can never succeed there, so a retryable status would retry to the 30-day horizon and never disarm); server-stamps identity/org/stack/`recordedAt`/`schemaVersion` (`userLogin`/`userDisplayName` come only from the signed ID token's `username`/`name` claims — no fallback, absent claim omits the field and logs); validates a single bounded JSON fact; builds the CRD spec; derives the record name deterministically from the required non-blank client `idempotencyKey` scoped to the trusted `userID` — blank/missing → terminal 400, 409 → idempotent success; clamps out-of-range `durationMs` into `[0, 24h]` rather than dropping the record, and rejects `completedAt` outside `[now−30d, now+5m]`; stales the read cache on success, keeping the entry as the stale-serve fallback; maps outcomes onto the retry contract (201 created / 401 transient after re-auth / structural 404 disarm — persisted data survives, reached by an upstream 404, `obo-unavailable`, or `identity-unverifiable` / 408+429+5xx+3xx+network+token-exchange-failure transient / 403 disarm with records retained / other 4xx terminal). |
+| `plugin/completion_records_write_ratelimit.go` | Per-user token-bucket rate limiter (`newCompletionWriteRateLimiter`, held on `App`) guarding `POST /completion-records` (backend proxy pattern §9 flood guard). |
 | `plugin/custom_guide_repository.go` | Namespace-global custom-guide catalogue proxy (`/custom-guide-repository`).                                        |
 | `plugin/custom_guide_repository_client.go` | Per-kind wrapper for the guide-catalogue resource.                                                         |
-| `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. |
+| `plugin/auth/`                      | On-behalf-of token exchange (authlib): mints a short-lived `X-Access-Token` for the calling user from the SSS-provisioned CAP token. `New` returns `(nil, nil)` when no credential is provisioned, so resolvers report `obo-unavailable` instead of failing. |
 | `plugin/settings.go`                | Parses `JSONData` and decrypts `SecureJSONData`. Reads only `secureJsonData.accessToken` into `OBOToken`; the exchange namespace comes from plugin-context, not settings. |
-| `plugin/app_platform_client.go`     | Shared paginated LIST client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, per-page byte cap + timeout, two-axis error classification (transient/terminal, namespace-global/caller-scoped), first-request credential diagnostics. |
-| `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken` — fail-closed structural JWT validation (outbound credentials come from `pkg/plugin/auth`); `deriveCompletionUserID` (the epic's canonical identity contract) delegates here. Trust boundary documented in `docs/design/BACKEND_PROXY_PATTERN.md`. |
+| `plugin/app_platform_client.go`     | Shared LIST/create client for App Platform proxies (backend proxy pattern §1, PR #1401): `buildAppPlatformURL`, per-page byte cap + timeout, per-request `X-Access-Token` minting, redirects disabled so a minted credential can never be followed off-origin, two-axis error classification (transient/terminal, namespace-global/caller-scoped), first-request credential diagnostics. |
+| `plugin/app_platform_identity.go`   | Shared identity helpers (§3): `validIDToken`, `subjectFromIDToken`, `identityStatus` — fail-closed JWKS signature verification via `pkg/plugin/auth/id_token.go` (outbound credentials come from `pkg/plugin/auth` too); `deriveCompletionUserID` (the epic's canonical identity contract) delegates here, and `completionWriterIdentity` routes the write path through that same helper. Trust boundary documented in `docs/design/BACKEND_PROXY_PATTERN.md`. |
+| `plugin/auth/id_token.go`           | Inbound Grafana ID-token verifier: derives the stack-local JWKS endpoint from the Grafana app URL, verifies ES256 signature, token type, and expiry, and classifies signing-key fetch failures for the shared identity gate. The verifier is rebuilt at least every 5 min, so a key removed from JWKS stays trusted for no longer than that. |
 
 **Routes** (all under `/api/plugins/grafana-pathfinder-app/resources/`):
 
-`/package-recommendations`, `/completion-records/my`, `/completion-records/capability`,
-`/custom-guide-repository`, `/health`.
+`/package-recommendations`, `/completion-records` (POST create), `/completion-records/my`,
+`/completion-records/capability`, `/custom-guide-repository`, `/health`.
 
 **Security boundaries:**
 
 - Package-recommendations URL — `https` + explicit hostname allowlist
-- Forwarded ID token — structural validation, fail closed; never `Cookie`, never a replayed
+- Forwarded ID token — JWKS signature verification, fail closed; never `Cookie`, never a replayed
   `Authorization` header
 
 ### What is deliberately NOT here

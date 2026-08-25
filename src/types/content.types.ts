@@ -37,11 +37,20 @@ export interface ContentMetadata {
   singleDoc?: SingleDocMetadata;
 
   /**
-   * Package manifest metadata — present when content was fetched via fetchPackageContent().
+   * Package manifest metadata — present when content was fetched via fetchPackageContent(),
+   * or synthesized by the `backend-guide:` loader for a launch that carries no resolved package.
    * Carries through manifest fields (category, author, recommends, suggests, depends, milestones, etc.)
    * so the content display layer can render richer UI without needing a separate manifest fetch.
    */
   packageManifest?: Record<string, unknown>;
+
+  /**
+   * Recommendation-level repository (sibling of the manifest in the V1 wire
+   * shape; V1PackageManifest has no repository of its own). Carried alongside
+   * packageManifest so completion emission can key the durable
+   * `(guideSource, guideId)` on the true source rather than a manifest default.
+   */
+  repository?: string;
 }
 
 export interface LearningJourneyMetadata {

@@ -38,8 +38,8 @@ jest.mock('../../../docs-retrieval', () => ({
   getJourneyProgress: () => 0,
   getMilestoneSlug: jest.requireActual('../../../lib/learning-journey-url').getMilestoneSlug,
   markMilestoneDone: (...args: unknown[]) => markMilestoneDoneMock(...args),
-  countUnlockedMilestones: (ms: Array<{ isLocked?: boolean }> | undefined) =>
-    (ms ?? []).filter((m) => !m.isLocked).length,
+  resolveExpectedMilestoneIds: (lj?: { milestones?: Array<{ url: string }> }) =>
+    lj?.milestones?.map((m) => m.url.split('/').filter(Boolean).pop() ?? '') ?? [],
 }));
 
 jest.mock('../utils', () => ({
@@ -193,7 +193,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
     expect(markMilestoneDoneMock).toHaveBeenCalledWith(
       'https://grafana.com/docs/learning-journeys/foo-canonical',
       'm1',
-      3,
+      expect.any(Array),
       expect.objectContaining({ packageManifest: undefined })
     );
   });

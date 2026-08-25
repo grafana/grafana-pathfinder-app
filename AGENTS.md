@@ -47,11 +47,12 @@ npm run server           # Run Grafana locally with Docker
 npm run test:ci          # Frontend tests, no coverage (agents should use this, not `npm test`)
 npm run test:coverage    # Frontend tests with coverage + thresholds (used by `npm run check`)
 npm run lint:fix         # Lint + autofix
+npm run lint:go          # Go lint (golangci-lint); CI-enforced, so a diagnostic here blocks merge
 npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:coverage + test:scripts
 npm run test:scripts     # Shell scripts: bash -n, shellcheck, stubbed-curl behavioural suite
 ```
 
-Dev server runs at http://localhost:3000 (admin/admin). Focused Jest runs need `--coverage=false`, or global thresholds report a false failure. For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
+Dev server runs at http://localhost:3000 (admin/admin). Focused Jest runs need `--coverage=false`, or global thresholds report a false failure. Go lint is this repository's linting just as much as eslint is: the `Lint backend` CI job runs the same `golangci-lint run ./...` that `npm run lint:go` does, `CI Gate` requires it, and `CI Gate` is required on `main` — so a Go lint diagnostic blocks merge. The linter version is pinned in `GOLANGCI_LINT_VERSION` in `.github/workflows/ci.yml`; match it locally to see the same diagnostics. For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
 
 ## Code organization
 
@@ -73,11 +74,11 @@ For the annotated tier definitions, the per-subsystem reference, and the key dep
 
 ### Backend (`pkg/`)
 
-The Go backend is a **read proxy**, and nothing else. No database, no streaming. Its **App Platform** routes — `completion_records.go` and `custom_guide_repository.go` — drain a paginated namespace-scoped upstream LIST, cache the shaped result per caller, and ride the caller's own identity end to end, authenticating outbound with an **on-behalf-of (OBO) access token** minted from the caller's `X-Grafana-Id` in the `pkg/plugin/auth` seam; the plugin holds no credential of its own beyond the provisioned CAP token that mint uses.
+The Go backend is an **App Platform proxy**, and nothing else. No database, no streaming. Its **App Platform** routes — `completion_records.go` + `completion_records_write.go` and `custom_guide_repository.go` — drain a paginated namespace-scoped upstream LIST (and, for completion records, POST one durable object back), cache the shaped result per caller, and ride the caller's own identity end to end. `pkg/plugin/auth` owns both halves of that identity seam: inbound, it **cryptographically verifies** the caller's `X-Grafana-Id` against the stack's published JWKS (`id_token.go`); outbound, it mints an **on-behalf-of (OBO) access token** for that caller. The plugin holds no credential of its own beyond the provisioned CAP token that mint uses.
 
 `/package-recommendations` is **not** one of them: it is an anonymous fetch of a public CDN index behind a host allowlist, with no namespace and a single process-wide 6-hour cache. Keep it that way — its cache is shared across users, so per-user data must never enter it. `/health` is neither shape.
 
-Routes live in `resources.go`; the per-feature proxies are `completion_records.go`, `custom_guide_repository.go`, and `package_recommendations.go`, sharing `app_platform_client.go` (paginated LIST) and `app_platform_identity.go` (forwarded-identity validation). Plugin entrypoint is `pkg/main.go`.
+Routes live in `resources.go`; the per-feature proxies are `completion_records.go` (+ `completion_records_write.go`), `custom_guide_repository.go`, and `package_recommendations.go`, sharing `app_platform_client.go` (paginated LIST + create) and `app_platform_identity.go` (the shared identity gate, over `auth/id_token.go`). Plugin entrypoint is `pkg/main.go`.
 
 When touching `pkg/`, load `docs/design/BACKEND_PROXY_PATTERN.md` — it is the canonical pattern for these routes and holds the identity trust-boundary statement.
 
@@ -109,6 +110,10 @@ Use `/review`. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`,
 ## Tech-debt audits
 
 Use `/techdebt <subsystem>` against a concrete target (directory, glob, or named subsystem); add `--suggestive` for lower-confidence candidates.
+
+## A/B experiments
+
+Use `/create-experiment`. Experiments are remote-configured through MTFF, allocated **per stack rather than per user**, and temporary — each one keeps its flag reader, arm logic, and teardown list in `src/utils/experiments/` so retiring it is a directory delete plus the registry entry in `src/utils/openfeature.ts`. Only object-valued flags carrying a `variant` field emit exposure events; a boolean experiment flag silently produces no readout.
 
 ## `npx` examples
 

@@ -15,6 +15,7 @@ import type { z } from 'zod';
 
 import {
   JsonAssistantBlockSchema,
+  JsonCalloutBlockSchema,
   JsonCodeBlockBlockSchema,
   JsonConditionalBlockSchema,
   JsonGuidedBlockSchema,
@@ -49,6 +50,7 @@ export const BLOCK_SCHEMA_MAP = {
   html: JsonHtmlBlockSchema,
   image: JsonImageBlockSchema,
   video: JsonVideoBlockSchema,
+  callout: JsonCalloutBlockSchema,
   interactive: JsonInteractiveBlockSchema,
   multistep: JsonMultistepBlockSchema,
   guided: JsonGuidedBlockSchema,

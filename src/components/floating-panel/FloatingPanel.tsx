@@ -75,7 +75,7 @@ export function FloatingPanel({
   }, [onSwitchToSidebar]);
 
   const [linkCopied, setLinkCopied] = useState(false);
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleCopyWorkshopLink = useCallback(() => {
     if (!guideUrl) {

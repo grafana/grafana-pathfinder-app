@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { GuideStatsSummarySchema } from '../types/guide-stats.schema';
 import { ContentJsonSchema, ManifestJsonSchema } from '../types/package.schema';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
 import type { DependencyList, ManifestJson } from '../types/package.types';
@@ -45,7 +46,9 @@ export interface PackageValidationMessage {
  */
 export type PackageValidationMessageCode =
   /** A dependency-list field (depends/recommends/etc) on the manifest is unset and defaulted to []. */
-  'manifest_dep_field_defaulted';
+  | 'manifest_dep_field_defaulted'
+  /** The manifest carries a `stats` stamp that does not match the stamp shape. */
+  | 'manifest_stats_malformed';
 
 export interface PackageValidationResult {
   isValid: boolean;
@@ -337,6 +340,39 @@ function emitManifestMessages(
       remediation: 'pathfinder-cli set-manifest <dir> --test-tier <local|cloud> --test-min-version <semver>',
     });
   }
+
+  emitStatsStampMessage(raw, messages);
+}
+
+/**
+ * `stats` is declared `.catch(undefined)` on the manifest schema, so a
+ * malformed stamp reads as absent instead of failing the parse — readers have
+ * to stay lenient because `build-stats` is the tool that repairs one. The cost
+ * of that catch is silence: a broken stamp and no stamp are indistinguishable
+ * downstream. Re-checking the raw value is what gives the author the one signal
+ * the lenient read throws away.
+ */
+function emitStatsStampMessage(raw: Record<string, unknown>, messages: PackageValidationMessage[]): void {
+  if (raw['stats'] === undefined) {
+    return;
+  }
+
+  const result = GuideStatsSummarySchema.safeParse(raw['stats']);
+  if (result.success) {
+    return;
+  }
+
+  const detail = result.error.issues
+    .map((issue) => (issue.path.length > 0 ? `${issue.path.map(String).join('.')}: ${issue.message}` : issue.message))
+    .join('; ');
+
+  messages.push({
+    severity: 'warn',
+    message: `manifest.json: "stats" is present but malformed, so every reader treats it as absent — ${detail}`,
+    path: ['manifest.json', 'stats'],
+    remediation: 'pathfinder-cli build-stats <packages-root>',
+    code: 'manifest_stats_malformed',
+  });
 }
 
 function kebab(field: string): string {

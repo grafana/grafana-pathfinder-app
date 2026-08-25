@@ -53,6 +53,21 @@ npm run prettier-test
 npm run lint:go
 ```
 
+## Go lint
+
+`npm run lint:go` runs `mage -v lint`, which is `golangci-lint run ./...` over the default
+linter set configured by `.golangci.yaml`.
+
+CI runs the identical invocation in the `Lint backend` job of `.github/workflows/ci.yml`, and that job
+is one of the checks `CI Gate` aggregates. `CI Gate` is a required status check on `main`, so a Go lint
+diagnostic blocks merge exactly as an eslint or typecheck error does.
+
+The linter version is pinned in `GOLANGCI_LINT_VERSION` at the top of `.github/workflows/ci.yml`, so an
+upstream release cannot turn the repository red on its own. Install that version locally to reproduce
+CI exactly — `golangci-lint --version` tells you what you have. When a diagnostic is wrong rather than
+a real defect, suppress it at the line with `//nolint:<linter> // <reason>` rather than widening the
+linter set in `.golangci.yaml`.
+
 ## Pre-merge check
 
 `npm run check` runs typecheck + lint + prettier + lint:go + test:go + test:coverage + test:scripts in one command.
@@ -122,6 +137,8 @@ npm run validate:packages   # validate package manifests
 # Bundled-interactives repository
 npm run repository:build    # regenerate index.json + content snapshots
 npm run repository:check    # validate repository integrity
+npm run stats:build         # stamp each manifest.json with its completion block stats
+npm run stats:check         # CI drift check for the stamped stats (writes nothing)
 
 # JSON guide schema export
 npm run schema:export       # export schema to dist/

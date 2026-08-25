@@ -14,6 +14,7 @@
 
 import { ManifestJsonObjectSchema } from '../../types/package.schema';
 import type { ManifestJson } from '../../types/package.types';
+import { preserveAuthoredStartingLocation } from './starting-location';
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -102,5 +103,5 @@ async function fetchManifest(manifestUrl: string): Promise<ManifestJson | undefi
     return undefined;
   }
   const parsed = ManifestJsonObjectSchema.loose().safeParse(raw);
-  return parsed.success ? (parsed.data as ManifestJson) : undefined;
+  return parsed.success ? (preserveAuthoredStartingLocation(raw, parsed.data) as ManifestJson) : undefined;
 }

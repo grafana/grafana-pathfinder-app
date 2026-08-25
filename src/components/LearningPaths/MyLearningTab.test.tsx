@@ -17,10 +17,18 @@ import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { testIds } from '../../constants/testIds';
-import { milestoneCompletionStorage } from '../../lib/user-storage';
+import { learningProgressStorage, milestoneCompletionStorage } from '../../lib/user-storage';
+import { discardQueuedCompletionWrites } from '../../completion-records';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
   prepareGuideLaunch: jest.fn(),
+}));
+
+// The discard behaviour itself (queue and storage emptied, nothing left to
+// drain) is covered in completion-write-hook.test.ts; here the contract is that
+// reset reaches it at all.
+jest.mock('../../completion-records', () => ({
+  discardQueuedCompletionWrites: jest.fn(),
 }));
 
 // Not mocking `lib/logging`: the assertion below is about what the real
@@ -67,6 +75,7 @@ let mockDiscoverItems: Array<{
   contentUrl: string;
   milestoneCount?: number;
   description?: string;
+  manifest?: Record<string, unknown>;
 }> = [];
 let mockDiscoverExcludeTitles: Set<string> | undefined;
 
@@ -493,7 +502,33 @@ describe('MyLearningTab launch flow', () => {
     await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
     expect(prepareMock).toHaveBeenCalledWith(
       'https://cdn.example/pkg-1/content.json',
-      expect.objectContaining({ title: 'Package one' })
+      expect.objectContaining({ title: 'Package one', packageInfo: undefined })
+    );
+  });
+
+  it('threads the inlined manifest through as packageInfo so the item resolves its milestone context', async () => {
+    mockDiscoverItems = [
+      {
+        id: 'pkg-1',
+        title: 'Package one',
+        contentUrl: 'https://cdn.example/pkg-1/content.json',
+        manifest: { type: 'path', milestones: ['m1', 'm2'] },
+      },
+    ];
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.discoverMoreStart('pkg-1')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
+    expect(prepareMock).toHaveBeenCalledWith(
+      'https://cdn.example/pkg-1/content.json',
+      expect.objectContaining({
+        packageInfo: {
+          packageId: 'pkg-1',
+          packageManifest: { type: 'path', milestones: ['m1', 'm2'], id: 'pkg-1' },
+        },
+      })
     );
   });
 });
@@ -613,6 +648,40 @@ describe('MyLearningTab — reset all learning progress', () => {
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
     expect(milestoneCompletionStorage.clearAll).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it('discards queued completion writes, so the queue cannot mint records for the guides just cleared', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(discardQueuedCompletionWrites).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  it('discards before the first awaited clear, so a drain cannot fire mid-reset', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(learningProgressStorage.clear).toHaveBeenCalledTimes(1));
+    const discardOrder = (discardQueuedCompletionWrites as jest.Mock).mock.invocationCallOrder[0]!;
+    const firstClearOrder = (learningProgressStorage.clear as jest.Mock).mock.invocationCallOrder[0]!;
+    expect(discardOrder).toBeLessThan(firstClearOrder);
+    confirmSpy.mockRestore();
+  });
+
+  it('keeps queued completion writes when the confirmation is declined', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled());
+    expect(discardQueuedCompletionWrites).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
 });

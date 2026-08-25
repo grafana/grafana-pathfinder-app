@@ -9,6 +9,11 @@ import { DocsPluginConfig } from './constants';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
 import { publishPathfinderPluginConfig, refreshPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
+// Direct file import, not the ./docs-retrieval barrel: the barrel statically
+// imports the whole content-fetcher orchestrator (zod, dompurify, the bundled
+// guide index), which would land in module.js. createCompositeResolver is
+// deferred behind a dynamic import below for the same reason.
+import { setPackageResolverFactory } from './docs-retrieval/content-fetcher/package-resolver-registry';
 import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
@@ -38,10 +43,11 @@ document.addEventListener('pathfinder-suggest', earlySuggestListener);
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
 // Uses dynamic import so the SDK stays out of the entry-point bundle
 try {
-  const { initializeOpenFeature, getActiveExperiments } = await import('./utils/openfeature');
+  const { initializeOpenFeature } = await import('./utils/openfeature');
   await initializeOpenFeature();
 
   // Late-bind the active-experiments provider to analytics (breaks the static import chain)
+  const { getActiveExperiments } = await import('./utils/experiments/active-experiments');
   const { bindExperimentsProvider } = await import('./lib/analytics');
   bindExperimentsProvider(getActiveExperiments);
 } catch (e) {
@@ -50,8 +56,13 @@ try {
 
 // Highlighted-guide experiment + config-driven auto-open (dynamic imports keep
 // zod/user-storage out of module.js).
-const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHighlightedGuideAutoOpen } =
-  await import('./utils/experiments');
+const {
+  createExperimentDebugger,
+  enrollInteractiveLearningBannerExperiment,
+  initializeHighlightedGuideExperiment,
+  setupHighlightedGuideAutoOpen,
+  subscribeToEnrollment,
+} = await import('./utils/experiments');
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
 const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
@@ -69,6 +80,12 @@ try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
     // Session enrichment (identity, surface, experiment cohorts) is owned by initFaro.
     const { initFaro, resolveSessionReplayOptions } = await import('./lib/faro');
+    // initFaro stamps the session cohorts before any arm is known, so a lazily
+    // enrolled experiment has to re-stamp. Subscribed from inside this block rather
+    // than imported by the enroller: the stamper sits behind a static Faro import, so
+    // reaching for it there would load the telemetry chunk even with the flag off.
+    const { stampSessionExperiments } = await import('./lib/telemetry/session');
+    subscribeToEnrollment(stampSessionExperiments);
     // Session replay is a second remote switch on top — also default-on, so a
     // missing flag means recording. It captures the whole page, masked, from
     // the first time Pathfinder is opened. The rate is a volume dial on top of
@@ -144,14 +161,45 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Grafana never awaits it, so work behind an await would run after first paint
   // — after scene construction has already read the published config, and after
   // the deep-link and link-interception listeners needed to exist.
+
+  // Arm the durable completion-write hook from the universal plugin bootstrap
+  // rather than only the root App page: plugin.init fires once per session for
+  // every entry surface (sidebar, floating, full-screen, controller), so a guide
+  // completed in any of them records. Idempotent and a no-op without a resolvable
+  // user/org identity — see armCompletionWriteHook.
+  //
+  // Deferred (like the telemetry barrel above): a static import would put the
+  // whole write stack — queue, storage, client, normalise/timing/telemetry — in
+  // module.js, paid on every page load of every Grafana with this plugin
+  // installed, including by users who never open Pathfinder. Arming is
+  // background work with no first-paint deadline, so the chunk can land late.
+  void import('./completion-records/completion-write-hook')
+    .then(({ armCompletionWriteHook }) => armCompletionWriteHook())
+    .catch((err) => logger.error('[Pathfinder] Failed to arm completion-write hook', { error: err }));
+
   const config = publishPathfinderPluginConfig(meta?.jsonData || {});
   linkInterceptionState.setInterceptionEnabled(config.interceptGlobalDocsLinks);
+
+  // Deferred: setPackageResolverFactory only stores this thunk, so the dynamic
+  // import — and its zod/CDN/etc. dependencies — isn't fetched until something
+  // actually calls getPackageResolver(), not on every page load. No
+  // webpackPrefetch here: by the time it's read, it's needed promptly (inside
+  // fetchPackageContent's Promise.all), not at idle-time priority.
+  setPackageResolverFactory(() =>
+    import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(config))
+  );
 
   // `meta.jsonData` can lag a recent save. Re-publish from the authoritative
   // read when it lands; subscribers pick it up via the config-updated event.
   void refreshPathfinderPluginConfig().then((refreshed) => {
     if (refreshed) {
       linkInterceptionState.setInterceptionEnabled(refreshed.interceptGlobalDocsLinks);
+      // Skip re-registering when nothing changed — avoids a redundant resolver rebuild.
+      if (refreshed !== config) {
+        setPackageResolverFactory(() =>
+          import('./package-engine/composite-resolver').then((m) => m.createCompositeResolver(refreshed))
+        );
+      }
     }
   });
 
@@ -328,6 +376,10 @@ if (pathfinderEnabled) {
         // The docked sidebar opens via Grafana's extension bus, not setMode —
         // this mount is the only reliable "sidebar is active" signal.
         reportPathfinderSurface('sidebar');
+
+        // Enrollment is deliberately here and not at boot: reading the flag emits the
+        // exposure event, so this seam is what makes it mean "first sidebar open".
+        enrollInteractiveLearningBannerExperiment();
 
         // Track sidebar open via component mount
         // consumePendingOpenSource() returns { source, action } set before opening

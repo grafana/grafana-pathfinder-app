@@ -609,8 +609,12 @@ describe('useStepChecker priority ordering (regression)', () => {
   // REGRESSION: when the objectives check resolves *before* the 3s timeoutMs
   // fires, the Promise.race timer used to leak — the setTimeout was never
   // cleared, so it would fire later and call reject() on an already-settled
-  // promise. The fix attaches a .finally that calls clearTimeout. Verified by
-  // asserting jest's pending-timer count returns to zero after settlement.
+  // promise. The fix attaches a .finally that calls clearTimeout.
+  //
+  // This tracks the 3000ms timer by id rather than comparing
+  // `jest.getTimerCount()` before and after: React's `act()` leaves a scheduler
+  // timer of its own pending on every flush, so the total count grows even when
+  // nothing leaked.
   it('clears the objectives-check timeout timer when the check resolves first', async () => {
     jest.useFakeTimers();
 
@@ -619,6 +623,11 @@ describe('useStepChecker priority ordering (regression)', () => {
       requirements: 'has-datasources',
       error: [failedRequirement({ requirement: 'has-datasources' })],
     });
+
+    const realSetTimeout = global.setTimeout;
+    const realClearTimeout = global.clearTimeout;
+    const objectivesTimerIds: unknown[] = [];
+    const clearedIds: unknown[] = [];
 
     try {
       const rendered = renderHook(() =>
@@ -635,17 +644,28 @@ describe('useStepChecker priority ordering (regression)', () => {
         await Promise.resolve();
       });
 
-      const beforeTimers = jest.getTimerCount();
+      global.setTimeout = ((fn: Parameters<typeof realSetTimeout>[0], delay?: number, ...rest: unknown[]) => {
+        const id = (realSetTimeout as (...args: unknown[]) => unknown)(fn, delay, ...rest);
+        if (delay === 3000) {
+          objectivesTimerIds.push(id);
+        }
+        return id;
+      }) as unknown as typeof global.setTimeout;
+      global.clearTimeout = ((id: unknown) => {
+        clearedIds.push(id);
+        return (realClearTimeout as (...args: unknown[]) => unknown)(id);
+      }) as unknown as typeof global.clearTimeout;
 
       await act(async () => {
         await rendered.result.current.checkStep();
       });
 
-      // After settle, the 3s timeout from Promise.race must have been cleared.
-      // We allow for unrelated heartbeat / re-render timers by asserting the
-      // count did not *grow* — i.e. no leaked 3s timer is now pending.
-      expect(jest.getTimerCount()).toBeLessThanOrEqual(beforeTimers);
+      // The objectives check must have armed its 3s timeout and then cleared it.
+      expect(objectivesTimerIds).toHaveLength(1);
+      expect(clearedIds).toContain(objectivesTimerIds[0]);
     } finally {
+      global.setTimeout = realSetTimeout;
+      global.clearTimeout = realClearTimeout;
       jest.useRealTimers();
     }
   });

@@ -201,14 +201,14 @@ replaced.
 
 `upsert-guide.sh` merges its annotations over whatever the resource
 already carries, so an update through the scripts preserves annotations
-another tool set. **Nothing else does.** The block editor's save,
-publish, and unpublish each send `metadata` as
-`{name, namespace, resourceVersion}`, and a PUT replaces the whole
-object — so one **unpublish** click on a script-uploaded milestone
-erases `managed-by`, and the next run refuses the entire package as
-foreign. Neither the refusal message nor `--overwrite` can distinguish
-that self-inflicted detachment from a genuine collision, so if you know
-the guides are yours, `--overwrite` is the answer.
+another tool set. The block editor's save, publish, and unpublish do the
+same — each carries `metadata.annotations` and `metadata.labels` through
+from the resource it last read, so editing a script-uploaded guide no
+longer detaches it from the package. The exception is a confirmed
+name-collision overwrite, which intentionally inherits neither the
+previous resource's `spec.manifest` nor its annotations; after one of
+those the next run refuses the package as foreign, and `--overwrite` is
+the answer.
 
 `--dry-run` performs the same LIST, so the preview marks each resource
 as new, an update, or a collision. It exits non-zero on any validation
@@ -329,13 +329,79 @@ and what makes a path a path.
 | `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. Anything not typed above goes here.                                                                            |
 
 `recommends`, `suggests`, `provides`, `targeting`, `testEnvironment`,
-and `startingLocation` have no typed home yet, so
+`startingLocation`, and the generated `stats` stamp have no typed home yet, so
 `upsert-learning-path.sh` writes them under `additionalFields` rather
 than dropping them — as it does for any manifest key the CRD doesn't
-declare, including surplus `author` subkeys. Note that the frontend reads `recommends` and
-`suggests` from the top level of the manifest, so they have no effect
-while they live in `additionalFields` — promoting a key out of
-`additionalFields` into a real CUE field is additive and safe.
+declare, including surplus `author` subkeys. The block editor writes the two it
+derives, `stats` and `startingLocation`, to the same place.
+
+Which of them actually _work_ from `additionalFields` depends on whether
+anything reads that location:
+
+| Key                                        | Read from `additionalFields`?                                                           |
+| ------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `startingLocation`                         | On some routes only — see below.                                                        |
+| `stats`                                    | Not yet. Written by both App Platform writers; the first consumer reads both locations. |
+| `recommends`, `suggests`                   | No — the frontend reads these from the manifest's top level, so they are inert here.    |
+| `provides`, `targeting`, `testEnvironment` | No consumer on the App Platform path at all.                                            |
+
+`src/recovery/starting-location.ts` reads both locations, typed field first, so
+`startingLocation` takes effect wherever the manifest reaches it with
+`additionalFields` intact.
+
+Whichever location it came from, the value is authored data on its way to
+`locationService.push`, so it leaves the resolver only if
+`validateInternalNavigationPath` accepts it: a same-origin, single-leading-slash
+internal path that is not a denied route for this reader. A value that fails
+produces no prompt at all. Writing a `startingLocation` that is an absolute URL,
+a protocol-relative value, or `/admin/...` for non-admin readers is therefore
+inert rather than dangerous — but it is also silent, so keep it a plain path.
+
+The rule is about the ROUTE, not the guide, and two things have to hold. The
+manifest has to reach the reader with `additionalFields` intact — only the
+`backend-guide:` loader (`src/docs-retrieval/content-fetcher/backend-guide.ts`)
+spreads `spec.manifest` through unchanged — and nothing earlier in the launch
+must supply a manifest that takes precedence over it. Known routes today — not a
+closed list, so check the launch path rather than assuming a new one behaves like
+these:
+
+| Launch route                                 | Gets the prompt? |
+| -------------------------------------------- | ---------------- |
+| Standalone guide from the Custom guides list | Yes              |
+| `?doc=api:<id>` share link                   | Yes              |
+| Auto-dock tab restore                        | Yes              |
+| Path **member** opened from a path card      | No               |
+| Path **cover page** opened from a path card  | No               |
+
+Both path rows read "No", but for two different reasons, and only one of them is
+a transport problem.
+
+**Path cover page — the value never arrives.** `packageInfoForPath`
+(`src/components/docs-panel/CustomGuidesSection.tsx`) builds the cover's
+`packageManifest` from the catalogue-proxy entry, and that proxy's
+`customGuideManifest` (`pkg/plugin/custom_guide_repository_client.go`) declares
+no `additionalFields`, so `encoding/json` drops the key at the wire boundary
+before the reader ever sees it. Promoting `startingLocation` to a typed CUE field
+is the fix for this one.
+
+**Path member — the value arrives intact and is then shadowed.** `openMember`
+opens `member.url`, which `resolvePackageMilestones` takes from the resolution's
+`contentUrl` — `backend-guide:<memberId>` for an App Platform package
+(`src/package-engine/app-platform-resolver.ts`). So the member's own resource is
+fetched through the `backend-guide:` loader, whose `buildLoaderManifest` spreads
+`spec.manifest` through with `additionalFields` intact. The value is at the
+reader. It is then discarded at the panel seam: `openMember` also passes the
+PATH's `packageInfo`, and `docs-panel.tsx` reads `packageInfo?.packageManifest`
+ahead of `fetchedContent.metadata.packageManifest`, so the stripped catalogue
+manifest — truthy, and therefore never falling back — wins over the complete
+one. The CUE
+promotion does NOT fix this: the problem is precedence, not transport. Worse,
+once the path's `startingLocation` is a typed field it would win at that same
+seam and prompt a member towards the cover's entry page. Tracked as
+[#1681](https://github.com/grafana/grafana-pathfinder-app/issues/1681).
+
+Promoting a key out of `additionalFields` into a real CUE field is additive and
+safe, and is the fix for the inert rows generally.
 
 ## Examples
 

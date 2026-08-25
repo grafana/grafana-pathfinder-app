@@ -273,6 +273,113 @@ describe('ManifestJsonSchema', () => {
 
 // ============ DependencyClauseSchema ============
 
+describe('ManifestJsonSchema — stats stamp', () => {
+  const wellFormed = {
+    version: 1,
+    blockCount: 4,
+    sectionCount: 1,
+    completableBlockCount: 2,
+    finalCompletablePosition: 4,
+  };
+
+  /** Missing three of the five counts — a stamp no consumer should trust. */
+  const partialStamp = { version: 1, blockCount: 99 };
+
+  it('round-trips a well-formed stamp', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'g', type: 'guide', stats: wellFormed });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toEqual(wellFormed);
+  });
+
+  // Why `stats` is still declared positively even though #1662 made the manifest
+  // top level a `z.looseObject`.
+  //
+  // The open namespace forwards an unknown key VERBATIM — that is the whole
+  // point of it, and the extension case below pins that. Survival is therefore
+  // no longer what the declaration buys. Validation is: without it, a partial or
+  // hand-edited stamp reaches every consumer unchanged and a wrong denominator
+  // reads as a real one. `.catch(undefined)` is what turns a malformed stamp
+  // into an absent one, and only a declared field can catch.
+  //
+  // Delete `stats` from ManifestJsonObjectSchema and this test fails while the
+  // extension test still passes. That asymmetry IS the contract.
+  it('sanitizes a malformed stamp, which the open namespace alone would not do', () => {
+    const asExtensionKey = ManifestJsonSchema.parse({ id: 'g', type: 'guide', vendorThing: partialStamp });
+    const asDeclaredStats = ManifestJsonSchema.parse({ id: 'g', type: 'guide', stats: partialStamp });
+
+    expect((asExtensionKey as Record<string, unknown>).vendorThing).toEqual(partialStamp);
+    expect(asDeclaredStats.stats).toBeUndefined();
+  });
+
+  // The other half: an undeclared key is forwarded untouched and its shape is
+  // never checked (#1662). Consumers own that validation.
+  it('forwards an undeclared extension key verbatim', () => {
+    const parsed = ManifestJsonSchema.parse({
+      id: 'g',
+      type: 'guide',
+      vendorThing: { anything: true, nested: [1, 'two'] },
+    });
+
+    expect((parsed as Record<string, unknown>).vendorThing).toEqual({ anything: true, nested: [1, 'two'] });
+  });
+
+  // `pathfinder-cli build-stats` exists to repair a stale or hand-edited stamp,
+  // so it has to be able to READ one. Failing the manifest would break the only
+  // tool that fixes the problem.
+  it('reads a partial stamp as absent instead of failing the whole manifest', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'g',
+      type: 'guide',
+      stats: partialStamp,
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toBeUndefined();
+  });
+
+  it('reads a non-object stamp as absent instead of failing the whole manifest', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'g', type: 'guide', stats: 'nonsense' });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toBeUndefined();
+  });
+
+  it('rejects a negative count inside an otherwise complete stamp', () => {
+    const result = ManifestJsonSchema.safeParse({
+      id: 'g',
+      type: 'guide',
+      stats: { ...wellFormed, blockCount: -1 },
+    });
+
+    // Caught, so it reads as absent rather than as a denominator of -1.
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toBeUndefined();
+  });
+
+  it('leaves stats absent when the manifest carries none', () => {
+    const result = ManifestJsonSchema.safeParse({ id: 'g', type: 'guide' });
+
+    expect(result.success).toBe(true);
+    if (!result.success) {
+      return;
+    }
+    expect(result.data.stats).toBeUndefined();
+  });
+});
+
 describe('DependencyClauseSchema', () => {
   it('should accept a bare string', () => {
     expect(DependencyClauseSchema.safeParse('welcome-to-grafana').success).toBe(true);

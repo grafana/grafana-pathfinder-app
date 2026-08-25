@@ -33,12 +33,14 @@ describe('StorageKeys — stable string contract', () => {
       FULLSCREEN_SECTION_INFO: 'grafana-pathfinder-app-fullscreen-section-info',
       MILESTONE_COMPLETION: 'grafana-pathfinder-app-milestone-completion',
       LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
+      COMPLETION_WRITE_QUEUE_PREFIX: 'grafana-pathfinder-app-completion-write-queue-v2:',
       GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
 
       // Experiment / feature-flag state
       EXPERIMENT_EXPOSURE_REPORTED_PREFIX: 'grafana-pathfinder-experiment-exposure-reported-',
       HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
       HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
+      INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',
       FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
 
       // UI / panel state

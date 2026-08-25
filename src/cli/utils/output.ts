@@ -69,7 +69,17 @@ export function renderMachineJson(value: unknown): string {
  * newline. Shared by the build-* commands that write generated JSON to disk.
  */
 export async function formatJsonWithPrettier(json: string): Promise<string> {
-  const prettier = await import('prettier');
+  // `prettier` is a devDependency and is absent from RUNTIME_DEPS, so it does
+  // not exist in the published CLI image. Degrade to the caller's own JSON
+  // rather than failing: the output is still valid, just unformatted, and the
+  // alternative is a documented CI gate a content repo cannot satisfy from the
+  // image it is told to use.
+  let prettier: typeof import('prettier');
+  try {
+    prettier = await import('prettier');
+  } catch {
+    return json.endsWith('\n') ? json : `${json}\n`;
+  }
   const config = await prettier.resolveConfig(process.cwd());
   const formatted = await prettier.format(json, { ...(config ?? {}), parser: 'json' });
   return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
@@ -376,10 +386,10 @@ export function formatHelpAsJson(cmd: Command): HelpJson {
     let valueType: HelpJsonFlag['valueType'];
     if (isBoolean) {
       valueType = 'boolean';
-    } else if (argChoices && argChoices.length > 0) {
-      valueType = 'enum';
     } else if (isVariadic || Array.isArray(option.defaultValue)) {
       valueType = 'array';
+    } else if (argChoices && argChoices.length > 0) {
+      valueType = 'enum';
     } else if (option.flags.includes('<number>')) {
       valueType = 'number';
     } else {

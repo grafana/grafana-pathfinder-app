@@ -104,6 +104,7 @@ describe('getAvailableConversions', () => {
         'html',
         'image',
         'video',
+        'callout',
         'interactive',
         'multistep',
         'guided',
@@ -481,6 +482,7 @@ describe('convertBlockType', () => {
       html: { type: 'html', content: '<p>Sample content</p>' },
       image: { type: 'image', src: 'https://example.com/i.png', alt: 'a' },
       video: { type: 'video', src: 'https://example.com/v.mp4' },
+      callout: { type: 'callout', title: 'Objective', content: 'Sample content' },
       interactive: { type: 'interactive', action: 'noop', content: 'Sample content' },
       multistep: { type: 'multistep', content: 'Sample content', steps: [{ action: 'noop' }] },
       guided: { type: 'guided', content: 'Sample content', steps: [{ action: 'noop' }] },
@@ -504,11 +506,11 @@ describe('convertBlockType', () => {
      * Pinned here so adding a fallback moves this list deliberately.
      */
     const CONTENTLESS_SOURCE_FAILURES: Partial<Record<BlockType, readonly BlockType[]>> = {
-      image: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
-      video: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
-      collapsible: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
-      assistant: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
-      'snippet-ref': ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal'],
+      image: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
+      video: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
+      collapsible: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
+      assistant: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
+      'snippet-ref': ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
     };
 
     it('samples every convertible source type', () => {

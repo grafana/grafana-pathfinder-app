@@ -15,6 +15,7 @@ import {
   fetchPackageContent,
   fetchPackageById,
   setPackageResolver,
+  setPackageResolverFactory,
   resolvePackageMilestones,
   resolvePackageNavLinks,
   ensureNonEmptyCoverContent,
@@ -341,6 +342,63 @@ describe('setPackageResolver', () => {
   });
 });
 
+describe('setPackageResolverFactory', () => {
+  afterEach(() => {
+    setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
+  });
+
+  it('does not invoke the factory until the resolver is actually read', () => {
+    const factory = jest.fn().mockResolvedValue(makeResolver(makeSuccessResolution({ id: 'm1' })));
+
+    setPackageResolverFactory(factory);
+
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it('resolves milestones once the factory-registered resolver is available', async () => {
+    setPackageResolverFactory(() => Promise.resolve(makeResolver(makeSuccessResolution({ id: 'm1' }))));
+
+    const milestones = await resolvePackageMilestones(['m1']);
+
+    expect(milestones).not.toEqual([]);
+  });
+
+  it('invokes the factory only once across repeated reads', async () => {
+    const resolver = makeResolver(makeSuccessResolution({ id: 'm1' }));
+    const factory = jest.fn().mockResolvedValue(resolver);
+    setPackageResolverFactory(factory);
+
+    await resolvePackageMilestones(['m1']);
+    await resolvePackageMilestones(['m1']);
+
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it('a later setPackageResolver call overrides a pending factory registration', async () => {
+    setPackageResolverFactory(() =>
+      Promise.resolve(makeResolver({ ok: false, id: 'x', error: { code: 'not-found', message: 'factory' } }))
+    );
+    setPackageResolver(makeResolver(makeSuccessResolution({ id: 'm1' })));
+
+    const milestones = await resolvePackageMilestones(['m1']);
+
+    expect(milestones).not.toEqual([]);
+  });
+
+  it('a rejected factory does not poison later reads with a cached rejection', async () => {
+    setPackageResolverFactory(() => Promise.reject(new Error('dynamic import failed')));
+
+    // The rejection is caught internally — callers see "no resolver
+    // configured" (empty result), never a thrown exception, and that holds
+    // on every subsequent read since the promise is memoized.
+    const first = await resolvePackageMilestones(['m1']);
+    const second = await resolvePackageMilestones(['m1']);
+
+    expect(first).toEqual([]);
+    expect(second).toEqual([]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Static docs bypass — plain HTTPS URL still routes through normal fetch path
 // ---------------------------------------------------------------------------
@@ -619,6 +677,76 @@ describe('fetchPackageContent path-type enrichment', () => {
     }
   });
 
+  // `repository-identity-authority`: without the fallback, opening the same
+  // package from My Learning / Discover More (manifest inlined, no explicit
+  // repository) recorded under the manifest schema default while the nav-link
+  // path recorded under the resolved one — one guide, two durable guideSource keys.
+  it('stamps the resolved repository when the caller supplies none', async () => {
+    setPackageResolver(
+      makeResolver(
+        makeSuccessResolution({
+          id: 'discover-path',
+          contentUrl: 'bundled:first-dashboard/content.json',
+          repository: 'online-cdn',
+        })
+      )
+    );
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'discover-path',
+      type: 'path',
+      repository: 'interactive-tutorials',
+    });
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.repository).toBe('online-cdn');
+  });
+
+  // A failed resolution's `repository` is negative-caching policy, not an
+  // identity claim: app-platform is unconditionally the composite's last tier,
+  // so its probed-and-missed failure would otherwise key a public CDN path as
+  // ('app-platform', <id>).
+  it('does not stamp the repository off a failed resolution', async () => {
+    setPackageResolver(
+      makeResolver({
+        ok: false,
+        id: 'discover-path',
+        error: { code: 'not-found', message: 'all tiers missed' },
+        repository: 'app-platform',
+      })
+    );
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'discover-path',
+      type: 'path',
+    });
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.repository).toBeUndefined();
+  });
+
+  it('lets an explicit caller repository outrank the resolved one', async () => {
+    setPackageResolver(
+      makeResolver(
+        makeSuccessResolution({
+          id: 'explicit-path',
+          contentUrl: 'bundled:first-dashboard/content.json',
+          repository: 'online-cdn',
+        })
+      )
+    );
+
+    const result = await fetchPackageContent(
+      'bundled:first-dashboard/content.json',
+      { id: 'explicit-path', type: 'path' },
+      undefined,
+      'app-platform'
+    );
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.repository).toBe('app-platform');
+  });
+
   it('does not add learningJourney for guide-type packages', async () => {
     const manifest = {
       id: 'test-guide',
@@ -878,6 +1006,7 @@ describe('resolvePackageNavLinks', () => {
       title: 'Title for alpha',
       contentUrl: 'bundled:alpha/content.json',
       manifest: { id: 'alpha', type: 'guide' },
+      repository: 'bundled',
     });
     expect(result[1]!.packageId).toBe('beta');
   });

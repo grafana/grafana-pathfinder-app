@@ -3,6 +3,8 @@ package plugin
 import (
 	"context"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -33,7 +35,19 @@ type App struct {
 	// those routes report themselves unavailable instead of failing.
 	oboExchanger *auth.Exchanger
 
+	// Verifies inbound Grafana ID tokens against the stack's published JWKS.
+	// Built lazily (the signing-keys URL comes from the per-request Grafana
+	// config, unavailable in NewApp), keyed by app URL, and periodically rebuilt
+	// so a key removed from JWKS cannot remain trusted indefinitely.
+	idVerifier          *auth.IDTokenVerifier
+	idVerifierAppURL    string
+	idVerifierCreatedAt time.Time
+	idVerifierMu        sync.Mutex
+
 	logger log.Logger
+
+	// Per-user rate limiter for POST /completion-records (RFC §9 flood guard)
+	completionWriteRateLimiter *completionWriteRateLimiter
 }
 
 // NewApp creates a new App instance.
@@ -47,7 +61,8 @@ func NewApp(_ context.Context, appSettings backend.AppInstanceSettings) (instanc
 	}
 
 	app := &App{
-		logger: logger,
+		logger:                     logger,
+		completionWriteRateLimiter: newCompletionWriteRateLimiter(),
 	}
 
 	// A stack without provisioned on-behalf-of credentials still loads: the App

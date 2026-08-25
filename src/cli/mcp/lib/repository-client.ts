@@ -2,8 +2,8 @@
  * CDN repository client for the Pathfinder authoring MCP.
  *
  * Read-only fetcher for the public Pathfinder package CDN. Used by the
- * `pathfinder_list_packages` / `pathfinder_get_package` /
- * `pathfinder_get_manifest` / `pathfinder_launch_package` tools (P6 in
+ * `pathfinder_read_repository` (list-packages/get-package/get-manifest) /
+ * `pathfinder_launch_package` tools (P6 in
  * `docs/design/AI-AUTHORING-IMPLEMENTATION.md`).
  *
  * Design notes:
@@ -158,7 +158,7 @@ async function doFetchRepositoryIndex(baseUrl: string, now: number): Promise<Rep
   for (const [id, entry] of Object.entries(rawIndex)) {
     const parsed = RepositoryEntrySchema.safeParse(entry);
     if (parsed.success) {
-      packages.push({ id, ...parsed.data });
+      packages.push({ ...parsed.data, id });
     } else {
       for (const issue of parsed.error.issues) {
         issues.push({ path: [id, ...normalizeIssuePath(issue.path)], message: issue.message });
@@ -169,7 +169,7 @@ async function doFetchRepositoryIndex(baseUrl: string, now: number): Promise<Rep
         const e = entry as Record<string, unknown>;
         const path = typeof e.path === 'string' ? e.path : '';
         if (path) {
-          packages.push({ id, ...(e as unknown as RepositoryEntry), path });
+          packages.push({ ...(e as unknown as RepositoryEntry), path, id });
         }
       }
     }

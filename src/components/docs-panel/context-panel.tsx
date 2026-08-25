@@ -7,6 +7,7 @@ import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
+import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { HelpFooter } from '../HelpFooter';
 import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
 import { locationService, config, getAppEvents } from '@grafana/runtime';
@@ -204,6 +205,7 @@ const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOp
   return {
     packageId,
     packageManifest: recommendation.manifest,
+    repository: recommendation.repository,
     resolvedMilestones: Array.isArray(recommendation.milestones) ? recommendation.milestones : undefined,
   };
 };
@@ -635,6 +637,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}
@@ -669,6 +672,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}
@@ -933,6 +937,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               openDocsPage(link.contentUrl, link.title, {
                                                 packageId: link.packageId,
                                                 packageManifest: link.manifest,
+                                                repository: link.repository,
                                               });
                                             }}
                                             className={styles.milestoneItem}
@@ -967,6 +972,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               openDocsPage(link.contentUrl, link.title, {
                                                 packageId: link.packageId,
                                                 packageManifest: link.manifest,
+                                                repository: link.repository,
                                               });
                                             }}
                                             className={styles.milestoneItem}
@@ -1140,6 +1146,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     <div className={styles.container} data-testid={testIds.contextPanel.container}>
       <div className={styles.content} ref={scrollContainerRef} data-testid={testIds.contextPanel.scrollContainer}>
         <div className={styles.contextSections}>
+          {/* Treatment arm of the interactive-learning banner experiment; renders null otherwise */}
+          <InteractiveLearningBanner />
+
           {/* User profile bar with learning stats and next action */}
           <UserProfileBar onOpenGuide={openLearningJourney} />
 

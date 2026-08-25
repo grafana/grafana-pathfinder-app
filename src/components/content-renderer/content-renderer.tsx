@@ -13,6 +13,7 @@ import {
   resolveRelativeUrls,
   CodeBlock,
   CollapsibleBlock,
+  CalloutBlock,
   ExpandableTable,
   ImageRenderer,
   ContentParsingError,
@@ -106,7 +107,7 @@ interface ContentRendererProps {
   onContentReady?: () => void;
   onGuideComplete?: () => void;
   className?: string;
-  containerRef?: React.RefObject<HTMLDivElement>;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 // Style to hide default browser selection highlight
@@ -429,7 +430,7 @@ interface ContentWithVariablesProps {
   title: string;
   isNativeJson: boolean;
   onContentReady?: () => void;
-  activeRef: React.RefObject<HTMLDivElement>;
+  activeRef: React.RefObject<HTMLDivElement | null>;
   className?: string;
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
@@ -927,13 +928,16 @@ interface StandaloneStepPosition {
  * An `input` block emits `datasource-check-step` instead when its author asked
  * a failing data check to block, and only that form is tracked here.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 2. Adding a new interactive step
- * component type requires updates in 2 places:
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 3. Adding a new interactive step
+ * component type requires updates in 3 places:
  *   1. step-type-registry.ts STEP_TYPE_SCHEMAS (parse + orchestration)
  *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
  *      (#842 acknowledgement-gate classification)
- * The `step-type-registry.tripwire.test.ts` parity test fails if any
- * registry entry disagrees with this derived set.
+ *   3. lib/guide-stats/completion-affordance.ts (the stamped denominator's
+ *      notion of "can emit completion evidence")
+ * The `step-type-registry.tripwire.test.ts` and
+ * `completion-affordance.parity.test.ts` parity tests fail if any registry
+ * entry disagrees with the derived sets.
  */
 const INTERACTIVE_STEP_TYPES: ReadonlySet<string> = new Set<string>(STEP_TYPE_PARSE_KEYS);
 
@@ -1369,6 +1373,12 @@ function renderParsedElement(
         >
           {renderChildren(element.children)}
         </CollapsibleBlock>
+      );
+    case 'callout':
+      return (
+        <CalloutBlock key={key} id={element.props.id} title={sub(element.props.title) ?? ''}>
+          {renderChildren(element.children)}
+        </CalloutBlock>
       );
     case 'expandable-table':
       return (
