@@ -193,6 +193,14 @@ function getManifestNavigation(recommendation: Recommendation): {
 const getNavLinkIcon = (link: ResolvedNavLink): IconName =>
   getPackageRenderType(link.manifest) === 'learning-journey' ? 'graph-bar' : 'link';
 
+/** Package context for a resolved recommends/suggests nav link. Shared by every
+ *  nav-link click site so all four produce identical launch context. */
+export const packageInfoForNavLink = (link: ResolvedNavLink): PackageOpenInfo => ({
+  packageId: link.packageId,
+  packageManifest: link.manifest,
+  repository: link.repository,
+});
+
 const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOpenInfo | undefined => {
   if (recommendation.type !== 'package') {
     return undefined;
@@ -634,11 +642,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                   content_type: AnalyticsContentType.PackageNavLink,
                                                   interaction_location: 'featured_recommends_section',
                                                 });
-                                                openDocsPage(link.contentUrl, link.title, {
-                                                  packageId: link.packageId,
-                                                  packageManifest: link.manifest,
-                                                  repository: link.repository,
-                                                });
+                                                openDocsPage(link.contentUrl, link.title, packageInfoForNavLink(link));
                                               }}
                                               className={styles.milestoneItem}
                                             >
@@ -669,11 +673,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                   content_type: AnalyticsContentType.PackageNavLink,
                                                   interaction_location: 'featured_suggests_section',
                                                 });
-                                                openDocsPage(link.contentUrl, link.title, {
-                                                  packageId: link.packageId,
-                                                  packageManifest: link.manifest,
-                                                  repository: link.repository,
-                                                });
+                                                openDocsPage(link.contentUrl, link.title, packageInfoForNavLink(link));
                                               }}
                                               className={styles.milestoneItem}
                                             >
@@ -934,11 +934,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 content_type: AnalyticsContentType.PackageNavLink,
                                                 interaction_location: 'recommends_section',
                                               });
-                                              openDocsPage(link.contentUrl, link.title, {
-                                                packageId: link.packageId,
-                                                packageManifest: link.manifest,
-                                                repository: link.repository,
-                                              });
+                                              openDocsPage(link.contentUrl, link.title, packageInfoForNavLink(link));
                                             }}
                                             className={styles.milestoneItem}
                                           >
@@ -969,11 +965,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 content_type: AnalyticsContentType.PackageNavLink,
                                                 interaction_location: 'suggests_section',
                                               });
-                                              openDocsPage(link.contentUrl, link.title, {
-                                                packageId: link.packageId,
-                                                packageManifest: link.manifest,
-                                                repository: link.repository,
-                                              });
+                                              openDocsPage(link.contentUrl, link.title, packageInfoForNavLink(link));
                                             }}
                                             className={styles.milestoneItem}
                                           >

@@ -13,7 +13,15 @@ import { t } from '@grafana/i18n';
 
 import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
 import type { PackageOpenInfo } from '../../types/content-panel.types';
-import { useLearningPaths, useDiscoverMore, BADGES, getPathsData, type DiscoverMoreItem } from '../../learning-paths';
+import {
+  useLearningPaths,
+  useDiscoverMore,
+  BADGES,
+  getPathsData,
+  packageInfoForPathMember,
+  packageInfoForDiscoverItem,
+  type DiscoverMoreItem,
+} from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
@@ -209,16 +217,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         });
       }
 
-      // App Platform paths carry a manifest but no cover `url`, so the member
-      // launches as `backend-guide:<id>`. Thread the PATH manifest through as
-      // packageInfo (mirroring CustomGuidesSection) — without it the loader
-      // falls through to plain fetchContent and the member renders as a
-      // standalone guide with no milestone toolbar, next/prev, or cover.
-      const packageInfo: PackageOpenInfo | undefined = parentPath?.manifest
-        ? { packageId: parentPath.id, packageManifest: { ...parentPath.manifest, id: parentPath.id } }
-        : undefined;
-
-      void launch(guideUrl, title, pathId, packageInfo);
+      void launch(guideUrl, title, pathId, packageInfoForPathMember(parentPath));
     },
     [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
   );
@@ -232,13 +231,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         interaction_location: 'my_learning_discover_more',
       });
 
-      // prepareGuideLaunch backfills packageInfo from the URL when absent, but
-      // the manifest is already inlined here — passing it saves that re-fetch.
-      const packageInfo: PackageOpenInfo | undefined = item.manifest
-        ? { packageId: item.id, packageManifest: { ...item.manifest, id: item.id } }
-        : undefined;
-
-      void launch(item.contentUrl, item.title, item.id, packageInfo);
+      void launch(item.contentUrl, item.title, item.id, packageInfoForDiscoverItem(item));
     },
     [launch]
   );

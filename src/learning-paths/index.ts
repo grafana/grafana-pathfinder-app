@@ -16,6 +16,9 @@ export type { LearningProfileSummary, NextLearningAction } from './useNextLearni
 export { useDiscoverMore } from './useDiscoverMore';
 export type { DiscoverMoreItem, UseDiscoverMoreReturn } from './useDiscoverMore';
 
+// Launch package-context factories (My Learning path members and Discover More)
+export { packageInfoForPathMember, packageInfoForDiscoverItem, parseDiscoverMoreManifest } from './launch-package-info';
+
 // Badge utilities
 export {
   BADGES,

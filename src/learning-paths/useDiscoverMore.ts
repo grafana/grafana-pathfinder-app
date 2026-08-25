@@ -16,27 +16,14 @@ import {
   buildPackageFileUrl,
   type OnlinePackageEntry,
 } from '../lib/package-recommendations-client';
-import { ManifestJsonObjectSchema } from '../types/package.schema';
-import type { ManifestJson } from '../types/package.types';
+import type { DiscoverMoreItem } from '../types/learning-paths.types';
 import { logger } from '../lib/logging';
+
+import { parseDiscoverMoreManifest } from './launch-package-info';
 
 const DEFAULT_DISCOVER_COUNT = 5;
 
-/**
- * A path-shaped item ready to render as a Discover More card. `contentUrl`
- * points at the package's `content.json` and is safe to hand to
- * `prepareGuideLaunch`, which derives package context from the URL.
- */
-export interface DiscoverMoreItem {
-  id: string;
-  title: string;
-  description?: string;
-  contentUrl: string;
-  /** Milestone count from the inlined manifest, when available. */
-  milestoneCount?: number;
-  /** The package's inlined manifest, when available and schema-valid — threaded into launch as `packageInfo` to save a redundant re-fetch. */
-  manifest?: ManifestJson;
-}
+export type { DiscoverMoreItem } from '../types/learning-paths.types';
 
 export interface UseDiscoverMoreOptions {
   /** Titles already surfaced elsewhere (My Courses / Completed) to skip. */
@@ -55,15 +42,6 @@ function milestoneCountOf(entry: OnlinePackageEntry): number | undefined {
   return Array.isArray(milestones) ? milestones.length : undefined;
 }
 
-// Mirrors online-cdn-resolver.ts's handling of the same OnlinePackageEntry.manifest shape.
-function parseManifest(manifest: Record<string, unknown> | undefined): ManifestJson | undefined {
-  if (!manifest) {
-    return undefined;
-  }
-  const parsed = ManifestJsonObjectSchema.loose().safeParse(manifest);
-  return parsed.success ? (parsed.data as ManifestJson) : undefined;
-}
-
 function toDiscoverItem(entry: OnlinePackageEntry, baseUrl: string): DiscoverMoreItem | null {
   const contentUrl = buildPackageFileUrl(baseUrl, entry.path, 'content.json');
   if (!contentUrl) {
@@ -75,7 +53,7 @@ function toDiscoverItem(entry: OnlinePackageEntry, baseUrl: string): DiscoverMor
     description: entry.description,
     contentUrl,
     milestoneCount: milestoneCountOf(entry),
-    manifest: parseManifest(entry.manifest),
+    manifest: parseDiscoverMoreManifest(entry.manifest),
   };
 }
 

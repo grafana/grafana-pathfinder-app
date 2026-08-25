@@ -32,6 +32,9 @@ const moduleUrl = 'https://grafana.com/docs/learning-paths/path-1/guide-1/';
 let pathProgress = 0;
 
 jest.mock('../../learning-paths', () => ({
+  // The launch package-context factories are pure — keep the real ones so
+  // the packageInfo assertions below still prove production behaviour.
+  ...jest.requireActual('../../learning-paths/launch-package-info'),
   BADGES: [],
   getPathsData: () => ({ guideMetadata: {} }),
   useDiscoverMore: () => ({

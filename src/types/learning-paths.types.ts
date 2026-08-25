@@ -5,6 +5,8 @@
  * progress tracking, and badges.
  */
 
+import type { ManifestJson } from './package.types';
+
 // ============================================================================
 // LEARNING PATH TYPES
 // ============================================================================
@@ -40,6 +42,22 @@ export interface LearningPath {
    * of as standalone guides. Omitted for bundled/CDN paths.
    */
   manifest?: Record<string, unknown>;
+}
+
+/**
+ * A path-shaped item ready to render as a Discover More card. `contentUrl`
+ * points at the package's `content.json` and is safe to hand to
+ * `prepareGuideLaunch`, which derives package context from the URL.
+ */
+export interface DiscoverMoreItem {
+  id: string;
+  title: string;
+  description?: string;
+  contentUrl: string;
+  /** Milestone count from the inlined manifest, when available. */
+  milestoneCount?: number;
+  /** The package's inlined manifest, when available and schema-valid — threaded into launch as `packageInfo` to save a redundant re-fetch. */
+  manifest?: ManifestJson;
 }
 
 /**

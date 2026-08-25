@@ -80,6 +80,9 @@ let mockDiscoverItems: Array<{
 let mockDiscoverExcludeTitles: Set<string> | undefined;
 
 jest.mock('../../learning-paths', () => ({
+  // The launch package-context factories are pure — keep the real ones so
+  // the packageInfo assertions below still prove production behaviour.
+  ...jest.requireActual('../../learning-paths/launch-package-info'),
   BADGES: [],
   getPathsData: () => ({ guideMetadata: mockGuideMetadata }),
   useDiscoverMore: ({ excludeTitles }: { excludeTitles?: Set<string> }) => {
