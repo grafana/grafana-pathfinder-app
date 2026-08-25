@@ -14,7 +14,16 @@
  *     retired by dropping its wiring while its name lingers in the table;
  *   - an `intentionalDifferences` entry that no longer describes a real
  *     divergence fails as stale, so the allowlist cannot rot into a
- *     blanket exemption.
+ *     blanket exemption;
+ *   - an `intentionalDifferences` entry missing its paths, reason, or tracking
+ *     issue fails, so a divergence cannot be excused without a justification a
+ *     reviewer can read. Nothing typechecks `tests/`, so this is enforced at
+ *     runtime rather than left to the type.
+ *
+ * Adapters are resolved one at a time, never concurrently: a stateful adapter
+ * may drive process-wide singletons or the document event bus, and two of those
+ * running at once would claim each other's consume-once reads and report a
+ * disagreement that does not exist.
  */
 
 /** One path's answer. `path` is unique; `family` groups paths that share a producer. */
@@ -65,6 +74,27 @@ function fail(lines: string[]): never {
   throw new Error(lines.join('\n'));
 }
 
+function isNonEmptyText(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isNonEmptyList(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every(isNonEmptyText);
+}
+
+function describeInvalidDifference(diff: IntentionalDifference | undefined): string {
+  if (!diff) {
+    return 'entry is missing';
+  }
+  const missing = [
+    isNonEmptyList(diff.paths) ? undefined : 'paths',
+    isNonEmptyText(diff.reason) ? undefined : 'reason',
+    isNonEmptyText(diff.tracking) ? undefined : 'tracking',
+  ].filter((field): field is string => field !== undefined);
+  const named = isNonEmptyList(diff.paths) ? `[${diff.paths.join(', ')}]` : '(unnamed)';
+  return `${named} missing ${missing.join(', ')}`;
+}
+
 /**
  * Resolve every adapter, then assert all answers are identical to each other.
  * Throws with a grouped report naming which paths disagreed and on what.
@@ -73,6 +103,19 @@ export async function assertSymmetric<T>(
   entries: readonly SymmetryEntry<T>[],
   options: SymmetryOptions
 ): Promise<void> {
+  const invalidDifferences = options.intentionalDifferences.filter(
+    (diff) => !isNonEmptyList(diff?.paths) || !isNonEmptyText(diff?.reason) || !isNonEmptyText(diff?.tracking)
+  );
+  if (invalidDifferences.length > 0) {
+    fail([
+      `Incomplete INTENTIONAL_PATH_DIFFERENCES entries for ${options.subject}:`,
+      ...invalidDifferences.map((diff, index) => `  - entry ${index + 1}: ${describeInvalidDifference(diff)}`),
+      '',
+      'Every entry needs at least one path, a reason, and a tracking issue. An entry',
+      'without them is indistinguishable from a test someone silenced.',
+    ]);
+  }
+
   if (entries.length === 0) {
     fail([
       `Parity matrix for ${options.subject} is empty.`,

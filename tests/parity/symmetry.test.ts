@@ -79,6 +79,42 @@ describe('assertSymmetric', () => {
     ).rejects.toThrow(/Stale INTENTIONAL_PATH_DIFFERENCES[\s\S]*- \[gone\]/);
   });
 
+  it('fails an intentional-difference entry with no reason', async () => {
+    await expect(
+      assertSymmetric([entry('a', 'f', { id: 1 }), entry('c', 'h', { id: 2 })], {
+        subject: 'the test subject',
+        intentionalDifferences: [{ paths: ['c'], reason: '  ', tracking: 'owner/repo#1' }],
+      })
+    ).rejects.toThrow(/Incomplete INTENTIONAL_PATH_DIFFERENCES[\s\S]*\[c\] missing reason/);
+  });
+
+  it('fails an intentional-difference entry with no tracking issue', async () => {
+    await expect(
+      assertSymmetric([entry('a', 'f', { id: 1 }), entry('c', 'h', { id: 2 })], {
+        subject: 'the test subject',
+        intentionalDifferences: [{ paths: ['c'], reason: 'c is special', tracking: '' }],
+      })
+    ).rejects.toThrow(/Incomplete INTENTIONAL_PATH_DIFFERENCES[\s\S]*\[c\] missing tracking/);
+  });
+
+  it('fails an intentional-difference entry with no paths', async () => {
+    await expect(
+      assertSymmetric([entry('a', 'f', { id: 1 }), entry('c', 'h', { id: 2 })], {
+        subject: 'the test subject',
+        intentionalDifferences: [{ paths: [], reason: 'c is special', tracking: 'owner/repo#1' }],
+      })
+    ).rejects.toThrow(/Incomplete INTENTIONAL_PATH_DIFFERENCES[\s\S]*\(unnamed\) missing paths/);
+  });
+
+  it('fails an intentional-difference entry that omits the fields entirely', async () => {
+    await expect(
+      assertSymmetric([entry('a', 'f', { id: 1 }), entry('c', 'h', { id: 2 })], {
+        subject: 'the test subject',
+        intentionalDifferences: [{ paths: ['c'] } as never],
+      })
+    ).rejects.toThrow(/Incomplete INTENTIONAL_PATH_DIFFERENCES[\s\S]*\[c\] missing reason, tracking/);
+  });
+
   it('awaits async adapters', async () => {
     await expect(
       assertSymmetric(

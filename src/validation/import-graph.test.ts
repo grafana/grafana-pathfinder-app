@@ -832,6 +832,16 @@ describe('isJestManagedTestFile', () => {
     ).toBe(true);
   });
 
+  it('matches tests/parity unit tests, which run under jest via test:parity', () => {
+    expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'parity', 'launch-path-parity.test.ts'))).toBe(true);
+  });
+
+  it('keeps the tests/parity exemption scoped to that directory and to .test files', () => {
+    expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'parity', 'symmetry.ts'))).toBe(false);
+    expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'other', 'thing.test.ts'))).toBe(false);
+    expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'thing.test.ts'))).toBe(false);
+  });
+
   it('does not match Playwright spec files (Playwright loads them in real Node)', () => {
     expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'e2e-runner', 'guide-runner.spec.ts'))).toBe(false);
     expect(isJestManagedTestFile(path.join(REPO_ROOT, 'tests', 'open-close.spec.ts'))).toBe(false);

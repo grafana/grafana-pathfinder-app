@@ -32,7 +32,28 @@ npm test
 
 # Run tests with coverage + threshold enforcement (used by `npm run check`)
 npm run test:coverage
+
+# Launch-path parity matrix (red on purpose - see below)
+npm run test:parity
 ```
+
+### Launch-path parity matrix
+
+`npm run test:parity` runs `tests/parity/`, which feeds one manifest through every
+day-one guide launch path and asserts the resulting launch requests are identical to
+each other. It never asserts against an expected value, so it fires only when the
+paths disagree.
+
+**It is red today, and that is the point.** The launch paths genuinely diverge - some
+omit the top-level repository, so the same guide can key its durable completion under
+two different repositories. The failure output names each disagreeing path. Do not
+narrow the table, loosen the assertion, or add an intentional-difference entry to
+quiet it; fix the production divergence or leave it reported.
+
+The default suite and CI deliberately exclude it: `npm run check` and the CI gate must
+stay green, and this matrix is a standing diagnostic of a known contract gap rather
+than a merge gate. That is why it lives under `tests/parity/`, outside the base
+`testMatch`, and is reached only through its own `--testMatch`.
 
 ## Code quality
 

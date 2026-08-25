@@ -26,8 +26,14 @@
  * merge gate.
  *
  * ---------------------------------------------------------------------------
- * Ten families are in scope. Three are deliberately absent, because each needs
- * a production change before it can produce a comparable request at all:
+ * Nine families are in scope across thirteen concrete paths. Two of those paths
+ * — a recommendation's start button and its milestone rows — are separate UI
+ * entry points that share one producer (`getRecommendationPackageInfo`), so
+ * they sit in one family and can never disagree with each other; the matrix
+ * covers nine independent producers, not thirteen.
+ *
+ * Three families are deliberately absent, because each needs a production
+ * change before it can produce a comparable request at all:
  *
  *   1. Generic URL-backed journeys and raw guides. The My Learning URL branch
  *      calls `launch` with no package context, and `openLearningJourney`
@@ -73,7 +79,7 @@ import { consumePendingGuideOnMount } from '../../src/components/docs-panel/pend
 import { useAutoOpenListener } from '../../src/components/docs-panel/hooks/useAutoOpenListener';
 import { useFullScreenHandoff } from '../../src/components/docs-panel/hooks/useFullScreenHandoff';
 import { buildPathPackageInfo } from '../../src/components/PrTester/pr-path-package';
-import { fetchPackageInfoFromUrl } from '../../src/docs-retrieval';
+import { fetchPackageInfoFromUrl } from '../../src/docs-retrieval/package-info-from-url';
 import { guideLaunchStore } from '../../src/global-state/guide-launch';
 import { linkInterceptionState } from '../../src/global-state/link-interception';
 import { panelModeManager, type PendingGuide } from '../../src/global-state/panel-mode';
@@ -154,19 +160,21 @@ const PREPARED_CONTENT: RawContent = {
 // ---------------------------------------------------------------------------
 
 /**
- * The comparable core of a launch request: which package, whose manifest, and
- * under which repository the guide's completion will be keyed.
+ * The comparable core of a launch request: which package, whose manifest, under
+ * which repository the guide's completion will be keyed, and which milestones
+ * the launch arrives pre-resolved with.
  *
- * `resolvedMilestones` is deliberately NOT compared. It is a pre-resolution
- * cache that only some callers can populate — four of the adapters below have
- * no milestone input at all — so including it would make the matrix fail on a
- * structural difference that is a legitimate per-caller performance choice, on
- * top of the contract gaps this test exists to surface.
+ * `resolvedMilestones` is compared rather than excluded. Whether a launch
+ * carries pre-resolved milestones decides whether the milestone toolbar renders
+ * populated on first paint, so a path that stops pre-resolving them has changed
+ * the request — calling it a per-caller caching choice would let that change
+ * land unreported.
  */
 interface NormalizedLaunchRequest {
   packageId: string | undefined;
   repository: string | undefined;
   packageManifest: Record<string, unknown> | undefined;
+  resolvedMilestones: Milestone[] | undefined;
 }
 
 function normalize(info: PackageOpenInfo | undefined): NormalizedLaunchRequest {
@@ -174,6 +182,7 @@ function normalize(info: PackageOpenInfo | undefined): NormalizedLaunchRequest {
     packageId: info?.packageId,
     repository: info?.repository,
     packageManifest: info?.packageManifest,
+    resolvedMilestones: info?.resolvedMilestones,
   };
 }
 
@@ -186,7 +195,8 @@ function assertFixtureCompleteness(): void {
   const parsed = ManifestJsonObjectSchema.parse(MANIFEST) as Record<string, unknown>;
   const added = Object.keys(parsed).filter((key) => !(key in MANIFEST) && parsed[key] !== undefined);
   expect(added).toEqual(['repository']);
-  expect(parsed.repository).toBe('interactive-tutorials');
+  const schemaDefault = ManifestJsonObjectSchema.parse({ id: PACKAGE_ID, type: 'guide' }) as Record<string, unknown>;
+  expect(parsed.repository).toBe(schemaDefault.repository);
 }
 
 // ---------------------------------------------------------------------------
@@ -392,10 +402,14 @@ describe('launch-path parity: one guide, every day-one launch path', () => {
         adapter: async () => normalize(await fetchPackageInfoFromUrl(CONTENT_URL)),
       },
 
-      // --- Families: package recommendation ----------------------------------
+      // --- Family: package recommendation ------------------------------------
+      // Two UI entry points, one producer: the milestone rows reuse the same
+      // `packageInfo` const the start button was built from (context-panel.tsx
+      // computes it once per card), so these two cannot disagree with each
+      // other. Both are kept because both are real click sites.
       {
         path: 'package recommendation start',
-        family: 'recommendation-start',
+        family: 'recommendation',
         adapter: () =>
           normalize(
             getRecommendationPackageInfo({
@@ -410,7 +424,7 @@ describe('launch-path parity: one guide, every day-one launch path', () => {
       },
       {
         path: 'package recommendation milestone',
-        family: 'recommendation-milestone',
+        family: 'recommendation',
         adapter: () =>
           normalize(
             getRecommendationPackageInfo({
@@ -506,13 +520,14 @@ describe('launch-path parity: one guide, every day-one launch path', () => {
       },
     ];
 
-    // Ten families, thirteen concrete paths (the relay family has four
-    // destinations). A shrinking table is a regression, not a fix.
-    expect(new Set(paths.map((entry) => entry.family)).size).toBe(10);
+    // Nine families, thirteen concrete paths (the relay family has four
+    // destinations and the recommendation family two). A shrinking table is a
+    // regression, not a fix.
+    expect(new Set(paths.map((entry) => entry.family)).size).toBe(9);
     expect(paths).toHaveLength(13);
 
     await assertSymmetric(paths, {
-      subject: 'the normalized launch request (packageId, repository, packageManifest)',
+      subject: 'the normalized launch request (packageId, repository, packageManifest, resolvedMilestones)',
       intentionalDifferences: INTENTIONAL_PATH_DIFFERENCES,
     });
   });
