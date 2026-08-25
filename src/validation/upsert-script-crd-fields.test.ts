@@ -56,8 +56,8 @@ function scriptArray(name: string): Set<string> {
 function appBlockFields(): Set<string> {
   const fields = new Set<string>();
   for (const [key, set] of Object.entries(KNOWN_FIELDS)) {
-    // _guide, _choice and _manifest describe envelopes rather than blocks, and
-    // _step is checked separately against the CRD's own #Step.
+    // _guide and _choice describe envelopes rather than blocks, and _step is
+    // checked separately against the CRD's own #Step.
     if (key.startsWith('_')) {
       continue;
     }

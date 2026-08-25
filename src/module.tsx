@@ -43,10 +43,11 @@ document.addEventListener('pathfinder-suggest', earlySuggestListener);
 // This connects to the Multi-Tenant Feature Flag Service (MTFF) in Grafana Cloud
 // Uses dynamic import so the SDK stays out of the entry-point bundle
 try {
-  const { initializeOpenFeature, getActiveExperiments } = await import('./utils/openfeature');
+  const { initializeOpenFeature } = await import('./utils/openfeature');
   await initializeOpenFeature();
 
   // Late-bind the active-experiments provider to analytics (breaks the static import chain)
+  const { getActiveExperiments } = await import('./utils/experiments/active-experiments');
   const { bindExperimentsProvider } = await import('./lib/analytics');
   bindExperimentsProvider(getActiveExperiments);
 } catch (e) {
@@ -55,8 +56,13 @@ try {
 
 // Highlighted-guide experiment + config-driven auto-open (dynamic imports keep
 // zod/user-storage out of module.js).
-const { createExperimentDebugger, initializeHighlightedGuideExperiment, setupHighlightedGuideAutoOpen } =
-  await import('./utils/experiments');
+const {
+  createExperimentDebugger,
+  enrollInteractiveLearningBannerExperiment,
+  initializeHighlightedGuideExperiment,
+  setupHighlightedGuideAutoOpen,
+  subscribeToEnrollment,
+} = await import('./utils/experiments');
 const { attemptAutoOpen, getAutoOpenFeatureFlag, getCurrentPath, setupConfigAutoOpen } =
   await import('./utils/sidebar-auto-open');
 const { getFeatureFlagValue, getNumberFlagValue } = await import('./utils/openfeature');
@@ -74,6 +80,12 @@ try {
   if (getFeatureFlagValue('pathfinder.frontend-telemetry', true)) {
     // Session enrichment (identity, surface, experiment cohorts) is owned by initFaro.
     const { initFaro, resolveSessionReplayOptions } = await import('./lib/faro');
+    // initFaro stamps the session cohorts before any arm is known, so a lazily
+    // enrolled experiment has to re-stamp. Subscribed from inside this block rather
+    // than imported by the enroller: the stamper sits behind a static Faro import, so
+    // reaching for it there would load the telemetry chunk even with the flag off.
+    const { stampSessionExperiments } = await import('./lib/telemetry/session');
+    subscribeToEnrollment(stampSessionExperiments);
     // Session replay is a second remote switch on top — also default-on, so a
     // missing flag means recording. It captures the whole page, masked, from
     // the first time Pathfinder is opened. The rate is a volume dial on top of
@@ -364,6 +376,10 @@ if (pathfinderEnabled) {
         // The docked sidebar opens via Grafana's extension bus, not setMode —
         // this mount is the only reliable "sidebar is active" signal.
         reportPathfinderSurface('sidebar');
+
+        // Enrollment is deliberately here and not at boot: reading the flag emits the
+        // exposure event, so this seam is what makes it mean "first sidebar open".
+        enrollInteractiveLearningBannerExperiment();
 
         // Track sidebar open via component mount
         // consumePendingOpenSource() returns { source, action } set before opening

@@ -56,6 +56,10 @@
     "switchToTab": "Switch to {{title}}",
     "wordmark": "Interactive Learning"
   },
+  "interactiveLearningBanner": {
+    "body": "Interactive guides walk you through Grafana one step at a time. \"Show me\" highlights the control to use, and \"Do it\" performs the step for you.",
+    "title": "Learn by doing"
+  },
   "myLearning": {
     "badges": "Badges",
     "badgesDescription": "Earn badges by completing paths and maintaining streaks",

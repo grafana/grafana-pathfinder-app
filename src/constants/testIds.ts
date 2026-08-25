@@ -104,6 +104,7 @@ export const testIds = {
     featuredCard: (index: number) => `context-panel-featured-card-${index}`,
     featuredStartButton: (index: number) => `context-panel-featured-start-${index}`,
     featuredSummaryButton: (index: number) => `context-panel-featured-summary-${index}`,
+    interactiveLearningBanner: 'context-panel-interactive-learning-banner',
   },
 
   // Dev Tools / Block Editor

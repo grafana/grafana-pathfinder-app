@@ -64,7 +64,7 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 
 **Observed.** Agents subtly reformat the artifact between hops — a common variant is wrapping a markdown block's `content` string in an array because it "looks more structured." Schema validation on the next call fails generically (`SCHEMA_VALIDATION`), and the agent self-diagnoses as a schema misunderstanding rather than a round-trip discipline failure. Verbatim agent quote: _"The schema validation failed because I accidentally corrupted the markdown block's content field (passed array instead of string). I need to use the exact artifact returned from the previous step. Let me retry with the correct artifact."_
 
-**Why this happens.** The `"Pass it in unchanged"` hint on the `artifact` input (`src/cli/mcp/tools/mutation-tools.ts:35`) is too weak to overcome a model's instinct to "clean up" structured input. The error message blames the schema, which compounds the misdirection.
+**Why this happens.** The echo-back hint on the `artifact` input (`ArtifactInputSchema` in `src/cli/mcp/tools/mutation-tools.ts`) is too weak to overcome a model's instinct to "clean up" structured input. The error message blames the schema, which compounds the misdirection.
 
 **Candidate mitigations.**
 
@@ -114,7 +114,7 @@ Append new findings here. Number sequentially. Do not renumber on removal — st
 
 **Observed.** Verbatim agent feedback: _"edit-block does not expose steps as a flag (it only covers named scalar fields), and steps carry no block ids so remove-block can't target them directly. The only path was cascade-remove the multistep and rebuild it — which the tool did automatically."_
 
-**Why this happens.** `edit-block` (`src/cli/mcp/tools/mutation-tools.ts:121`) addresses fields by name on a block id, and steps within a multistep are not modeled as id-bearing blocks — they are an ordered array on the parent. There is no `parentId + stepIndex` addressing path on `edit-block` or `remove-block`.
+**Why this happens.** `edit-block` (now a `pathfinder_manage_block` operation — `src/cli/mcp/tools/mutation-tools.ts`) addresses fields by name on a block id, and steps within a multistep are not modeled as id-bearing blocks — they are an ordered array on the parent. There is no `parentId + stepIndex` addressing path on `edit-block` or `remove-block`.
 
 **Candidate mitigations.**
 
@@ -215,7 +215,7 @@ A body of authoring best-practices already exists in `grafana/interactive-tutori
   - Prefer separate sibling blocks over `multistep` unless the steps are tightly coupled and must be completed in order.
   - Do not write `action: noop` steps as filler. If there's nothing concrete for the user to do, write a markdown block describing what they would do instead.
   - If you do not have a verified Grafana DOM selector for a `reftarget` field, do NOT write a step that requires one. Write a markdown block, use a `button` action with visible text matching, or ask the user. (Cross-references #3.)
-- **Type-aware tool description.** When `pathfinder_add_block` is called with `type === 'multistep'`, append a one-line composition rule to the response — either as a `warning` (M2) or in the response `summary`: _"Use multistep only when steps are tightly coupled. For loose sequences, prefer separate sibling blocks."_
+- **Type-aware tool description.** When `pathfinder_manage_block` (operation `add-block`) is called with `type === 'multistep'`, append a one-line composition rule to the response — either as a `warning` (M2) or in the response `summary`: _"Use multistep only when steps are tightly coupled. For loose sequences, prefer separate sibling blocks."_
 - **Server-level `instructions`** (M1 layer 3) — one composition sentence alongside the routing vocabulary from #7.
 - **Best-practices propagation strategy.** Upstream lives in `grafana/interactive-tutorials` at `.cursor/authoring-guide.mdc`. Two options: (a) inline a distilled subset directly in `pathfinder_authoring_start` as static content; (b) ship a new MCP tool `pathfinder_authoring_best_practices` that returns the distilled text on demand (so context cost is paid only when the agent asks). Option (b) is more disciplined about context budget; option (a) is cheaper to maintain. See OQ7.
 - Cross-references #3. The `UNVERIFIED_SELECTOR` warning there closes the noop-as-defense escape hatch from the other side: when the agent does write a step with a selector, it gets a soft warning; when it can't, the composition rules above tell it to write markdown instead. **#3 and #8 should be planned together.**

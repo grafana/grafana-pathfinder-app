@@ -130,8 +130,11 @@ export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']) satisfies 
 /**
  * Manifest object schema without the refinement, for composing
  * with passthrough or other transformations.
+ *
+ * Loose by design: unknown top-level keys are extension metadata and survive
+ * parsing unchanged. Known fields keep their full validation.
  */
-export const ManifestJsonObjectSchema = z.object({
+export const ManifestJsonObjectSchema = z.looseObject({
   schemaVersion: z.string().default(CURRENT_SCHEMA_VERSION),
   id: packageIdSchema,
   type: PackageTypeSchema,
@@ -218,9 +221,13 @@ const packageMetadataSchemaFields = {
 
 /**
  * Schema for a single repository.json entry.
+ *
+ * Loose so extension metadata forwarded from a manifest survives a
+ * repository.json round-trip.
+ *
  * @coupling Type: RepositoryEntry
  */
-export const RepositoryEntrySchema = z.object({
+export const RepositoryEntrySchema = z.looseObject({
   path: z.string().min(1),
   ...packageMetadataSchemaFields,
   targeting: GuideTargetingSchema.optional(),

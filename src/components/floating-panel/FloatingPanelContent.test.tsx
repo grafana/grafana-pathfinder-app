@@ -28,6 +28,10 @@ jest.mock('../docs-panel/components', () => ({
   LearningJourneyMilestoneToolbar: () => null,
 }));
 
+jest.mock('../InteractiveLearningBanner', () => ({
+  InteractiveLearningBanner: () => null,
+}));
+
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => ({}),
   useTheme2: () => ({}),

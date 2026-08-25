@@ -38,6 +38,7 @@ import {
 } from '../../../lib/analytics';
 import { recordGuideCompletionForSurface } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
+import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
 import { AlignmentPrompt } from './AlignmentPrompt';
@@ -405,6 +406,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         }}
                       />
                     )}
+                    {/* Treatment arm of the interactive-learning banner experiment; renders
+                        null otherwise. The context page carries the same banner, but a
+                        guide opened by ?doc= or auto-open never passes through it. */}
+                    <InteractiveLearningBanner placement="guide" />
+
                     <ContentRenderer
                       key={activeTab?.currentUrl || stableContent.url}
                       content={stableContent}

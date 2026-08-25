@@ -69,6 +69,7 @@ func writeRequest(t *testing.T, sub string, body map[string]any, cfg map[string]
 	if sub != "" {
 		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, makeValidIDToken(t, sub))
 	}
+	//nolint:staticcheck // OrgID is the numeric org the CRD requires; see completion_records_write.go
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: testNamespace, OrgID: testOrgID})
 	ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
 	return r.WithContext(ctx)
@@ -84,7 +85,7 @@ func writeRequestWithUser(t *testing.T, sub string, body map[string]any, cfg map
 	r := writeRequest(t, sub, body, cfg)
 	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{
 		Namespace: testNamespace,
-		OrgID:     testOrgID,
+		OrgID:     testOrgID, //nolint:staticcheck // see writeRequest
 		User:      &backend.User{Login: login, Name: name},
 	})
 	return r.WithContext(ctx)

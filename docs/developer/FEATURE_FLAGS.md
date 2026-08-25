@@ -178,6 +178,59 @@ Either way the plugin logs a `warn` naming the source and a low-cardinality reas
 
 **Launch source**: Guide tabs opened by this flag are tagged with the `highlighted_guide_experiment` `LaunchSource` (aligned-by-construction — no alignment prompt is shown, since the operator already targeted the page).
 
+### `pathfinder.interactive-learning-banner-experiment`
+
+**Purpose**: A/B test whether an explanatory banner increases engagement with interactive guides.
+
+**Type**: `object` (experiment flag — object-valued so it emits exposure events)
+
+**Default**: `{ variant: 'excluded' }`
+
+**Shape**: variant-only. Unlike the highlighted-guide flag there is no `pages` targeting — the banner explains Pathfinder itself, not the underlying Grafana page.
+
+```typescript
+interface InteractiveLearningBannerConfig {
+  variant: 'excluded' | 'control' | 'treatment';
+}
+```
+
+**Variant behavior**:
+
+| Variant     | Banner | Notes                                                                       |
+| ----------- | ------ | --------------------------------------------------------------------------- |
+| `excluded`  | No     | Not in the experiment. Identical to pre-experiment behavior.                |
+| `control`   | No     | In the experiment, no banner. Identical rendering to `excluded`.            |
+| `treatment` | Yes    | Dismissible explanatory banner on the context page and above opened guides. |
+
+A rejected payload (not an object, missing `variant`, or an unknown arm) falls back to `excluded`, so a fat-fingered MTFF value enrolls nobody. Rejection sources behave the same way as the highlighted-guide flag (see the table above).
+
+**Exposure timing — this flag differs from the others.** Every other flag is read at boot in `src/module.tsx`, so its exposure fires on page load. This one is read lazily by `enrollInteractiveLearningBannerExperiment` when a Pathfinder surface first opens, because "entered the experiment" should mean "had the chance to see the banner". Evaluating the flag is what emits the exposure, so the call site is the timing contract — `src/utils/experiments/enrollment-boundary.test.ts` pins the allowed call sites for that reason. `getActiveExperiments` reads the memoised arm rather than evaluating, so analytics enrichment can never enroll a user who has not opened Pathfinder.
+
+**Two placements, three surfaces.** The banner renders in two places, and `surface-coverage.test.ts` pins both against the enrollment seams:
+
+| Placement      | Where                                                                                 | Surfaces                                                     |
+| -------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `context-page` | Above the profile bar on the recommendations list (`context-panel.tsx`)               | Sidebar only — floating and full-screen have no context page |
+| `guide`        | Above rendered guide content (`DocsPanelContentArea.tsx`, `FloatingPanelContent.tsx`) | Sidebar, floating, and full-screen                           |
+
+The `guide` placement is the one that matters for reach: a guide opened by `?doc=`, a deep link, or the highlighted-guide auto-open never passes through the context page, so without it the users least likely to know what "Show me" does are exactly the ones who never see the explanation. Copy is identical in both placements; only `interaction_location` differs (`interactive_learning_banner` vs `interactive_learning_banner_guide`), so the readout can tell where it was first seen.
+
+The two placements are never mounted simultaneously — the sidebar's content area is an if/else on the recommendations tab, and the other surfaces have no context page — so the dismissal needs no cross-instance plumbing. It is one hostname-scoped localStorage key, re-read on every mount, which is what makes "dismissed above a guide" also mean "dismissed on the context page".
+
+**Enrollment therefore has one seam per surface**, each in the mount effect that already announces surface ownership: `ContextSidebar` in `src/module.tsx`, `FloatingPanelManager`, and `FullScreenPanel`. `enrollment-boundary.test.ts` pins that set from the other direction — nothing else may enroll. Note the consequence for the readout: **"enrolled" means "opened any Pathfinder surface", not "opened the sidebar"**, because all three can now show the banner.
+
+The banner component itself never enrolls. It reads the memoised arm through `subscribeToEnrollment` + `useSyncExternalStore`, because enrolling from render would let a render React replays or abandons emit the exposure and write its dedupe marker for a banner nobody saw. The subscription earns its keep on floating and full-screen: the manager owns the seam, and child effects run before the parent's, so the banner renders `null` and then re-renders when `notifyEnrollment()` fires.
+
+Enrollment also re-stamps the Faro session `experiments` attribute, because `initFaro` stamped it at boot before any arm was known. The enroller is the only point ordered after the arm resolves, so it owns the re-stamp — but it calls `notifyEnrollment()` from `experiments/enrollment-notifier.ts` rather than importing the stamper. `lib/telemetry/session` pulls in the Faro adapter statically, so importing it from the enroller would download the telemetry chunk even on stacks where `pathfinder.frontend-telemetry` is off; `module.tsx` binds the stamper from inside its telemetry block instead, and with that block skipped the notification is a no-op. Expect the session attribute to gain this cohort mid-session, on first panel open.
+
+**Dismissal**: persisted per browser under `grafana-pathfinder-interactive-learning-banner-dismissed-{hostname}`. Dismissing hides the banner permanently but does **not** un-enroll the user — they stay in the treatment arm for analysis.
+
+**Behavior events** (in addition to the exposure): `pathfinder_interactive_learning_banner_shown` (once per page load) and `..._banner_dismissed`, both carrying `interaction_location: interactive_learning_banner`.
+
+**Code**: everything except the registry entry, the three enrollment seams, and the two banner mount lines lives in [`src/utils/experiments/interactive-learning-banner.ts`](../../src/utils/experiments/interactive-learning-banner.ts) and [`src/components/InteractiveLearningBanner/`](../../src/components/InteractiveLearningBanner/), so retiring the experiment is a directory delete plus the registry entry. [`enrollment-notifier.ts`](../../src/utils/experiments/enrollment-notifier.ts) is shared machinery and stays.
+
+**Tracking key**: `interactive_learning_banner_experiment`
+
 ---
 
 ## Backend aggregation toggles (not MTFF)
