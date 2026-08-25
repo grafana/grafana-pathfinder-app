@@ -149,6 +149,19 @@ jest.mock('../../interactive-engine', () => ({
   matchesStepAction: jest.fn().mockReturnValue(false),
 }));
 
+// ─── Mock panel-mode (full-screen -> sidebar handoff) ────────────────────────
+const mockGetMode = jest.fn(() => 'sidebar');
+const mockRequestSidebarHandoffAndWait = jest.fn().mockResolvedValue(undefined);
+jest.mock('../../global-state/panel-mode', () => {
+  const { GRAFANA_DRIVING_ACTIONS } = jest.requireActual('../../constants/interactive-actions');
+  return {
+    panelModeManager: { getMode: () => mockGetMode() },
+    requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
+    isGrafanaDrivingHandoffNeeded: (targetAction: string) =>
+      mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
+  };
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {
   mockStoredCompleted = false;
@@ -644,5 +657,144 @@ describe('InteractiveGuided — AI "Fix this" gating vs sequential block', () =>
       />
     );
     expect(screen.getByTestId(testIds.interactive.guidedAiFixButton('elig-failing'))).toBeInTheDocument();
+  });
+});
+
+describe('InteractiveGuided — full-screen sidebar handoff', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetMode.mockReturnValue('sidebar');
+    mockExecuteGuidedStep.mockResolvedValue('completed');
+    // A prior describe block's beforeEach leaves useStepChecker mocked as
+    // blocked — restore the enabled default these tests need.
+    (useStepChecker as jest.Mock).mockReturnValue({
+      isEnabled: true,
+      isChecking: false,
+      explanation: null,
+      completionReason: mockCompletionReason,
+      markSkipped: mockMarkSkipped,
+      canFixRequirement: false,
+      fixRequirement: null,
+      checkStep: jest.fn(),
+      isRetrying: false,
+      retryCount: 0,
+      maxRetries: 3,
+    });
+  });
+
+  it('hands off before executing when in full screen and an internal action drives the live Grafana UI', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    render(
+      <InteractiveGuided
+        stepId="guided-fullscreen"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]}
+        fullScreenFallbackLocation="/connections"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
+    });
+    // The handoff must complete before the first guided step runs, not after.
+    const handoffCallOrder = mockRequestSidebarHandoffAndWait.mock.invocationCallOrder[0]!;
+    const execCallOrder = mockExecuteGuidedStep.mock.invocationCallOrder[0]!;
+    expect(handoffCallOrder).toBeLessThan(execCallOrder);
+  });
+
+  it('does not hand off outside full screen', async () => {
+    mockGetMode.mockReturnValue('sidebar');
+    render(
+      <InteractiveGuided stepId="guided-sidebar" internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(mockExecuteGuidedStep).toHaveBeenCalled();
+    });
+    expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
+  });
+
+  it('does not hand off in full screen when every internal action is a noop', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    render(<InteractiveGuided stepId="guided-noop-only" internalActions={[{ targetAction: 'noop' }]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(mockExecuteGuidedStep).toHaveBeenCalled();
+    });
+    expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
+  });
+
+  // Regression tests for a real race: the handoff wait (300-3000ms) used to
+  // run before `setIsExecuting(true)`, so the button stayed clickable the
+  // whole time and a second click could start a second run — or, if the
+  // handoff's navigation unmounted the component mid-wait, the resumed
+  // continuation would call executeGuidedStep on a dead instance.
+  it('does not start a second run when clicked again while the handoff is still pending', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    let resolveHandoff!: () => void;
+    mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveHandoff = resolve;
+      })
+    );
+
+    render(
+      <InteractiveGuided
+        stepId="guided-double-click"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]}
+        fullScreenFallbackLocation="/connections"
+      />
+    );
+
+    const startButton = screen.getByRole('button', { name: /start guided interaction/i });
+    fireEvent.click(startButton);
+    await waitFor(() => expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledTimes(1));
+
+    // Second click while the first is still awaiting the handoff — the
+    // synchronous isExecutingRef latch should bail this one out immediately,
+    // not queue a second handoff/run.
+    fireEvent.click(startButton);
+    expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledTimes(1);
+
+    resolveHandoff();
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
+  });
+
+  it('still calls executeGuidedStep after the component unmounts during the handoff wait (the handoff is expected to unmount full screen)', async () => {
+    // Regression test (Cursor Bugbot, "Guided handoff aborts after dock"):
+    // the handoff's own navigation unmounts this full-screen instance on
+    // EVERY successful run, not just a raced one. An earlier version of this
+    // fix bailed out on !isMountedRef.current here, which meant the guided
+    // step never actually ran after docking — the user had to click Start
+    // again in the sidebar. Simple steps and code-block Insert both continue
+    // after the wait; guided steps must too.
+    mockGetMode.mockReturnValue('fullscreen');
+    let resolveHandoff!: () => void;
+    mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveHandoff = resolve;
+      })
+    );
+
+    const { unmount } = render(
+      <InteractiveGuided
+        stepId="guided-unmount-mid-handoff"
+        internalActions={[{ targetAction: 'highlight', refTarget: '#x' }]}
+        fullScreenFallbackLocation="/connections"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    await waitFor(() => expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledTimes(1));
+
+    unmount();
+    resolveHandoff();
+
+    await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
   });
 });

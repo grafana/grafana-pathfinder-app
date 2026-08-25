@@ -1,10 +1,12 @@
 import { getAppEvents } from '@grafana/runtime';
 import { StorageKeys } from '../lib/storage-keys';
-import { PANEL_MODE_CHANGE_EVENT } from '../lib/event-names';
-// Surgical import (not the ../lib/telemetry barrel): panel-mode is
+import { PANEL_MODE_CHANGE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
+// Surgical imports (not the ../lib/telemetry barrel): panel-mode is
 // entry-eager, and the barrel would pull the telemetry package into module.js.
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
+import { pushFaroUserAction } from '../lib/telemetry/bridge';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
+import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import type { RawContent } from '../types/content.types';
 import type { LaunchSource } from '../recovery';
@@ -314,3 +316,96 @@ class PanelModeManager {
 }
 
 export const panelModeManager = new PanelModeManager();
+
+/**
+ * Full screen has no live Grafana UI behind it, so Grafana-driving content
+ * encountered there can't actually be acted on. Signal FullScreenPanel to
+ * hand off to the sidebar (reusing its existing handleExitToSidebar) instead.
+ *
+ * Called the moment the user clicks "Do it" on a step whose action drives the
+ * live Grafana UI while full screen is active — see the gate in
+ * `interactive-engine/interactive.hook.ts`, plus the same gate applied
+ * directly by `interactive-guided.tsx` and `code-block-step.tsx` for their
+ * own execution paths: surface is a property of what the user is about to
+ * do, decided at that click, not proactively when a milestone loads.
+ *
+ * `targetPath`, when resolved (step/milestone/course fallback chain), is
+ * forwarded to `handleExitToSidebar` so the user lands somewhere the clicked
+ * step can actually act on, instead of the page they were on before entering
+ * full screen.
+ *
+ * Returns a promise that resolves once the sidebar has actually mounted (or
+ * after a safety timeout), so the caller's subsequent DOM lookup runs against
+ * the destination page rather than racing the dock/navigate.
+ *
+ * No confirmation toast: the handoff is a direct result of the user's own
+ * click, not a surprise the app needs to explain.
+ *
+ * Reports a `pathfinder_fullscreen_handoff` Faro user action stamped with
+ * which branch resolved it (`mounted` vs `timeout`) — the safety timeout is a
+ * silent degradation (the destination never confirmed it mounted) that would
+ * otherwise be indistinguishable from a normal handoff in telemetry.
+ */
+export function requestSidebarHandoffAndWait(options?: { targetPath?: string }): Promise<void> {
+  // Mirrors GlobalSidebarState.openWithGuide's settle delay after the mount
+  // event — the sidebar's own docs-panel mount effect still needs a tick to
+  // register its listeners.
+  const SETTLE_DELAY_MS = 300;
+  // Safety net for cases where neither mount event below ever fires (the
+  // destination surface was already mounted, or the listener is gone in the
+  // mode/mount desync window) — covers the async save-then-dock work in
+  // handleExitToSidebar without blocking the click indefinitely.
+  const SAFETY_TIMEOUT_MS = 3000;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const finish = (outcome: 'mounted' | 'timeout') => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.removeEventListener('pathfinder-sidebar-mounted', onMounted);
+      document.removeEventListener('pathfinder-panel-mounted', onMounted);
+      clearTimeout(timeoutId);
+      pushFaroUserAction('pathfinder_fullscreen_handoff', { outcome });
+      resolve();
+    };
+    const onMounted = () => setTimeout(() => finish('mounted'), SETTLE_DELAY_MS);
+
+    // The destination isn't always the sidebar despite this function's name:
+    // handleExitToSidebar falls back to floating when another plugin owns the
+    // extension sidebar slot, and floating mounts dispatch
+    // 'pathfinder-panel-mounted' (document), never 'pathfinder-sidebar-mounted'
+    // (window) — listening for only the latter meant a floating fallback
+    // always burned the full safety timeout. Same dual-listener shape already
+    // used by sidebar.ts/pathfinder-deep-link-handler.ts for this exact
+    // sidebar-vs-floating race.
+    window.addEventListener('pathfinder-sidebar-mounted', onMounted, { once: true });
+    document.addEventListener('pathfinder-panel-mounted', onMounted, { once: true });
+    timeoutId = setTimeout(() => finish('timeout'), SAFETY_TIMEOUT_MS);
+
+    document.dispatchEvent(
+      new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT, { detail: { targetPath: options?.targetPath } })
+    );
+  });
+}
+
+/**
+ * Single source of truth for "does this click need the full-screen -> sidebar
+ * handoff": every caller of `requestSidebarHandoffAndWait` (the hook's own
+ * gate, `interactive-guided.tsx`, `code-block-step.tsx`) and every caller
+ * that needs to know the handoff is about to happen *before* it runs its own
+ * DOM-resolution attempt (`interactive-step.tsx`'s `executeWithLazyScroll`,
+ * which would otherwise fail fast against full screen's nonexistent Grafana
+ * DOM and never reach the gate at all) must agree on the same condition.
+ *
+ * Applies equally to "Show me" and "Do it": both need the live Grafana UI in
+ * place before they can find anything to preview or act on, so both dock and
+ * navigate to the resolved fallback location first. Callers that invoke a
+ * Grafana-driving action in "show" mode must also thread their own
+ * `fullScreenFallbackLocation` through so the navigation has a destination.
+ */
+export function isGrafanaDrivingHandoffNeeded(targetAction: string): boolean {
+  return panelModeManager.getMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction);
+}
