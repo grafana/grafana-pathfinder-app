@@ -39,12 +39,18 @@ export function gcxServiceAccountName(): string {
 }
 
 /**
+ * The reused account outranks the caller. Its own code rather than
+ * `mint_forbidden`: both branch to the paste field, but only this one names
+ * something an operator can delete.
+ */
+export const ACCOUNT_OUTRANKS_CALLER = 'service_account_outranks_caller';
+
+/**
  * Refuse to mint against an account that outranks the caller today.
  *
  * Grafana caps the role only when the account is created, and grants the
  * creator write on it, so an Admin who mints once and is later demoted keeps a
- * route to an Admin token through their own reused account. Reported as
- * `mint_forbidden` because the answer is the same one: paste a token instead.
+ * route to an Admin token through their own reused account.
  *
  * A failed search is not a refusal. Below Admin it is Grafana's own 403 on
  * `serviceaccounts:read`, which is the ordinary path to the paste field — the
@@ -75,8 +81,8 @@ export async function assertServiceAccountIsMintable(name: string): Promise<void
   const accountRank = ROLE_RANK[existing.role ?? 'None'] ?? 0;
   if (accountRank > (ROLE_RANK[callerRole] ?? 0)) {
     throw new CodaError(
-      `The sandbox service account ${name} holds a higher Grafana role than you do, so minting against it is refused. Ask an administrator to delete it, or paste a token instead.`,
-      'mint_forbidden',
+      `The sandbox service account ${name} holds a higher Grafana role than you do, so minting against it is refused. Ask an administrator to delete it, or paste a service account token instead.`,
+      ACCOUNT_OUTRANKS_CALLER,
       403
     );
   }

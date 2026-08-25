@@ -132,9 +132,11 @@ collision would hand one person a token minted against another person's account,
 role. Numeric ids do not collide. Reuse also outlives a role change — Grafana caps the role when the
 account is created and grants the creator write on it, so an Admin who mints and is later demoted keeps
 a route to an Admin token — and `assertServiceAccountIsMintable` refuses a reused account that
-outranks the caller today, reporting `mint_forbidden` because the answer is the same: paste a token
-instead. A failed lookup is not a refusal; below Admin it is Grafana's own `403` on the search, which is
-the ordinary path to the paste field.
+outranks the caller today. That refusal carries its own code,
+`service_account_outranks_caller`, rather than folding into `mint_forbidden`: both branch to the paste
+field, but only this one names something an operator can delete, and only this one is a rung an
+operator can clear. A failed lookup is not a refusal; below Admin it is Grafana's own `403` on the
+search, which is the ordinary path to the paste field.
 
 **Minting is Admin-only in practice, so the paste path is not a fallback.** `serviceaccounts:create` is
 an Admin permission by default while sandbox sessions are open to Editors, so most people who can open
@@ -214,7 +216,8 @@ routes the step through `executeInteractiveAction`, which has no `terminal-conne
 back the controls.
 
 **The ladder is measured.** `recordGcxCredentialDegradation` emits the rung that stopped an install
-(`mint-forbidden`, `plugin-too-old`, `refused`) and `gcx_credential_installed` / `gcx_setup_skipped`
+(`mint-forbidden`, `account-outranks-caller`, `plugin-too-old`, `refused`) and
+`gcx_credential_installed` / `gcx_setup_skipped`
 count the outcomes. The whole shape of this surface rests on how often `mint_forbidden` comes back, so
 that rate cannot be left unmeasurable — no token, session id, or backend error text goes with it.
 

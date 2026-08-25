@@ -7,7 +7,7 @@
 
 import { CodaError } from '@grafana/coda-client';
 
-import { assertServiceAccountIsMintable, gcxServiceAccountName } from './gcx-service-account';
+import { ACCOUNT_OUTRANKS_CALLER, assertServiceAccountIsMintable, gcxServiceAccountName } from './gcx-service-account';
 
 const mockFetch = jest.fn();
 const mockUser: { id?: unknown; isSignedIn?: boolean; login?: string; orgRole?: string } = {};
@@ -81,7 +81,9 @@ describe('assertServiceAccountIsMintable', () => {
     Object.assign(mockUser, { orgRole: 'Editor' });
     respondsWith({ serviceAccounts: [{ name: 'coda-gcx-u42', role: 'Admin' }] });
 
-    await expect(assertServiceAccountIsMintable('coda-gcx-u42')).rejects.toMatchObject({ code: 'mint_forbidden' });
+    await expect(assertServiceAccountIsMintable('coda-gcx-u42')).rejects.toMatchObject({
+      code: ACCOUNT_OUTRANKS_CALLER,
+    });
   });
 
   it('ignores an account whose name only partially matches', async () => {

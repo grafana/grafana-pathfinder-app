@@ -146,9 +146,13 @@ export function recordSandboxUnavailable(reason: SandboxUnavailableReason, block
  * happens. Without this the rate is unmeasurable, and "nobody sets up gcx" and
  * "nobody on this stack is allowed to" produce identical telemetry.
  *
+ * `account-outranks-caller` is separated out because it is the one rung an
+ * operator can clear — there is a service account to delete — while
+ * `mint-forbidden` needs a role change.
+ *
  * A closed set of rungs. No token, session id, or backend error text.
  */
-export type GcxCredentialDegradation = 'mint-forbidden' | 'plugin-too-old' | 'refused';
+export type GcxCredentialDegradation = 'mint-forbidden' | 'account-outranks-caller' | 'plugin-too-old' | 'refused';
 
 export function recordGcxCredentialDegradation(reason: GcxCredentialDegradation): void {
   pushFaroEvent(TELEMETRY_EVENTS.gcxCredentialDegraded, { reason });

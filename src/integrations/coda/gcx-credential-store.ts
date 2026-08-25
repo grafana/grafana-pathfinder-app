@@ -17,7 +17,7 @@ import {
   type GcxCredential,
   type MintTokenOptions,
 } from './coda-api';
-import { assertServiceAccountIsMintable, gcxServiceAccountName } from './gcx-service-account';
+import { ACCOUNT_OUTRANKS_CALLER, assertServiceAccountIsMintable, gcxServiceAccountName } from './gcx-service-account';
 
 /** `needs-token` is "asked, and told to paste one instead". */
 export type GcxState = 'idle' | 'provisioning' | 'ready' | 'needs-token' | 'failed';
@@ -157,6 +157,15 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
     }
   } catch (err) {
     const codaErr = toCodaError(err);
+    if (codaErr.code === ACCOUNT_OUTRANKS_CALLER) {
+      // The one refusal an operator can clear, so it keeps its own sentence
+      // rather than being folded into the generic mint refusal.
+      const revealed = settle({ sessionId, state: 'needs-token', credential: null, error: codaErr.message });
+      if (revealed) {
+        recordGcxCredentialDegradation('account-outranks-caller');
+      }
+      return;
+    }
     if (isMintForbidden(codaErr)) {
       // Expected below Admin, so it reveals the paste field rather than
       // reporting a failure.

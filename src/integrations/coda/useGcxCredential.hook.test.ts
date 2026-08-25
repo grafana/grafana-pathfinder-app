@@ -262,6 +262,27 @@ describe('state shared across surfaces', () => {
     expect(result.current.state).toBe('ready');
   });
 
+  it('names the account when a reused one outranks the caller, and still offers paste', async () => {
+    // Its own rung: unlike a plain role refusal, an operator can delete the
+    // account named in the message.
+    mockProvisionGcx.mockRejectedValue(
+      new CodaError(
+        'The sandbox service account coda-gcx-u7 holds a higher Grafana role',
+        'service_account_outranks_caller',
+        403
+      )
+    );
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(result.current.state).toBe('needs-token');
+    expect(result.current.error).toMatch(/coda-gcx-u7/);
+    expect(mockRecordDegradation).toHaveBeenCalledWith('account-outranks-caller');
+  });
+
   it('answers idle for a session other than the one installed into', async () => {
     mockProvisionGcx.mockResolvedValue(CREDENTIAL);
     const here = renderHook(() => useGcxCredential(undefined, 's_abc'));
