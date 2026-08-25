@@ -1,7 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SceneObjectBase, type SceneComponentProps, type SceneObjectState } from '@grafana/scenes';
 import { getAppEvents, locationService } from '@grafana/runtime';
-import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
@@ -23,7 +22,6 @@ import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../util
 import pluginJson from '../../plugin.json';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { FullScreenLayout } from './FullScreenLayout';
-import { getFullScreenStyles } from './full-screen.styles';
 import { dockOnLeavingFullScreen, type HistoryAction, type FullScreenExitReason } from './full-screen-autodock';
 import { resolveSafeTargetPath, extractTargetPathFromEventDetail } from './resolve-safe-target-path';
 
@@ -52,8 +50,6 @@ export class FullScreenPanel extends SceneObjectBase<FullScreenPanelState> {
 }
 
 function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
-  const fullScreenStyles = useStyles2(getFullScreenStyles);
-
   const panel = useMemo(() => {
     const globalConfig = (window as any).__pathfinderPluginConfig;
     const config = getConfigWithDefaults(globalConfig || {});
@@ -468,7 +464,6 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       panel={panel}
       activeTab={activeTab}
       surface="fullscreen"
-      actionButtonClassName={fullScreenStyles.secondaryActionButton}
       hasInteractiveProgress={hasInteractiveProgress}
       progressKey={progressKey}
       onResetGuide={handleResetGuide}
