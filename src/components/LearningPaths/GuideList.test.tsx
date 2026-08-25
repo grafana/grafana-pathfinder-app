@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { GuideList } from './GuideList';
 import type { PathGuide } from '../../types/learning-paths.types';
 
@@ -74,6 +74,29 @@ describe('GuideList', () => {
     expect(currentRow).toHaveAttribute('data-milestone-url', 'bundled:a/content.json');
     expect(currentRow).toHaveAttribute('data-interaction-location', 'module_row_click');
     expect(screen.getByText('Other module').closest('div')).not.toHaveAttribute('data-journey-start');
+  });
+
+  it('makes the journey-start row keyboard-operable: focusable, and Enter/Space dispatch a click', () => {
+    const withUrl: PathGuide[] = [
+      { id: 'a', title: 'Current module', completed: false, isCurrent: true, url: 'bundled:a/content.json' },
+    ];
+    render(<GuideList guides={withUrl} enableCurrentRowLink />);
+
+    const currentRow = screen.getByText('Current module').closest('div[data-journey-start]') as HTMLElement;
+    expect(currentRow).toHaveAttribute('role', 'button');
+    expect(currentRow).toHaveAttribute('tabIndex', '0');
+
+    const clickSpy = jest.fn();
+    currentRow.addEventListener('click', clickSpy);
+
+    fireEvent.keyDown(currentRow, { key: 'Enter' });
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(currentRow, { key: ' ' });
+    expect(clickSpy).toHaveBeenCalledTimes(2);
+
+    fireEvent.keyDown(currentRow, { key: 'Tab' });
+    expect(clickSpy).toHaveBeenCalledTimes(2);
   });
 
   // Regression test (Cursor Bugbot, "GuideList click affordance leaks"):

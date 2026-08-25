@@ -49,7 +49,11 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
             // The current row is the only clickable one, and only when the
             // caller opts in — data-journey-start is the same attribute
             // contract the cover page's own CTA button uses, picked up by the
-            // shared global click handler (link-handler.hook.ts).
+            // shared global click handler (link-handler.hook.ts), which
+            // listens for a real DOM click on contentRef's container rather
+            // than a React onClick here — so keyboard activation below
+            // dispatches one via `.click()` instead of duplicating the
+            // handler's logic.
             // data-interaction-location keeps this distinguishable from that
             // CTA and from a fresh-start click in the click handler's analytics.
             {...(guide.isCurrent && guide.url && enableCurrentRowLink
@@ -57,6 +61,14 @@ export function GuideList({ guides, isLoading = false, className, enableCurrentR
                   'data-journey-start': 'true',
                   'data-milestone-url': guide.url,
                   'data-interaction-location': 'module_row_click',
+                  role: 'button',
+                  tabIndex: 0,
+                  onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      event.currentTarget.click();
+                    }
+                  },
                 }
               : {})}
           >
