@@ -29,6 +29,14 @@ STUB
 chmod +x "${BIN}/npm"
 export PATH="${BIN}:${PATH}"
 
+# Without the stub, a run would reach the real npm and re-enter this suite
+# through the gate's own test:scripts step, with no depth bound.
+RESOLVED_NPM=$(command -v npm)
+if [[ "$RESOLVED_NPM" != "${BIN}/npm" ]]; then
+  printf 'check.test.sh: npm stub is not on PATH (resolved %s); refusing to run the real gate\n' "${RESOLVED_NPM:-nothing}" >&2
+  exit 1
+fi
+
 ok() {
   PASS=$((PASS + 1))
   printf '  ok   %s\n' "$1"
@@ -124,6 +132,34 @@ fi
 
 FAIL_ON='' run --nonsense
 expect_code "an unrecognised argument exits non-zero" 2
+
+# A copy of the runner over a package.json whose first step no longer exists.
+# Both entry points must name it and exit non-zero rather than print "undefined".
+FAKE="${WORK}/fake"
+mkdir -p "${FAKE}/scripts"
+cp "$CHECK" "${FAKE}/scripts/check.js"
+SOURCE="${REPO_ROOT}/package.json" TARGET="${FAKE}/package.json" DROP="${STEPS[0]}" node -e '
+  const fs = require("fs");
+  const { scripts } = JSON.parse(fs.readFileSync(process.env.SOURCE, "utf8"));
+  delete scripts[process.env.DROP];
+  fs.writeFileSync(process.env.TARGET, JSON.stringify({ scripts }));
+'
+
+expect_missing_script() {
+  local label="$1"
+  shift
+  local out code
+  out=$(node "${FAKE}/scripts/check.js" "$@" 2>&1)
+  code=$?
+  if [[ "$code" != 0 && "$out" == *"no such npm script: ${STEPS[0]}"* ]]; then
+    ok "$label"
+  else
+    nope "$label (exit ${code})" "$out"
+  fi
+}
+
+expect_missing_script "--list fails loudly when a step's npm script is gone" --list
+expect_missing_script "a run fails loudly when a step's npm script is gone"
 
 printf '\n  %d passed, %d failed\n' "$PASS" "$FAIL"
 [[ "$FAIL" -eq 0 ]]

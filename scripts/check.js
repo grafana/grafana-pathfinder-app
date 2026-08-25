@@ -55,20 +55,29 @@ function list() {
   console.log('Every step is also a standalone script — run one on its own with `npm run <step>`.');
 }
 
-function run() {
-  const missing = STEPS.filter((step) => !scripts[step]);
-  if (missing.length > 0) {
-    console.error(`check: no such npm script: ${missing.join(', ')}`);
-    return 1;
+function failure(result) {
+  if (result.error) {
+    return { code: 1, reason: `npm never ran (${result.error.message})` };
   }
+  if (result.signal) {
+    return { code: 1, reason: `killed by ${result.signal}` };
+  }
+  if (result.status !== 0) {
+    return { code: result.status, reason: `exit status ${result.status}` };
+  }
+  return null;
+}
 
+function run() {
   for (const [index, step] of STEPS.entries()) {
     console.log(`\ncheck [${index + 1}/${STEPS.length}] npm run ${step}`);
     const result = spawnSync('npm', ['run', step], { stdio: 'inherit', cwd: root });
-    const code = result.error || result.signal ? 1 : result.status;
-    if (code !== 0) {
-      console.error(`\ncheck: failed at step ${index + 1}/${STEPS.length} (npm run ${step}); stopping here`);
-      return code;
+    const failed = failure(result);
+    if (failed) {
+      console.error(
+        `\ncheck: failed at step ${index + 1}/${STEPS.length} (npm run ${step}): ${failed.reason}; stopping here`
+      );
+      return failed.code;
     }
   }
 
@@ -78,6 +87,7 @@ function run() {
 
 const args = process.argv.slice(2);
 const unknown = args.filter((arg) => !['--list', '-l', '--help', '-h'].includes(arg));
+const missing = STEPS.filter((step) => !scripts[step]);
 
 if (unknown.length > 0) {
   console.error(`check: unrecognised argument: ${unknown.join(' ')}`);
@@ -85,6 +95,9 @@ if (unknown.length > 0) {
   process.exit(2);
 } else if (args.includes('--help') || args.includes('-h')) {
   usage();
+} else if (missing.length > 0) {
+  console.error(`check: no such npm script: ${missing.join(', ')}`);
+  process.exit(1);
 } else if (args.includes('--list') || args.includes('-l')) {
   list();
 } else {

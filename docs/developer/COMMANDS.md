@@ -77,9 +77,9 @@ stops at the first failure. To see what it contains without running it:
 npm run check -- --list
 ```
 
-Every step is also a standalone script, documented under "Code quality" above and "Building and testing"
-below. CI does not run `npm run check`; it additionally enforces manifest freshness and the production
-build, so a green local gate is not by itself a green `CI Gate`.
+Every step is also a standalone script: `--list` names them, and this file documents each one in the
+section it belongs to. CI does not run `npm run check`; it additionally enforces manifest freshness and
+the production build, so a green local gate is not by itself a green `CI Gate`.
 
 ## Building and testing
 
@@ -154,7 +154,7 @@ npm run schema:export       # export schema to dist/
 
 # Terms-and-conditions sync
 npm run docs:sync-terms        # sync TERMS_VERSION across docs/
-npm run docs:sync-terms:check  # CI drift check for terms
+npm run docs:sync-terms:check  # local drift check for terms; not run in CI
 ```
 
 ## Uploading guides to a stack
