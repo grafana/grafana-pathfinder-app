@@ -479,6 +479,7 @@ describe('convertBlockType', () => {
 
     const SAMPLE_BLOCKS = {
       markdown: { type: 'markdown', content: 'Sample content' },
+      divider: { type: 'divider' },
       html: { type: 'html', content: '<p>Sample content</p>' },
       image: { type: 'image', src: 'https://example.com/i.png', alt: 'a' },
       video: { type: 'video', src: 'https://example.com/v.mp4' },
@@ -508,6 +509,7 @@ describe('convertBlockType', () => {
     const CONTENTLESS_SOURCE_FAILURES: Partial<Record<BlockType, readonly BlockType[]>> = {
       image: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
       video: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
+      divider: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
       collapsible: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
       assistant: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
       'snippet-ref': ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],

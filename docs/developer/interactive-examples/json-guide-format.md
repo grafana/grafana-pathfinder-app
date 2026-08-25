@@ -66,6 +66,16 @@ The primary block type for formatted text content.
 }
 ```
 
+#### Divider Block
+
+Adds a semantic horizontal separator with standard guide spacing. Divider blocks have no content fields.
+
+```json
+{
+  "type": "divider"
+}
+```
+
 #### HTML Block
 
 For raw HTML content. Use sparingly—prefer markdown for new content.
@@ -1200,6 +1210,7 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 | Block Type         | Category    | Description                                                                     |
 | ------------------ | ----------- | ------------------------------------------------------------------------------- |
 | `markdown`         | Content     | Formatted text with headings, lists, code, tables                               |
+| `divider`          | Content     | Horizontal separator between adjacent guide sections                            |
 | `html`             | Content     | Raw HTML for migration/custom content                                           |
 | `image`            | Content     | Embedded images with optional dimensions                                        |
 | `video`            | Content     | YouTube, Vimeo, or native HTML5 video embeds                                    |

@@ -23,6 +23,7 @@ import { logger } from '../../../lib/logging';
  */
 const SOURCE_EXCLUSION_REASONS = {
   markdown: null,
+  divider: null,
   html: null,
   image: null,
   video: null,
@@ -58,6 +59,7 @@ const SOURCE_EXCLUSION_REASONS = {
  */
 const TARGET_EXCLUSION_REASONS = {
   markdown: null,
+  divider: 'a divider has no editable fields to receive converted content',
   html: null,
   image: null,
   video: null,
@@ -105,6 +107,7 @@ const COMMON_FIELDS = ['requirements', 'objectives', 'skippable'] as const;
  */
 const CONTENT_FIELDS: Record<BlockType, string | null> = {
   markdown: 'content',
+  divider: null,
   html: 'content',
   interactive: 'content',
   multistep: 'content',
@@ -156,6 +159,7 @@ const REQUIRED_DEFAULTS: Record<BlockType, Record<string, unknown> | null> = {
   },
   'code-block': { reftarget: "div[data-testid='data-testid Code editor container']", code: '// Your code here' },
   markdown: null,
+  divider: null,
   html: null,
   section: null,
   conditional: null,

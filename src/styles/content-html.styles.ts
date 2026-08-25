@@ -65,6 +65,12 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     overflowWrap: 'break-word',
   },
 
+  '& .guide-divider': {
+    border: 0,
+    borderTop: `1px solid ${theme.colors.border.medium}`,
+    margin: `${theme.spacing(4)} 0`,
+  },
+
   '& ul, & ol': {
     marginBottom: theme.spacing(2),
     paddingLeft: theme.spacing(3),

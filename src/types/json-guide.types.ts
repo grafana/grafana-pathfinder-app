@@ -30,6 +30,7 @@ export interface JsonGuide {
  */
 export type JsonBlock =
   | JsonMarkdownBlock
+  | JsonDividerBlock
   | JsonHtmlBlock
   | JsonSectionBlock
   | JsonCollapsibleBlock
@@ -96,6 +97,15 @@ export interface JsonMarkdownBlock extends AssistantProps, AuthorAnnotated {
   id?: string;
   /** Markdown-formatted content */
   content: string;
+}
+
+/**
+ * Visual separator between adjacent guide blocks.
+ */
+export interface JsonDividerBlock extends AuthorAnnotated {
+  type: 'divider';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
 }
 
 /**
@@ -211,7 +221,7 @@ export interface JsonCollapsibleBlock extends AuthorAnnotated {
  * Mirrors `PresentationalBlockSchema` in json-guide.schema.ts.
  */
 export type PresentationalBlock =
-  JsonMarkdownBlock | JsonHtmlBlock | JsonImageBlock | JsonVideoBlock | JsonCalloutBlock;
+  JsonMarkdownBlock | JsonDividerBlock | JsonHtmlBlock | JsonImageBlock | JsonVideoBlock | JsonCalloutBlock;
 
 // ============ CALLOUT BLOCK ============
 
@@ -895,6 +905,11 @@ export interface JsonSnippetRefBlock extends AuthorAnnotated {
  */
 export function isMarkdownBlock(block: JsonBlock): block is JsonMarkdownBlock {
   return block.type === 'markdown';
+}
+
+/** Type guard for JsonDividerBlock. */
+export function isDividerBlock(block: JsonBlock): block is JsonDividerBlock {
+  return block.type === 'divider';
 }
 
 /**
