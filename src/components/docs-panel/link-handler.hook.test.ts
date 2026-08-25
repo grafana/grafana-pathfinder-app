@@ -712,5 +712,31 @@ describe('useLinkClickHandler', () => {
         expect.objectContaining({ interaction_location: 'resume_cta' })
       );
     });
+
+    it('falls back to the default interaction_location for an unrecognized value, since the element can come from remote content', () => {
+      const { reportAppInteraction } = require('../../lib/analytics');
+
+      renderHook(() =>
+        useLinkClickHandler({
+          contentRef,
+          activeTab: mockModel.getActiveTab(),
+          theme: mockTheme,
+          model: mockModel,
+        })
+      );
+
+      const spoofedButton = document.createElement('button');
+      spoofedButton.setAttribute('data-journey-start', 'true');
+      spoofedButton.setAttribute('data-milestone-url', 'https://grafana.com/docs/test-journey/milestone1');
+      spoofedButton.setAttribute('data-interaction-location', 'attacker_supplied_value');
+      contentDiv.appendChild(spoofedButton);
+
+      fireEvent.click(spoofedButton);
+
+      expect(reportAppInteraction).toHaveBeenCalledWith(
+        UserInteraction.StartLearningJourneyClick,
+        expect.objectContaining({ interaction_location: 'ready_to_begin_button' })
+      );
+    });
   });
 });

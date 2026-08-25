@@ -28,6 +28,15 @@ import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { LearningJourneyTab } from '../../types/content-panel.types';
 import type { OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
+/**
+ * The only `data-interaction-location` values a trusted cover-page producer
+ * ever sets. `startElement` can be an element from rendered guide content, so
+ * an unrecognized value is treated as absent rather than forwarded verbatim —
+ * unbounded values from remote content must never reach an analytics
+ * dimension.
+ */
+const KNOWN_INTERACTION_LOCATIONS = new Set(['get_started_cta', 'resume_cta', 'module_row_click']);
+
 interface UseLinkClickHandlerProps {
   contentRef: React.RefObject<HTMLDivElement | null>;
   activeTab: LearningJourneyTab | null;
@@ -104,7 +113,11 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           // a resume, and a direct module-row click stay distinguishable in
           // analytics; the legacy injected HTML button carries none, so it
           // keeps its original label.
-          const interactionLocation = startElement.getAttribute('data-interaction-location') || 'ready_to_begin_button';
+          const rawInteractionLocation = startElement.getAttribute('data-interaction-location');
+          const interactionLocation =
+            rawInteractionLocation && KNOWN_INTERACTION_LOCATIONS.has(rawInteractionLocation)
+              ? rawInteractionLocation
+              : 'ready_to_begin_button';
           // Track analytics for starting journey
           reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
             content_title: activeTab.title,
