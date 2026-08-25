@@ -118,3 +118,10 @@ Use `/create-experiment`. Experiments are remote-configured through MTFF, alloca
 ## `npx` examples
 
 Namespace every `npx` example under `pathfinder-cli@...` — for a hypothetical `pathfinder-example` package, write `npx pathfinder-cli@... example`. This keeps us from being namesquatted.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.
