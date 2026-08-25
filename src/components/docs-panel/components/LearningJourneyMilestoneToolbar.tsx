@@ -24,7 +24,7 @@
  */
 
 import React from 'react';
-import { Button, Dropdown, IconButton, Menu, useStyles2 } from '@grafana/ui';
+import { Button, Dropdown, Menu, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
 import {
@@ -248,9 +248,9 @@ export function LearningJourneyMilestoneToolbar({
     <div className={styles.milestoneProgress}>
       <div className={styles.progressInfo}>
         <div className={styles.progressHeader}>
-          <IconButton
-            name="arrow-left"
-            size="sm"
+          <Button
+            icon="arrow-left"
+            size="md"
             variant="primary"
             aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
             onClick={handlePrev}
@@ -273,9 +273,9 @@ export function LearningJourneyMilestoneToolbar({
                   })}
             </div>
           </div>
-          <IconButton
-            name="arrow-right"
-            size="sm"
+          <Button
+            icon="arrow-right"
+            size="md"
             variant="primary"
             aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
             onClick={handleNext}
@@ -284,18 +284,16 @@ export function LearningJourneyMilestoneToolbar({
             disabled={!panel.canNavigateNext() || activeTab.isLoading}
           />
           {!compact && (
-            <div className={styles.moreButton}>
-              <Dropdown overlay={kebabMenu} placement="bottom-end">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon="ellipsis-v"
-                  tooltip={t('docsPanel.moreActions', 'More actions')}
-                  aria-label={t('docsPanel.moreActions', 'More actions')}
-                  data-testid={testIds.docsPanel.milestoneMoreActionsButton}
-                />
-              </Dropdown>
-            </div>
+            <Dropdown overlay={kebabMenu} placement="bottom-end">
+              <Button
+                variant="secondary"
+                size="md"
+                icon="ellipsis-v"
+                tooltip={t('docsPanel.moreActions', 'More actions')}
+                aria-label={t('docsPanel.moreActions', 'More actions')}
+                data-testid={testIds.docsPanel.milestoneMoreActionsButton}
+              />
+            </Dropdown>
           )}
         </div>
         <div className={styles.progressSegments}>

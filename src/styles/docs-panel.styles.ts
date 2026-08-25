@@ -789,11 +789,6 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     color: theme.colors.text.secondary,
     whiteSpace: 'nowrap',
   }),
-  moreButton: css({
-    '& > button': {
-      padding: '4px 8px',
-    },
-  }),
   // Used by the loading-skeleton milestone header in DocsPanelContentArea.tsx
   // (rendered while a journey tab's content is still fetching), not by the
   // loaded LearningJourneyMilestoneToolbar below.

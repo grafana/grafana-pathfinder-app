@@ -93,7 +93,6 @@ jest.mock('@grafana/ui', () => {
       titleBlock: 'titleBlock',
       milestoneTitle: 'milestoneTitle',
       milestoneSubtitle: 'milestoneSubtitle',
-      moreButton: 'moreButton',
       progressSegments: 'progressSegments',
       progressSegment: 'progressSegment',
     }),
