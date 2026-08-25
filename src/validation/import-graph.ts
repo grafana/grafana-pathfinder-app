@@ -691,13 +691,20 @@ export const NODE_CONTEXT_ROOTS = ['src/cli', 'tests', 'playwright.config.ts'];
  * .config/jest.config.js plus tests/e2e-runner/utils/**\/*.test.*. Playwright
  * loads only *.spec.ts files (see playwright.config.ts testMatch), which jest
  * never matches outside src/.
+ *
+ * tests/parity/ is jest-managed too, but by an explicit --testMatch rather
+ * than the config: it holds the launch-path parity matrix, run on demand by
+ * `npm run test:parity` and deliberately kept out of the default suite. It
+ * still executes under jsdom with jest.mock available, and Playwright cannot
+ * pick it up (only *.spec.ts), so nothing there is evidence of plain-Node
+ * execution either.
  */
 export function isJestManagedTestFile(absPath: string): boolean {
   const rel = toPosixPath(path.relative(REPO_ROOT, absPath));
   if (rel.startsWith('src/')) {
     return /\.(test|spec|jest)\.(ts|tsx)$/.test(rel) || rel.includes('/__tests__/');
   }
-  if (rel.startsWith('tests/e2e-runner/utils/')) {
+  if (rel.startsWith('tests/e2e-runner/utils/') || rel.startsWith('tests/parity/')) {
     return /\.test\.(ts|tsx)$/.test(rel);
   }
   return false;

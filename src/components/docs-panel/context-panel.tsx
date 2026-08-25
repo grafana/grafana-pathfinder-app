@@ -201,7 +201,7 @@ export const packageInfoForNavLink = (link: ResolvedNavLink): PackageOpenInfo =>
   repository: link.repository,
 });
 
-const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOpenInfo | undefined => {
+export const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOpenInfo | undefined => {
   if (recommendation.type !== 'package') {
     return undefined;
   }

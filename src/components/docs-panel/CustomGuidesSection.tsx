@@ -28,7 +28,7 @@ interface CustomGuidesSectionProps {
   openDocsPage: (url: string, title: string, packageInfo?: PackageOpenInfo) => void;
 }
 
-function packageInfoForPath(path: PublishedGuide, resolvedMilestones?: Milestone[]): PackageOpenInfo {
+export function packageInfoForPath(path: PublishedGuide, resolvedMilestones?: Milestone[]): PackageOpenInfo {
   return {
     packageId: path.id,
     // The catalogue manifest is slim and carries no `id` (it lives on the

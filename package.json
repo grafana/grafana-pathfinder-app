@@ -25,6 +25,7 @@
     "test:coverage": "jest --coverage",
     "test:review-contract": "node --test .cursor/skills/review/scripts/contract-evolution.test.mjs",
     "test:scripts": "bash scripts/tests/run.sh",
+    "test:parity": "jest --testMatch '<rootDir>/tests/parity/**/*.test.ts'",
     "test:governance": "jest src/validation/architecture.test.ts src/validation/import-graph.test.ts src/validation/security-lint-config.test.ts src/validation/control-bytes.test.ts",
     "test:coverage:watch": "jest --coverage --watch",
     "test:go": "mage -v test",
