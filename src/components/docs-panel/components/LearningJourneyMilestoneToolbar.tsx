@@ -224,17 +224,6 @@ export function LearningJourneyMilestoneToolbar({
             className={styles.navButton}
           />
         </div>
-        {(currentMs?.description || typeof currentMs?.estimatedMinutes === 'number') && (
-          <div className={styles.milestoneSubtitle}>
-            {currentMs?.description}
-            {typeof currentMs?.estimatedMinutes === 'number' && (
-              <span className={styles.milestoneSubtitleMeta}>
-                <Icon name="clock-nine" size="xs" />
-                {t('docsPanel.milestoneEstimatedMinutes', '{{count}} min', { count: currentMs.estimatedMinutes })}
-              </span>
-            )}
-          </div>
-        )}
         {!compact && (
           <div className={styles.milestoneActions}>
             {externalUrl && (
