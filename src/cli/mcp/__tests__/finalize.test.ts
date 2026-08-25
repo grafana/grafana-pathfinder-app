@@ -242,10 +242,16 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
               },
             ],
             "id": "snapshot-fixture",
+            "manifest": {
+              "additionalFields": {
+                "schemaVersion": "1.1.0",
+              },
+              "repository": "interactive-tutorials",
+              "type": "guide",
+            },
             "schemaVersion": "1.1.0",
             "status": "draft",
             "title": "Snapshot Fixture",
-            "type": "guide",
           },
         },
         "status": "ready",
@@ -262,6 +268,43 @@ describe('pathfinder_finalize_for_app_platform contract', () => {
         },
       }
     `);
+  });
+
+  it('carries the manifest onto spec so a path does not publish as a flat guide', async () => {
+    const payload = await callFinalizeWithStore(new InMemorySessionStore(), {
+      artifact: {
+        content: {
+          id: 'alerting-path',
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+          title: 'Alerting enablement',
+          type: 'path',
+          blocks: [{ type: 'markdown', id: 'm-1', content: 'hello' }],
+        },
+        manifest: {
+          id: 'alerting-path',
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+          type: 'path',
+          repository: 'interactive-tutorials',
+          description: 'Alerting enablement',
+          milestones: ['alerting-intro', 'alerting-rules'],
+          depends: ['grafana-basics'],
+        },
+      },
+      status: 'draft',
+    });
+
+    const spec = (payload.resource as { spec: Record<string, unknown> }).spec;
+
+    expect(spec.manifest).toEqual({
+      type: 'path',
+      repository: 'interactive-tutorials',
+      description: 'Alerting enablement',
+      milestones: ['alerting-intro', 'alerting-rules'],
+      depends: [['grafana-basics']],
+      additionalFields: { schemaVersion: CURRENT_SCHEMA_VERSION },
+    });
+    // `spec.type` is not in the CRD — the API server prunes it with a warning.
+    expect(spec).not.toHaveProperty('type');
   });
 });
 
