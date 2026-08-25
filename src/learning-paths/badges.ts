@@ -198,14 +198,17 @@ export function getBadgesByTriggerType(type: BadgeTrigger['type']): Badge[] {
  * Gets the badge (if any) a path/course earns on completion. A pure lookup
  * against the badge definitions — independent of progress or completion
  * state, so it can preview "earns X badge" before the user has started.
+ *
+ * Deliberately an exact match, not the `-lj`-suffix-stripped comparison a
+ * public/CDN package id would otherwise need: `isPathCompleted` and the
+ * URL-based `markMilestoneDone` fallback both key off `paths.json`/
+ * `paths-cloud.json` and never recognize a package-resolved id at all, with
+ * or without its suffix. Stripping it here without the award path also
+ * recognizing it would preview a badge a package-backed course can never
+ * actually earn.
  */
 export function getBadgeForPath(pathId: string): Badge | undefined {
-  // Public/CDN packages carry an authoring-convention suffix (e.g.
-  // infrastructure-alerting-lj) distinct from the plain id badges are
-  // registered under (infrastructure-alerting) — same rule
-  // docs-retrieval's derivePathSlug applies for URL slugs.
-  const normalizedId = pathId.endsWith('-lj') ? pathId.slice(0, -3) : pathId;
-  return BADGES.find((b) => b.trigger.type === 'path-completed' && b.trigger.pathId === normalizedId);
+  return BADGES.find((b) => b.trigger.type === 'path-completed' && b.trigger.pathId === pathId);
 }
 
 // ============================================================================

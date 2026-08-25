@@ -10,9 +10,8 @@ describe('getBadgeForPath', () => {
     expect(getBadgeForPath('core-grafana-concepts-lj')).toBeUndefined();
   });
 
-  it("strips a public/CDN package's -lj suffix before matching", () => {
-    const badge = getBadgeForPath('infrastructure-alerting-lj');
-    expect(badge?.id).toBe('alert-guardian');
+  it("does not match a public/CDN package's -lj-suffixed id, since the award path can't earn it either", () => {
+    expect(getBadgeForPath('infrastructure-alerting-lj')).toBeUndefined();
   });
 
   it('ignores badges with a non-path-completed trigger', () => {
