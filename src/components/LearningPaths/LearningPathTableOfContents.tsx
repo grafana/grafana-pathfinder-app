@@ -33,6 +33,11 @@ export function LearningPathTableOfContents({
 }: LearningPathTableOfContentsProps) {
   const styles = useStyles2(getTableOfContentsStyles);
   const [completedSlugs, setCompletedSlugs] = useState<Set<string>>(new Set());
+  // Guards the CTA and the current-row click target, both derived from
+  // completedSlugs: before this resolves, an empty set reads as "0% done,
+  // start at module 1" regardless of real progress, and a click during that
+  // window would land on the wrong milestone.
+  const [progressLoaded, setProgressLoaded] = useState(false);
   const badge = pathId ? getBadgeForPath(pathId) : undefined;
 
   useEffect(() => {
@@ -45,6 +50,7 @@ export function LearningPathTableOfContents({
       .then((slugs) => {
         if (!cancelled) {
           setCompletedSlugs(slugs);
+          setProgressLoaded(true);
         }
       });
     return () => {
@@ -127,7 +133,7 @@ export function LearningPathTableOfContents({
             {progress > 0 && (
               <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={progress >= 100} />
             )}
-            {ctaTarget && (
+            {progressLoaded && ctaTarget && (
               <button
                 type="button"
                 className={styles.ctaButton}
@@ -142,7 +148,7 @@ export function LearningPathTableOfContents({
             )}
           </div>
         </div>
-        <GuideList guides={guides} enableCurrentRowLink />
+        <GuideList guides={guides} enableCurrentRowLink={progressLoaded} />
       </div>
     </>
   );

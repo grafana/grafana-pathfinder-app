@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
 import { milestoneCompletionStorage } from '../../lib/user-storage';
 import type { Milestone } from '../../types/content.types';
@@ -59,6 +59,35 @@ describe('LearningPathTableOfContents', () => {
     // Scoped to the module-list rows — the "Resume" CTA button above also
     // renders its own play icon, which a document-wide query would double-count.
     expect(document.querySelectorAll('.guideIconBadge [data-icon="play"]')).toHaveLength(1);
+  });
+
+  // Regression test (Cursor Bugbot, "Cover CTA resumes before progress
+  // loads"): completedSlugs starts empty, so before getCompleted resolves,
+  // an in-progress path reads as "0% done, start at module 1." A click on
+  // the CTA or the current-row affordance during that window must not be
+  // possible — it would resume the wrong milestone.
+  it('offers no CTA or clickable row until progress has loaded, even for an in-progress path', async () => {
+    let resolveCompleted: (slugs: Set<string>) => void = () => {};
+    getCompletedMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCompleted = resolve;
+      })
+    );
+    render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
+
+    // Titles render immediately from static data...
+    expect(screen.getByText('Set up')).toBeInTheDocument();
+    // ...but nothing is clickable until real progress is known.
+    expect(screen.queryByText('Get started')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resume')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-journey-start]')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveCompleted(new Set(['set-up']));
+    });
+
+    expect(await screen.findByText('Resume')).toBeInTheDocument();
+    expect(document.querySelector('[data-journey-start]')).toHaveAttribute('data-milestone-url', milestones[1]!.url);
   });
 
   it('shows a Get started CTA targeting the first milestone, with no progress ring, at 0%', async () => {
