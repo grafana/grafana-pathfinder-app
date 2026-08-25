@@ -85,9 +85,10 @@ the fixed internal aggregator.
   auth-api's key set is cell-wide, so every Grafana Cloud stack in a cell is signed by the same
   keys. Compare the token's `namespace` claim (authlib `IDTokenClaims.Namespace`, Grafana's
   `<type>-<id>` form) against the **server-derived** namespace from §2 —
-  `backend.PluginConfigFromContext(r.Context()).Namespace` — for exact equality. A token carrying
-  no `namespace` claim, and a request whose plugin context carries no namespace, both **reject**;
-  there is nothing to bind either way, and skipping the comparison would accept a sibling stack's
+  `backend.PluginConfigFromContext(r.Context()).Namespace` — for exact equality. Both halves must
+  be present: a token carrying no `namespace` claim is a **rejection**, and a request whose plugin
+  context carries no namespace is **unverifiable** (nothing this stack supplies can bind it). There
+  is nothing to compare either way, and skipping the comparison would accept a sibling stack's
   token. The verifier takes the expected namespace as an argument and enforces it internally
   (`auth.IDTokenVerifier.Verify`), so a new call site cannot forget the binding.
 - **Only per-user-data proxies extract `sub`** (verbatim, typed prefix included). A
@@ -102,10 +103,10 @@ the fixed internal aggregator.
   `"X-Grafana-Id"` string.
 - Missing/invalid identity on a GET read → **soft-200 capability envelope**
   (`reason: "identity-unavailable"`), not 401 (see §7 for why).
-- The gate has **three** outcomes, not two, and the transient/structural split of §7 cuts across
-  them. Route them from one shared decision (`identityStatus` in
-  `pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way. The
-  statuses below are named on the GET-read path; §11 states how the POST-write path serves each:
+- The gate has **three** outcomes, not two, each carrying its own reason token. Route them from one
+  shared decision (`identityStatus` in `pkg/plugin/app_platform_identity.go`) so no route can
+  classify a failure its own way. The statuses below are named on the GET-read path; §11 states how
+  the POST-write path serves each:
   - no token, or one the stack will not accept — bad signature, unknown `kid`, wrong `typ`,
     expired, no `exp`, or a `namespace` naming another stack → soft-200 `identity-unavailable`;
   - **nothing this stack supplies makes verification possible** — no app URL in the Grafana
@@ -568,10 +569,10 @@ out** — remove the write, not the read.
 - [ ] Shared paginated LIST client; drains `continue`; per-page + aggregate deadlines; per-page
       byte cap + aggregate budget with logged truncation
 - [ ] Namespace from `PluginConfigFromContext().Namespace` — never a query param
-- [ ] Inbound: JWKS signature verification everywhere via the shared verifier (plus `exp` present);
-      `sub` extraction only where data is per-user; fail closed, with the three §3 outcomes routed
-      from the one shared `identityStatus`
-- [ ] Rebuild the verifier at least every 5 min; same-URL rotation tests prove a removed key is
+- [ ] Inbound: JWKS signature verification everywhere via the shared verifier (plus `exp` present
+      and the §3 `namespace` binding); `sub` extraction only where data is per-user; fail closed,
+      with the three §3 outcomes routed from the one shared `identityStatus`
+- [ ] Rebuild the verifier at least every 5 min; same-source rotation tests prove a removed key is
       rejected and a newly published key is accepted after refresh
 - [ ] Outbound: shared identity-forwarding helper; ID-token-derived headers only; never `Cookie`;
       never replay inbound `Authorization`
@@ -588,8 +589,8 @@ out** — remove the write, not the read.
 - [ ] One toggle const; SDK header constant; `timeNow` seam everywhere
 - [ ] Debug-level upstream logs; cache metrics; first-request credential diagnostics
 - [ ] Tests: pagination, TTL expiry, ID-token rejection matrix (forged signature, unknown `kid`,
-      wrong `typ`, `exp == 0`, expired), signing-keys-unavailable fails closed, isolation, failure
-      matrix, config branch
+      wrong `typ`, `exp == 0`, expired, foreign/absent `namespace`), an unreachable signing-keys
+      chain fails closed, isolation, failure matrix, config branch
 - [ ] Runtime smoke procedure in the PR body, gating dependent work and the final outbound header
       set
 

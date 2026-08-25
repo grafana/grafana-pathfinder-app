@@ -211,8 +211,8 @@ a public CDN index anonymously behind a host allowlist, with no namespace and on
 **Security boundaries:**
 
 - Package-recommendations URL — `https` + explicit hostname allowlist
-- Forwarded ID token — JWKS signature verification, fail closed; never `Cookie`, never a replayed
-  `Authorization` header
+- Forwarded ID token — JWKS signature verification plus a `namespace` binding to the trusted
+  plugin-context namespace, fail closed; never `Cookie`, never a replayed `Authorization` header
 
 ### What is deliberately NOT here
 
