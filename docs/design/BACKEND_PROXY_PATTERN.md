@@ -74,7 +74,7 @@ the fixed internal aggregator.
   is expressed as the §7 capability envelope (soft-200), not a 401 — "fail closed" constrains
   _what_ is served (nothing), not the status code.
 - **Every proxy cryptographically verifies the ID token** before spending an upstream call:
-  ES256 signature against the issuing stack's published JWKS, `typ: "jwt"`, and `exp`/`nbf`.
+  ES256 signature against the issuing authority's published JWKS, `typ: "jwt"`, and `exp`/`nbf`.
   Structural parsing is **not** sufficient — `X-Grafana-Id` is client-settable in the shapes
   described in the canonical statement below, so an unsigned check accepts a forged `sub` (#1568).
   One shared verifier does this (`pkg/plugin/auth/id_token.go`, over `authlib`); layered on top of
@@ -87,7 +87,7 @@ the fixed internal aggregator.
   `validIDToken(r)` (everyone) and `subjectFromIDToken(r)` (per-user routes only). Both verify;
   they differ only in whether a `sub` is required.
 - Reuse the verifier across requests to share authlib's key cache, but rebuild it against the same
-  signing-keys URL at least every five minutes. Authlib otherwise keeps successfully fetched keys
+  signing-keys sources at least every five minutes. Authlib otherwise keeps successfully fetched keys
   for the verifier lifetime, which would let a key removed from JWKS remain trusted indefinitely.
 - Use the SDK constant `backend.GrafanaUserSignInTokenHeaderName`, never a hardcoded
   `"X-Grafana-Id"` string.
@@ -98,13 +98,14 @@ the fixed internal aggregator.
   `pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way. The
   statuses below are named on the GET-read path; §11 states how the POST-write path serves each:
   - no token, or one the stack will not accept → soft-200 `identity-unavailable`;
-  - **no signing-keys URL resolvable at all** (no app URL in the Grafana config, which is also what
-    a request carrying no config at all resolves to) → soft-200 `identity-unverifiable`, because
+  - **no verifier buildable at all** (no app URL in the Grafana config, which is also what a
+    request carrying no config at all resolves to) → soft-200 `identity-unverifiable`, because
     verification can never succeed on this stack;
-  - **the URL resolved but the JWKS fetch failed** (5xx, timeout, refused) → §7's transient
-    **503 + `Retry-After`**. This one is retryable, and the front-end caches an empty
-    capability=false result without retrying, so an envelope would darken the surface past the
-    end of the outage.
+  - **no signing-keys endpoint reachable at all** — every source failed to fetch (5xx, timeout,
+    refused, DNS) → §7's transient **503 + `Retry-After`**. This one is retryable, and the
+    front-end caches an empty capability=false result without retrying, so an envelope would
+    darken the surface past the end of the outage. A source that answers with a key set not
+    carrying the token's `kid` is **not** this: that is a rejection.
 - **A write serves the same three statuses in write-path shapes, not soft-200 envelopes**, and the
   standing/transient distinction must survive the translation: rejected → **401** (transient, the
   client retries after re-auth), signing-keys down → **transient 503 + `Retry-After`**, and
@@ -149,9 +150,23 @@ was extracted into the `grafana-coda-app` plugin and `CODA.md` became a consumer
 
 The `/completion-records/*` and `/custom-guide-repository` routes authenticate callers by
 **cryptographically verifying** the Grafana-forwarded ID token (`X-Grafana-Id`, via the SDK constant
-`backend.GrafanaUserSignInTokenHeaderName`) against the stack's own published JWKS at
-`GET {appURL}/api/signing-keys/keys` — the unauthenticated endpoint of the same instance that
-issued the token (`pkg/plugin/auth/id_token.go`, over `github.com/grafana/authlib`). Verified:
+`backend.GrafanaUserSignInTokenHeaderName`) against the published JWKS of whichever authority issued
+it (`pkg/plugin/auth/id_token.go`, over `github.com/grafana/authlib`). Two sources are tried in
+order, and **both are full ES256 verification — neither is a relaxed check**:
+
+1. **auth-api**, `GET http://api-lb.auth.svc.cluster.local./v1/keys`. On Grafana Cloud the stack
+   issues ID tokens but does not sign them; auth-api does. The plugin already reaches that host for
+   the outbound on-behalf-of mint, and `deployment_tools` provisions the same URL into other
+   services as `AUTH_JWKS_URL` for this exact purpose.
+2. **the stack itself**, `GET {appURL}/api/signing-keys/keys` — the unauthenticated endpoint of the
+   same instance that issued the token. Self-hosted Grafana is its own issuer and populates this;
+   a Grafana Cloud stack serves `{"keys":null}` here.
+
+Exhausting both sources splits two ways, and the split is what keeps a misconfigured auth-api from
+being worse than no auth-api: if **any** source served a key set that did not carry the token's
+`kid`, the key is genuinely unknown and the token is **rejected** (soft-200). Only when **no**
+source could be reached at all is it a signing-keys **outage** (transient 503). A wrong auth-api
+host therefore degrades to the soft refusal, not to a 503 on every proxy route. Verified:
 ES256 signature against a `kid` in the live key set, `typ: "jwt"` (an access token must not
 authenticate an identity), and `exp`/`nbf` with go-jose's one-minute leeway. `exp` **presence** is
 additionally required here, because go-jose validates expiry only when the claim is present and an
@@ -162,7 +177,7 @@ Because the signature is checked, the header's **authenticity** no longer depend
 server→plugin forwarding — which matters, since `X-Grafana-Id` is **not** on
 `ClearAuthHeadersMiddleware`'s strip-list and `ForwardIDMiddleware` overwrites rather than
 deletes, so a client-set value can survive to the plugin whenever the authenticated requester has
-no ID token of its own (#1568). Verification proves the token was **issued** by this stack, not
+no ID token of its own (#1568). Verification proves the token was **issued** for this stack, not
 that the caller presenting it is its subject: a copied, still-unexpired token replayed on a
 per-user route still verifies. Binding the token to its presenter is tracked separately.
 
@@ -171,7 +186,7 @@ bullets above, all decided by one shared `identityStatus`
 (`pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way.
 
 Authlib caches fetched keys for the lifetime of one verifier. Pathfinder reuses that verifier for
-at most **five minutes**, then rebuilds it against the same signing-keys URL, so steady-state
+at most **five minutes**, then rebuilds it against the same signing-keys sources, so steady-state
 verification avoids per-request network calls while a key removed from JWKS remains trusted for
 no more than five minutes. The **first** request bearing an unknown `kid` triggers an immediate
 re-fetch, so a newly published key need not wait for that interval; if the key is still unpublished
@@ -252,7 +267,7 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
 ## 7. Availability signaling
 
 - Three states the front-end genuinely needs to distinguish: **available**, **structurally
-  unavailable on this stack** (toggle off / identity not forwarded / no signing keys resolvable /
+  unavailable on this stack** (toggle off / identity not forwarded / no verifier buildable /
   terminal upstream), and **transient hiccup** (including an unreachable JWKS — see §3).
 - Structural unavailability is signaled **in-band**: HTTP 200 with
   `capability: { available: false, reason: "<machine-token>" }`. Split the token by cause rather
@@ -404,7 +419,7 @@ where a create differs from a read:
   instruction. A **rejected** token is the **401**: the client retries it as transient, since an
   expired session or forwarded token recovers after re-auth. A **signing-keys outage** is the
   transient **503 + `Retry-After`**: a retryable outage, not a verdict on the caller. An
-  **unverifiable** stack — no app URL, so no signing keys to check any token against — is the
+  **unverifiable** stack — no app URL, so no verifier can be built for it — is the
   structural **404** carrying `identity-unverifiable`, because verification can never succeed there;
   served as a 401 it would retry every queued write to the 30-day horizon and never disarm, whereas
   the 404 disarms the session and RETAINS the records, re-arming on a later app load so a stack that

@@ -18,6 +18,11 @@ import (
 // tests override it to point at a stub server.
 var tokenExchangeURL = auth.DefaultTokenExchangeURL
 
+// signingKeysURL is auth-api's JWKS endpoint — the authority that signs Grafana
+// ID tokens on Grafana Cloud. Static in production; tests override it to point
+// at a stub server.
+var signingKeysURL = auth.DefaultSigningKeysURL
+
 // Make sure App implements required interfaces.
 var (
 	_ instancemgmt.InstanceDisposer = (*App)(nil)
@@ -35,10 +40,11 @@ type App struct {
 	// those routes report themselves unavailable instead of failing.
 	oboExchanger *auth.Exchanger
 
-	// Verifies inbound Grafana ID tokens against the stack's published JWKS.
-	// Built lazily (the signing-keys URL comes from the per-request Grafana
-	// config, unavailable in NewApp), keyed by app URL, and periodically rebuilt
-	// so a key removed from JWKS cannot remain trusted indefinitely.
+	// Verifies inbound Grafana ID tokens against auth-api's published JWKS,
+	// falling back to the stack's own. Built lazily (the stack's signing-keys
+	// URL comes from the per-request Grafana config, unavailable in NewApp),
+	// keyed by app URL, and periodically rebuilt so a key removed from JWKS
+	// cannot remain trusted indefinitely.
 	idVerifier          *auth.IDTokenVerifier
 	idVerifierAppURL    string
 	idVerifierCreatedAt time.Time

@@ -22,8 +22,8 @@ const idTokenVerifierMaxAge = 5 * time.Minute
 // validIDToken for routes that only need an authenticated caller,
 // subjectFromIDToken for per-user-data routes that additionally key on the
 // caller's subject. Both cryptographically verify the forwarded Grafana ID token
-// (X-Grafana-Id) against the stack's published JWKS — see "The identity trust
-// boundary" in docs/design/BACKEND_PROXY_PATTERN.md §3.
+// (X-Grafana-Id) against the JWKS of whichever authority issued it — see "The
+// identity trust boundary" in docs/design/BACKEND_PROXY_PATTERN.md §3.
 
 // identityStatus is the verdict of the identity gate. Three distinct failures,
 // because BACKEND_PROXY_PATTERN.md §7's transient/structural split cuts across
@@ -43,14 +43,14 @@ const (
 	// forged signature, unknown `kid`, wrong `typ`, expired, or no `exp`.
 	identityRejected
 
-	// identityUnverifiable: no signing-keys URL is resolvable on this stack (no
-	// Grafana config on the request, or a config carrying no app URL), so
-	// verification can never succeed here.
+	// identityUnverifiable: no verifier can be built for this stack (no Grafana
+	// config on the request, or a config carrying no app URL), so verification
+	// can never succeed here.
 	identityUnverifiable
 
-	// identitySigningKeysDown: the signing-keys URL resolved but the fetch
-	// failed. Retryable, so routes serve §7's 503 + Retry-After — a capability
-	// envelope would read as "never works here" for the whole client cache TTL.
+	// identitySigningKeysDown: no signing-keys endpoint could be reached at all.
+	// Retryable, so routes serve §7's 503 + Retry-After — a capability envelope
+	// would read as "never works here" for the whole client cache TTL.
 	identitySigningKeysDown
 )
 
@@ -164,6 +164,11 @@ func (a *App) subjectFromIDToken(r *http.Request) (string, identityStatus) {
 func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 	token := strings.TrimSpace(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
 	if token == "" {
+		// Logged separately from the rejection below, and at the same level: an
+		// absent header and an unacceptable token are one status but different
+		// operational faults, and without this they are indistinguishable from
+		// outside the process.
+		a.ctxLogger(r.Context()).Info("no caller id token on the request")
 		return "", identityRejected
 	}
 
@@ -189,10 +194,10 @@ func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 }
 
 // idTokenVerifier returns this stack's ID-token verifier, building it on first
-// use. The signing-keys URL derives from the per-request Grafana config, so the
-// verifier cannot be built in NewApp. It is reused briefly so authlib's key
-// cache is shared across requests, then rebuilt to bound how long a key removed
-// from the live JWKS remains trusted.
+// use. The stack's own signing-keys URL derives from the per-request Grafana
+// config, so the verifier cannot be built in NewApp. It is reused briefly so
+// authlib's key cache is shared across requests, then rebuilt to bound how long
+// a key removed from the live JWKS remains trusted.
 func (a *App) idTokenVerifier(ctx context.Context) (*auth.IDTokenVerifier, error) {
 	appURL, err := config.GrafanaConfigFromContext(ctx).AppURL()
 	if err != nil {
@@ -209,7 +214,7 @@ func (a *App) idTokenVerifier(ctx context.Context) (*auth.IDTokenVerifier, error
 		now.Before(a.idVerifierCreatedAt.Add(idTokenVerifierMaxAge)) {
 		return a.idVerifier, nil
 	}
-	verifier, err := auth.NewIDTokenVerifier(appURL)
+	verifier, err := auth.NewIDTokenVerifier(signingKeysURL, appURL)
 	if err != nil {
 		return nil, err
 	}

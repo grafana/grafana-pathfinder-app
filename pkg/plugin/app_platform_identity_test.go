@@ -485,6 +485,94 @@ func TestIdentityGate_SigningKeysOutageIsTransient503(t *testing.T) {
 	}
 }
 
+// --- Grafana Cloud: auth-api holds the signing key ---------------------------
+//
+// A Grafana Cloud stack issues ID tokens but does not sign them, and serves
+// `{"keys":null}` at its own signing-keys endpoint. Verifying against that
+// endpoint alone resolved no `kid` for any caller, so every proxy route reported
+// identity-unavailable on every Cloud stack.
+
+// authAPIJWKS serves testSigningKey where auth-api publishes its key set.
+func authAPIJWKS(t *testing.T) string {
+	t.Helper()
+	body := jwksBody(testSigningKeyID, testSigningKey())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/keys" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL + "/v1/keys"
+}
+
+// cloudStack is a stack whose signing-keys endpoint answers exactly as a
+// measured Grafana Cloud stack does: 200, and a null key list.
+func cloudStack(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != auth.SigningKeysPath {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys":null}`))
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+func TestIdentityGate_CloudStackVerifiesAgainstAuthAPI(t *testing.T) {
+	withSigningKeysURL(t, authAPIJWKS(t))
+	withLister(t, singlePageLister())
+	withGuideLister(t, singlePageGuideLister())
+
+	cfg := map[string]string{
+		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
+		sdkconfig.AppURL:               cloudStack(t),
+	}
+
+	t.Run("custom-guide-repository", func(t *testing.T) {
+		rr, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
+		if rr.Code != http.StatusOK || !body.Capability.Available {
+			t.Fatalf("status = %d, available = %v, reason = %q", rr.Code, body.Capability.Available, body.Capability.Reason)
+		}
+	})
+	t.Run("completion-records/my", func(t *testing.T) {
+		rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
+		if rr.Code != http.StatusOK || !body.Capability.Available {
+			t.Fatalf("status = %d, available = %v, reason = %q", rr.Code, body.Capability.Available, body.Capability.Reason)
+		}
+	})
+}
+
+// A wrong auth-api host would fail its fetch rather than answer empty. That must
+// not turn every proxy route into a hard 503 on a stack that answers: while any
+// signing-keys endpoint is reachable, an unresolvable `kid` stays the soft-200
+// refusal it was before auth-api was consulted at all.
+func TestIdentityGate_UnreachableAuthAPIWithAnAnsweringStackStaysSoft(t *testing.T) {
+	unreachable, _ := startJWKSServer(t)
+	unreachable.Close()
+	withSigningKeysURL(t, unreachable.URL+"/v1/keys")
+	withLister(t, singlePageLister())
+	withGuideLister(t, singlePageGuideLister())
+
+	cfg := map[string]string{
+		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
+		sdkconfig.AppURL:               cloudStack(t),
+	}
+
+	rr, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
+	}
+	if body.Capability.Available || body.Capability.Reason != reasonIdentityUnavailable {
+		t.Fatalf("available = %v, reason = %q, want reason %q", body.Capability.Available, body.Capability.Reason, reasonIdentityUnavailable)
+	}
+}
+
 // --- Key caching -------------------------------------------------------------
 
 // The verifier is held briefly so authlib's key cache survives across requests.
