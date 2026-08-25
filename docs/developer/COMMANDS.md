@@ -70,7 +70,16 @@ linter set in `.golangci.yaml`.
 
 ## Pre-merge check
 
-`npm run check` runs typecheck + lint + prettier + lint:go + test:go + test:coverage + test:scripts in one command.
+`npm run check` runs the local pre-merge gate in one command. It announces each step as it starts, and
+stops at the first failure. To see what it contains without running it:
+
+```bash
+npm run check -- --list
+```
+
+Every step is also a standalone script, documented under "Code quality" above and "Building and testing"
+below. CI does not run `npm run check`; it additionally enforces manifest freshness and the production
+build, so a green local gate is not by itself a green `CI Gate`.
 
 ## Building and testing
 

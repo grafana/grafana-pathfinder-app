@@ -48,7 +48,7 @@ npm run test:ci          # Frontend tests, no coverage (agents should use this, 
 npm run test:coverage    # Frontend tests with coverage + thresholds (used by `npm run check`)
 npm run lint:fix         # Lint + autofix
 npm run lint:go          # Go lint (golangci-lint); CI-enforced, so a diagnostic here blocks merge
-npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:coverage + test:scripts
+npm run check            # Full pre-merge gate (`npm run check -- --list` prints the steps)
 npm run test:scripts     # Shell scripts: bash -n, shellcheck, stubbed-curl behavioural suite
 ```
 

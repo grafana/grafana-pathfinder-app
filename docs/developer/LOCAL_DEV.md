@@ -88,24 +88,24 @@ Some contributors test their local `dist/` build against a live Grafana Cloud st
 
 ## Pre-merge check
 
-Run before pushing or opening a pull request. CI runs the same set:
+Run before pushing or opening a pull request:
 
 ```bash
 npm run check
 ```
 
-Equivalent to:
+This is the local gate. It announces each step as it starts and stops at the first failure. To see what it
+contains without running it:
 
 ```bash
-npm run typecheck       # tsc --noEmit
-npm run lint            # eslint --cache .
-npm run prettier-test   # prettier formatting check
-npm run lint:go         # mage -v lint (golangci-lint)
-npm run test:go         # mage -v test
-npm run test:ci         # jest --passWithNoTests --maxWorkers 4
+npm run check -- --list
 ```
 
-Each step is also a standalone script if you only want to re-run one.
+Each step is also a standalone script if you only want to re-run one — `--list` names them, and
+[`COMMANDS.md`](COMMANDS.md) describes them.
+
+CI does not run `npm run check`, and the two are not the same set: CI additionally enforces manifest
+freshness and the production build.
 
 ## Running tests
 
