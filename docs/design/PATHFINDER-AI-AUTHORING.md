@@ -43,7 +43,7 @@ AI client
     v
 Pathfinder authoring MCP (TypeScript)
   imports pathfinder-cli command functions directly (no shell-out, no IPC)
-  performs no schema validation of its own — the CLI is the validator
+  validates argument shape only (preflight against the pathfinder_help interface) — the CLI validates guide content
   returns the updated artifact (or structured validation errors)
   finalizes App Platform handoff on request — handoff includes localExport fallback
     |
@@ -109,7 +109,7 @@ Publish the npm package (`pathfinder-cli`) with a single binary entrypoint (`pat
 
 Build the standalone TS MCP server under `src/cli/` (sibling to the CLI entrypoint). Tool dispatchers map each authoring tool call to the corresponding imported CLI command function — no shell-out, no temp directory, no IPC. Implement the stateless model: tool calls take the artifact in and return the artifact out.
 
-The MVP tool surface includes `pathfinder_authoring_start` (the documented "first tool" — returns workflow + tutorial + discovery hints), `pathfinder_help` (composes the same `--help --format json` surface the CLI exposes, as a function call), the mutation tools, `pathfinder_inspect`, `pathfinder_validate`, and `pathfinder_finalize_for_app_platform` returning both an App Platform path and a `localExport` fallback.
+The MVP tool surface includes `pathfinder_authoring_start` (the documented "first tool" — returns workflow + tutorial + discovery hints), `pathfinder_help` (derives filtered, camelCase parameter interfaces from the CLI's Commander metadata), help-derived CLI-backed tools for create/mutation/inspect/schema operations, `pathfinder_validate`, and `pathfinder_finalize_for_app_platform` returning both an App Platform path and a `localExport` fallback.
 
 The server supports two transports from the same code: stdio (for Cursor/Claude Desktop and other local MCP clients) and HTTP (for centrally hosted deployments — primarily Grafana Assistant on Cloud, fronted by the Grafana MCP token-verifier pattern). The existing Go MCP at `/api/plugins/grafana-pathfinder-app/resources/mcp` is unchanged.
 

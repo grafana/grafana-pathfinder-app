@@ -697,6 +697,7 @@ The Pathfinder authoring MCP exposes a `pathfinder_help` tool that returns the o
 
 - The top-level keys (e.g., `command`, `summary`, `required`, `optional`, `constraints`, `addressing`) are stable. New keys may be added as additive fields. Existing keys are not renamed or removed within a major version.
 - Per-flag entries have stable keys (`name`, `valueType`, `enum`, `repeatable`, `description`, `default`).
+- A flag that both accumulates and constrains its values reports `valueType: 'array'`, keeping `enum` alongside `repeatable: true` — the accumulating type wins, because the flag takes a list of enum members rather than one of them. `--target-platform` is the live case; it reported `enum` before schema 1.1.0, which made consumers reject a correct list value.
 - Removing or renaming a flag is a breaking change and rides the schema version.
 
 Agents call `pathfinder_help` instead of carrying field-level guidance locally; promoting `--help --format json` to a contract is what lets the MCP layer be a thin pass-through with no schema knowledge of its own.

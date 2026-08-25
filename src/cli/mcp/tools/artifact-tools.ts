@@ -1,11 +1,9 @@
 /**
- * Tools that produce a fresh artifact:
- *   - `pathfinder_create_package` opens a blank artifact for the standard
- *     authoring loop (then mutate via add_block / add_step / ...).
- *   - `pathfinder_create_guide_template` returns a pre-populated starter
- *     guide (markdown intro + one `section` placeholder) — the
- *     "scaffolded" alternative for agents that want a non-empty seed.
- *     Replaces the Go `create_guide_template` tool from `pkg/plugin/mcp.go`.
+ * Contract: cli-routed
+ *
+ * Thin wrap of CLI `create`. Agents copy `opts` from pathfinder_help; `dir`
+ * is withheld (tmpdir). Session minting and the create-time wire shape are
+ * shared MCP plumbing around `runCreate`, not a second command interface.
  */
 
 import * as fs from 'node:fs';
@@ -16,54 +14,65 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { runCreate } from '../../commands/create';
-import { runValidate } from '../../commands/validate';
 import { defaultPackageId } from '../../utils/auto-id';
-import { newPackageState, buildArtifactSummary, readPackage, type TreeNode } from '../../utils/package-io';
-import type { ContentJson, ManifestJson } from '../../../types/package.types';
+import { buildArtifactSummary, readPackage, type TreeNode } from '../../utils/package-io';
 import { MCP_TMPDIR_PREFIX } from '../lib/constants';
+import { registerCommandInterfaceConfig, validateCommandArgs } from '../lib/command-interface';
 import { generateSessionToken } from '../lib/session-token';
 import { SESSION_GENERATION_ABSENT, type SessionArtifact, type AuthoringSessionStore } from '../lib/session-store';
-import { type CommandOutcome, renderMachineJson } from '../../utils/output';
+import { type CommandOutcome, renderError, renderMachineJson } from '../../utils/output';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { writeAppend } from './annotations';
-import { outcomeResult, textResult, withToolErrorEnvelope } from './result';
+import { sanitizeOutcomeForMcp, outcomeResult, textResult, withToolErrorEnvelope, type ToolResult } from './result';
 
 export function registerArtifactTools(
   server: McpServer,
   options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
+  registerCommandInterfaceConfig('create', { optBlacklist: ['dir'] });
+
   server.registerTool(
     'pathfinder_create_package',
     {
       description:
-        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
+        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call pathfinder_help({ command: "create" }) for the `opts` interface. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
       annotations: writeAppend('Create Pathfinder package'),
       inputSchema: {
-        title: z.string().describe('Guide title shown to learners.'),
-        id: z
-          .string()
-          .optional()
-          .describe('Package id (kebab-case). Auto-generated from title with a random suffix if omitted.'),
-        type: z.enum(['guide', 'path', 'journey']).default('guide').describe('Package type.'),
-        description: z.string().optional().describe('Short description shown in catalogs.'),
+        opts: z
+          .record(z.string(), z.unknown())
+          .describe('Parameters keyed exactly as pathfinder_help({ command: "create" }) returns them.'),
       },
     },
-    async ({ title, id, type, description }) =>
-      withToolErrorEnvelope(undefined, 'create_package', async () => {
+    async ({ opts }) => {
+      const rejected = validateCommandArgs('create', opts);
+      if (rejected) {
+        return rejected;
+      }
+      // `create` mints the id in its Commander action, so the binding does the
+      // same before calling the runner. A title with no alphanumerics is an
+      // agent input error, not the INTERNAL_ERROR the outer envelope reports.
+      const title = opts.title as string;
+      let id = opts.id as string | undefined;
+      if (id === undefined) {
+        try {
+          id = defaultPackageId(title);
+        } catch (err) {
+          return outcomeResult({ status: 'error', code: 'INVALID_TITLE', message: renderError(err) });
+        }
+      }
+
+      return withToolErrorEnvelope(undefined, 'create_package', async () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${MCP_TMPDIR_PREFIX}create-`));
         try {
           const pkgDir = path.join(dir, 'pkg');
-          const finalId = id ?? deriveId(title);
-          if (!finalId) {
-            return outcomeResult({
-              status: 'error',
-              code: 'INVALID_TITLE',
-              message:
-                'Title must contain at least one alphanumeric character so an id can be generated. Pass id explicitly to override.',
-            });
-          }
-          const outcome = await runCreate({ dir: pkgDir, id: finalId, title, type, description });
+          const outcome = await runCreate({
+            dir: pkgDir,
+            id,
+            title,
+            type: (opts.type as 'guide' | 'path' | 'journey') ?? 'guide',
+            description: opts.description as string | undefined,
+          });
           if (outcome.status !== 'ok') {
             return outcomeResult(outcome);
           }
@@ -89,103 +98,9 @@ export function registerArtifactTools(
             // Best-effort cleanup.
           }
         }
-      })
+      });
+    }
   );
-
-  server.registerTool(
-    'pathfinder_create_guide_template',
-    {
-      description:
-        'Use this tool when an agent wants a pre-populated starter guide instead of the blank artifact pathfinder_create_package returns. Produces a schema-valid guide with a markdown intro block and one section placeholder, plus a manifest with default category/author/testEnvironment fields. Output passes Pathfinder validation by construction.',
-      annotations: writeAppend('Create Pathfinder guide template'),
-      inputSchema: {
-        id: z
-          .string()
-          .describe('Package id (kebab-case). Required; the template tool does not auto-derive an id from title.'),
-        title: z.string().describe('Guide title shown to learners.'),
-        description: z
-          .string()
-          .optional()
-          .describe('Short description shown in catalogs. Defaults to the title when omitted.'),
-        category: z.string().optional().describe('Manifest category. Defaults to "getting-started" when omitted.'),
-      },
-    },
-    async ({ id, title, description, category }) =>
-      withToolErrorEnvelope(undefined, 'create_guide_template', async () => {
-        const resolvedDescription = description ?? title;
-        const resolvedCategory = category ?? 'getting-started';
-
-        let state;
-        try {
-          state = newPackageState({ id, title, type: 'guide', description: resolvedDescription });
-        } catch (err) {
-          return outcomeResult({
-            status: 'error',
-            code: 'SCHEMA_VALIDATION',
-            message: err instanceof Error ? err.message : String(err),
-          });
-        }
-
-        const content = state.content as ContentJson & { blocks: unknown[] };
-        content.blocks = [
-          {
-            type: 'markdown',
-            id: 'markdown-1',
-            content: `# ${title}\n\n${resolvedDescription}\n\nThis guide will walk you through the steps below.`,
-          },
-          {
-            type: 'section',
-            id: 'step-1',
-            title: 'Step 1',
-            blocks: [
-              {
-                type: 'markdown',
-                id: 'markdown-2',
-                content: 'Describe what to do in step 1.',
-              },
-            ],
-          },
-        ];
-
-        const manifest = state.manifest as ManifestJson & Record<string, unknown>;
-        manifest.title = title;
-        manifest.category = resolvedCategory;
-        manifest.path = `${id}/`;
-        manifest.startingLocation = '/';
-        manifest.author = { name: 'Your Name', team: 'Your Team' };
-        manifest.testEnvironment = { tier: 'local', minVersion: '12.2.0' };
-
-        const validation = runValidate({
-          content,
-          manifest,
-          manifestSchemaVersionAuthored: true,
-        });
-        if (validation.status !== 'ok') {
-          return outcomeResult(validation, { content, manifest }, buildArtifactSummary(content));
-        }
-
-        const artifact = { content, manifest };
-        const summary = buildArtifactSummary(content);
-        const sessionToken = await mintSession(sessionStore, artifact);
-        if (mcpSessionId !== undefined) {
-          await sessionStore.bindMcpSessionId(sessionToken, mcpSessionId);
-        }
-        return sessionCreateResult(
-          sessionToken,
-          { status: 'ok', summary: 'Pre-populated guide template ready' },
-          artifact,
-          summary
-        );
-      })
-  );
-}
-
-function deriveId(title: string): string | null {
-  try {
-    return defaultPackageId(title);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -216,9 +131,9 @@ function sessionCreateResult(
   outcome: CommandOutcome,
   artifact: { content: unknown; manifest?: unknown },
   summary: TreeNode[]
-): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
+): ToolResult {
   const payload: Record<string, unknown> = {
-    ...outcome,
+    ...sanitizeOutcomeForMcp(outcome),
     sessionToken,
     generation: 1,
     artifact: {

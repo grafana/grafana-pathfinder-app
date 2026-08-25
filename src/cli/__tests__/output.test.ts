@@ -270,6 +270,30 @@ describe('formatHelpAsJson — stability contract', () => {
     expect(showMe?.valueType).toBe('boolean');
   });
 
+  it('declares <number> flags as valueType number', () => {
+    const cmd = new Command('video').addOption(new Option('--start <number>', 'Start time in seconds'));
+    const help = formatHelpAsJson(cmd);
+    expect(help.optional.find((flag) => flag.name === 'start')?.valueType).toBe('number');
+  });
+
+  it('publishes repeatable choice options as enum-constrained arrays', () => {
+    const cmd = new Command('targeting').addOption(
+      new Option('--target-platform <platform>')
+        .choices(['oss', 'cloud', 'enterprise'])
+        .argParser((value: string, previous: string[] | undefined) => [...(previous ?? []), value])
+        .default([] as string[])
+    );
+
+    const help = formatHelpAsJson(cmd);
+    const targetPlatform = help.optional.find((flag) => flag.name === 'target-platform');
+
+    expect(targetPlatform).toMatchObject({
+      valueType: 'array',
+      enum: ['oss', 'cloud', 'enterprise'],
+      repeatable: true,
+    });
+  });
+
   it('lists subcommand names when the command has children', () => {
     const parent = new Command('add-block').description('Append a block');
     parent.addCommand(new Command('markdown'));
