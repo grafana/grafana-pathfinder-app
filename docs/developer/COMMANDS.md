@@ -180,7 +180,7 @@ scripts/upsert-learning-path.sh --stack learn.grafana.net --package ./pkg --dry-
 ```
 
 ```bash
-# Test the scripts themselves (bash -n, shellcheck, stubbed-curl suite)
+# Test the scripts themselves (bash -n, shellcheck, behavioural suites)
 npm run test:scripts
 ```
 

@@ -49,7 +49,7 @@ npm run test:coverage    # Frontend tests with coverage + thresholds (used by `n
 npm run lint:fix         # Lint + autofix
 npm run lint:go          # Go lint (golangci-lint); CI-enforced, so a diagnostic here blocks merge
 npm run check            # Full pre-merge gate (`npm run check -- --list` prints the steps)
-npm run test:scripts     # Shell scripts: bash -n, shellcheck, stubbed-curl behavioural suite
+npm run test:scripts     # Shell scripts: bash -n, shellcheck, behavioural suites
 ```
 
 Dev server runs at http://localhost:3000 (admin/admin). Focused Jest runs need `--coverage=false`, or global thresholds report a false failure. Go lint is this repository's linting just as much as eslint is: the `Lint backend` CI job runs the same `golangci-lint run ./...` that `npm run lint:go` does, `CI Gate` requires it, and `CI Gate` is required on `main` — so a Go lint diagnostic blocks merge. The linter version is pinned in `GOLANGCI_LINT_VERSION` in `.github/workflows/ci.yml`; match it locally to see the same diagnostics. For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
