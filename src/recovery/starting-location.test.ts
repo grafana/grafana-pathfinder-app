@@ -171,10 +171,7 @@ describe('resolveStartingLocation', () => {
     });
 
     it('skips an undefined manifest without consuming the fallback', () => {
-      const result = resolveStartingLocation('https://example/foo', [
-        undefined,
-        { startingLocation: '/from-loader' },
-      ]);
+      const result = resolveStartingLocation('https://example/foo', [undefined, { startingLocation: '/from-loader' }]);
       expect(result).toBe('/from-loader');
     });
 

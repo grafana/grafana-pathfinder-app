@@ -67,7 +67,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
+import { coerceLaunchSource, evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -218,7 +218,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         return this.openLearningJourney(url, title, { source: 'recommender' });
       },
       (url: string, title: string, packageInfo?: PackageOpenInfo) => {
-        return this.openDocsPage(url, title, { source: 'recommender', packageInfo });
+        // Sections other than the recommender declare their own source.
+        return this.openDocsPage(url, title, {
+          source: coerceLaunchSource(packageInfo?.launchSource) ?? 'recommender',
+          packageInfo,
+        });
       },
       () => this.openEditorTab()
     );

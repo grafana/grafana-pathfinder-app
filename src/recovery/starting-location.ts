@@ -77,10 +77,7 @@ export function resolveStartingLocation(
   return validateInternalNavigationPath(candidate, options?.isAdmin);
 }
 
-function resolveCandidate(
-  url: string,
-  packageManifests: Array<Record<string, unknown> | undefined>
-): string | null {
+function resolveCandidate(url: string, packageManifests: Array<Record<string, unknown> | undefined>): string | null {
   // Manifest authority dominates: a manifest that declares the value at all
   // settles it, and only then do we fall through to the next one. Within a
   // single manifest the typed field still wins over `additionalFields` — a
