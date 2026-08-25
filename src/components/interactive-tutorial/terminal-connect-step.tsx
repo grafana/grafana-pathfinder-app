@@ -167,7 +167,11 @@ export const TerminalConnectStep = forwardRef<
       mintLikely,
       isPending: gcxCredentialPending,
       run: runGcxCredential,
-    } = useGcxCredential(markComplete);
+      // One store serves every surface that offers the install, so a credential
+      // installed from the terminal toolbar reaches every mounted step. Only a
+      // gcx step on this session has anything to complete on it, and the `gcx`
+      // guards below keep the rest of a non-gcx step's render out of it too.
+    } = useGcxCredential(gcx ? markComplete : undefined, terminalCtx?.sessionId);
 
     const handleConnect = useCallback(async () => {
       if (!terminalCtx) {
@@ -263,7 +267,7 @@ export const TerminalConnectStep = forwardRef<
     let stepState: StepStateValue = STEP_STATES.IDLE;
     if (isCompleted) {
       stepState = STEP_STATES.COMPLETED;
-    } else if (isTerminalConnecting || isCurrentlyExecuting || gcxState === 'provisioning') {
+    } else if (isTerminalConnecting || isCurrentlyExecuting || (gcx && gcxState === 'provisioning')) {
       stepState = STEP_STATES.EXECUTING;
     } else if (!isEnabled) {
       stepState = STEP_STATES.REQUIREMENTS_UNMET;
@@ -291,6 +295,7 @@ export const TerminalConnectStep = forwardRef<
         testIds={{
           mint: testIds.interactive.gcxMintButton(renderedStepId),
           tokenInput: testIds.interactive.gcxTokenInput(renderedStepId),
+          tokenLifetime: testIds.interactive.gcxTokenLifetime(renderedStepId),
           install: testIds.interactive.gcxInstallButton(renderedStepId),
           error: testIds.interactive.gcxError(renderedStepId),
           skip: testIds.interactive.gcxSkipButton(renderedStepId),
@@ -306,7 +311,7 @@ export const TerminalConnectStep = forwardRef<
       >
         {children && <div className={styles.content}>{children}</div>}
 
-        {gcxCredential && (
+        {gcx && gcxCredential && (
           <GcxReadyLine credential={gcxCredential} testId={testIds.interactive.gcxReady(renderedStepId)} />
         )}
 

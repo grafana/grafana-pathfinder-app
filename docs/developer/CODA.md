@@ -121,9 +121,20 @@ it already owns. gcx then talks to **this** Grafana as **this** learner.
 exceeds the caller's own, and a plugin's managed service account is created with no basic role at all —
 `plugin.json` `iam` grants fine-grained permissions, never a role. So the plugin can mint nothing
 usable, by design, and minting with the user's own session satisfies Grafana's guard by construction
-instead of re-implementing it. Whatever comes back is capped at what the user already had. One service
-account per user (`coda-gcx-<login>`), reused, with a fresh token per session named `coda-<sessionId>`,
-expiring with the VM.
+instead of re-implementing it. Whatever comes back is capped at what the user already had.
+
+**The cap holds only for a newly created account, so the account name is part of the guard.** One
+service account per user, reused, with a fresh short-lived token per session. Pathfinder names that
+account itself — `coda-gcx-u<userId>`, in `integrations/coda/gcx-service-account.ts` — rather than
+taking the client's `coda-gcx-<login>` default: that default lowercases the login and rewrites every
+non-`[a-z0-9-]` run to `-`, so `a.b` and `a-b` land on one name, and reuse is by exact name. A
+collision would hand one person a token minted against another person's account, at that account's
+role. Numeric ids do not collide. Reuse also outlives a role change — Grafana caps the role when the
+account is created and grants the creator write on it, so an Admin who mints and is later demoted keeps
+a route to an Admin token — and `assertServiceAccountIsMintable` refuses a reused account that
+outranks the caller today, reporting `mint_forbidden` because the answer is the same: paste a token
+instead. A failed lookup is not a refusal; below Admin it is Grafana's own `403` on the search, which is
+the ordinary path to the paste field.
 
 **Minting is Admin-only in practice, so the paste path is not a fallback.** `serviceaccounts:create` is
 an Admin permission by default while sandbox sessions are open to Editors, so most people who can open
@@ -133,9 +144,15 @@ not an error: the step reveals a token field and the same flow works for everyon
 mint-only UI.**
 
 **The token is readable inside the VM.** The learner has a root shell on the same box, so it is exposed
-for the VM's lifetime. That is bounded rather than prevented — it is the learner's own identity, capped
-at their own role, and it expires with the VM. Recorded as an accepted risk in the Coda plugin's
+for as long as the token lives. That is bounded rather than prevented — it is the learner's own
+identity, capped at their own role. Recorded as an accepted risk in the Coda plugin's
 `docs/SECURITY.md`.
+
+**Only a minted token's lifetime is ours.** A mint asks for a short-lived token that expires on its
+own, inside the VM's lifetime. A **pasted** token is forwarded to the backend unchanged: Pathfinder
+cannot shorten it, and holds no `serviceaccounts:delete` to revoke it, so one created without an expiry
+stays valid long after the sandbox is gone. `GcxSetupPanel` says so next to the field rather than
+repeating the minted token's bound over both paths.
 
 **There is no capability flag for the route.** `capabilities.features` still lists only
 `exec.readyFile`, and a Coda plugin older than 1.3.0 answers `404 session_not_found` — the same code as
@@ -157,18 +174,37 @@ callback because marking a step complete is the step's business and means nothin
 
 **One credential per session, shared by both.** The state lives in
 `integrations/coda/gcx-credential-store.ts`, not in either component. Two independent copies would let
-one surface offer a mint the other has already made — and Grafana rejects a second `coda-<sessionId>`
-token on the name, so that second mint fails with a message about token names rather than anything a
-learner can act on. Sharing it also means a credential installed from the toolbar completes a `gcx` step
-that is waiting on one: `onReady` fires for whichever surface installed it.
+one surface offer a mint the other has already made — and Grafana rejects a duplicate token name, so
+that second mint fails with a message about token names rather than anything a learner can act on.
+Sharing it also means a credential installed from the toolbar completes a `gcx` step that is waiting on
+one.
+
+**Sharing one store makes the reader's identity load-bearing.** `useGcxCredential(onReady, sessionId)`
+answers only for the session named, and everything it reports — state, credential, error — is `idle`
+for any other. Without that, a credential installed from the toolbar would render a ready line on a
+step targeting a different VM and complete it. `terminal-connect-step` passes `onReady` only when
+`gcx` is set, and guards its gcx render on the same flag, so an ordinary connect step that only needed
+a **Continue** click is never completed by someone else's credential. It is the additive contract
+holding: a block without `gcx` behaves exactly as it did before the field existed.
 
 **The store is keyed to the session, and a new session clears it.** `TerminalProvider` calls
 `invalidateGcxCredentialForSession` whenever the registered session id changes, because a reconnect
 provisions a _fresh_ VM holding no credential — keeping the old state would report gcx as ready for a
 box that no longer exists, and the ready line would name its path. A `null` id is only a disconnect,
-which may still reconnect to the same session, so it does not discard anything. Tokens also expire well
-inside a long session, so the modal keeps a **Set up again** control next to the ready line; without it
-the form is unreachable once a credential exists.
+which may still reconnect to the same session, so it does not discard anything.
+
+**An install that settles late cannot publish over its replacement.** Provisioning takes long enough
+for the terminal to reconnect underneath it, so every reset and every run start bumps a generation
+counter, and a run publishes its result only while it still holds the current generation _and_ the
+snapshot still names its session. Without that guard, session A finishing after the terminal moved to B
+would report ready — and complete B's step — for a VM that never received a credential.
+
+**A retry asks for a token name nothing holds.** Tokens expire well inside a long session, so the modal
+keeps a **Set up again** control next to the ready line; without it the form is unreachable once a
+credential exists. Grafana rejects a duplicate token name even after the first token has expired, so
+the store hands each mint for a session a name of its own — `coda-<sessionId>`, then
+`coda-<sessionId>-2`, and so on. That also covers a mint whose delivery failed: the token was created,
+its only value was discarded with the error, and the retry must not ask for the same name back.
 
 **Do Section stops at a gcx step.** Not by the step's `executeStep` handle — `terminal-connect` is
 `refTarget: 'none'`, so no ref is attached to it and that handle has no runner-side caller. The runner
@@ -182,12 +218,16 @@ back the controls.
 count the outcomes. The whole shape of this surface rests on how often `mint_forbidden` comes back, so
 that rate cannot be left unmeasurable — no token, session id, or backend error text goes with it.
 
-**`gcx` does not survive an upload through `scripts/upsert-guide.sh` yet.** The `InteractiveGuide` CRD in
+**`gcx` does not survive any write to the backend yet.** The `InteractiveGuide` CRD in
 `grafana-pathfinder-backend` (`kinds/interactiveguide.cue`) declares `vmTemplate`, `vmApp` and
-`vmScenario` but not `gcx`, and the API server prunes an undeclared field with a `200` and no message —
-so a guide pushed to a Cloud stack that way connects a terminal without installing a credential.
-`src/validation/upsert-script-crd-fields.test.ts` records this as a deliberate prune; the fix is a `#Block`
-field in that repo's CUE.
+`vmScenario` but not `gcx`, and the API server prunes an undeclared field with a `200` and no message.
+That is every path through the CRD, not only `scripts/upsert-guide.sh`: a **block-editor save or
+publish** goes through the same resource, so a guide authored in the editor reloads without the flag and
+its terminal step connects without installing a credential. Bundled packages and locally loaded JSON are
+unaffected — nothing prunes them — so a guide that needs `gcx` is servable today, just not from a Cloud
+stack. `TerminalConnectBlockForm` says so under the checkbox rather than letting an author discover it
+on reload, `src/validation/upsert-script-crd-fields.test.ts` records it as a deliberate prune alongside
+the `dataCheck*` family, and the fix is a `#Block` field in that repo's CUE.
 
 ## Requirements and a connecting terminal
 
@@ -363,6 +403,7 @@ Grafana restart.
 | `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                         |
 | `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                 |
 | `src/integrations/coda/gcx-credential-store.ts`                 | One gcx credential per session; session-keyed invalidation, and the ladder's telemetry   |
+| `src/integrations/coda/gcx-service-account.ts`                  | Which service account a mint may use: the collision-free name, and the role reconcile    |
 | `src/integrations/coda/GcxSetupPanel.tsx`                       | The gcx form and its result line; test ids come in as a prop                             |
 | `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                    |
 | `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                    |

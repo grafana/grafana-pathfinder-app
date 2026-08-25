@@ -63,10 +63,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
   const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
-  const { enabled, pinned, jsonData: pluginJsonData } = plugin.meta;
+  const { jsonData: pluginJsonData } = plugin.meta;
   const [resolvedJsonData, setResolvedJsonData] = useState<DocsPluginConfig>(pluginJsonData || {});
-  const [resolvedEnabled, setResolvedEnabled] = useState(enabled);
-  const [resolvedPinned, setResolvedPinned] = useState(pinned);
   const [state, setState] = useState<State>(() => buildStateFromJsonData(pluginJsonData));
   const [isSaving, setIsSaving] = useState(false);
   const isDraftEdited = useRef(false);
@@ -78,6 +76,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
   // `plugin.meta.jsonData` can lag a recent save, so seed the form from the
   // authoritative read — but never over an edit the admin has already made.
+  // A seed only: every write re-reads, because this one can go stale.
   useEffect(() => {
     let cancelled = false;
 
@@ -88,8 +87,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         }
 
         setResolvedJsonData(fresh.jsonData);
-        setResolvedEnabled(fresh.enabled);
-        setResolvedPinned(fresh.pinned);
         if (!isDraftEdited.current) {
           setState(buildStateFromJsonData(fresh.jsonData));
         }
@@ -166,13 +163,14 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     setAssistantDevModeToggling(true);
     try {
       const newValue = event.target.checked;
+      const current = await fetchPluginSettings(plugin.meta.id);
 
       await updatePluginSettings(plugin.meta.id, {
-        enabled: resolvedEnabled,
-        pinned: resolvedPinned,
+        enabled: current.enabled,
+        pinned: current.pinned,
         jsonData: {
-          ...(resolvedJsonData || {}),
-          ...getConfigWithDefaults(resolvedJsonData || {}),
+          ...current.jsonData,
+          ...getConfigWithDefaults(current.jsonData),
           enableAssistantDevMode: newValue,
         },
       });
@@ -231,12 +229,15 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     setIsSaving(true);
 
     try {
-      // Preserve ALL existing jsonData fields first (including provisioned fields
-      // like stackId that aren't in DocsPluginConfig), then apply defaults for
-      // known fields, then override with this form's fields.
+      // POST /settings replaces the whole object, so the fields this form does
+      // not own — enabled, pinned, and provisioned jsonData such as stackId —
+      // are read back immediately before the write. The mount-time read is a
+      // seed for the form; another tab saving after that would make it a stale
+      // snapshot that silently restores old values.
+      const current = await fetchPluginSettings(plugin.meta.id);
       const newJsonData = {
-        ...(resolvedJsonData || {}),
-        ...getConfigWithDefaults(resolvedJsonData || {}),
+        ...current.jsonData,
+        ...getConfigWithDefaults(current.jsonData),
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
@@ -250,8 +251,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       };
 
       await updatePluginSettings(plugin.meta.id, {
-        enabled: resolvedEnabled,
-        pinned: resolvedPinned,
+        enabled: current.enabled,
+        pinned: current.pinned,
         jsonData: newJsonData,
       });
 

@@ -9,7 +9,15 @@
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { recordGcxCredentialDegradation } from '../../lib/telemetry';
-import { codaErrorCodeMessage, isMintForbidden, provisionGcx, toCodaError, type GcxCredential } from './coda-api';
+import {
+  codaErrorCodeMessage,
+  isMintForbidden,
+  provisionGcx,
+  toCodaError,
+  type GcxCredential,
+  type MintTokenOptions,
+} from './coda-api';
+import { assertServiceAccountIsMintable, gcxServiceAccountName } from './gcx-service-account';
 
 /** `needs-token` is "asked, and told to paste one instead". */
 export type GcxState = 'idle' | 'provisioning' | 'ready' | 'needs-token' | 'failed';
@@ -27,6 +35,21 @@ const IDLE: GcxSnapshot = { sessionId: null, state: 'idle', credential: null, er
 let snapshot: GcxSnapshot = IDLE;
 const listeners = new Set<() => void>();
 
+/**
+ * Bumped by every reset and every run start, so an install that settles after
+ * the terminal moved on cannot publish over its replacement.
+ */
+let generation = 0;
+
+/**
+ * Mints attempted against `mintSession`. Grafana rejects a duplicate token name
+ * even once the first token has expired, so a retry — "Set up again", or a mint
+ * whose delivery failed and discarded the only token value — has to ask for a
+ * name nothing holds yet.
+ */
+let mintSession: string | null = null;
+let mintAttempts = 0;
+
 function publish(next: GcxSnapshot): void {
   snapshot = next;
   listeners.forEach((listener) => listener());
@@ -43,8 +66,21 @@ export function getGcxCredentialSnapshot(): GcxSnapshot {
   return snapshot;
 }
 
+/**
+ * Back to the form, keeping the mint bookkeeping. "Set up again" lands here,
+ * and it is the same session — so the next mint still has to ask for a token
+ * name the expired one does not hold.
+ */
 export function resetGcxCredential(): void {
+  generation += 1;
   publish(IDLE);
+}
+
+/** Everything a page reload would have cleared, bookkeeping included. */
+export function resetGcxCredentialStore(): void {
+  mintSession = null;
+  mintAttempts = 0;
+  resetGcxCredential();
 }
 
 /**
@@ -61,6 +97,26 @@ export function invalidateGcxCredentialForSession(sessionId: string | null): voi
   }
 }
 
+/** A token name no earlier mint for this session has claimed. */
+function nextTokenName(sessionId: string): string {
+  if (mintSession !== sessionId) {
+    mintSession = sessionId;
+    mintAttempts = 0;
+  }
+  mintAttempts += 1;
+  return mintAttempts === 1 ? `coda-${sessionId}` : `coda-${sessionId}-${mintAttempts}`;
+}
+
+/**
+ * Name the account and the token a mint may use. The account is checked before
+ * the name is claimed, so a refusal does not burn a token name.
+ */
+async function mintOptions(sessionId: string): Promise<MintTokenOptions> {
+  const serviceAccountName = gcxServiceAccountName();
+  await assertServiceAccountIsMintable(serviceAccountName);
+  return { serviceAccountName, tokenName: nextTokenName(sessionId) };
+}
+
 /**
  * Install a credential into `sessionId`, minting one unless `token` is given.
  * The session's terminal must already be connected; the backend has no other
@@ -75,45 +131,70 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
     return;
   }
 
+  generation += 1;
+  const run = generation;
   publish({ sessionId, state: 'provisioning', credential: null, error: null });
+
+  /**
+   * Publish only while this run is still the one the UI is waiting for. A
+   * reconnect resets the store and starts a new session, and an install that
+   * was already in flight would otherwise report ready for a VM that never
+   * received a credential.
+   */
+  const settle = (next: GcxSnapshot): boolean => {
+    if (run !== generation || snapshot.sessionId !== sessionId) {
+      logger.warn('[gcx] discarding a settled install for a session that has moved on');
+      return false;
+    }
+    publish(next);
+    return true;
+  };
+
   try {
-    const written = await provisionGcx(sessionId, token ? { token } : {});
-    publish({ sessionId, state: 'ready', credential: written, error: null });
-    reportAppInteraction(UserInteraction.GcxCredentialInstalled, { source: token ? 'pasted' : 'minted' });
+    const written = await provisionGcx(sessionId, token ? { token } : await mintOptions(sessionId));
+    if (settle({ sessionId, state: 'ready', credential: written, error: null })) {
+      reportAppInteraction(UserInteraction.GcxCredentialInstalled, { source: token ? 'pasted' : 'minted' });
+    }
   } catch (err) {
     const codaErr = toCodaError(err);
     if (isMintForbidden(codaErr)) {
       // Expected below Admin, so it reveals the paste field rather than
       // reporting a failure.
-      publish({
+      const revealed = settle({
         sessionId,
         state: 'needs-token',
         credential: null,
         error: 'Grafana would not let this account mint a token. Paste a service account token instead.',
       });
-      recordGcxCredentialDegradation('mint-forbidden');
+      if (revealed) {
+        recordGcxCredentialDegradation('mint-forbidden');
+      }
       return;
     }
     if (codaErr.code === 'session_not_found') {
       // The session connected moments ago, so it exists. A 404 on this route
       // means the route does not — and there is no capability flag to
       // feature-detect the credential route with.
-      publish({
+      const reported = settle({
         sessionId,
         state: 'failed',
         credential: null,
         error: 'This Grafana’s Coda plugin is too old to install a gcx credential — it needs 1.3.0 or later.',
       });
-      recordGcxCredentialDegradation('plugin-too-old');
+      if (reported) {
+        recordGcxCredentialDegradation('plugin-too-old');
+      }
       return;
     }
     logger.warn('[gcx] credential install failed', { code: codaErr.code });
-    publish({
+    const reported = settle({
       sessionId,
       state: 'needs-token',
       credential: null,
       error: codaErrorCodeMessage(codaErr.code, codaErr.message),
     });
-    recordGcxCredentialDegradation('refused');
+    if (reported) {
+      recordGcxCredentialDegradation('refused');
+    }
   }
 }

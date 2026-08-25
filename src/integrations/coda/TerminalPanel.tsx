@@ -71,7 +71,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
   // Register with shared context so TerminalStep components can send commands
   const terminalCtx = useTerminalContext();
-  const gcxCredential = useGcxCredential();
+  const gcxCredential = useGcxCredential(undefined, sessionId);
   useEffect(() => {
     terminalCtx?._register({ status, sessionId, error, connect, disconnect, sendCommand });
   }, [terminalCtx, status, sessionId, error, connect, disconnect, sendCommand]);
@@ -659,6 +659,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
             testIds={{
               mint: testIds.codaTerminal.gcxMint,
               tokenInput: testIds.codaTerminal.gcxToken,
+              tokenLifetime: testIds.codaTerminal.gcxTokenLifetime,
               install: testIds.codaTerminal.gcxInstall,
               error: testIds.codaTerminal.gcxError,
             }}

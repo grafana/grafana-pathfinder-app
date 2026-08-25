@@ -24,7 +24,14 @@ jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: () => '' }),
 }));
 
-const IDS = { mint: 'mint', tokenInput: 'token', install: 'install', error: 'error', skip: 'skip' };
+const IDS = {
+  mint: 'mint',
+  tokenInput: 'token',
+  tokenLifetime: 'lifetime',
+  install: 'install',
+  error: 'error',
+  skip: 'skip',
+};
 
 function renderPanel(props: Partial<React.ComponentProps<typeof GcxSetupPanel>> = {}) {
   const onMint = jest.fn();
@@ -84,6 +91,23 @@ describe('GcxSetupPanel', () => {
     expect(screen.getByText(/readable inside the VM/i)).toBeInTheDocument();
   });
 
+  it('claims a bounded lifetime only for the token it mints', () => {
+    // A pasted token is forwarded unchanged, and nothing here can shorten or
+    // revoke it — so the exposure the mint path bounds is not bounded there.
+    renderPanel();
+
+    expect(screen.getByText(/expires on its own/i)).toBeInTheDocument();
+    expect(screen.getByTestId('lifetime').textContent).toMatch(/expiry when you create it/i);
+    expect(screen.getByText(/readable inside the VM/i).textContent).not.toMatch(/expires/i);
+  });
+
+  it('keeps the pasted-token warning up once minting has been refused', () => {
+    renderPanel({ state: 'needs-token', offerMint: false, error: 'no' });
+
+    expect(screen.queryByText(/expires on its own/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('lifetime')).toBeInTheDocument();
+  });
+
   it('trims the pasted token before installing, and will not install an empty one', () => {
     const { onInstall } = renderPanel();
     expect(screen.getByTestId('install')).toBeDisabled();
@@ -119,7 +143,7 @@ describe('GcxSetupPanel', () => {
         mintLikely
         onMint={jest.fn()}
         onInstall={jest.fn()}
-        testIds={{ mint: 'mint', tokenInput: 'token', install: 'install', error: 'error' }}
+        testIds={{ mint: 'mint', tokenInput: 'token', tokenLifetime: 'lifetime', install: 'install', error: 'error' }}
       />
     );
     expect(screen.queryByRole('button', { name: /continue without gcx/i })).not.toBeInTheDocument();
@@ -135,7 +159,7 @@ describe('GcxSetupPanel', () => {
         onMint={jest.fn()}
         onInstall={jest.fn()}
         onSkip={jest.fn()}
-        testIds={{ mint: 'mint', tokenInput: 'token', install: 'install', error: 'error' }}
+        testIds={{ mint: 'mint', tokenInput: 'token', tokenLifetime: 'lifetime', install: 'install', error: 'error' }}
       />
     );
     expect(screen.getByRole('button', { name: /continue without gcx/i })).toBeInTheDocument();

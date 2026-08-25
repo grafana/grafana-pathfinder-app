@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { Button, Checkbox, Field, Input, Combobox, TextArea, useStyles2 } from '@grafana/ui';
+import { Alert, Button, Checkbox, Field, Input, Combobox, TextArea, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { useCodaOptions, useCodaTemplateOptions } from './useCodaOptions';
@@ -142,6 +142,14 @@ export function TerminalConnectBlockForm({
         value={gcx}
         onChange={(e) => setGcx(e.currentTarget.checked)}
       />
+
+      {gcx && (
+        <Alert title="gcx is not stored on the backend yet" severity="warning">
+          The <code>InteractiveGuide</code> resource does not declare this field, so saving or publishing this guide
+          drops it without an error and the step reloads without it. Serve the guide from a bundled package or a local
+          file until the backend declares <code>gcx</code>.
+        </Alert>
+      )}
 
       <div className={styles.footer}>
         {isEditing && onSwitchBlockType && (

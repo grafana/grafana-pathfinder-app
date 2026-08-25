@@ -30,9 +30,10 @@ const SCRIPT_PATH = path.resolve(__dirname, '..', '..', 'scripts', 'upsert-learn
 //
 // `gcx` on `terminal-connect` is the same story: `#Block` declares `vmTemplate`,
 // `vmApp` and `vmScenario` but not `gcx` (verified against
-// kinds/interactiveguide.cue), so a guide uploaded through the scripts loses the
-// flag and its terminal step connects without installing a credential. Remove
-// this entry when the CUE declares it.
+// kinds/interactiveguide.cue), so a guide loses the flag and its terminal step
+// connects without installing a credential. The prune belongs to the CRD, not to
+// the script, so it applies to every write through the resource — a block-editor
+// save or publish included. Remove this entry when the CUE declares it.
 const PRUNED_BY_CRD = new Set([
   'defaultValue',
   'dataCheckQuery',

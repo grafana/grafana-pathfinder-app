@@ -12,7 +12,7 @@
  * browser and why a pasted token is the primary path, not a fallback.
  */
 
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 
 import { canMintGrafanaToken, type GcxCredential } from './coda-api';
 import {
@@ -40,12 +40,26 @@ export interface UseGcxCredentialResult {
 }
 
 /**
- * @param onReady called once per installed credential, whichever surface
- *   installed it. The step uses it to mark itself complete; the toolbar has
- *   nothing to do and omits it.
+ * @param onReady called once per credential installed into `sessionId`,
+ *   whichever surface installed it. A gcx step uses it to mark itself complete;
+ *   the terminal toolbar has nothing to do and omits it. Omit it on any surface
+ *   that does not complete on a credential — one store serves them all, so a
+ *   toolbar install reaches every subscriber.
+ * @param sessionId the session this caller is asking about. Everything the hook
+ *   reports describes that session and nothing else: a credential belongs to
+ *   the VM it was written into, so an unrelated step must not read one, render
+ *   it, or complete on it.
  */
-export function useGcxCredential(onReady?: (credential: GcxCredential) => void): UseGcxCredentialResult {
-  const snapshot = useSyncExternalStore(subscribeGcxCredential, getGcxCredentialSnapshot);
+export function useGcxCredential(
+  onReady?: (credential: GcxCredential) => void,
+  sessionId: string | null = null
+): UseGcxCredentialResult {
+  const stored = useSyncExternalStore(subscribeGcxCredential, getGcxCredentialSnapshot);
+  const snapshot = useMemo(
+    () =>
+      stored.sessionId === sessionId ? stored : { sessionId, state: 'idle' as GcxState, credential: null, error: null },
+    [stored, sessionId]
+  );
 
   const onReadyRef = useRef(onReady);
   useEffect(() => {
@@ -61,7 +75,7 @@ export function useGcxCredential(onReady?: (credential: GcxCredential) => void):
     onReadyRef.current?.(snapshot.credential);
   }, [snapshot.state, snapshot.credential]);
 
-  const run = useCallback((sessionId: string | null, token?: string) => runGcxCredential(sessionId, token), []);
+  const run = useCallback((target: string | null, token?: string) => runGcxCredential(target, token), []);
   const reset = useCallback(() => resetGcxCredential(), []);
 
   return {

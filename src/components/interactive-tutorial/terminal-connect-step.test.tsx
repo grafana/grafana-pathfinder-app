@@ -14,7 +14,7 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { CodaError } from '@grafana/coda-client';
 
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
-import { resetGcxCredential } from '../../integrations/coda/gcx-credential-store';
+import { resetGcxCredentialStore, runGcxCredential } from '../../integrations/coda/gcx-credential-store';
 import { testIds } from '../../constants/testIds';
 
 jest.mock('@grafana/ui', () => ({
@@ -35,7 +35,7 @@ jest.mock('@grafana/ui', () => ({
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: () => ({ fetch: jest.fn() }),
   getGrafanaLiveSrv: () => ({}),
-  config: { bootData: { user: { isSignedIn: true, login: 'admin', orgRole: 'Admin' } } },
+  config: { bootData: { user: { id: 7, isSignedIn: true, login: 'admin', orgRole: 'Admin' } } },
 }));
 
 jest.mock('../../lib/logging', () => ({
@@ -99,6 +99,12 @@ const CREDENTIAL = {
 
 const STEP_ID = 'step-1';
 
+/** Pathfinder names both, so neither is the client's login-derived default. */
+const mintOptions = (sessionId: string) => ({
+  serviceAccountName: 'coda-gcx-u7',
+  tokenName: `coda-${sessionId}`,
+});
+
 /** Connect resolves a session id and the context reports connected, as it does live. */
 function connectResolves(sessionId: string | null = 's_abc') {
   mockOpenTerminal.mockImplementation(async () => {
@@ -122,7 +128,7 @@ beforeEach(() => {
   mockCanMint = true;
   mockProvisionGcx.mockReset();
   // The credential state is module-scoped, shared with the terminal toolbar.
-  resetGcxCredential();
+  resetGcxCredentialStore();
 });
 
 describe('without gcx', () => {
@@ -164,7 +170,7 @@ describe('with gcx', () => {
 
     fireEvent.click(screen.getByText('Try in terminal'));
 
-    await waitFor(() => expect(mockProvisionGcx).toHaveBeenCalledWith('s_resolved', {}));
+    await waitFor(() => expect(mockProvisionGcx).toHaveBeenCalledWith('s_resolved', mintOptions('s_resolved')));
   });
 
   it('reports the file, context and server it wrote, then completes', async () => {
@@ -315,6 +321,61 @@ describe('with gcx', () => {
     // The terminal owns the connection error; the step just stays retryable.
     expect(screen.getByText('Try in terminal')).toBeInTheDocument();
     expect(screen.queryByTestId(testIds.interactive.gcxError(STEP_ID))).not.toBeInTheDocument();
+  });
+});
+
+// One store serves the guide step and the terminal toolbar, so an install made
+// anywhere reaches every mounted step. Only a gcx step on the same session has
+// anything to complete on it.
+describe('a credential installed elsewhere', () => {
+  it('leaves an ordinary connect step alone', async () => {
+    mockTerminalStatus = 'connected';
+    mockSessionId = 's_abc';
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onComplete = jest.fn();
+    renderStep({ onComplete });
+
+    await act(async () => {
+      await runGcxCredential('s_abc');
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(mockMarkStepCompleted).not.toHaveBeenCalled();
+    // Nor does it borrow the other step's ready line.
+    expect(screen.queryByTestId(testIds.interactive.gcxReady(STEP_ID))).not.toBeInTheDocument();
+    // It still completes the way it always did.
+    expect(screen.getByTestId(testIds.interactive.terminalSkipButton(STEP_ID))).toBeInTheDocument();
+  });
+
+  it('completes a gcx step waiting on the same session', async () => {
+    mockTerminalStatus = 'connected';
+    mockSessionId = 's_abc';
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onComplete = jest.fn();
+    renderStep({ gcx: true, onComplete });
+
+    await act(async () => {
+      await runGcxCredential('s_abc');
+    });
+
+    expect(onComplete).toHaveBeenCalled();
+  });
+
+  it('leaves a gcx step targeting another VM alone', async () => {
+    // A later step whose `vmTemplate` differs reconnects to its own session;
+    // the credential the previous VM took is not its.
+    mockTerminalStatus = 'connected';
+    mockSessionId = 's_other';
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onComplete = jest.fn();
+    renderStep({ gcx: true, onComplete });
+
+    await act(async () => {
+      await runGcxCredential('s_abc');
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.queryByTestId(testIds.interactive.gcxReady(STEP_ID))).not.toBeInTheDocument();
   });
 });
 

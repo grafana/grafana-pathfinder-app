@@ -92,6 +92,18 @@ describe('TerminalConnectBlockForm gcx', () => {
     expect(submitted(onSubmit)).not.toHaveProperty('gcx');
   });
 
+  it('warns that a backend write drops the field, only once it is ticked', () => {
+    // The CRD's `#Block` does not declare `gcx`, and the API server prunes an
+    // undeclared field with a 200 and no message — so a save or publish from
+    // here reloads the guide without it.
+    renderForm();
+    expect(screen.queryByText(/not stored on the backend/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /set up gcx/i }));
+
+    expect(screen.getByText(/not stored on the backend/i)).toBeInTheDocument();
+  });
+
   it('keeps gcx alongside the VM options', () => {
     const onSubmit = renderForm({
       type: 'terminal-connect',

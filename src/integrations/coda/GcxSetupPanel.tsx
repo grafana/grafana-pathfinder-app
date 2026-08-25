@@ -15,6 +15,7 @@ import type { GcxCredential } from './coda-api';
 export interface GcxPanelTestIds {
   mint: string;
   tokenInput: string;
+  tokenLifetime: string;
   install: string;
   error: string;
   skip?: string;
@@ -119,7 +120,7 @@ export function GcxSetupPanel({
 
       <span className={styles.warning}>
         The token is readable inside the VM — you have a root shell on the same box. It is scoped to your own Grafana
-        role and expires with the VM.
+        role.
       </span>
 
       {offerMint && (
@@ -127,6 +128,7 @@ export function GcxSetupPanel({
           <Button size="sm" variant={mintLikely ? 'primary' : 'secondary'} onClick={onMint} data-testid={testIds.mint}>
             Set up gcx
           </Button>
+          <span className={styles.hint}>Mints a short-lived token that expires on its own.</span>
         </div>
       )}
 
@@ -134,6 +136,13 @@ export function GcxSetupPanel({
         {mintLikely
           ? 'Or paste a service account token — Administration → Service accounts.'
           : 'Minting usually needs an admin. Paste a Grafana service account token instead — Administration → Service accounts.'}
+      </span>
+
+      {/* Only a minted token's lifetime is ours to set. A pasted one is
+          forwarded unchanged, so nothing here can bound it. */}
+      <span className={styles.warning} data-testid={testIds.tokenLifetime}>
+        Give a pasted token an expiry when you create it. Pathfinder cannot shorten or revoke one, so a token with no
+        expiry stays valid long after this sandbox is gone.
       </span>
 
       <div className={styles.row}>
