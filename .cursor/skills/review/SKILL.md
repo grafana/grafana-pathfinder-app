@@ -207,11 +207,11 @@ Before synthesis, run an adversarial verification pass on the reviewer output:
 1. Collect every finding with severity `medium` or higher across all reviewers.
 2. Before spawning skeptics, cluster findings that identify the same affected symbol, invariant, evidence, and required action. Preserve all owning concerns on the representative finding. This is deduplication only; do not weaken severity or disposition here.
 3. Dispatch the first skeptic wave for every cluster in parallel. Skeptics receive only the normalized finding, relevant diff hunks, extracted concern packet, and immutable contract sources when applicable — not the original reviewer's reasoning.
-4. For a `critical` or `high` finding, or any proposed blocker, launch two independent skeptics in the first wave. If they agree, their verdict establishes the majority; launch a third only when they disagree. This preserves the two-of-three rule while avoiding a third call for the common case.
-5. For a `medium` advisory finding, launch one skeptic. Keep a confirmed finding. When it is refuted or uncertain, launch one adjudicator with the finding, evidence, and first verdict; drop the finding only when the adjudicator also refutes it.
-6. Pass `low` findings through without verification.
+4. `.cursor/skills/review/scripts/adversarial-policy.mjs` owns dispatch and adjudication. After every wave, call `decideVerification(finding, verdicts_so_far)` — or the CLI with a `{ finding, verdicts }` JSON file — launch exactly the `dispatch` it returns, and repeat until `status` is `resolved`. Keep a finding whose `outcome` is `kept`; drop one whose `outcome` is `dropped`.
+5. The policy it encodes: a `critical` or `high` finding, or any proposed blocker, gets two independent skeptics in the first wave and a third only when they split, which preserves the two-of-three refutation majority while avoiding a third call in the common case. A `medium` advisory gets one skeptic, and only a refuted or uncertain verdict spends an adjudicator, which must also refute before the finding drops. A `low` non-blocking finding passes through unverified.
+6. The policy decides who runs and what their verdicts add up to; whether a finding is real stays with the skeptics.
 
-Each skeptic returns `{ refuted: boolean, reason: string }` and must cite the evidence that contradicts or confirms the finding. Keep `verification_dropped` and skeptic reasoning in the debug trace only; never include clean verification output in the normal report.
+Each skeptic returns `{ verdict: 'confirmed' | 'refuted' | 'uncertain', reason: string }` and must cite the evidence that contradicts or confirms the finding. Keep `verification_dropped` and skeptic reasoning in the debug trace only; never include clean verification output in the normal report.
 
 Record cluster count, skeptic calls, adjudicator calls, confirmed findings, dropped findings, and elapsed verification time in the debug trace. The trace is used to tune the thresholds, not shown unless the user requests diagnostics.
 
