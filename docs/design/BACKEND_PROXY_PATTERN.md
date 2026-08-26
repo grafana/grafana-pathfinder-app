@@ -117,7 +117,7 @@ the fixed internal aggregator.
     carrying the token's `kid` is **not** this: that is the expected Grafana Cloud shape and lands
     on `identity-unavailable`. Reaching nothing at all is far more likely to mean the configured
     address is wrong than that the signing service is briefly down, so it is a standing condition
-    and not a 503 — a 503 would darken every proxy route at once for the whole client cache TTL.
+    and not a 503.
 
   None of the three is retryable, so all three are served in-band and each carries its own reason
   token. Note what each channel actually separates: the **logs** tell the two key-lookup causes
@@ -234,16 +234,20 @@ stack A and be served stack A's identity.
 
 What neither property establishes is that the caller presenting the token is its subject: a
 copied, still-unexpired token replayed on a per-user route **on the stack it was minted for**
-still verifies. Binding the token to its presenter is tracked separately.
+still verifies. Binding the token to its presenter is an accepted residual; nothing tracks it.
 
 Verification failures always fail **closed**, under the three outcomes listed in the inbound
 bullets above, all decided by one shared `identityStatus`
 (`pkg/plugin/app_platform_identity.go`) so no route can classify a failure its own way.
 
 Authlib caches fetched keys for the lifetime of one verifier. Pathfinder reuses that verifier for
-at most **five minutes**, then rebuilds it against the same signing-keys sources, so steady-state
-verification avoids per-request network calls while a key removed from JWKS remains trusted for
-no more than five minutes. The **first** request bearing an unknown `kid` triggers an immediate
+at most **five minutes**, then rebuilds it against the same signing-keys sources, so a key removed
+from JWKS remains trusted for no more than five minutes. The cache holds what a source **answered**,
+never a failure to reach one, so steady-state verification is free of network calls only for the
+sources that answered: a source nothing can reach is re-dialled on every verification. On a
+self-hosted stack that source is auth-api. Accepted rather than negative-cached — the routes a
+self-hosted stack actually calls stop calling after their first refusal, so the cost is roughly one
+dead dial per browser session. The **first** request bearing an unknown `kid` triggers an immediate
 re-fetch, so a newly published key need not wait for that interval; if the key is still unpublished
 at that moment, authlib negative-caches the `kid` and later requests carrying it are rejected
 without re-fetching until the rebuild. That re-fetch merges into the current verifier's cached set
@@ -329,11 +333,13 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   upstream LIST on a cold cache). Every identity failure sits in the standing bucket — see §3.
 - Structural unavailability is signaled **in-band**: HTTP 200 with
   `capability: { available: false, reason: "<machine-token>" }`. Split the token by cause rather
-  than lumping — the custom-guide route distinguishes missing identity, toggle off, no app URL, no
-  namespace, no provisioned on-behalf-of credential, and `upstream-<status>` for a terminal
-  upstream, so the envelope alone is diagnosable without backend log access; the completion
-  routes still collapse the config causes into the catch-all `backend-unavailable`, while keeping
-  identity itself split three ways into `identity-unavailable` (no acceptable caller token),
+  than lumping — the custom-guide route distinguishes missing identity, toggle off, no provisioned
+  on-behalf-of credential, and `upstream-<status>` for a terminal upstream. Its resolver also
+  defines `no app URL`, `no namespace` and `no Grafana config`, but the identity gate runs first
+  and needs all three itself, so a stack missing any of them reports `identity-unverifiable` and
+  those three reasons never reach the wire. The completion routes still collapse the config causes
+  into the catch-all `backend-unavailable`, while keeping identity itself split three ways into
+  `identity-unavailable` (no acceptable caller token),
   `identity-unverifiable` (nothing this stack supplies makes verification possible), and
   `signing-keys-unreachable` (no signing-keys endpoint answered at all — §3). The `reason*`
   constants in `pkg/plugin/` are the definition, and the front-end gates on `available` and

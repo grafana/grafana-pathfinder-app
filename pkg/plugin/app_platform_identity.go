@@ -27,10 +27,14 @@ const idTokenVerifierMaxAge = 5 * time.Minute
 // docs/design/BACKEND_PROXY_PATTERN.md §3.
 
 // identityStatus is the verdict of the identity gate. Three distinct failures,
-// each with its own capability reason, because BACKEND_PROXY_PATTERN.md §7 asks
-// the envelope alone to be diagnosable: an operator must be able to tell a
-// caller with no acceptable token from a stack that can never verify one, and
-// both from a signing-keys address the plugin cannot reach.
+// each with its own capability reason, so an operator can tell a caller with no
+// acceptable token from a stack that can never verify one, and both from a
+// signing-keys address the plugin cannot reach. The two channels separate
+// different amounts: the logs tell the two key-lookup causes apart on every
+// deployment, the envelope only where no source answers at all — on a Grafana
+// Cloud stack its own endpoint always answers `{"keys":null}`, so a dead
+// auth-api address there reports identity-unavailable and the logs are the
+// diagnosis (BACKEND_PROXY_PATTERN.md §3).
 type identityStatus int
 
 const (
@@ -56,8 +60,7 @@ const (
 	// retryable one: a reachable source answering without the `kid` is the
 	// expected Grafana Cloud shape and lands on identityRejected instead, so
 	// arriving here means the configured address is far more likely wrong than
-	// briefly down — and a 503 would darken every proxy route at once for the
-	// whole client cache TTL.
+	// briefly down.
 	identitySigningKeysDown
 )
 

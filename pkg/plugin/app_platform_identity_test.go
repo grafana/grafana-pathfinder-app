@@ -439,13 +439,12 @@ func TestVerifyIDToken_UnverifiableFailsClosed(t *testing.T) {
 
 // --- No reachable signing-keys source: a standing condition, not a 503 -------
 //
-// The signing-keys URL resolves fine, the FETCH fails everywhere. A 503 would
-// darken every gated surface at once for the whole client cache TTL — the
-// front-end lumps 503 into its not-rolled-out set and renders empty without
-// retrying — and reaching nothing at all points at the configured address far
-// more often than at a brief outage. So it takes the soft envelope, under its
-// OWN reason token: an operator must not have to guess whether they are looking
-// at the normal Grafana Cloud shape or at broken config.
+// The signing-keys URL resolves fine, the FETCH fails everywhere. Reaching
+// nothing at all points at the configured address far more often than at a
+// brief outage, so this is a standing condition and takes the soft envelope
+// rather than a 503 — under its OWN reason token, because an operator must not
+// have to guess whether they are looking at the normal Grafana Cloud shape or
+// at broken config.
 
 // identityRouteProbe exercises one gated route and reports the status it served
 // plus the capability reason it carried.
