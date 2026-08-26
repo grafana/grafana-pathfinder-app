@@ -448,7 +448,7 @@ Hides its nested blocks behind a toggle. Use it to gate solutions or example out
 | `collapsed` | boolean             | ❌       | Whether it starts collapsed (defaults to `true`)    |
 | `blocks`    | content block array | ✅       | Content hidden behind the toggle                    |
 
-> A collapsible is presentational: it accepts content blocks only — `markdown` (including fenced code), `html`, `image`, and `video`. Interactive steps and containers (`section`, `collapsible`, `conditional`) are rejected, so a collapsible never carries completion state. To gate interactive steps, use a `section`.
+> A collapsible is presentational: it accepts content blocks only — `markdown` (including fenced code), `html`, `image`, `video`, `callout`, and `divider`. Interactive steps and containers (`section`, `collapsible`, `conditional`) are rejected, so a collapsible never carries completion state. To gate interactive steps, use a `section`.
 
 #### Conditional Block
 
