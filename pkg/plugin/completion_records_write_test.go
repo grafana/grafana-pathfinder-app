@@ -381,17 +381,20 @@ func TestCompletionWrite_Unauthenticated(t *testing.T) {
 	}
 }
 
-// The write path's identity gate has four arms and they are NOT interchangeable,
-// because the status IS the client's retry instruction. 401 means "retry after
-// re-auth", so it belongs only to a time-recoverable verdict; a stack that can
-// never verify a token (no app URL → no signing keys) would otherwise retry every
-// queued write until the 30-day horizon and never disarm. The distinct reason
-// string keeps the 404 diagnosable apart from obo-unavailable/backend-unavailable.
+// The write path's identity gate arms are NOT interchangeable, because the
+// status IS the client's retry instruction. 401 means "retry after re-auth", so
+// it belongs only to a time-recoverable verdict; a standing condition served
+// that way would retry every queued write until the 30-day horizon and never
+// disarm. The distinct reason string keeps each 404 diagnosable apart from
+// obo-unavailable/backend-unavailable and from the other standing condition.
 func TestCompletionWrite_IdentityGateArms(t *testing.T) {
 	withFrozenTime(t, time.Unix(1_700_000_000, 0))
 
 	deadJWKS, _ := startJWKSServer(t)
 	deadJWKS.Close()
+	// auth-api unreachable too, so NO source answers and the chain reports the
+	// address unusable rather than the token unknown.
+	withSigningKeysURL(t, deadJWKS.URL+"/v1/keys")
 
 	// Both configs enable the aggregation toggle, so a 404 here can only come from
 	// the identity gate that runs before the structural resolver.
@@ -424,9 +427,9 @@ func TestCompletionWrite_IdentityGateArms(t *testing.T) {
 			wantStatus: http.StatusNotFound, wantReason: reasonIdentityUnverifiable,
 		},
 		{
-			name: "signing-keys outage is the transient 503",
+			name: "no reachable signing-keys source disarms with the structural 404",
 			sub:  "user:abc", cfg: signingKeysDown,
-			wantStatus: http.StatusServiceUnavailable, wantRetryAfter: true,
+			wantStatus: http.StatusNotFound, wantReason: reasonSigningKeysUnreachable,
 		},
 	}
 	for _, tc := range cases {
@@ -1142,5 +1145,95 @@ func TestCompletionWrite_ClearsFailureCooldown(t *testing.T) {
 	}
 	if rr.Code != http.StatusOK || len(body.Completions) != 1 {
 		t.Fatalf("post-write read = %d with %d completions, want 200 with 1", rr.Code, len(body.Completions))
+	}
+}
+
+// The write path stamps the caller's identity onto a durable, compliance-grade
+// record, so the §3 stack binding has to hold here too: a genuine, correctly
+// signed token from a sibling stack in the same auth-api cell must write
+// nothing. It takes the 401, which is what identityRejected means on this path.
+func TestCompletionWrite_SiblingStackTokenWritesNothing(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	creator := &fakeCreator{}
+	withCreator(t, creator)
+
+	r := writeRequest(t, "", validWriteBody(), testGrafanaConfig())
+	r.Header.Set(backend.GrafanaUserSignInTokenHeaderName,
+		makeIDTokenForNamespace(t, "user:abc", "stacks-2"))
+
+	if rr := doWrite(t, nil, r); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (body %s)", rr.Code, rr.Body.String())
+	}
+	if creator.n != 0 {
+		t.Fatalf("wrote %d records for a sibling stack's token, want 0", creator.n)
+	}
+}
+
+// Both standing identity conditions must serve the structural 404 that disarms
+// the client queue, never the 401. The 401 is defined as transient — the write
+// client retries it with backoff to the 30-day horizon — and neither an absent
+// server-derived namespace nor an unreachable signing-keys chain recovers on
+// retry, so a 401 would spin forever without ever disarming.
+func TestCompletionWrite_StandingIdentityFailuresDisarmWithTheirOwnReason(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+
+	unreachable, _ := startJWKSServer(t)
+	unreachable.Close()
+
+	cases := []struct {
+		name string
+		// build produces a POST whose identity gate lands on a standing status.
+		build      func(*testing.T) *http.Request
+		wantReason string
+	}{
+		{
+			name: "no server-derived namespace",
+			build: func(t *testing.T) *http.Request {
+				r := writeRequest(t, "user:abc", validWriteBody(), testGrafanaConfig())
+				//nolint:staticcheck // OrgID is the numeric org the CRD requires; see completion_records_write.go
+				return r.WithContext(backend.WithPluginContext(r.Context(),
+					backend.PluginContext{Namespace: "", OrgID: testOrgID}))
+			},
+			wantReason: reasonIdentityUnverifiable,
+		},
+		{
+			name: "no reachable signing-keys source",
+			build: func(t *testing.T) *http.Request {
+				withSigningKeysURL(t, unreachable.URL+"/v1/keys")
+				return writeRequest(t, "user:abc", validWriteBody(), map[string]string{
+					featuretoggles.EnabledFeatures: completionRecordsAggregationToggle,
+					sdkconfig.AppURL:               unreachable.URL,
+				})
+			},
+			wantReason: reasonSigningKeysUnreachable,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			creator := &fakeCreator{}
+			withCreator(t, creator)
+
+			rr := doWrite(t, nil, tt.build(t))
+
+			if rr.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want 404 so the client disarms (body %s)", rr.Code, rr.Body.String())
+			}
+			if got := rr.Header().Get("Retry-After"); got != "" {
+				t.Errorf("Retry-After = %q on a standing condition, want none", got)
+			}
+			var body struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode body: %v (raw %s)", err, rr.Body.String())
+			}
+			if body.Error != tt.wantReason {
+				t.Fatalf("error = %q, want %q", body.Error, tt.wantReason)
+			}
+			if creator.n != 0 {
+				t.Fatalf("wrote %d records with no verifiable identity, want 0", creator.n)
+			}
+		})
 	}
 }

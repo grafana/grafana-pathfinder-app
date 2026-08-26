@@ -43,14 +43,24 @@ export interface CustomGuideRepositoryEntry {
 /**
  * Availability signal the catalogue surfaces gate on. `available` is false with
  * a machine `reason` when the proxy can't serve (the response is still a
- * soft-200 in that case). Reasons: `identity-unavailable`,
- * `identity-unverifiable` (the stack exposes no ID-token signing keys to verify
- * against; an unreachable one is a transient 503 instead),
- * `grafana-config-unavailable`, `feature-toggle-disabled`,
- * `namespace-unavailable`, `obo-unavailable` (no
- * provisioned on-behalf-of token — check this first when the surface is
- * unexpectedly empty), `backend-unavailable`, or `upstream-<status>` for an
- * upstream error.
+ * soft-200 in that case, for every reason below). Reasons:
+ * `identity-unavailable` (no acceptable caller token — absent, expired, forged,
+ * or issued for another stack), `identity-unverifiable` (nothing this stack
+ * supplies makes verification possible: no app URL to build a verifier from, or
+ * no server-derived namespace to bind the token to), `signing-keys-unreachable`
+ * (no signing-keys endpoint answered at all, which points at the configured
+ * address rather than at the caller), `feature-toggle-disabled`,
+ * `obo-unavailable` (no provisioned on-behalf-of token — check this first when
+ * the surface is unexpectedly empty), or `upstream-<status>` for an upstream
+ * error.
+ *
+ * The identity gate runs before the backend resolver, so that resolver's
+ * `namespace-unavailable` and `app-url-unavailable` are unreachable on this
+ * route — a stack missing either reports `identity-unverifiable` first. Its
+ * `grafana-config-unavailable` is unreachable for an unrelated reason: the guard
+ * is `cfg == nil`, and the plugin SDK never returns a nil Grafana config (a
+ * missing context value and a nil pointer both yield an empty one), so that
+ * branch is dead whatever the gate ordering.
  */
 interface CustomGuideCapability {
   available: boolean;
