@@ -418,7 +418,7 @@ describe('AppPlatformPackageResolver — full content', () => {
     expect(result.error.code).toBe('not-found');
   });
 
-  it('does not let a persisted spec.manifest.id override the resource\'s own declared identity', async () => {
+  it("does not let a persisted spec.manifest.id override the resource's own declared identity", async () => {
     mockFetch.mockReturnValue(of(okResource({ manifest: { type: 'guide', id: 'some-other-id' } })));
     const resolver = new AppPlatformPackageResolver();
 
@@ -438,9 +438,7 @@ describe('AppPlatformPackageResolver — full content', () => {
     // backend-guide.ts) has always preferred spec.id for this same resource
     // shape — this pins the two builders agreeing, so completion identity
     // doesn't drift depending on which one happened to run.
-    mockFetch.mockReturnValue(
-      of(okResource({ id: 'renamed-guide-id', manifest: { type: 'guide' } }))
-    );
+    mockFetch.mockReturnValue(of(okResource({ id: 'renamed-guide-id', manifest: { type: 'guide' } })));
     const resolver = new AppPlatformPackageResolver();
 
     const result = await resolver.resolve('legacy-resource-name', { loadContent: 'metadata-only' });
