@@ -479,6 +479,7 @@ These variables are consumed by the CLI or passed to the spawned Playwright proc
 | `GRAFANA_URL`           | Grafana instance URL                                                           | `http://localhost:3000` |
 | `STARTING_LOCATION`     | Effective same-origin start path from the manifest, current chain, or `/`      | `/`                     |
 | `AUTH_STATE_FILE`       | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
+| `GRAFANA_TOKEN`         | Opaque Bearer credential sent only to the Grafana target origin                | Unset (form login)      |
 | `E2E_VERBOSE`           | Enable verbose logging                                                         | `false`                 |
 | `E2E_TRACE`             | Generate Playwright trace file                                                 | `false`                 |
 | `ABORT_FILE_PATH`       | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
@@ -537,6 +538,8 @@ Cloud auth:
 
 - **Admin token per cloud target.** Pass `--cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN` to associate an admin service-account token env var with a cloud target. The CLI uses that admin token only to mint a fresh service account and short-lived token for each dependency chain; the browser runner receives only the minted token. Repeat the flag for each supported instance.
 - **Isolated stack leasing.** Pass `--cloud-stack-pool-manager-url <url>` and `--cloud-stack-pool-manager-token <env>` to let unsafe cloud dependency chains lease disposable Grafana Cloud stacks from the pool manager instead of the shared target. Pass `--cloud-stack-pool-id <id>` matching the pool configured on the pool manager you are targeting; the CLI default is `nightly`. The CLI sends `POST /v1/leases` before a dependency chain, runs all cloud guides in that chain against the returned `grafanaUrl` and `runnerToken`, then sends `POST /v1/leases/{leaseId}/retire` during teardown.
+
+The browser runner treats each `GRAFANA_TOKEN` value, including a pool-manager `runnerToken`, as an opaque Bearer credential. It adds the credential to the `Authorization` header only for requests to the Grafana target origin. The runner does not inspect the credential prefix or format.
 
 Per-chain service-account isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides.
 
