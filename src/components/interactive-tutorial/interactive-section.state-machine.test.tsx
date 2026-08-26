@@ -355,6 +355,68 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
     });
   });
 
+  describe('guide-wide progress reset', () => {
+    it('clears acknowledgement and expands a mounted section for the active content', async () => {
+      memoryStore.set(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`, true);
+      memoryStore.set(`section-collapse::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`, true);
+      renderAllPassiveSection();
+
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Expand section' })).toBeInTheDocument());
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('interactive-progress-cleared', {
+            detail: { contentKey: NON_PREVIEW_KEY },
+          })
+        );
+      });
+
+      await waitFor(() => expect(screen.getByTestId(markButton(SECTION_PASSIVE))).toBeInTheDocument());
+      expect(screen.getByText('First paragraph.')).toBeInTheDocument();
+      expect(memoryStore.get(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBeUndefined();
+      expect(memoryStore.get(`section-collapse::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBeUndefined();
+    });
+
+    it('ignores a reset for different content', async () => {
+      memoryStore.set(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`, true);
+      renderAllPassiveSection();
+
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument());
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('interactive-progress-cleared', {
+            detail: { contentKey: '/another-guide' },
+          })
+        );
+      });
+
+      expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument();
+      expect(memoryStore.get(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBe(true);
+    });
+
+    it('ignores guide reset events in preview mode', async () => {
+      (window as any).__DocsPluginActiveTabUrl = PREVIEW_KEY_OVERRIDE;
+      renderAllPassiveSection();
+
+      await click(markButton(SECTION_PASSIVE));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Collapse section' })).toBeInTheDocument());
+      act(() => screen.getByRole('button', { name: 'Collapse section' }).click());
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Expand section' })).toBeInTheDocument());
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('interactive-progress-cleared', {
+            detail: { contentKey: PREVIEW_KEY_OVERRIDE },
+          })
+        );
+      });
+
+      expect(screen.getByRole('button', { name: 'Expand section' })).toBeInTheDocument();
+      expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument();
+    });
+  });
+
   describe('preview-mode sandbox', () => {
     beforeEach(() => {
       (window as any).__DocsPluginActiveTabUrl = PREVIEW_KEY_OVERRIDE;

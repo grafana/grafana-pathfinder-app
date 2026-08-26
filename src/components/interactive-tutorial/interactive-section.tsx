@@ -445,6 +445,27 @@ export function InteractiveSection({
     disableAutoCollapse: pluginConfig.disableAutoCollapse,
   });
 
+  useEffect(() => {
+    if (isPreviewMode || typeof window === 'undefined') {
+      return;
+    }
+
+    const contentKey = getContentKey();
+    const handleProgressCleared = (event: Event) => {
+      const clearedContentKey = (event as CustomEvent<{ contentKey?: string }>).detail?.contentKey;
+      if (clearedContentKey !== contentKey) {
+        return;
+      }
+
+      dispatch({ type: 'CLEAR_ACK' });
+      resetCollapse();
+      clearAckAndCollapseStorage();
+    };
+
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+    return () => window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+  }, [clearAckAndCollapseStorage, isPreviewMode, resetCollapse]);
+
   // Enable action monitor when component mounts (if feature is enabled in config)
   useEffect(() => {
     const actionMonitor = ActionMonitor.getInstance();
