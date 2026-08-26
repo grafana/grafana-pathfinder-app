@@ -588,6 +588,13 @@ func TestVerify_BindsNamespaceToTheStack(t *testing.T) {
 			name:           "no server-derived namespace fails closed",
 			tokenNamespace: testNamespace, expected: "",
 		},
+		{
+			// The equality is raw on purpose. Authlib's types.NamespaceMatches
+			// reads "*" as every namespace, which would let one token stand for
+			// every stack the cell-wide key set signs for.
+			name:           "wildcard namespace claim is refused, not matched",
+			tokenNamespace: "*", expected: testNamespace,
+		},
 	}
 
 	for _, tt := range cases {
@@ -685,6 +692,99 @@ func TestVerify_StallingSourceLeavesTheNextOneTimeToAnswer(t *testing.T) {
 	}
 	if sub != "user:1" {
 		t.Fatalf("sub = %q, want %q", sub, "user:1")
+	}
+}
+
+// A source can be slow without being stalled, and its share of the budget is
+// what decides whether the slowness costs it its turn. The two tests either side
+// of this one stall until cancellation, so neither says what happens to a source
+// that would eventually have answered.
+func TestVerify_SlowFirstSourceAndItsShare(t *testing.T) {
+	const budget = time.Second
+	// getFrom splits what is left of the budget between the still-untried
+	// sources, so the first of two gets half.
+	const share = budget / 2
+
+	cases := []struct {
+		name string
+		// How long auth-api takes to serve a good key set.
+		delay time.Duration
+		// Whether the stack behind it publishes one at all.
+		stackAnswers bool
+		// Whether auth-api is the source that ends up answering.
+		wantAuthAPIServed bool
+		wantVerified      bool
+	}{
+		{
+			name:              "slow inside its share, so it is still the source that answers",
+			delay:             share / 5,
+			stackAnswers:      true,
+			wantAuthAPIServed: true,
+			wantVerified:      true,
+		},
+		{
+			name:         "overruns its share and loses its turn to the stack",
+			delay:        share + 200*time.Millisecond,
+			stackAnswers: true,
+			wantVerified: true,
+		},
+		{
+			// The accepted cost of reserving the second source a slice: a first
+			// source that would have answered inside the whole budget is cut off
+			// at its share, and with nothing behind it the chain reports an
+			// address problem rather than waiting.
+			name:         "overruns its share with nothing behind it, and the chain reports unreachable",
+			delay:        share + 200*time.Millisecond,
+			stackAnswers: false,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			withFetchTimeout(t, budget)
+			signingKey := newSigningKey(t)
+			keySet := jwksBody(t, testKID, signingKey)
+
+			var authAPIServed atomic.Int32
+			slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				select {
+				case <-time.After(tt.delay):
+				case <-r.Context().Done():
+					return
+				}
+				authAPIServed.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write(keySet)
+			}))
+			t.Cleanup(slow.Close)
+
+			stackURL := unreachableURL(t)
+			if tt.stackAnswers {
+				stackURL = jwksServer(t, SigningKeysPath, keySet).URL
+			}
+
+			verifier, err := NewIDTokenVerifier(slow.URL+authAPIKeysPath, stackURL)
+			if err != nil {
+				t.Fatalf("NewIDTokenVerifier: %v", err)
+			}
+
+			sub, err := verifier.Verify(context.Background(), signToken(t, testKID, signingKey), testNamespace)
+			if tt.wantVerified {
+				if err != nil {
+					t.Fatalf("Verify: %v", err)
+				}
+				if sub != "user:1" {
+					t.Fatalf("sub = %q, want %q", sub, "user:1")
+				}
+			} else {
+				if !SigningKeysUnavailable(err) {
+					t.Fatalf("err = %v, want a signing-keys outage", err)
+				}
+			}
+			if served := authAPIServed.Load() > 0; served != tt.wantAuthAPIServed {
+				t.Fatalf("auth-api served the key set = %v, want %v", served, tt.wantAuthAPIServed)
+			}
+		})
 	}
 }
 
