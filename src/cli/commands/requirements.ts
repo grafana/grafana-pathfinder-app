@@ -16,7 +16,7 @@ import {
   PARAMETERIZED_REQUIREMENT_EXAMPLES,
   PARAMETERIZED_REQUIREMENT_PREFIXES,
 } from '../../types/requirements.types';
-import { defineCommand, defineCommandGroup, mountCommanderGroup } from '../contracts';
+import { defineCommand, defineCommandGroup } from '../contracts';
 import type { CommandOutcome } from '../utils/output';
 
 export const RequirementsListCommand = z.object({
@@ -74,12 +74,4 @@ export const requirementsGroup = defineCommandGroup({
   discriminator: 'action',
   discriminatorDescription: 'Which vocabulary listing to print',
   variants: new Map([['list', requirementsListSpec]]),
-});
-
-// The output options belong to the root program: declared here because the runner
-// reads them, never registered here because `pathfinder-cli --format json requirements
-// list` is how they are passed.
-export const requirementsCommand = mountCommanderGroup(requirementsGroup, {
-  omitted: ['format', 'quiet'],
-  inherits: ['format', 'quiet'],
 });

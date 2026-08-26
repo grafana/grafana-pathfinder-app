@@ -12,7 +12,6 @@ import { z } from 'zod';
 import {
   defineCommand,
   defineCommandGroup,
-  mountCommanderGroup,
   pickContent,
   required,
   withPolicy,
@@ -155,13 +154,6 @@ export const addBlockGroup = defineCommandGroup({
   discriminator: 'type',
   discriminatorDescription: 'Selects the add-block subcommand.',
   variants: new Map((Object.keys(BLOCK_SCHEMA_MAP) as BlockType[]).map((type) => [type, addBlockVariant(type)])),
-});
-
-// One presentation for all fifteen variants: `add-block markdown <dir>` and
-// `add-block table <dir>` are the same command line with a different type.
-export const addBlockCommand = mountCommanderGroup(addBlockGroup, {
-  positionals: ['dir'],
-  placeholders: { parent: 'id', branch: 'branch', before: 'id', after: 'id', position: 'n' },
 });
 
 /**

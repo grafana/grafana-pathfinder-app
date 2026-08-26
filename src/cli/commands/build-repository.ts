@@ -22,7 +22,7 @@ import {
   RepositoryJsonSchema,
 } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { preserveAuthoredStartingLocation } from '../e2e/starting-location';
 import { resolveCliPath } from '../utils/file-loader';
 import { formatJsonWithPrettier, type CommandOutcome } from '../utils/output';
@@ -342,10 +342,4 @@ export const buildRepositorySpec = defineCommand({
   // diffs it; with it, the progress lines are the contract.
   emits: 'stream',
   run: runBuildRepository,
-});
-
-export const buildRepositoryCommand = mountCommander(buildRepositorySpec, {
-  positionals: ['root'],
-  placeholders: { output: 'file', exclude: 'paths...' },
-  shorts: { output: 'o', exclude: 'e' },
 });

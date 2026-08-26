@@ -11,7 +11,7 @@ import * as path from 'path';
 import type { ContentJson, ManifestJson } from '../../types/package.types';
 import { validateGuideFromString, toLegacyResult } from '../../validation';
 import { validatePackage, validatePackageTree, type PackageValidationResult } from '../../validation/validate-package';
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { loadGuideFiles, loadBundledGuides, resolveCliPath, type LoadedGuide } from '../utils/file-loader';
 import { validatePackageState } from '../utils/package-io';
 import { manyIssuesOutcome, type CommandOutcome } from '../utils/output';
@@ -482,10 +482,4 @@ export const validateCliSpec = defineCommand({
   // older than the outcome envelope and read by humans and CI as they are.
   emits: 'stream',
   run: runValidateCli,
-});
-
-export const validateCommand = mountCommander(validateCliSpec, {
-  positionals: ['files'],
-  placeholders: { files: 'files...', format: 'format', package: 'dir', packages: 'dir' },
-  inherits: ['format'],
 });

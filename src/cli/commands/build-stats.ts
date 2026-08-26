@@ -24,7 +24,7 @@ import {
 } from '../../lib/guide-stats';
 import { ContentJsonSchema, ManifestJsonObjectSchema } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { resolveCliPath } from '../utils/file-loader';
 import { formatJsonWithPrettier, type CommandOutcome } from '../utils/output';
 import { discoverPackages } from './build-repository';
@@ -489,10 +489,4 @@ export const buildStatsSpec = defineCommand({
   schema: BuildStatsCommand,
   emits: 'stream',
   run: runBuildStats,
-});
-
-export const buildStatsCommand = mountCommander(buildStatsSpec, {
-  positionals: ['root'],
-  placeholders: { exclude: 'paths...' },
-  shorts: { exclude: 'e' },
 });

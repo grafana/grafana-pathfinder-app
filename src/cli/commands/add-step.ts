@@ -11,7 +11,7 @@
 import { z } from 'zod';
 
 import { JsonStepSchema } from '../../types/json-guide.schema';
-import { defineCommand, mountCommander, pickContent, shapeKeys, withPolicy } from '../contracts';
+import { defineCommand, pickContent, shapeKeys, withPolicy } from '../contracts';
 import type { JsonStep } from '../../types/json-guide.types';
 import { assertCliStepFields, CliValidationError } from '../utils/cli-validators';
 import { appendStep, mutateAndValidate, PackageIOError } from '../utils/package-io';
@@ -116,9 +116,4 @@ export const addStepSpec = defineCommand({
   summary: 'Append a step to a multistep or guided block',
   schema: AddStepCommand,
   run: runAddStep,
-});
-
-export const addStepCommand = mountCommander(addStepSpec, {
-  positionals: ['dir'],
-  placeholders: { parent: 'id' },
 });

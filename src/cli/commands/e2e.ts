@@ -11,7 +11,7 @@ import { join } from 'path';
 import { z } from 'zod';
 
 import { validateGuideFromString, toLegacyResult } from '../../validation';
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
 import type { CommandOutcome } from '../utils/output';
 import { planGuideExecution, type ExecutionPlan } from '../e2e/guide-chains';
@@ -1156,28 +1156,4 @@ export const e2eSpec = defineCommand({
   // which also owns the exit code — `ExitCode` distinguishes eight failure kinds.
   emits: 'stream',
   run: runE2e,
-});
-
-export const e2eCommand = mountCommander(e2eSpec, {
-  positionals: ['files'],
-  placeholders: {
-    files: 'files...',
-    grafanaUrl: 'url',
-    output: 'path',
-    artifacts: 'dir',
-    package: 'dirOrId',
-    tier: 'tier',
-    cleanReadyTimeoutMs: 'ms',
-    repository: 'path',
-    repoUrl: 'url',
-    resolverUrl: 'url',
-    cloudInstanceAdminToken: 'host=envVar',
-    cloudUrl: 'url',
-    cloudStackPoolManagerUrl: 'url',
-    cloudStackPoolManagerToken: 'envVar',
-    cloudStackPoolId: 'id',
-    cloudStackMaxWaitSeconds: 'seconds',
-  },
-  // These six have printed `(default: false)` since they were hand-declared.
-  showDefaults: { verbose: true, trace: true, headed: true, alwaysScreenshot: true, clean: true, remote: true },
 });

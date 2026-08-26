@@ -13,7 +13,7 @@ import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import {
   ContentJsonSchema,
   ManifestJsonObjectSchema,
@@ -145,7 +145,3 @@ export const createSpec = defineCommand({
   schema: CreateCommand,
   run: runCreate,
 });
-
-// `<type>` rather than the generated `<guide|path|journey>`: the choices are already
-// spelled out in the description, and the wider token rewraps every other option.
-export const createCommand = mountCommander(createSpec, { positionals: ['dir'], placeholders: { type: 'type' } });

@@ -11,7 +11,7 @@ import * as path from 'path';
 import { JsonSnippetSchema, SnippetCatalogSchema } from '../../types/json-snippet.schema';
 import type { SnippetCatalog, SnippetCatalogEntry } from '../../types/json-snippet.types';
 import { readJsonFile } from '../../validation/package-io';
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { resolveCliPath } from '../utils/file-loader';
 import { formatJsonWithPrettier, type CommandOutcome } from '../utils/output';
 
@@ -134,10 +134,4 @@ export const buildSnippetsSpec = defineCommand({
   // Progress lines and the ❌/✅ trailers are the output contract CI reads.
   emits: 'stream',
   run: runBuildSnippets,
-});
-
-export const buildSnippetsCommand = mountCommander(buildSnippetsSpec, {
-  positionals: ['dir'],
-  placeholders: { output: 'file' },
-  shorts: { output: 'o' },
 });

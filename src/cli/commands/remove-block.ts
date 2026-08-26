@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { mutateAndValidate, PackageIOError, removeBlock } from '../utils/package-io';
 import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
@@ -103,5 +103,3 @@ export const removeBlockSpec = defineCommand({
   schema: RemoveBlockCommand,
   run: runRemoveBlock,
 });
-
-export const removeBlockCommand = mountCommander(removeBlockSpec, { positionals: ['dir', 'id'] });

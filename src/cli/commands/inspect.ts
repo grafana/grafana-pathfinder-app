@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { isContainerBlockType, type BlockType } from '../utils/block-registry';
 import {
   buildChildrenTree,
@@ -321,9 +321,4 @@ export const inspectSpec = defineCommand({
   summary: 'Show the current state of a package (read-only)',
   schema: InspectCommand,
   run: runInspect,
-});
-
-export const inspectCommand = mountCommander(inspectSpec, {
-  positionals: ['dir'],
-  placeholders: { block: 'id', at: 'jsonpath' },
 });

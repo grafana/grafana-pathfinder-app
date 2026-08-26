@@ -14,59 +14,159 @@
 import type { Command } from 'commander';
 
 import { COMMAND_MANIFEST, commandNames, type CommandEntry } from './commands/manifest';
-import { mountCommander, type CommandGroupSpec, type CommandSpec } from './contracts';
-import { addBlockCommand } from './commands/add-block';
-import { addChoiceCommand } from './commands/add-choice';
-import { addStepCommand } from './commands/add-step';
-import { buildGraphCommand } from './commands/build-graph';
-import { buildRepositoryCommand } from './commands/build-repository';
-import { buildSnippetsCommand } from './commands/build-snippets';
-import { buildStatsCommand } from './commands/build-stats';
-import { createCommand } from './commands/create';
-import { e2eCommand } from './commands/e2e';
-import { editBlockCommand } from './commands/edit-block';
-import { inspectCommand } from './commands/inspect';
-import { moveBlockCommand } from './commands/move-block';
-import { removeBlockCommand } from './commands/remove-block';
-import { renameIdCommand } from './commands/rename-id';
-import { requirementsCommand } from './commands/requirements';
-import { schemaCommand } from './commands/schema';
-import { setManifestCommand } from './commands/set-manifest';
-import { validateCommand } from './commands/validate';
+import {
+  mountCommander,
+  mountCommanderGroup,
+  type CommanderPresentation,
+  type CommandGroupSpec,
+  type CommandSpec,
+} from './contracts';
+import { addBlockGroup } from './commands/add-block';
+import { addChoiceSpec } from './commands/add-choice';
+import { addStepSpec } from './commands/add-step';
+import { buildGraphSpec } from './commands/build-graph';
+import { buildRepositorySpec } from './commands/build-repository';
+import { buildSnippetsSpec } from './commands/build-snippets';
+import { buildStatsSpec } from './commands/build-stats';
+import { createSpec } from './commands/create';
+import { e2eSpec } from './commands/e2e';
+import { editBlockSpec } from './commands/edit-block';
+import { inspectSpec } from './commands/inspect';
+import { moveBlockSpec } from './commands/move-block';
+import { removeBlockSpec } from './commands/remove-block';
+import { renameIdSpec } from './commands/rename-id';
+import { requirementsGroup } from './commands/requirements';
+import { schemaSpec } from './commands/schema';
+import { setManifestSpec } from './commands/set-manifest';
+import { validateCliSpec } from './commands/validate';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
 import { mcpSpec } from './mcp';
 
 /** Declared by this surface rather than by the manifest, and rendered the same way. */
 const SURFACE_ENTRIES: readonly CommandEntry[] = Object.freeze([{ name: mcpSpec.name, spec: mcpSpec }]);
 
-// Rendered here rather than in `mcp/`, which then needs no Commander at all: the
-// subcommand is this surface's way of offering the server, not part of serving.
-const mcpCommand = mountCommander(mcpSpec, {
-  placeholders: { transport: 'transport', port: 'port', host: 'host' },
-}).version(CURRENT_SCHEMA_VERSION);
+/**
+ * How each command reads as a command line: positionals, placeholders, short flags,
+ * hidden options, and inheritance. Every entry names schema fields, checked at mount
+ * time, so a rename that misses its presentation fails immediately.
+ *
+ * This is the single source of truth for command-line presentation. Command files
+ * export specs only; mounting them into Commander objects happens here.
+ */
+const PRESENTATIONS: Record<string, CommanderPresentation> = {
+  create: { positionals: ['dir'], placeholders: { type: 'type' } },
+  'add-block': {
+    positionals: ['dir'],
+    placeholders: { parent: 'id', branch: 'branch', before: 'id', after: 'id', position: 'n' },
+  },
+  'add-step': { positionals: ['dir'], placeholders: { parent: 'id' } },
+  'add-choice': { positionals: ['dir'], placeholders: { parent: 'id' } },
+  'set-manifest': {
+    positionals: ['dir'],
+    // `<semver>`, `<platform>`, and `<json>` read better than the type-derived `<string>`.
+    placeholders: { testMinVersion: 'semver', targetPlatform: 'platform', targetAnd: 'json' },
+  },
+  inspect: { positionals: ['dir'], placeholders: { block: 'id', at: 'jsonpath' } },
+  'edit-block': {
+    positionals: ['dir', 'id'],
+    placeholders: { position: 'n', before: 'id', after: 'id' },
+    // The reorder guards parse in order to refuse; listing them in help would
+    // advertise a capability this command does not have.
+    hidden: ['position', 'before', 'after'],
+  },
+  'remove-block': { positionals: ['dir', 'id'] },
+  'move-block': {
+    positionals: ['dir', 'id'],
+    placeholders: { before: 'id', after: 'id', position: 'n', toPosition: 'n', into: 'containerId' },
+    hidden: ['toPosition'],
+  },
+  'rename-id': {
+    positionals: ['dir', 'newId'],
+    // `<new-id>` keeps the hyphenated spelling the usage line has always shown.
+    placeholders: { newId: 'new-id' },
+  },
+  validate: {
+    positionals: ['files'],
+    placeholders: { files: 'files...', format: 'format', package: 'dir', packages: 'dir' },
+    inherits: ['format'],
+  },
+  e2e: {
+    positionals: ['files'],
+    placeholders: {
+      files: 'files...',
+      grafanaUrl: 'url',
+      output: 'path',
+      artifacts: 'dir',
+      package: 'dirOrId',
+      tier: 'tier',
+      cleanReadyTimeoutMs: 'ms',
+      repository: 'path',
+      repoUrl: 'url',
+      resolverUrl: 'url',
+      cloudInstanceAdminToken: 'host=envVar',
+      cloudUrl: 'url',
+      cloudStackPoolManagerUrl: 'url',
+      cloudStackPoolManagerToken: 'envVar',
+      cloudStackPoolId: 'id',
+      cloudStackMaxWaitSeconds: 'seconds',
+    },
+    // These six have printed `(default: false)` since they were hand-declared.
+    showDefaults: { verbose: true, trace: true, headed: true, alwaysScreenshot: true, clean: true, remote: true },
+  },
+  'build-repository': {
+    positionals: ['root'],
+    placeholders: { output: 'file', exclude: 'paths...' },
+    shorts: { output: 'o', exclude: 'e' },
+  },
+  'build-stats': {
+    positionals: ['root'],
+    placeholders: { exclude: 'paths...' },
+    shorts: { exclude: 'e' },
+  },
+  'build-snippets': {
+    positionals: ['dir'],
+    placeholders: { output: 'file' },
+    shorts: { output: 'o' },
+  },
+  'build-graph': {
+    positionals: ['repositories'],
+    placeholders: { repositories: 'repositories...', output: 'file' },
+    shorts: { output: 'o' },
+    negatable: { lint: 'Suppress lint output' },
+  },
+  schema: { positionals: ['name'] },
+  requirements: {
+    omitted: ['format', 'quiet'],
+    inherits: ['format', 'quiet'],
+  },
+  mcp: {
+    placeholders: { transport: 'transport', port: 'port', host: 'host' },
+  },
+};
 
 const ENTRIES: readonly CommandEntry[] = Object.freeze([...COMMAND_MANIFEST, ...SURFACE_ENTRIES]);
 
+// Mount all commands from their specs and presentations.
 const RENDERED: Record<string, Command> = {
-  create: createCommand,
-  'add-block': addBlockCommand,
-  'add-step': addStepCommand,
-  'add-choice': addChoiceCommand,
-  'set-manifest': setManifestCommand,
-  inspect: inspectCommand,
-  'edit-block': editBlockCommand,
-  'remove-block': removeBlockCommand,
-  'move-block': moveBlockCommand,
-  'rename-id': renameIdCommand,
-  validate: validateCommand,
-  e2e: e2eCommand,
-  'build-repository': buildRepositoryCommand,
-  'build-stats': buildStatsCommand,
-  'build-snippets': buildSnippetsCommand,
-  'build-graph': buildGraphCommand,
-  schema: schemaCommand,
-  requirements: requirementsCommand,
-  mcp: mcpCommand,
+  create: mountCommander(createSpec, PRESENTATIONS.create),
+  'add-block': mountCommanderGroup(addBlockGroup, PRESENTATIONS['add-block']),
+  'add-step': mountCommander(addStepSpec, PRESENTATIONS['add-step']),
+  'add-choice': mountCommander(addChoiceSpec, PRESENTATIONS['add-choice']),
+  'set-manifest': mountCommander(setManifestSpec, PRESENTATIONS['set-manifest']),
+  inspect: mountCommander(inspectSpec, PRESENTATIONS.inspect),
+  'edit-block': mountCommander(editBlockSpec, PRESENTATIONS['edit-block']),
+  'remove-block': mountCommander(removeBlockSpec, PRESENTATIONS['remove-block']),
+  'move-block': mountCommander(moveBlockSpec, PRESENTATIONS['move-block']),
+  'rename-id': mountCommander(renameIdSpec, PRESENTATIONS['rename-id']),
+  validate: mountCommander(validateCliSpec, PRESENTATIONS.validate),
+  e2e: mountCommander(e2eSpec, PRESENTATIONS.e2e),
+  'build-repository': mountCommander(buildRepositorySpec, PRESENTATIONS['build-repository']),
+  'build-stats': mountCommander(buildStatsSpec, PRESENTATIONS['build-stats']),
+  'build-snippets': mountCommander(buildSnippetsSpec, PRESENTATIONS['build-snippets']),
+  'build-graph': mountCommander(buildGraphSpec, PRESENTATIONS['build-graph']),
+  schema: mountCommander(schemaSpec, PRESENTATIONS.schema),
+  requirements: mountCommanderGroup(requirementsGroup, PRESENTATIONS.requirements),
+  mcp: mountCommander(mcpSpec, PRESENTATIONS.mcp).version(CURRENT_SCHEMA_VERSION),
 };
 
 const missing = ENTRIES.filter(({ name }) => RENDERED[name] === undefined).map(({ name }) => name);

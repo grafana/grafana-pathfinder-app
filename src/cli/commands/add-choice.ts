@@ -12,7 +12,7 @@ import { z } from 'zod';
 
 import { JsonQuizChoiceSchema } from '../../types/json-guide.schema';
 import type { JsonQuizChoice } from '../../types/json-guide.types';
-import { defineCommand, mountCommander, pickContent, shapeKeys, withPolicy } from '../contracts';
+import { defineCommand, pickContent, shapeKeys, withPolicy } from '../contracts';
 import { assertCliChoiceFields, CliValidationError } from '../utils/cli-validators';
 import { appendChoice, mutateAndValidate, PackageIOError } from '../utils/package-io';
 import { issueToOutcome, manyIssuesOutcome, renderError, type CommandOutcome } from '../utils/output';
@@ -97,9 +97,4 @@ export const addChoiceSpec = defineCommand({
   summary: 'Append a choice to a quiz block',
   schema: AddChoiceCommand,
   run: runAddChoice,
-});
-
-export const addChoiceCommand = mountCommander(addChoiceSpec, {
-  positionals: ['dir'],
-  placeholders: { parent: 'id' },
 });

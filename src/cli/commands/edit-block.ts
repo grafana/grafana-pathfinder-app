@@ -41,15 +41,7 @@ import { BLOCK_SCHEMA_MAP, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { normalizeBlockInput } from '../utils/input-normalizers';
 import { isNonEmptySelector, unverifiedSelectorWarning } from '../utils/warnings';
-import {
-  defineCommand,
-  mountCommander,
-  patchShape,
-  pickSupplied,
-  shapeKeys,
-  withPolicy,
-  type CommandShape,
-} from '../contracts';
+import { defineCommand, patchShape, pickSupplied, shapeKeys, withPolicy, type CommandShape } from '../contracts';
 
 /**
  * Every field any editable block type declares, first declaration winning.
@@ -240,12 +232,4 @@ export const editBlockSpec = defineCommand({
   summary: "Update fields on an existing block by id. Only options valid for the block's actual type are retained.",
   schema: EditBlockCommand,
   run: runEditBlock,
-});
-
-export const editBlockCommand = mountCommander(editBlockSpec, {
-  positionals: ['dir', 'id'],
-  placeholders: { position: 'n', before: 'id', after: 'id' },
-  // The reorder guards parse in order to refuse; listing them in help would
-  // advertise a capability this command does not have.
-  hidden: ['position', 'before', 'after'],
 });

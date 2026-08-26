@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { moveBlock, mutateAndValidate, PackageIOError } from '../utils/package-io';
 import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
@@ -134,10 +134,4 @@ export const moveBlockSpec = defineCommand({
   summary: 'Reorder a block, optionally reparenting it into another container',
   schema: MoveBlockCommand,
   run: runMoveBlock,
-});
-
-export const moveBlockCommand = mountCommander(moveBlockSpec, {
-  positionals: ['dir', 'id'],
-  placeholders: { before: 'id', after: 'id', position: 'n', toPosition: 'n', into: 'containerId' },
-  hidden: ['toPosition'],
 });

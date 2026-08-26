@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import type { CommandOutcome } from '../utils/output';
 import { JsonGuideSchemaStrict, JsonBlockSchema, CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
 import {
@@ -249,5 +249,3 @@ export const schemaSpec = defineCommand({
   emits: 'artifact',
   run: runSchema,
 });
-
-export const schemaCommand = mountCommander(schemaSpec, { positionals: ['name'] });

@@ -24,7 +24,7 @@ import type {
 } from '../../types/package.types';
 import { RepositoryJsonSchema } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { resolveCliPath } from '../utils/file-loader';
 import { detectCycles } from '../utils/graph-cycles';
 import type { CommandOutcome } from '../utils/output';
@@ -367,11 +367,4 @@ export const buildGraphSpec = defineCommand({
   // Deploy pipes stdout into packages/graph.json; lint goes to stderr alongside it.
   emits: 'stream',
   run: runBuildGraph,
-});
-
-export const buildGraphCommand = mountCommander(buildGraphSpec, {
-  positionals: ['repositories'],
-  placeholders: { repositories: 'repositories...', output: 'file' },
-  shorts: { output: 'o' },
-  negatable: { lint: 'Suppress lint output' },
 });

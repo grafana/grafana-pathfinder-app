@@ -18,7 +18,7 @@ import { z } from 'zod';
 
 import { ManifestJsonObjectSchema, ManifestJsonSchema } from '../../types/package.schema';
 import type { ManifestJson } from '../../types/package.types';
-import { defineCommand, mountCommander, patchShape, pickSupplied, withPolicy } from '../contracts';
+import { defineCommand, patchShape, pickSupplied, withPolicy } from '../contracts';
 import { assertCliManifestFields, assertSemver, CliValidationError } from '../utils/cli-validators';
 import { mutateAndValidate, PackageIOError } from '../utils/package-io';
 import { issueToOutcome, manyIssuesOutcome, renderError, type CommandOutcome } from '../utils/output';
@@ -231,13 +231,6 @@ export const setManifestSpec = defineCommand({
   summary: 'Update manifest fields. Only the fields you pass are changed; everything else is preserved.',
   schema: SetManifestCommand,
   run: runSetManifest,
-});
-
-export const setManifestCommand = mountCommander(setManifestSpec, {
-  positionals: ['dir'],
-  // `<semver>` and `<platform>` read better than the type-derived `<string>`;
-  // `<json>` warns that the escape hatch wants a JSON array, not a value.
-  placeholders: { testMinVersion: 'semver', targetPlatform: 'platform', targetAnd: 'json' },
 });
 
 /** Group the supplied flat parameters by the nested object they patch. */

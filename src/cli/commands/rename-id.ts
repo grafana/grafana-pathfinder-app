@@ -16,7 +16,7 @@
 import { z } from 'zod';
 
 import { packageIdSchema } from '../../types/package.schema';
-import { defineCommand, mountCommander } from '../contracts';
+import { defineCommand } from '../contracts';
 import { mutateAndValidate, PackageIOError } from '../utils/package-io';
 import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
@@ -89,11 +89,4 @@ export const renameIdSpec = defineCommand({
   summary: 'Atomically rename a package id in both content.json and manifest.json',
   schema: RenameIdCommand,
   run: runRenameId,
-});
-
-// `new-id` keeps the hyphenated spelling the usage line has always shown; the schema
-// field is `newId`, which is what Commander would print unaided.
-export const renameIdCommand = mountCommander(renameIdSpec, {
-  positionals: ['dir', 'newId'],
-  placeholders: { newId: 'new-id' },
 });
