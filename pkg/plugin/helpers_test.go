@@ -2,6 +2,9 @@ package plugin
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -9,6 +12,26 @@ import (
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/plugin/auth"
 )
+
+// TestMain points the auth-api JWKS endpoint at an origin nothing listens on, so
+// no test reaches the real one and the default identity fixtures model a stack
+// that publishes its own signing keys (self-hosted Grafana). Tests for the
+// Grafana Cloud shape, where auth-api holds the key instead, opt in with
+// withSigningKeysURL.
+func TestMain(m *testing.M) {
+	unreachable := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	unreachable.Close()
+	signingKeysURL = unreachable.URL + "/v1/keys"
+	os.Exit(m.Run())
+}
+
+// withSigningKeysURL points the auth-api JWKS endpoint at a stub for one test.
+func withSigningKeysURL(t *testing.T, keysURL string) {
+	t.Helper()
+	previous := signingKeysURL
+	signingKeysURL = keysURL
+	t.Cleanup(func() { signingKeysURL = previous })
+}
 
 // newTestApp builds a minimal App for tests that only exercise resource
 // handlers — no Coda client, no settings, just a logger. It has NO on-behalf-of
