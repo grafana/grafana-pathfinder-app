@@ -105,6 +105,8 @@ When the review skill's contract-evolution gate fires for an existing capability
 
 Use `/review`. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
 
+A PR whose author is not listed in `.github/community-pr-gate.json` goes through the community PR gate before review; that binding's handle list decides who bypasses the gate, and it is authoritative even where `.github/CODEOWNERS` differs.
+
 `docs/design/CONCERNS.md` is useful on its own — without a review — for impact analysis, change risk classification, and subsystem-aware debugging.
 
 ## Tech-debt audits
