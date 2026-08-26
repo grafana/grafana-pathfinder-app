@@ -38,19 +38,19 @@ GuideReaderOverlay mode="controller"          module.tsx normal path
 
 ## Key files by layer
 
-| Concern                        | File                                                                                                                        |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| Deep-link param `controller=1` | `src/utils/pathfinder-search-params.ts`                                                                                     |
-| Mount the controller overlay   | `src/module.tsx` (`?controller=1` short-circuit)                                                                            |
-| Overlay + status badge         | `src/components/guide-reader/GuideReaderOverlay.tsx`                                                                        |
-| "Interactive" affordance       | `src/components/docs-panel/utils/controller-tab-open-action.ts` (`pickControllerTabOpenAction`), `DocsPanelContentArea.tsx` |
-| Interactive mode enum          | `src/global-state/interactive-mode-context.ts` (`InteractiveMode`, `useInteractiveMode`)                                    |
-| Transport                      | `src/lib/cross-tab-transport.ts` (`CrossTabTransport`)                                                                      |
-| Message protocol               | `src/types/cross-tab.types.ts`                                                                                              |
-| Controller emit + presence     | `src/global-state/controller-channel.tsx` (`ControllerChannelProvider`, `useControllerChannel`)                             |
-| Per-step emit                  | `interactive-step.tsx`, `interactive-multi-step.tsx`, `interactive-guided.tsx` (handlers branch on `useInteractiveMode()`)  |
-| Requirement round-trip         | `src/requirements-manager/step-checker.hook.ts` (controller branch), `controller-requirements.ts` (tab-local set)           |
-| Live-tab executor              | `src/integrations/cross-tab/live-tab-executor.ts` (`installLiveTabExecutor`: replay, requirement eval, remote fix)          |
+| Concern                        | File                                                                                                                              |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Deep-link param `controller=1` | `src/utils/pathfinder-search-params.ts`                                                                                           |
+| Mount the controller overlay   | `src/module.tsx` (`?controller=1` short-circuit)                                                                                  |
+| Overlay + status badge         | `src/components/guide-reader/GuideReaderOverlay.tsx`                                                                              |
+| "Interactive" affordance       | `src/components/docs-panel/utils/controller-tab-open-action.ts` (`pickControllerTabOpenAction`), `DocsPanelContentArea.tsx`       |
+| Interactive mode enum          | `src/global-state/interactive-mode-context.ts` (`InteractiveMode`, `useInteractiveMode`)                                          |
+| Transport                      | `src/lib/cross-tab-transport.ts` (`CrossTabTransport`)                                                                            |
+| Message protocol               | `src/types/cross-tab.types.ts`                                                                                                    |
+| Controller emit + presence     | `src/global-state/controller-channel.tsx` (`ControllerChannelProvider`, `useControllerChannel`)                                   |
+| Per-step emit                  | `interactive-step.tsx`, `interactive-multi-step.tsx`, `interactive-guided.tsx` (handlers branch on `useInteractiveMode()`)        |
+| Requirement round-trip         | `src/requirements-manager/step-checker.hook.ts` (controller branch), `controller-requirements.ts` (tab-local + guide-scoped sets) |
+| Live-tab executor              | `src/integrations/cross-tab/live-tab-executor.ts` (`installLiveTabExecutor`: replay, requirement eval, remote fix)                |
 
 ## Message protocol
 
@@ -59,17 +59,26 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 (`source: 'pathfinder'`, a per-tab `senderId` used to drop self-echoes, and a
 `timestamp`):
 
-- `step-command` — `{ phase: 'show' | 'do', stepId, action: { targetAction, refTarget, targetValue?, targetComment?, internalActions? } }`.
-  Composite steps carry their ordered sub-actions in `internalActions`. A
+- `step-command` — `{ phase: 'show' | 'do', stepId, runId, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, internalActions? } }`.
+  `targetState` carries an authored `targetstate` through to the live tab so
+  toggle actions converge on the requested state instead of clicking blindly.
+  Composite steps carry their ordered sub-actions in `internalActions`; the
+  wire shape is derived from `InternalAction` and omits only `requirements`,
+  which the controller gates separately. A
   `multistep` replays with staged pacing (see [Replay pacing](#replay-pacing));
   a `guided` step runs through the live tab's `GuidedHandler` instead — it
   highlights each target and waits for the user.
-- `step-complete` — `{ stepId, ok }`, live → controller, signals a composite
-  actually finished so the controller marks completion only then.
-- `step-progress` — `{ stepId, index, total }`, live → controller, reports which
+- `step-complete` — `{ stepId, runId, ok }`, live → controller, signals a
+  composite actually finished so the controller marks completion only then.
+- `step-progress` — `{ stepId, runId, index, total }`, live → controller, reports which
   internal action a composite is replaying so the controller can animate per-step
-  progress while it runs on the live tab.
+  progress while it runs on the live tab. `runId` prevents a late reply from a
+  previous run of the same step from settling or updating the current run.
 - `heartbeat` — `{ role: 'controller' | 'live' }`
+- `pairing-challenge` / `pairing-accept` — the authenticated launch handshake
+  that binds the controller session to one live tab.
+- `sidebar-handoff` — `{ action: 'close' | 'reopen' }`, transfers ownership of
+  the sidebar while the controller is active.
 - `check-requirements` / `requirement-result` — the requirement round-trip
   (controller → live → controller), correlated by `requestId`.
 - `fix-requirement` / `fix-result` — a "Fix this" routed to the live tab,
@@ -187,13 +196,16 @@ against an already-compromised origin.
 
 ## Tab pairing
 
-A controller binds to the **first live tab that answers** its heartbeat and
-records that tab's `senderId` (`controller-channel.tsx`). It then ignores
-replies — `requirement-result`, `fix-result`, `step-complete` — from any other
-tab, so a second Grafana tab can't answer a requirement check with a different
-DOM state. It re-pairs if the bound tab goes stale. Commands themselves are still
-broadcast (every live tab executes them); only the replies the controller trusts
-are scoped to the paired tab.
+A controller binds only after it verifies the first valid `pairing-accept` for
+its launch and records that message's `senderId` as the `liveTabId`
+(`controller-channel.tsx`). It then ignores heartbeats and replies —
+`requirement-result`, `fix-result`, `step-progress`, `step-complete` — from any
+other tab, so a second Grafana tab can't answer a requirement check with a
+different DOM state. Commands are broadcast at the transport layer, but each is
+signed for that `liveTabId`; the executor's authentication gate rejects it in
+every other live tab. If the paired tab goes stale, the controller clears the
+binding and fails pending requests and composite runs rather than continuing to
+send commands to a stale target.
 
 ## Replay pacing
 
@@ -207,6 +219,9 @@ step is **not** auto-replayed: the executor runs each action through
 `GuidedHandler` so the user performs it on the live tab. Either way the executor
 posts `step-complete` when the sequence finishes, and the controller waits for
 that before marking the step done (so a guided step isn't completed on click).
+For both simple and composite commands, the executor copies `targetState` into
+the interactive-engine request; guided actions can therefore skip an instruction
+that is already satisfied, while automated actions click only when needed.
 
 ## Requirement evaluation (round-trip)
 
@@ -223,13 +238,21 @@ Controller (useStepChecker, controller mode)        Live tab (installLiveTabExec
   recheck                 ◄─ fix-result ──────────  reply { ok, error? }
 ```
 
+- Not every token crosses the wire. `splitGuideScopedRequirements`
+  (`controller-requirements.ts`) holds back the guide-scoped set
+  (`GUIDE_SCOPED_REQUIREMENT_PREFIXES`: `var-`, `section-completed:`), because the
+  controller's renderer owns the step and the state those tokens read. The
+  controller evaluates them itself, in parallel with the round-trip of the
+  remaining tokens, and ANDs the two verdicts — see
+  [Guide identity for `var-*` checks](engines/requirements-manager.md#guide-identity-for-var-checks).
 - The reply is a plain `RequirementsCheckResult`; it flows through the **same**
   `createRequirementsState` path the in-tab checker uses, so the warning and
   "Fix this" affordance render identically — no controller-specific UI.
-- Evaluation and fixes run on the **live** side (tier 3 → requirements-manager,
-  a legal downward import). `controller-channel.tsx` (tier 1) only correlates
-  replies by `requestId` and carries the result as a tier-0 type — it must not
-  import requirements-manager (upward).
+- Evaluation and fixes for the round-tripped tokens run on the **live** side
+  (tier 3 → requirements-manager, a legal downward import).
+  `controller-channel.tsx` (tier 1) only correlates replies by `requestId` and
+  carries the result as a tier-0 type — it must not import requirements-manager
+  (upward).
 - A controller-mode heartbeat polls while a fragile step is **blocked** (the
   in-tab watchdog only polls while enabled), so the warning clears once the
   prerequisite is met on the live tab.
@@ -237,9 +260,10 @@ Controller (useStepChecker, controller mode)        Live tab (installLiveTabExec
   `requestRequirementCheck` posts regardless of connection state (the channel
   value omits `connected`), so the check fires the moment a step renders;
   `connected` only drives the presence badge.
-- If no live tab answers within the timeout, the check falls back to stripping
-  the tab-local tokens and evaluating the rest locally — session/permission
-  requirements still gate, and a disconnected controller never hangs.
+- If no live tab answers within the timeout, the round-tripped half falls back to
+  stripping the tab-local tokens and evaluating the rest locally —
+  session/permission requirements still gate, and a disconnected controller never
+  hangs. The guide-scoped half is unaffected: it never depended on the live tab.
 
 ## Presence
 
@@ -253,12 +277,14 @@ badge.
 
 - **Routed:** `interactive-step` (Show me / Do it), multi-step (staged replay),
   and guided (runs through `GuidedHandler` on the live tab). Requirements —
-  including tab-local ones — are evaluated and fixed on the live tab, re-checked
-  at click time so a regressed prerequisite gates, and composites complete only
-  once the live tab reports `step-complete`.
+  including tab-local ones, but excluding the guide-scoped set the controller
+  keeps — are evaluated and fixed on the live tab, re-checked at click time so a
+  regressed prerequisite gates, and composites complete only once the live tab
+  reports `step-complete`.
 - **Replies scoped to one live tab:** a controller trusts requirement/fix/
   completion replies from a single paired tab; see [Tab pairing](#tab-pairing).
-  Commands are still broadcast, so multiple live tabs all execute them.
+  Commands are physically broadcast but authenticated for one `liveTabId`, so
+  other live tabs reject them without executing.
 - **Not yet routed:** a section's aggregate "Do section" runs its child steps
   directly rather than emitting one command; quiz grading is local (so it still
   works in the controller); terminal / challenge need a shared VM session and are
@@ -273,4 +299,6 @@ badge.
    `interactive-step.tsx`) instead of executing locally.
 2. If the action shape differs (e.g. `internalActions` for multi-step / guided),
    extend `CrossTabAction` / `CrossTabMessage` and handle the new shape in
-   `live-tab-executor.ts`.
+   `live-tab-executor.ts`. Build nested wire actions with
+   `toCrossTabInternalAction()`; it preserves fields such as `targetState` while
+   removing the requirements already evaluated by the controller.

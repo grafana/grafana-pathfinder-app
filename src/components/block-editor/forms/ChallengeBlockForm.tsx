@@ -10,32 +10,15 @@
 import React, { useState, useCallback } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import {
-  Badge,
-  Button,
-  Combobox,
-  Field,
-  IconButton,
-  Input,
-  RadioButtonGroup,
-  TextArea,
-  useStyles2,
-  type ComboboxOption,
-} from '@grafana/ui';
+import { Badge, Button, Combobox, Field, IconButton, Input, RadioButtonGroup, TextArea, useStyles2 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
 import { ConditionChipsField } from './ConditionChipsField';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
-import { useCodaOptions } from './useCodaOptions';
+import { useCodaOptions, useCodaTemplateOptions } from './useCodaOptions';
 import { testIds } from '../../../constants/testIds';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonChallengeBlock, JsonChallengeHint } from '../../../types/json-guide.types';
-import { PLUGIN_BACKEND_URL } from '../../../constants';
-
-const VM_TEMPLATE_OPTIONS: Array<ComboboxOption<string>> = [
-  { label: 'Default (vm-aws)', value: '' },
-  { label: 'Sample app (vm-aws-sample-app)', value: 'vm-aws-sample-app' },
-  { label: 'Alloy scenario (vm-aws-alloy-scenario)', value: 'vm-aws-alloy-scenario' },
-];
+import { useCodaTerminalGate } from '../../../integrations/coda/useCodaAvailability.hook';
 
 type ChallengeMode = 'standard' | 'coda';
 
@@ -218,6 +201,11 @@ export function ChallengeBlockForm({
   const initial = initialData && isChallengeBlock(initialData) ? initialData : null;
 
   const [mode, setMode] = useState<ChallengeMode>(() => inferInitialMode(initial));
+  // Annotated, not disabled: a guide is often authored on a stack that has no
+  // Coda for learners who do, so blocking the mode would block legitimate work.
+  // The author only needs to know their own preview will not run.
+  const codaGate = useCodaTerminalGate();
+  const codaUnavailableHere = codaGate === 'disabled' || codaGate === 'plugin-missing';
   const [title, setTitle] = useState(initial?.title ?? '');
   const [brief, setBrief] = useState(initial?.brief ?? '');
   const [vmTemplate, setVmTemplate] = useState(initial?.vmTemplate ?? '');
@@ -241,16 +229,17 @@ export function ChallengeBlockForm({
   const isAlloyScenario = vmTemplate === 'vm-aws-alloy-scenario';
   const isSampleApp = vmTemplate === 'vm-aws-sample-app';
 
-  const { options: sampleAppOptions, isLoading: isLoadingApps } = useCodaOptions(
-    isSampleApp,
-    `${PLUGIN_BACKEND_URL}/sample-apps`,
-    'apps'
-  );
-  const { options: scenarioOptions, isLoading: isLoadingScenarios } = useCodaOptions(
-    isAlloyScenario,
-    `${PLUGIN_BACKEND_URL}/alloy-scenarios`,
-    'scenarios'
-  );
+  const {
+    options: sampleAppOptions,
+    isLoading: isLoadingApps,
+    unavailable: appsUnavailable,
+  } = useCodaOptions(isSampleApp, 'sampleApps');
+  const {
+    options: scenarioOptions,
+    isLoading: isLoadingScenarios,
+    unavailable: scenariosUnavailable,
+  } = useCodaOptions(isAlloyScenario, 'alloyScenarios');
+  const { options: templateOptions, isLoading: templatesLoading } = useCodaTemplateOptions(vmTemplate);
 
   const handleAddHint = useCallback(() => {
     setHints((prev) => [...prev, { id: makeHintId(), text: '' }]);
@@ -281,7 +270,7 @@ export function ChallengeBlockForm({
   }, []);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
 
       const trimmedScript = setupScript.trim();
@@ -342,7 +331,9 @@ export function ChallengeBlockForm({
           description={
             mode === 'standard'
               ? 'Verifies against the learner’s own Grafana via a Pathfinder requirement. No VM, no terminal.'
-              : 'Provisions a Coda VM with a terminal; verifies with a shell command (coda-exit-zero).'
+              : codaUnavailableHere
+                ? 'Provisions a Coda VM with a terminal; verifies with a shell command (coda-exit-zero). This Grafana cannot run Coda challenges — the sandbox terminal is off or the Coda app plugin is missing — so the block will report that instead of starting. It still works for learners on a stack where Coda is enabled.'
+                : 'Provisions a Coda VM with a terminal; verifies with a shell command (coda-exit-zero).'
           }
         >
           <RadioButtonGroup options={MODE_OPTIONS} value={mode} onChange={(v) => setMode(v)} fullWidth />
@@ -373,7 +364,8 @@ export function ChallengeBlockForm({
 
           <Field label="VM template" description="VM template to provision (defaults to vm-aws)">
             <Combobox
-              options={VM_TEMPLATE_OPTIONS}
+              options={templateOptions}
+              loading={templatesLoading}
               value={vmTemplate}
               onChange={(opt) => {
                 setVmTemplate(opt.value);
@@ -395,7 +387,7 @@ export function ChallengeBlockForm({
                 onChange={(opt) => setVmScenario(opt?.value ?? '')}
                 loading={isLoadingScenarios}
                 createCustomValue
-                placeholder="Select a scenario..."
+                placeholder={scenariosUnavailable ? 'Coda unavailable — type a scenario id' : 'Select a scenario...'}
                 isClearable
               />
             </Field>
@@ -409,7 +401,7 @@ export function ChallengeBlockForm({
                 onChange={(opt) => setVmApp(opt?.value ?? '')}
                 loading={isLoadingApps}
                 createCustomValue
-                placeholder="Select a sample app..."
+                placeholder={appsUnavailable ? 'Coda unavailable — type an app id' : 'Select a sample app...'}
                 isClearable
               />
             </Field>

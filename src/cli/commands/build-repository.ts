@@ -15,14 +15,67 @@ import type { RepositoryEntry, RepositoryJson } from '../../types/package.types'
 // applies graceful degradation — a path/journey manifest missing `milestones` produces
 // a repository entry rather than failing. The `validate` command enforces the
 // refinement (ManifestJsonSchema) for strict correctness checking.
-import { ContentJsonSchema, ManifestJsonObjectSchema, RepositoryJsonSchema } from '../../types/package.schema';
+import {
+  ContentJsonSchema,
+  ManifestJsonObjectSchema,
+  RepositoryEntrySchema,
+  RepositoryJsonSchema,
+} from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
+import { preserveAuthoredStartingLocation } from '../e2e/starting-location';
 import { resolveCliPath } from '../utils/file-loader';
 import { formatJsonWithPrettier } from '../utils/output';
 
 interface BuildRepositoryOptions {
   output?: string;
   exclude?: string[];
+}
+
+/**
+ * Manifest keys the builder maps onto a repository entry by hand. Everything
+ * else in a manifest is extension metadata and is forwarded verbatim.
+ */
+const NAMED_MANIFEST_FIELDS: ReadonlySet<string> = new Set(Object.keys(ManifestJsonObjectSchema.shape));
+
+/**
+ * Repository-entry fields the builder computes itself (`path` from the package
+ * directory, `title` from content.json). A manifest key of the same name is
+ * refused rather than allowed to overwrite the computed value. `__proto__` is
+ * belt-and-braces on an assignment sink fed by file content — zod's loose parse
+ * already drops a JSON `__proto__` own-key before the copy runs.
+ */
+const RESERVED_ENTRY_FIELDS: ReadonlySet<string> = new Set([
+  ...Object.keys(RepositoryEntrySchema.shape).filter((key) => !NAMED_MANIFEST_FIELDS.has(key)),
+  '__proto__',
+]);
+
+/**
+ * Copy every manifest key the builder does not name explicitly onto the entry.
+ * Reports a warning for each key refused as reserved, and the names of the keys
+ * it forwarded — an open namespace means a misspelled known field is forwarded
+ * as a plausible-looking extension field, and the build log is where that is
+ * findable.
+ */
+function forwardExtensionFields(
+  manifest: Record<string, unknown>,
+  entry: RepositoryEntry
+): { warnings: string[]; forwarded: string[] } {
+  const warnings: string[] = [];
+  const forwarded: string[] = [];
+
+  for (const key of Object.keys(manifest)) {
+    if (NAMED_MANIFEST_FIELDS.has(key)) {
+      continue;
+    }
+    if (RESERVED_ENTRY_FIELDS.has(key)) {
+      warnings.push(`Ignoring manifest field "${key}": reserved for a repository entry field the build computes`);
+      continue;
+    }
+    entry[key] = manifest[key];
+    forwarded.push(key);
+  }
+
+  return { warnings, forwarded };
 }
 
 /**
@@ -40,8 +93,12 @@ function isExcluded(dir: string, excludePaths: string[]): boolean {
  * Discover package directories under a root.
  * A package directory is any directory containing manifest.json.
  * Recurses arbitrarily deep, excluding assets/ subtrees and any paths in excludePaths (absolute).
+ *
+ * Exported so `build-stats` walks the tree with identical semantics — the two
+ * commands run over the same root in the same pipeline and must agree on what
+ * a package is.
  */
-function discoverPackages(root: string, excludePaths: string[] = []): string[] {
+export function discoverPackages(root: string, excludePaths: string[] = []): string[] {
   if (!fs.existsSync(root)) {
     return [];
   }
@@ -83,6 +140,7 @@ interface PackageReadResult {
   entry: RepositoryEntry;
   warnings: string[];
   errors: string[];
+  info: string[];
 }
 
 /**
@@ -93,6 +151,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
   const dirName = relativeDir || path.basename(packageDir);
   const warnings: string[] = [];
   const errors: string[] = [];
+  const info: string[] = [];
   const fallbackEntry: RepositoryEntry = { path: `${dirName}/`, type: 'guide' };
 
   const contentPath = path.join(packageDir, 'content.json');
@@ -105,7 +164,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
         ? `content.json validation failed: ${contentRead.issues?.map((i) => i.message).join('; ')}`
         : contentRead.message;
     errors.push(msg);
-    return { id: dirName, dirName, entry: fallbackEntry, warnings, errors };
+    return { id: dirName, dirName, entry: fallbackEntry, warnings, errors, info };
   }
 
   const content = contentRead.data;
@@ -125,10 +184,10 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
           ? `manifest.json validation failed: ${manifestRead.issues?.map((i) => i.message).join('; ')}`
           : `${manifestRead.message}, using content.json only`;
       warnings.push(msg);
-      return { id, dirName, entry, warnings, errors };
+      return { id, dirName, entry, warnings, errors, info };
     }
 
-    const manifest = manifestRead.data;
+    const manifest = preserveAuthoredStartingLocation(manifestRead.parsed, manifestRead.data);
 
     if (manifest.id !== id) {
       errors.push(`ID mismatch: content.json has "${id}", manifest.json has "${manifest.id}"`);
@@ -138,7 +197,10 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.description = manifest.description;
     entry.category = manifest.category;
     entry.author = manifest.author;
-    entry.startingLocation = manifest.startingLocation;
+    entry.estimatedMinutes = manifest.estimatedMinutes;
+    if (manifest.startingLocation !== undefined) {
+      entry.startingLocation = manifest.startingLocation;
+    }
     entry.milestones = manifest.milestones;
     entry.depends = manifest.depends?.length ? manifest.depends : undefined;
     entry.recommends = manifest.recommends?.length ? manifest.recommends : undefined;
@@ -148,9 +210,22 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.replaces = manifest.replaces?.length ? manifest.replaces : undefined;
     entry.targeting = manifest.targeting;
     entry.testEnvironment = manifest.testEnvironment;
+    // Named since #1682 declared it on the manifest schema, so the extension
+    // forwarding below now skips it. Without this line the stamp silently stopped
+    // reaching repository.json — the generated denominator, dropped between a
+    // schema change and a copy loop that never mentioned it.
+    if (manifest.stats !== undefined) {
+      entry.stats = manifest.stats;
+    }
+
+    const forwarding = forwardExtensionFields(manifest, entry);
+    warnings.push(...forwarding.warnings);
+    if (forwarding.forwarded.length > 0) {
+      info.push(`forwarding ${forwarding.forwarded.length} extension field(s): ${forwarding.forwarded.join(', ')}`);
+    }
   }
 
-  return { id, dirName, entry, warnings, errors };
+  return { id, dirName, entry, warnings, errors, info };
 }
 
 /**
@@ -165,9 +240,11 @@ export function buildRepository(
   repository: RepositoryJson;
   warnings: string[];
   errors: string[];
+  info: string[];
 } {
   const warnings: string[] = [];
   const errors: string[] = [];
+  const info: string[] = [];
   const repository: RepositoryJson = {};
 
   const absoluteExcludes =
@@ -176,7 +253,7 @@ export function buildRepository(
 
   if (packageDirs.length === 0) {
     warnings.push(`No package directories with manifest.json found under ${root}`);
-    return { repository, warnings, errors };
+    return { repository, warnings, errors, info };
   }
 
   for (const packageDir of packageDirs) {
@@ -187,6 +264,9 @@ export function buildRepository(
     }
     for (const e of result.errors) {
       errors.push(`${result.dirName}: ${e}`);
+    }
+    for (const i of result.info) {
+      info.push(`${result.dirName}: ${i}`);
     }
 
     if (result.errors.length === 0) {
@@ -204,7 +284,7 @@ export function buildRepository(
     errors.push(`Generated repository.json is invalid: ${messages}`);
   }
 
-  return { repository, warnings, errors };
+  return { repository, warnings, errors, info };
 }
 
 export const buildRepositoryCommand = new Command('build-repository')
@@ -224,7 +304,11 @@ export const buildRepositoryCommand = new Command('build-repository')
     }
 
     const exclude = options.exclude ? (Array.isArray(options.exclude) ? options.exclude : [options.exclude]) : [];
-    const { repository, warnings, errors } = buildRepository(absoluteRoot, { exclude });
+    const { repository, warnings, errors, info } = buildRepository(absoluteRoot, { exclude });
+
+    for (const line of info) {
+      console.error(`ℹ️  ${line}`);
+    }
 
     for (const warning of warnings) {
       console.warn(`⚠️  ${warning}`);

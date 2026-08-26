@@ -15,7 +15,7 @@
  * 3. Keeping ConfirmModal here ensures it survives form component unmounts
  *
  * Flow: FormComponent -> TypeSwitchDropdown -> handleTypeSwitchRequest ->
- *       (if warning) pendingSwitch state -> ConfirmModal -> onSwitchBlockType
+ *       (if warning) pendingSwitch state -> ConfirmModal -> selected conversion handler
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -37,6 +37,7 @@ import { MarkdownBlockForm } from './forms/MarkdownBlockForm';
 import { HtmlBlockForm } from './forms/HtmlBlockForm';
 import { ImageBlockForm } from './forms/ImageBlockForm';
 import { VideoBlockForm } from './forms/VideoBlockForm';
+import { CalloutBlockForm } from './forms/CalloutBlockForm';
 import { SectionBlockForm } from './forms/SectionBlockForm';
 import { CollapsibleBlockForm } from './forms/CollapsibleBlockForm';
 import { ConditionalBlockForm } from './forms/ConditionalBlockForm';
@@ -109,12 +110,14 @@ export interface BlockFormModalProps {
   onSwitchBlockType?: (newType: BlockType) => void;
 }
 
-// Map block types to form components - defined outside render
-const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = {
+// `null` means the block has no authoring form here, and the guard below
+// suppresses the whole modal rather than rendering an empty one.
+const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps> | null> = {
   markdown: MarkdownBlockForm,
   html: HtmlBlockForm,
   image: ImageBlockForm,
   video: VideoBlockForm,
+  callout: CalloutBlockForm,
   section: SectionBlockForm,
   collapsible: CollapsibleBlockForm,
   conditional: ConditionalBlockForm,
@@ -129,6 +132,7 @@ const FORM_COMPONENTS: Record<BlockType, React.ComponentType<BlockFormProps>> = 
   'code-block': CodeBlockForm,
   'grot-guide': GrotGuideBlockForm,
   'snippet-ref': SnippetRefBlockForm,
+  assistant: null,
 };
 
 /**
@@ -162,6 +166,7 @@ export function BlockFormModal({
   const [pendingSwitch, setPendingSwitch] = useState<{
     type: BlockType;
     warning: ConversionWarning;
+    useFieldAwareConversion: boolean;
   } | null>(null);
 
   // Store a callback to receive the selected element
@@ -426,27 +431,38 @@ export function BlockFormModal({
    */
   const handleTypeSwitchRequest = useCallback(
     (newType: BlockType, warning?: ConversionWarning) => {
+      const useFieldAwareConversion =
+        Boolean(onConvertType) &&
+        ((blockType === 'multistep' && newType === 'guided') || (blockType === 'guided' && newType === 'multistep'));
+
       if (warning) {
         // Show confirmation dialog at modal level - survives form component unmount
-        setPendingSwitch({ type: newType, warning });
+        setPendingSwitch({ type: newType, warning, useFieldAwareConversion });
+      } else if (useFieldAwareConversion && (newType === 'multistep' || newType === 'guided')) {
+        onConvertType?.(newType);
       } else {
         // No data loss - proceed directly
         onSwitchBlockType?.(newType);
       }
     },
-    [onSwitchBlockType]
+    [blockType, onConvertType, onSwitchBlockType]
   );
 
   /**
    * Handle confirmation from the type switch warning dialog.
    */
   const handleTypeSwitchConfirm = useCallback(() => {
-    const type = pendingSwitch?.type;
+    const pending = pendingSwitch;
     setPendingSwitch(null);
-    if (type) {
-      onSwitchBlockType?.(type);
+    if (!pending) {
+      return;
     }
-  }, [pendingSwitch, onSwitchBlockType]);
+    if (pending.useFieldAwareConversion && (pending.type === 'multistep' || pending.type === 'guided')) {
+      onConvertType?.(pending.type);
+    } else {
+      onSwitchBlockType?.(pending.type);
+    }
+  }, [onConvertType, onSwitchBlockType, pendingSwitch]);
 
   /**
    * Handle cancellation of the type switch warning dialog.

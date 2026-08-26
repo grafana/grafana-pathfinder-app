@@ -33,6 +33,7 @@ export type JsonBlock =
   | JsonHtmlBlock
   | JsonSectionBlock
   | JsonCollapsibleBlock
+  | JsonCalloutBlock
   | JsonConditionalBlock
   | JsonInteractiveBlock
   | JsonMultistepBlock
@@ -209,7 +210,30 @@ export interface JsonCollapsibleBlock extends AuthorAnnotated {
  * Content-only blocks — the only blocks a collapsible may hold.
  * Mirrors `PresentationalBlockSchema` in json-guide.schema.ts.
  */
-export type PresentationalBlock = JsonMarkdownBlock | JsonHtmlBlock | JsonImageBlock | JsonVideoBlock;
+export type PresentationalBlock =
+  JsonMarkdownBlock | JsonHtmlBlock | JsonImageBlock | JsonVideoBlock | JsonCalloutBlock;
+
+// ============ CALLOUT BLOCK ============
+
+/**
+ * Callout block: a highlighted, labeled box for calling out anything the
+ * author wants to set apart (an objective, a summary, a call to action —
+ * the author writes the label, not a fixed vocabulary). Presentational
+ * only, like `image`/`video`/`markdown` — it carries no completion state.
+ *
+ * Not to be confused with the unrelated `objectives?: string[]` field
+ * present on other block types (e.g. `JsonSectionBlock`), which drives
+ * auto-completion and is never rendered.
+ */
+export interface JsonCalloutBlock extends AuthorAnnotated {
+  type: 'callout';
+  /** Stable identifier for edit-block / remove-block addressing (auto-assigned by the CLI when omitted) */
+  id?: string;
+  /** Label shown at the top of the box, e.g. "Objective" */
+  title: string;
+  /** Markdown-formatted body content */
+  content: string;
+}
 
 // ============ CONDITIONAL BLOCK ============
 
@@ -301,6 +325,18 @@ export interface JsonInteractiveBlock extends AssistantProps, AuthorAnnotated {
   targetvalue?: string;
   /** camelCase alias for `targetvalue`. Tolerated by the runtime parser. */
   targetValue?: string;
+  /**
+   * Desired end state for a toggle target, so the step drives the control to
+   * that state instead of clicking it blindly. `"true"`/`"false"` auto-detects
+   * the control's state signal; `"<attribute>:<value>"` names it explicitly.
+   *
+   * String-only by the time it reaches the schema: a bare `true`/`false` is
+   * accepted when authoring and coerced by `normalizeJsonGuideAliases`, because
+   * the backend InteractiveGuide CRD cannot model a boolean-or-string field.
+   */
+  targetstate?: string;
+  /** camelCase alias for `targetstate`. Tolerated by the runtime parser. */
+  targetState?: boolean | string;
   /** Markdown description shown to the user */
   content: string;
   /** Tooltip/comment shown when highlighting the element */
@@ -381,7 +417,13 @@ export interface JsonGuidedBlock extends AuthorAnnotated {
   objectives?: string[];
   /** Whether this block can be skipped */
   skippable?: boolean;
-  /** Whether to mark complete when user performs action early */
+  /**
+   * Persist completion from the final guided action signal.
+   * For a final button or highlight action, click activation causes completion to persist during capture.
+   * The application click handler runs after persistence.
+   * A final action without click activation persists after its result.
+   * Cancellation, timeout, or error does not persist completion.
+   */
   completeEarly?: boolean;
 }
 
@@ -411,6 +453,17 @@ export interface JsonStep {
   targetvalue?: string;
   /** camelCase alias for `targetvalue`. Tolerated by the runtime parser. */
   targetValue?: string;
+  /**
+   * Desired end state for a toggle target. In a multistep the engine drives the
+   * control to it; in a guided step an already-satisfied control completes
+   * without asking the user to click it.
+   *
+   * String-only by the time it reaches the schema — see `targetstate` on
+   * `JsonInteractiveBlock` for why a bare boolean is coerced, not carried.
+   */
+  targetstate?: string;
+  /** camelCase alias for `targetstate`. Tolerated by the runtime parser. */
+  targetState?: boolean | string;
   /** Requirements for this specific step */
   requirements?: string[];
   /** Tooltip shown during this step (multistep) */
@@ -519,6 +572,25 @@ export interface JsonInputBlock extends AuthorAnnotated {
   skippable?: boolean;
   /** Filter datasources by type (e.g., 'prometheus', 'loki'). Only used when inputType is 'datasource'. */
   datasourceFilter?: string;
+  /**
+   * Query run against the picked data source to confirm it holds the data this
+   * guide teaches against. Its presence is what enables the check; it runs on
+   * click only, never on a polling cadence. Only used when inputType is
+   * 'datasource', and only against Prometheus, Loki, Tempo, and Pyroscope.
+   */
+  dataCheckQuery?: string;
+  /** Message shown when the check finds no data */
+  dataCheckFailureMessage?: string;
+  /** Check query range start (defaults to "now-1h") */
+  dataCheckTimeFrom?: string;
+  /** Check query range end (defaults to "now") */
+  dataCheckTimeTo?: string;
+  /**
+   * Make a failing check hold the section up. Off by default: the check reports
+   * what it found and the user moves on. Turning it on makes this block a
+   * tracked step that completes only on a pass, or a skip when `skippable`.
+   */
+  dataCheckBlocking?: boolean;
 }
 
 // ============ TERMINAL BLOCK ============
@@ -627,7 +699,7 @@ export interface JsonChallengeBlock extends AuthorAnnotated {
   /** Sample app for the sample-app template */
   vmApp?: string;
   /**
-   * Bash commands run sequentially via /coda/exec after the VM is ready
+   * Bash commands run sequentially in the sandbox VM after it is ready
    * and before "Check my work" becomes available.
    *
    * @deprecated Prefer `setupScript` for new challenges — it accepts
@@ -639,7 +711,7 @@ export interface JsonChallengeBlock extends AuthorAnnotated {
    */
   setupCommands?: string[];
   /**
-   * Bash script run via /coda/exec after the VM is ready and before
+   * Bash script run in the sandbox VM after it is ready and before
    * "Check my work" becomes available. The whole string (including
    * newlines) is passed to the remote login shell as a single command,
    * so heredocs and multi-line control flow work as expected.
@@ -844,6 +916,13 @@ export function isSectionBlock(block: JsonBlock): block is JsonSectionBlock {
  */
 export function isCollapsibleBlock(block: JsonBlock): block is JsonCollapsibleBlock {
   return block.type === 'collapsible';
+}
+
+/**
+ * Type guard for JsonCalloutBlock
+ */
+export function isCalloutBlock(block: JsonBlock): block is JsonCalloutBlock {
+  return block.type === 'callout';
 }
 
 /**

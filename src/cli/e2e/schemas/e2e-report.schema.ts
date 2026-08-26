@@ -118,6 +118,15 @@ export const GuideMetadataSchema = z.object({
   contentDigest: z.string().optional(),
   sideEffects: SideEffectClassificationSchema.optional(),
 });
+/**
+ * Identifies the explicitly selected milestone-based package.
+ * `path` and `journey` currently have identical execution semantics;
+ * `journey` is retained for package-format compatibility.
+ */
+export const ExecutionSelectionSchema = z.object({
+  id: z.string(),
+  type: z.enum(['path', 'journey']),
+});
 
 export const ReportConfigSchema = z.object({
   grafanaVersion: z.string().optional(),
@@ -197,6 +206,8 @@ export const MultiGuideReportSchema = z
     startedAt: z.iso.datetime(),
     endedAt: z.iso.datetime(),
     type: z.literal('multi-guide'),
+    /** Present when this report was produced by a metapackage (path/journey) run. */
+    selection: ExecutionSelectionSchema.optional(),
     config: ReportConfigSchema,
     summary: MultiGuideSummarySchema,
     guides: z.array(GuideResultSchema),
@@ -226,5 +237,6 @@ export type ReportConfig = z.infer<typeof ReportConfigSchema>;
 export type PreRunSkip = z.infer<typeof PreRunSkipSchema>;
 export type E2ETestReport = z.infer<typeof E2ETestReportSchema>;
 export type GuideResult = z.infer<typeof GuideResultSchema>;
+export type ExecutionSelection = z.infer<typeof ExecutionSelectionSchema>;
 export type MultiGuideSummary = z.infer<typeof MultiGuideSummarySchema>;
 export type MultiGuideReport = z.infer<typeof MultiGuideReportSchema>;

@@ -3,9 +3,9 @@ import { Button } from '@grafana/ui';
 
 import { waitForReactUpdates } from '../../lib/async-utils';
 import {
-  useStepChecker,
   getPostVerifyExplanation,
-  checkPostconditions,
+  useGuideRequirements,
+  useStepChecker,
   validateInteractiveRequirements,
 } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
@@ -26,6 +26,7 @@ import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai
 import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
@@ -86,6 +87,18 @@ export async function executeWithLazyScroll(
 ): Promise<LazyScrollResult> {
   // Navigate, noop, and popout actions don't target DOM elements - execute immediately without element checking
   if (targetAction === 'navigate' || targetAction === 'noop' || targetAction === 'popout') {
+    return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
+  }
+
+  // A full-screen -> sidebar handoff is about to happen inside `action()`
+  // (executeInteractiveAction's own gate) — full screen has no live Grafana
+  // DOM yet for this action to target, so the precheck below would always
+  // fail fast and `action()` would never run, silently skipping the handoff
+  // gate entirely. Skip straight to the real action; its handler does its
+  // own full-retry DOM resolution against the destination page once the
+  // handoff completes. Applies to "Show me" as well as "Do it" — both need
+  // the live Grafana UI in place before they have anything to preview or act on.
+  if (targetAction && isGrafanaDrivingHandoffNeeded(targetAction)) {
     return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
@@ -173,6 +186,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       targetValue,
+      targetState,
       targetComment,
       postVerify,
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
@@ -207,6 +221,7 @@ export const InteractiveStep = forwardRef<
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -295,6 +310,7 @@ export const InteractiveStep = forwardRef<
 
     // Get the interactive functions from the hook
     const { executeInteractiveAction, verifyStepResult } = useInteractiveElements();
+    const { checkPostconditions } = useGuideRequirements();
 
     // For section steps, use a simplified checker that respects section authority
     // For standalone steps, use the full global checker
@@ -480,13 +496,15 @@ export const InteractiveStep = forwardRef<
         }
 
         // Execute the action using existing interactive logic
-        const actionOutcome = await executeInteractiveAction(
+        const actionOutcome = await executeInteractiveAction({
           targetAction,
           refTarget,
-          currentTargetValue,
-          'do',
-          targetComment
-        );
+          targetValue: currentTargetValue,
+          targetState,
+          targetComment,
+          buttonType: 'do',
+          fullScreenFallbackLocation,
+        });
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
           return false;
@@ -552,6 +570,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       currentTargetValue,
+      targetState,
       targetComment,
       postVerify,
       verifyStepResult,
@@ -560,6 +579,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       renderedStepId,
       persistCompletion,
+      fullScreenFallbackLocation,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -661,6 +681,7 @@ export const InteractiveStep = forwardRef<
         onComplete,
         analyticsStepMeta,
         persistCompletion,
+        checkPostconditions,
       ]
     );
 
@@ -711,7 +732,7 @@ export const InteractiveStep = forwardRef<
           phase: 'show',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
         });
         if (!doIt) {
           // Simple controller steps complete optimistically because no live acknowledgement is available.
@@ -733,13 +754,15 @@ export const InteractiveStep = forwardRef<
           lazyRender,
           scrollContainer,
           async () => {
-            const outcome = await executeInteractiveAction(
+            const outcome = await executeInteractiveAction({
               targetAction,
               refTarget,
-              currentTargetValue,
-              'show',
-              targetComment
-            );
+              targetValue: currentTargetValue,
+              targetState,
+              targetComment,
+              buttonType: 'show',
+              fullScreenFallbackLocation,
+            });
             return outcome !== 'error';
           },
           targetAction
@@ -769,6 +792,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       currentTargetValue,
+      targetState,
       targetComment,
       doIt,
       disabled,
@@ -777,6 +801,7 @@ export const InteractiveStep = forwardRef<
       finalIsEnabled,
       lazyRender,
       scrollContainer,
+      fullScreenFallbackLocation,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -822,7 +847,7 @@ export const InteractiveStep = forwardRef<
           phase: 'do',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
         });
         // Simple controller steps complete optimistically because no live acknowledgement is available.
         persistCompletion();
@@ -863,6 +888,7 @@ export const InteractiveStep = forwardRef<
       executeStep,
       targetAction,
       currentTargetValue,
+      targetState,
       analyticsStepMeta,
       mode,
       controllerChannel,
@@ -959,6 +985,7 @@ export const InteractiveStep = forwardRef<
         data-targetaction={targetAction}
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}
+        data-targetstate={targetState === undefined ? undefined : String(targetState)}
         data-targetcomment={targetComment}
         data-openguide={openGuide}
         data-step-id={stepId || renderedStepId}

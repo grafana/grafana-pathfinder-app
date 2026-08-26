@@ -107,6 +107,10 @@ const ALLOWED_VERTICAL_VIOLATIONS = new Set([
   // Terminal requirement check needs to query terminal connection status from the integrations layer.
   // The dynamic import minimizes coupling and makes terminal code tree-shakeable when disabled.
   'requirements-manager/checks/terminal.ts -> integrations',
+  // coda-exit-zero runs a command against the caller's sandbox session, so it needs both the active
+  // session id and the Coda API client. Same dynamic-import treatment as terminal.ts above: keeps
+  // the Coda integration out of the requirements chunk when the feature is off.
+  'requirements-manager/checks/coda.ts -> integrations',
 ]);
 
 /**
@@ -140,7 +144,19 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
  * Phase 4a cleared all 15 original entries by re-exporting from barrels
  * and updating consumer import paths.
  */
-const ALLOWED_BARREL_VIOLATIONS = new Set<string>([]);
+const ALLOWED_BARREL_VIOLATIONS = new Set<string>([
+  // module.tsx is the entry point: the hooks barrel drags every hook — and zod,
+  // via lib/user-storage — into module.js, roughly doubling it.
+  'module.tsx -> hooks/usePathfinderPluginConfig',
+  // module.tsx is the entry point: the docs-retrieval barrel statically imports
+  // the whole content-fetcher orchestrator (zod, dompurify, the bundled guide
+  // index), and package-engine's composite-resolver pulls in every resolver
+  // implementation. Both grew module.js 6.2x (115 KB -> 696 KB raw) before this
+  // was pinned; package-resolver-registry.ts is a dependency-free leaf module,
+  // and composite-resolver is reached via a dynamic import, not this barrel.
+  'module.tsx -> docs-retrieval/content-fetcher/package-resolver-registry',
+  'module.tsx -> package-engine/composite-resolver',
+]);
 
 /**
  * Known circular-dependency clusters (strongly-connected components of the

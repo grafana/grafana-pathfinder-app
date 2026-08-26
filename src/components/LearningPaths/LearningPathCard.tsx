@@ -4,7 +4,7 @@
  * Collapsible learning path card with balanced compact design.
  */
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 import { cx } from '@emotion/css';
 
@@ -31,6 +31,7 @@ export function LearningPathCard({
   const styles = useStyles2(getLearningPathCardStyles);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+  const detailsId = useId();
 
   // Whether this is a URL-based path (guides fetched dynamically)
   const isUrlBased = Boolean(path.url);
@@ -86,15 +87,13 @@ export function LearningPathCard({
       className={cx(styles.card, isCompleted && styles.cardCompleted)}
       data-testid={testIds.learningPaths.card(path.id)}
     >
-      {/* Header - clickable to expand */}
-      <div
-        className={styles.header}
-        onClick={handleToggleExpand}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && handleToggleExpand()}
-        aria-expanded={isExpanded}
-      >
+      {/*
+       * Deliberately not `role="button"`: that role is Children Presentational,
+       * so it would hide the nested Continue / Restart / chevron controls from
+       * assistive tech. The chevron owns the disclosure semantics; this click
+       * handler is only a mouse convenience.
+       */}
+      <div className={styles.header} onClick={handleToggleExpand}>
         <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
 
         <div className={styles.content}>
@@ -170,6 +169,8 @@ export function LearningPathCard({
               handleToggleExpand();
             }}
             aria-label={isExpanded ? 'Collapse' : 'Expand'}
+            aria-expanded={isExpanded}
+            aria-controls={detailsId}
             data-testid={testIds.learningPaths.expandButton(path.id)}
           >
             <Icon name="angle-down" size="lg" />
@@ -177,8 +178,13 @@ export function LearningPathCard({
         </div>
       </div>
 
-      {/* Expandable guide list */}
-      <div className={cx(styles.expandable, isExpanded && styles.expandableOpen)}>
+      {/* Only visually hidden when collapsed, so aria-hidden keeps a screen
+          reader from reading the guide list the toggle reports as collapsed. */}
+      <div
+        id={detailsId}
+        className={cx(styles.expandable, isExpanded && styles.expandableOpen)}
+        aria-hidden={!isExpanded}
+      >
         {path.description && <p className={styles.description}>{path.description}</p>}
 
         <GuideList guides={guides} isLoading={isLoadingGuides} className={styles.guideList} />

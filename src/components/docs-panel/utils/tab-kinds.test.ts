@@ -2,10 +2,10 @@
  * Tests for docs-panel tab taxonomy helpers.
  */
 
-import { getGuideStripTabs, hasOnlyNonContentTabs } from './tab-kinds';
+import { getGuideStripTabs } from './tab-kinds';
 
 describe('getGuideStripTabs', () => {
-  it('keeps ordered strip tabs while excluding recommendations and Dev Tools', () => {
+  it('keeps ordered strip tabs while excluding recommendations', () => {
     expect(
       getGuideStripTabs([
         { type: 'recommendations' },
@@ -14,14 +14,6 @@ describe('getGuideStripTabs', () => {
         { type: 'devtools' },
         { type: 'docs' },
       ])
-    ).toEqual([{ type: 'editor' }, { type: 'learning-journey' }, { type: 'docs' }]);
-  });
-});
-
-describe('hasOnlyNonContentTabs', () => {
-  it('allows restore for chrome/editor state but blocks it when content is open', () => {
-    expect(hasOnlyNonContentTabs([{ type: 'recommendations' }])).toBe(true);
-    expect(hasOnlyNonContentTabs([{ type: 'recommendations' }, { type: 'devtools' }, { type: 'editor' }])).toBe(true);
-    expect(hasOnlyNonContentTabs([{ type: 'recommendations' }, { type: 'learning-journey' }])).toBe(false);
+    ).toEqual([{ type: 'editor' }, { type: 'learning-journey' }, { type: 'devtools' }, { type: 'docs' }]);
   });
 });

@@ -8,10 +8,11 @@ import { createInteractionName, UserInteraction } from '../lib/analytics';
 import type { SequenceRunResult, StepOutcome } from '../lib/telemetry';
 import { outcomeFromSequenceRun } from './outcome-classifier';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
-import { checkRequirements, checkPostconditions, RequirementsCheckOptions } from '../requirements-manager';
+import { useGuideRequirements, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
-import { InteractiveElementData } from '../types/interactive.types';
+import { InteractiveActionRequest, InteractiveElementData } from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../global-state/panel-mode';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { SequenceManager } from './sequence-manager';
 import { NavigationManager } from './navigation-manager';
@@ -56,6 +57,7 @@ function isValidInteractiveElement(data: InteractiveElementData): boolean {
 
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
   const { containerRef } = options;
+  const { checkRequirements, checkPostconditions } = useGuideRequirements();
 
   // Get current theme for CSS custom property updates
   const theme = useTheme2();
@@ -254,7 +256,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         })),
       };
     },
-    []
+    [checkRequirements]
   );
 
   /**
@@ -292,7 +294,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         })),
       };
     },
-    [waitForActionToSettle]
+    [checkPostconditions, waitForActionToSettle]
   );
 
   // SequenceManager instance - moved here to be available for interactiveSequence
@@ -388,27 +390,46 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * without needing DOM elements or the bridge pattern
    */
   const executeInteractiveAction = useCallback(
-    async (
-      targetAction: string,
-      refTarget: string,
-      targetValue?: string,
-      buttonType: 'show' | 'do' = 'do',
-      targetComment?: string
-    ): Promise<StepOutcome> => {
+    async (request: InteractiveActionRequest): Promise<StepOutcome> => {
+      const {
+        targetAction,
+        refTarget = '',
+        targetValue,
+        targetState,
+        targetComment,
+        buttonType = 'do',
+        fullScreenFallbackLocation,
+      } = request;
       // Create InteractiveElementData directly from parameters
       const elementData: InteractiveElementData = {
         refTarget: refTarget,
         targetAction: targetAction,
         targetValue: targetValue,
+        targetState: targetState,
         targetComment: targetComment,
         requirements: undefined,
         tagName: 'button', // Simulated for React components
         textContent: `${buttonType === 'show' ? 'Show me' : 'Do'}: ${refTarget}`,
         timestamp: Date.now(),
+        fullScreenFallbackLocation,
       };
 
       // No DOM element needed - React components manage their own state
       const isShowMode = buttonType === 'show';
+
+      // Full screen has no live Grafana UI behind it. A Grafana-driving
+      // action — "Show me" or "Do it" alike — hands off to the sidebar
+      // first, navigating to the resolved fallback location
+      // (step/milestone/course — see content-renderer.tsx) so the click has
+      // something to preview or act on once docked. Waits for the sidebar to
+      // actually mount before proceeding, rather than expanding the action
+      // handler's own resolveWithRetry budget. The target may still not be
+      // there yet (navigation itself can be slow) — skipCompletionOnEmptyTarget
+      // stops that from being silently reported as done.
+      if (isGrafanaDrivingHandoffNeeded(targetAction)) {
+        await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
+        elementData.skipCompletionOnEmptyTarget = true;
+      }
 
       // Sequence runs resolve on failure, so the captured result — not
       // promise settlement — stamps the action outcome.
@@ -478,9 +499,20 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
         targetAction === 'sequence' ? USER_ACTION_TIMEOUT_LONG_MS : undefined,
         {
           critical: !isShowMode,
-          outcomeFrom: () => outcomeFromSequenceRun(sequenceResult),
+          // Checked here (not just after the span closes below) so a handler
+          // that suppressed its own completion doesn't get its Faro span
+          // stamped 'ok' before the suppression is known — completionSuppressed
+          // is set synchronously inside the awaited handler, before this runs.
+          outcomeFrom: () => (elementData.completionSuppressed ? 'error' : outcomeFromSequenceRun(sequenceResult)),
         }
       );
+      // A handler that suppressed its own completion (skipCompletionOnEmptyTarget)
+      // reports it here — otherwise the return value would say 'ok' and the
+      // caller's own completion persistence, which only checks this outcome,
+      // would mark the step done anyway.
+      if (elementData.completionSuppressed) {
+        return 'error';
+      }
       // Sequence runs resolve rather than throw on requirements-exhausted/
       // action-error, so callers must check this instead of assuming
       // settlement means success — see the outcomeFrom mapping above.

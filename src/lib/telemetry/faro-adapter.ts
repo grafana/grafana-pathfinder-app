@@ -1,18 +1,20 @@
 import type { Faro, LogLevel, UserActionInternalInterface } from '@grafana/faro-web-sdk';
 import { config } from '@grafana/runtime';
 import packageJson from '../../../package.json';
-import type { UserActionOutcome } from './types';
+import { TELEMETRY_EVENTS, type UserActionOutcome } from './types';
 import {
   buildResourceIgnorePattern,
   filterPathfinderTelemetry,
   LOG_PREFIX,
+  markPathfinderActive,
   passesActivityGate,
+  redactPageUrl,
   resolveFaroEnvironment,
   EXPLICIT_REPORT_MARKER,
   TRACKED_RESOURCE_HOSTNAMES,
 } from './filtering';
 import { buildTelemetryIdentity } from './identity';
-import { getPathfinderSurface, onPathfinderSurfaceChange } from './surface';
+import { getPathfinderSurface, isPathfinderOpen, onPathfinderSurfaceChange } from './surface';
 import { stampSessionExperiments } from './session';
 import { registerTelemetryBridge } from './bridge';
 import { normalizeTelemetryUrl } from './url';
@@ -33,7 +35,12 @@ export function guardTelemetry(fn: () => void): void {
   }
 }
 
-export async function initFaro(): Promise<void> {
+export interface InitFaroOptions {
+  sessionReplay?: boolean;
+  sessionReplaySamplingRate?: number;
+}
+
+export async function initFaro(options?: InitFaroOptions): Promise<void> {
   if (initStarted) {
     return;
   }
@@ -96,7 +103,13 @@ export async function initFaro(): Promise<void> {
         },
       },
     },
-    beforeSend: (item) => (passesActivityGate(item) ? filterPathfinderTelemetry(item) : null),
+    beforeSend: (item) => {
+      if (!passesActivityGate(item)) {
+        return null;
+      }
+      const kept = filterPathfinderTelemetry(item);
+      return kept === null ? null : redactPageUrl(kept);
+    },
   });
 
   void stampFaroUser();
@@ -106,9 +119,74 @@ export async function initFaro(): Promise<void> {
   // sees every future reportPathfinderSurface call — including the one that
   // flips passesActivityGate open — so the session attribute is never stale
   // when a payload first clears the gate.
-  const stampSurface = () => setFaroSessionAttributes({ surface: getPathfinderSurface() });
+  const stampSurface = () => {
+    markPathfinderActive();
+    setFaroSessionAttributes({ surface: getPathfinderSurface() });
+  };
   onPathfinderSurfaceChange(stampSurface);
   stampSurface();
+
+  if (options?.sessionReplay) {
+    startSessionReplayOnFirstOpen(faroInstance, options.sessionReplaySamplingRate);
+  }
+}
+
+// Grafana core ships its own rrweb recorder behind a private-preview toggle.
+// Two on one page double DOM serialization per mutation and compound rrweb's
+// global CSSStyleSheet.insertRule proxy, which is Emotion's hot path, so core
+// wins automatically rather than by runbook. Belt-and-braces only: a
+// private-preview toggle may never be surfaced to the frontend, in which case
+// this reads undefined and the remote flag is the sole lever.
+export function resolveSessionReplayOptions(enabled: boolean, samplingRate: number): InitFaroOptions {
+  return {
+    sessionReplay: config.featureToggles?.faroSessionReplay !== true && enabled,
+    sessionReplaySamplingRate: samplingRate,
+  };
+}
+
+// A transient chunk fetch failure must not spend the one start trigger, so the
+// latch closes on the resolved activation rather than on the attempt. Bounded
+// because a failure that isn't transient would otherwise re-import on every
+// sidebar toggle for the life of the page.
+const MAX_REPLAY_ACTIVATION_ATTEMPTS = 3;
+
+// The same open that latches passesActivityGate starts the recording, so the
+// first thing rrweb emits is already past the gate — markPathfinderActive in
+// stampSurface is what makes that hold even if the surface closes again before
+// the chunk lands. The trailing start() covers the surface having reported
+// itself while the SDK chunk was still loading.
+function startSessionReplayOnFirstOpen(faro: Faro, samplingRate?: number): void {
+  let attempts = 0;
+  let activating = false;
+  let started = false;
+  const start = () => {
+    if (started || activating || attempts >= MAX_REPLAY_ACTIVATION_ATTEMPTS || !isPathfinderOpen()) {
+      return;
+    }
+    activating = true;
+    attempts++;
+    void import('./replay')
+      .then(({ activateSessionReplay }) => activateSessionReplay(faro, samplingRate))
+      .then((resolvedRate) => {
+        started = true;
+        unsubscribe();
+        if (samplingRate !== undefined && resolvedRate !== samplingRate) {
+          pushFaroEvent(TELEMETRY_EVENTS.sessionReplaySamplingFallback, {
+            reason: typeof samplingRate === 'number' ? 'out_of_range' : 'not_a_number',
+          });
+        }
+      })
+      .catch(() => {
+        activating = false;
+        const exhausted = attempts >= MAX_REPLAY_ACTIVATION_ATTEMPTS;
+        if (exhausted) {
+          unsubscribe();
+        }
+        pushFaroEvent(TELEMETRY_EVENTS.sessionReplayActivationFailed, { exhausted: String(exhausted) });
+      });
+  };
+  const unsubscribe = onPathfinderSurfaceChange(start);
+  start();
 }
 
 async function stampFaroUser(): Promise<void> {

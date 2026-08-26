@@ -21,7 +21,8 @@ import type { LaunchSource } from '../../recovery';
  * for new code. The flag is retained for callers that cross a callback
  * boundary (e.g. `ContextPanel`'s callbacks have a fixed signature owned by
  * a third party) and for events whose `source` is supplied by a remote
- * dispatcher.
+ * dispatcher. `loadTab` accepts `source` too, so callers that bypass the
+ * public open methods no longer need the flag.
  */
 export interface OpenDocsOptions {
   source?: LaunchSource;
@@ -65,11 +66,20 @@ export interface DocsPanelModelOperations {
   /**
    * Unified tab loader. Dispatches to the docs/package pipeline or the guide
    * pipeline based on the tab's shape and the optional `packageInfo` input.
+   *
+   * `source` classifies the launch for the implied-0th-step alignment
+   * evaluator, the same way `openDocsPage`'s `source` does. Only the docs
+   * branch consumes it; the guide branch ignores it.
    */
   loadTab(
     tabId: string,
     url: string,
-    options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo; prefetched?: RawContent }
+    options?: {
+      skipReadyToBegin?: boolean;
+      packageInfo?: PackageOpenInfo;
+      prefetched?: RawContent;
+      source?: LaunchSource;
+    }
   ): Promise<void>;
 
   /** Close a tab by ID */
@@ -96,6 +106,9 @@ export interface DocsPanelModelOperations {
   /** Open the editor tab (or switch to it if already open) */
   openEditorTab(): void;
 
+  /** Update the editor tab's strip title from the working guide */
+  updateEditorTabTitle(title: string): void;
+
   /** Get the currently active tab */
   getActiveTab(): LearningJourneyTab | null;
 
@@ -108,15 +121,12 @@ export interface DocsPanelModelOperations {
   /**
    * Record the launch source for the next `loadDocsTabContent` call so the
    * implied-0th-step evaluator classifies it correctly. Consumed once by the
-   * loader; callers that bypass `openDocsPage`/`openLearningJourney` (e.g.
-   * internal reloads from `useContentReset`) must set this explicitly or
-   * risk a spurious alignment prompt.
+   * loader; leaving it unset risks a spurious alignment prompt.
    *
-   * @deprecated Prefer `openDocsPage(url, title, { source })` /
-   * `openLearningJourney(url, title, { source })`. Retained for callers that
-   * cross a callback boundary owned elsewhere (e.g. `ContextPanel`'s
-   * recommender callbacks) and for `loadDocsTabContent` callers that don't
-   * go through `openDocsPage` (e.g. `useContentReset`'s reload path).
+   * @deprecated Prefer the `source` option on `openDocsPage`,
+   * `openLearningJourney`, or `loadTab`. Retained only for callers that cross
+   * a callback boundary owned elsewhere (e.g. `ContextPanel`'s recommender
+   * callbacks), where no signature can carry the source.
    */
   _recordAutoLaunchSource(source: LaunchSource | null): void;
 }
@@ -137,7 +147,7 @@ export interface DocsPanelContentProps {
 
   // Content and rendering
   stableContent: RawContent | null;
-  contentRef: RefObject<HTMLDivElement>;
+  contentRef: RefObject<HTMLDivElement | null>;
 
   // Interactive progress state
   progressKey: string;

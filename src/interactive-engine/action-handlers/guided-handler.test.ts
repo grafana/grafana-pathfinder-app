@@ -4,11 +4,13 @@ import { NavigationManager } from '../navigation-manager';
 import { querySelectorAllEnhanced } from '../../lib/dom';
 import { withFaroUserAction } from '../../lib/faro';
 
-// Mock dependencies
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
 jest.mock('../../lib/faro', () => ({
   withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
+}));
+jest.mock('../../lib/logging', () => ({
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
 }));
 jest.mock('../../lib/dom', () => ({
   querySelectorAllEnhanced: jest.fn().mockReturnValue({ elements: [], usedFallback: false }),
@@ -168,6 +170,197 @@ describe('GuidedHandler', () => {
       expect(options.outcomeFrom('error')).toBe('action_error');
 
       consoleErrorSpy.mockRestore();
+    });
+
+    // A guided step asks the user to click. If the toggle is already in the
+    // requested state, that instruction would make them turn it off — the
+    // toggle problem with a human in the loop.
+    it('completes without waiting for a click when targetState is already satisfied', async () => {
+      document.body.innerHTML = '<button id="drawer" aria-expanded="true">Add</button>';
+      const button = document.querySelector<HTMLButtonElement>('#drawer')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: '<p>Click Add</p>' },
+        0,
+        1,
+        5
+      );
+
+      expect(result).toBe('completed');
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      // Without the note the box would flash "Click Add" and vanish.
+      const [highlighted, shownComment] = (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls[0];
+      expect(highlighted).toBe(button);
+      expect(shownComment).toContain('Already in the right position');
+      expect(shownComment).toContain('Click Add');
+    });
+
+    it('still waits for the user when targetState is not yet satisfied', async () => {
+      document.body.innerHTML = '<button id="drawer" aria-expanded="false">Add</button>';
+      const button = document.querySelector<HTMLButtonElement>('#drawer')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      // Stand in for the user performing the click the guided step asked for.
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        button.setAttribute('aria-expanded', 'true');
+        button.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true },
+        0,
+        1,
+        5
+      );
+
+      expect(result).toBe('completed');
+      expect(mockNavigationManager.highlightWithComment).toHaveBeenCalled();
+    });
+
+    it('persists final click completion before the target replaces its DOM subtree', async () => {
+      document.body.innerHTML = '<main id="route"><button id="install">Install</button></main>';
+      const button = document.querySelector<HTMLButtonElement>('#install')!;
+      const eventOrder: string[] = [];
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      button.addEventListener('click', () => {
+        eventOrder.push('route changed');
+        document.querySelector('#route')?.remove();
+      });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        button.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#install' },
+        0,
+        1,
+        100,
+        () => eventOrder.push('completion persisted')
+      );
+
+      expect(result).toBe('completed');
+      expect(eventOrder).toEqual(['completion persisted', 'route changed']);
+      expect(button.isConnected).toBe(false);
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+    });
+
+    it('keeps completed when highlighting throws after an early click', async () => {
+      document.body.innerHTML = '<button id="install">Install</button>';
+      const button = document.querySelector<HTMLButtonElement>('#install')!;
+      const onActionCompleted = jest.fn();
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        button.click();
+        throw new Error('highlight failed after click');
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#install' },
+        0,
+        1,
+        100,
+        onActionCompleted
+      );
+
+      expect(result).toBe('completed');
+      expect(onActionCompleted).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps completed when cleanup throws after persistence', async () => {
+      document.body.innerHTML = '<button id="install">Install</button>';
+      const button = document.querySelector<HTMLButtonElement>('#install')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        button.click();
+      });
+      mockNavigationManager.clearAllHighlights = jest.fn(() => {
+        throw new Error('cleanup failed');
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#install' },
+        0,
+        1,
+        100,
+        jest.fn()
+      );
+
+      expect(result).toBe('completed');
+    });
+
+    it('does not complete after cancellation wins before a later click', async () => {
+      document.body.innerHTML = '<button id="install">Install</button>';
+      const button = document.querySelector<HTMLButtonElement>('#install')!;
+      const onActionCompleted = jest.fn();
+      const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        document.dispatchEvent(new CustomEvent('guided-step-cancelled', { detail: { stepIndex: 0 } }));
+        button.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#install' },
+        0,
+        1,
+        100,
+        onActionCompleted
+      );
+
+      expect(result).toBe('cancelled');
+      expect(onActionCompleted).not.toHaveBeenCalled();
+      expect(clearIntervalSpy).toHaveBeenCalled();
+      clearIntervalSpy.mockRestore();
+    });
+
+    it('does not complete after skip wins before a later click', async () => {
+      document.body.innerHTML = '<button id="install">Install</button>';
+      const button = document.querySelector<HTMLButtonElement>('#install')!;
+      const onActionCompleted = jest.fn();
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        document.dispatchEvent(new CustomEvent('guided-step-skipped', { detail: { stepIndex: 0 } }));
+        button.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#install', isSkippable: true },
+        0,
+        1,
+        100,
+        onActionCompleted
+      );
+
+      expect(result).toBe('skipped');
+      expect(onActionCompleted).not.toHaveBeenCalled();
+    });
+
+    it('reports an error when the completion callback throws', async () => {
+      document.body.innerHTML = '<button id="install">Install</button>';
+      const button = document.querySelector<HTMLButtonElement>('#install')!;
+      const onActionCompleted = jest.fn(() => {
+        throw new Error('persistence failed');
+      });
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+        button.click();
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#install' },
+        0,
+        1,
+        100,
+        onActionCompleted
+      );
+
+      expect(result).toBe('error');
+      expect(onActionCompleted).toHaveBeenCalledTimes(1);
+      expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
+      expect((guidedHandler as any).activeListeners).toHaveLength(0);
+      expect((guidedHandler as any).pendingTimeouts).toHaveLength(0);
+      expect((guidedHandler as any).pendingIntervals).toHaveLength(0);
     });
   });
 

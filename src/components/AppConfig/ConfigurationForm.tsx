@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef, ChangeEvent } from 'react';
-import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge, Spinner } from '@grafana/ui';
+import React, { useState, useEffect, useRef, ChangeEvent } from 'react';
+import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
@@ -14,15 +14,15 @@ import {
   DEFAULT_PEERJS_KEY,
   DEFAULT_PEERJS_SECURE,
   DEFAULT_ENABLE_CODA_TERMINAL,
-  PLUGIN_BACKEND_URL,
   getConfigWithDefaults,
   getDefaultRecommenderUrl,
   isKnownRecommenderUrl,
 } from '../../constants';
-import { updatePluginSettings } from '../../utils/utils.plugin';
+import { fetchPluginJsonData, updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
-import { config, getBackendSrv } from '@grafana/runtime';
+import { config } from '@grafana/runtime';
+import { CodaBackendStatus } from './CodaBackendStatus';
 
 type JsonData = DocsPluginConfig;
 
@@ -37,22 +37,10 @@ type State = {
   peerjsKey: string;
   peerjsSecure: boolean;
   enableCodaTerminal: boolean;
-  codaEnrollmentKey: string;
-  codaApiUrl: string;
-  codaRelayUrl: string;
 };
 
-export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
-
-const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const hasDevParam = urlParams.get('dev') === 'true';
-  const s = useStyles2(getStyles);
-  const { enabled, pinned, jsonData } = plugin.meta;
-
-  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
-  // After save, page reload brings fresh jsonData - no sync needed
-  const [state, setState] = useState<State>(() => ({
+function buildStateFromJsonData(jsonData: DocsPluginConfig | undefined): State {
+  return {
     recommenderServiceUrl:
       jsonData?.recommenderServiceUrl && !isKnownRecommenderUrl(jsonData.recommenderServiceUrl)
         ? jsonData.recommenderServiceUrl
@@ -66,30 +54,62 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
     peerjsSecure: jsonData?.peerjsSecure ?? DEFAULT_PEERJS_SECURE,
     enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
-    codaEnrollmentKey: '',
-    codaApiUrl: jsonData?.codaApiUrl || '',
-    codaRelayUrl: jsonData?.codaRelayUrl || '',
-  }));
-  const [isSaving, setIsSaving] = useState(false);
+  };
+}
 
-  // Coda registration state
-  const codaRegistered = jsonData?.codaRegistered ?? false;
-  const hasProvisionedKey = plugin.meta.secureJsonFields?.codaEnrollmentKey ?? false;
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [registrationError, setRegistrationError] = useState<string | null>(null);
-  const autoRegisterAttempted = useRef(false);
+export interface ConfigurationFormProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
+
+const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasDevParam = urlParams.get('dev') === 'true';
+  const s = useStyles2(getStyles);
+  const { enabled, pinned, jsonData: pluginJsonData } = plugin.meta;
+  const [resolvedJsonData, setResolvedJsonData] = useState<DocsPluginConfig>(pluginJsonData || {});
+  const [state, setState] = useState<State>(() => buildStateFromJsonData(pluginJsonData));
+  const [isSaving, setIsSaving] = useState(false);
+  const isDraftEdited = useRef(false);
+
+  const editDraft = (changes: Partial<State>) => {
+    isDraftEdited.current = true;
+    setState((previous) => ({ ...previous, ...changes }));
+  };
+
+  // `plugin.meta.jsonData` can lag a recent save, so seed the form from the
+  // authoritative read — but never over an edit the admin has already made.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchPluginJsonData(plugin.meta.id)
+      .then((freshJsonData) => {
+        if (cancelled) {
+          return;
+        }
+
+        setResolvedJsonData(freshJsonData);
+        if (!isDraftEdited.current) {
+          setState(buildStateFromJsonData(freshJsonData));
+        }
+      })
+      .catch((error) => {
+        logger.error('Failed to fetch plugin settings for configuration form', { error });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [plugin.meta.id]);
 
   // SECURITY: Dev mode - hybrid approach (jsonData storage, multi-user ID scoping)
   // Get current user ID for scoping
   const currentUserId = config.bootData.user?.id;
-  const devModeUserIds = jsonData?.devModeUserIds ?? [];
+  const devModeUserIds = resolvedJsonData?.devModeUserIds ?? [];
 
   // Check if dev mode is enabled for THIS user (synchronous)
-  const devModeEnabledForUser = isDevModeEnabled(jsonData || {}, currentUserId);
+  const devModeEnabledForUser = isDevModeEnabled(resolvedJsonData || {}, currentUserId);
   const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
 
   // Assistant dev mode state
-  const assistantDevModeEnabled = jsonData?.enableAssistantDevMode ?? false;
+  const assistantDevModeEnabled = resolvedJsonData?.enableAssistantDevMode ?? false;
   const [assistantDevModeToggling, setAssistantDevModeToggling] = useState<boolean>(false);
 
   // Show dev mode input if URL param is set OR if dev mode is already enabled for this user
@@ -101,22 +121,14 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   // Configuration is now retrieved directly from plugin meta via usePluginContext
 
   const isRecommenderUrlMissing = showAdvancedConfig && !state.recommenderServiceUrl;
-  const isCodaApiUrlMissing = state.enableCodaTerminal && !state.codaApiUrl;
-  const isRelayUrlMissing = state.enableCodaTerminal && !state.codaRelayUrl;
-  const isSubmitDisabled = isRecommenderUrlMissing || isCodaApiUrlMissing || isRelayUrlMissing;
+  const isSubmitDisabled = isRecommenderUrlMissing;
 
   const onChangeRecommenderServiceUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      recommenderServiceUrl: event.target.value.trim(),
-    });
+    editDraft({ recommenderServiceUrl: event.target.value.trim() });
   };
 
   const onChangeTutorialUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      tutorialUrl: event.target.value.trim(),
-    });
+    editDraft({ tutorialUrl: event.target.value.trim() });
   };
 
   const onChangeDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -155,7 +167,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         enabled,
         pinned,
         jsonData: {
-          ...getConfigWithDefaults(jsonData || {}),
+          ...(resolvedJsonData || {}),
+          ...getConfigWithDefaults(resolvedJsonData || {}),
           enableAssistantDevMode: newValue,
         },
       });
@@ -176,197 +189,50 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   };
 
   const onToggleGlobalLinkInterception = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      interceptGlobalDocsLinks: event.target.checked,
-    });
+    editDraft({ interceptGlobalDocsLinks: event.target.checked });
   };
 
   const onToggleOpenPanelOnLaunch = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      openPanelOnLaunch: event.target.checked,
-    });
+    editDraft({ openPanelOnLaunch: event.target.checked });
   };
 
   const onToggleLiveSessions = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      enableLiveSessions: event.target.checked,
-    });
+    editDraft({ enableLiveSessions: event.target.checked });
   };
 
   const onToggleCodaTerminal = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      enableCodaTerminal: event.target.checked,
-    });
+    editDraft({ enableCodaTerminal: event.target.checked });
   };
-
-  const onChangeCodaEnrollmentKey = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      codaEnrollmentKey: event.target.value,
-    });
-    setRegistrationError(null);
-  };
-
-  const onChangeCodaApiUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      codaApiUrl: event.target.value.trim(),
-    });
-  };
-
-  const onChangeCodaRelayUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      codaRelayUrl: event.target.value.trim(),
-    });
-  };
-
-  const performCodaRegistration = useCallback(
-    async (enrollmentKeyOverride?: string, apiUrlOverride?: string) => {
-      const keyToUse = enrollmentKeyOverride ?? '';
-      const apiUrl = apiUrlOverride ?? state.codaApiUrl;
-
-      if (!keyToUse && !hasProvisionedKey) {
-        setRegistrationError('No enrollment key available');
-        return;
-      }
-
-      if (!apiUrl) {
-        setRegistrationError('Coda API URL is required');
-        return;
-      }
-
-      setIsRegistering(true);
-      setRegistrationError(null);
-
-      try {
-        const instanceId = `grafana-${config.bootData.settings.buildInfo.version}-${Date.now()}`;
-        const instanceUrl = window.location.origin;
-
-        const response = await getBackendSrv().post(`${PLUGIN_BACKEND_URL}/coda/register`, {
-          enrollmentKey: keyToUse,
-          instanceId,
-          instanceUrl,
-          codaApiUrl: apiUrl,
-        });
-
-        const secureJsonDataUpdate: Record<string, string> = {
-          codaRefreshToken: response.refreshToken,
-        };
-        if (keyToUse) {
-          secureJsonDataUpdate.codaEnrollmentKey = keyToUse;
-        }
-
-        await updatePluginSettings(plugin.meta.id, {
-          enabled,
-          pinned,
-          jsonData: {
-            ...getConfigWithDefaults(jsonData || {}),
-            codaRegistered: true,
-            codaApiUrl: apiUrl,
-          },
-          secureJsonData: secureJsonDataUpdate,
-        });
-
-        setTimeout(() => {
-          window.location.reload();
-        }, 500);
-      } catch (error) {
-        logger.error('Failed to register with Coda', { error });
-        const errorMessage =
-          error instanceof Error ? error.message : 'Failed to register with Coda. Please check your enrollment key.';
-        setRegistrationError(errorMessage);
-        setIsRegistering(false);
-      }
-    },
-    [hasProvisionedKey, enabled, pinned, jsonData, plugin.meta.id, state.codaApiUrl]
-  );
-
-  useEffect(() => {
-    if (
-      state.enableCodaTerminal &&
-      hasProvisionedKey &&
-      state.codaApiUrl &&
-      !codaRegistered &&
-      !isRegistering &&
-      !autoRegisterAttempted.current
-    ) {
-      autoRegisterAttempted.current = true;
-      queueMicrotask(() => performCodaRegistration('', state.codaApiUrl));
-    }
-  }, [
-    state.enableCodaTerminal,
-    hasProvisionedKey,
-    state.codaApiUrl,
-    codaRegistered,
-    isRegistering,
-    performCodaRegistration,
-  ]);
 
   const onChangePeerjsHost = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      peerjsHost: event.target.value.trim(),
-    });
+    editDraft({ peerjsHost: event.target.value.trim() });
   };
 
   const onChangePeerjsPort = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value.trim();
     const port = value === '' ? DEFAULT_PEERJS_PORT : parseInt(value, 10);
-    setState({
-      ...state,
-      peerjsPort: isNaN(port) ? DEFAULT_PEERJS_PORT : port,
-    });
+    editDraft({ peerjsPort: isNaN(port) ? DEFAULT_PEERJS_PORT : port });
   };
 
   const onChangePeerjsKey = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      peerjsKey: event.target.value.trim(),
-    });
+    editDraft({ peerjsKey: event.target.value.trim() });
   };
 
   const onTogglePeerjsSecure = (event: ChangeEvent<HTMLInputElement>) => {
-    setState({
-      ...state,
-      peerjsSecure: event.target.checked,
-    });
+    editDraft({ peerjsSecure: event.target.checked });
   };
 
-  const onSubmit = async (event: React.FormEvent) => {
+  const onSubmit = async (event: React.SubmitEvent) => {
     event.preventDefault();
     setIsSaving(true);
-    setRegistrationError(null);
 
     try {
-      let secureJsonDataUpdate: Record<string, string> = {};
-      let shouldMarkRegistered = codaRegistered;
-
-      if (state.enableCodaTerminal && state.codaEnrollmentKey && state.codaApiUrl && !codaRegistered) {
-        const instanceId = `grafana-${config.bootData.settings.buildInfo.version}-${Date.now()}`;
-        const instanceUrl = window.location.origin;
-
-        const response = await getBackendSrv().post(`${PLUGIN_BACKEND_URL}/coda/register`, {
-          enrollmentKey: state.codaEnrollmentKey,
-          instanceId,
-          instanceUrl,
-          codaApiUrl: state.codaApiUrl,
-        });
-
-        secureJsonDataUpdate.codaRefreshToken = response.refreshToken;
-        secureJsonDataUpdate.codaEnrollmentKey = state.codaEnrollmentKey;
-        shouldMarkRegistered = true;
-      }
-
-      // Spread full config with defaults to preserve fields managed by other tabs,
-      // then override with this form's fields. Prevents data loss if jsonData is
-      // incomplete after a plugin version update.
+      // Preserve ALL existing jsonData fields first (including provisioned fields
+      // like stackId that aren't in DocsPluginConfig), then apply defaults for
+      // known fields, then override with this form's fields.
       const newJsonData = {
-        ...getConfigWithDefaults(jsonData || {}),
+        ...(resolvedJsonData || {}),
+        ...getConfigWithDefaults(resolvedJsonData || {}),
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
@@ -377,16 +243,12 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         peerjsKey: state.peerjsKey,
         peerjsSecure: state.peerjsSecure,
         enableCodaTerminal: state.enableCodaTerminal,
-        codaApiUrl: state.codaApiUrl,
-        codaRelayUrl: state.codaRelayUrl,
-        codaRegistered: shouldMarkRegistered,
       };
 
       await updatePluginSettings(plugin.meta.id, {
         enabled,
         pinned,
         jsonData: newJsonData,
-        ...(Object.keys(secureJsonDataUpdate).length > 0 && { secureJsonData: secureJsonDataUpdate }),
       });
 
       setTimeout(() => {
@@ -398,10 +260,6 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       }, 100);
     } catch (error) {
       logger.error('Error saving configuration', { error });
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save configuration. Please try again.';
-      if (state.enableCodaTerminal && state.codaEnrollmentKey && !codaRegistered) {
-        setRegistrationError(errorMessage);
-      }
       setIsSaving(false);
     }
   };
@@ -453,7 +311,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
               description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments. Requires admin permissions to change. Only visible to the user who enabled it."
               className={s.marginTop}
             >
-              <div className={s.devModeField}>
+              <div className={s.devModeField} data-testid={testIds.appConfig.pathfinderDevMode}>
                 <Input
                   type="checkbox"
                   id="dev-mode"
@@ -718,105 +576,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
               </div>
             </div>
 
-            {state.enableCodaTerminal && (
-              <>
-                <div className={s.marginTop}>
-                  <Text variant="h6">Coda backend registration</Text>
-
-                  {codaRegistered && (
-                    <Alert severity="success" title="Registered with Coda" className={s.marginTop}>
-                      <Text variant="body">VM provisioning is enabled.</Text>
-                    </Alert>
-                  )}
-
-                  <Field
-                    label="API URL"
-                    description="Coda backend API URL"
-                    required
-                    invalid={!state.codaApiUrl}
-                    error={!state.codaApiUrl ? 'API URL is required' : undefined}
-                    className={s.marginTop}
-                  >
-                    <Input
-                      width={60}
-                      data-testid={testIds.appConfig.codaApiUrl}
-                      value={state.codaApiUrl}
-                      onChange={onChangeCodaApiUrl}
-                      placeholder="https://coda.example.com"
-                    />
-                  </Field>
-
-                  <Field
-                    label="Relay URL"
-                    description="WebSocket relay URL for SSH connections"
-                    required
-                    invalid={!state.codaRelayUrl}
-                    error={!state.codaRelayUrl ? 'Relay URL is required' : undefined}
-                  >
-                    <Input
-                      width={60}
-                      data-testid={testIds.appConfig.codaRelayUrl}
-                      value={state.codaRelayUrl}
-                      onChange={onChangeCodaRelayUrl}
-                      placeholder="wss://relay.example.com"
-                    />
-                  </Field>
-
-                  {state.codaApiUrl && state.codaRelayUrl && (
-                    <Alert severity="info" title="Relay configured" className={s.marginTop}>
-                      <Text variant="body">
-                        SSH connections will be tunneled through <code>{state.codaRelayUrl}</code>.
-                      </Text>
-                    </Alert>
-                  )}
-
-                  {!codaRegistered && hasProvisionedKey && isRegistering && (
-                    <Alert severity="info" title="Registering" className={s.marginTop}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Spinner inline={true} />
-                        <Text variant="body">Registering with Coda...</Text>
-                      </div>
-                    </Alert>
-                  )}
-
-                  <Field
-                    label="Enrollment key"
-                    description={
-                      codaRegistered
-                        ? 'Already registered — enter a new key to re-register'
-                        : 'Registration key from administrator'
-                    }
-                    className={s.marginTop}
-                  >
-                    <Input
-                      type="password"
-                      width={60}
-                      data-testid={testIds.appConfig.codaEnrollmentKey}
-                      value={state.codaEnrollmentKey}
-                      onChange={onChangeCodaEnrollmentKey}
-                      placeholder={
-                        hasProvisionedKey ? 'Key provisioned — enter new key to update' : 'Enter enrollment key'
-                      }
-                      disabled={isSaving}
-                    />
-                  </Field>
-
-                  {registrationError && (
-                    <Alert severity="error" title="Registration failed" className={s.marginTop}>
-                      <Text variant="body">{registrationError}</Text>
-                    </Alert>
-                  )}
-                </div>
-              </>
-            )}
-
-            {!state.enableCodaTerminal && (
-              <Alert severity="info" title="Feature overview" className={s.marginTop}>
-                <Text variant="body">
-                  Interactive sandbox environment in the sidebar. Requires Coda backend infrastructure.
-                </Text>
-              </Alert>
-            )}
+            <CodaBackendStatus enabled={state.enableCodaTerminal} className={s.marginTop} />
           </FieldSet>
         )}
 

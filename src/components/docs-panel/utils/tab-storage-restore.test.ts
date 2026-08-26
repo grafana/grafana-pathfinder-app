@@ -5,10 +5,17 @@
 import {
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
+  mergeRestoredTabsWithExisting,
   createUrlValidator,
   TabStorage,
 } from './tab-storage-restore';
-import { PersistedTabData } from '../../../types/content-panel.types';
+import {
+  LearningJourneyTab,
+  PathContext,
+  PendingAlignment,
+  PersistedTabData,
+} from '../../../types/content-panel.types';
+import type { RawContent } from '../../../types/content.types';
 
 // Mock TabStorage
 const createMockTabStorage = (tabs: PersistedTabData[] | null = null, activeTab: string | null = null): TabStorage => ({
@@ -477,6 +484,117 @@ describe('tab-storage-restore', () => {
 
       const activeTabId = await restoreActiveTabFromStorage(storage, tabs);
       expect(activeTabId).toBe('recommendations');
+    });
+  });
+
+  describe('mergeRestoredTabsWithExisting', () => {
+    const blank = (overrides: Partial<LearningJourneyTab> = {}): LearningJourneyTab => ({
+      id: 'tab-1',
+      type: 'docs',
+      title: 'From storage',
+      baseUrl: 'https://grafana.com/docs/a/',
+      currentUrl: 'https://grafana.com/docs/a/page/',
+      content: null,
+      isLoading: false,
+      error: null,
+      ...overrides,
+    });
+
+    it('returns restored tabs unchanged when nothing is loaded in memory', () => {
+      const restored = [blank()];
+      expect(mergeRestoredTabsWithExisting(restored, [])).toBe(restored);
+      expect(mergeRestoredTabsWithExisting(restored, [blank({ title: 'Old' })])).toEqual(restored);
+    });
+
+    it('keeps content and pathContext when id and currentUrl match', () => {
+      const content: RawContent = {
+        content: '# guide',
+        metadata: { title: 'guide' },
+        type: 'single-doc',
+        url: 'https://grafana.com/docs/a/page/',
+        lastFetched: '2026-01-01T00:00:00.000Z',
+      };
+      const pathContext: PathContext = {
+        learningJourney: {
+          currentMilestone: 1,
+          totalMilestones: 1,
+          baseUrl: 'https://grafana.com/docs/a/',
+          milestones: [
+            {
+              number: 1,
+              title: 'Page',
+              url: 'https://grafana.com/docs/a/page/',
+              isActive: true,
+            },
+          ],
+        },
+      };
+      const pendingAlignment: PendingAlignment = {
+        startingLocation: '/old',
+        currentPath: '/old',
+        launchSource: 'test',
+        decidedAt: 0,
+      };
+      const existing = [
+        blank({
+          title: 'Old title',
+          content,
+          pathContext,
+          pendingAlignment,
+          error: 'stale',
+          isLoading: true,
+        }),
+      ];
+      const restored = [blank({ title: 'Renamed elsewhere' })];
+
+      const merged = mergeRestoredTabsWithExisting(restored, existing);
+
+      expect(merged[0]).toMatchObject({
+        title: 'Renamed elsewhere',
+        content,
+        pathContext,
+        isLoading: false,
+        error: null,
+      });
+      expect(merged[0]!.pendingAlignment).toBeUndefined();
+    });
+
+    it('does not keep error or pendingAlignment without content', () => {
+      const existing = [
+        blank({
+          error: 'load failed',
+          pendingAlignment: {
+            startingLocation: '/x',
+            currentPath: '/x',
+            launchSource: 'test',
+            decidedAt: 0,
+          },
+        }),
+      ];
+      const restored = [blank()];
+
+      expect(mergeRestoredTabsWithExisting(restored, existing)[0]).toEqual(restored[0]);
+    });
+
+    it('does not keep content when currentUrl diverged', () => {
+      const existing = [
+        blank({
+          content: {
+            content: '# old page',
+            metadata: { title: 'old' },
+            type: 'single-doc',
+            url: 'https://grafana.com/docs/a/page/',
+            lastFetched: '2026-01-01T00:00:00.000Z',
+          },
+          currentUrl: 'https://grafana.com/docs/a/page/',
+        }),
+      ];
+      const restored = [blank({ currentUrl: 'https://grafana.com/docs/a/other/' })];
+
+      expect(mergeRestoredTabsWithExisting(restored, existing)[0]!.content).toBeNull();
+      expect(mergeRestoredTabsWithExisting(restored, existing)[0]!.currentUrl).toBe(
+        'https://grafana.com/docs/a/other/'
+      );
     });
   });
 });

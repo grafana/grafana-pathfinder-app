@@ -43,6 +43,32 @@ This guide explains the supported interactive action types, when to use each, wh
 }
 ```
 
+### Toggle targets (`highlight` and `button`)
+
+Both actions click unconditionally on Do, which is wrong for any target with
+toggle semantics — the outcome depends on where the user left the UI. Add
+`targetstate` to declare the state you want instead:
+
+- **Show**: unchanged; highlights the control without touching it.
+- **Do**: reads the control, clicks only if the state differs, then re-reads to
+  confirm. Already in the requested state means no click and the step still
+  completes, so re-running is safe.
+- **Use when**: the target expands, collapses, presses, checks or selects —
+  switches, expanders, dropdown triggers, radio options.
+
+```json
+{
+  "type": "interactive",
+  "action": "highlight",
+  "reftarget": "button[data-testid='data-testid Dashboard Sidebar new button']",
+  "targetstate": "true",
+  "content": "Open the edit sidebar"
+}
+```
+
+See `targetstate` in [json-guide-format.md](./json-guide-format.md) for the
+auto-detection order and the explicit `"attribute:value"` form.
+
 ### formfill
 
 - **Purpose**: fill inputs, textareas (including Monaco), selects, and ARIA comboboxes.
@@ -231,17 +257,42 @@ If you specify `"requirements": ["exists-reftarget"]` on a multistep, also set `
 
 See [guided-interactions.md](./guided-interactions.md) for detailed documentation.
 
+### Data source picker with a data check
+
+- **Purpose**: confirms the data source the user picked actually holds the data the guide teaches against.
+- **Behavior**: the user picks a data source and presses **Run check**. The author's query runs once, on that click, and passes when it returns at least one row. Without `dataCheckBlocking` the result is advisory; with it, the block becomes a tracked step that completes only on a pass.
+- **Use when**: the rest of the guide is meaningless against an empty data source — "build a panel showing container CPU" against an instance with no container metrics ends in an empty panel and a confused user.
+- **Not a requirement**: a `requirements` token is re-evaluated by several independent timers. A data source query behind one would fire on all of them, which on a metered backend is billable. This is a button the user presses.
+
+```json
+{
+  "type": "input",
+  "id": "check-container-metrics",
+  "inputType": "datasource",
+  "prompt": "Pick the data source holding your container metrics.",
+  "variableName": "metricsDatasource",
+  "datasourceFilter": "prometheus",
+  "dataCheckQuery": "container_cpu_usage_seconds_total",
+  "dataCheckFailureMessage": "No container CPU metrics here. Pick a data source scraping cAdvisor or kubelet.",
+  "dataCheckBlocking": true,
+  "skippable": true
+}
+```
+
+Only Prometheus, Loki, Tempo, and Pyroscope can be checked; any other pick says so rather than passing silently. See [json-guide-format.md](./json-guide-format.md) for the full field reference.
+
 ## Choosing the right type
 
-| Need                                    | Action/block type |
-| --------------------------------------- | ----------------- |
-| Click by CSS selector                   | `highlight`       |
-| Click by button text                    | `button`          |
-| Enter text / select values              | `formfill`        |
-| Route change                            | `navigate`        |
-| Hover to reveal hidden UI               | `hover`           |
-| Informational step (no action)          | `noop`            |
-| Dock or undock the guide panel          | `popout`          |
-| Teach a linear section                  | `section`         |
-| Bundle micro-steps into one (automated) | `multistep`       |
-| User performs steps manually            | `guided`          |
+| Need                                    | Action/block type          |
+| --------------------------------------- | -------------------------- |
+| Click by CSS selector                   | `highlight`                |
+| Click by button text                    | `button`                   |
+| Enter text / select values              | `formfill`                 |
+| Route change                            | `navigate`                 |
+| Hover to reveal hidden UI               | `hover`                    |
+| Informational step (no action)          | `noop`                     |
+| Dock or undock the guide panel          | `popout`                   |
+| Teach a linear section                  | `section`                  |
+| Bundle micro-steps into one (automated) | `multistep`                |
+| User performs steps manually            | `guided`                   |
+| Confirm the data the guide needs exists | `input` + `dataCheckQuery` |

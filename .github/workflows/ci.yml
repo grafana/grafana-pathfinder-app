@@ -18,6 +18,9 @@ concurrency:
 
 env:
   NODE_VERSION: '24'
+  # Pinned so an upstream golangci-lint release cannot redden the repo on its own.
+  # `npm run lint:go` reproduces CI exactly when your local golangci-lint matches this.
+  GOLANGCI_LINT_VERSION: 'v2.13.1'
 
 jobs:
   # Parallel quality check jobs
@@ -111,6 +114,7 @@ jobs:
           key: node-modules-${{ runner.os }}-${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
       - if: steps.node-modules.outputs.cache-hit != 'true'
         run: npm ci
+      - run: npm run test:review-contract
       - run: npm run test:ci
       - name: Upload coverage reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -146,6 +150,58 @@ jobs:
         run: npm run validate:packages
       - name: Check repository.json freshness
         run: npm run repository:check
+      - name: Check manifest stats freshness
+        run: npm run stats:check
+
+  # No node_modules: the authoring scripts are bash, curl and jq, and the suite
+  # stubs curl so nothing reaches a stack.
+  test-scripts:
+    name: Test scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Test shell scripts
+        run: npm run test:scripts
+
+  # Backend lint runs the same golangci-lint invocation as `npm run lint:go`, at the
+  # version pinned in GOLANGCI_LINT_VERSION above. No node_modules and no secrets:
+  # this job only needs Go, so fork pull requests can satisfy it.
+  lint-backend:
+    name: Lint backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Check for backend
+        id: check-for-backend
+        run: |
+          if [ -f "Magefile.go" ]; then
+            echo "has-backend=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Go environment
+        if: steps.check-for-backend.outputs.has-backend == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      - name: Lint backend
+        if: steps.check-for-backend.outputs.has-backend == 'true'
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
 
   # Backend tests run in parallel with the frontend build and quality checks.
   # No dependency on setup: this job only needs Go, not node_modules.
@@ -171,7 +227,7 @@ jobs:
         if: steps.check-for-backend.outputs.has-backend == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26'
+          go-version-file: go.mod
 
       - name: Test backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
@@ -224,7 +280,7 @@ jobs:
         if: steps.check-for-backend.outputs.has-backend == 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26'
+          go-version-file: go.mod
 
       - name: Build backend
         if: steps.check-for-backend.outputs.has-backend == 'true'
@@ -272,7 +328,7 @@ jobs:
   # CI gate job for branch protection - aggregates all required checks
   ci-gate:
     name: CI Gate
-    needs: [lint, typecheck, prettier, test, validate-packages, build, test-backend]
+    needs: [lint, typecheck, prettier, test, validate-packages, build, lint-backend, test-backend, test-scripts]
     if: always()
     runs-on: ubuntu-latest
     permissions: {} # No permissions needed - only checks job results
@@ -285,22 +341,43 @@ jobs:
           echo "Test: ${{ needs.test.result }}"
           echo "Validate packages: ${{ needs.validate-packages.result }}"
           echo "Build: ${{ needs.build.result }}"
+          echo "Lint backend: ${{ needs.lint-backend.result }}"
           echo "Test backend: ${{ needs.test-backend.result }}"
+          echo "Test scripts: ${{ needs.test-scripts.result }}"
 
           if [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.typecheck.result }}" != "success" ]] || \
              [[ "${{ needs.prettier.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.validate-packages.result }}" != "success" ]] || \
-             [[ "${{ needs.build.result }}" != "success" ]]; then
+             [[ "${{ needs.build.result }}" != "success" ]] || \
+             [[ "${{ needs.test-scripts.result }}" != "success" ]]; then
             echo "One or more required jobs failed"
+            exit 1
+          fi
+
+          # lint-backend and test-backend are skipped when no Magefile.go is present;
+          # that is expected, so tolerate "skipped" for both.
+          if [[ "${{ needs.lint-backend.result }}" != "success" ]] && \
+             [[ "${{ needs.lint-backend.result }}" != "skipped" ]]; then
+            echo "Go lint failed. Reproduce it locally with:"
+            echo ""
+            echo "    npm run lint:go"
+            echo ""
+            echo "CI pins golangci-lint ${GOLANGCI_LINT_VERSION}; install that version to get the same"
+            echo "diagnostics (GOLANGCI_LINT_VERSION in .github/workflows/ci.yml is the pin)."
+            echo "Fix each diagnostic, or suppress a wrong one at the line with"
+            echo "//nolint:<linter> // <reason>. Do not widen the linter set in .golangci.yaml."
             exit 1
           fi
 
           # test-backend is skipped when no Magefile.go is present; that is expected
           if [[ "${{ needs.test-backend.result }}" != "success" ]] && \
              [[ "${{ needs.test-backend.result }}" != "skipped" ]]; then
-            echo "Backend tests failed"
+            echo "Backend tests failed. Reproduce them locally with:"
+            echo ""
+            echo "    npm run test:go"
+            echo ""
             exit 1
           fi
 
@@ -309,7 +386,7 @@ jobs:
   # Alerts #grafana-pathfinder-alerts on main-branch CI failures only.
   notify-ci-failure:
     name: Notify CI failure
-    needs: [lint, typecheck, prettier, test, validate-packages, build, test-backend]
+    needs: [lint, typecheck, prettier, test, validate-packages, build, lint-backend, test-backend, test-scripts]
     if: >-
       always() &&
       github.event_name == 'push' &&
@@ -320,12 +397,13 @@ jobs:
        needs.test.result == 'failure' ||
        needs.validate-packages.result == 'failure' ||
        needs.build.result == 'failure' ||
+       needs.lint-backend.result == 'failure' ||
        needs.test-backend.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
-      contents: read  # required by the shared action's checkout step
+      contents: read # required by the shared action's checkout step
       id-token: write # required by get-vault-secrets for OIDC auth to Vault
-      actions: read   # required to fetch job URLs from the GitHub API
+      actions: read # required to fetch job URLs from the GitHub API
     steps:
       - name: Build Slack payload
         id: payload
@@ -337,6 +415,7 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           VALIDATE_RESULT: ${{ needs.validate-packages.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          LINT_BACKEND_RESULT: ${{ needs.lint-backend.result }}
           TEST_BACKEND_RESULT: ${{ needs.test-backend.result }}
           RUN_ID: ${{ github.run_id }}
           SHA: ${{ github.sha }}
@@ -351,12 +430,13 @@ jobs:
             ["Test"]="$TEST_RESULT"
             ["Validate packages"]="$VALIDATE_RESULT"
             ["Build"]="$BUILD_RESULT"
+            ["Lint backend"]="$LINT_BACKEND_RESULT"
             ["Test backend"]="$TEST_BACKEND_RESULT"
           )
 
           nl=$'\n'
           text="*CI failed on \`main\`*${nl}*Failed jobs:*"
-          for name in "Lint" "Typecheck" "Prettier" "Test" "Validate packages" "Build" "Test backend"; do
+          for name in "Lint" "Typecheck" "Prettier" "Test" "Validate packages" "Build" "Lint backend" "Test backend"; do
             if [[ "${results[$name]}" == "failure" ]]; then
               url=$(echo "$jobs_json" | jq -r --arg n "$name" '.jobs[] | select(.name == $n) | .html_url')
               text="${text}${nl}• <${url}|${name}>"

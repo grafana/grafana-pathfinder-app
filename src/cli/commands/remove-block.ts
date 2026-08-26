@@ -13,7 +13,12 @@ export const removeBlockCommand = new Command('remove-block')
   .description('Remove a block by id')
   .argument('<dir>', 'package directory')
   .argument('<id>', 'id of the block to remove')
-  .addOption(new Option('--cascade', 'Also remove all child blocks (required for non-empty containers)'))
+  .addOption(
+    new Option(
+      '--cascade',
+      'Also remove all child blocks (required for non-empty containers). Destructive: deletes the entire subtree with no undo.'
+    )
+  )
   .addOption(
     new Option(
       '--orphan-children',

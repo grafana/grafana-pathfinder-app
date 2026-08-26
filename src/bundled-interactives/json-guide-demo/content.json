@@ -246,7 +246,45 @@
     },
     {
       "type": "markdown",
-      "content": "## 🎉 That's All the Block Types!\n\nYou've now seen every block type supported by JSON guides:\n\n| Block Type | Description |\n|------------|-------------|\n| `markdown` | Formatted text with headings, lists, code |\n| `html` | Raw HTML for migration/custom content |\n| `image` | Embedded images |\n| `video` | YouTube or native video embeds |\n| `section` | Container for grouped interactive steps |\n| `interactive` | Single-action step (highlight, button, formfill, hover) |\n| `multistep` | Automated sequence of actions |\n| `guided` | User-performed sequence with detection |\n| `quiz` | Knowledge assessment with single/multi choice |\n\n**Pro tip:** Start with `markdown` blocks for content, use `section` blocks to group related interactive steps, add `quiz` blocks to test understanding, and choose between `multistep` (automated) and `guided` (user-performed) based on your learning objectives."
+      "content": "## Data checks on the datasource picker\n\nA `datasource` input can carry a **data check**: a query that confirms the data source the user picked really holds the data your guide teaches against. It runs only when the user presses the button, never on a timer.\n\nWithout `dataCheckBlocking` the check is advisory — it reports what it found and the user moves on. With it, the block becomes a tracked step that completes only on a pass."
+    },
+    {
+      "type": "section",
+      "id": "data-check-section",
+      "title": "Data check demo",
+      "blocks": [
+        {
+          "type": "input",
+          "id": "advisory-data-check",
+          "inputType": "datasource",
+          "variableName": "advisoryDatasource",
+          "prompt": "**Advisory check.** Pick a Prometheus data source and press **Run check**. `up` is reported by every scrape target, so any working Prometheus passes. Either way you can carry on — nothing is held up.",
+          "datasourceFilter": "prometheus",
+          "dataCheckQuery": "up",
+          "dataCheckFailureMessage": "No scrape targets reporting. This data source has no targets up."
+        },
+        {
+          "type": "input",
+          "id": "blocking-data-check",
+          "inputType": "datasource",
+          "variableName": "blockingDatasource",
+          "prompt": "**Blocking check.** Same query, but a failure holds this section up until it passes. It is `skippable`, so you are never stuck — try it on an instance with no Prometheus to see the skip path.",
+          "datasourceFilter": "prometheus",
+          "dataCheckQuery": "up",
+          "dataCheckFailureMessage": "No scrape targets reporting. Pick a different data source, or skip.",
+          "dataCheckTimeFrom": "now-6h",
+          "dataCheckBlocking": true,
+          "skippable": true
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "The blocking check stored its pick as `{{blockingDatasource}}`, so later blocks can reuse it. The value is the data source **name**, which is what `{{variable}}` substitution and reftarget selectors match against."
+    },
+    {
+      "type": "markdown",
+      "content": "## 🎉 That's All the Block Types!\n\nYou've now seen every block type supported by JSON guides:\n\n| Block Type | Description |\n|------------|-------------|\n| `markdown` | Formatted text with headings, lists, code |\n| `html` | Raw HTML for migration/custom content |\n| `image` | Embedded images |\n| `video` | YouTube or native video embeds |\n| `section` | Container for grouped interactive steps |\n| `interactive` | Single-action step (highlight, button, formfill, hover) |\n| `multistep` | Automated sequence of actions |\n| `guided` | User-performed sequence with detection |\n| `quiz` | Knowledge assessment with single/multi choice |\n| `input` | Collects a text, boolean, or data source answer; datasource pickers can carry a data check |\n\n**Pro tip:** Start with `markdown` blocks for content, use `section` blocks to group related interactive steps, add `quiz` blocks to test understanding, and choose between `multistep` (automated) and `guided` (user-performed) based on your learning objectives."
     }
   ]
 }

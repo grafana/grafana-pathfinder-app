@@ -199,6 +199,30 @@ describe('InteractiveMultiStep — completeEarly lifecycle', () => {
   });
 });
 
+describe('InteractiveMultiStep — full-screen fallback location', () => {
+  // Regression test (Cursor Bugbot, "Multi-step show omits handoff path"):
+  // the show-phase call dropped fullScreenFallbackLocation while the do-phase
+  // call right after it already threaded it through — a "Show me" click in
+  // full screen would dock with no target path once isGrafanaDrivingHandoffNeeded
+  // started applying to Show me too.
+  it('threads fullScreenFallbackLocation into both the show-phase and do-phase calls', async () => {
+    render(
+      <InteractiveMultiStep
+        stepId="multi-fallback"
+        internalActions={[{ targetAction: 'button', refTarget: '#save' }]}
+        fullScreenFallbackLocation="/connections"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.doItButton('multi-fallback')));
+
+    await waitFor(() => expect(mockExecuteInteractiveAction).toHaveBeenCalledTimes(2));
+    const [showCall, doCall] = mockExecuteInteractiveAction.mock.calls.map((call) => call[0]);
+    expect(showCall).toMatchObject({ buttonType: 'show', fullScreenFallbackLocation: '/connections' });
+    expect(doCall).toMatchObject({ buttonType: 'do', fullScreenFallbackLocation: '/connections' });
+  });
+});
+
 describe('InteractiveMultiStep — objectives completion', () => {
   it('reports completed after objectives satisfy a step with a stale error', async () => {
     mockExecuteInteractiveAction.mockResolvedValueOnce('ok').mockResolvedValueOnce('error');

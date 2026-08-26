@@ -32,6 +32,14 @@ export interface LearningPath {
   icon?: string;
   /** Remote docs URL for paths backed by a learning journey. When set, guides are fetched from {url}index.json */
   url?: string;
+  /** Namespace-scoped path from the org's own App Platform catalogue, not a curated Grafana one */
+  isPrivate?: boolean;
+  /**
+   * Package manifest for App Platform paths/journeys (no `url`). Threaded into
+   * the launch as packageInfo so members render with milestone chrome instead
+   * of as standalone guides. Omitted for bundled/CDN paths.
+   */
+  manifest?: Record<string, unknown>;
 }
 
 /**
@@ -42,10 +50,16 @@ export interface PathGuide {
   id: string;
   /** Display title */
   title: string;
+  /** Short summary shown under the title, when the source provides one */
+  description?: string;
+  /** Author-provided time estimate in minutes, when the source provides one */
+  estimatedMinutes?: number;
   /** Whether this guide has been completed */
   completed: boolean;
   /** Whether this is the current/next guide to complete */
   isCurrent: boolean;
+  /** Sequentially locked — some earlier guide in the same path isn't done yet */
+  locked?: boolean;
   /**
    * Resolved URL for this guide within the parent path, or `undefined` for
    * bundled guides (callers fall back to `bundled:{id}`). Always scoped to

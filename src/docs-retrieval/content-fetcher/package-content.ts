@@ -6,27 +6,15 @@
 // single home; `fetchContent` itself stays in the orchestrator and is imported
 // here (one-directional — the orchestrator never imports back).
 import { ContentFetchResult, LearningJourneyMetadata, Milestone } from '../../types/content.types';
-import type { PackageResolver } from '../../types';
 import type { ResolvedNavLink } from '../../types/context.types';
 import { getPackageRenderType } from '../../types/package.types';
 import { fetchContent } from '../content-fetcher';
+import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
+import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
-/**
- * Module-level PackageResolver injected at Tier 3+ (docs-panel wires the
- * concrete CompositePackageResolver here so docs-retrieval stays decoupled
- * from the package-engine Tier 2 implementation).
- */
-let _packageResolver: PackageResolver | undefined;
-
-/**
- * Inject the PackageResolver implementation into docs-retrieval.
- * Called once at app startup by Tier 3/4 wiring code.
- */
-export function setPackageResolver(resolver: PackageResolver): void {
-  _packageResolver = resolver;
-}
+export { setPackageResolver, setPackageResolverFactory };
 
 /**
  * Derive the grafana.com/docs/learning-paths/ website URL for a milestone.
@@ -58,48 +46,64 @@ export function derivePathSlug(manifestId: string): string {
 /**
  * Resolve manifest milestone IDs into rich Milestone objects via the injected
  * PackageResolver. Each milestone ID is resolved to obtain its contentUrl (used
- * as the navigation URL) and its manifest title. Unresolvable milestones are
- * silently skipped so partial data still renders.
+ * as the navigation URL) and its manifest title.
+ *
+ * Unresolvable milestones (not yet published, or a transient resolver
+ * failure) are kept in the list as locked placeholders rather than dropped —
+ * a path's members can land at different times (RFC CUSTOM-GUIDE-PACKAGES.md
+ * §6.5), so silently vanishing entries would misrepresent the path's real
+ * size and break "N of totalMilestones" counters. Traversal (getNextMilestoneUrl
+ * / getPreviousMilestoneUrl) skips locked entries.
  *
  * @param milestoneIds - Bare package IDs from a path manifest's `milestones` array
  * @param pathSlug - Optional path slug for building website URLs
  * @returns Milestone[] suitable for LearningJourneyMetadata and Recommendation.milestones
  */
 export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?: string): Promise<Milestone[]> {
-  if (!_packageResolver || milestoneIds.length === 0) {
+  const resolver = await getPackageResolver();
+  if (!resolver || milestoneIds.length === 0) {
     return [];
   }
 
   const settled = await Promise.allSettled(
-    milestoneIds.map((id) => _packageResolver!.resolve(id, { loadContent: 'metadata-only' }))
+    milestoneIds.map((id) => resolver.resolve(id, { loadContent: 'metadata-only' }))
   );
 
   const milestones: Milestone[] = [];
-  let sequenceNumber = 1;
 
   for (let i = 0; i < milestoneIds.length; i++) {
     const result = settled[i]!;
     const id = milestoneIds[i]!;
+    const number = i + 1;
 
     if (result.status === 'rejected') {
-      logger.warn(`[resolvePackageMilestones] Error resolving milestone ${id}`, { reason: result.reason });
+      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone ${id}`, { reason: result.reason });
+      milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
-      logger.warn(`[resolvePackageMilestones] Skipping unresolvable milestone: ${id}`);
+      logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone: ${id}`);
+      milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
-    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+    const title = resolution.content?.title ?? resolution.entryTitle ?? resolution.manifest?.description ?? id;
+    // Only surface the manifest description as a subtitle when it isn't
+    // already doing double duty as the title fallback above.
+    const description = resolution.manifest?.description !== title ? resolution.manifest?.description : undefined;
+    const estimatedMinutes = resolution.manifest?.estimatedMinutes;
+    const startingLocation = resolution.manifest?.startingLocation;
 
     milestones.push({
-      number: sequenceNumber++,
+      number,
       title,
-      duration: '5-10 min',
       url: resolution.contentUrl,
       isActive: false,
+      ...(description != null && { description }),
+      ...(typeof estimatedMinutes === 'number' && { estimatedMinutes }),
+      ...(typeof startingLocation === 'string' && { startingLocation }),
       ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
     });
   }
@@ -115,12 +119,13 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
  * Unresolvable IDs are silently skipped.
  */
 export async function resolvePackageNavLinks(packageIds: string[]): Promise<ResolvedNavLink[]> {
-  if (!_packageResolver || packageIds.length === 0) {
+  const resolver = await getPackageResolver();
+  if (!resolver || packageIds.length === 0) {
     return [];
   }
 
   const settled = await Promise.allSettled(
-    packageIds.map((id) => _packageResolver!.resolve(id, { loadContent: 'metadata-only' }))
+    packageIds.map((id) => resolver.resolve(id, { loadContent: 'metadata-only' }))
   );
 
   const links: ResolvedNavLink[] = [];
@@ -140,7 +145,7 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
       continue;
     }
 
-    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+    const title = resolution.content?.title ?? resolution.entryTitle ?? resolution.manifest?.description ?? id;
     const manifest: Record<string, unknown> | undefined = resolution.manifest
       ? (resolution.manifest as unknown as Record<string, unknown>)
       : undefined;
@@ -150,6 +155,7 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
       title,
       contentUrl: resolution.contentUrl,
       manifest,
+      repository: resolution.repository,
     });
   }
 
@@ -171,6 +177,40 @@ function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
 }
 
 /**
+ * Substitutes a friendly placeholder when a path/journey's own cover content
+ * has empty blocks. Without this, the journey chrome gets injected onto
+ * nothing and the guide parses to zero elements — a broken cover instead of
+ * a milestone list (RFC CUSTOM-GUIDE-PACKAGES.md Appendix A F15).
+ *
+ * This runtime repair is the only empty-cover protection that actually runs:
+ * it applies to every repository (bundled, CDN, App Platform), repairing the
+ * cover rather than rejecting the package.
+ */
+export function ensureNonEmptyCoverContent(jsonContent: string): string {
+  try {
+    const parsed = JSON.parse(jsonContent) as { blocks?: unknown[]; [key: string]: unknown };
+    if (Array.isArray(parsed.blocks) && parsed.blocks.length === 0) {
+      return JSON.stringify({
+        ...parsed,
+        blocks: [
+          {
+            type: 'markdown',
+            // Deliberately untranslated: only reachable on an empty-cover path (a
+            // publishing error), and docs-retrieval is a content-transform tier
+            // with no i18n wiring. If this stops being an edge case, thread a
+            // localized string down from the component layer instead.
+            content: 'Cover content is missing for this path. Check back soon, or contact whoever published it.',
+          },
+        ],
+      });
+    }
+  } catch {
+    // Malformed JSON — leave it to the existing downstream error handling.
+  }
+  return jsonContent;
+}
+
+/**
  * Fetch package content from a pre-resolved contentUrl (CDN or bundled).
  *
  * This is the primary fetch path for package-backed recommendations.
@@ -184,35 +224,51 @@ function getManifestMilestoneIds(manifest?: Record<string, unknown>): string[] {
  * @param contentUrl - Pre-resolved CDN URL or bundled: URL for the content.json
  * @param packageManifest - Optional manifest metadata to attach to the result
  * @param preResolvedMilestones - Optional milestones already resolved by the caller (avoids redundant resolution)
+ * @param repository - Resolved source repository, stamped onto `metadata.repository` so completion keys on the true source rather than the manifest default; falls back to the baseUrl resolution's own repository when omitted
+ * @param preFetchedContent - Optional content the caller already fetched (avoids re-issuing an identical request)
  */
 export async function fetchPackageContent(
   contentUrl: string,
   packageManifest?: Record<string, unknown>,
-  preResolvedMilestones?: Milestone[]
+  preResolvedMilestones?: Milestone[],
+  repository?: string,
+  preFetchedContent?: ContentFetchResult
 ): Promise<ContentFetchResult> {
   const renderType = getPackageRenderType(packageManifest);
   const needsMilestones = renderType === 'learning-journey' && isPathManifest(packageManifest);
 
   const manifestId = needsMilestones && typeof packageManifest?.id === 'string' ? packageManifest.id : '';
-  const pathSlug = manifestId ? derivePathSlug(manifestId) : undefined;
+  // Only public packages have a grafana.com docs page. Suppressing the slug for
+  // private App Platform paths here keeps every downstream websiteUrl synthesis
+  // (path cover + per-milestone) from fabricating a public URL the toolbar would
+  // `window.open` to a 404 and report to analytics (unretractable).
+  const pathSlug =
+    manifestId && packageManifest?.repository !== 'app-platform' ? derivePathSlug(manifestId) : undefined;
   const milestoneIds = needsMilestones ? getManifestMilestoneIds(packageManifest) : [];
   const shouldResolveMilestones =
     needsMilestones && (!preResolvedMilestones || preResolvedMilestones.length === 0) && milestoneIds.length > 0;
 
   // Run content fetch, milestone resolution, and baseUrl resolution in
   // parallel. These are independent: the page body doesn't need milestones
-  // and milestones don't need the page body.
+  // and milestones don't need the page body. The baseUrl branch awaits
+  // getPackageResolver() itself (rather than a resolver fetched ahead of this
+  // array) so a cold resolver's chunk fetch overlaps fetchContent(contentUrl)
+  // instead of serializing in front of it.
   const [result, resolvedMilestones, baseUrlResolution] = await Promise.all([
-    fetchContent(contentUrl),
+    preFetchedContent ?? fetchContent(contentUrl),
     shouldResolveMilestones ? resolvePackageMilestones(milestoneIds, pathSlug) : Promise.resolve(undefined),
-    manifestId && _packageResolver
-      ? _packageResolver.resolve(manifestId, { loadContent: false }).catch(() => undefined)
+    manifestId
+      ? getPackageResolver().then((resolver) =>
+          resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
+        )
       : Promise.resolve(undefined),
   ]);
 
   if (!result.content) {
     return result;
   }
+
+  const resolvedRepository = repository ?? (baseUrlResolution?.ok ? baseUrlResolution.repository : undefined);
 
   let learningJourney: LearningJourneyMetadata | undefined;
   let contentString = result.content.content;
@@ -235,13 +291,23 @@ export async function fetchPackageContent(
         milestones,
         baseUrl,
         summary: result.content.metadata.singleDoc?.summary,
+        // pathSlug is already suppressed for private packages at derivation, so a
+        // non-null slug means this is a public path with a grafana.com docs page.
         ...(pathSlug != null && {
           websiteUrl: `https://grafana.com/docs/learning-paths/${pathSlug}/`,
         }),
       };
 
       if (currentMilestone === 0) {
-        contentString = injectJourneyExtrasIntoJsonGuide(contentString, learningJourney);
+        // skipReadyToBegin: true — the React cover-page TOC (LearningPathTableOfContents)
+        // renders its own Start/Resume CTA against real progress data; the
+        // legacy HTML button always says "Ready to Begin" and always targets
+        // milestone 1, so leaving both on would show two conflicting CTAs.
+        contentString = injectJourneyExtrasIntoJsonGuide(
+          ensureNonEmptyCoverContent(contentString),
+          learningJourney,
+          true
+        );
       }
     }
   }
@@ -255,6 +321,10 @@ export async function fetchPackageContent(
       metadata: {
         ...result.content.metadata,
         ...(packageManifest !== undefined && { packageManifest }),
+        // Fall back to the repository the baseUrl resolution already carries, so
+        // an entry path that supplies no explicit one still keys the durable
+        // completion on the true source instead of the manifest schema default.
+        ...(resolvedRepository !== undefined && { repository: resolvedRepository }),
         ...(learningJourney !== undefined && { learningJourney }),
       },
     },
@@ -269,12 +339,15 @@ export async function fetchPackageContent(
  *
  * @param packageId - Bare package ID (e.g., "alerting-101")
  * @param packageManifest - Optional manifest metadata to attach to the result
+ * @param repository - Optional explicit source repository; falls back to the resolver's own when omitted
  */
 export async function fetchPackageById(
   packageId: string,
-  packageManifest?: Record<string, unknown>
+  packageManifest?: Record<string, unknown>,
+  repository?: string
 ): Promise<ContentFetchResult> {
-  if (!_packageResolver) {
+  const resolver = await getPackageResolver();
+  if (!resolver) {
     return {
       content: null,
       error: 'No package resolver configured — call setPackageResolver() first',
@@ -282,7 +355,12 @@ export async function fetchPackageById(
     };
   }
 
-  const resolution = await _packageResolver.resolve(packageId, { loadContent: false });
+  // verifyPublished: the content fetch that follows has no publish-status gate
+  // of its own (backend-guide.ts serves drafts on purpose, for share links and
+  // tab restore), so a draft opened by bare id is only caught here. The baseUrl
+  // hydration resolve() in fetchPackageContent stays unverified — it runs on
+  // every milestone fetch and its id is already known-good.
+  const resolution = await resolver.resolve(packageId, { loadContent: false, verifyPublished: true });
 
   if (!resolution.ok) {
     return {
@@ -292,5 +370,20 @@ export async function fetchPackageById(
     };
   }
 
-  return fetchPackageContent(resolution.contentUrl, packageManifest);
+  // The probe already GET the resource to read its status; build content from
+  // it rather than re-issuing the identical request.
+  const preFetched = resolution.probedResource
+    ? buildBackendGuideContent(resolution.probedResource as BackendGuideResource, resolution.contentUrl, packageId)
+    : undefined;
+
+  // Prefer an explicit caller-supplied repository, but fall back to the
+  // resolver's own source so a bare-ID open still keys the durable completion
+  // on the true repository instead of the manifest schema default.
+  return fetchPackageContent(
+    resolution.contentUrl,
+    packageManifest,
+    undefined,
+    repository ?? resolution.repository,
+    preFetched
+  );
 }

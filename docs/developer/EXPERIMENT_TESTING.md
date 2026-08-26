@@ -6,9 +6,10 @@ All overrides go through `window.__pathfinderExperiment`, the debug surface crea
 
 ## Current experiments
 
-| Flag                                      | Variants                             | What treatment does                                                                                                     |
-| ----------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `pathfinder.highlighted-guide-experiment` | `excluded` / `control` / `treatment` | Both `control` and `treatment` keep Pathfinder visible — they differ only in which `guideId` is auto-opened + featured. |
+| Flag                                                | Variants                             | What treatment does                                                                                                        |
+| --------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `pathfinder.highlighted-guide-experiment`           | `excluded` / `control` / `treatment` | Both `control` and `treatment` keep Pathfinder visible — they differ only in which `guideId` is auto-opened + featured.    |
+| `pathfinder.interactive-learning-banner-experiment` | `excluded` / `control` / `treatment` | `treatment` shows a dismissible explanatory banner on the context page and above opened guides. `control` renders nothing. |
 
 See [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) for the full flag shapes and variant tables.
 
@@ -22,7 +23,10 @@ __pathfinderExperiment.clearOverrides();
 __pathfinderExperiment.showOverrides(); // returns the current overrides object
 __pathfinderExperiment.showExposures(); // lists (flag, variant) pairs already reported to analytics on this browser
 __pathfinderExperiment.clearExposures(); // clears the analytics dedup markers so the next reload re-fires pathfinder_feature_flag_evaluated
+__pathfinderExperiment.bannerVariant(); // interactive-learning banner arm, or 'not-enrolled' if no panel has opened yet
 ```
+
+`bannerVariant` is a function rather than a property because that experiment enrolls lazily — see its section below. Calling it never enrolls you; it only reads what enrollment already resolved.
 
 Overrides are persisted in `localStorage` under `grafana-pathfinder-flag-overrides`, evaluated on every page load via the synchronous `getFeatureFlagValue` / `getHighlightedGuideConfig` readers — they bypass MTFF entirely and produce a `[OpenFeature] Using local override for '<flag>'` warning every time they're read, which doubles as a visible reminder that you're in dev mode.
 
@@ -42,10 +46,15 @@ Object.keys(localStorage)
 // 3. Wipe analytics exposure-dedup markers (so pathfinder_feature_flag_evaluated fires again)
 __pathfinderExperiment.clearExposures();
 
-// 4. Clear leftover panel-mode (in case earlier floating-mode tests left it sticky)
+// 4. Wipe the interactive-learning banner dismissal
+Object.keys(localStorage)
+  .filter((k) => k.startsWith('grafana-pathfinder-interactive-learning-banner-dismissed-'))
+  .forEach((k) => localStorage.removeItem(k));
+
+// 5. Clear leftover panel-mode (in case earlier floating-mode tests left it sticky)
 localStorage.removeItem('grafana-pathfinder-app-panel-mode');
 
-// 5. Release the extension sidebar in case another plugin (Assistant, IRM, …) is docked
+// 6. Release the extension sidebar in case another plugin (Assistant, IRM, …) is docked
 localStorage.removeItem('grafana.navigation.extensionSidebarDocked');
 
 location.reload();
@@ -181,9 +190,64 @@ When to use them:
 
 Variant reassignment is the **only** condition where the event auto-refires across page loads without manual reset; everything else (same browser, same arm, same hostname) is deduped.
 
+## `pathfinder.interactive-learning-banner-experiment`
+
+Tests whether explaining interactive learning up front increases guide engagement. `treatment` renders a dismissible explanatory banner on the context page and above opened guide content; `control` and `excluded` render nothing.
+
+### Treatment
+
+```js
+__pathfinderExperiment.setOverride('pathfinder.interactive-learning-banner-experiment', { variant: 'treatment' });
+location.reload();
+```
+
+Open the sidebar. The banner sits above the profile bar, and its only control is the dismiss affordance.
+
+### Above an opened guide
+
+The banner has a second placement, above rendered guide content, so a guide reached without ever passing through the context page still explains itself. Auto-open is the case worth checking:
+
+```js
+// With the treatment override set, load a guide directly — no sidebar visit first.
+location.href = '/?doc=<guide-url>';
+```
+
+The banner appears above the guide content, and the shown event carries `interaction_location: interactive_learning_banner_guide` rather than `interactive_learning_banner`. Both placements share one dismissal: close it above the guide, hit "Return to my learning", and it is gone from the context page too (and the reverse).
+
+For the floating and full-screen surfaces, add `&panelMode=floating` or `&panelMode=fullscreen`. Those enroll from their own mount effects, so the exposure fires even though the sidebar never mounted.
+
+### Control
+
+```js
+__pathfinderExperiment.setOverride('pathfinder.interactive-learning-banner-experiment', { variant: 'control' });
+location.reload();
+```
+
+No banner. The exposure event still fires on first sidebar open — that is the point of a control arm.
+
+### Enrollment fires on panel open, not on boot
+
+This is the one thing that behaves differently from the highlighted-guide experiment. The flag is evaluated lazily the first time any Pathfinder surface mounts (sidebar, floating, or full-screen), so:
+
+- `__pathfinderExperiment.bannerVariant()` returns `'not-enrolled'` until you open Pathfinder, then the arm.
+- `pathfinder_feature_flag_evaluated` for this flag appears on first panel open, not on page load. If you are watching the network tab from boot expecting it immediately, that is why it is missing.
+- Reloading without opening Pathfinder produces no exposure at all. That is intended — a user who never opened the panel never had the chance to see the banner.
+
+### Resetting the dismissal
+
+The banner stays dismissed per browser. `clearOverrides()` does not clear it:
+
+```js
+Object.keys(localStorage)
+  .filter((k) => k.startsWith('grafana-pathfinder-interactive-learning-banner-dismissed-'))
+  .forEach((k) => localStorage.removeItem(k));
+location.reload();
+```
+
 ## Common gotchas
 
 - **`__pathfinderExperiment` is undefined.** Pathfinder is dismounted — the `pathfinder.enabled` kill-switch is `false` (or overridden off). Clear `localStorage.grafana-pathfinder-flag-overrides` and reload, or write `{"pathfinder.enabled": true}` into that key.
+- **`setOverride` had no effect, or opened a guide you didn't configure — and there's no `Using local override` warning.** Check the `variant` spelling. Anything outside `excluded` / `control` / `treatment` rejects the whole override, and a rejected override is **ignored in favor of the remote MTFF value** — it does _not_ fall back to the default config. On a local OSS stack there is no MTFF provider, so nothing happens and the symptom is silence; on a Cloud stack whose flag is live you get the _remote_ arm's `guideId` auto-launched instead of yours. Look for `[OpenFeature] Rejected the override payload for 'pathfinder.highlighted-guide-experiment'` in the console — it names the reason (`unknown_variant` or `invalid_shape`) and fires once per page load. Note that an unrecognized variant never fired an exposure event even before it was validated, so a missing `pathfinder_feature_flag_evaluated` is not a useful clue here. See the variant table in [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md#pathfinderhighlighted-guide-experiment).
 - **Auto-launch landed but I see the wrong tab.** The orchestrator dispatches `auto-launch-tutorial` which calls `openDocsPage` / `openLearningJourney` — those make the new guide tab active automatically. If you instead see the editor / devtools tab from a prior session, the configured `guideId` failed to resolve through `findDocPage`: check the console for `findDocPage returned null for guideId="…"` and fix the id (`bundled:<id>`, `api:<id>`, or a full URL on a whitelisted host).
 - **Auto-launch fires but the guide opens as the wrong type (docs page vs learning journey).** Set the flag's `docType` explicitly (`'docs-page' | 'learning-journey' | 'interactive'`). The operator override wins over `findDocPage`'s URL-based inference.
 - **Only one page renders / no milestones for an interactive-learning guide.** `guideId` is pointing at the `/guides/<slug>/` web URL rather than the `/packages/<slug>/content.json` package URL. The web URL bypasses `isPackageContentUrl` so the sibling `manifest.json` is never fetched and the docs panel falls through to a plain `fetchContent` render. Swap the URL form (see "`guideId` URL form" above). Quick console probe to confirm both URL forms exist for your guide: `fetch('https://interactive-learning.grafana.net/packages/<slug>/manifest.json').then(r => r.status)` should return `200`.

@@ -185,6 +185,36 @@ describe('applyPackageMeta', () => {
 
     expect(() => applyPackageMeta(undefined, { packageId: 'a' })).not.toThrow();
   });
+
+  it('preserves the effective report starting location when package metadata omits it', () => {
+    const data = reportData();
+    data.guide.startingLocation = '/connections/datasources/edit/uid?tab=settings#details';
+
+    applyPackageMeta(data, {
+      packageId: 'a',
+      tier: 'local',
+      sourceUrl: 'https://cdn.test/a/content.json',
+    });
+
+    expect(data.guide.startingLocation).toBe('/connections/datasources/edit/uid?tab=settings#details');
+  });
+
+  it.each([
+    ['connections?tab=x#details', '/connections?tab=x#details'],
+    ['http://localhost:3000/connections?tab=x#details', '/connections?tab=x#details'],
+  ])('preserves the normalized runner path for authored location %s', (authored, normalized) => {
+    const data = reportData();
+    data.guide.startingLocation = normalized;
+
+    applyPackageMeta(data, {
+      packageId: 'a',
+      tier: 'local',
+      sourceUrl: 'https://cdn.test/a/content.json',
+      startingLocation: authored,
+    });
+
+    expect(data.guide.startingLocation).toBe(normalized);
+  });
 });
 
 describe('provisioningFailureResults', () => {

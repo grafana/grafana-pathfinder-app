@@ -29,6 +29,7 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   targetAction: 'button' | 'highlight' | 'formfill' | 'navigate' | 'sequence' | 'hover' | 'noop' | 'popout';
   refTarget: string;
   targetValue?: string;
+  targetState?: boolean | string;
   postVerify?: string;
   targetComment?: string;
   doIt?: boolean; // Control whether "Do it" button appears (defaults to true)
@@ -44,6 +45,8 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   title?: string;
   description?: string;
   children?: React.ReactNode;
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 
   // Unified state management props (added by parent)
   stepId?: string;
@@ -85,6 +88,7 @@ export interface StepInfo {
   targetAction?: string; // Optional for multi-step and guided
   refTarget?: string; // Optional for multi-step and guided
   targetValue?: string;
+  targetState?: boolean | string;
   targetComment?: string; // Optional comment to show during execution
   requirements?: string;
   postVerify?: string;
@@ -93,6 +97,11 @@ export interface StepInfo {
   isMultiStep: boolean; // Flag to identify component type
   isGuided: boolean; // Flag to identify guided (user-performed) steps
   isQuiz?: boolean; // Flag to identify quiz steps
+  // Do Section stops here for the user. Without it the runner falls through to
+  // `executeInteractiveAction`'s default branch, which warns and reports success.
+  pausesSectionRun?: boolean;
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 // ============================================================================

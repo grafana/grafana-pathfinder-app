@@ -1,8 +1,9 @@
 /**
  * My Learning Tab Component
  *
- * A dedicated gamified tab for learning paths, badges, and progress tracking.
- * Provides a unified experience for users to explore and track their learning journey.
+ * A dedicated gamified tab for courses, badges, and progress tracking.
+ * Composes the hero, My Courses / Badges columns, Discover More, and
+ * Completed sections into a single learning surface.
  */
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -11,30 +12,37 @@ import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
 import { prepareGuideLaunch, type PreparedGuideLaunch } from '../docs-panel/utils/prepare-guide-launch';
-import { useLearningPaths, BADGES, getPathsData } from '../../learning-paths';
+import { resolvePackageNavLinks } from '../../docs-retrieval';
+import type { PackageOpenInfo } from '../../types/content-panel.types';
+import type { LearningPath } from '../../types/learning-paths.types';
+import { useLearningPaths, useDiscoverMore, BADGES, getPathsData, type DiscoverMoreItem } from '../../learning-paths';
 import { testIds } from '../../constants/testIds';
-import { LearningPathCard } from './LearningPathCard';
-import { BadgeIcon } from './BadgeIcon';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { StorageEvents } from '../../lib/event-names';
 import {
   learningProgressStorage,
   journeyCompletionStorage,
   interactiveStepStorage,
   interactiveCompletionStorage,
+  milestoneCompletionStorage,
 } from '../../lib/user-storage';
 import { evictAllContentCaches } from '../../global-state/completion-store';
+import { discardQueuedCompletionWrites } from '../../completion-records';
 import type { EarnedBadge } from '../../types';
 
-// Badge utilities extracted for testability
-import { getBadgeProgress, getBadgeRequirementText, type BadgeProgressInfo } from './badge-utils';
-
-// Styles extracted for maintainability
-import { getBadgeDetailStyles } from './BadgeDetailCard.styles';
+import { getBadgeProgress } from './badge-utils';
 import { getMyLearningStyles } from './MyLearningTab.styles';
+import { BadgeDetailCard } from './BadgeDetailCard';
+import { HeroStats } from './sections/HeroStats';
+import { MyCoursesSection } from './sections/MyCoursesSection';
+import { PrivatePathsSection } from './sections/PrivatePathsSection';
+import { BadgesSection } from './sections/BadgesSection';
+import { DiscoverMoreSection } from './sections/DiscoverMoreSection';
+import { CompletedSection } from './sections/CompletedSection';
 
 interface MyLearningTabProps {
   /**
@@ -46,186 +54,13 @@ interface MyLearningTabProps {
   onOpenGuide: (launch: PreparedGuideLaunch) => void;
 }
 
-// ============================================================================
-// BADGE DETAIL CARD COMPONENT
-// ============================================================================
-
-interface BadgeDetailCardProps {
-  badge: EarnedBadge;
-  progress: BadgeProgressInfo | null;
-  onClose: () => void;
-}
-
-function BadgeDetailCard({ badge, progress, onClose }: BadgeDetailCardProps) {
-  const styles = useStyles2(getBadgeDetailStyles);
-  const isEarned = !!badge.earnedAt;
-  const isLegacy = badge.isLegacy;
-  const requirementText = isLegacy
-    ? 'This badge was earned in a previous version of Pathfinder'
-    : getBadgeRequirementText(badge);
-
-  // Determine icon wrapper class based on badge state
-  const iconWrapperClass = isLegacy
-    ? `${styles.iconWrapper} ${styles.iconLegacy}`
-    : isEarned
-      ? `${styles.iconWrapper} ${styles.iconEarned}`
-      : `${styles.iconWrapper} ${styles.iconLocked}`;
-
-  return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.card} onClick={(e) => e.stopPropagation()} data-testid={testIds.learningPaths.badgesModal}>
-        {/* Close button */}
-        <button className={styles.closeButton} onClick={onClose} data-testid={testIds.learningPaths.badgesModalClose}>
-          <Icon name="times" size="lg" />
-        </button>
-
-        {/* Badge Icon with glow effect */}
-        <div className={iconWrapperClass}>
-          {!isLegacy && <div className={styles.iconGlow} />}
-          <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="xxxl" emojiClassName={styles.badgeEmoji} />
-          {isEarned && !isLegacy && (
-            <div className={styles.checkmark}>
-              <Icon name="check" size="sm" />
-            </div>
-          )}
-          {isLegacy && (
-            <div className={styles.legacyIndicator}>
-              <Icon name="history" size="sm" />
-            </div>
-          )}
-        </div>
-
-        {/* Title */}
-        <h3 className={styles.title}>{badge.title}</h3>
-
-        {/* Status badge */}
-        <div
-          className={`${styles.statusBadge} ${isLegacy ? styles.statusLegacy : isEarned ? styles.statusEarned : styles.statusLocked}`}
-        >
-          {isLegacy ? '📜 Legacy' : isEarned ? '✨ Unlocked' : '🔒 Locked'}
-        </div>
-
-        {/* Earned date or requirement */}
-        {isEarned && badge.earnedAt ? (
-          <p className={styles.earnedDate}>
-            Earned on{' '}
-            {new Date(badge.earnedAt).toLocaleDateString('en-US', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric',
-            })}
-          </p>
-        ) : !isLegacy ? (
-          <p className={styles.description}>{badge.description}</p>
-        ) : null}
-
-        {/* Requirement section */}
-        <div className={styles.requirementSection}>
-          <div className={styles.requirementLabel}>{isLegacy ? 'Note' : isEarned ? 'Completed' : 'Requirement'}</div>
-          <div className={styles.requirementText}>{requirementText}</div>
-        </div>
-
-        {/* Progress section (only for locked badges that aren't legacy) */}
-        {!isEarned && !isLegacy && progress && progress.total > 0 && (
-          <div className={styles.progressSection}>
-            <div className={styles.progressHeader}>
-              <span className={styles.progressLabel}>Progress</span>
-              <span className={styles.progressValue}>
-                {progress.current}/{progress.total} {progress.label}
-              </span>
-            </div>
-            <div className={styles.progressBarOuter}>
-              <div className={styles.progressBarInner} style={{ width: `${progress.percentage}%` }} />
-              <div className={styles.progressBarShimmer} style={{ width: `${progress.percentage}%` }} />
-            </div>
-            <div className={styles.progressPercentage}>{progress.percentage}%</div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
-// BADGE GRID ITEM COMPONENT
-// ============================================================================
-
-interface BadgeGridItemProps {
-  badge: EarnedBadge;
-  index: number;
-  completedGuides: string[];
-  streakDays: number;
-  paths: Array<{ id: string; guides: string[] }>;
-  styles: ReturnType<typeof getMyLearningStyles>;
-  onSelect: (badge: EarnedBadge) => void;
-}
-
-function BadgeGridItem({ badge, index, completedGuides, streakDays, paths, styles, onSelect }: BadgeGridItemProps) {
-  const isEarned = !!badge.earnedAt;
-  const isLegacy = badge.isLegacy;
-  const baseBadge = BADGES.find((b) => b.id === badge.id);
-  const badgeProgress = baseBadge ? getBadgeProgress(baseBadge, completedGuides, streakDays, paths) : null;
-
-  // Determine the badge item class based on state
-  const badgeItemClass = isLegacy
-    ? `${styles.badgeItem} ${styles.badgeItemLegacy}`
-    : isEarned
-      ? `${styles.badgeItem} ${styles.badgeItemEarned}`
-      : `${styles.badgeItem} ${styles.badgeItemLocked}`;
-
-  return (
-    <button
-      className={badgeItemClass}
-      onClick={() => onSelect(badge)}
-      style={{ animationDelay: `${index * 50}ms` }}
-      title={isLegacy ? 'This badge was earned in a previous version' : undefined}
-      data-testid={testIds.learningPaths.badgeItem(badge.id)}
-    >
-      <div className={styles.badgeIconWrapper}>
-        <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="xl" emojiClassName={styles.badgeEmojiSmall} />
-        {isEarned && !isLegacy && (
-          <div className={styles.badgeCheckmark}>
-            <Icon name="check" size="xs" />
-          </div>
-        )}
-        {isLegacy && (
-          <div className={styles.badgeLegacyIndicator}>
-            <Icon name="history" size="xs" />
-          </div>
-        )}
-      </div>
-      <div className={styles.badgeInfo}>
-        <span
-          className={`${styles.badgeTitle} ${!isEarned && !isLegacy ? styles.badgeTitleLocked : ''} ${isLegacy ? styles.badgeTitleLegacy : ''}`}
-        >
-          {badge.title}
-        </span>
-        {!isEarned && !isLegacy && badgeProgress && (
-          <div className={styles.badgeMiniProgress}>
-            <div className={styles.badgeMiniProgressTrack}>
-              <div className={styles.badgeMiniProgressBar} style={{ width: `${badgeProgress.percentage}%` }} />
-            </div>
-            <span className={styles.badgeMiniProgressText}>
-              {badgeProgress.current}/{badgeProgress.total}
-            </span>
-          </div>
-        )}
-      </div>
-    </button>
-  );
-}
-
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
-
 export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
   const styles = useStyles2(getMyLearningStyles);
   // Guards against a second launch while the first is still fetching/classifying.
   const launchInFlightRef = useRef(false);
   // Drives the pending affordance on the launching card while the ref above
-  // stays the correctness guard.
-  const [launchingPathId, setLaunchingPathId] = useState<string | null>(null);
+  // stays the correctness guard. Shared by course cards and Discover More.
+  const [launchingId, setLaunchingId] = useState<string | null>(null);
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -233,10 +68,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       mountedRef.current = false;
     };
   }, []);
-  const [showAllBadges, setShowAllBadges] = useState(false);
-  const [showAllPaths, setShowAllPaths] = useState(false);
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
-  const [hideCompletedPaths, setHideCompletedPaths] = useState(false);
 
   const {
     paths,
@@ -251,96 +83,126 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
     isLoading,
   } = useLearningPaths();
 
-  // Sort and filter paths: in-progress first, then not-started, then completed
-  const sortedPaths = useMemo(() => {
-    const sorted = [...paths].sort((a, b) => {
-      const aProgress = getPathProgress(a.id);
-      const bProgress = getPathProgress(b.id);
-      const aCompleted = isPathCompleted(a.id);
-      const bCompleted = isPathCompleted(b.id);
+  const inProgress = useMemo(() => {
+    return paths
+      .filter((path) => getPathProgress(path.id) < 100)
+      .sort((a, b) => getPathProgress(b.id) - getPathProgress(a.id));
+  }, [paths, getPathProgress]);
 
-      // Completed paths go last
-      if (aCompleted !== bCompleted) {
-        return aCompleted ? 1 : -1;
-      }
+  const privatePaths = useMemo(() => inProgress.filter((path) => path.isPrivate), [inProgress]);
+  const courses = useMemo(() => inProgress.filter((path) => !path.isPrivate), [inProgress]);
 
-      // In-progress (has some progress but not complete) goes first
-      const aInProgress = aProgress > 0 && !aCompleted;
-      const bInProgress = bProgress > 0 && !bCompleted;
-      if (aInProgress !== bInProgress) {
-        return aInProgress ? -1 : 1;
-      }
+  const completedPaths = useMemo(() => paths.filter((path) => isPathCompleted(path.id)), [paths, isPathCompleted]);
 
-      // Among in-progress, sort by progress (higher first)
-      if (aInProgress && bInProgress) {
-        return bProgress - aProgress;
-      }
-
-      // Keep original order for others
-      return 0;
-    });
-
-    // Filter out completed if toggle is on
-    if (hideCompletedPaths) {
-      return sorted.filter((path) => !isPathCompleted(path.id));
-    }
-
-    return sorted;
-  }, [paths, getPathProgress, isPathCompleted, hideCompletedPaths]);
-
-  // Count completed paths for the toggle label
-  const completedPathsCount = useMemo(
-    () => paths.filter((path) => isPathCompleted(path.id)).length,
-    [paths, isPathCompleted]
+  const excludeTitles = useMemo(
+    () => new Set([...inProgress, ...completedPaths].map((path) => path.title)),
+    [inProgress, completedPaths]
   );
-
-  // Paths to display (first 4 by default, or all when expanded)
-  const displayedPaths = showAllPaths ? sortedPaths : sortedPaths.slice(0, 4);
-
-  // Calculate progress for selected badge
-  const selectedBadgeProgress = useMemo(() => {
-    if (!selectedBadge) {
-      return null;
-    }
-    const baseBadge = BADGES.find((b) => b.id === selectedBadge.id);
-    if (!baseBadge) {
-      return null;
-    }
-    return getBadgeProgress(
-      baseBadge,
-      progress.completedGuides,
-      progress.streakDays,
-      paths.map((p) => ({ id: p.id, guides: p.guides }))
-    );
-  }, [selectedBadge, progress.completedGuides, progress.streakDays, paths]);
+  const { items: discoverItems, isLoading: discoverLoading } = useDiscoverMore({ excludeTitles });
 
   // Fetch + snippet-expand + classify the target, then hand the prepared
   // launch to the host so it can pick the surface without re-fetching. The
   // fetch happens while My Learning stays mounted; on failure My Learning stays
   // visible and the error is surfaced rather than committing a surface.
+  // Shared by every launch path (URL-based, manifest cover, static/App
+  // Platform guide) — assumes the caller already holds launchInFlightRef.
+  const performLaunch = useCallback(
+    async (url: string, title: string, packageInfo?: PackageOpenInfo) => {
+      const result = await prepareGuideLaunch(url, { title, source: 'home_page', packageInfo });
+      // The prepare step can outlive this page (the fetches are bounded but
+      // slow-CDN cases run tens of seconds). If the user navigated away,
+      // drop the result — launching now would yank them to /fullscreen from
+      // wherever they landed.
+      if (!mountedRef.current) {
+        return;
+      }
+      if (result.ok) {
+        onOpenGuide(result.launch);
+      } else {
+        // Log context reaches Faro attributes verbatim, so only stable,
+        // low-cardinality values go in: the URL loses its query and fragment,
+        // and the classification code stands in for `result.error`, whose free
+        // text can echo fetched-guide values. The user sees a translated
+        // generic message either way.
+        logger.error('[MyLearning] Guide launch preparation failed', {
+          content_url: normalizeTelemetryUrl(url),
+          error_code: result.errorCode,
+        });
+        getAppEvents().publish({
+          type: 'alert-error',
+          payload: [
+            t('myLearning.launchErrorTitle', 'Could not open the guide'),
+            t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
+          ],
+        });
+      }
+    },
+    [onOpenGuide]
+  );
+
   const launch = useCallback(
-    async (url: string, title: string, pathId: string) => {
+    async (url: string, title: string, launchId: string, packageInfo?: PackageOpenInfo) => {
       if (launchInFlightRef.current) {
         return;
       }
       launchInFlightRef.current = true;
-      setLaunchingPathId(pathId);
+      setLaunchingId(launchId);
       try {
-        const result = await prepareGuideLaunch(url, { title, source: 'home_page' });
-        // The prepare step can outlive this page (the fetches are bounded but
-        // slow-CDN cases run tens of seconds). If the user navigated away,
-        // drop the result — launching now would yank them to /fullscreen from
-        // wherever they landed.
+        await performLaunch(url, title, packageInfo);
+      } finally {
+        launchInFlightRef.current = false;
+        if (mountedRef.current) {
+          setLaunchingId(null);
+        }
+      }
+    },
+    [performLaunch]
+  );
+
+  // Manifest-backed (package) paths — App Platform or online packages alike —
+  // have no cover `url` the way URL-based cloud paths do, so a fresh launch
+  // has to resolve the path's own cover contentUrl before opening it. Mirrors
+  // the URL-based branch in handleOpenGuide below, which already has one.
+  //
+  // The lock is acquired here, before resolvePackageNavLinks, rather than
+  // inside `launch` — Continue/Start buttons disable purely on `launchingId`,
+  // so a lock acquired only inside `launch` would leave that whole resolve
+  // window unguarded, letting a second click start another resolve (and
+  // potentially open a different path) before the first one ever reaches
+  // `launch`'s own lock.
+  const openPathCover = useCallback(
+    async (path: LearningPath) => {
+      if (launchInFlightRef.current) {
+        return;
+      }
+      launchInFlightRef.current = true;
+      setLaunchingId(path.id);
+      try {
+        const packageInfo: PackageOpenInfo = {
+          packageId: path.id,
+          packageManifest: { ...path.manifest, id: path.id },
+        };
+        const [navLink] = await resolvePackageNavLinks([path.id]);
         if (!mountedRef.current) {
           return;
         }
-        if (result.ok) {
-          onOpenGuide(result.launch);
-        } else {
-          // The raw error is internal-shaped — keep it for the logs (Faro
-          // bridge makes launch failures countable) and show a translated
-          // generic message.
-          logger.error('[MyLearning] Guide launch preparation failed', { url, error: result.error });
+        // A resolver miss shouldn't fail the whole launch: fall back to the
+        // first member guide, same as a manifest-backed path used to do via
+        // getGuideUrlForPath before the cover page had its own contentUrl.
+        const coverUrl = navLink?.contentUrl || getGuideUrlForPath(path.guides[0] ?? '', path.id) || '';
+
+        reportAppInteraction(UserInteraction.OpenResourceClick, {
+          content_title: path.title,
+          content_url: coverUrl || `package:${path.id}`,
+          content_type: AnalyticsContentType.LearningJourney,
+          interaction_location: 'my_learning_tab',
+          // The fallback opens the first member guide, not the cover — the
+          // discriminator must reflect what actually opened, not what was intended.
+          launch_target: navLink?.contentUrl ? 'cover_page' : 'first_guide_fallback',
+        });
+
+        if (!coverUrl) {
+          logger.error('[MyLearning] Could not resolve a cover or fallback URL for path', { path_id: path.id });
           getAppEvents().publish({
             type: 'alert-error',
             payload: [
@@ -348,49 +210,65 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
               t('myLearning.launchErrorMessage', 'Something went wrong while loading the guide. Please try again.'),
             ],
           });
+          return;
         }
+
+        await performLaunch(coverUrl, path.title, packageInfo);
       } finally {
         launchInFlightRef.current = false;
         if (mountedRef.current) {
-          setLaunchingPathId(null);
+          setLaunchingId(null);
         }
       }
     },
-    [onOpenGuide]
+    [performLaunch, getGuideUrlForPath]
   );
 
   const handleOpenGuide = useCallback(
     (guideId: string, pathId: string) => {
       const parentPath = paths.find((p) => p.id === pathId);
 
-      if (parentPath?.url) {
-        const isFreshLaunch = getPathProgress(parentPath.id) === 0;
-        const launchTarget = isFreshLaunch ? 'cover_page' : 'milestone';
-        // The path base URL is its cover page; continuing still resolves the current milestone.
-        const resolvedGuideUrl = isFreshLaunch
-          ? parentPath.url
-          : (getGuideUrlForPath(guideId, parentPath.id) ?? parentPath.url);
-        const guideTitle = isFreshLaunch
-          ? parentPath.title
-          : getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title;
-        const title = guideTitle || parentPath.title;
-
-        reportAppInteraction(UserInteraction.OpenResourceClick, {
-          content_title: title,
-          content_url: resolvedGuideUrl,
-          content_type: AnalyticsContentType.LearningJourney,
-          interaction_location: 'my_learning_tab',
-          launch_target: launchTarget,
-        });
-
-        void launch(resolvedGuideUrl, title, parentPath.id);
+      // Manifest-backed (package) paths — App Platform and public/CDN course
+      // packages alike — always land on their own cover page from My Learning,
+      // fresh or resumed, same as URL-based cloud paths below. The rendering
+      // pipeline is identical for every repository
+      // (docs/design/package/learning-journeys.md), so there's no reason to
+      // special-case one source over another here. Whether the cover itself
+      // is interactive is decided by prepareGuideLaunch's own content-based
+      // classification, independent of progress — resuming a course whose
+      // cover happens to be interactive still ends up in the sidebar, exactly
+      // like a fresh launch would.
+      if (parentPath?.manifest && !parentPath.url) {
+        void openPathCover(parentPath);
         return;
       }
 
-      // Static guide — open the individual guide content
-      const guideMetadata = getPathsData().guideMetadata[guideId];
-      const title = guideMetadata?.title || guideId;
-      const guideUrl = guideMetadata?.url ?? `bundled:${guideId}`;
+      if (parentPath?.url) {
+        // The path's own url is its cover page; the cover's own CTA
+        // ("Get started" / "Resume") is what resolves the current milestone,
+        // using real completion data — see LearningPathTableOfContents.
+        reportAppInteraction(UserInteraction.OpenResourceClick, {
+          content_title: parentPath.title,
+          content_url: parentPath.url,
+          content_type: AnalyticsContentType.LearningJourney,
+          interaction_location: 'my_learning_tab',
+          launch_target: 'cover_page',
+        });
+
+        void launch(parentPath.url, parentPath.title, parentPath.id);
+        return;
+      }
+
+      // Static or App Platform guide — resolve via the path-scoped metadata
+      // hook exposes (covers App Platform member guides too, RFC §6.11),
+      // falling back to the static bundled catalogue as before.
+      const resolvedGuideUrl = parentPath ? getGuideUrlForPath(guideId, parentPath.id) : undefined;
+      const staticGuideMetadata = getPathsData().guideMetadata[guideId];
+      const title =
+        (parentPath && getPathGuides(parentPath.id).find((g) => g.id === guideId)?.title) ||
+        staticGuideMetadata?.title ||
+        guideId;
+      const guideUrl = resolvedGuideUrl ?? staticGuideMetadata?.url ?? `bundled:${guideId}`;
 
       reportAppInteraction(UserInteraction.OpenResourceClick, {
         content_title: title,
@@ -414,14 +292,49 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
         });
       }
 
-      void launch(guideUrl, title, pathId);
+      // App Platform paths carry a manifest but no cover `url`, so the member
+      // launches as `backend-guide:<id>`. Thread the PATH manifest through as
+      // packageInfo (mirroring CustomGuidesSection) — without it the loader
+      // falls through to plain fetchContent and the member renders as a
+      // standalone guide with no milestone toolbar, next/prev, or cover.
+      const packageInfo: PackageOpenInfo | undefined = parentPath?.manifest
+        ? { packageId: parentPath.id, packageManifest: { ...parentPath.manifest, id: parentPath.id } }
+        : undefined;
+
+      void launch(guideUrl, title, pathId, packageInfo);
     },
-    [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath]
+    [launch, paths, getPathProgress, getPathGuides, getGuideUrlForPath, openPathCover]
   );
 
-  // Handle reset all progress (for testing)
+  const handleDiscoverStart = useCallback(
+    (item: DiscoverMoreItem) => {
+      reportAppInteraction(UserInteraction.OpenResourceClick, {
+        content_title: item.title,
+        content_url: item.contentUrl,
+        content_type: AnalyticsContentType.LearningJourney,
+        interaction_location: 'my_learning_discover_more',
+      });
+
+      // prepareGuideLaunch backfills packageInfo from the URL when absent, but
+      // the manifest is already inlined here — passing it saves that re-fetch.
+      const packageInfo: PackageOpenInfo | undefined = item.manifest
+        ? { packageId: item.id, packageManifest: { ...item.manifest, id: item.id } }
+        : undefined;
+
+      void launch(item.contentUrl, item.title, item.id, packageInfo);
+    },
+    [launch]
+  );
+
   const handleResetProgress = useCallback(async () => {
     if (window.confirm('Reset all learning progress? This will clear completed guides, badges, and streaks.')) {
+      // Durable completion writes that are queued but not yet sent are dropped
+      // first, before any await below yields: a drain scheduled before the reset
+      // would otherwise fire inside that window and mint records for exactly the
+      // guides the user just asked us to forget — and the dialog gives them no
+      // second lever to stop it.
+      discardQueuedCompletionWrites();
+
       await learningProgressStorage.clear();
 
       // Clear journey completion percentages
@@ -429,6 +342,11 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       for (const url of Object.keys(completions)) {
         await journeyCompletionStorage.clear(url);
       }
+
+      // Milestone checklists outlive a per-path reset for paths that predate the
+      // path-key fix, so a global reset has to drop them too — otherwise the next
+      // single completion re-crosses the all-milestones threshold.
+      await milestoneCompletionStorage.clearAll();
 
       // Clear all interactive guide step and completion state
       // This prevents guides from instantly re-completing when reopened
@@ -450,27 +368,23 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   const totalGuidesCompleted = progress.completedGuides.length;
   const totalBadgesEarned = progress.earnedBadges.length;
-  const totalBadges = badgesWithStatus.length;
+
+  const pathsForProgress = useMemo(() => paths.map((p) => ({ id: p.id, guides: p.guides })), [paths]);
 
   // Sort badges: earned first (most recent first), then unearned (by progress %)
   const sortedBadges = useMemo(() => {
-    const pathsForProgress = paths.map((p) => ({ id: p.id, guides: p.guides }));
-
     return [...badgesWithStatus].sort((a, b) => {
       const aEarned = !!a.earnedAt;
       const bEarned = !!b.earnedAt;
 
-      // Earned badges come first
       if (aEarned !== bEarned) {
         return aEarned ? -1 : 1;
       }
 
-      // Both earned: sort by earnedAt (most recent first)
       if (aEarned && bEarned) {
         return (b.earnedAt || 0) - (a.earnedAt || 0);
       }
 
-      // Both unearned: sort by progress percentage (highest first)
       const baseBadgeA = BADGES.find((badge) => badge.id === a.id);
       const baseBadgeB = BADGES.find((badge) => badge.id === b.id);
 
@@ -483,10 +397,18 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
       return progressB - progressA;
     });
-  }, [badgesWithStatus, progress.completedGuides, progress.streakDays, paths]);
+  }, [badgesWithStatus, progress.completedGuides, progress.streakDays, pathsForProgress]);
 
-  // Badges to display (4 preview or all)
-  const displayedBadges = showAllBadges ? sortedBadges : sortedBadges.slice(0, 4);
+  const selectedBadgeProgress = useMemo(() => {
+    if (!selectedBadge) {
+      return null;
+    }
+    const baseBadge = BADGES.find((b) => b.id === selectedBadge.id);
+    if (!baseBadge) {
+      return null;
+    }
+    return getBadgeProgress(baseBadge, progress.completedGuides, progress.streakDays, pathsForProgress);
+  }, [selectedBadge, progress.completedGuides, progress.streakDays, pathsForProgress]);
 
   if (isLoading) {
     return (
@@ -498,143 +420,59 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
 
   return (
     <div className={styles.container}>
-      {/* Hero Section */}
-      <div className={styles.heroSection}>
-        <div className={styles.heroContent}>
-          <p className={styles.heroSubtitle}>
-            {t('myLearning.subtitle', 'Track your progress, earn badges, and master Grafana')}
-          </p>
-        </div>
+      <HeroStats
+        guidesCompleted={totalGuidesCompleted}
+        badgesEarned={totalBadgesEarned}
+        streakDays={streakInfo.days}
+        styles={styles}
+      />
 
-        {/* Stats Row */}
-        <div className={styles.statsRow}>
-          <div className={styles.statItem}>
-            <div className={styles.statValue}>{totalGuidesCompleted}</div>
-            <div className={styles.statLabel}>{t('myLearning.guidesCompleted', 'Guides completed')}</div>
-          </div>
-          <div className={styles.statDivider} />
-          <div className={styles.statItem}>
-            <div className={styles.statValue}>
-              {totalBadgesEarned}/{totalBadges}
-            </div>
-            <div className={styles.statLabel}>{t('myLearning.badgesEarned', 'Badges earned')}</div>
-          </div>
-          {streakInfo.days > 0 && (
-            <>
-              <div className={styles.statDivider} />
-              <div className={styles.statItem}>
-                <div className={styles.statValueStreak}>
-                  <span className={styles.fireEmoji}>🔥</span>
-                  {streakInfo.days}
-                </div>
-                <div className={styles.statLabel}>{t('myLearning.dayStreak', 'Day streak')}</div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      <PrivatePathsSection
+        paths={privatePaths}
+        getPathGuides={getPathGuides}
+        getPathProgress={getPathProgress}
+        onContinue={handleOpenGuide}
+        onReset={resetPath}
+        launchingPathId={launchingId}
+        launchDisabled={launchingId !== null}
+        styles={styles}
+      />
 
-      {/* Learning Paths Section */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <Icon name="book-open" size="md" className={styles.sectionIcon} />
-          <h2 className={styles.sectionTitle}>{t('myLearning.learningPaths', 'Learning paths')}</h2>
-          {sortedPaths.length > 4 && (
-            <button
-              className={styles.expandButton}
-              onClick={() => setShowAllPaths(!showAllPaths)}
-              data-testid={testIds.learningPaths.showAllPathsButton}
-            >
-              {showAllPaths
-                ? t('myLearning.showLess', 'Show less')
-                : t('myLearning.viewAll', 'View all ({{count}})', { count: sortedPaths.length })}
-              <Icon name={showAllPaths ? 'angle-up' : 'angle-down'} size="sm" />
-            </button>
-          )}
-          {/* Hide completed toggle */}
-          {completedPathsCount > 0 && (
-            <label className={styles.hideCompletedToggle}>
-              <input
-                type="checkbox"
-                checked={hideCompletedPaths}
-                onChange={(e) => setHideCompletedPaths(e.target.checked)}
-                className={styles.hideCompletedCheckbox}
-              />
-              <span className={styles.hideCompletedLabel}>Hide completed ({completedPathsCount})</span>
-            </label>
-          )}
-        </div>
-        <p className={styles.sectionDescription}>
-          {t('myLearning.pathsDescription', 'Structured guides to help you master Grafana step by step')}
-        </p>
+      {/* My Courses ∥ Badges — collapses to stacked on narrow panels */}
+      <div className={styles.columnsContainer}>
+        <div className={styles.columnsRow}>
+          <MyCoursesSection
+            courses={courses}
+            getPathGuides={getPathGuides}
+            getPathProgress={getPathProgress}
+            onContinue={handleOpenGuide}
+            onReset={resetPath}
+            launchingPathId={launchingId}
+            launchDisabled={launchingId !== null}
+            styles={styles}
+          />
 
-        <div className={styles.pathsGrid}>
-          {displayedPaths.map((path, index) => {
-            const pathProgress = getPathProgress(path.id);
-            const pathCompleted = isPathCompleted(path.id);
-            // Expand the first in-progress path by default
-            const isFirstInProgress = index === 0 && pathProgress > 0 && !pathCompleted;
-
-            return (
-              <LearningPathCard
-                key={path.id}
-                path={path}
-                guides={getPathGuides(path.id)}
-                progress={pathProgress}
-                isCompleted={pathCompleted}
-                onContinue={handleOpenGuide}
-                onReset={resetPath}
-                defaultExpanded={isFirstInProgress}
-                isLaunching={launchingPathId === path.id}
-                launchDisabled={launchingPathId !== null}
-              />
-            );
-          })}
-          {sortedPaths.length === 0 && hideCompletedPaths && (
-            <div className={styles.emptyPathsMessage}>
-              <Icon name="check-circle" size="xl" className={styles.emptyPathsIcon} />
-              <p>All paths completed! Uncheck &ldquo;Hide completed&rdquo; to review them.</p>
-            </div>
-          )}
+          <BadgesSection
+            badges={sortedBadges}
+            completedGuides={progress.completedGuides}
+            streakDays={progress.streakDays}
+            paths={pathsForProgress}
+            onSelect={setSelectedBadge}
+            styles={styles}
+          />
         </div>
       </div>
 
-      {/* Badges Section - Expandable Inline */}
-      <div className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <Icon name="star" size="md" className={styles.sectionIcon} />
-          <h2 className={styles.sectionTitle}>{t('myLearning.badges', 'Badges')}</h2>
-          <button
-            className={styles.expandButton}
-            onClick={() => setShowAllBadges(!showAllBadges)}
-            data-testid={testIds.learningPaths.showAllBadgesButton}
-          >
-            {showAllBadges
-              ? t('myLearning.showLess', 'Show less')
-              : t('myLearning.viewAll', 'View all ({{count}})', { count: totalBadges })}
-            <Icon name={showAllBadges ? 'angle-up' : 'angle-down'} size="sm" />
-          </button>
-        </div>
-        <p className={styles.sectionDescription}>
-          {t('myLearning.badgesDescription', 'Earn badges by completing guides and maintaining streaks')}
-        </p>
+      <DiscoverMoreSection
+        items={discoverItems}
+        isLoading={discoverLoading}
+        onStart={handleDiscoverStart}
+        startingId={launchingId}
+        startDisabled={launchingId !== null}
+        styles={styles}
+      />
 
-        {/* Badges Grid */}
-        <div className={`${styles.badgesGrid} ${showAllBadges ? styles.badgesGridExpanded : ''}`}>
-          {displayedBadges.map((badge, index) => (
-            <BadgeGridItem
-              key={badge.id}
-              badge={badge}
-              index={index}
-              completedGuides={progress.completedGuides}
-              streakDays={progress.streakDays}
-              paths={paths.map((p) => ({ id: p.id, guides: p.guides }))}
-              styles={styles}
-              onSelect={setSelectedBadge}
-            />
-          ))}
-        </div>
-      </div>
+      <CompletedSection completed={completedPaths} styles={styles} />
 
       {/* Preview Notice - at bottom to not distract from main content */}
       <div className={styles.previewNotice}>

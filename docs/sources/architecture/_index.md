@@ -9,20 +9,20 @@ weight: 1
 
 Interactive learning is an app plugin built on the Grafana plugin SDK. Its primary mount point is the Grafana **extension sidebar** — the same surface used by Grafana Assistant — which lets the plugin operate alongside any part of the Grafana UI.
 
-The plugin is composed of a React + TypeScript frontend and a Go backend. The frontend handles all UI, recommendation rendering, and step execution; the backend handles network proxying, custom-guide storage, and (optionally) sandbox VM and terminal session management.
+The plugin is composed of a React + TypeScript frontend and a Go backend. The frontend handles all UI, recommendation rendering, and step execution; the backend handles network proxying and custom-guide storage. Sandbox VMs and terminal sessions come from a separate, optional Coda app plugin.
 
 ## High-level subsystems
 
 Interactive learning has six subsystems that work together:
 
-| Subsystem                        | Responsibility                                                                                                                                               |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Context engine**               | Detects what the user is doing in Grafana — current path, dashboard, data sources, search params, role — and produces a context object.                      |
-| **Recommendation pipeline**      | Sends context to the recommender, applies fallbacks (bundled / packaged guides), deduplicates, and renders the recommendations panel.                        |
-| **Documentation renderer**       | Fetches and renders guide content as a React component tree (not an iframe), with progressive lazy-loading and variable substitution.                        |
-| **Interactive engine**           | Executes step actions (highlight, click, form fill, navigate, hover, popout, multistep, guided), checks requirements, and tracks completion.                 |
-| **Block editor / custom guides** | Lets editors and admins author their own guides and persist them to the Pathfinder backend as Kubernetes-style custom resources.                             |
-| **Live sessions and Coda**       | Optional features — peer-to-peer collaborative guide presentations (Live sessions) and ephemeral sandbox VMs accessible through an in-panel terminal (Coda). |
+| Subsystem                        | Responsibility                                                                                                                                                                                  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Context engine**               | Detects what the user is doing in Grafana — current path, dashboard, data sources, search params, role — and produces a context object.                                                         |
+| **Recommendation pipeline**      | Sends context to the recommender, applies fallbacks (bundled / packaged guides), deduplicates, and renders the recommendations panel.                                                           |
+| **Documentation renderer**       | Fetches and renders guide content as a React component tree (not an iframe), with progressive lazy-loading and variable substitution.                                                           |
+| **Interactive engine**           | Executes step actions (highlight, click, form fill, navigate, hover, popout, multistep, guided), checks requirements, and tracks completion.                                                    |
+| **Block editor / custom guides** | Lets editors and admins author their own guides and persist them to the Pathfinder backend as Kubernetes-style custom resources.                                                                |
+| **Live sessions and Coda**       | Optional features — peer-to-peer collaborative guide presentations (Live sessions) and ephemeral sandbox VMs accessible through an in-panel terminal (Coda, provided by a separate app plugin). |
 
 ![Interactive learning architecture](/media/docs/pathfinder/architecture.png)
 
@@ -152,4 +152,4 @@ Live sessions enable a presenter to broadcast their **Show me** and **Do it** ac
 
 ## Coda terminal (optional)
 
-When enabled, Coda gives a guide direct access to a 30-minute sandbox VM through a terminal panel inside the docs panel. The plugin's Go backend handles VM provisioning, SSH key management, and the WebSocket-to-SSH relay; the frontend never sees the credentials. Guide authors can drop a `terminal-connect` block into a guide to provision a specific VM template (generic Linux, sample-app, or Alloy scenario) and a `terminal` block to run commands in the resulting session.
+When enabled, Coda gives a guide direct access to a 30-minute sandbox VM through a terminal panel inside the docs panel. VM provisioning, SSH key management, and the WebSocket-to-SSH relay are handled by a **separate Coda app plugin**, which must be installed and registered alongside Interactive learning; the browser never sees the credentials. Interactive learning contributes the terminal panel and the guide block types, and hides them when the Coda app plugin is unavailable. Guide authors can drop a `terminal-connect` block into a guide to provision a specific VM template (generic Linux, sample-app, or Alloy scenario) and a `terminal` block to run commands in the resulting session.

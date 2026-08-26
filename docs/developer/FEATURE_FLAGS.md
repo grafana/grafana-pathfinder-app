@@ -33,6 +33,65 @@ The plugin uses the [OpenFeature](https://openfeature.dev/) standard with the OF
 
 ---
 
+### `pathfinder.frontend-telemetry`
+
+**Type**: Boolean
+
+**Purpose**: Remote kill-switch for the Faro telemetry stream (errors, sessions, views, logs, and the analytics-event mirror). Independent of `pathfinder.enabled` — this stops the telemetry, not the plugin. Telemetry is already gated to Grafana Cloud; the flag exists so the stream can be cut fleet-wide without a release if the collector or the filtering misbehaves.
+
+**Default**: `true` (telemetry runs if the flag is not set, and if MTFF is unreachable)
+
+**Behavior**:
+
+- **`true`**: `initFaro()` runs, subject to its own Grafana Cloud / analytics-enabled / hostname gates
+- **`false`**: the Faro SDK chunk is never even imported
+
+**Tracking key**: `frontend_telemetry`
+
+---
+
+### `pathfinder.session-replay`
+
+**Type**: Boolean
+
+**Purpose**: Records a masked rrweb session replay of the page, so a guide that goes wrong can be watched back rather than reconstructed from events. Requires `pathfinder.frontend-telemetry`, which owns the Faro instance the recording rides on.
+
+**Default**: `true` (recording happens if the flag is not set, and if MTFF is unreachable)
+
+**Behavior**:
+
+- **`true`**: the recorder is registered the first time Pathfinder is opened in any surface, and runs for the rest of the page — including after Pathfinder is closed again
+- **`false`**: neither the replay module nor the rrweb bundle is fetched
+
+**This flag is read once, at plugin bootstrap.** Flipping it to `false` stops _new_ recordings; a tab that is already recording carries on until it is reloaded or closed, and recordings already ingested are unaffected. See [Stopping a recording](TELEMETRY.md#stopping-a-recording) for why, and for what the actual remediation path is.
+
+**Important**: this is an off-switch, not an opt-in — recording is the default state on every Cloud stack where telemetry is enabled. Two consequences worth holding onto:
+
+1. **Never let this run alongside Grafana core's own recorder.** Core ships one behind the `faroSessionReplay` toggle, which is `@default false` in `@grafana/data` — so there is no automatic default-state collision; it takes an operator deliberately enabling core's toggle on a stack that also has this flag on. The consequence if that happens is real: two rrweb instances on one page double DOM serialization per mutation, and rrweb's global proxy of `CSSStyleSheet.prototype.insertRule` is not idempotent-guarded, so they compound on Emotion's hot path. `resolveSessionReplayOptions` yields automatically when `config.featureToggles.faroSessionReplay === true`, but that toggle is private-preview and may not be surfaced to the frontend at all, so still set `pathfinder.session-replay` to `false` on any stack where core's goes true.
+2. Recordings are only playable on a stack with Grafana's private-preview Session Replay enabled. That is already on for the ops stack Pathfinder reports to; elsewhere the events are ingested with no UI to view them.
+
+See the privacy invariants in [`TELEMETRY.md`](TELEMETRY.md) for what masking does and does not cover.
+
+**Tracking key**: `session_replay`
+
+---
+
+### `pathfinder.session-replay-sampling-rate`
+
+**Type**: Number
+
+**Purpose**: Volume dial on top of `pathfinder.session-replay` — the fraction of replay-eligible sessions that actually get recorded. Every rrweb event becomes a Faro event carrying a JSON DOM payload, and a Grafana dashboard mutates continuously, so this is the knob to reach for if collector volume becomes a problem before reaching for the switch.
+
+**Default**: `1` (record every eligible session)
+
+**Behavior**: the decision is a deterministic hash of the session id, so a session either has a recording for its whole life or never does — you never get half a replay. `0` records nobody, same net effect as setting `pathfinder.session-replay` to `false`, the difference being intent: the boolean says "off", the rate says "sampled out".
+
+**Important**: this is a remote number, so it can arrive as anything. `resolveSamplingRate` in `src/lib/telemetry/replay.ts` range-checks it at the point of use and **falls back to `1`** for anything that isn't a finite number in `[0, 1]` — a `100` meant as a percentage, a string from a mistyped MTFF value, `NaN`. An earlier Faro sample-rate flag was deleted rather than clamped ([#1275](https://github.com/grafana/grafana-pathfinder-app/pull/1275)) precisely because a fat-fingered value was indistinguishable from a deliberate one; failing to the default rather than to zero is what earns this one its place.
+
+**Tracking key**: `session_replay_sampling_rate`
+
+---
+
 ### `pathfinder.auto-open-sidebar`
 
 **Type**: Boolean
@@ -96,6 +155,17 @@ interface HighlightedGuideConfig {
 
 A typical A/B setup serves the **same** `pages[]` to both arms with **different** `guideId` values, so the only thing varying between cohorts is the guide content. Analytics distinguishes which arm via the existing `TrackingHook` exposure event (`pathfinder_feature_flag_evaluated` with `tracking_key: highlighted_guide_experiment`).
 
+**Those three values are the whole set.** The variant arrives from MTFF, so it can be anything; a value outside the table — a typo'd `treament`, a stale arm name, an empty string — rejects the **entire** payload. Rejection is whole-payload, not field-level: `pages`, `guideId`, `docType` and `resetCache` are all discarded along with the bad variant, so "rename an arm and set `resetCache: true`" clears nothing. Nobody is enrolled — no auto-open, no once-per-browser marker, and no arm attached to analytics or session telemetry. Renaming an arm therefore turns it off rather than half-enrolling its cohort under a bogus label.
+
+**Where a rejected payload lands depends on the source**, which is the thing to know when debugging:
+
+| Rejected payload from             | Result                                                                                                                                                          |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MTFF (the remote flag)            | The default `excluded` config above                                                                                                                             |
+| `localStorage` override (QA/demo) | The override is **ignored** and the remote MTFF value applies. Locally there is no MTFF provider, so this looks like the default — on a Cloud stack it does not |
+
+Either way the plugin logs a `warn` naming the source and a low-cardinality reason (`unknown_variant` or `invalid_shape`), once per source per page load. An unrecognized variant never produced a `pathfinder_feature_flag_evaluated` exposure event in the first place — `reportFeatureFlagExposure` only tracks `control` and `treatment` — so exposure counts are not a signal that a payload is broken. The `warn` is.
+
 **Page-pattern semantics — note the difference**: Empty `pages` is treated as **no match**, NOT "all pages" (unlike `pathfinder.experiment-variant`). This makes the safe default of `{ variant: 'excluded', pages: [] }` a true no-op even if the variant is accidentally flipped without configuring pages. Patterns support the same `*` suffix wildcards as `matchPathPattern`.
 
 **Once-per-browser semantics**: The auto-open marker is keyed `{hostname}:{guideId}` in localStorage (not sessionStorage). A new `guideId` from MTFF — including the arm-specific value at variant assignment time — produces a new key, so changing the experiment's guide naturally re-fires auto-open without operator intervention. Use `resetCache: true` to force-clear all markers for the current hostname (sentinel-guarded so true→true reloads don't repeatedly clear).
@@ -107,6 +177,74 @@ A typical A/B setup serves the **same** `pages[]` to both arms with **different*
 **Tracking key**: `highlighted_guide_experiment`
 
 **Launch source**: Guide tabs opened by this flag are tagged with the `highlighted_guide_experiment` `LaunchSource` (aligned-by-construction — no alignment prompt is shown, since the operator already targeted the page).
+
+### `pathfinder.interactive-learning-banner-experiment`
+
+**Purpose**: A/B test whether an explanatory banner increases engagement with interactive guides.
+
+**Type**: `object` (experiment flag — object-valued so it emits exposure events)
+
+**Default**: `{ variant: 'excluded' }`
+
+**Shape**: variant-only. Unlike the highlighted-guide flag there is no `pages` targeting — the banner explains Pathfinder itself, not the underlying Grafana page.
+
+```typescript
+interface InteractiveLearningBannerConfig {
+  variant: 'excluded' | 'control' | 'treatment';
+}
+```
+
+**Variant behavior**:
+
+| Variant     | Banner | Notes                                                                       |
+| ----------- | ------ | --------------------------------------------------------------------------- |
+| `excluded`  | No     | Not in the experiment. Identical to pre-experiment behavior.                |
+| `control`   | No     | In the experiment, no banner. Identical rendering to `excluded`.            |
+| `treatment` | Yes    | Dismissible explanatory banner on the context page and above opened guides. |
+
+A rejected payload (not an object, missing `variant`, or an unknown arm) falls back to `excluded`, so a fat-fingered MTFF value enrolls nobody. Rejection sources behave the same way as the highlighted-guide flag (see the table above).
+
+**Exposure timing — this flag differs from the others.** Every other flag is read at boot in `src/module.tsx`, so its exposure fires on page load. This one is read lazily by `enrollInteractiveLearningBannerExperiment` when a Pathfinder surface first opens, because "entered the experiment" should mean "had the chance to see the banner". Evaluating the flag is what emits the exposure, so the call site is the timing contract — `src/utils/experiments/enrollment-boundary.test.ts` pins the allowed call sites for that reason. `getActiveExperiments` reads the memoised arm rather than evaluating, so analytics enrichment can never enroll a user who has not opened Pathfinder.
+
+**Two placements, three surfaces.** The banner renders in two places, and `surface-coverage.test.ts` pins both against the enrollment seams:
+
+| Placement      | Where                                                                                 | Surfaces                                                     |
+| -------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `context-page` | Above the profile bar on the recommendations list (`context-panel.tsx`)               | Sidebar only — floating and full-screen have no context page |
+| `guide`        | Above rendered guide content (`DocsPanelContentArea.tsx`, `FloatingPanelContent.tsx`) | Sidebar, floating, and full-screen                           |
+
+The `guide` placement is the one that matters for reach: a guide opened by `?doc=`, a deep link, or the highlighted-guide auto-open never passes through the context page, so without it the users least likely to know what "Show me" does are exactly the ones who never see the explanation. Copy is identical in both placements; only `interaction_location` differs (`interactive_learning_banner` vs `interactive_learning_banner_guide`), so the readout can tell where it was first seen.
+
+The two placements are never mounted simultaneously — the sidebar's content area is an if/else on the recommendations tab, and the other surfaces have no context page — so the dismissal needs no cross-instance plumbing. It is one hostname-scoped localStorage key, re-read on every mount, which is what makes "dismissed above a guide" also mean "dismissed on the context page".
+
+**Enrollment therefore has one seam per surface**, each in the mount effect that already announces surface ownership: `ContextSidebar` in `src/module.tsx`, `FloatingPanelManager`, and `FullScreenPanel`. `enrollment-boundary.test.ts` pins that set from the other direction — nothing else may enroll. Note the consequence for the readout: **"enrolled" means "opened any Pathfinder surface", not "opened the sidebar"**, because all three can now show the banner.
+
+The banner component itself never enrolls. It reads the memoised arm through `subscribeToEnrollment` + `useSyncExternalStore`, because enrolling from render would let a render React replays or abandons emit the exposure and write its dedupe marker for a banner nobody saw. The subscription earns its keep on floating and full-screen: the manager owns the seam, and child effects run before the parent's, so the banner renders `null` and then re-renders when `notifyEnrollment()` fires.
+
+Enrollment also re-stamps the Faro session `experiments` attribute, because `initFaro` stamped it at boot before any arm was known. The enroller is the only point ordered after the arm resolves, so it owns the re-stamp — but it calls `notifyEnrollment()` from `experiments/enrollment-notifier.ts` rather than importing the stamper. `lib/telemetry/session` pulls in the Faro adapter statically, so importing it from the enroller would download the telemetry chunk even on stacks where `pathfinder.frontend-telemetry` is off; `module.tsx` binds the stamper from inside its telemetry block instead, and with that block skipped the notification is a no-op. Expect the session attribute to gain this cohort mid-session, on first panel open.
+
+**Dismissal**: persisted per browser under `grafana-pathfinder-interactive-learning-banner-dismissed-{hostname}`. Dismissing hides the banner permanently but does **not** un-enroll the user — they stay in the treatment arm for analysis.
+
+**Behavior events** (in addition to the exposure): `pathfinder_interactive_learning_banner_shown` (once per page load) and `..._banner_dismissed`, both carrying `interaction_location: interactive_learning_banner`.
+
+**Code**: everything except the registry entry, the three enrollment seams, and the two banner mount lines lives in [`src/utils/experiments/interactive-learning-banner.ts`](../../src/utils/experiments/interactive-learning-banner.ts) and [`src/components/InteractiveLearningBanner/`](../../src/components/InteractiveLearningBanner/), so retiring the experiment is a directory delete plus the registry entry. [`enrollment-notifier.ts`](../../src/utils/experiments/enrollment-notifier.ts) is shared machinery and stays.
+
+**Tracking key**: `interactive_learning_banner_experiment`
+
+---
+
+## Backend aggregation toggles (not MTFF)
+
+Separate from the OpenFeature flags above, Grafana **App Platform APIService aggregation toggles** gate whether the plugin's aggregated backend APIs are served on a stack. They live in core Grafana config (`config.featureToggles`), not MTFF, and are read server-side in the Go backend — not through `openfeature.ts`.
+
+| Toggle                                                  | Gates                                                                                                                                                | Go constant                                                                                                                                                          | Group         |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| `aggregation.pathfinderbackend-ext-grafana-app.enabled` | Every aggregated surface: the custom guide catalogue, the private `interactiveguides` resolver, and the completion-records read and write proxies    | `customGuideAggregationToggle` (`pkg/plugin/custom_guide_repository_client.go`) and `completionRecordsAggregationToggle` (`pkg/plugin/completion_records_client.go`) | GAP `.app`    |
+| `aggregation.pathfinderbackend-ext-grafana-com.enabled` | Nothing today — completion records cut over to `.app` with no migration or dual-read, so the named constant only pins the `.app` derivation in tests | `pathfinderBackendAggregationToggle` (`pkg/plugin/app_platform_client.go`)                                                                                           | legacy `.com` |
+
+The toggle name is the API group with dots replaced by dashes. The frontend derives the `.app` toggle in `src/utils/interactive-guides-api.ts`; the Go constants derive theirs from `appPlatformGroup` (`pkg/plugin/app_platform_client.go`) so they cannot drift from the group name.
+
+A toggle reports that the group's aggregation layer is served, which is a **precondition, not the availability signal** — a real stack reports both toggles true. Route availability is whatever the capability/resolver path returns, which additionally requires an app URL, a namespace, and a provisioned on-behalf-of (OBO) token on the stack. See [`docs/design/BACKEND_PROXY_PATTERN.md`](../design/BACKEND_PROXY_PATTERN.md) §7–§8.
 
 ---
 

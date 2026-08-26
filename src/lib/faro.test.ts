@@ -35,7 +35,9 @@ const mockSetSession = jest.fn((session?: { id?: string; attributes?: Record<str
   mockSessionMeta = session as typeof mockSessionMeta;
 });
 const mockPushMeasurement = jest.fn();
+const mockInstrumentationsAdd = jest.fn();
 const mockFaroInstance = {
+  instrumentations: { add: mockInstrumentationsAdd },
   api: {
     pushError: mockPushError,
     pushLog: mockPushLog,
@@ -69,6 +71,12 @@ jest.mock('@grafana/faro-web-sdk', () => ({
   PerformanceInstrumentation: class PerformanceInstrumentation {},
 }));
 
+jest.mock('@grafana/faro-instrumentation-replay', () => ({
+  ReplayInstrumentation: class ReplayInstrumentation {
+    constructor(public readonly options: Record<string, unknown>) {}
+  },
+}));
+
 const mockHashUserData = jest.fn(async (userId: string, email: string) => ({
   hashedUserId: `hashed-${userId}`,
   hashedEmail: `hashed-${email}`,
@@ -79,7 +87,10 @@ jest.mock('./hash.util', () => ({ hashUserData: (...args: [string, string]) => m
 // Dynamically imported by initFaro's cohort stamping; the mock keeps the
 // OpenFeature SDK out of these tests.
 const mockGetActiveExperiments = jest.fn((): Array<Record<string, unknown>> => []);
-jest.mock('../utils/openfeature', () => ({ getActiveExperiments: () => mockGetActiveExperiments() }));
+jest.mock('./analytics', () => ({
+  ...jest.requireActual('./analytics'),
+  getBoundActiveExperiments: () => mockGetActiveExperiments(),
+}));
 
 // A stable object reference, not a fresh literal per require: `freshFaro()`
 // resets the module registry (so the telemetry adapter's init/instance state
@@ -105,6 +116,7 @@ const mockedConfig = {
     } as MockedBootDataUser,
   } as { settings: { buildInfo: { versionString: string } }; user: MockedBootDataUser } | undefined,
   analytics: { enabled: true } as { enabled: boolean } | undefined,
+  featureToggles: {} as { faroSessionReplay?: boolean },
 };
 
 jest.mock('@grafana/runtime', () => ({ config: mockedConfig }));
@@ -128,6 +140,8 @@ const {
   buildResourceIgnorePattern,
 }: typeof import('./faro') = require('./faro');
 
+const { TELEMETRY_EVENTS }: typeof import('./telemetry/types') = require('./telemetry/types');
+
 type FreshFaro = typeof import('./faro') &
   Pick<typeof import('./telemetry/faro-adapter'), 'pushFaroEvent' | 'pushFaroMeasurement'>;
 
@@ -149,6 +163,7 @@ beforeEach(() => {
     user: { email: 'x@y.z', orgRole: 'Admin', orgName: 'Acme Corp', analytics: { identifier: 'abc' } },
   };
   mockedConfig.analytics = { enabled: true };
+  mockedConfig.featureToggles = {};
   mockSessionMeta = { id: 'session-1', attributes: {} };
 });
 
@@ -238,6 +253,18 @@ function eventItem(): TransportItem<APIEvent> {
   return {
     type: 'event',
     payload: { name: 'custom_event', timestamp: new Date().toISOString(), attributes: {} },
+    meta: {},
+  } as unknown as TransportItem<APIEvent>;
+}
+
+function completionWriteDegradedItem(): TransportItem<APIEvent> {
+  return {
+    type: 'event',
+    payload: {
+      name: TELEMETRY_EVENTS.completionWriteDegraded,
+      timestamp: new Date().toISOString(),
+      attributes: { reason: 'route-missing' },
+    },
     meta: {},
   } as unknown as TransportItem<APIEvent>;
 }
@@ -339,6 +366,14 @@ describe('filterPathfinderTelemetry', () => {
 
   it('passes through other item types unfiltered', () => {
     const item = eventItem();
+    expect(filterPathfinderTelemetry(item)).toBe(item);
+  });
+
+  // The completion-write path's only observability signal. It is emitted from a
+  // best-effort catch block, so a filter that silently dropped it would leave
+  // the event defined, the tests green, and the route degradation invisible.
+  it('keeps the completion-write degradation event', () => {
+    const item = completionWriteDegradedItem();
     expect(filterPathfinderTelemetry(item)).toBe(item);
   });
 
@@ -1141,6 +1176,16 @@ describe('passesActivityGate', () => {
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
+  // A guide can only be completed from an open surface, so the degradation
+  // event must clear the gate as well as the attribution filter above.
+  it('passes the completion-write degradation event from an open surface', () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    const item = completionWriteDegradedItem();
+    expect(faro.filterPathfinderTelemetry(item)).toBe(item);
+    expect(faro.passesActivityGate(item)).toBe(true);
+  });
+
   it('passes events when the panel mode is fullscreen', () => {
     localStorage.setItem(PANEL_MODE_KEY, 'fullscreen');
     const faro = freshFaro();
@@ -1222,6 +1267,21 @@ describe('passesActivityGate', () => {
     surface.reportPathfinderSurface('floating');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
     surface.reportPathfinderSurfaceClosed('floating');
+    expect(faro.passesActivityGate(eventItem())).toBe(true);
+  });
+
+  // The gate is sampled at item time, so a surface that opened and closed
+  // with nothing pushed in between would leave it shut — and replay is the
+  // payload most likely to arrive late, since its chunk is fetched on that
+  // same open. initFaro's surface listener latches it at the transition.
+  it('stays open when a surface opened and closed before anything was pushed', async () => {
+    const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    await faro.initFaro();
+
+    surface.reportPathfinderSurface('floating');
+    surface.reportPathfinderSurface('closed');
+
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
@@ -1372,5 +1432,315 @@ describe('setFaroViewName', () => {
       throw new Error('transport down');
     });
     expect(() => faro.setFaroViewName('recommendations')).not.toThrow();
+  });
+});
+
+describe('redactPageUrl', () => {
+  const itemWithPageUrl = (url: string) =>
+    ({
+      type: 'event',
+      payload: { name: 'x' },
+      meta: { page: { url, id: '/d/*' } },
+    }) as unknown as TransportItem<APIEvent>;
+
+  const urlOf = (item: TransportItem<APIEvent> | null) => item?.meta.page?.url;
+
+  it('drops the query, where var-* filter values live', () => {
+    const faro = freshFaro();
+    const url = 'https://acme.grafana.net/d/abc/acme-revenue?var-customer=AcmeCorp&var-email=alice@acme.com&orgId=1';
+
+    expect(urlOf(faro.redactPageUrl(itemWithPageUrl(url)))).toBe('https://acme.grafana.net/d/abc/acme-revenue');
+  });
+
+  it('keeps the board path, so a session is still attributable to a page', () => {
+    const faro = freshFaro();
+    const kept = faro.redactPageUrl(itemWithPageUrl('https://acme.grafana.net/d/abc/acme-revenue'));
+
+    expect(urlOf(kept)).toBe('https://acme.grafana.net/d/abc/acme-revenue');
+  });
+
+  it('leaves the rest of the meta alone', () => {
+    const faro = freshFaro();
+    const redacted = faro.redactPageUrl(
+      itemWithPageUrl('https://acme.grafana.net/explore?left=%7B%22expr%22%3A%22x%22%7D')
+    );
+
+    expect(redacted.meta.page?.id).toBe('/d/*');
+    expect(urlOf(redacted)).toBe('https://acme.grafana.net/explore');
+  });
+
+  it('tolerates an item with no page meta', () => {
+    const faro = freshFaro();
+    const bare = { type: 'event', payload: {}, meta: {} } as unknown as TransportItem<APIEvent>;
+
+    expect(() => faro.redactPageUrl(bare)).not.toThrow();
+  });
+});
+
+describe('session replay activation', () => {
+  const PANEL_MODE_KEY = 'grafana-pathfinder-app-panel-mode';
+
+  // The `./replay` chunk and the instrumentation package behind it are both
+  // dynamically imported, so the recorder lands one macrotask after the
+  // surface reports itself.
+  const settleReplayImport = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  function freshFaroWithSurface() {
+    const faro = freshFaro();
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    return { faro, surface };
+  }
+
+  const addedOptions = () => (mockInstrumentationsAdd.mock.calls[0][0] as { options: Record<string, unknown> }).options;
+
+  it('adds no recorder when the flag is off, even with Pathfinder open', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro();
+    await settleReplayImport();
+
+    expect(mockInstrumentationsAdd).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['self-hosted or OSS Grafana', () => (mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana OSS')],
+    ['Grafana Enterprise', () => (mockedConfig.bootData!.settings.buildInfo.versionString = 'Grafana Enterprise')],
+    ['a Cloud stack with analytics opted out', () => (mockedConfig.analytics = { enabled: false })],
+  ])('never records on %s', async (_label, applyConfig) => {
+    applyConfig();
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    expect(mockInitializeFaro).not.toHaveBeenCalled();
+    expect(mockInstrumentationsAdd).not.toHaveBeenCalled();
+  });
+
+  it('waits for the first open before recording', async () => {
+    const { faro, surface } = freshFaroWithSurface();
+
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+    expect(mockInstrumentationsAdd).not.toHaveBeenCalled();
+
+    surface.reportPathfinderSurface('sidebar');
+    await settleReplayImport();
+    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('records straight away when a surface was already open at init', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers the recorder once, however often the surface changes', async () => {
+    const { faro, surface } = freshFaroWithSurface();
+    await faro.initFaro({ sessionReplay: true });
+
+    surface.reportPathfinderSurface('sidebar');
+    await settleReplayImport();
+    surface.reportPathfinderSurface('closed');
+    surface.reportPathfinderSurface('floating');
+    await settleReplayImport();
+
+    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps recording after Pathfinder is closed again', async () => {
+    const { faro, surface } = freshFaroWithSurface();
+    await faro.initFaro({ sessionReplay: true });
+
+    surface.reportPathfinderSurface('sidebar');
+    await settleReplayImport();
+    surface.reportPathfinderSurface('closed');
+    await settleReplayImport();
+
+    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('masks all text and every input type', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    const options = addedOptions();
+    expect(options.maskAllInputs).toBe(true);
+    expect(options.maskTextSelector).toBe('*');
+    expect(Object.values(options.maskInputOptions as Record<string, boolean>).every(Boolean)).toBe(true);
+  });
+
+  it('captures no canvas, fonts, images, stylesheets or cross-origin iframes', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    expect(addedOptions()).toMatchObject({
+      recordCanvas: false,
+      collectFonts: false,
+      inlineImages: false,
+      inlineStylesheet: false,
+      recordCrossOriginIframes: false,
+    });
+  });
+
+  it('blocks the Coda terminal, which renders credentials verbatim', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    expect(addedOptions().blockSelector).toBe('[data-testid="coda-terminal-panel"], .xterm');
+  });
+
+  it('scrubs events before they leave the recorder', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+    await faro.initFaro({ sessionReplay: true });
+    await settleReplayImport();
+
+    const beforeSend = addedOptions().beforeSend as (event: unknown) => { data: { href: string } };
+    expect(beforeSend({ type: 4, timestamp: 0, data: { href: 'https://foo.grafana.net/d/a?token=x' } })).toMatchObject({
+      data: { href: 'https://foo.grafana.net/d/a' },
+    });
+  });
+
+  it('reports a remote sampling rate that had to fall back', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro({ sessionReplay: true, sessionReplaySamplingRate: 100 });
+    await settleReplayImport();
+
+    expect(addedOptions().samplingRate).toBe(1);
+    expect(mockPushEvent).toHaveBeenCalledWith(
+      'pathfinder_session_replay_sampling_fallback',
+      { reason: 'out_of_range' },
+      undefined,
+      { skipDedupe: true }
+    );
+  });
+
+  it('stays quiet when the remote sampling rate is honored', async () => {
+    localStorage.setItem(PANEL_MODE_KEY, 'floating');
+    const faro = freshFaro();
+
+    await faro.initFaro({ sessionReplay: true, sessionReplaySamplingRate: 0.25 });
+    await settleReplayImport();
+
+    expect(addedOptions().samplingRate).toBe(0.25);
+    expect(mockPushEvent).not.toHaveBeenCalledWith(
+      'pathfinder_session_replay_sampling_fallback',
+      expect.anything(),
+      undefined,
+      expect.anything()
+    );
+  });
+});
+
+// Core ships its own rrweb recorder behind a private-preview toggle. Two on one
+// page compound rrweb's global insertRule proxy on Emotion's hot path, so the
+// decision to yield is made here rather than left to whoever sets the flags.
+describe('resolveSessionReplayOptions', () => {
+  const resolve = (enabled: boolean, rate = 1) => freshFaro().resolveSessionReplayOptions(enabled, rate);
+
+  it('records when the flag is on and core is not recording', () => {
+    expect(resolve(true)).toEqual({ sessionReplay: true, sessionReplaySamplingRate: 1 });
+  });
+
+  it('yields to core rather than running a second recorder', () => {
+    mockedConfig.featureToggles = { faroSessionReplay: true };
+    expect(resolve(true).sessionReplay).toBe(false);
+  });
+
+  it('leaves the flag in charge when the toggle is not surfaced to the frontend', () => {
+    mockedConfig.featureToggles = {};
+    expect(resolve(true).sessionReplay).toBe(true);
+    expect(resolve(false).sessionReplay).toBe(false);
+  });
+
+  it('passes the rate through for range-checking at the point of use', () => {
+    expect(resolve(true, 100).sessionReplaySamplingRate).toBe(100);
+  });
+});
+
+// A chunk fetch can fail transiently. Latching on the attempt rather than on
+// the activation would disable replay for the rest of the tab.
+describe('session replay activation failures', () => {
+  const activateSessionReplay = jest.fn<Promise<number>, [unknown, number | undefined]>();
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  function freshFaroWithFailingReplay() {
+    jest.resetModules();
+    jest.doMock('./telemetry/replay', () => ({ activateSessionReplay }));
+    const faro: typeof import('./faro') = require('./faro');
+    const surface: typeof import('./telemetry/surface') = require('./telemetry/surface');
+    return { faro, surface };
+  }
+
+  beforeEach(() => {
+    activateSessionReplay.mockReset();
+    activateSessionReplay.mockRejectedValue(new Error('chunk load failed'));
+  });
+
+  afterEach(() => {
+    jest.unmock('./telemetry/replay');
+  });
+
+  it('retries on the next open instead of spending the one trigger', async () => {
+    const { faro, surface } = freshFaroWithFailingReplay();
+    await faro.initFaro({ sessionReplay: true });
+
+    surface.reportPathfinderSurface('sidebar');
+    await settle();
+    expect(activateSessionReplay).toHaveBeenCalledTimes(1);
+
+    surface.reportPathfinderSurface('closed');
+    surface.reportPathfinderSurface('sidebar');
+    await settle();
+    expect(activateSessionReplay).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up after three attempts rather than re-importing on every toggle', async () => {
+    const { faro, surface } = freshFaroWithFailingReplay();
+    await faro.initFaro({ sessionReplay: true });
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      surface.reportPathfinderSurface('sidebar');
+      await settle();
+      surface.reportPathfinderSurface('closed');
+    }
+
+    expect(activateSessionReplay).toHaveBeenCalledTimes(3);
+    expect(mockPushEvent).toHaveBeenCalledWith(
+      'pathfinder_session_replay_activation_failed',
+      { exhausted: 'true' },
+      undefined,
+      { skipDedupe: true }
+    );
+  });
+
+  it('latches once activation resolves, so a later open does not re-register', async () => {
+    const { faro, surface } = freshFaroWithFailingReplay();
+    activateSessionReplay.mockReset();
+    activateSessionReplay.mockResolvedValue(1);
+    await faro.initFaro({ sessionReplay: true });
+
+    surface.reportPathfinderSurface('sidebar');
+    await settle();
+    surface.reportPathfinderSurface('closed');
+    surface.reportPathfinderSurface('sidebar');
+    await settle();
+
+    expect(activateSessionReplay).toHaveBeenCalledTimes(1);
   });
 });

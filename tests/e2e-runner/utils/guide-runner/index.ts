@@ -38,12 +38,18 @@ export {
   STEP_OVERHEAD_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+  SCROLL_INTO_VIEW_TIMEOUT_MS,
+  LATE_COMPLETION_CHECK_TIMEOUT_MS,
+  GUIDED_RELOAD_LOAD_TIMEOUT_MS,
+  SKIP_SYNC_TIMEOUT_MS,
 } from './constants';
 
 // ============================================
 // Error Classification
 // ============================================
 export { classifyError } from './classification';
+export { createBrowserTerminationMonitor } from './termination-monitor';
+export type { BrowserTermination, BrowserTerminationMonitor } from './termination-monitor';
 
 // ============================================
 // Artifact Collection
@@ -60,6 +66,7 @@ export {
 // ============================================
 export { discoverStepsFromDOM, logDiscoveryResults, resolveEffectiveSkippable } from './discovery';
 export { ensureDocsPanelOpen } from './bootstrap';
+export { dismissBadgeCelebrations } from './badge-celebrations';
 
 // ============================================
 // Requirements
@@ -77,9 +84,13 @@ export {
 // ============================================
 // Execution
 // ============================================
+export type { GuidedCommentBoxWaitOutcome } from './execution';
+export type { BoundedSettlement } from './execution';
 export {
+  STEP_DEADLINE_CLEANUP_GRACE_MS,
   scrollStepIntoView,
   calculateGuideTimeout,
+  calculateStepDeadline,
   calculateStepTimeout,
   determineUnmetRequirementOutcome,
   parseNthMatchSelector,
@@ -87,10 +98,14 @@ export {
   waitForStepCompletion,
   checkObjectiveCompletion,
   waitForCompletionWithObjectivePolling,
+  waitForGuidedCommentBoxReady,
+  runGuidedSubstepLoop,
+  clickSkipButtonAndSync,
   executeStep,
   executeAllSteps,
   logStepResult,
   summarizeResults,
   skippableFailuresAffectSuccess,
   logExecutionSummary,
+  settleWithin,
 } from './execution';

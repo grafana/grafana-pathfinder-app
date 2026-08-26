@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 
+import type { JsonBlock } from './json-guide.types';
 import { isValidRequirement, unknownRequirementMessage } from './requirements.types';
 
 // ============ COMPLETENESS MESSAGES ============
@@ -31,6 +32,9 @@ export const EMPTY_CONDITIONS_MESSAGE = 'At least one condition is required';
 export const QUIZ_NO_CORRECT_CHOICE_PREFIX = 'Quiz has no correct choice yet';
 export const QUIZ_MULTI_CORRECT_PREFIX = 'Single-select quiz has more than one correct choice';
 
+/** Wide enough for any real PromQL/LogQL/TraceQL selector, narrow enough that a pasted payload is rejected at authoring time. */
+const MAX_DATA_CHECK_QUERY_LENGTH = 2000;
+
 // ============ PRIMITIVE SCHEMAS ============
 
 /**
@@ -48,6 +52,21 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
     ctx.addIssue({ code: 'custom', message: unknownRequirementMessage(token) });
   }
 });
+
+/**
+ * Desired end state for a toggle target. `true`/`false` auto-detects the
+ * control's state signal; `"<attribute>:<value>"` names it explicitly.
+ */
+const TargetStateSchema = z
+  .string()
+  .optional()
+  .refine(
+    (value) => value === undefined || value === 'true' || value === 'false' || /^[a-zA-Z][\w-]*:.+$/.test(value.trim()),
+    { error: 'targetstate must be "true", "false", or "<attribute>:<value>" (e.g. "aria-expanded:true")' }
+  )
+  .describe(
+    'Desired end state for a toggle target. The step reads the control and only clicks when the state differs, so it is safe to re-run. Use "true"/"false" to auto-detect (aria-expanded, aria-pressed, checked, aria-checked, aria-selected), or "<attribute>:<value>" when the control exposes state some other way. Authoring a bare `true`/`false` is accepted: `normalizeJsonGuideAliases` coerces it to the string form before this schema runs, because the backend InteractiveGuide CRD cannot model a boolean-or-string field.'
+  );
 
 /**
  * Schema for safe URLs (http/https only).
@@ -140,6 +159,7 @@ export const JsonStepSchema = z
       .string()
       .optional()
       .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    targetstate: TargetStateSchema,
     requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
     tooltip: z.string().optional().describe('Tooltip shown on highlighted element'),
     description: z.string().optional().describe('Step description shown to the user'),
@@ -263,6 +283,18 @@ export const JsonVideoBlockSchema = z.object({
   ...AuthorAnnotatedSchema.shape,
 });
 
+/**
+ * Schema for callout block.
+ * @coupling Type: JsonCalloutBlock
+ */
+export const JsonCalloutBlockSchema = z.object({
+  type: z.literal('callout'),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  title: z.string().min(1, 'Callout title is required').describe('Label shown at the top of the box, e.g. "Objective"'),
+  content: z.string().min(1, 'Callout content is required').describe('Markdown-formatted body content'),
+  ...AuthorAnnotatedSchema.shape,
+});
+
 // ============ INTERACTIVE BLOCK SCHEMAS ============
 
 /**
@@ -286,6 +318,7 @@ export const JsonInteractiveBlockSchema = z
       .string()
       .optional()
       .describe('Value for formfill or popout (formfill: input value; popout: sidebar|floating)'),
+    targetstate: TargetStateSchema,
     content: z
       .string()
       .min(1, 'Interactive content is required')
@@ -368,7 +401,12 @@ export const JsonGuidedBlockSchema = z.object({
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
-  completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
+  completeEarly: z
+    .boolean()
+    .optional()
+    .describe(
+      'Persist the guided block at its final completion signal. For a final button or highlight action, click activation causes completion to persist during capture, before the application click handler runs. A final action without click activation persists after its result. Cancellation, timeout, or error does not persist completion.'
+    ),
   ...AuthorAnnotatedSchema.shape,
 });
 
@@ -449,27 +487,106 @@ export const JsonQuizBlockSchema = z
  * Schema for input block (collects user responses).
  * @coupling Type: JsonInputBlock
  */
-export const JsonInputBlockSchema = z.object({
-  type: z.literal('input'),
-  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
-  prompt: z.string().min(1, 'Input prompt is required').describe('Prompt shown above the input'),
-  inputType: z.enum(['text', 'boolean', 'datasource']).describe('Kind of input to render'),
-  variableName: z
-    .string()
-    .min(1, 'Variable name is required')
-    .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'Variable name must be a valid identifier')
-    .describe('Variable name used to reference the captured value (valid JS identifier)'),
-  placeholder: z.string().optional().describe('Placeholder text for text input'),
-  checkboxLabel: z.string().optional().describe('Label shown next to a boolean checkbox'),
-  defaultValue: z.union([z.string(), z.boolean()]).optional().describe('Default value (string or boolean)'),
-  required: z.boolean().optional().describe('Whether the input must be provided to continue'),
-  pattern: z.string().optional().describe('Regex pattern the value must match (text inputs only)'),
-  validationMessage: z.string().optional().describe('Message shown when validation fails'),
-  requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
-  skippable: z.boolean().optional().describe('Allow user to skip this block'),
-  datasourceFilter: z.string().optional().describe('Filter for datasource input (e.g., loki, prometheus)'),
-  ...AuthorAnnotatedSchema.shape,
-});
+export const JsonInputBlockSchema = z
+  .object({
+    type: z.literal('input'),
+    id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+    prompt: z.string().min(1, 'Input prompt is required').describe('Prompt shown above the input'),
+    inputType: z.enum(['text', 'boolean', 'datasource']).describe('Kind of input to render'),
+    variableName: z
+      .string()
+      .min(1, 'Variable name is required')
+      .regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'Variable name must be a valid identifier')
+      .describe('Variable name used to reference the captured value (valid JS identifier)'),
+    placeholder: z.string().optional().describe('Placeholder text for text input'),
+    checkboxLabel: z.string().optional().describe('Label shown next to a boolean checkbox'),
+    defaultValue: z.union([z.string(), z.boolean()]).optional().describe('Default value (string or boolean)'),
+    required: z.boolean().optional().describe('Whether the input must be provided to continue'),
+    pattern: z.string().optional().describe('Regex pattern the value must match (text inputs only)'),
+    validationMessage: z.string().optional().describe('Message shown when validation fails'),
+    requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
+    skippable: z.boolean().optional().describe('Allow user to skip this block'),
+    datasourceFilter: z.string().optional().describe('Filter for datasource input (e.g., loki, prometheus)'),
+    dataCheckQuery: z
+      .string()
+      .trim()
+      .min(1, 'Data check query cannot be empty')
+      .max(MAX_DATA_CHECK_QUERY_LENGTH, `Data check query cannot exceed ${MAX_DATA_CHECK_QUERY_LENGTH} characters`)
+      .optional()
+      .describe(
+        "Query run against the picked data source to confirm it holds this guide's data. Its presence enables the check. Datasource inputs only, and only Prometheus, Loki, Tempo, and Pyroscope can be checked."
+      ),
+    dataCheckFailureMessage: z.string().optional().describe('Message shown when the check finds no data'),
+    dataCheckTimeFrom: z.string().optional().describe('Check query range start (defaults to now-1h)'),
+    dataCheckTimeTo: z.string().optional().describe('Check query range end (defaults to now)'),
+    dataCheckBlocking: z
+      .boolean()
+      .optional()
+      .describe(
+        'Make a failing check hold the section up. Off by default, where the check only reports what it found.'
+      ),
+    ...AuthorAnnotatedSchema.shape,
+  })
+  .superRefine((block, ctx) => {
+    const dataCheckFields = [
+      'dataCheckQuery',
+      'dataCheckFailureMessage',
+      'dataCheckTimeFrom',
+      'dataCheckTimeTo',
+      'dataCheckBlocking',
+    ] as const;
+
+    if (block.inputType !== 'datasource') {
+      for (const field of dataCheckFields) {
+        if (block[field] !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [field],
+            message: `\`${field}\` only applies when inputType is "datasource".`,
+          });
+        }
+      }
+      return;
+    }
+
+    if (block.dataCheckQuery) {
+      // A blocking check is a tracked step, and its completion record is keyed
+      // on the block id. A generated id moves whenever the guide is edited,
+      // orphaning every record earned under the old one.
+      if (block.dataCheckBlocking) {
+        if (!block.id?.trim()) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['id'],
+            message: 'A blocking data check needs an explicit `id`, so its completion records survive an edit.',
+          });
+        }
+        // A blocking check gates a section and writes durable completion, so it
+        // only ever runs against a data source the user chose. Seeding the pick
+        // would let it complete against one they never saw, and the tracked
+        // renderer drops the field anyway — inert, not merely unwise.
+        if (block.defaultValue !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['defaultValue'],
+            message: '`defaultValue` cannot seed a blocking data check — the user has to pick the data source.',
+          });
+        }
+      }
+      return;
+    }
+    // Without a query there is no check, so the fields that configure one are
+    // silently inert — which reads to an author as a check that never runs.
+    for (const field of dataCheckFields.filter((f) => f !== 'dataCheckQuery')) {
+      if (block[field] !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [field],
+          message: `\`${field}\` has no effect without \`dataCheckQuery\`.`,
+        });
+      }
+    }
+  });
 
 // ============ TERMINAL BLOCK SCHEMA ============
 
@@ -528,7 +645,7 @@ export const JsonChallengeBlockSchema = z.object({
     .enum(['coda', 'standard'])
     .optional()
     .describe(
-      "Execution model. 'standard' runs against the learner's own Grafana — successCriteria is any Pathfinder requirement (e.g. has-dashboard-named:Foo). 'coda' (default) runs in a Coda VM with a terminal — successCriteria is typically coda-exit-zero:<command>."
+      "Execution model. 'standard' runs against the learner's own Grafana — successCriteria is any Pathfinder requirement (e.g. has-dashboard-named:Foo). 'coda' runs in a Coda VM with a terminal — successCriteria is typically coda-exit-zero:<command>. The schema has no default: JSON that omits mode resolves to 'coda' at runtime, while the block editor seeds a new block with 'standard'. Set mode explicitly."
     ),
   title: z.string().min(1, 'Challenge title is required').describe('Short title shown above the brief'),
   brief: z.string().min(1, 'Challenge brief is required').describe('Markdown problem statement'),
@@ -709,14 +826,14 @@ const SnippetIdSchema = z
   .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Snippet ID must be kebab-case (lowercase letters, numbers, hyphens)');
 
 /**
- * Schema for snippet reference block. Resolves at parse time — never
- * reaches the renderer.
+ * Schema for snippet reference block. Resolves after validation and before
+ * render, so it never reaches the renderer.
  * @coupling Type: JsonSnippetRefBlock
  */
 export const JsonSnippetRefBlockSchema = z.object({
   type: z.literal('snippet-ref'),
   id: z.string().optional().describe('Stable identifier for this snippet-ref instance'),
-  snippetId: SnippetIdSchema.describe('Upstream snippet ID to resolve at parse time'),
+  snippetId: SnippetIdSchema.describe('Upstream snippet ID, resolved after validation and before render'),
   ...AuthorAnnotatedSchema.shape,
 });
 
@@ -731,6 +848,7 @@ const NonRecursiveBlockSchema = z.union([
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
+  JsonCalloutBlockSchema,
   JsonInteractiveBlockSchema,
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
@@ -754,6 +872,7 @@ const NonRecursiveBlockSchemaNoRef = z.union([
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
+  JsonCalloutBlockSchema,
   JsonInteractiveBlockSchema,
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
@@ -777,6 +896,7 @@ export const PresentationalBlockSchema = z.union([
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
+  JsonCalloutBlockSchema,
 ]);
 
 // ============ RECURSIVE BLOCK SCHEMAS ============
@@ -1028,17 +1148,30 @@ export type InferredJsonQuizChoice = z.infer<typeof JsonQuizChoiceSchema>;
 // ============ KNOWN FIELDS FOR UNKNOWN FIELD DETECTION ============
 
 /**
+ * Non-block registry keys — nested shapes that are validated positionally
+ * (`steps[]`, `choices[]`) or are not blocks at all (the guide root).
+ */
+type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_conditionalSectionConfig';
+
+/**
  * Known fields for each block type.
  * Used by unknown-fields.ts to detect unknown fields for forward compatibility warnings.
- * Keep in sync with the schemas above.
+ *
+ * The `satisfies` clause is the ratchet: this registry must be **total** over
+ * `JsonBlock['type']`. A block type with no entry here is invisible to
+ * `detectUnknownFields`, which silently returns no warnings for it — so a
+ * typo'd optional field would pass `validate --strict`. The public type stays
+ * `Record<string, …>` so callers can index with an unvalidated `block.type`.
  */
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   _guide: new Set(['schemaVersion', 'id', 'title', 'blocks']),
   _step: new Set([
+    'id',
     'action',
     'reftarget',
 
     'targetvalue',
+    'targetstate',
     'requirements',
     'tooltip',
     'description',
@@ -1056,6 +1189,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   html: new Set(['type', 'id', 'content', 'authorNote']),
   image: new Set(['type', 'id', 'src', 'alt', 'width', 'height', 'authorNote']),
   video: new Set(['type', 'id', 'src', 'provider', 'title', 'start', 'end', 'authorNote']),
+  callout: new Set(['type', 'id', 'title', 'content', 'authorNote']),
   interactive: new Set([
     'type',
     'id',
@@ -1063,6 +1197,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'reftarget',
 
     'targetvalue',
+    'targetstate',
     'content',
     'tooltip',
     'requirements',
@@ -1140,6 +1275,11 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'requirements',
     'skippable',
     'datasourceFilter',
+    'dataCheckQuery',
+    'dataCheckFailureMessage',
+    'dataCheckTimeFrom',
+    'dataCheckTimeTo',
+    'dataCheckBlocking',
     'authorNote',
   ]),
   assistant: new Set(['type', 'id', 'assistantId', 'assistantType', 'blocks', 'authorNote']),
@@ -1178,51 +1318,33 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'hint',
     'authorNote',
   ]),
+  challenge: new Set([
+    'type',
+    'id',
+    'mode',
+    'title',
+    'brief',
+    'vmTemplate',
+    'vmScenario',
+    'vmApp',
+    'setupCommands',
+    'setupScript',
+    'successCriteria',
+    'hintLevels',
+    'failureMessage',
+    'requirements',
+    'objectives',
+    'skippable',
+    'authorNote',
+  ]),
   'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),
   'snippet-ref': new Set(['type', 'id', 'snippetId', 'authorNote']),
-  _manifest: new Set([
-    'schemaVersion',
-    'id',
-    'type',
-    'repository',
-    'milestones',
-    'description',
-    'language',
-    'category',
-    'author',
-    'startingLocation',
-    'depends',
-    'recommends',
-    'suggests',
-    'provides',
-    'conflicts',
-    'replaces',
-    'targeting',
-    'testEnvironment',
-  ]),
-};
+} satisfies Record<JsonBlock['type'] | KnownFieldsMetaKey, ReadonlySet<string>>;
 
 /**
- * All valid block type names.
- * Useful for validation and error messages.
+ * All valid block type names. Derived from `KNOWN_FIELDS` so the two cannot
+ * disagree; the CLI registry-completeness test anchors here.
  */
-export const VALID_BLOCK_TYPES = new Set([
-  'markdown',
-  'html',
-  'image',
-  'video',
-  'interactive',
-  'multistep',
-  'guided',
-  'section',
-  'collapsible',
-  'conditional',
-  'quiz',
-  'input',
-  'assistant',
-  'terminal',
-  'terminal-connect',
-  'code-block',
-  'grot-guide',
-  'snippet-ref',
-]);
+export const VALID_BLOCK_TYPES: ReadonlySet<string> = new Set(
+  Object.keys(KNOWN_FIELDS).filter((key) => !key.startsWith('_'))
+);

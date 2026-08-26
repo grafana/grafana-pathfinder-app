@@ -29,6 +29,7 @@ export const StorageKeys = {
   MILESTONE_COMPLETION: 'grafana-pathfinder-app-milestone-completion',
   // Learning paths and badges progress
   LEARNING_PROGRESS: 'grafana-pathfinder-app-learning-progress',
+  COMPLETION_WRITE_QUEUE_PREFIX: 'grafana-pathfinder-app-completion-write-queue-v2:',
   // Guide responses from input blocks (user-entered values for variables)
   GUIDE_RESPONSES: 'grafana-pathfinder-app-guide-responses',
   // Persistent dedup for experiment exposure events. Used with `{hostname}:{flagKey}:{variant}`
@@ -40,6 +41,9 @@ export const StorageKeys = {
   // not session — auto-open fires once per browser, not once per session.
   HIGHLIGHTED_GUIDE_AUTO_OPEN_PREFIX: 'grafana-pathfinder-highlighted-guide-auto-open-',
   HIGHLIGHTED_GUIDE_RESET_PROCESSED_PREFIX: 'grafana-pathfinder-highlighted-guide-reset-processed-',
+  // Interactive-learning banner dismissal (used with a hostname suffix). Hostname-scoped
+  // to match the other experiment markers, so one reset sweep clears them together.
+  INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',
   // Dev/debug feature-flag overrides (localStorage). Read before the MTFF client.
   FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
   // External app suggestions for the featured zone (sessionStorage)

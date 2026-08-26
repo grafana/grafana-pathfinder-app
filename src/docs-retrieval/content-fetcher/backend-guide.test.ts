@@ -165,3 +165,77 @@ describe('fetchBackendInteractive — transport failure', () => {
     expect(result.statusCode).toBe(503);
   });
 });
+
+describe('fetchBackendInteractive — completion identity', () => {
+  it('stamps the App Platform completion identity so a launch carrying no packageInfo still records', async () => {
+    mockFetch.mockReturnValue(of(okResource()));
+
+    const result = await fetchBackendInteractive('backend-guide:my-guide');
+
+    expect(result.content!.metadata.repository).toBe('app-platform');
+    expect(result.content!.metadata.packageManifest).toEqual({
+      // spec.title fills in for a missing description, matching the app-platform resolver's
+      // inference so both synthesis sites hand a reader the same shape.
+      description: 'My Guide',
+      id: 'guide-id',
+      type: 'guide',
+      repository: 'app-platform',
+    });
+  });
+
+  it('supplies no id when the resource carries none, so the recorder fails closed on the loader URL', async () => {
+    mockFetch.mockReturnValue(of({ data: { spec: { title: 'T', blocks: [{ type: 'markdown', content: 'x' }] } } }));
+
+    const result = await fetchBackendInteractive('backend-guide:my-guide');
+
+    expect(result.content!.metadata.packageManifest!.id).toBeUndefined();
+  });
+
+  it('carries a persisted manifest through, so a path cover is not mislabelled a guide', async () => {
+    mockFetch.mockReturnValue(
+      of(
+        okResource({
+          spec: {
+            id: 'fe-alerting-path',
+            title: 'Alerting path',
+            blocks: [{ type: 'markdown', content: 'hi' }],
+            manifest: { type: 'path', milestones: ['m1', 'm2'], category: 'alerting' },
+          },
+        })
+      )
+    );
+
+    const result = await fetchBackendInteractive('backend-guide:fe-alerting-path');
+
+    expect(result.content!.metadata.packageManifest).toEqual({
+      id: 'fe-alerting-path',
+      type: 'path',
+      milestones: ['m1', 'm2'],
+      category: 'alerting',
+      repository: 'app-platform',
+      description: 'Alerting path',
+    });
+  });
+
+  it('never lets a persisted id or repository outrank the resource being loaded', async () => {
+    mockFetch.mockReturnValue(
+      of(
+        okResource({
+          spec: {
+            id: 'guide-id',
+            title: 'My Guide',
+            blocks: [{ type: 'markdown', content: 'hi' }],
+            manifest: { id: 'some-other-guide', repository: 'interactive-tutorials' },
+          },
+        })
+      )
+    );
+
+    const result = await fetchBackendInteractive('backend-guide:my-guide');
+
+    expect(result.content!.metadata.packageManifest).toMatchObject({
+      id: 'guide-id',
+      repository: 'app-platform',
+    });
+  });
+});

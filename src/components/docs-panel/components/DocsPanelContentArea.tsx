@@ -12,14 +12,8 @@
  *   6. Error state with retry
  *   7. ContentRenderer + content meta + milestone toolbar + footer
  *
- * Behavior preserved verbatim. Lazy imports are kept INSIDE this file
- * (pre-mortem H8): the same module paths are used so webpack chunk
- * resolution remains stable.
- *
- * The wrapping `<div className={styles.content} data-testid={testIds.docsPanel.content}>`
- * is the outer surface. testIds.docsPanel.content moves with this component
- * — SOURCE_CONTRACT in docs-panel.contract.test.tsx is updated in the same
- * commit.
+ * Lazy imports are kept INSIDE this file so webpack sees the same dynamic-import
+ * module specifiers and chunk resolution stays stable.
  */
 import React, { Suspense, lazy } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
@@ -42,8 +36,9 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
+import { recordGuideCompletionForSurface } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
+import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
 import { AlignmentPrompt } from './AlignmentPrompt';
@@ -55,8 +50,6 @@ import { PanelModeActionButtons } from './PanelModeActionButtons';
 import type { SceneObject } from '@grafana/scenes';
 import type { DocsPanelModelOperations, OpenDocsOptions } from '../types';
 
-// Kept inside the component file so webpack sees the same dynamic-import
-// module specifiers used pre-refactor. See pre-mortem H8.
 const SelectorDebugPanel = lazy(() =>
   import('../../SelectorDebugPanel').then((module) => ({
     default: module.SelectorDebugPanel,
@@ -94,7 +87,7 @@ export interface DocsPanelContentAreaProps {
   progressKey: string | null;
   alignmentPendingValue: { isPending: boolean; startingLocation: string | null };
 
-  contentRef: React.RefObject<HTMLDivElement>;
+  contentRef: React.RefObject<HTMLDivElement | null>;
   handleResetGuide: (progressKey: string, activeTab: LearningJourneyTab) => Promise<void>;
   reloadActiveTab: (tab: LearningJourneyTab) => void;
   restoreScrollPosition: () => void;
@@ -127,6 +120,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
   const pluginContext = usePluginContext();
   const twoTabControllerEnabled = getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableTwoTabController;
+
+  const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
 
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
@@ -167,7 +162,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           return (
             <div className={styles.devToolsContent} data-testid="editor-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                <BlockEditor />
+                <BlockEditor onGuideTitleChange={handleGuideTitleChange} />
               </Suspense>
             </div>
           );
@@ -389,11 +384,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 activeTab={activeTab}
                 surface="sidebar"
                 contentRoot={contentRef}
-                actionButtonClassName={styles.secondaryActionButton}
                 hasInteractiveProgress={hasInteractiveProgress}
                 progressKey={progressKey}
                 onResetGuide={handleResetGuide}
-                trailingActions={<PanelModeActionButtons className={styles.secondaryActionButton} />}
               />
 
               {/* Unified Content Renderer - works for both learning journeys and docs! */}
@@ -411,6 +404,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         }}
                       />
                     )}
+                    {/* Treatment arm of the interactive-learning banner experiment; renders
+                        null otherwise. The context page carries the same banner, but a
+                        guide opened by ?doc= or auto-open never passes through it. */}
+                    <InteractiveLearningBanner placement="guide" />
+
                     <ContentRenderer
                       key={activeTab?.currentUrl || stableContent.url}
                       content={stableContent}
@@ -421,28 +419,16 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onContentReady={() => {
                         restoreScrollPosition();
                       }}
-                      onGuideComplete={() => {
-                        const baseUrl = activeTab?.baseUrl || stableContent.url;
-                        const completionContext = {
-                          packageManifest: stableContent.metadata?.packageManifest,
+                      onGuideComplete={() =>
+                        recordGuideCompletionForSurface({
+                          baseUrl: activeTab?.baseUrl,
+                          contentUrl: stableContent.url,
+                          currentUrl: activeTab?.currentUrl,
+                          contentType: stableContent.type,
+                          metadata: stableContent.metadata,
                           guideTitle: activeTab?.title,
-                        };
-                        if (baseUrl?.startsWith('bundled:')) {
-                          setJourneyCompletionPercentage(baseUrl, 100, completionContext);
-                        }
-                        if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
-                          const slug = getMilestoneSlug(activeTab.currentUrl);
-                          const journeyBase = stableContent.metadata.learningJourney?.baseUrl;
-                          if (slug && journeyBase) {
-                            markMilestoneDone(
-                              journeyBase,
-                              slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones,
-                              completionContext
-                            );
-                          }
-                        }
-                      }}
+                        })
+                      }
                     />
                   </AlignmentPendingContext.Provider>
                 )}

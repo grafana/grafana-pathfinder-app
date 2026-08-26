@@ -7,6 +7,7 @@ import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
+import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { HelpFooter } from '../HelpFooter';
 import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
 import { locationService, config, getAppEvents } from '@grafana/runtime';
@@ -204,6 +205,7 @@ const getRecommendationPackageInfo = (recommendation: Recommendation): PackageOp
   return {
     packageId,
     packageManifest: recommendation.manifest,
+    repository: recommendation.repository,
     resolvedMilestones: Array.isArray(recommendation.milestones) ? recommendation.milestones : undefined,
   };
 };
@@ -257,6 +259,8 @@ interface RecommendationsSectionProps {
   recommendations: Recommendation[];
   featuredRecommendations: Recommendation[];
   customGuides: PublishedGuide[];
+  customGuidePaths: PublishedGuide[];
+  customGuideOrphans: PublishedGuide[];
   isLoadingCustomGuides: boolean;
   customGuidesExpanded: boolean;
   suggestedGuidesExpanded: boolean;
@@ -277,6 +281,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
   recommendations,
   featuredRecommendations,
   customGuides,
+  customGuidePaths,
+  customGuideOrphans,
   isLoadingCustomGuides,
   customGuidesExpanded,
   suggestedGuidesExpanded,
@@ -378,6 +384,8 @@ export const RecommendationsSection = memo(function RecommendationsSection({
         {hasCustomGuidesContent && (
           <CustomGuidesSection
             guides={customGuides}
+            paths={customGuidePaths}
+            orphanGuides={customGuideOrphans}
             isLoading={isLoadingCustomGuides}
             expanded={customGuidesExpanded}
             onToggleExpanded={toggleCustomGuidesExpansion}
@@ -558,6 +566,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                         <button
                                           key={stepIndex}
                                           onClick={() => {
+                                            // Locked (unpublished) member — placeholder only, not navigable.
+                                            if (milestone.isLocked) {
+                                              return;
+                                            }
                                             reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
                                               content_title: recommendation.title,
                                               milestone_title: milestone.title,
@@ -575,12 +587,21 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               );
                                             }
                                           }}
-                                          className={styles.milestoneItem}
+                                          disabled={milestone.isLocked}
+                                          className={`${styles.milestoneItem} ${milestone.isLocked ? styles.milestoneItemLocked : ''}`}
                                         >
                                           <div className={styles.milestoneNumber}>{milestone.number}</div>
                                           <div className={styles.milestoneContent}>
-                                            <div className={styles.milestoneTitle}>{milestone.title}</div>
+                                            <div className={styles.milestoneTitle}>
+                                              {milestone.title}
+                                              {milestone.isLocked && (
+                                                <span className={styles.milestoneDuration}>
+                                                  {t('contextPanel.notYetAvailable', '(not yet available)')}
+                                                </span>
+                                              )}
+                                            </div>
                                           </div>
+                                          {milestone.isLocked && <Icon name="lock" size="sm" />}
                                         </button>
                                       ))}
                                     </div>
@@ -616,6 +637,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}
@@ -650,6 +672,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 openDocsPage(link.contentUrl, link.title, {
                                                   packageId: link.packageId,
                                                   packageManifest: link.manifest,
+                                                  repository: link.repository,
                                                 });
                                               }}
                                               className={styles.milestoneItem}
@@ -840,6 +863,10 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                       <button
                                         key={stepIndex}
                                         onClick={() => {
+                                          // Locked (unpublished) member — placeholder only, not navigable.
+                                          if (milestone.isLocked) {
+                                            return;
+                                          }
                                           reportAppInteraction(UserInteraction.JumpIntoMilestoneClick, {
                                             content_title: recommendation.title,
                                             milestone_title: milestone.title,
@@ -857,16 +884,32 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                             );
                                           }
                                         }}
-                                        className={styles.milestoneItem}
+                                        disabled={milestone.isLocked}
+                                        className={`${styles.milestoneItem} ${milestone.isLocked ? styles.milestoneItemLocked : ''}`}
                                         data-testid={testIds.contextPanel.recommendationMilestoneItem(index, stepIndex)}
                                       >
                                         <div className={styles.milestoneNumber}>{milestone.number}</div>
                                         <div className={styles.milestoneContent}>
                                           <div className={styles.milestoneTitle}>
                                             {milestone.title}
-                                            <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                            {milestone.isLocked ? (
+                                              <span className={styles.milestoneDuration}>
+                                                {t('contextPanel.notYetAvailable', '(not yet available)')}
+                                              </span>
+                                            ) : (
+                                              typeof milestone.estimatedMinutes === 'number' && (
+                                                <span className={styles.milestoneDuration}>
+                                                  (
+                                                  {t('docsPanel.milestoneEstimatedMinutes', '{{count}} min', {
+                                                    count: milestone.estimatedMinutes,
+                                                  })}
+                                                  )
+                                                </span>
+                                              )
+                                            )}
                                           </div>
                                         </div>
+                                        {milestone.isLocked && <Icon name="lock" size="sm" />}
                                       </button>
                                     ))}
                                   </div>
@@ -902,6 +945,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               openDocsPage(link.contentUrl, link.title, {
                                                 packageId: link.packageId,
                                                 packageManifest: link.manifest,
+                                                repository: link.repository,
                                               });
                                             }}
                                             className={styles.milestoneItem}
@@ -936,6 +980,7 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                               openDocsPage(link.contentUrl, link.title, {
                                                 packageId: link.packageId,
                                                 packageManifest: link.manifest,
+                                                repository: link.repository,
                                               });
                                             }}
                                             className={styles.milestoneItem}
@@ -1052,11 +1097,6 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const currentUserId = config.bootData.user?.id;
   const devModeEnabled = isDevModeEnabled(configWithDefaults, currentUserId);
 
-  // REACT HOOKS v7: Set global config in useEffect to avoid modifying globals during render
-  useEffect(() => {
-    (window as any).__pathfinderPluginConfig = configWithDefaults;
-  }, [configWithDefaults]);
-
   // Use the simplified context hook
   const {
     contextData,
@@ -1073,6 +1113,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   });
   const {
     guides: customGuides,
+    paths: customGuidePaths,
+    orphanGuides: customGuideOrphans,
     isLoading: isLoadingCustomGuides,
     hasLoaded: hasLoadedCustomGuides,
   } = usePublishedGuides();
@@ -1112,6 +1154,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     <div className={styles.container} data-testid={testIds.contextPanel.container}>
       <div className={styles.content} ref={scrollContainerRef} data-testid={testIds.contextPanel.scrollContainer}>
         <div className={styles.contextSections}>
+          {/* Treatment arm of the interactive-learning banner experiment; renders null otherwise */}
+          <InteractiveLearningBanner />
+
           {/* User profile bar with learning stats and next action */}
           <UserProfileBar onOpenGuide={openLearningJourney} />
 
@@ -1120,6 +1165,8 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             recommendations={recommendations}
             featuredRecommendations={contextData.featuredRecommendations}
             customGuides={customGuides}
+            customGuidePaths={customGuidePaths}
+            customGuideOrphans={customGuideOrphans}
             isLoadingCustomGuides={isLoadingCustomGuides}
             customGuidesExpanded={customGuidesExpanded}
             suggestedGuidesExpanded={suggestedGuidesExpanded}

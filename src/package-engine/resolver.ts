@@ -100,10 +100,12 @@ export class BundledPackageResolver implements PackageResolver {
       return { ok: false, id: packageId, error: manifestResult.error };
     }
 
+    const manifest = manifestResult.ok ? manifestResult.data : undefined;
+
     return {
       ok: true,
       content,
-      manifest: manifestResult.ok ? manifestResult.data : undefined,
+      manifest,
     };
   }
 

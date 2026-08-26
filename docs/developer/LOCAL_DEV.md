@@ -69,30 +69,43 @@ Notes:
 - Default credentials: `admin` / `admin`.
 - The sidebar **Help** icon opens the docs panel.
 
+### Sandbox terminals
+
+Terminal, terminal-connect and challenge blocks need the separate
+`grafana-coda-app` plugin, which the base stack deliberately does not include —
+Pathfinder treats it as optional and detects it at runtime, and CI must not mount
+it. Opt in with the `docker-compose.coda.yaml` overlay; its header has the
+two-line `.env` recipe and the build commands.
+
+Mounting the plugin is not the whole of setup: registration is a manual step an
+administrator performs once, entering an enrollment key on the Coda plugin's own
+configuration page. Nothing in this repo can do it for you. See
+[`CODA.md`](CODA.md) for the two-plugin setup end to end.
+
 ## Testing against Grafana Cloud (Graft)
 
 Some contributors test their local `dist/` build against a live Grafana Cloud stack instead of (or alongside) the Docker Grafana above, using [Graft](https://github.com/grafana/plugin-graft) — an internal, Grafanista-only browser-extension + local-server tool that intercepts Cloud requests and serves your local build with hot reload. See [`GRAFT_TESTING.md`](GRAFT_TESTING.md) for what this means when debugging or reviewing changes.
 
 ## Pre-merge check
 
-Run before pushing or opening a pull request. CI runs the same set:
+Run before pushing or opening a pull request:
 
 ```bash
 npm run check
 ```
 
-Equivalent to:
+This is the local gate. It announces each step as it starts and stops at the first failure. To see what it
+contains without running it:
 
 ```bash
-npm run typecheck       # tsc --noEmit
-npm run lint            # eslint --cache .
-npm run prettier-test   # prettier formatting check
-npm run lint:go         # mage -v lint (golangci-lint)
-npm run test:go         # mage -v test
-npm run test:ci         # jest --passWithNoTests --maxWorkers 4
+npm run check -- --list
 ```
 
-Each step is also a standalone script if you only want to re-run one.
+Each step is also a standalone script if you only want to re-run one — `--list` names them, and
+[`COMMANDS.md`](COMMANDS.md) describes them.
+
+CI does not run `npm run check`, and the two are not the same set: CI additionally enforces manifest
+freshness and the production build.
 
 ## Running tests
 

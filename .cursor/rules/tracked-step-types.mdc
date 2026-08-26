@@ -1,10 +1,11 @@
 ---
 title: Tracked Step Types Registry
-description: Two-site registry of interactive step component types. Read before adding, renaming, or removing an interactive step component.
+description: Three-site registry of interactive step component types. Read before adding, renaming, or removing an interactive step component.
 globs:
   - "src/components/interactive-tutorial/*.tsx"
   - "src/components/content-renderer/content-renderer.tsx"
   - "src/docs-retrieval/json-parser.ts"
+  - "src/lib/guide-stats/completion-affordance.ts"
 alwaysApply: false
 ---
 
@@ -12,16 +13,19 @@ alwaysApply: false
 
 The plugin tracks "interactive step component types" — the React components rendered inside an interactive section that count as completable steps the user must execute (as opposed to passive content like markdown, image, or video).
 
-Authoritative definition lives in **one source**: `src/components/interactive-tutorial/step-type-registry.ts` (`STEP_TYPE_SCHEMAS`). Its `parseTypeKey` field feeds `STEP_TYPE_PARSE_KEYS`, which `content-renderer.tsx` re-uses for its parse-time `INTERACTIVE_STEP_TYPES` set. Adding a new step type requires editing **two sites**: the registry (parse + orchestration metadata) and the React-component classifier.
+Authoritative definition lives in **one source**: `src/components/interactive-tutorial/step-type-registry.ts` (`STEP_TYPE_SCHEMAS`). Its `parseTypeKey` field feeds `STEP_TYPE_PARSE_KEYS`, which `content-renderer.tsx` re-uses for its parse-time `INTERACTIVE_STEP_TYPES` set. Adding a new step type requires editing **three sites**: the registry (parse + orchestration metadata), the React-component classifier, and `src/lib/guide-stats/completion-affordance.ts` — the stamped completion denominator's notion of which block types can emit completion evidence. That third site is tier 1 and cannot import the tier-4 registry, so `completion-affordance.parity.test.ts` holds the two in step instead; it fails when a parse key is added, removed, or remapped. Note it answers a narrower question than the other two: "can this block emit completion evidence", not "does it render interactively" — counting a block that emits none can make a guide permanently uncompletable, which is why `input` counts only in its blocking-datasource-check shape and `grot-guide` never counts at all.
 
-## The two registry sites
+## The three registry sites
 
 | # | File | Constant | Keyed by | What breaks if you forget |
 |---|------|----------|----------|---------------------------|
 | 1 | `src/components/interactive-tutorial/step-type-registry.ts` | `STEP_TYPE_SCHEMAS` | Parse-time `parseTypeKey` + runtime React component (zipped in `interactive-section.tsx`) | Parser-side: standalone steps don't count in document totals; section: the new component is invisible to the section, never gets `stepId`, never blocks "Do Section". |
 | 2 | `src/components/interactive-tutorial/section-child-classifier.ts` | `INTERACTIVE_STEP_COMPONENT_TYPES` | React component identity | Issue #842 acknowledgement gate misclassifies the new type as *passive* — the section wrongly requires "Mark section as complete" even though the user already did the work. |
+| 3 | `src/lib/guide-stats/completion-affordance.ts` | `COMPLETION_AFFORDANCE_BLOCK_TYPES` | JSON block `type` | The stamped completion denominator misses the new type, so `finalCompletablePosition` understates and a guide ending on it wrongly demands a foot-of-guide "Mark as complete". Adding a type that emits *no* evidence is the worse direction: it can make the guide permanently uncompletable. |
 
-Two sites, not one, because the classifier needs the raw React component identities at runtime and importing `STEP_TYPE_SCHEMAS` for its components would shape the dependency graph in unwanted ways. Both sites are tiny lists of component identities; the parity is verified by `step-type-registry.test.ts` and `content-renderer.registry-parity.test.ts`.
+A step the user performs by hand also needs `pausesSectionRun: true` in its `toStepInfoExtension`, or Do Section will report its completion without it happening — see "Do Section and steps only the user can perform" below.
+
+Three sites, not one. The classifier needs the raw React component identities at runtime, and importing `STEP_TYPE_SCHEMAS` for its components would shape the dependency graph in unwanted ways. Site 3 is tier 1 and cannot import the tier-4 registry at all, so it restates the set as JSON block types and `completion-affordance.parity.test.ts` holds it in step — it fails when a parse key is added, removed, or remapped. Parity for sites 1 and 2 is verified by `step-type-registry.test.ts` and `content-renderer.registry-parity.test.ts`.
 
 ## Checklist when adding a new tracked step type
 
@@ -39,9 +43,11 @@ Assume you're adding a `FooStep` component:
 
 6. **Registry site 2** — add `FooStep` to `INTERACTIVE_STEP_COMPONENT_TYPES` in `section-child-classifier.ts`. Add a test case in `section-child-classifier.test.tsx`.
 
-7. **Block editor** (optional) — if authors should create this block via the WYSIWYG editor, add a form in `src/components/block-editor/forms/`.
+7. **Registry site 3** — decide whether a `foo` block emits completion evidence. If it always does, add `'foo'` to `COMPLETION_AFFORDANCE_BLOCK_TYPES` in `src/lib/guide-stats/completion-affordance.ts`. If only some authored shapes do, branch in `emitsCompletionEvidence` the way `input` does. Either way `completion-affordance.parity.test.ts` fails until the new parse key is accounted for, so it will tell you.
 
-8. **CLI validation** (optional) — if the block needs CLI authoring support, register it in `src/cli/`.
+8. **Block editor** (optional) — if authors should create this block via the WYSIWYG editor, add a form in `src/components/block-editor/forms/`.
+
+9. **CLI validation** (optional) — if the block needs CLI authoring support, register it in `src/cli/`.
 
 ## What counts as "interactive" vs "passive"
 
@@ -51,5 +57,22 @@ A step type is **interactive** (and therefore belongs in this registry) when it 
 - `InteractiveMultiStep`, `InteractiveGuided`, `InteractiveQuiz`
 - `TerminalStep`, `TerminalConnectStep`, `CodeBlockStep`
 - `ChallengeBlock`
+- `DatasourceCheckStep`
 
 A block type is **passive** (and therefore does NOT belong here) when the user only reads it: markdown HTML, image, video, html blocks, and arbitrary non-tracked renderable children. Passive content is handled implicitly by `classifySectionChild` — anything not in the registry is treated as passive for the issue-#842 acknowledgement gate.
+
+`InputBlock` is passive and stays that way. It is the counterexample worth knowing about: see below.
+
+## One JSON block, two element types
+
+`parseTypeKey` keys on the **parsed element type**, not on props, so registering a component makes *every* element of that type count toward section completion. That is why a block type cannot be "tracked only sometimes" by registering its component.
+
+When only some authored shapes of a block should be completable, branch in the **parser** and emit a different element type. `convertInputBlock` does this: a `datasource` input with a `dataCheckQuery` and `dataCheckBlocking` emits `datasource-check-step` (tracked, rendered by `DatasourceCheckStep`); every other input emits `input-block` (passive, rendered by `InputBlock`). Authors still see one block type; the split is internal.
+
+The payoff is that no existing guide changes behaviour — the comment at `content-renderer.tsx` explains why counting plain input blocks would make 100% completion unreachable. The cost is that one JSON block type now has two renderer cases and two docs paragraphs, so keep the parser's branch condition and the schema's refinement in agreement.
+
+## Do Section and steps only the user can perform
+
+The section runner walks tracked steps and calls `executeInteractiveAction` for each. An unrecognised `targetAction` falls through that function's `default:` branch, which warns and then **reports success** — silently marking a step complete that never ran.
+
+A step the user must perform themselves must therefore say so, or Do Section will forge its completion. `interactive-section.tsx` stops the run for any step whose `StepInfo` has `isGuided` or `pausesSectionRun`. `DATASOURCE_CHECK_STEP_SCHEMA` sets `pausesSectionRun: true` because only the user can pick a data source. `quiz`, `challenge`, `terminal`, and `terminal-connect` have the same shape of exposure and do not set it yet.

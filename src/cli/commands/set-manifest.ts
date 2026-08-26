@@ -49,12 +49,15 @@ setManifestCommand
     new Option(
       '--target-url-prefix <string>',
       'Append { urlPrefix: <value> } to manifest.targeting.match.and (use multiple times to add several clauses)'
-    ).argParser((value: string, prev: string[] | undefined) => [...(prev ?? []), value])
+    )
+      .argParser((value: string, prev: string[] | undefined) => [...(prev ?? []), value])
+      .default([] as string[])
   )
   .addOption(
     new Option('--target-platform <platform>', 'Append { targetPlatform: <value> } to manifest.targeting.match.and')
       .choices(['oss', 'cloud', 'enterprise'])
       .argParser((value: string, prev: string[] | undefined) => [...(prev ?? []), value])
+      .default([] as string[])
   )
   .addOption(
     new Option(

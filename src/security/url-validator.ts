@@ -434,6 +434,66 @@ export function validateRedirectPath(input: string, isAdmin?: boolean): string {
   }
 }
 
+/**
+ * Validates an internal Grafana path on its way to `locationService.push`.
+ *
+ * `validateRedirectPath` answers "which pathname is safe", and every navigating
+ * caller then has to repeat the same three steps around it: reject
+ * protocol-relative input BEFORE parsing, parse against the current origin, and
+ * confirm the validated pathname is the one the input actually named. Doing
+ * that in each caller is how a subtly different check — and the gap behind it —
+ * gets reintroduced, so it lives here once.
+ *
+ * Cross-origin input is rejected on `parsed.origin`, never on the comparison
+ * alone: `//evil.com` — and `/\evil.com`, which the URL spec folds to the same
+ * thing for http(s) without ever matching a `//` prefix test — parses as
+ * cross-origin with pathname `/`, which is exactly `validateRedirectPath`'s
+ * rejection sentinel. The two would agree and a hostile value would come back as
+ * a silent "go home" rather than a refusal.
+ *
+ * Path traversal is normalised rather than refused, matching
+ * `validateRedirectPath`: `/../../etc/passwd` resolves to the same-origin
+ * `/etc/passwd`, which is a 404 inside Grafana's router and nothing more. An
+ * encoded traversal that SURVIVES normalisation (`/foo/..%2Fbar`) is refused,
+ * because a `..` still in the pathname means the URL API and the server may not
+ * agree on what the path is.
+ *
+ * @param input - A candidate internal path, e.g. `/explore?left=…#panel`
+ * @param isAdmin - Whether the current user holds admin privileges; admin-only
+ *                  route prefixes are denied when false. Defaults to false so a
+ *                  caller that omits it gets the stricter answer.
+ * @returns The validated pathname plus the input's original query and fragment,
+ *          or `null` when the input is not a safe same-origin internal path.
+ */
+export function validateInternalNavigationPath(input: string, isAdmin?: boolean): string | null {
+  if (!input || typeof input !== 'string') {
+    return null;
+  }
+
+  if (!input.startsWith('/') || input.startsWith('//')) {
+    return null;
+  }
+
+  const safePath = validateRedirectPath(input, isAdmin);
+
+  let parsed: URL;
+  try {
+    parsed = new URL(input, window.location.origin);
+  } catch {
+    return null;
+  }
+
+  if (parsed.origin !== window.location.origin) {
+    return null;
+  }
+
+  if (safePath !== parsed.pathname) {
+    return null;
+  }
+
+  return safePath + parsed.search + parsed.hash;
+}
+
 export interface UrlValidation {
   isValid: boolean;
   errorMessage?: string;

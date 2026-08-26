@@ -7,15 +7,15 @@
  * `edit-block` to look up the schema for an existing block.
  *
  * The registry is the single place where new block types are wired into the
- * authoring CLI. Forgetting to register a block type added to
- * `VALID_BLOCK_TYPES` is caught by the completeness test in
- * `block-registry.test.ts`.
+ * authoring CLI. Forgetting to register a newly added block type is caught by
+ * the completeness test in `block-registry.test.ts`.
  */
 
 import type { z } from 'zod';
 
 import {
   JsonAssistantBlockSchema,
+  JsonCalloutBlockSchema,
   JsonCodeBlockBlockSchema,
   JsonConditionalBlockSchema,
   JsonGuidedBlockSchema,
@@ -50,6 +50,7 @@ export const BLOCK_SCHEMA_MAP = {
   html: JsonHtmlBlockSchema,
   image: JsonImageBlockSchema,
   video: JsonVideoBlockSchema,
+  callout: JsonCalloutBlockSchema,
   interactive: JsonInteractiveBlockSchema,
   multistep: JsonMultistepBlockSchema,
   guided: JsonGuidedBlockSchema,
@@ -78,15 +79,30 @@ export const BLOCK_SCHEMA_MAP = {
  * a snippet should use the editor's Reusable palette group.
  *
  * `collapsible` is a presentational container authored through the block
- * editor (Structure palette group). A CLI flow for its nested content is a
- * follow-up; for now authors should use the editor.
+ * editor (Structure palette group). Nothing structural blocks registering it —
+ * its shape matches `section` and `tree.ts` already descends into its `blocks`
+ * — the CLI flow simply hasn't been built. Note its children are restricted to
+ * `PresentationalBlockSchema`, which `add-block --parent` does not enforce.
+ *
+ * `challenge` has no CLI flow for `hintLevels`: it is `z.array(z.object(...))`,
+ * which the schema-options bridge reports as `unsupported` (`array of object`,
+ * schema-options.ts:119) and drops. Progressive hints are the block's whole
+ * point, so `add-block challenge` would silently produce a hintless challenge.
+ * An `add-hint` sibling command is the prerequisite for registering it. Every
+ * other field projects fine, in both `standard` and `coda` modes.
  *
  * The completeness test asserts that this set, unioned with the keys of
- * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES`. Adding a new block
- * type to `VALID_BLOCK_TYPES` therefore forces a deliberate decision: register
- * it for CLI authoring or document why it's excluded.
+ * `BLOCK_SCHEMA_MAP`, exactly matches `VALID_BLOCK_TYPES` — which is derived
+ * from `KNOWN_FIELDS`, itself total over `JsonBlock['type']`. Adding a member
+ * to the block union therefore forces a deliberate decision here: register it
+ * for CLI authoring or document why it's excluded.
  */
-export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set(['grot-guide', 'snippet-ref', 'collapsible']);
+export const CLI_EXCLUDED_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  'grot-guide',
+  'snippet-ref',
+  'collapsible',
+  'challenge',
+]);
 
 /**
  * Block-type discriminator strings the CLI knows how to create. Sourced

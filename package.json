@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "2.15.0",
+  "version": "2.16.0",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -23,7 +23,9 @@
     "test": "jest --watch --onlyChanged",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
     "test:coverage": "jest --coverage",
-    "test:governance": "jest --passWithNoTests src/validation/architecture.test.ts src/validation/import-graph.test.ts src/validation/security-lint-config.test.ts",
+    "test:review-contract": "node --test .cursor/skills/review/scripts/contract-evolution.test.mjs",
+    "test:scripts": "bash scripts/tests/run.sh",
+    "test:governance": "jest src/validation/architecture.test.ts src/validation/import-graph.test.ts src/validation/security-lint-config.test.ts src/validation/control-bytes.test.ts",
     "test:coverage:watch": "jest --coverage --watch",
     "test:go": "mage -v test",
     "typecheck": "tsc --noEmit",
@@ -33,8 +35,8 @@
     "e2e": "playwright test",
     "server": "npm run build:all && docker compose up --build",
     "sign": "sign-plugin",
-    "prettier": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,json,yaml,md}' --write",
-    "prettier-test": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,json,yaml,md}'",
+    "prettier": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,mjs,json,yaml,md}' --write",
+    "prettier-test": "prettier -v && prettier --config .prettierrc.js --check '**/*.{ts,tsx,js,mjs,json,yaml,md}'",
     "i18n-extract": "i18next --config src/locales/i18next-parser.config.js",
     "build:cli": "tsc -p tsconfig.cli.json",
     "validate": "node dist/cli/cli/index.js validate --bundled",
@@ -42,9 +44,11 @@
     "validate:packages": "node dist/cli/cli/index.js validate --packages src/bundled-interactives",
     "repository:build": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bundled-interactives/repository.json",
     "repository:check": "node dist/cli/cli/index.js build-repository src/bundled-interactives -o /tmp/repository-check.json && diff -q src/bundled-interactives/repository.json /tmp/repository-check.json",
+    "stats:build": "node dist/cli/cli/index.js build-stats src/bundled-interactives",
+    "stats:check": "node dist/cli/cli/index.js build-stats src/bundled-interactives --check",
     "snippets:build": "node dist/cli/cli/index.js build-snippets",
     "schema:export": "node dist/cli/cli/index.js schema --all",
-    "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run docs:sync-terms:check && npm run lint:go && npm run test:go && npm run test:coverage",
+    "check": "node scripts/check.js",
     "prepare": "husky"
   },
   "author": "Grafanalabs",
@@ -67,8 +71,8 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^24.10.0",
     "@types/qrcode": "^1.5.6",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.4",
     "@typescript-eslint/eslint-plugin": "^8.63.0",
     "@typescript-eslint/parser": "^8.63.0",
     "ajv": "^8.20.0",
@@ -117,14 +121,16 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@emotion/css": "^11.13.5",
     "@grafana/assistant": "^0.1.25",
-    "@grafana/data": "13.1.1",
-    "@grafana/e2e-selectors": "13.1.1",
+    "@grafana/coda-client": "npm:@grafana-coda/sandbox-client@^1.1.1",
+    "@grafana/data": "13.2.0",
+    "@grafana/e2e-selectors": "13.2.0",
+    "@grafana/faro-instrumentation-replay": "~2.10.0",
     "@grafana/faro-web-sdk": "^2.8.2",
-    "@grafana/i18n": "13.1.1",
-    "@grafana/runtime": "13.1.1",
+    "@grafana/i18n": "13.2.0",
+    "@grafana/runtime": "13.2.0",
     "@grafana/scenes": "^8.0.0",
-    "@grafana/schema": "13.1.1",
-    "@grafana/ui": "13.1.1",
+    "@grafana/schema": "13.2.0",
+    "@grafana/ui": "13.2.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@openfeature/ofrep-web-provider": "^0.4.1",
     "@openfeature/react-sdk": "^1.4.1",
@@ -148,8 +154,8 @@
     "peerjs": "^1.5.5",
     "prismjs": "^1.30.0",
     "qrcode": "^1.5.4",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-router-dom": "^6.28.0",
     "rxjs": "^7.8.2",
     "zod": "^4.4.3"
@@ -160,14 +166,16 @@
     "@opentelemetry/core": "^2.8.0",
     "react-router": "^7.12.0",
     "@grafana/scenes": {
-      "uuid": "11.1.1"
+      "uuid": "11.1.1",
+      "react": "$react",
+      "react-dom": "$react-dom"
     },
     "@istanbuljs/load-nyc-config": {
       "js-yaml": "5.2.2"
     }
   },
   "lint-staged": {
-    "*.{ts,tsx,js,json,yaml,md}": "prettier --config .prettierrc.js --write"
+    "*.{ts,tsx,js,mjs,json,yaml,md}": "prettier --config .prettierrc.js --write"
   },
-  "packageManager": "npm@12.0.1"
+  "packageManager": "npm@12.0.2"
 }

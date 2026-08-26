@@ -29,19 +29,23 @@ jest.mock('../../../lib/analytics', () => ({
 }));
 
 jest.mock('../../../docs-retrieval', () => ({
-  getMilestoneSlug: jest.fn(),
-  markMilestoneDone: jest.fn(),
-  setJourneyCompletionPercentage: jest.fn(),
+  recordGuideCompletionForSurface: jest.fn(),
 }));
 
-// Heavy leaf children are irrelevant to the footer button — stub them out so
-// the branch renders without their dependency trees.
-jest.mock('../../content-renderer/content-renderer', () => ({ ContentRenderer: () => null }));
+// Heavy leaf children are irrelevant to these tests — stub them out so the
+// branch renders without their dependency trees. ContentRenderer exposes a
+// button that fires onGuideComplete so the completion-boundary tests can drive it.
+jest.mock('../../content-renderer/content-renderer', () => ({
+  ContentRenderer: ({ onGuideComplete }: { onGuideComplete?: () => void }) => (
+    <button onClick={onGuideComplete}>Complete rendered guide</button>
+  ),
+}));
 jest.mock('../../SelectorDebugPanel', () => ({ SelectorDebugPanel: () => null }));
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
 const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
+const { recordGuideCompletionForSurface } = jest.requireMock('../../../docs-retrieval');
 
 function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPanelContentAreaProps {
   const activeTab: any = {
@@ -113,6 +117,75 @@ describe('DocsPanelContentArea', () => {
       expect(reportAppInteraction).toHaveBeenCalledWith('docs_panel_interaction', {
         action: 'navigate_to_recommendations',
         source: 'content_footer',
+      });
+    });
+  });
+
+  describe('completion boundary', () => {
+    it('records an ordinary remote interactive guide from its manifest', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          type: 'docs',
+          baseUrl: 'https://example.com/remote-guide',
+          currentUrl: 'https://example.com/remote-guide/content.json',
+        } as any,
+        stableContent: {
+          url: 'https://example.com/remote-guide/content.json',
+          type: 'docs',
+          content: '',
+          metadata: { packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
+
+      // The sidebar forwards its view-level identity to the shared, surface-neutral
+      // emitter; the bundled-vs-remote / milestone decision is owned and tested there.
+      expect(recordGuideCompletionForSurface).toHaveBeenCalledWith({
+        baseUrl: 'https://example.com/remote-guide',
+        contentUrl: 'https://example.com/remote-guide/content.json',
+        currentUrl: 'https://example.com/remote-guide/content.json',
+        contentType: 'docs',
+        metadata: { packageManifest: { id: 'remote-guide', repository: 'app-platform' } },
+        guideTitle: 'My guide',
+      });
+    });
+
+    it('forwards learning-journey identity (base, current milestone, manifest) to the shared emitter', () => {
+      const base = makeProps();
+      const props = makeProps({
+        activeTab: {
+          ...base.activeTab,
+          baseUrl: 'bundled:select-platform',
+          currentUrl: 'https://example.com/select-platform/content.json',
+        } as any,
+        stableContent: {
+          url: 'bundled:select-platform',
+          type: 'learning-journey',
+          content: '',
+          metadata: {
+            packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+            learningJourney: { totalMilestones: 3 },
+          },
+        } as any,
+      });
+
+      render(<DocsPanelContentArea {...props} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
+
+      expect(recordGuideCompletionForSurface).toHaveBeenCalledWith({
+        baseUrl: 'bundled:select-platform',
+        contentUrl: 'bundled:select-platform',
+        currentUrl: 'https://example.com/select-platform/content.json',
+        contentType: 'learning-journey',
+        metadata: {
+          packageManifest: { id: 'linux-journey', repository: 'app-platform' },
+          learningJourney: { totalMilestones: 3 },
+        },
+        guideTitle: 'My guide',
       });
     });
   });

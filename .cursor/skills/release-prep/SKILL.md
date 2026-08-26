@@ -135,7 +135,7 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
    npm run check
    ```
 
-   This runs (per `package.json`): typecheck + lint + prettier-test + docs:sync-terms:check + lint:go + test:go + test:ci. If any step fails, **abort**. Print the failure log verbatim. Do not commit. Do not retry.
+   The gate announces each step as it starts and stops at the first failure; `npm run check -- --list` prints its composition without running it. If any step fails, **abort**. Print the failure log verbatim. Do not commit. Do not retry.
 
 2. **Run `npm run build`** — confirm the production bundle still builds:
 
@@ -194,7 +194,7 @@ When the `changelog` skill is invoked from `release-prep`, override its Phase 3 
 ## Reuses
 
 - `.cursor/skills/changelog/SKILL.md` — drafts the changelog entry. Run as a sub-skill.
-- `npm run check` — single command for the pre-merge gate. Defined in `package.json`.
+- `npm run check` — single command for the pre-merge gate. Its steps are declared in `scripts/check.js`.
 - `npm run build` — production build verification.
 - `docs/developer/RELEASE_PROCESS.md` — canonical release reference. If this skill diverges from that doc, update the doc.
 

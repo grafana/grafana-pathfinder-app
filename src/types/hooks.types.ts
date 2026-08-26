@@ -110,7 +110,7 @@ export interface UseStepCheckerReturn {
  * Options for useInteractiveElements hook
  */
 export interface UseInteractiveElementsOptions {
-  containerRef?: React.RefObject<HTMLElement>;
+  containerRef?: React.RefObject<HTMLElement | null>;
   disabled?: boolean;
 }
 

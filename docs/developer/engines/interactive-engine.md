@@ -17,7 +17,7 @@ The Interactive Engine provides the core automation and interaction capabilities
 - **`interactive-state-manager.ts`** - Tracks execution state and dispatches completion events
 - **`global-interaction-blocker.ts`** - Singleton that blocks user interactions during section execution using overlays
 - **`auto-completion/`** - Optional system for detecting and auto-completing user-performed actions
-- **`use-sequential-step-state.hook.ts`** - React 18 hook for subscribing to sequential step state changes
+- **`use-sequential-step-state.hook.ts`** - `useSyncExternalStore`-based hook for subscribing to sequential step state changes
 
 ## Main Hook
 
@@ -39,7 +39,7 @@ The Interactive Engine provides the core automation and interaction capabilities
 
 **High-level API** (preferred for most consumers):
 
-- `executeInteractiveAction()` - Execute any interactive action programmatically (routes to the appropriate handler)
+- `executeInteractiveAction(request)` - Execute any interactive action programmatically (routes to the appropriate handler). Takes a single `InteractiveActionRequest`, so a caller holding a step object passes it by reference (`{ ...step, buttonType: 'do' }`) and a field added to the step reaches the engine without editing every call site
 - `checkRequirementsFromData()` - Validate pre-conditions from step data before action execution
 - `checkElementRequirements()` - Validate pre-conditions from a DOM element's `data-*` attributes
 - `verifyStepResult()` - Validate post-conditions after action execution
@@ -198,7 +198,7 @@ Located in `src/interactive-engine/auto-completion/`, this optional subsystem au
 
 The action detector (`src/lib/dom/action-detector.ts`) determines action type based on element characteristics and available selectors:
 
-- **formfill**: Input fields, textareas, selects (except radio/checkbox)
+- **formfill**: Input fields, textareas, selects. Radio and checkbox inputs are driven by a real click (React wires `onChange` for them to the click event), and only when the current state differs from the requested one.
 - **button**: Buttons identified by text content (text matching heuristic when no unique selector is available)
 - **highlight**: Clickable elements and buttons with `data-testid` or other unique selectors (uses CSS selector matching)
 - **navigate**: External links (href starts with `http`)
@@ -326,23 +326,21 @@ const InteractiveGuide = () => {
 
   const handleShowAction = async () => {
     // Execute in show mode (highlight only, no interaction)
-    await executeInteractiveAction(
-      'highlight',                    // targetAction
-      '[data-testid="nav-datasources"]', // refTarget (CSS selector)
-      undefined,                      // targetValue
-      'show',                         // buttonType
-      'Click here to open data sources' // targetComment
-    );
+    await executeInteractiveAction({
+      targetAction: 'highlight',
+      refTarget: '[data-testid="nav-datasources"]',
+      targetComment: 'Click here to open data sources',
+      buttonType: 'show',
+    });
   };
 
   const handleDoAction = async () => {
     // Execute in do mode (actual interaction)
-    await executeInteractiveAction(
-      'button',
-      'Add data source',  // Will find button by text
-      undefined,
-      'do'
-    );
+    await executeInteractiveAction({
+      targetAction: 'button',
+      refTarget: 'Add data source', // Will find button by text
+      buttonType: 'do',
+    });
   };
 
   return (

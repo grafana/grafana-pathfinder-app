@@ -88,6 +88,12 @@ export enum UserInteraction {
   // Input Block Interactions
   InputBlockSubmit = 'input_block_submit',
 
+  // Data check on the datasource picker
+  DataCheckRun = 'data_check_run',
+  DataCheckPassed = 'data_check_passed',
+  DataCheckFailed = 'data_check_failed',
+  DataCheckSkipped = 'data_check_skipped',
+
   // Floating Panel
   FloatingPanelPopOut = 'floating_panel_pop_out',
   FloatingPanelDock = 'floating_panel_dock',
@@ -115,6 +121,10 @@ export enum UserInteraction {
   AiFixAccepted = 'ai_fix_accepted',
   AiFixApplied = 'ai_fix_applied',
   AiFixFailed = 'ai_fix_failed',
+
+  // Interactive-learning banner experiment
+  InteractiveLearningBannerShown = 'interactive_learning_banner_shown',
+  InteractiveLearningBannerDismissed = 'interactive_learning_banner_dismissed',
 }
 
 // ============================================================================
@@ -162,6 +172,19 @@ function getExperimentsForAnalytics(): ExperimentAnalyticsEntry[] | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The enrolled experiment arms, via the provider bound in module.tsx.
+ *
+ * Exported so the Faro session stamper reads cohorts from here rather than
+ * importing utils/experiments directly — that edge would pull the experiments
+ * modules into the telemetry import cycle.
+ *
+ * @returns The enrolled arms, or an empty array before the provider is bound
+ */
+export function getBoundActiveExperiments(): ExperimentAnalyticsEntry[] {
+  return getExperimentsForAnalytics() ?? [];
 }
 
 function rollUpVariant(experiments: ExperimentAnalyticsEntry[]): ExperimentConfig['variant'] {

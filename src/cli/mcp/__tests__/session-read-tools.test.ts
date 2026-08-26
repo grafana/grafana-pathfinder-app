@@ -1,10 +1,8 @@
 /**
  * @jest-environment node
  *
- * Tests for the P7 fine-grained read tools:
- *   - pathfinder_list_blocks
- *   - pathfinder_get_block
- *   - pathfinder_get_manifest_session
+ * Tests for the P7 fine-grained read tool `pathfinder_read_session`
+ * (operations: list-blocks | get-block | get-manifest).
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -57,15 +55,14 @@ async function newHarness(): Promise<{
 async function seedWithOneBlock(
   call: (n: string, a: Record<string, unknown>) => Promise<ToolPayload>
 ): Promise<string> {
-  const created = await call('pathfinder_create_package', { title: 'Reads Test' });
+  const created = await call('pathfinder_create_package', { opts: { title: 'Reads Test' } });
   if (!created.sessionToken) {
     throw new Error('create failed');
   }
-  const added = await call('pathfinder_add_block', {
+  const added = await call('pathfinder_manage_block', {
+    operation: 'add-block',
     sessionToken: created.sessionToken,
-    type: 'markdown',
-    explicitId: 'md-1',
-    fields: { content: 'Hello world' },
+    opts: { type: 'markdown', id: 'md-1', content: 'Hello world' },
   });
   if (added.status !== 'ok') {
     throw new Error(`add_block failed: ${JSON.stringify(added)}`);
@@ -73,12 +70,15 @@ async function seedWithOneBlock(
   return created.sessionToken;
 }
 
-describe('pathfinder_list_blocks', () => {
+describe('pathfinder_read_session — list-blocks', () => {
   it('returns the tree summary for a real session', async () => {
     const h = await newHarness();
     try {
       const token = await seedWithOneBlock(h.call);
-      const r = await h.call('pathfinder_list_blocks', { sessionToken: token });
+      const r = await h.call('pathfinder_read_session', {
+        operation: 'list-blocks',
+        sessionToken: token,
+      });
       expect(r.status).toBe('ok');
       expect(r.sessionToken).toBe(token);
       expect(r.generation).toBe(2);
@@ -94,7 +94,10 @@ describe('pathfinder_list_blocks', () => {
   it('returns SESSION_NOT_FOUND for an unknown token', async () => {
     const h = await newHarness();
     try {
-      const r = await h.call('pathfinder_list_blocks', { sessionToken: BOGUS_TOKEN });
+      const r = await h.call('pathfinder_read_session', {
+        operation: 'list-blocks',
+        sessionToken: BOGUS_TOKEN,
+      });
       expect(r.code).toBe('SESSION_NOT_FOUND');
     } finally {
       await h.close();
@@ -104,7 +107,10 @@ describe('pathfinder_list_blocks', () => {
   it('returns INVALID_SESSION_TOKEN for a malformed token', async () => {
     const h = await newHarness();
     try {
-      const r = await h.call('pathfinder_list_blocks', { sessionToken: 'too-short' });
+      const r = await h.call('pathfinder_read_session', {
+        operation: 'list-blocks',
+        sessionToken: 'too-short',
+      });
       expect(r.code).toBe('INVALID_SESSION_TOKEN');
     } finally {
       await h.close();
@@ -112,12 +118,16 @@ describe('pathfinder_list_blocks', () => {
   });
 });
 
-describe('pathfinder_get_block', () => {
+describe('pathfinder_read_session — get-block', () => {
   it('returns the block by id', async () => {
     const h = await newHarness();
     try {
       const token = await seedWithOneBlock(h.call);
-      const r = await h.call('pathfinder_get_block', { sessionToken: token, blockId: 'md-1' });
+      const r = await h.call('pathfinder_read_session', {
+        operation: 'get-block',
+        sessionToken: token,
+        blockId: 'md-1',
+      });
       expect(r.status).toBe('ok');
       expect(r.block?.id).toBe('md-1');
       expect(r.block?.type).toBe('markdown');
@@ -131,7 +141,11 @@ describe('pathfinder_get_block', () => {
     const h = await newHarness();
     try {
       const token = await seedWithOneBlock(h.call);
-      const r = await h.call('pathfinder_get_block', { sessionToken: token, blockId: 'never-existed' });
+      const r = await h.call('pathfinder_read_session', {
+        operation: 'get-block',
+        sessionToken: token,
+        blockId: 'never-existed',
+      });
       expect(r.code).toBe('NOT_FOUND');
       expect(r.sessionToken).toBe(token);
       expect(r.generation).toBe(2);
@@ -143,7 +157,11 @@ describe('pathfinder_get_block', () => {
   it('returns SESSION_NOT_FOUND for an unknown token', async () => {
     const h = await newHarness();
     try {
-      const r = await h.call('pathfinder_get_block', { sessionToken: BOGUS_TOKEN, blockId: 'anything' });
+      const r = await h.call('pathfinder_read_session', {
+        operation: 'get-block',
+        sessionToken: BOGUS_TOKEN,
+        blockId: 'anything',
+      });
       expect(r.code).toBe('SESSION_NOT_FOUND');
     } finally {
       await h.close();
@@ -151,14 +169,17 @@ describe('pathfinder_get_block', () => {
   });
 });
 
-describe('pathfinder_get_manifest_session', () => {
+describe('pathfinder_read_session — get-manifest', () => {
   it('returns the manifest for a real session', async () => {
     const h = await newHarness();
     try {
       const created = await newHarness();
       try {
-        const r = await created.call('pathfinder_create_package', { title: 'Manifest Test' });
-        const m = await created.call('pathfinder_get_manifest_session', { sessionToken: r.sessionToken });
+        const r = await created.call('pathfinder_create_package', { opts: { title: 'Manifest Test' } });
+        const m = await created.call('pathfinder_read_session', {
+          operation: 'get-manifest',
+          sessionToken: r.sessionToken,
+        });
         expect(m.status).toBe('ok');
         // create_package always sets up a manifest with the package id + type.
         expect(m.manifest).not.toBeNull();
@@ -174,7 +195,10 @@ describe('pathfinder_get_manifest_session', () => {
   it('returns SESSION_NOT_FOUND for unknown token', async () => {
     const h = await newHarness();
     try {
-      const r = await h.call('pathfinder_get_manifest_session', { sessionToken: BOGUS_TOKEN });
+      const r = await h.call('pathfinder_read_session', {
+        operation: 'get-manifest',
+        sessionToken: BOGUS_TOKEN,
+      });
       expect(r.code).toBe('SESSION_NOT_FOUND');
     } finally {
       await h.close();

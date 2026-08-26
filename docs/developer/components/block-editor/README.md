@@ -137,18 +137,9 @@ Helper utilities:
 
 ## Block Types
 
-The editor supports these block types:
+Palette membership and ordering have a single source: `BLOCK_TYPE_GROUPS` in `src/components/block-editor/constants.ts`. Types deliberately kept out of the palette are listed in `PALETTE_EXCLUDED_BLOCK_TYPES` beside it, and a compile-time partition check fails the build when a block type is in neither — so no hand-maintained list is kept here.
 
-- **Text**: Markdown content blocks
-- **Interactive**: Single interactive steps with requirements and objectives
-- **Multistep**: Grouped sequences of interactive steps
-- **Guided**: Highlight elements with tooltips
-- **Section**: Container for organizing blocks
-- **Conditional**: Branching logic based on conditions
-- **Image**: Image display blocks
-- **Video**: Video embed blocks
-- **Code**: Code snippet blocks
-- **Alert**: Callout/alert blocks
+For what each block does, see [the block types](../../../sources/block-editor/_index.md#the-block-types) in the user documentation, and [json-guide-format.md](../../interactive-examples/json-guide-format.md) for the schema of each.
 
 ## Usage Flow
 

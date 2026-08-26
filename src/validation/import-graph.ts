@@ -59,6 +59,7 @@ export const ROOT_LEVEL_TIER_MAP: Record<string, number> = {
   'constants.ts': 0,
   'constants.test.ts': 0,
   'module.tsx': 4,
+  'module.bootstrap.test.ts': 4,
 };
 
 export const ROOT_LEVEL_ALLOWED_FILES = new Set(Object.keys(ROOT_LEVEL_TIER_MAP));
@@ -130,10 +131,55 @@ export interface TsconfigPathsConfig {
   paths: Record<string, string[]>;
 }
 
+/**
+ * Strip JSONC comments without touching comment-like text inside string
+ * values. A blind regex sweep eats the `/**\/` in a glob such as
+ * `"src/cli/**\/*"`, silently turning it into `"src/cli*"`.
+ */
+export function stripJsonComments(text: string): string {
+  let out = '';
+  let inString = false;
+  let index = 0;
+
+  while (index < text.length) {
+    const char = text[index];
+    if (inString) {
+      out += char;
+      if (char === '\\' && index + 1 < text.length) {
+        out += text[index + 1];
+        index += 2;
+        continue;
+      }
+      if (char === '"') {
+        inString = false;
+      }
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      out += char;
+      index += 1;
+      continue;
+    }
+    if (char === '/' && text[index + 1] === '*') {
+      const end = text.indexOf('*/', index + 2);
+      index = end === -1 ? text.length : end + 2;
+      continue;
+    }
+    if (char === '/' && text[index + 1] === '/') {
+      const end = text.indexOf('\n', index + 2);
+      index = end === -1 ? text.length : end;
+      continue;
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
+}
+
 export function readJsoncFile<T>(filePath: string): T {
-  const text = fs.readFileSync(filePath, 'utf-8');
-  const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  return JSON.parse(stripped) as T;
+  return JSON.parse(stripJsonComments(fs.readFileSync(filePath, 'utf-8'))) as T;
 }
 
 export function loadTsconfigPaths(tsconfigPath: string): TsconfigPathsConfig {
@@ -222,7 +268,9 @@ function isTypeOnlyImportDeclaration(node: ts.ImportDeclaration): boolean {
   if (!clause) {
     return false;
   }
-  if (clause.isTypeOnly) {
+  // `phaseModifier` is also set for `import defer`, which still evaluates the
+  // module at runtime — only the type phase is erased.
+  if (clause.phaseModifier === ts.SyntaxKind.TypeKeyword) {
     return true;
   }
   if (clause.name || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings)) {

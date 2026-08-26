@@ -10,7 +10,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { E2E_REPORT_SCHEMA_VERSION, E2ETestReportSchema, type E2ETestReport } from './schemas/e2e-report.schema';
+import {
+  E2E_REPORT_SCHEMA_VERSION,
+  E2ETestReportSchema,
+  MultiGuideReportSchema,
+  type E2ETestReport,
+} from './schemas/e2e-report.schema';
 import {
   contentDigest,
   generateMultiGuideReport,
@@ -85,6 +90,16 @@ describe('generateMultiGuideReport — dependency-skipped guides', () => {
     expect(report.guides.every((g) => g.abortReason === undefined)).toBe(true);
   });
 
+  it('includes a schema-valid explicit metapackage selection', () => {
+    const report = generateMultiGuideReport([ranGuide('only-milestone')], undefined, {
+      id: 'single-milestone-path',
+      type: 'path',
+    });
+
+    expect(report.selection).toEqual({ id: 'single-milestone-path', type: 'path' });
+    expect(() => MultiGuideReportSchema.parse(report)).not.toThrow();
+  });
+
   it('counts provisioning failures as failed guides', () => {
     const report = generateMultiGuideReport([ranGuide('a'), provisioningFailedGuide('cloud-guide')]);
 
@@ -155,6 +170,19 @@ describe('report outcome classification', () => {
       abortReason: 'PROVISIONING_FAILED',
     });
     expect(isReportSuccess(report)).toBe(false);
+  });
+
+  it('assigns UNKNOWN when an infrastructure report has no specific code', () => {
+    const report = generateReport({
+      guide: { id: 'browser-closed', title: 'browser-closed', path: 'browser-closed/content.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'infrastructure_error',
+      errorMessage: 'The browser disconnected during step execution.',
+      results: [],
+      aborted: true,
+    });
+
+    expect(report.errorCode).toBe('UNKNOWN');
   });
 
   it('keeps auth-expired reports out of the passed multi-guide count', () => {

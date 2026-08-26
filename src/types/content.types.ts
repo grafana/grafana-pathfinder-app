@@ -37,11 +37,20 @@ export interface ContentMetadata {
   singleDoc?: SingleDocMetadata;
 
   /**
-   * Package manifest metadata — present when content was fetched via fetchPackageContent().
+   * Package manifest metadata — present when content was fetched via fetchPackageContent(),
+   * or synthesized by the `backend-guide:` loader for a launch that carries no resolved package.
    * Carries through manifest fields (category, author, recommends, suggests, depends, milestones, etc.)
    * so the content display layer can render richer UI without needing a separate manifest fetch.
    */
   packageManifest?: Record<string, unknown>;
+
+  /**
+   * Recommendation-level repository (sibling of the manifest in the V1 wire
+   * shape; V1PackageManifest has no repository of its own). Carried alongside
+   * packageManifest so completion emission can key the durable
+   * `(guideSource, guideId)` on the true source rather than a manifest default.
+   */
+  repository?: string;
 }
 
 export interface LearningJourneyMetadata {
@@ -83,11 +92,23 @@ export interface SingleDocMetadata {
 export interface Milestone {
   number: number;
   title: string;
-  duration: string;
+  /** Author-provided estimate from the member's own manifest. Absent when not authored — never a guessed default. */
+  estimatedMinutes?: number;
   url: string;
   isActive: boolean;
+  /**
+   * True when this milestone's package ID couldn't be resolved (not yet
+   * published, or a transient resolver failure) — rendered as visibly
+   * unavailable rather than silently dropped from the list, and skipped by
+   * next/previous traversal. See RFC CUSTOM-GUIDE-PACKAGES.md §6.5.
+   */
+  isLocked?: boolean;
   /** Canonical website URL for this milestone (e.g., grafana.com/docs/learning-paths/.../milestone-slug/) */
   websiteUrl?: string;
+  /** Short summary shown under the title in the cover-page module list. Package paths only — sourced from the member's manifest description. */
+  description?: string;
+  /** Author-provided starting location from the member's own manifest. Absent when not authored. */
+  startingLocation?: string;
   sideJourneys?: SideJourneys;
   relatedJourneys?: RelatedJourneys;
   conclusionImage?: ConclusionImage;

@@ -27,9 +27,19 @@ function read(rel: string): string {
 describe('panel-mode surface-toggle persistence classification', () => {
   describe('deliberate non-sidebar adoptions persist via setModePersisted', () => {
     it('FullScreenPanel switch-to-floating persists, never plain setMode', () => {
+      // Scoped to handleSwitchToFloating's own block (not a whole-file check):
+      // handleExitToSidebar also has a legitimate plain setMode('floating') for
+      // its OWN, differently-classified case (extension-sidebar ownership
+      // conflict — an automatic accommodation, not a deliberate adoption; see
+      // "the fullscreen exit falls back to floating..." below). A whole-file
+      // check can't tell the two call sites apart.
       const src = read('components/full-screen/FullScreenPanel.tsx');
-      expect(src).toContain("setModePersisted('floating')");
-      expect(src).not.toContain("setMode('floating')");
+      const handoffBlock = src.match(
+        /const handleSwitchToFloating = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[/
+      )?.[0];
+      expect(handoffBlock).toBeDefined();
+      expect(handoffBlock).toContain("setModePersisted('floating')");
+      expect(handoffBlock).not.toContain("setMode('floating')");
     });
 
     it('FloatingPanelManager switch-to-fullscreen persists, never plain setMode', () => {
@@ -61,8 +71,10 @@ describe('panel-mode surface-toggle persistence classification', () => {
       // scope each assertion to its call site to catch a "right method, wrong
       // call site" swap. The behavioural proof lives in panel-mode.test.ts.
       const floating = read('components/floating-panel/FloatingPanelManager.tsx');
-      expect(floating).toMatch(/handleSwitchToSidebar = useCallback\(\(\) => \{\s*dockToSidebar\(true\);\s*\}/);
-      expect(floating).toMatch(/handleDockRequest = \(\) => \{\s*dockToSidebar\(false\);\s*\}/);
+      expect(floating).toMatch(
+        /handleSwitchToSidebar = useCallback\(async \(\) => \{\s*await dockToSidebar\(true\);\s*\}/
+      );
+      expect(floating).toMatch(/handleDockRequest = \(\) => \{\s*void dockToSidebar\(false\);\s*\}/);
     });
   });
 
@@ -87,6 +99,21 @@ describe('panel-mode surface-toggle persistence classification', () => {
       const notice = read('components/docs-panel/components/FullScreenModeNotice.tsx');
       expect(notice).toContain("setMode('sidebar')");
       expect(notice).not.toContain('setModePersisted');
+    });
+
+    it('the fullscreen exit falls back to floating (never persisted) when another plugin owns the extension sidebar', () => {
+      // handleExitToSidebar's own click-triggered/manual/dock exits are all
+      // an automatic accommodation of a real-time ownership conflict, not a
+      // deliberate "adopt floating" choice — same classification full-screen-
+      // autodock.ts already uses for its own (navigation-away) trigger.
+      const src = read('components/full-screen/FullScreenPanel.tsx');
+      const exitBlock = src.match(
+        /const handleExitToSidebar = useCallback\(\s*async[\s\S]*?\n {4}\},\s*\[panel\]\s*\);/
+      )?.[0];
+      expect(exitBlock).toBeDefined();
+      expect(exitBlock).toContain('isExtensionSidebarOwnedByOther');
+      expect(exitBlock).toContain("setMode('floating')");
+      expect(exitBlock).not.toContain('setModePersisted');
     });
 
     it('self-heal and cold-load mode-sync stay plain setMode', () => {

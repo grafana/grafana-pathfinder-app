@@ -26,6 +26,9 @@ import type { LaunchSource } from '../../recovery';
  * Apply a consumed pending guide to the receiving panel model.
  *
  * The branch order is load-bearing:
+ * 0. `tabId` naming a tab that already exists — the surface restored the strip
+ *    first, so the handoff target is a tab we already have. Focus it; every
+ *    open method below appends unconditionally and would duplicate the guide.
  * 1. `editor` handoffs carry no URL — switch the active tab to the editor.
  * 2. URL + `packageInfo` → `openDocsPage` with the manifest, so synthetic
  *    journeys (PR-tester) get a journey tab with the milestone toolbar even
@@ -40,6 +43,15 @@ export function openPendingGuide(
   pending: PendingGuide,
   source: LaunchSource
 ): void {
+  if (pending.tabId && panel.state.tabs.some((tab) => tab.id === pending.tabId)) {
+    // Restore already made it active and kicked off its content load, so
+    // re-selecting it would only risk a second fetch for the same tab.
+    if (panel.state.activeTabId !== pending.tabId) {
+      panel.setActiveTab(pending.tabId);
+    }
+    return;
+  }
+
   if (pending.type === 'editor') {
     panel.openEditorTab();
     return;
@@ -84,4 +96,38 @@ export function consumePendingGuideOnMount(
   markInFlight();
   openPendingGuide(panel, pending, pending.source ?? fallbackSource);
   return true;
+}
+
+/**
+ * Restore the complete workspace before applying a one-tab launch intent.
+ *
+ * Order is the whole point. Opening the handoff first makes the strip
+ * non-empty, which skips restore — the surface then owns a single-tab model
+ * and the next `saveTabsToStorage()` erases every sibling tab from the shared
+ * workspace. Consuming the pending guide up front (before the await) keeps the
+ * consume-once read synchronous with mount, so the in-flight flag is set
+ * before the empty-state fallback can look at it.
+ *
+ * The flip side of restoring first is that the handoff target is now already
+ * in the strip — `openPendingGuide` relies on `pending.tabId` to focus it
+ * rather than append a duplicate.
+ *
+ * Returns true when a pending guide was consumed.
+ */
+export async function initializePanelTabsOnMount(
+  panel: CombinedLearningJourneyPanel,
+  fallbackSource: LaunchSource,
+  markInFlight: () => void
+): Promise<boolean> {
+  const pending = panelModeManager.consumePendingGuide();
+  if (pending) {
+    markInFlight();
+  }
+
+  await panel.restoreTabsAsync();
+
+  if (pending) {
+    openPendingGuide(panel, pending, pending.source ?? fallbackSource);
+  }
+  return pending !== null;
 }

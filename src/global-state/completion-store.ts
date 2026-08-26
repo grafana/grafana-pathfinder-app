@@ -352,7 +352,11 @@ export function markStepCompleted(stepId: string, sectionId: string | undefined,
 
   const bySteps = stepsFor(contentKey, resolvedSection);
   const existing = bySteps.get(stepId);
-  if (existing && existing.completed && existing.reason === reason) {
+  // `'skipped'` is sticky until a reset clears the entry. A skipping step writes
+  // it through the checker's bridge, and its section then reports the same step
+  // complete with the generic `'manual'` — which would otherwise relabel a
+  // skipped check as one the user actually passed.
+  if (existing?.completed && (existing.reason === reason || existing.reason === 'skipped')) {
     return;
   }
   bySteps.set(stepId, { completed: true, reason, completedAt: Date.now() });

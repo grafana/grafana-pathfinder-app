@@ -1,8 +1,9 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
-import { config, locationService } from '@grafana/runtime';
-import { parseUrlSafely, validateRedirectPath } from '../../security/url-validator';
+import { locationService } from '@grafana/runtime';
+import { parseUrlSafely, validateInternalNavigationPath } from '../../security/url-validator';
+import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { logger } from '../../lib/logging';
 import { autoLaunchChannel } from '../../global-state/auto-launch';
 
@@ -55,31 +56,17 @@ export class NavigateHandler {
       // External URL - open in new tab to preserve current Grafana session
       window.open(data.refTarget, '_blank', 'noopener,noreferrer');
     } else {
-      // SECURITY: Reject protocol-relative URLs before URL parsing.
-      // '//evil.com' parses via new URL() as cross-origin with pathname '/', which
-      // collides with validateRedirectPath's rejection sentinel and bypasses the check.
-      if (!data.refTarget.startsWith('/') || data.refTarget.startsWith('//')) {
+      // SECURITY: Same-origin, single-leading-slash, denied-route check (F-1 /
+      // ASE26016), shared with every other caller that pushes an internal path.
+      const safeTarget = validateInternalNavigationPath(data.refTarget, currentUserIsAdmin());
+      if (!safeTarget) {
         logger.warn(`[NavigateHandler] Blocked navigation to invalid path: ${data.refTarget.slice(0, 100)}`);
         return;
       }
 
-      // SECURITY: Validate internal path against denied routes (F-1 / ASE26016)
-      const user = config.bootData?.user;
-      const isAdmin = user?.isGrafanaAdmin === true || user?.orgRole === 'Admin';
-      const safePath = validateRedirectPath(data.refTarget, isAdmin);
-
-      let parsed: URL;
-      try {
-        parsed = new URL(data.refTarget, window.location.origin);
-      } catch {
-        logger.warn(`[NavigateHandler] Blocked navigation to unparseable path: ${data.refTarget.slice(0, 100)}`);
-        return;
-      }
-
-      if (safePath !== parsed.pathname) {
-        logger.warn(`[NavigateHandler] Blocked navigation to restricted path: ${data.refTarget.slice(0, 100)}`);
-        return;
-      }
+      // Re-parsed from the VALIDATED path, never from data.refTarget, so
+      // locationService can only ever receive what the validator returned.
+      const parsed = new URL(safeTarget, window.location.origin);
 
       // Strip doc= from the URL before navigation — we handle it via auto-launch event instead
       const guideParam = this.resolveGuideParam(data, parsed);
@@ -87,10 +74,7 @@ export class NavigateHandler {
         parsed.searchParams.delete('doc');
       }
 
-      // SECURITY: Navigate using validated pathname + original query/fragment.
-      // Never push raw data.refTarget — even if the comparison above were bypassed,
-      // locationService only receives the validated path.
-      locationService.push(safePath + parsed.search + parsed.hash);
+      locationService.push(parsed.pathname + parsed.search + parsed.hash);
 
       // After SPA navigation, open a guide if specified
       if (guideParam) {

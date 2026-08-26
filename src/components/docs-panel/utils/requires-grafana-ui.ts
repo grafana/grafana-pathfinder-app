@@ -22,6 +22,7 @@
  */
 
 import { isInteractiveBlockType, type InteractiveBlockType } from '../../../constants/json-guide-classification';
+import { GRAFANA_DRIVING_ACTIONS } from '../../../constants/interactive-actions';
 import type { JsonBlock, JsonGuide, JsonInteractiveAction, JsonStep } from '../../../types/json-guide.types';
 
 type InteractiveBlock = Extract<JsonBlock, { type: InteractiveBlockType }>;
@@ -29,15 +30,6 @@ type InteractiveBlock = Extract<JsonBlock, { type: InteractiveBlockType }>;
 function isInteractiveBlock(block: JsonBlock): block is InteractiveBlock {
   return isInteractiveBlockType(block.type);
 }
-
-/** The action values that require the live Grafana UI. */
-const GRAFANA_DRIVING_ACTIONS: ReadonlySet<JsonInteractiveAction> = new Set<JsonInteractiveAction>([
-  'highlight',
-  'button',
-  'formfill',
-  'navigate',
-  'hover',
-]);
 
 function isGrafanaDrivingAction(action: JsonInteractiveAction | undefined): boolean {
   return action !== undefined && GRAFANA_DRIVING_ACTIONS.has(action);
@@ -90,6 +82,7 @@ function blockRequiresGrafanaUi(block: JsonBlock): boolean {
     case 'html':
     case 'image':
     case 'video':
+    case 'callout':
       return false;
     default: {
       // Exhaustiveness: adding a JsonBlock member without classifying it here

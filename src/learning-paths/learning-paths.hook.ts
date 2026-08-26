@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { config } from '@grafana/runtime';
 
 import type {
   LearningPath,
@@ -31,7 +32,10 @@ import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
 import { fetchPathGuides, type FetchedPathGuides } from './fetch-path-guides';
+import { fetchAppPlatformLearningPaths, type AppPlatformPathsResult } from './app-platform-paths';
 import { markGuideCompleted as coordinatorMarkGuideCompleted } from './badge-coordinator';
+
+const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: Object.create(null) };
 
 // ============================================================================
 // CONSTANTS
@@ -89,6 +93,12 @@ export function useLearningPaths(): UseLearningPathsReturn {
   const [dynamicGuideData, setDynamicGuideData] = useState<Record<string, FetchedPathGuides>>({});
   const [isDynamicLoading, setIsDynamicLoading] = useState<boolean>(() => getPathsData().paths.some((p) => p.url));
 
+  // App Platform paths/journeys ingested at runtime from the custom-guide
+  // catalogue (RFC CUSTOM-GUIDE-PACKAGES.md §6.11) — a separate source from
+  // the bundled paths.json scaffold and the CDN index.json dynamic fetch
+  // above, merged into `paths` the same way.
+  const [appPlatformData, setAppPlatformData] = useState<AppPlatformPathsResult>(EMPTY_APP_PLATFORM_RESULT);
+
   // Get raw paths for the current platform (OSS or Cloud)
   const rawPaths = useMemo(() => {
     return getPathsData().paths;
@@ -127,16 +137,42 @@ export function useLearningPaths(): UseLearningPathsReturn {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Build effective paths: merge dynamic guides into URL-based paths
+  // Fetch App Platform paths/journeys on mount. Independent of the
+  // path.url-based effect above — this reads the namespace's own custom-guide
+  // catalogue rather than a per-path remote index.json.
+  useEffect(() => {
+    const namespace = config.namespace;
+    if (!namespace) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const result = await fetchAppPlatformLearningPaths(namespace);
+      if (!cancelled) {
+        setAppPlatformData(result);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Build effective paths: merge dynamic guides into URL-based paths, then
+  // append App Platform paths (bundled-first — matches the composite
+  // resolver's precedence convention, RFC §6.6).
   const paths = useMemo((): LearningPath[] => {
-    return rawPaths.map((path) => {
+    const merged = rawPaths.map((path) => {
       const dynamic = dynamicGuideData[path.id];
       if (path.url && dynamic) {
         return { ...path, guides: dynamic.guides };
       }
       return path;
     });
-  }, [rawPaths, dynamicGuideData]);
+    return [...merged, ...appPlatformData.paths];
+  }, [rawPaths, dynamicGuideData, appPlatformData]);
 
   /**
    * Gets guide metadata, scoped to a specific path when provided.
@@ -147,7 +183,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
    * is omitted (callers without path context), all dynamic metadata is
    * scanned for backwards compatibility.
    *
-   * Falls back to static metadata from paths.json / paths-cloud.json.
+   * Falls back to App Platform catalogue metadata, then to static metadata
+   * from paths.json / paths-cloud.json.
    */
   const resolveGuideMetadata = useCallback(
     (guideId: string, pathId?: string): GuideMetadataEntry => {
@@ -163,10 +200,16 @@ export function useLearningPaths(): UseLearningPathsReturn {
           }
         }
       }
+      if (appPlatformData.guideMetadata[guideId]) {
+        return appPlatformData.guideMetadata[guideId];
+      }
       const { guideMetadata } = getPathsData();
-      return guideMetadata[guideId] || { title: guideId, estimatedMinutes: 5 };
+      // Bundled JSON keeps Object.prototype, so gate on own keys — otherwise a
+      // guide id of `toString` resolves to a function and renders untitled.
+      const staticEntry = Object.hasOwn(guideMetadata, guideId) ? guideMetadata[guideId] : undefined;
+      return staticEntry || { title: guideId, estimatedMinutes: 5 };
     },
-    [dynamicGuideData]
+    [dynamicGuideData, appPlatformData]
   );
 
   // Load progress from storage
@@ -369,65 +412,57 @@ export function useLearningPaths(): UseLearningPathsReturn {
       }
 
       if (path.url) {
-        // URL-based path: clear milestone tracking and journey completion
         await milestoneCompletionStorage.clear(path.url);
-        await journeyCompletionStorage.clear(path.url);
 
-        // Remove milestone slugs from completedGuides (path.guides contains fetched slugs)
         if (path.guides.length > 0) {
           await learningProgressStorage.removeCompletedGuides(path.guides);
         }
 
-        // Clear interactive steps for milestone URLs (iterate over completed milestones)
-        // Since we don't have the full milestone URLs stored, clear by prefix pattern
-        // The content keys for milestones start with the path URL
         const [completions, journeyCompletions] = await Promise.all([
           interactiveCompletionStorage.getAll(),
           journeyCompletionStorage.getAll(),
         ]);
 
+        // Milestone content keys aren't stored anywhere, so recover them by prefix.
         const normalizedUrl = path.url.replace(/\/+$/, '');
-
-        // Batch clear operations for better performance with many milestones
         const milestoneKeys = Object.keys(completions).filter((key) => key.startsWith(normalizedUrl));
-        await Promise.all([
-          ...milestoneKeys.map((key) =>
-            Promise.all([interactiveCompletionStorage.clear(key), interactiveStepStorage.clearAllForContent(key)])
-          ),
-          ...Object.keys(journeyCompletions)
-            .filter((key) => key.startsWith(normalizedUrl))
-            .map((key) => journeyCompletionStorage.clear(key)),
-        ]);
-        // Drop the completion store's in-memory cache for each milestone
-        // we cleared. Without this, any open guide in the path would
-        // still surface its prior completion snapshot via the store.
+        const journeyKeys = [path.url, ...Object.keys(journeyCompletions).filter((k) => k.startsWith(normalizedUrl))];
+
+        await Promise.all(milestoneKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        await interactiveCompletionStorage.clearMany(milestoneKeys);
+        await journeyCompletionStorage.clearMany(journeyKeys);
+
         milestoneKeys.forEach((key) => evictContentCache(key));
       } else {
-        // Static bundled path: clear each guide's progress (batched for performance)
-        await Promise.all(
-          path.guides.map((guideId) => {
-            const contentKey = `bundled:${guideId}`;
-            return Promise.all([
-              interactiveStepStorage.clearAllForContent(contentKey),
-              interactiveCompletionStorage.clear(contentKey),
-              journeyCompletionStorage.clear(contentKey),
-            ]);
-          })
-        );
-        path.guides.forEach((guideId) => evictContentCache(`bundled:${guideId}`));
+        // No base URL: either a static bundled path (`bundled:<id>`) or an App
+        // Platform path whose members are `backend-guide:<id>`. We can't tell
+        // them apart from `path.guides` alone, so clear both content schemes.
+        const pathKeys = [`bundled:${path.id}`, `backend-guide:${path.id}`];
+        const contentKeys = [
+          ...pathKeys,
+          ...path.guides.flatMap((guideId) => [`bundled:${guideId}`, `backend-guide:${guideId}`]),
+        ];
 
-        // Remove guide IDs from completedGuides
+        for (const pathKey of pathKeys) {
+          await milestoneCompletionStorage.clear(pathKey);
+        }
+
+        await Promise.all(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        // Batched, not one clear per key: each helper read-modify-writes a single shared record.
+        await interactiveCompletionStorage.clearMany(contentKeys);
+        await journeyCompletionStorage.clearMany(contentKeys);
+
+        contentKeys.forEach((key) => evictContentCache(key));
+
         await learningProgressStorage.removeCompletedGuides(path.guides);
       }
 
-      // Dispatch event to notify UI components to refresh
       window.dispatchEvent(
         new CustomEvent(StorageEvents.InteractiveProgressCleared, {
           detail: { contentKey: '*', pathId },
         })
       );
 
-      // Reload progress to update UI
       await loadProgress({ current: true });
     },
     [paths, loadProgress]
