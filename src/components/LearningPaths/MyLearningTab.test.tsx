@@ -16,6 +16,7 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import { MyLearningTab } from './MyLearningTab';
 import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel/utils/prepare-guide-launch';
 import { pushFaroLog } from '../../lib/telemetry/bridge';
+import { reportAppInteraction } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
 import { learningProgressStorage, milestoneCompletionStorage } from '../../lib/user-storage';
 import { discardQueuedCompletionWrites } from '../../completion-records';
@@ -38,6 +39,11 @@ jest.mock('../../lib/telemetry/bridge', () => ({
   pushFaroLog: jest.fn(),
   pushFaroUserAction: jest.fn(),
   registerTelemetryBridge: jest.fn(),
+}));
+
+const resolvePackageNavLinksMock = jest.fn();
+jest.mock('../../docs-retrieval', () => ({
+  resolvePackageNavLinks: (...args: unknown[]) => resolvePackageNavLinksMock(...args),
 }));
 
 const publishMock = jest.fn();
@@ -178,6 +184,7 @@ beforeEach(() => {
   );
   mockIsPathCompleted.mockImplementation((id: string) => id === 'path-done');
   mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/learning-paths/path-1/guide-1/');
+  resolvePackageNavLinksMock.mockResolvedValue([]);
 });
 
 describe('MyLearningTab launch flow', () => {
@@ -233,8 +240,12 @@ describe('MyLearningTab launch flow', () => {
   });
 
   it('keeps launch-URL secrets and forwarded error text out of logger and Faro context', async () => {
-    mockGetGuideUrlForPath.mockReturnValue(
-      'https://grafana.com/docs/learning-paths/path-1/guide-1/?token=url-secret#fragment-secret'
+    // The cover url (path-1's own .url, now what actually gets launched) is
+    // where a secret would leak from, not the resolved-milestone url.
+    mockPaths = mockPaths.map((path) =>
+      path.id === 'path-1'
+        ? { ...path, url: 'https://grafana.com/docs/learning-paths/path-1/?token=url-secret#fragment-secret' }
+        : path
     );
     // Shaped like the fetch tier's forwarded Zod message (content-fetcher's
     // `Invalid guide: ${message}`), which interpolates the authored token.
@@ -252,7 +263,7 @@ describe('MyLearningTab launch flow', () => {
 
       await waitFor(() => expect(publishMock).toHaveBeenCalledTimes(1));
       const expectedContext = {
-        content_url: 'grafana.com/docs/learning-paths/path-1/guide-1/',
+        content_url: 'grafana.com/docs/learning-paths/path-1/',
         error_code: 'fetch-failed',
       };
       expect(consoleError).toHaveBeenCalledWith('[MyLearning] Guide launch preparation failed', expectedContext);
@@ -572,8 +583,176 @@ describe('MyLearningTab — private paths split', () => {
   });
 });
 
+describe('MyLearningTab — online course package cover launch', () => {
+  it('resolves and lands a fresh public/CDN package path on its own cover page', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(0);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      {
+        packageId: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        contentUrl: 'bundled:core-grafana-concepts-lj/content.json',
+      },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['core-grafana-concepts-lj']);
+    // A real navLink.contentUrl resolved, so this is a genuine cover launch —
+    // contrasts with the 'first_guide_fallback' case below.
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'OpenResourceClick',
+      expect.objectContaining({ launch_target: 'cover_page' })
+    );
+    expect(prepareMock).toHaveBeenCalledWith('bundled:core-grafana-concepts-lj/content.json', {
+      title: 'Core Grafana concepts',
+      source: 'home_page',
+      packageInfo: {
+        packageId: 'core-grafana-concepts-lj',
+        packageManifest: {
+          type: 'path',
+          milestones: ['core-grafana-concepts-data-sources'],
+          id: 'core-grafana-concepts-lj',
+        },
+      },
+    });
+  });
+
+  it('resuming an in-progress public/CDN package path also lands on its cover page', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(40);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      {
+        packageId: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        contentUrl: 'bundled:core-grafana-concepts-lj/content.json',
+      },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['core-grafana-concepts-lj']);
+    expect(prepareMock).toHaveBeenCalledWith('bundled:core-grafana-concepts-lj/content.json', {
+      title: 'Core Grafana concepts',
+      source: 'home_page',
+      packageInfo: {
+        packageId: 'core-grafana-concepts-lj',
+        packageManifest: {
+          type: 'path',
+          milestones: ['core-grafana-concepts-data-sources'],
+          id: 'core-grafana-concepts-lj',
+        },
+      },
+    });
+  });
+
+  // Regression test (Cursor Bugbot, "Cover launch lock starts too late"): the
+  // in-flight lock used to be acquired inside `launch`, which only runs after
+  // resolvePackageNavLinks resolves — leaving the Continue button clickable
+  // (launchingId stays null) for that whole window. A second click during
+  // the resolve could start a second resolve/launch, potentially opening a
+  // different path if the second click hit another path's Continue button.
+  it('does not start a second resolve/launch when clicked again while resolvePackageNavLinks is still pending', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(0);
+    let resolveNavLinks!: (value: Array<{ packageId: string; title: string; contentUrl: string }>) => void;
+    resolvePackageNavLinksMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveNavLinks = resolve;
+      })
+    );
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    const continueButton = screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj'));
+    fireEvent.click(continueButton);
+    await waitFor(() => expect(resolvePackageNavLinksMock).toHaveBeenCalledTimes(1));
+
+    // Second click while the resolve is still pending — the lock must
+    // already be held at this point, before resolvePackageNavLinks settles.
+    fireEvent.click(continueButton);
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledTimes(1);
+
+    resolveNavLinks([
+      {
+        packageId: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        contentUrl: 'bundled:core-grafana-concepts-lj/content.json',
+      },
+    ]);
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalledTimes(1));
+  });
+
+  // Regression test (Cursor Bugbot, "Empty cover URL still launches"):
+  // openPathCover used to call launch unconditionally even when
+  // resolvePackageNavLinks resolved with no contentUrl, sending an empty URL
+  // through prepareGuideLaunch to fail with only a generic error toast.
+  it('falls back to the first member guide when resolvePackageNavLinks resolves with no contentUrl', async () => {
+    mockPaths = [
+      {
+        id: 'core-grafana-concepts-lj',
+        title: 'Core Grafana concepts',
+        guides: ['core-grafana-concepts-data-sources'],
+        manifest: { type: 'path', milestones: ['core-grafana-concepts-data-sources'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(0);
+    resolvePackageNavLinksMock.mockResolvedValue([]);
+    mockGetGuideUrlForPath.mockReturnValue('https://grafana.com/docs/core-grafana-concepts-data-sources/');
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('core-grafana-concepts-lj')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    expect(mockGetGuideUrlForPath).toHaveBeenCalledWith(
+      'core-grafana-concepts-data-sources',
+      'core-grafana-concepts-lj'
+    );
+    // Regression test (Cursor Bugbot, "Fallback launch mislabeled cover"):
+    // this fallback opens the first member guide, not the cover — the
+    // analytics discriminator must reflect what actually opened.
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      'OpenResourceClick',
+      expect.objectContaining({ launch_target: 'first_guide_fallback' })
+    );
+    expect(prepareMock).toHaveBeenCalledWith(
+      'https://grafana.com/docs/core-grafana-concepts-data-sources/',
+      expect.objectContaining({ title: 'Core Grafana concepts' })
+    );
+  });
+});
+
 describe('MyLearningTab — App Platform guide launch', () => {
-  it('launches an App Platform path member with the path manifest as packageInfo (milestone chrome)', async () => {
+  it('lands a fresh App Platform path on its own cover page, same as any other package path', async () => {
     mockPaths = [
       {
         id: 'ap-path',
@@ -582,20 +761,57 @@ describe('MyLearningTab — App Platform guide launch', () => {
         manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
       },
     ];
-    mockGetPathGuides.mockReturnValue([
-      { id: 'fe-alerting-01', title: 'Alerting module 1', completed: false, isCurrent: true },
+    mockGetPathProgress.mockReturnValue(0);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      { packageId: 'ap-path', title: 'Alerting enablement', contentUrl: 'backend-guide:ap-path' },
     ]);
-    mockGetGuideUrlForPath.mockReturnValue('backend-guide:fe-alerting-01');
     prepareMock.mockResolvedValue(okResult);
 
     render(<MyLearningTab onOpenGuide={jest.fn()} />);
     fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
 
     await waitFor(() => expect(prepareMock).toHaveBeenCalled());
-    // Without packageInfo the loader falls through to a standalone guide with no
-    // milestone toolbar; the PATH manifest (with id merged) is what renders chrome.
-    expect(prepareMock).toHaveBeenCalledWith('backend-guide:fe-alerting-01', {
-      title: expect.any(String),
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
+      title: 'Alerting enablement',
+      source: 'home_page',
+      packageInfo: {
+        packageId: 'ap-path',
+        packageManifest: {
+          type: 'path',
+          repository: 'app-platform',
+          milestones: ['fe-alerting-01', 'fe-alerting-02'],
+          id: 'ap-path',
+        },
+      },
+    });
+  });
+
+  it('resuming an in-progress App Platform path still lands on its cover page', async () => {
+    mockPaths = [
+      {
+        id: 'ap-path',
+        title: 'Alerting enablement',
+        guides: ['fe-alerting-01'],
+        manifest: { type: 'path', repository: 'app-platform', milestones: ['fe-alerting-01', 'fe-alerting-02'] },
+      },
+    ];
+    mockGetPathProgress.mockReturnValue(40);
+    resolvePackageNavLinksMock.mockResolvedValue([
+      { packageId: 'ap-path', title: 'Alerting enablement', contentUrl: 'backend-guide:ap-path' },
+    ]);
+    prepareMock.mockResolvedValue(okResult);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.continueButton('ap-path')));
+
+    await waitFor(() => expect(prepareMock).toHaveBeenCalled());
+    // Same cover-launch outcome as the fresh case above — the cover's own CTA
+    // (LearningPathTableOfContents) is what resolves the current milestone,
+    // not this launch call.
+    expect(resolvePackageNavLinksMock).toHaveBeenCalledWith(['ap-path']);
+    expect(prepareMock).toHaveBeenCalledWith('backend-guide:ap-path', {
+      title: 'Alerting enablement',
       source: 'home_page',
       packageInfo: {
         packageId: 'ap-path',

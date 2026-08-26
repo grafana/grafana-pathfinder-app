@@ -308,7 +308,7 @@ node dist/cli/cli/index.js build-stats packages/
 node dist/cli/cli/index.js build-repository packages/ -o dist/repository.json
 ```
 
-Run `build-stats` first. The ordering is load-bearing: `build-repository` forwards every unknown top-level manifest key — `stats` among them — into `repository.json`, so an index built before the manifests are stamped omits stats for every package.
+Run `build-stats` first. The ordering is load-bearing: `build-repository` carries `stats` from each manifest onto its `repository.json` entry, so an index built before the manifests are stamped omits stats for every package. (`stats` is a declared field on both schemas, so it is copied by name rather than by the unknown-key forwarding that carries extension keys.)
 
 **Fail CI when a committed manifest is stale:**
 

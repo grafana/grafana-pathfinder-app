@@ -226,6 +226,7 @@ export function buildGraph(repositoryPaths: Array<{ name: string; path: string }
       repository,
       title: entry.title,
       description: entry.description,
+      estimatedMinutes: entry.estimatedMinutes,
       category: entry.category,
       author: entry.author,
       type: entry.type,

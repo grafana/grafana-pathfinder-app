@@ -4,7 +4,6 @@ import type { LearningJourneyMetadata, Milestone } from '../../types/content.typ
 const milestone = (number: number, overrides: Partial<Milestone> = {}): Milestone => ({
   number,
   title: `Milestone ${number}`,
-  duration: '5m',
   url: `https://grafana.com/docs/learning-paths/demo/milestone-${number}/`,
   isActive: false,
   ...overrides,
@@ -108,6 +107,15 @@ describe('injectJourneyExtrasIntoJsonGuide — block splicing', () => {
     expect(last.content).toContain('Ready to Begin');
     // No expect heading present → the original markdown block is preserved verbatim.
     expect(blocks[0]).toEqual({ type: 'markdown', content: 'Just some prose, no expect heading.' });
+  });
+
+  it('omits the Ready to Begin block entirely when skipReadyToBegin is true', () => {
+    const input = guide([{ type: 'markdown', content: 'Just some prose, no expect heading.' }]);
+
+    const result = injectJourneyExtrasIntoJsonGuide(input, coverMetadata, true);
+
+    expect(result).not.toContain('journey-ready-to-begin');
+    expect(result).not.toContain('Ready to Begin');
   });
 
   it('returns the original string unchanged when JSON is invalid', () => {

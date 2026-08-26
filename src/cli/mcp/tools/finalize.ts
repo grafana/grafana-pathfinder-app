@@ -30,6 +30,7 @@ import { z } from 'zod';
 
 import { runValidate } from '../../commands/validate';
 import { renderMachineJson } from '../../utils/output';
+import { projectManifestForCrd } from '../lib/crd-manifest';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
 import type { AuthoringSessionStore } from '../lib/session-store';
@@ -127,6 +128,15 @@ async function finalizeImpl(args: {
 
   const confirmationPrompt = `Publish guide "${title}" to <namespace> as <status>?`;
 
+  // The artifact was authored as a package, so it still carries manifest-level
+  // fields. Emit the manifest the CRD understands rather than dropping it: a
+  // package authored as a `path` must not publish as a flat guide.
+  //
+  // `type` is not declared on `ContentJson`, but clients send it alongside the
+  // typed fields, so it has to be stripped through a widened view.
+  const { type: _packageType, ...specContent } = content as unknown as Record<string, unknown>;
+  const crdManifest = projectManifestForCrd(manifest);
+
   const handoff = {
     status: 'ready',
     id,
@@ -152,9 +162,13 @@ async function finalizeImpl(args: {
       metadata: {
         name: id,
       },
+      // `type` belongs to the package manifest, not the guide spec — the CRD
+      // declares no `spec.type`, so leaving it in earns a pruning warning on
+      // every write. `manifest` carries it, projected onto the CRD's shape.
       spec: {
-        ...content,
+        ...specContent,
         status,
+        ...(crdManifest ? { manifest: crdManifest } : {}),
       },
     },
     viewer: {

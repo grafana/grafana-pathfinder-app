@@ -46,7 +46,7 @@ export const buildDocumentContext = (content: RawContent): ChatContextItem[] => 
           documentData.milestones = journey.milestones.map((milestone) => ({
             number: milestone.number,
             title: milestone.title,
-            duration: milestone.duration,
+            ...(typeof milestone.estimatedMinutes === 'number' && { estimatedMinutes: milestone.estimatedMinutes }),
             isActive: milestone.isActive,
           }));
 

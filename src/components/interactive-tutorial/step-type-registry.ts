@@ -128,6 +128,7 @@ export const INTERACTIVE_STEP_SCHEMA: StepTypeSchema = {
     showMe: props.showMe,
     isMultiStep: false,
     isGuided: false,
+    fullScreenFallbackLocation: props.fullScreenFallbackLocation,
   }),
   toEnhancedProps: (ctx) => ({
     stepId: ctx.stepInfo.stepId,

@@ -897,7 +897,15 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 {t('contextPanel.notYetAvailable', '(not yet available)')}
                                               </span>
                                             ) : (
-                                              <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                              typeof milestone.estimatedMinutes === 'number' && (
+                                                <span className={styles.milestoneDuration}>
+                                                  (
+                                                  {t('docsPanel.milestoneEstimatedMinutes', '{{count}} min', {
+                                                    count: milestone.estimatedMinutes,
+                                                  })}
+                                                  )
+                                                </span>
+                                              )
                                             )}
                                           </div>
                                         </div>

@@ -130,6 +130,7 @@ The package model separates content (`content.json`) from metadata (`manifest.js
 - **`package.schema.ts`** defines corresponding Zod schemas with defaults and refinements
 - **`json-guide.schema.ts`** retains `JsonGuideSchemaStrict` for backwards-compatible single-file guides
 - `ManifestJsonObjectSchema` and `RepositoryEntrySchema` are `z.looseObject`: the manifest top level is deliberately open, so unknown top-level keys survive parsing and `build-repository` forwards them into the package's repository entry. Their nested objects (`author`, `targeting`, `testEnvironment`) and all `content.json` block validation stay strict — the permissiveness is top-level manifest metadata only. `ManifestJson` and `RepositoryEntry` carry a matching `[key: string]: unknown` index signature, so TypeScript no longer flags a misspelled or surplus property on those two interfaces. See [extension fields](../../docs/developer/package-authoring.md#extension-fields)
+- **`guide-stats.schema.ts`** owns the generated `manifest.stats` stamp, and `GuideStatsSummary` is inferred from that schema rather than declared in `package.types.ts` — the one place the type follows the schema instead of the other way round, so the stamp's writer in `lib/guide-stats/` and its validator cannot drift
 - `CURRENT_SCHEMA_VERSION` (currently `"1.1.0"`) is the default for new packages
 
 ## Commands

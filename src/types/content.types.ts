@@ -92,7 +92,8 @@ export interface SingleDocMetadata {
 export interface Milestone {
   number: number;
   title: string;
-  duration: string;
+  /** Author-provided estimate from the member's own manifest. Absent when not authored — never a guessed default. */
+  estimatedMinutes?: number;
   url: string;
   isActive: boolean;
   /**
@@ -104,6 +105,10 @@ export interface Milestone {
   isLocked?: boolean;
   /** Canonical website URL for this milestone (e.g., grafana.com/docs/learning-paths/.../milestone-slug/) */
   websiteUrl?: string;
+  /** Short summary shown under the title in the cover-page module list. Package paths only — sourced from the member's manifest description. */
+  description?: string;
+  /** Author-provided starting location from the member's own manifest. Absent when not authored. */
+  startingLocation?: string;
   sideJourneys?: SideJourneys;
   relatedJourneys?: RelatedJourneys;
   conclusionImage?: ConclusionImage;

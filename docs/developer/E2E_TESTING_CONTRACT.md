@@ -68,6 +68,17 @@ A My learning layout or selector refactor must preserve these values or update t
 
 ---
 
+## Course cover page contract
+
+The course/learning-path cover page exposes stable testids for its hero and table-of-contents so E2E tests can assert cover-page rendering and launch the path without depending on text or DOM structure:
+
+- **`learning-paths-cover-hero`** (`testIds.learningPaths.coverHero`): the cover page's hero section boundary (title, description, module count, duration, badge preview).
+- **`learning-paths-toc-cta`** (`testIds.learningPaths.tableOfContentsCta`): the table of contents' get-started/resume action.
+
+A cover-page layout or selector refactor must preserve these values or update the E2E selectors and this document in the same change.
+
+---
+
 ## Badge celebration runner contract
 
 After a guide completes, Pathfinder can show a full-screen badge celebration before the runner starts the next action.

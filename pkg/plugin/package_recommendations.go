@@ -15,9 +15,8 @@ import (
 // packageRepositoryURL is the public CDN-hosted repository index used by the
 // online package recommendations feature for OSS Pathfinder users.
 //
-// Hardcoded: this feature is auto-disabled when the online recommender is
-// enabled, and the recommender already covers configurable endpoints. Keeping
-// the URL fixed lets us pair it with a strict host allowlist.
+// Hardcoded rather than configurable: pairs the URL with a strict host
+// allowlist enforced against exactly this value.
 const packageRepositoryURL = "https://interactive-learning.grafana.net/packages/repository.json"
 
 const (

@@ -8,6 +8,7 @@
  * @coupling Zod schemas: package.schema.ts - schemas must stay in sync
  */
 
+import type { GuideStatsSummary } from './guide-stats.schema';
 import type { JsonBlock } from './json-guide.types';
 
 // ============ CONTENT (content.json) ============
@@ -125,6 +126,8 @@ export interface PackageMetadataFields {
   type: PackageType;
   title?: string;
   description?: string;
+  /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
+  estimatedMinutes?: number;
   category?: string;
   author?: Author;
   startingLocation?: string;
@@ -159,6 +162,8 @@ export interface ManifestJson {
   milestones?: string[];
 
   description?: string;
+  /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
+  estimatedMinutes?: number;
   language?: string;
   category?: string;
   author?: Author;
@@ -173,6 +178,9 @@ export interface ManifestJson {
 
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
+
+  /** Generated block-count stamp. Written by build tooling, never authored. */
+  stats?: GuideStatsSummary;
 }
 
 // ============ REPOSITORY INDEX ============
@@ -188,6 +196,8 @@ export interface RepositoryEntry extends PackageMetadataFields {
   path: string;
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
+  /** Generated block-count stamp, carried from the package's manifest. */
+  stats?: GuideStatsSummary;
 }
 
 /**
@@ -225,6 +235,13 @@ export interface PackageResolutionSuccess {
   manifest?: ManifestJson;
   /** Populated when resolve options request content loading */
   content?: ContentJson;
+  /**
+   * Short title from the online CDN package index entry (OnlinePackageEntry.title),
+   * when the resolver has one. Populated by OnlineCdnPackageResolver directly, and
+   * by RecommenderPackageResolver via a cross-reference into the same cached CDN
+   * index — the recommender's own by-id endpoint carries no title field.
+   */
+  entryTitle?: string;
   /**
    * Raw resource the `verifyPublished` probe already fetched, when the resolver
    * had to GET it to check publish status. Lets the caller's content load reuse
