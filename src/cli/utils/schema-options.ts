@@ -4,16 +4,7 @@
  * One type cascade — `describeField` — and every surface reads it: the flag spelling a
  * Commander option needs, the value type the agent interface publishes. Both being
  * downstream of the same answer is what stops them disagreeing about whether a
- * parameter is an enum, an array, or an array of enums, which §2.b named as a stability
- * hazard when it was pinned by option-construction order instead.
- *
- * Deliberately parser-free: building the `Option` itself lives in
- * `contracts/commander-options`, so asking what a field is costs no dependency on the
- * surface that happens to ask. Deciding *which* fields become parameters is not here
- * either — this module used to walk a runtime schema and skip fields by name (`type`,
- * `blocks`, `steps`), which also dropped `create --type`, a package-type enum with
- * nothing to do with block discriminators (§3.4 i). A command schema states its own
- * parameters instead.
+ * parameter is an enum, an array, or an array of enums.
  *
  * See docs/design/AGENT-AUTHORING.md#schema-driven-option-generation for the
  * type mapping table and rationale.
@@ -22,7 +13,10 @@
 import { z } from 'zod';
 
 import { fieldNameToFlag } from './param-spelling';
-import { zodDef } from './zod-internals';
+import { wrapperChain, zodDef } from './zod-internals';
+
+/** A union branch simple enough to parse off a single command-line token. */
+export type UnionBranchKind = 'string' | 'number' | 'boolean';
 
 /**
  * Categorical description of a Zod field for the purpose of exposing it as a
@@ -36,14 +30,8 @@ export type FieldShape =
   | { kind: 'boolean'; optional: boolean; description: string | undefined }
   | { kind: 'enum'; optional: boolean; values: readonly string[]; description: string | undefined }
   | { kind: 'array-string'; optional: boolean; description: string | undefined }
-  // A repeatable parameter with constrained members. `z.array(z.enum([…]))` used to
-  // fall through to `unsupported`, so `set-manifest --target-platform` hand-built its
-  // Option and the agent surface recovered the members from Commander's `argChoices`
-  // — the enum living in a presentation object rather than the schema (§2.b).
   | { kind: 'array-enum'; optional: boolean; values: readonly string[]; description: string | undefined }
-  // `description` is on every variant, including the two that cannot become a flag: a
-  // `.describe()` on a literal is still the author's text, and omitting it here only
-  // forced readers to narrow the union to ask a question all seven kinds answer.
+  | { kind: 'union'; optional: boolean; branches: readonly UnionBranchKind[]; description: string | undefined }
   | { kind: 'literal'; optional: boolean; description: string | undefined }
   | { kind: 'unsupported'; reason: string; optional: boolean; description: string | undefined };
 
@@ -64,17 +52,11 @@ export function describeField(field: z.ZodType): FieldShape {
   // outermost `description` accessor.
   const description = field.description;
 
-  // Unwrap .optional() / .default() / .nullable() chains — any of them means the
-  // field may be absent from the input.
-  let optional = false;
-  let def = zodDef(field);
-  while (def && (def.type === 'optional' || def.type === 'default' || def.type === 'nullable')) {
-    optional = true;
-    if (!def.innerType) {
-      break;
-    }
-    def = zodDef(def.innerType);
-  }
+  // Unwrap .optional() / .default() / .nullable() / .prefault() chains — any of
+  // them means the field may be absent from the input.
+  const chain = wrapperChain(field);
+  const optional = chain.length > 1;
+  const def = zodDef(chain[chain.length - 1]);
 
   const t = def?.type;
 
@@ -123,6 +105,16 @@ export function describeField(field: z.ZodType): FieldShape {
     return { kind: 'unsupported', reason: `array of ${elementType ?? 'unknown'}`, optional, description };
   }
 
+  if (t === 'union') {
+    const branches = (def?.options ?? []).map((branch) => zodDef(branch)?.type);
+    const isUnionBranchKind = (kind: string | undefined): kind is UnionBranchKind =>
+      kind === 'string' || kind === 'number' || kind === 'boolean';
+    if (branches.length > 0 && branches.every(isUnionBranchKind)) {
+      return { kind: 'union', optional, branches, description };
+    }
+    return { kind: 'unsupported', reason: 'union', optional, description };
+  }
+
   return { kind: 'unsupported', reason: t ?? 'unknown', optional, description };
 }
 
@@ -150,5 +142,12 @@ export function isRepresentableField(field: z.ZodType): boolean {
  */
 export function fieldHelpText(name: string, field: z.ZodType): string {
   const shape = describeField(field);
-  return shape.description ?? `${name} (${shape.kind}${shape.optional ? ', optional' : ''})`;
+  if (shape.description) {
+    return shape.description;
+  }
+  // "union" alone does not say what it accepts; a bare "string" or "boolean"
+  // does. An author who skips `.describe()` on a union field still gets a
+  // usable fallback rather than a kind name with no meaning to a caller.
+  const kindLabel = shape.kind === 'union' ? shape.branches.join(' or ') : shape.kind;
+  return `${name} (${kindLabel}${shape.optional ? ', optional' : ''})`;
 }

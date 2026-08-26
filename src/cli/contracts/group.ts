@@ -1,6 +1,5 @@
 /**
  * Command groups — a family of variants selected by one discriminator
- * (RFC CLI-MCP-COMMAND-CONTRACT §8.4 Stage 5).
  *
  * `add-block <type>` is one command root with fifteen shapes. Each shape is an
  * ordinary `CommandSpec`, so the root keeps a 1:1 relationship between a schema

@@ -121,11 +121,7 @@ export interface ErrorOutcome {
   message: string;
   /** Additional structured detail per error (available IDs, conflicting fields, …). */
   data?: Record<string, unknown>;
-  /**
-   * The command that fixes this, named rather than spelled. Each surface renders it in
-   * its own terms — the command line prints a `Fix:` line, the MCP layer drops it
-   * along with `hints`, since an agent cannot run a command line.
-   */
+  /** The command that fixes this, named rather than spelled. Renders only on the CLI. */
   remedy?: IssueRemedy;
 }
 
@@ -339,8 +335,13 @@ function formatErrorText(outcome: ErrorOutcome): string {
  */
 export interface HelpJsonFlag {
   name: string;
-  valueType: 'string' | 'number' | 'boolean' | 'enum' | 'array';
+  valueType: 'string' | 'number' | 'boolean' | 'enum' | 'array' | 'union';
   enum?: readonly string[];
+  /**
+   * The types a `valueType: 'union'` parameter accepts, e.g. `['string', 'boolean']`.
+   * Parallel to `enum`: additive key, present only on that `valueType`.
+   */
+  unionOf?: readonly string[];
   repeatable?: boolean;
   description: string;
   default?: unknown;

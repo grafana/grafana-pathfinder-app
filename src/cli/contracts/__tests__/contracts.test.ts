@@ -1,6 +1,6 @@
 /**
- * Contracts layer, exercised against fixtures only (§8.4 Stage 1) — the adapter's
- * behaviour pinned independently of any real command's schema.
+ * Contracts layer, exercised against fixtures only — the adapter's behaviour
+ * pinned independently of any real command's schema.
  */
 
 import { z } from 'zod';
@@ -11,11 +11,15 @@ import {
   CLI_VIEW,
   collectCommanderInput,
   mountCommander,
+  mountCommanderGroup,
   parseCommandInput,
   type CommanderPresentation,
 } from '../render-commander';
-import { describeFor, publishedNames } from '../render-interface';
+import { buildOptionForField } from '../commander-options';
+import { defineCommandGroup, renderGroupInterface, requiredByVariant, type CommandGroupSpec } from '../group';
+import { describeFor, publishedNames, renderInterface, type SurfaceView } from '../render-interface';
 import { outcomeFromZodError } from '../outcome';
+import type { CommandOutcome } from '../../utils/output';
 
 const io = { role: 'io' } as const;
 const content = { role: 'content' } as const;
@@ -217,9 +221,57 @@ describe('mountCommander', () => {
     }
   });
 
+  // `emits: 'stream'` is for a runner that does all its own writing — the adapter
+  // is not allowed to print anything of its own — so the only thing left for it to
+  // get wrong is the exit code, and nothing exercised that path before this.
+  describe('a command that emits a stream', () => {
+    function streamSpec(run: () => CommandOutcome) {
+      return defineCommand({
+        name: 'stream-thing',
+        summary: 's',
+        schema: z.object({ which: z.string().optional().meta(addressing) }),
+        emits: 'stream',
+        run,
+      });
+    }
+
+    it('forces exit code 1 when the runner reports failure, printing nothing of its own', async () => {
+      const spec = streamSpec(() => ({ status: 'error', code: 'BOOM', message: 'it broke' }));
+      const write = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      const errWrite = jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const exit = jest.spyOn(process, 'exit').mockImplementation((code) => {
+        throw new Error(`exit ${code}`);
+      });
+
+      try {
+        await expect(mountCommander(spec).parseAsync([], { from: 'user' })).rejects.toThrow('exit 1');
+        expect(write).not.toHaveBeenCalled();
+        expect(errWrite).not.toHaveBeenCalled();
+      } finally {
+        write.mockRestore();
+        errWrite.mockRestore();
+        exit.mockRestore();
+      }
+    });
+
+    it('forces no exit code at all on success, leaving the runner in control of the process', async () => {
+      const spec = streamSpec(() => ({ status: 'ok', summary: 'already printed everything itself' }));
+      const exit = jest.spyOn(process, 'exit').mockImplementation((code) => {
+        throw new Error(`unexpected exit ${code}`);
+      });
+
+      try {
+        await mountCommander(spec).parseAsync([], { from: 'user' });
+        expect(exit).not.toHaveBeenCalled();
+      } finally {
+        exit.mockRestore();
+      }
+    });
+  });
+
   // Hiding is Commander's own presentation choice and reaches no further: the
   // field is still an ordinary published parameter as far as any other reader is
-  // concerned (§3.7).
+  // concerned.
   it('hides a field without changing what it publishes', () => {
     const spec = defineCommand({
       name: 'hidden-demo',
@@ -289,7 +341,7 @@ describe('input collection and parsing', () => {
     }
     expect(parsed.outcome.status).toBe('error');
     expect(parsed.outcome.code).toBe('SCHEMA_VALIDATION');
-    // Parameter names, not `--flags` — this is the §8.1 vocabulary claim.
+    // Error messages use parameter names, not flag strings.
     expect(parsed.outcome.message).toContain('dir:');
     expect(parsed.outcome.message).toContain('id:');
     expect(parsed.outcome.message).toContain('count:');
@@ -335,5 +387,130 @@ describe('outcomeFromZodError', () => {
     // message still names them both.
     expect(parsed.outcome.code).toBe('CONTAINER_REQUIRES_ID');
     expect(parsed.outcome.message).toContain('title');
+  });
+});
+
+describe('requiredNames spelling', () => {
+  // `requiredNames` feeds `requiredByType` (`group.ts`) and `groupDescription`'s
+  // "Required flags by type" table (`render-commander.ts`). Both read it as
+  // already spelled the way their own `view.name()` spells a parameter, so a
+  // camelCase field name leaking through here is wrong on both — `requiredByType`
+  // would say `startingPoint` to an operator who has to type `--starting-point`.
+  function groupWithCamelCaseField(): CommandGroupSpec {
+    const variant = defineCommand({
+      name: 'variant',
+      summary: 's',
+      schema: z.object({ startingPoint: z.string().meta(content) }),
+      run: () => ({ status: 'ok', summary: '' }),
+    });
+    return defineCommandGroup({
+      name: 'demo-group',
+      summary: 'a group with one variant',
+      discriminator: 'type',
+      discriminatorDescription: 'which variant',
+      variants: new Map([['variant', variant]]),
+    });
+  }
+
+  const IDENTITY_VIEW: SurfaceView = { name: (field) => field.name, publishes: () => true };
+
+  it("spells a required name the way CLI_VIEW spells it, not the schema's own camelCase", () => {
+    const group = groupWithCamelCaseField();
+    expect(requiredByVariant(group, CLI_VIEW)).toEqual({ variant: ['starting-point'] });
+  });
+
+  it("spells it the agent's way for a view that publishes field names as-is", () => {
+    const group = groupWithCamelCaseField();
+    expect(requiredByVariant(group, IDENTITY_VIEW)).toEqual({ variant: ['startingPoint'] });
+  });
+
+  it('renders the same kebab spelling in requiredByType as the flag renderGroupInterface publishes', () => {
+    const group = groupWithCamelCaseField();
+    const iface = renderGroupInterface(group, CLI_VIEW, 'variant');
+    expect(iface.required.map((flag) => flag.name)).toContain('starting-point');
+    expect(requiredByVariant(group, CLI_VIEW).variant).toEqual(['starting-point']);
+  });
+
+  it("prints the command line's own flag spelling in the root group help, not raw camelCase", () => {
+    const group = groupWithCamelCaseField();
+    const root = mountCommanderGroup(group);
+    expect(root.description()).toContain('--starting-point');
+    expect(root.description()).not.toContain('startingPoint');
+  });
+});
+
+/**
+ * What has to hold for *any* `CommandSpec`, across both renderers, without
+ * pinning either one's full output (the test this replaces asserted the exact
+ * JSON a real production schema renders as, which is complete-parity coverage
+ * for a translation the two renderers do not perform independently — see
+ * `describeField()` in `utils/schema-options.ts`). Both `mountCommander`'s
+ * `Option`s and `renderInterface`'s `HelpJsonFlag`s are built from the same
+ * `SpecField`, so this pins that relationship rather than either rendering.
+ */
+describe('cross-renderer consistency (architecture, not full parity)', () => {
+  const AGENT_VIEW: SurfaceView = { name: (field) => field.name, publishes: () => true };
+
+  function everyKindFixture() {
+    return defineCommand({
+      name: 'every-kind',
+      summary: 'exercises every representable field kind',
+      schema: z.object({
+        id: z.string().meta(addressing),
+        title: z.string().optional().meta(content),
+        count: z.number().optional().meta(content),
+        cascade: z.boolean().default(false).meta(content),
+        mode: z.enum(['fast', 'slow']).optional().meta(content),
+        tags: z.array(z.string()).optional().meta(content),
+        loose: z.union([z.string(), z.boolean()]).optional().meta(content),
+      }),
+      run: () => ({ status: 'ok', summary: '' }),
+    });
+  }
+
+  it("a Commander option and the agent interface's flag agree on name, requiredness, and value type for every field", () => {
+    const spec = everyKindFixture();
+    const command = mountCommander(spec);
+    const byAttribute = new Map(command.options.map((option) => [option.attributeName(), option]));
+    const iface = renderInterface(spec, CLI_VIEW);
+    const byFlagName = new Map(
+      [...iface.required, ...iface.optional, ...(iface.addressing ?? [])].map((flag) => [flag.name, flag])
+    );
+
+    for (const entry of specFields(spec)) {
+      const option = byAttribute.get(entry.name);
+      const flag = byFlagName.get(CLI_VIEW.name(entry));
+      expect(option).toBeDefined();
+      expect(flag).toBeDefined();
+
+      // `buildOptionForField` and `flagFor` each ask `describeField(entry.field)`
+      // independently — this is the fact they must not disagree on. (`mountCommander`
+      // then deliberately forces every Option's `mandatory` to `false`, so enforcement
+      // stays solely on `safeParse`; that override is checked in "input collection and
+      // parsing" above and is not what this test is about.)
+      expect(buildOptionForField(entry.name, entry.field)!.mandatory).toBe(flag!.required);
+      // Commander's long flag names exactly the field CLI_VIEW.name() would.
+      expect(option!.long).toBe(`--${flag!.name}`);
+
+      if (flag!.valueType === 'boolean') {
+        expect(option!.isBoolean()).toBe(true);
+      }
+      if (flag!.valueType === 'enum') {
+        expect((option as unknown as { argChoices?: string[] }).argChoices).toEqual(flag!.enum);
+      }
+      if (flag!.valueType === 'union') {
+        expect(flag!.unionOf).toBeDefined();
+      }
+    }
+  });
+
+  it('the fields each renderer decides are published are the same fields, spelled each view’s own way', () => {
+    const spec = everyKindFixture();
+    const commanderAttributes = new Set(mountCommander(spec).options.map((option) => option.attributeName()));
+    const agentNames = new Set(publishedNames(spec, AGENT_VIEW));
+    // Same underlying field set — `isRepresentableField` is the one gate both
+    // renderers pass through — even though CLI_VIEW's names are kebab-cased and
+    // the agent view's are not.
+    expect(commanderAttributes).toEqual(agentNames);
   });
 });

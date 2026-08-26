@@ -103,17 +103,7 @@ const OptsSchema = z
     'Opaque CLI runner parameters keyed exactly as pathfinder_help returns them (camelCase). The CLI is the sole content validator.'
   );
 
-/**
- * The operations each mutation tool offers, and what each withholds from agents.
- * The only statement of the exposure decision: the `operation` enum, the interface
- * bindings, and the dispatch all derive from these tables, so a CLI command is
- * agent-addressable because it is named here rather than because it has a schema.
- *
- * `withhold` narrows the procedure. `pathfinder_manage_block` is append-only, so an
- * agent that could position a block could reorder by proxy, and `remove-block`'s
- * child promotion is a tree edit an agent should make by re-adding. The CLI offers
- * all of them, and the schemas do not know this file exists.
- */
+/** The operations each mutation tool offers, and what each withholds from agents. */
 const MANAGE_BLOCK_OPERATIONS = {
   'add-block': { withhold: ['before', 'after', 'position'] },
   'edit-block': { withhold: ['before', 'after', 'position'] },

@@ -14,22 +14,30 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { defineCommand, mountCommander } from '../contracts';
+import {
+  ContentJsonSchema,
+  ManifestJsonObjectSchema,
+  PackageTypeSchema,
+  packageIdSchema,
+} from '../../types/package.schema';
 import { defaultPackageId } from '../utils/auto-id';
 import { newPackageState, PackageIOError, validatePackageState, writePackage } from '../utils/package-io';
 import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
+// Every field below is the same Zod instance the artifact schemas use for
+// `content.json` / `manifest.json` (`.describe()`/`.meta()` wrap it without
+// changing its validation) — a bare `z.string()` copy here would happily
+// accept an empty title or a non-kebab id that `newPackageState` rejects two
+// steps later with a less specific error.
 export const CreateCommand = z.object({
   dir: z.string().describe('package directory to create (must not exist or must be empty)').meta({ role: 'io' }),
-  title: z.string().describe('Guide title shown to learners').meta({ role: 'content' }),
-  id: z
-    .string()
+  title: ContentJsonSchema.shape.title.describe('Guide title shown to learners').meta({ role: 'content' }),
+  id: packageIdSchema
     .optional()
     .describe('Package identifier (kebab-case). Auto-generated from title when omitted')
     .meta({ role: 'content' }),
-  type: z.enum(['guide', 'path', 'journey']).default('guide').describe('Package type').meta({ role: 'content' }),
-  description: z
-    .string()
-    .optional()
+  type: PackageTypeSchema.default('guide').describe('Package type').meta({ role: 'content' }),
+  description: ManifestJsonObjectSchema.shape.description
     .describe('Short description shown in catalogs and recommenders')
     .meta({ role: 'content' }),
 });

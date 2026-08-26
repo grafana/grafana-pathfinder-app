@@ -31,9 +31,10 @@ program
     new Option('--format <format>', 'Output format for command responses').choices(['text', 'json']).default('text')
   );
 
-// `--help --format json` is a stability contract — when the user requests
-// help with the JSON format, emit the structured shape the P3 MCP layer
-// will pass through verbatim instead of Commander's default text help.
+// `--help --format json` is a stability contract for the CLI's own JSON
+// consumers (scripts, docs) — Commander's default text help, replaced by the
+// structured shape below. MCP does not read this: `mcp/lib/command-interface.ts`
+// renders the same CommandSpec independently (see AGENT-AUTHORING.md).
 //
 // Hooked via the `preActionHook` chain rather than per-command override
 // because Commander resolves --help before the action runs; we install a

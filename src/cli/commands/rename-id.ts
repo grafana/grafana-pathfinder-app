@@ -15,27 +15,22 @@
 
 import { z } from 'zod';
 
-import { PACKAGE_ID_REGEX } from '../../types/package.schema';
+import { packageIdSchema } from '../../types/package.schema';
 import { defineCommand, mountCommander } from '../contracts';
 import { mutateAndValidate, PackageIOError } from '../utils/package-io';
 import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
 export const RenameIdCommand = z.object({
   dir: z.string().describe('package directory').meta({ role: 'io' }),
-  newId: z.string().describe('new package id (kebab-case, must match PACKAGE_ID_REGEX)').meta({ role: 'content' }),
+  // Same schema `content.id`/`manifest.id` validate against — a bare
+  // `z.string()` here would let a bad id past the CommandSpec parse and rely
+  // on a second, hand-written regex check to reject it later.
+  newId: packageIdSchema.describe('new package id (kebab-case)').meta({ role: 'content' }),
 });
 
 export type RenameIdInput = z.output<typeof RenameIdCommand>;
 
 export async function runRenameId(args: RenameIdInput): Promise<CommandOutcome> {
-  if (!PACKAGE_ID_REGEX.test(args.newId)) {
-    return {
-      status: 'error',
-      code: 'SCHEMA_VALIDATION',
-      message: `id must be kebab-case (lowercase alphanumeric and hyphens, no leading/trailing hyphen): "${args.newId}"`,
-    };
-  }
-
   let oldId = '';
   let renamed = false;
   try {

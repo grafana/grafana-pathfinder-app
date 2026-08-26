@@ -1,6 +1,4 @@
 /**
- * Command specifications (RFC CLI-MCP-COMMAND-CONTRACT §8.2).
- *
  * A `CommandSpec` pairs the Zod object that is the sole authority for a
  * command's input shape with the runner that consumes the validated result.
  * Both entrypoints are renderers over this: the Commander adapter parses text
@@ -55,9 +53,9 @@ function shapeOf(schema: z.ZodObject): Record<string, z.ZodType> {
 /**
  * Validate a spec and freeze it.
  *
- * A field with no role is a build error rather than a silent default (§8.5
- * decision (c)): it would otherwise fall through as an ordinary published content
- * parameter, which is permissive by accident.
+ * A field with no role is a build error rather than a silent default — it would
+ * otherwise fall through as an ordinary published content parameter, which is
+ * permissive by accident.
  */
 export function defineCommand<S extends z.ZodObject>(spec: CommandSpec<S>): CommandSpec<S> {
   const shape = shapeOf(spec.schema);

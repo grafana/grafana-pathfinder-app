@@ -195,10 +195,11 @@ describe('validateCommandArgs', () => {
     expect(result).toMatchObject({ status: 'error', code: 'UNKNOWN_COMMAND' });
   });
 
-  it('treats empty string as missing a Commander-mandatory option', () => {
-    const result = rejection(validateCommandArgs('create', { title: '' }));
-    expect(result).toMatchObject({ status: 'error', code: 'SCHEMA_VALIDATION' });
-    expect(String(result.message)).toMatch(/missing required parameter: title/);
+  it('does not treat an empty string as missing — the schema decides, same as the CLI', () => {
+    // `''` is a valid `z.string()`; a command that cares about blank content
+    // rejects it downstream (e.g. `create`'s `INVALID_TITLE`), so preflight has
+    // nothing to flag here.
+    expect(validateCommandArgs('create', { title: '' })).toBeUndefined();
   });
 
   it('rejects a blacklisted key as UNSUPPORTED_PARAMETER', () => {

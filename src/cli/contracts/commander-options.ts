@@ -13,7 +13,7 @@
 import { InvalidArgumentError, Option } from 'commander';
 import type { z } from 'zod';
 
-import { describeField, fieldHelpText, fieldNameToFlag } from '../utils/schema-options';
+import { describeField, fieldHelpText, fieldNameToFlag, type UnionBranchKind } from '../utils/schema-options';
 import { numberConstraints } from '../utils/zod-internals';
 
 /**
@@ -83,6 +83,23 @@ export function buildOptionForField(
     return option;
   }
 
+  if (shape.kind === 'union') {
+    // A command line only ever hands the schema a string — there is no second
+    // channel for "this token is a boolean". Coercing here, before the schema
+    // sees the value, is what makes `--default-value true` reach `z.union([z.string(),
+    // z.boolean()])` as the boolean `true` rather than the string `"true"`; the
+    // schema still has the last word; a branch this coercion cannot produce
+    // (a defaulted `true`/`false` typo, an out-of-range number) is a plain
+    // string by the time it gets there and fails whichever branch was meant.
+    const token = shape.branches.join('-or-');
+    const option = new Option(`${lead} <${placeholder ?? token}>`, description);
+    option.argParser((value: string) => coerceUnionValue(value, shape.branches));
+    if (!shape.optional) {
+      option.makeOptionMandatory();
+    }
+    return option;
+  }
+
   if (shape.kind === 'number') {
     const option = new Option(`${lead} <${placeholder ?? 'number'}>`, description);
     const accepts = numberNoun(field);
@@ -105,6 +122,26 @@ export function buildOptionForField(
     option.makeOptionMandatory();
   }
   return option;
+}
+
+/**
+ * Coerce one command-line token into whichever union branch it looks like.
+ *
+ * Boolean and number are tried first — `"true"` and `"42"` are unambiguous
+ * spellings of those types and a caller who typed them almost never meant the
+ * literal string — and only a branch the field actually declares is tried, so
+ * `z.union([z.string(), z.number()])` never produces a boolean and vice
+ * versa. Anything left over stays a string, which `z.union`'s own `safeParse`
+ * then accepts or rejects on its own terms.
+ */
+function coerceUnionValue(value: string, branches: readonly UnionBranchKind[]): string | number | boolean {
+  if (branches.includes('boolean') && (value === 'true' || value === 'false')) {
+    return value === 'true';
+  }
+  if (branches.includes('number') && value.trim() !== '' && !Number.isNaN(Number(value))) {
+    return Number(value);
+  }
+  return value;
 }
 
 /**

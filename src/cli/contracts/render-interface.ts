@@ -1,19 +1,17 @@
 /**
- * The published-interface renderer (RFC CLI-MCP-COMMAND-CONTRACT §8.4 Stage 8a).
+ * The published-interface renderer.
  *
- * Produces the `HelpJson` shape directly from a command's schema, replacing the
- * projection in `mcp/lib/command-interface.ts` that walked Commander and
- * re-derived every fact from option flags. Nothing here reads a Commander
- * object, so the three facts the old projection had to guess — value type,
- * requiredness, and whether a parameter counts as addressing — are read rather
+ * Produces the `HelpJson` shape directly from a command's schema. Nothing here reads
+ * a Commander object, so the three facts that previously had to be guessed — value
+ * type, requiredness, and whether a parameter counts as addressing — are read rather
  * than inferred.
  *
- * Two things about a published parameter are the reader's business rather than
- * the command's: what it is called (`--target-url-prefix` on a command line,
- * `targetUrlPrefix` to an agent) and whether that reader is offered it at all.
- * Rather than enumerate readers here, this module asks a `SurfaceView` — so
- * audience stays out of the contracts layer, and adding a reader is a new view
- * object rather than a new branch in every function below.
+ * Two things about a published parameter are the reader's business rather than the
+ * command's: what it is called (`--target-url-prefix` on a command line,
+ * `targetUrlPrefix` to an agent) and whether that reader is offered it at all. Rather
+ * than enumerate readers here, this module asks a `SurfaceView` — so audience stays
+ * out of the contracts layer, and adding a reader is a new view object rather than a
+ * new branch in every function below.
  */
 
 import type { z } from 'zod';
@@ -87,6 +85,8 @@ function valueTypeOf(field: z.ZodType): HelpJsonFlag['valueType'] {
     case 'array-string':
     case 'array-enum':
       return 'array';
+    case 'union':
+      return 'union';
     default:
       return 'string';
   }
@@ -98,8 +98,7 @@ function flagFor(entry: SpecField, view: SurfaceView): HelpJsonFlag {
   const fallback = zodDefaultValue(entry.field);
 
   return {
-    // The whole of the translation §2 found leaking — `id` vs `--id` — happening
-    // once, at the boundary, rather than being undone and redone downstream.
+    // Parameter names rather than flag strings, happening once at the boundary.
     name: view.name(entry),
     valueType,
     description: describeFor(entry, view),
@@ -111,6 +110,10 @@ function flagFor(entry: SpecField, view: SurfaceView): HelpJsonFlag {
     // A repeatable enum publishes both facts: `valueType: 'array'` says send a
     // list, `enum` says what may be in it.
     ...(shape.kind === 'enum' || shape.kind === 'array-enum' ? { enum: shape.values } : {}),
+    // Parallel to `enum`: `valueType: 'union'` says the parameter is one of
+    // several types, `unionOf` says which, so an agent knows to send a string
+    // or a boolean without decoding "union" as a type name.
+    ...(shape.kind === 'union' ? { unionOf: shape.branches } : {}),
     ...(valueType === 'array' ? { repeatable: true } : {}),
     ...(fallback.present && !(Array.isArray(fallback.value) && fallback.value.length === 0)
       ? { default: fallback.value }
@@ -165,9 +168,14 @@ export function publishedNames(spec: CommandSpec, view: SurfaceView): string[] {
     .map((entry) => entry.name);
 }
 
-/** Parameter names the caller must supply, in field names like `publishedNames`. */
+/**
+ * Parameter names the caller must supply, spelled the way `view` spells one —
+ * `--flag` for `CLI_VIEW`, the field name for the agent surface — matching
+ * `flagFor`'s `name: view.name(entry)`. Using the view's spelling here ensures
+ * `requiredByType` on command groups uses the correct name alphabet.
+ */
 export function requiredNames(spec: CommandSpec, view: SurfaceView): string[] {
   return specFields(spec)
     .filter((entry) => isPublished(entry, view) && !describeField(entry.field).optional)
-    .map((entry) => entry.name);
+    .map((entry) => view.name(entry));
 }

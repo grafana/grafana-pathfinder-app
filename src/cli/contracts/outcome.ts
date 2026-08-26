@@ -1,10 +1,9 @@
 /**
- * Zod failures as command outcomes (RFC CLI-MCP-COMMAND-CONTRACT §8.1).
+ * Zod failures as command outcomes.
  *
  * Both adapters land on `schema.safeParse`, so both report failures in the same
- * vocabulary — closing claim 2.a, since a Zod issue path is a *parameter* name (`id`,
- * `author.name`) rather than a flag string, and those are the names
- * `pathfinder_help` published.
+ * vocabulary — parameter names rather than flag strings, matching what
+ * `pathfinder_help` publishes.
  */
 
 import type { z } from 'zod';
@@ -65,8 +64,8 @@ function declaredAbsence(
 
 /**
  * Render a parse failure as a command outcome, reporting every issue rather than the
- * first. Commander short-circuits on the first missing mandatory option, which is why
- * multi-error reporting used to require `forceOptional` plus a side table (§3.4 ii).
+ * first. Commander short-circuits on the first missing mandatory option, which the
+ * schema-based approach avoids.
  */
 export function outcomeFromZodError(spec: CommandSpec, error: z.ZodError, raw?: Record<string, unknown>): ErrorOutcome {
   const issues = error.issues;

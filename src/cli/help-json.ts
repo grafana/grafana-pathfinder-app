@@ -4,10 +4,7 @@
  * The CLI's own rendering of the help contract, which is why it lives on the CLI
  * side and takes a Commander `Command`: resolving *which* command the user asked
  * about is a parser concern. What gets published comes from what the command
- * declares, so this adds no facts of its own.
- *
- * Shared with the surface-parity harness so the snapshot covers what the CLI emits
- * rather than a parallel computation.
+ * declares, so this adds no facts of its own. See `__tests__/help-json.test.ts`.
  */
 
 import type { Command } from 'commander';

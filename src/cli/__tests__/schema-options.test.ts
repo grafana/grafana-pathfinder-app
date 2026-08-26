@@ -63,9 +63,39 @@ describe('describeField', () => {
     expect(describeField(z.string().default('x'))).toMatchObject({ kind: 'string', optional: true });
   });
 
-  it('reports unsupported shapes by reason', () => {
-    const u = z.union([z.string(), z.boolean()]);
-    expect(describeField(u)).toMatchObject({ kind: 'unsupported' });
+  // Zod v4's `.prefault()` only supplies its default when the field is absent
+  // entirely (unlike `.default()`, which also fills `undefined`). It is still a
+  // wrapper the CLI has to look through: a bare `.prefault()` field used to report
+  // `unsupported` (reason `prefault`) because the old unwrap loop did not know the
+  // name, which `wrapperChain` centralizes.
+  it('treats prefault-wrapped fields as optional', () => {
+    expect(describeField(z.string().prefault('x'))).toMatchObject({ kind: 'string', optional: true });
+  });
+
+  it('unwraps prefault stacked under optional', () => {
+    expect(describeField(z.number().prefault(1).optional())).toMatchObject({ kind: 'number', optional: true });
+  });
+
+  // A union of primitives is one CLI token with more than one acceptable shape,
+  // not a shape the bridge cannot express — `input.defaultValue` in
+  // json-guide.schema.ts (`string | boolean`) used to be silently dropped because
+  // this reported `unsupported`.
+  it('detects a union of primitives and lists its branches', () => {
+    const shape = describeField(z.union([z.string(), z.boolean()]).optional());
+    expect(shape.kind).toBe('union');
+    if (shape.kind === 'union') {
+      expect(shape.branches).toEqual(['string', 'boolean']);
+      expect(shape.optional).toBe(true);
+    }
+  });
+
+  it('still reports unsupported for a union with a non-primitive branch', () => {
+    const u = z.union([z.string(), z.object({ a: z.string() })]);
+    expect(describeField(u)).toMatchObject({ kind: 'unsupported', reason: 'union' });
+  });
+
+  it('still reports unsupported for a nested object', () => {
+    expect(describeField(z.object({ a: z.string() }))).toMatchObject({ kind: 'unsupported' });
   });
 });
 
@@ -75,7 +105,27 @@ describe('buildOptionForField', () => {
   });
 
   it('returns null for unsupported shapes', () => {
-    expect(buildOptionForField('mix', z.union([z.string(), z.boolean()]))).toBeNull();
+    expect(buildOptionForField('mix', z.union([z.string(), z.object({ a: z.string() })]))).toBeNull();
+  });
+
+  it('emits a flag for a union of primitives, naming both branches', () => {
+    const opt = buildOptionForField('defaultValue', z.union([z.string(), z.boolean()]).optional());
+    expect(opt).toBeInstanceOf(Option);
+    expect(opt!.flags).toBe('--default-value <string-or-boolean>');
+    expect(opt!.mandatory).toBe(false);
+  });
+
+  it('coerces a union flag value toward the branch it looks like', () => {
+    const opt = buildOptionForField('defaultValue', z.union([z.string(), z.boolean()]).optional());
+    expect(opt!.parseArg!('true', undefined)).toBe(true);
+    expect(opt!.parseArg!('false', undefined)).toBe(false);
+    expect(opt!.parseArg!('hello', undefined)).toBe('hello');
+  });
+
+  it('prefers number over string for a union that declares both', () => {
+    const opt = buildOptionForField('limit', z.union([z.string(), z.number()]).optional());
+    expect(opt!.parseArg!('42', undefined)).toBe(42);
+    expect(opt!.parseArg!('not-a-number', undefined)).toBe('not-a-number');
   });
 
   // A field named `type` used to be dropped by name, which cost `create --type`

@@ -267,6 +267,17 @@ function derivedSubcommand(commandName: string, opts: Record<string, unknown>): 
   return typeof selected === 'string' && selected !== '' ? selected : undefined;
 }
 
+/** Does a bare value match one of the primitive kinds named in `unionOf`? */
+function matchesPrimitiveKind(kind: string, value: unknown): boolean {
+  if (kind === 'boolean') {
+    return typeof value === 'boolean';
+  }
+  if (kind === 'number') {
+    return typeof value === 'number' && Number.isFinite(value);
+  }
+  return typeof value === 'string';
+}
+
 /** Does the value match the type help advertised for this opt? */
 function matchesValueType(flag: HelpJsonFlag, value: unknown): boolean {
   switch (flag.valueType) {
@@ -281,6 +292,8 @@ function matchesValueType(flag: HelpJsonFlag, value: unknown): boolean {
       );
     case 'enum':
       return typeof value === 'string' && (flag.enum?.includes(value) ?? false);
+    case 'union':
+      return (flag.unionOf ?? []).some((kind) => matchesPrimitiveKind(kind, value));
     default:
       return typeof value === 'string';
   }
@@ -289,6 +302,9 @@ function matchesValueType(flag: HelpJsonFlag, value: unknown): boolean {
 function expectedTypeLabel(flag: HelpJsonFlag): string {
   if (flag.valueType === 'enum') {
     return flag.enum?.join('|') ?? 'enum';
+  }
+  if (flag.valueType === 'union') {
+    return flag.unionOf?.join('|') ?? 'union';
   }
   return flag.valueType === 'array' ? 'string[]' : flag.valueType;
 }
@@ -314,7 +330,10 @@ function diffViolations(
   const exposedSet = new Set(exposed);
 
   return {
-    missing: requiredBeforeRunner.filter((name) => opts[name] === undefined || opts[name] === ''),
+    // Absence only, matching `isAbsence` in `outcome.ts`: `''` is a valid string as
+    // far as the schema is concerned, so a command that cares rejects it downstream
+    // (e.g. `create`'s `INVALID_TITLE`) rather than preflight guessing at content.
+    missing: requiredBeforeRunner.filter((name) => opts[name] === undefined),
     unsupported: Object.keys(opts).filter((name) => !exposedSet.has(name)),
     invalid: published.flatMap((flag) => {
       const value = opts[flag.name];

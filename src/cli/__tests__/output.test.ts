@@ -181,6 +181,36 @@ describe('printOutcome', () => {
       expect(stdout).not.toContain('Warnings:');
     });
   });
+
+  describe('dialect spelling', () => {
+    // `spellOutcome` itself is unit-tested in `param-spelling.test.ts`; this
+    // exercises the call `printOutcome` makes internally (CR-4), so a runner
+    // that leaves a `{@name}` reference unspelled is caught at the boundary
+    // callers actually go through, not just at the helper underneath it.
+    const unspelled: CommandOutcome = {
+      status: 'error',
+      code: 'SCHEMA_VALIDATION',
+      message: 'use at most one of {@before}/{@after}/{@position}',
+    };
+
+    it('spells a parameter reference into a CLI flag in text mode', () => {
+      const { stderr } = captureOutput(() => printOutcome(unspelled, { format: 'text', quiet: false }));
+      expect(stderr).toContain('use at most one of --before/--after/--position');
+      expect(stderr).not.toContain('{@');
+    });
+
+    it('spells a parameter reference into a CLI flag in --format json', () => {
+      const { stderr } = captureOutput(() => printOutcome(unspelled, { format: 'json', quiet: false }));
+      const parsed = JSON.parse(stderr);
+      expect(parsed.message).toBe('use at most one of --before/--after/--position');
+    });
+
+    it('is idempotent for an outcome an adapter already spelled', () => {
+      const spelled: CommandOutcome = { ...unspelled, message: 'use at most one of before/after/position' };
+      const { stderr } = captureOutput(() => printOutcome(spelled, { format: 'text', quiet: false }));
+      expect(stderr).toContain('use at most one of before/after/position');
+    });
+  });
 });
 
 describe('issueToOutcome', () => {
@@ -207,7 +237,7 @@ describe('issueToOutcome', () => {
 describe('--help --format json — stability contract', () => {
   // The published shape is now rendered from a schema. These pin the claims
   // `docs/design/AGENT-AUTHORING.md` makes about it, at the level where value types are
-  // now decided; the per-command surfaces are snapshotted in surface-parity.
+  // decided; `help-json.test.ts` covers the per-command and root-listing wrapper.
   const spec = defineCommand({
     name: 'interactive',
     summary: 'Append an interactive block',

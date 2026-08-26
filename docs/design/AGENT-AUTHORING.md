@@ -73,7 +73,7 @@ Instead of asking agents to understand the schema and produce raw JSON, we give 
 
 2. **Impossible to produce invalid output.** Every mutation validates the full package (both `content.json` and `manifest.json`) before writing. If validation fails, the file is not modified and the error is printed.
 
-3. **Append-first.** New blocks are appended sequentially. There is no insert-at-index and no reordering. The agent writes blocks in the order they should appear. Existing blocks can be updated in place via `edit-block` or removed via `remove-block` using their ID.
+3. **Append-first for agents.** The CLI itself supports arbitrary placement (`add-block --before`/`--after`/`--position`, `move-block`) for human/power use, but the MCP agent surface withholds those parameters via a bind-time blacklist (see [The command's Zod schema is the stability contract](#the-commands-zod-schema-is-the-stability-contract)), so an agent's own procedure stays append-only: it writes blocks in the order they should appear, updates them in place via `edit-block`, and removes them via `remove-block` using their ID.
 
 4. **ID-based addressing.** All blocks have an `id`. Container blocks (sections, conditionals, assistant, multistep, guided, quiz) require an author-supplied `--id`. Leaf blocks are auto-assigned an ID by the CLI when none is provided. All IDs are stored in `content.json` — the guide file is the source of truth for block identity and is durable across sessions.
 
@@ -356,7 +356,7 @@ The addressing model defines how commands locate where to append content within 
 
 4. **`--branch` disambiguates conditional branches.** When the parent is a `conditional` block, `--branch true` appends to `whenTrue` and `--branch false` appends to `whenFalse`. If the parent is a conditional and `--branch` is omitted, the command fails.
 
-5. **No positional mutation.** There is no insert-at-index and no reordering. New blocks are always appended. `edit-block` and `remove-block` operate on existing blocks by ID without touching positions of other blocks.
+5. **CLI positional mutation is a human/power-user path, not an agent one.** `add-block` accepts `--before <id>` / `--after <id>` / `--position <n>` for placement within the resolved parent (default: append), and `move-block` repositions an existing block. The MCP agent surface withholds all three placement parameters, plus `move-block` itself, via a bind-time blacklist, so an agent's own writes are still append-only. `edit-block` and `remove-block` operate on existing blocks by ID without touching positions of other blocks.
 
 6. **IDs must be unique within the guide.** The CLI enforces ID uniqueness at creation time.
 
@@ -426,28 +426,31 @@ The central design challenge is keeping CLI flags tightly coupled to the Zod sch
 
 ```typescript
 // What kind of value the field holds: string, number, boolean, enum, array,
-// array-enum, literal, or unsupported.
+// array-enum, a union of primitives, literal, or unsupported.
 function describeField(field: z.ZodType): FieldShape;
 
 // The Commander spelling of one field, or null when it has none.
 function buildOptionForField(name: string, field: z.ZodType): commander.Option | null;
 ```
 
-Which fields become parameters is stated by a command's own schema (`CommandSpec`, see [`CLI-MCP-COMMAND-CONTRACT`](../../../pathfinder-rfcs/rfc/CLI-MCP-COMMAND-CONTRACT.md)), and `mountCommander` walks it. The type mapping below is what `describeField` decides and both entrypoints read, so a parameter cannot be an enum on one surface and an array on the other:
+Which fields become parameters is stated by a command's own schema (`CommandSpec`), and `mountCommander` walks it. The type mapping below is what `describeField` decides and both entrypoints read, so a parameter cannot be an enum on one surface and an array on the other:
 
-| Zod type                  | Commander option             | Help display                 |
-| ------------------------- | ---------------------------- | ---------------------------- |
-| `z.string()`              | `--name <string>`            | `--name <string>`            |
-| `z.string().optional()`   | `--name <string>` (optional) | `--name <string>`            |
-| `z.boolean().optional()`  | `--name` (flag)              | `--name`                     |
-| `z.enum(['a', 'b', 'c'])` | `--name <a\|b\|c>`           | `--name <a\|b\|c>`           |
-| `z.array(z.string())`     | `--name <item>` (repeatable) | `--name <item> (repeatable)` |
-| `z.number()`              | `--name <number>`            | `--name <number>`            |
-| `z.literal(...)`          | skipped                      | —                            |
+| Zod type                             | Commander option             | Help display                 |
+| ------------------------------------ | ---------------------------- | ---------------------------- |
+| `z.string()`                         | `--name <string>`            | `--name <string>`            |
+| `z.string().optional()`              | `--name <string>` (optional) | `--name <string>`            |
+| `z.boolean().optional()`             | `--name` (flag)              | `--name`                     |
+| `z.enum(['a', 'b', 'c'])`            | `--name <a\|b\|c>`           | `--name <a\|b\|c>`           |
+| `z.array(z.string())`                | `--name <item>` (repeatable) | `--name <item> (repeatable)` |
+| `z.number()`                         | `--name <number>`            | `--name <number>`            |
+| `z.union([z.string(), z.boolean()])` | `--name <string-or-boolean>` | `--name <string-or-boolean>` |
+| `z.literal(...)`                     | skipped                      | —                            |
 
 For array fields like `requirements` and `objectives`, options are repeatable: `--requirements on-page:/dashboards --requirements is-admin`.
 
-Fields named `type` are skipped — the block type is the subcommand name. Fields named `blocks`, `whenTrue`, `whenFalse`, and `steps` are skipped — these are populated by subcommands (`add-block`, `add-step`), not flags.
+A union of primitives (string, number, boolean — `input.defaultValue`'s `z.union([z.string(), z.boolean()])` is the schema's own example) is one parameter with more than one acceptable shape, not an unsupported one: the CLI coerces the typed token toward whichever branch it looks like (`"true"`/`"false"` to a boolean, a numeric string to a number where the union declares one) before the schema ever sees it, and the agent interface publishes `valueType: 'union'` with a `unionOf` list naming the accepted types. A union that mixes in a non-primitive branch — an object, an array, a nested union — still cannot become one CLI token and stays `unsupported`.
+
+Which fields become parameters is a fact about a `CommandSpec`'s own schema, not a name this bridge recognizes: a variant's schema simply does not declare `type` (the block type is the subcommand name) or `blocks` / `whenTrue` / `whenFalse` / `steps` (populated by subcommands like `add-block` and `add-step`, not flags), so there is nothing for `describeField` to see. An earlier version of this bridge walked a runtime schema and skipped fields by a hardcoded name list, which is also what silently dropped `create --type` — a package-type enum unrelated to any block discriminator, but named `type` all the same.
 
 ### Field descriptions via `.describe()`
 
@@ -971,7 +974,7 @@ If the CLI is published as a standalone npm package, the version is already coup
 
 ### Reordering
 
-Block reordering (`move-block`) is intentionally excluded. Moving blocks creates positional instability that is difficult for agents to reason about correctly. If structure needs to be substantially rearranged, removing and re-adding blocks in the correct order is the supported path.
+`move-block` exists on the CLI, but is withheld from the MCP agent surface: an agent that could reposition a block by moving it could also reorder by proxy, which is a bigger procedural surface than we want agents holding. A human using the CLI directly can call `move-block`; an agent instead removes and re-adds blocks in the correct order.
 
 ### Dry-run mode
 

@@ -1,5 +1,5 @@
 /**
- * Per-parameter policy metadata (RFC CLI-MCP-COMMAND-CONTRACT §8.2).
+ * Per-parameter policy metadata.
  *
  * Facts *about* a parameter that are not part of its type ride on the field via
  * Zod's `.meta()`, so there is no parallel spec object to keep in sync with it.

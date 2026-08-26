@@ -241,9 +241,7 @@ export interface EditBlockOptions {
  * `type` is a discriminator and the child collections are structure, both owned
  * by other commands. `id` is here because a block-level rename is non-trivial:
  * every conditional / quiz / guided reference and every cross-block link in the
- * package would need updating (TODO p5.8). Until that walker exists, authors who
- * guess wrong on a leaf id must remove and re-add; package-id renames have a
- * dedicated `rename-id` command.
+ * package would need updating.
  *
  * Exported because `edit-block` omits exactly these from its parameter surface, so the
  * two cannot disagree about what is editable.

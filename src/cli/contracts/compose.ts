@@ -1,6 +1,5 @@
 /**
  * Composing command schemas over shared runtime schemas
- * (RFC CLI-MCP-COMMAND-CONTRACT §8.2).
  *
  * `json-guide.schema.ts` and `package.schema.ts` are imported by ~30 non-CLI modules
  * — the block editor, `src/validation/*`, `src/package-engine/*`, `learning-paths`,
@@ -81,10 +80,9 @@ const UNWRAPPABLE: ReadonlySet<string> = new Set(['optional', 'default', 'prefau
  * For commands that edit an existing artifact, where absence has to mean "leave this
  * field alone" — a creation default contradicts that, since `repository` defaults to
  * `interactive-tutorials` and a defaulted parse of `set-manifest --description x`
- * would rewrite it. Stripping defaults makes absence unambiguous in the schema, which
- * is what lets a patch runner drop the "`false` and `[]` mean unset" heuristic (§8.5
- * decision (b)): together with the Commander adapter dropping default-sourced values,
- * a key is in the parsed input if and only if the caller supplied it.
+ * would rewrite it. Stripping defaults makes absence unambiguous in the schema: together
+ * with the Commander adapter dropping default-sourced values, a key is in the parsed
+ * input if and only if the caller supplied it.
  *
  * Field types widen to `unknown`, since the runtime schema re-validates the patched
  * artifact and this schema's job is the presence and shape of *parameters*. The

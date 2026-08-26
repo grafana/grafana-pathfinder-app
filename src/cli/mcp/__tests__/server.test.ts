@@ -828,8 +828,9 @@ describe('MCP server', () => {
 
       const { tools } = await client.listTools();
       const helpTool = tools.find((tool) => tool.name === 'pathfinder_help');
-      expect(helpTool?.description).toMatch(/list: true/);
-      expect(helpTool?.description).toMatch(/never send `--flag` names/);
+      expect(helpTool?.description).toMatch(/camelCase name/);
+      expect(helpTool?.description).toMatch(/JSON value types/);
+      expect(helpTool?.description).toMatch(/booleans are `true`\/`false`/);
     } finally {
       await close();
     }
@@ -839,8 +840,9 @@ describe('MCP server', () => {
     const { client, close } = await spinUp();
     try {
       const result = await callTool(client, 'pathfinder_help', { command: 'add-block' });
-      // `command` and `summary` are the minimum; the full shape is pinned by
-      // the CLI's surface-parity snapshot, not here.
+      // `command` and `summary` are the minimum; the full per-command shape is
+      // pinned by `command-interface.test.ts` and the CLI-side wrapper by
+      // `help-json.test.ts`, not here.
       expect(result.command).toBe('add-block');
       expect(typeof result.summary).toBe('string');
     } finally {

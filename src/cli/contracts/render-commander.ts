@@ -1,5 +1,5 @@
 /**
- * The Commander adapter (RFC CLI-MCP-COMMAND-CONTRACT §8.2).
+ * The Commander adapter.
  *
  * Renders a `CommandSpec` into a Commander `Command`, and provides the one
  * generic action handler that replaces the per-command `.action()` bodies.
@@ -422,15 +422,17 @@ export function mountCommanderGroup(group: CommandGroupSpec, presentation: Comma
  * listing, then the per-type help. Commander-only — agents get `requiredByType`
  * as structured data.
  *
- * The table lists flags an author types, which is where the two translations come
- * from: names are kebab-cased, and positionals are dropped because the usage line
- * has already covered `<dir>` and calling it `--dir` would be wrong. A group whose
- * variants take no flags at all gets no table, since every row would read `(none)`.
+ * `requiredByVariant(group, CLI_VIEW)` already names each flag the way this
+ * command line spells it — kebab-cased, via `CLI_VIEW.name` — so this only
+ * drops the positionals, which the usage line has already covered (`<dir>`
+ * printed once by `positionalToken`, calling it `--dir` too would be wrong).
+ * A group whose variants take no flags at all gets no table, since every row
+ * would read `(none)`.
  */
 function groupDescription(group: CommandGroupSpec, presentation: CommanderPresentation): string {
   const table = requiredByVariant(group, CLI_VIEW);
-  const positionals = new Set(presentation.positionals ?? []);
-  const flagsFor = (name: string) => (table[name] ?? []).filter((field) => !positionals.has(field));
+  const positionalFlags = new Set((presentation.positionals ?? []).map(fieldNameToFlag));
+  const flagsFor = (name: string) => (table[name] ?? []).filter((flag) => !positionalFlags.has(flag));
   if (Object.keys(table).every((name) => flagsFor(name).length === 0)) {
     return group.summary;
   }
@@ -438,7 +440,7 @@ function groupDescription(group: CommandGroupSpec, presentation: CommanderPresen
   const lines = ['', `Required flags by type (run \`${group.name} <type> --help\` for the full surface):`];
   for (const name of Object.keys(table).sort()) {
     const flags = flagsFor(name);
-    const spelled = flags.map((field) => `--${fieldNameToFlag(field)}`).join(' ');
+    const spelled = flags.map((flag) => `--${flag}`).join(' ');
     lines.push(`  ${name.padEnd(width)}  ${flags.length === 0 ? '(none)' : spelled}`);
   }
   return `${group.summary}\n${lines.join('\n')}`;

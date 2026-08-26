@@ -2,11 +2,10 @@
  * `pathfinder-cli add-step <dir> --parent <id> [flags]` — append a step to a
  * multistep or guided block. Content fields come from `JsonStepSchema`.
  *
- * Composition over a shared runtime schema (RFC CLI-MCP-COMMAND-CONTRACT §8.2): the
- * step content fields are copied out of `JsonStepSchema` and annotated as content,
- * and the command adds its own `parent` and `dir` on top. `JsonStepSchema` is left
- * untouched for the block editor and validation layer, which have no business knowing
- * about flags.
+ * Composition over a shared runtime schema: the step content fields are copied out
+ * of `JsonStepSchema` and annotated as content, and the command adds its own `parent`
+ * and `dir` on top. `JsonStepSchema` is left untouched for the block editor and
+ * validation layer, which have no business knowing about flags.
  */
 
 import { z } from 'zod';

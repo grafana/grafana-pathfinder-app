@@ -1,5 +1,5 @@
 /**
- * Command contracts (RFC CLI-MCP-COMMAND-CONTRACT §8).
+ * Command contracts.
  *
  * A command's Zod schema is the sole authority for its input shape. Commander
  * and the MCP surface are renderers over it, differing only in pre-processing.
