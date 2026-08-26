@@ -257,7 +257,10 @@ separately deadlined, because authlib dedupes it across concurrent callers with 
 canceled request would otherwise fail every waiter with a spurious outage. Within that deadline
 each source gets its own slice of what is left, so a source that stalls to its own timeout cannot
 consume the budget the next one needs — otherwise a self-hosted stack publishing a perfectly good
-key set would be reported as an outage without ever getting to answer.
+key set would be reported as an outage without ever getting to answer. The fetch refuses any
+redirect that leaves the endpoint's **origin** — scheme and host:port both, because a listener on
+another port or reached over another scheme serves different keys — and caps the chain at ten hops,
+since replacing net/http's `CheckRedirect` drops the cap that comes with it.
 
 Outbound, the ID token is **not** forwarded as a credential. It is exchanged for a short-lived
 on-behalf-of access token sent on `X-Access-Token`, per the outbound bullets above — never the

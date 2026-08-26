@@ -33,6 +33,10 @@ const SigningKeysPath = "/api/signing-keys/keys"
 // can shrink the budget instead of stalling for whole seconds.
 var signingKeysFetchTimeout = 5 * time.Second
 
+// signingKeysMaxRedirects re-imposes the hop cap that net/http's
+// defaultCheckRedirect carries, because the CheckRedirect below replaces it.
+const signingKeysMaxRedirects = 10
+
 // ErrMissingExpiry rejects an ID token carrying no `exp` claim. go-jose
 // validates expiry only when the claim is present, so without this an
 // `exp`-less token would verify as non-expiring.
@@ -101,17 +105,32 @@ func newKeyRetriever(keysURL string) authn.KeyRetriever {
 		authn.KeyRetrieverConfig{SigningKeysURL: keysURL},
 		authn.WithHTTPClientKeyRetrieverOpt(&http.Client{
 			Timeout: signingKeysFetchTimeout,
-			// A redirect off the endpoint's host would hand key selection to
-			// whatever origin it lands on, which forges any `sub` the proxies
-			// then trust.
+			// A redirect off the endpoint's origin would hand key selection to
+			// whatever it lands on, which forges any `sub` the proxies then
+			// trust. Scheme and host:port, not hostname alone: an http listener
+			// on another port, or a TLS one on the same port, is a different
+			// origin serving different keys.
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if req.URL.Hostname() != via[0].URL.Hostname() {
-					return fmt.Errorf("signing-keys redirect left %s: %s", via[0].URL.Hostname(), req.URL.Hostname())
+				if len(via) >= signingKeysMaxRedirects {
+					return fmt.Errorf("signing-keys fetch stopped after %d redirects", signingKeysMaxRedirects)
+				}
+				from, to := via[0].URL, req.URL
+				if !sameOrigin(from, to) {
+					return fmt.Errorf("signing-keys redirect left %s://%s: %s://%s",
+						from.Scheme, from.Host, to.Scheme, to.Host)
 				}
 				return nil
 			},
 		}),
 	)
+}
+
+// sameOrigin reports whether a redirect target is still the origin the fetch
+// started at. Host carries the port, so a listener on another port of the same
+// name is a different origin — as is the same port reached over a different
+// scheme.
+func sameOrigin(from, to *url.URL) bool {
+	return to.Scheme == from.Scheme && to.Host == from.Host
 }
 
 // keySource is one JWKS endpoint the chain may consult. The name appears in the

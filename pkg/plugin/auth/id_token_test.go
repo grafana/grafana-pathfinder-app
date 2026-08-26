@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -107,16 +108,25 @@ func TestVerify_SigningKeysRedirect(t *testing.T) {
 
 	const sameHostPath = "/api/other-signing-keys"
 	var sameHostFetches atomic.Int32
+	var hops atomic.Int32
 	stack := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case SigningKeysPath:
+		switch {
+		case r.URL.Path == SigningKeysPath:
 			http.Redirect(w, r, rogue.URL+SigningKeysPath, http.StatusFound)
-		case "/same-host" + SigningKeysPath:
+		case r.URL.Path == "/same-host"+SigningKeysPath:
 			http.Redirect(w, r, sameHostPath, http.StatusFound)
-		case sameHostPath:
+		case r.URL.Path == sameHostPath:
 			sameHostFetches.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"keys":[]}`))
+		// Same hostname as this server, different port: only Host tells the two
+		// origins apart, and the rogue server counts whether it was reached.
+		case r.URL.Path == "/other-port"+SigningKeysPath:
+			http.Redirect(w, r, rogue.URL+SigningKeysPath, http.StatusFound)
+		// A same-origin chain that never terminates, so only a hop cap ends it.
+		case strings.HasPrefix(r.URL.Path, "/loop"):
+			n := hops.Add(1)
+			http.Redirect(w, r, fmt.Sprintf("/loop%d", n)+SigningKeysPath, http.StatusFound)
 		default:
 			http.NotFound(w, r)
 		}
@@ -165,6 +175,74 @@ func TestVerify_SigningKeysRedirect(t *testing.T) {
 			t.Fatalf("redirect target fetched %d times, want 1", got)
 		}
 	})
+
+	// Host, not Hostname: an off-origin hop that keeps the hostname and changes
+	// the port hands key selection to a different listener just as completely.
+	t.Run("same hostname on another port refused", func(t *testing.T) {
+		before := rogueFetches.Load()
+		verifier, err := NewIDTokenVerifier("", stack.URL+"/other-port")
+		if err != nil {
+			t.Fatalf("NewIDTokenVerifier: %v", err)
+		}
+		_, err = verifier.Verify(context.Background(), tokenWithUnpublishedKID(t), testNamespace)
+		if !SigningKeysUnavailable(err) {
+			t.Fatalf("want a signing-keys fetch failure, got %v", err)
+		}
+		if got := rogueFetches.Load() - before; got != 0 {
+			t.Fatalf("rogue origin served the key set %d times, want 0", got)
+		}
+	})
+
+	// Replacing net/http's CheckRedirect also drops its hop cap, so the cap has
+	// to be re-imposed here: a same-origin chain passes the origin guard on every
+	// hop and would otherwise run until the fetch deadline.
+	t.Run("same-origin chain stops at the hop cap", func(t *testing.T) {
+		verifier, err := NewIDTokenVerifier("", stack.URL+"/loop")
+		if err != nil {
+			t.Fatalf("NewIDTokenVerifier: %v", err)
+		}
+		_, err = verifier.Verify(context.Background(), tokenWithUnpublishedKID(t), testNamespace)
+		if !SigningKeysUnavailable(err) {
+			t.Fatalf("want a signing-keys fetch failure, got %v", err)
+		}
+		if got := hops.Load(); got > signingKeysMaxRedirects {
+			t.Fatalf("chain served %d hops, want no more than %d", got, signingKeysMaxRedirects)
+		}
+	})
+}
+
+// The redirect guard's comparison, pinned directly: authlib flattens a
+// CheckRedirect refusal into a generic "request error", so an end-to-end test
+// cannot tell a refused hop from a hop that was followed and failed to connect.
+func TestSameOrigin(t *testing.T) {
+	cases := []struct {
+		name     string
+		from, to string
+		want     bool
+	}{
+		{name: "identical", from: "https://stack.example/a", to: "https://stack.example/b", want: true},
+		{name: "https downgraded to http", from: "https://stack.example/a", to: "http://stack.example/a"},
+		{name: "http upgraded to https", from: "http://stack.example/a", to: "https://stack.example/a"},
+		{name: "same hostname, another port", from: "http://stack.example:3000/a", to: "http://stack.example:9000/a"},
+		{name: "explicit port added", from: "http://stack.example/a", to: "http://stack.example:80/a"},
+		{name: "another host", from: "https://stack.example/a", to: "https://rogue.example/a"},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			from, err := url.Parse(tt.from)
+			if err != nil {
+				t.Fatalf("parse %q: %v", tt.from, err)
+			}
+			to, err := url.Parse(tt.to)
+			if err != nil {
+				t.Fatalf("parse %q: %v", tt.to, err)
+			}
+			if got := sameOrigin(from, to); got != tt.want {
+				t.Fatalf("sameOrigin(%q, %q) = %v, want %v", tt.from, tt.to, got, tt.want)
+			}
+		})
+	}
 }
 
 // tokenWithUnpublishedKID is a well-formed ES256 JWT naming a `kid` no JWKS
