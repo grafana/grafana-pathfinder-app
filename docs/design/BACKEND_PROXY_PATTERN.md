@@ -255,8 +255,11 @@ at most **five minutes**, then rebuilds it against the same signing-keys sources
 from JWKS remains trusted for no more than five minutes. The cache holds what a source **answered**,
 never a failure to reach one, so steady-state verification is free of network calls only for the
 sources that answered: a source nothing can reach is re-dialled on every verification. On a
-self-hosted stack the stack's own endpoint answers first, so auth-api is not reached at all. The
-**first** request bearing an unknown `kid` triggers an immediate re-fetch, so a newly published key
+self-hosted stack the stack answers first, so a caller whose `kid` it publishes never reaches
+auth-api at all. A token naming a `kid` the stack does not publish still falls through — an answer
+without a match is not a match — and auth-api is dialled for that request; being the last source, it
+gets whatever is left of the budget. The **first** request bearing an unknown `kid` triggers an
+immediate re-fetch, so a newly published key
 need not wait for that interval; if the key is still unpublished at that moment, authlib
 negative-caches the `kid` and later requests carrying it are rejected without re-fetching until the
 rebuild. That re-fetch merges into the current verifier's cached set rather than replacing it, so it

@@ -13,12 +13,18 @@ import (
 	"github.com/grafana/grafana-plugin-sdk-go/config"
 )
 
-// Granular unavailability reasons. The shared reasonBackendUnavailable lumps
-// four distinct structural causes plus every upstream error under one token,
-// which is undiagnosable from the capability envelope alone (the only signal
-// available without backend log access). These split it so the reason field
-// pinpoints the cause from the client. Machine tokens; the frontend gates on
-// capability.available and ignores the specific string.
+// Granular unavailability reasons, split out of the shared
+// reasonBackendUnavailable so the reason field names the cause rather than
+// lumping four structural causes and every upstream error under one token.
+// Machine tokens; the frontend gates on capability.available and ignores the
+// specific string.
+//
+// Only reasonFeatureToggleDisabled and reasonOBOUnavailable actually reach a
+// client on this route. The identity gate runs before resolveCustomGuideBackend
+// and needs both a namespace and an app URL itself, so a stack missing either
+// reports identity-unverifiable first; the reasonGrafanaConfigUnavailable guard
+// is dead for its own reason (config.GrafanaConfigFromContext never returns
+// nil). See customGuideCapability below for what the envelope can carry.
 const (
 	reasonGrafanaConfigUnavailable = "grafana-config-unavailable"
 	reasonFeatureToggleDisabled    = "feature-toggle-disabled"
