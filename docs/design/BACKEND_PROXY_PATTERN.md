@@ -577,7 +577,9 @@ out** — remove the write, not the read.
 - [ ] Namespace from `PluginConfigFromContext().Namespace` — never a query param
 - [ ] Inbound: JWKS signature verification everywhere via the shared verifier (plus `exp` present
       and the §3 `namespace` binding); `sub` extraction only where data is per-user; fail closed,
-      with the three §3 outcomes routed from the one shared `identityStatus`
+      with the three §3 outcomes routed from the one shared `identityStatus`. A new
+      `identityStatus` must be named in both `//exhaustive:enforce` switches —
+      `capabilityReason` and the completion write gate — which `npm run lint:go` enforces
 - [ ] Rebuild the verifier at least every 5 min; same-source rotation tests prove a removed key is
       rejected and a newly published key is accepted after refresh
 - [ ] Outbound: shared identity-forwarding helper; ID-token-derived headers only; never `Cookie`;

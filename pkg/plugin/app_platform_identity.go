@@ -67,8 +67,11 @@ const (
 // capabilityReason is the envelope token for a status. Every failing status has
 // one, because none of them is retryable and all three are served in-band. An
 // unrecognized status reports the generic identity failure rather than an empty
-// reason, since every status but identityVerified is served with no data.
+// reason, since every status but identityVerified is served with no data. The
+// default arm is the safe catch-all and stays; //exhaustive:enforce is what
+// makes a newly added status a lint failure here instead of a silent fall-through.
 func (s identityStatus) capabilityReason() string {
+	//exhaustive:enforce
 	switch s {
 	case identityVerified:
 		return ""
@@ -76,6 +79,8 @@ func (s identityStatus) capabilityReason() string {
 		return reasonIdentityUnverifiable
 	case identitySigningKeysDown:
 		return reasonSigningKeysUnreachable
+	case identityUnknown, identityRejected:
+		return reasonIdentityUnavailable
 	default:
 		return reasonIdentityUnavailable
 	}

@@ -172,13 +172,19 @@ func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Reques
 	//     queued write retry to the horizon and never disarm; the 404 disarms the
 	//     session while RETAINING the records, matching how the read path serves
 	//     the same two statuses.
+	// //exhaustive:enforce makes a newly added status a lint failure here rather
+	// than a silent 401. The default arm stays as the fail-closed catch-all.
 	userID, userLogin, userDisplayName, status := a.completionWriterIdentity(r)
+	//exhaustive:enforce
 	switch status {
 	case identityVerified:
 	case identityUnverifiable, identitySigningKeysDown:
 		reason := status.capabilityReason()
 		a.ctxLogger(r.Context()).Info("completion write route unavailable (structural)", "reason", reason)
 		a.writeError(w, reason, http.StatusNotFound)
+		return
+	case identityUnknown, identityRejected:
+		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
 		return
 	default:
 		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
