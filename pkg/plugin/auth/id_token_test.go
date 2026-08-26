@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -93,10 +94,11 @@ func TestVerify_KeyFetchDetachedFromCallerCancellation(t *testing.T) {
 	}
 }
 
-// A redirect off the stack's host must not be followed: whatever origin it
+// A redirect off the stack's origin must not be followed: whatever origin it
 // landed on would supply the key set, and any `sub` signed by that origin's key
-// would then verify. A redirect that stays on the host is fine — a legitimate
-// http→https hop changes the port, so the guard keys on hostname alone.
+// would then verify. The guard holds the fetch to the endpoint's origin — scheme
+// and host:port — so a same-origin hop is followed and any scheme or port change
+// is refused. The off-origin case below differs by host.
 func TestVerify_SigningKeysRedirect(t *testing.T) {
 	var rogueFetches atomic.Int32
 	rogue := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -134,7 +136,7 @@ func TestVerify_SigningKeysRedirect(t *testing.T) {
 	t.Cleanup(stack.Close)
 
 	// The stack's own host, spelled differently from the rogue server's, so the
-	// hostname guard has something to compare. Both listen on the loopback
+	// origin guard has something to compare. Both listen on the loopback
 	// address, which "localhost" also resolves to.
 	stackURL, err := url.Parse(stack.URL)
 	if err != nil {
@@ -291,8 +293,8 @@ func TestSigningKeysUnavailable(t *testing.T) {
 
 // --- Source-chain fixtures ---------------------------------------------------
 //
-// The verifier resolves a `kid` against auth-api first and the stack's own
-// signing-keys endpoint second. These tests sign real ES256 tokens and serve the
+// The verifier resolves a `kid` against the stack's own signing-keys endpoint
+// first and auth-api second. These tests sign real ES256 tokens and serve the
 // matching public key from local JWKS endpoints, so nothing sits between the
 // verifier and authlib: a token accepted here is accepted for the same reason
 // production would accept it.
@@ -345,6 +347,23 @@ func jwksServer(t *testing.T, path string, body []byte) *httptest.Server {
 			http.NotFound(w, r)
 			return
 		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// recordingJWKSServer is jwksServer with a hook that fires on each fetch, so a
+// test can pin the order the chain consults its sources in.
+func recordingJWKSServer(t *testing.T, path string, body []byte, onFetch func()) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != path {
+			http.NotFound(w, r)
+			return
+		}
+		onFetch()
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(body)
 	}))
@@ -436,7 +455,9 @@ func TestNewIDTokenVerifier_SourceChain(t *testing.T) {
 		{
 			name: "grafana cloud: auth-api serves the key, stack publishes none",
 			// The shape this fix exists for. Before it, the empty stack key set
-			// was the only source and every caller was reported unavailable.
+			// was the only source and every caller was reported unavailable. The
+			// stack is asked first and its `{"keys":null}` counts as an answer
+			// without matching the `kid`, so the chain falls through to auth-api.
 			authAPI: authAPIKeys, stack: stackEmpty,
 			token:        func(t *testing.T) string { return signToken(t, testKID, signingKey) },
 			wantVerified: true,
@@ -520,9 +541,10 @@ func TestNewIDTokenVerifier_SourceChain(t *testing.T) {
 	}
 }
 
-// auth-api is the issuer wherever it answers, so its key set decides. Both
-// sources publish a key under the same `kid` here; only auth-api's verifies.
-func TestNewIDTokenVerifier_AuthAPIWinsOverTheStack(t *testing.T) {
+// The stack is the authority for its own callers wherever it publishes a key,
+// and auth-api is consulted only where the stack does not. Both sources publish a
+// key under the same `kid` here; only the stack's verifies.
+func TestNewIDTokenVerifier_TheStackWinsOverAuthAPI(t *testing.T) {
 	authAPIKey := newSigningKey(t)
 	stackKey := newSigningKey(t)
 
@@ -534,11 +556,50 @@ func TestNewIDTokenVerifier_AuthAPIWinsOverTheStack(t *testing.T) {
 		t.Fatalf("NewIDTokenVerifier: %v", err)
 	}
 
-	if _, err := verifier.Verify(context.Background(), signToken(t, testKID, authAPIKey), testNamespace); err != nil {
-		t.Fatalf("auth-api-signed token: %v", err)
+	if _, err := verifier.Verify(context.Background(), signToken(t, testKID, stackKey), testNamespace); err != nil {
+		t.Fatalf("stack-signed token: %v", err)
 	}
-	if _, err := verifier.Verify(context.Background(), signToken(t, testKID, stackKey), testNamespace); err == nil {
-		t.Fatal("stack-signed token verified under a kid auth-api already claims")
+	if _, err := verifier.Verify(context.Background(), signToken(t, testKID, authAPIKey), testNamespace); err == nil {
+		t.Fatal("auth-api-signed token verified under a kid the stack already claims")
+	}
+}
+
+// The Grafana Cloud path depends on the chain FALLING THROUGH: the stack is asked
+// first and answers `{"keys":null}`, which counts as an answer without matching
+// the `kid`, so auth-api is still reached and verifies. Pins the ORDER, not only
+// the verdict — a chain that asked auth-api first would reach the same verdict
+// here and this is what tells the two apart.
+func TestNewIDTokenVerifier_CloudFallsThroughToAuthAPIAfterTheStack(t *testing.T) {
+	signingKey := newSigningKey(t)
+
+	var mu sync.Mutex
+	var asked []string
+	record := func(name string) {
+		mu.Lock()
+		defer mu.Unlock()
+		asked = append(asked, name)
+	}
+
+	stack := recordingJWKSServer(t, SigningKeysPath, emptyKeySet, func() { record("stack") })
+	authAPI := recordingJWKSServer(t, authAPIKeysPath, jwksBody(t, testKID, signingKey), func() { record("auth-api") })
+
+	verifier, err := NewIDTokenVerifier(authAPI.URL+authAPIKeysPath, stack.URL)
+	if err != nil {
+		t.Fatalf("NewIDTokenVerifier: %v", err)
+	}
+
+	sub, err := verifier.Verify(context.Background(), signToken(t, testKID, signingKey), testNamespace)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if sub != "user:1" {
+		t.Fatalf("sub = %q, want %q", sub, "user:1")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(asked) != 2 || asked[0] != "stack" || asked[1] != "auth-api" {
+		t.Fatalf("sources asked = %v, want [stack auth-api]", asked)
 	}
 }
 
@@ -664,10 +725,10 @@ func TestVerify_NoExpectedNamespaceIsReportedDistinctly(t *testing.T) {
 
 // --- Per-source budget -------------------------------------------------------
 
-// A stalling first source must not consume the budget the second one needs.
-// Self-hosted Grafana resolving api-lb.auth.svc.cluster.local. to somewhere that
-// accepts and then hangs would otherwise turn a stack publishing a perfectly
-// good key set into a hard 503 on every proxy route.
+// A stalling first source must not consume the budget the second one needs. The
+// stack is the first source, so it is the staller here: a Grafana Cloud stack
+// whose own signing-keys endpoint accepts and then hangs would otherwise turn a
+// perfectly good auth-api key set into a hard 503 on every proxy route.
 func TestVerify_StallingSourceLeavesTheNextOneTimeToAnswer(t *testing.T) {
 	withFetchTimeout(t, 600*time.Millisecond)
 
@@ -679,9 +740,9 @@ func TestVerify_StallingSourceLeavesTheNextOneTimeToAnswer(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	t.Cleanup(stalling.Close)
-	stack := jwksServer(t, SigningKeysPath, jwksBody(t, testKID, signingKey))
+	authAPI := jwksServer(t, authAPIKeysPath, jwksBody(t, testKID, signingKey))
 
-	verifier, err := NewIDTokenVerifier(stalling.URL+authAPIKeysPath, stack.URL)
+	verifier, err := NewIDTokenVerifier(authAPI.URL+authAPIKeysPath, stalling.URL)
 	if err != nil {
 		t.Fatalf("NewIDTokenVerifier: %v", err)
 	}
@@ -707,35 +768,35 @@ func TestVerify_SlowFirstSourceAndItsShare(t *testing.T) {
 
 	cases := []struct {
 		name string
-		// How long auth-api takes to serve a good key set.
+		// How long the stack takes to serve a good key set.
 		delay time.Duration
-		// Whether the stack behind it publishes one at all.
-		stackAnswers bool
-		// Whether auth-api is the source that ends up answering.
-		wantAuthAPIServed bool
-		wantVerified      bool
+		// Whether auth-api behind it publishes one at all.
+		authAPIAnswers bool
+		// Whether the stack is the source that ends up answering.
+		wantStackServed bool
+		wantVerified    bool
 	}{
 		{
-			name:              "slow inside its share, so it is still the source that answers",
-			delay:             share / 5,
-			stackAnswers:      true,
-			wantAuthAPIServed: true,
-			wantVerified:      true,
+			name:            "slow inside its share, so it is still the source that answers",
+			delay:           share / 5,
+			authAPIAnswers:  true,
+			wantStackServed: true,
+			wantVerified:    true,
 		},
 		{
-			name:         "overruns its share and loses its turn to the stack",
-			delay:        share + 200*time.Millisecond,
-			stackAnswers: true,
-			wantVerified: true,
+			name:           "overruns its share and loses its turn to auth-api",
+			delay:          share + 200*time.Millisecond,
+			authAPIAnswers: true,
+			wantVerified:   true,
 		},
 		{
 			// The accepted cost of reserving the second source a slice: a first
 			// source that would have answered inside the whole budget is cut off
 			// at its share, and with nothing behind it the chain reports an
 			// address problem rather than waiting.
-			name:         "overruns its share with nothing behind it, and the chain reports unreachable",
-			delay:        share + 200*time.Millisecond,
-			stackAnswers: false,
+			name:           "overruns its share with nothing behind it, and the chain reports unreachable",
+			delay:          share + 200*time.Millisecond,
+			authAPIAnswers: false,
 		},
 	}
 
@@ -745,25 +806,25 @@ func TestVerify_SlowFirstSourceAndItsShare(t *testing.T) {
 			signingKey := newSigningKey(t)
 			keySet := jwksBody(t, testKID, signingKey)
 
-			var authAPIServed atomic.Int32
+			var stackServed atomic.Int32
 			slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				select {
 				case <-time.After(tt.delay):
 				case <-r.Context().Done():
 					return
 				}
-				authAPIServed.Add(1)
+				stackServed.Add(1)
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write(keySet)
 			}))
 			t.Cleanup(slow.Close)
 
-			stackURL := unreachableURL(t)
-			if tt.stackAnswers {
-				stackURL = jwksServer(t, SigningKeysPath, keySet).URL
+			authAPIURL := unreachableURL(t) + authAPIKeysPath
+			if tt.authAPIAnswers {
+				authAPIURL = jwksServer(t, authAPIKeysPath, keySet).URL + authAPIKeysPath
 			}
 
-			verifier, err := NewIDTokenVerifier(slow.URL+authAPIKeysPath, stackURL)
+			verifier, err := NewIDTokenVerifier(authAPIURL, slow.URL)
 			if err != nil {
 				t.Fatalf("NewIDTokenVerifier: %v", err)
 			}
@@ -781,8 +842,8 @@ func TestVerify_SlowFirstSourceAndItsShare(t *testing.T) {
 					t.Fatalf("err = %v, want a signing-keys outage", err)
 				}
 			}
-			if served := authAPIServed.Load() > 0; served != tt.wantAuthAPIServed {
-				t.Fatalf("auth-api served the key set = %v, want %v", served, tt.wantAuthAPIServed)
+			if served := stackServed.Load() > 0; served != tt.wantStackServed {
+				t.Fatalf("the stack served the key set = %v, want %v", served, tt.wantStackServed)
 			}
 		})
 	}
@@ -885,8 +946,8 @@ func TestVerify_SigningKeysErrorNamesEverySource(t *testing.T) {
 				}
 				names = append(names, source.Name)
 			}
-			if len(names) != 2 || names[0] != "auth-api" || names[1] != "stack" {
-				t.Fatalf("sources = %v, want [auth-api stack] in chain order", names)
+			if len(names) != 2 || names[0] != "stack" || names[1] != "auth-api" {
+				t.Fatalf("sources = %v, want [stack auth-api] in chain order", names)
 			}
 			for _, name := range names {
 				if !strings.Contains(keysErr.SourceDetail(), name+": ") {

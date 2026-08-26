@@ -40,8 +40,8 @@ type App struct {
 	// those routes report themselves unavailable instead of failing.
 	oboExchanger *auth.Exchanger
 
-	// Verifies inbound Grafana ID tokens against auth-api's published JWKS,
-	// falling back to the stack's own. Built lazily (the stack's signing-keys
+	// Verifies inbound Grafana ID tokens against the stack's own published JWKS,
+	// falling back to auth-api's. Built lazily (the stack's signing-keys
 	// URL comes from the per-request Grafana config, unavailable in NewApp),
 	// keyed by app URL, and periodically rebuilt so a key removed from JWKS
 	// cannot remain trusted indefinitely.

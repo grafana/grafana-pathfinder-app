@@ -74,23 +74,28 @@ type IDTokenVerifier struct {
 	verifier *authn.IDTokenVerifier
 }
 
-// NewIDTokenVerifier builds a verifier over up to two JWKS endpoints, tried in
-// order: authAPIKeysURL (Grafana Cloud's token issuer) then stackAppURL's own
-// signing-keys endpoint (self-hosted Grafana, which issues its own tokens).
+// NewIDTokenVerifier builds a verifier over up to two JWKS endpoints. The chain
+// order is the STACK FIRST, then auth-api — it is NOT the parameter order, which
+// is kept for the call sites that pass both positionally. The stack's own
+// endpoint is the authority for its own callers; consulting an unauthenticated
+// in-cluster address ahead of it would let whatever answers that name decide who
+// the caller is. auth-api is reached only where the stack publishes no matching
+// key, which is the Grafana Cloud shape (`{"keys":null}`).
+//
 // Both are full ES256 verification; neither is a weaker check. Either may be
 // empty, but not both. Audience is deliberately not validated (see the trust
 // boundary in docs/design/BACKEND_PROXY_PATTERN.md §3).
 func NewIDTokenVerifier(authAPIKeysURL, stackAppURL string) (*IDTokenVerifier, error) {
 	var sources []keySource
-	if authAPIKeysURL != "" {
-		sources = append(sources, keySource{name: "auth-api", retriever: newKeyRetriever(authAPIKeysURL)})
-	}
 	if stackAppURL != "" {
 		keysURL, err := signingKeysURL(stackAppURL)
 		if err != nil {
 			return nil, err
 		}
 		sources = append(sources, keySource{name: "stack", retriever: newKeyRetriever(keysURL)})
+	}
+	if authAPIKeysURL != "" {
+		sources = append(sources, keySource{name: "auth-api", retriever: newKeyRetriever(authAPIKeysURL)})
 	}
 	if len(sources) == 0 {
 		return nil, errors.New("no signing-keys source: neither an auth-api JWKS URL nor a stack app URL")
@@ -193,7 +198,8 @@ type chainedKeyRetriever struct {
 // signing-keys address itself in question. The narrow test is deliberately on
 // the answered side: a stack publishing `{"keys":null}` while auth-api is
 // misconfigured therefore rejects the token rather than reporting the chain
-// unreachable.
+// unreachable. That empty-key-set answer is also what carries the Grafana Cloud
+// path past the stack to auth-api behind it.
 func (c *chainedKeyRetriever) Get(ctx context.Context, keyID string) (*jose.JSONWebKey, error) {
 	var answered bool
 	failures := make([]SigningKeySourceFailure, 0, len(c.sources))
@@ -218,8 +224,8 @@ func (c *chainedKeyRetriever) Get(ctx context.Context, keyID string) (*jose.JSON
 // getFrom reserves each still-untried source an equal share of the budget left
 // on ctx. Without it one stalling source consumes the whole of Verify's
 // deadline and every source after it fails on an already-expired context — so a
-// self-hosted stack publishing a perfectly good key set would be reported as
-// unreachable because it never got to answer.
+// source publishing a perfectly good key set would be reported as unreachable
+// because it never got to answer.
 func (c *chainedKeyRetriever) getFrom(ctx context.Context, source keySource, keyID string, untried int) (*jose.JSONWebKey, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok || untried <= 1 {

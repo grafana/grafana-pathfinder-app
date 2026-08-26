@@ -175,13 +175,23 @@ The `/completion-records/*` and `/custom-guide-repository` routes authenticate c
 it (`pkg/plugin/auth/id_token.go`, over `github.com/grafana/authlib`). Two sources are tried in
 order, and **both are full ES256 verification — neither is a relaxed check**:
 
-1. **auth-api**, `GET http://api-lb.auth.svc.cluster.local./v1/keys`. On Grafana Cloud the stack
+1. **the stack itself**, `GET {appURL}/api/signing-keys/keys` — the unauthenticated endpoint of the
+   same instance that issued the token. Self-hosted Grafana is its own issuer and populates this;
+   a Grafana Cloud stack serves `{"keys":null}` here. It is asked **first** because it is the
+   authority for its own callers. Asking an unauthenticated in-cluster address ahead of it would
+   let whatever answers that name decide who the caller is — and on a self-hosted cluster that
+   happens to run a service called `api-lb` in a namespace called `auth`, that name resolves.
+2. **auth-api**, `GET http://api-lb.auth.svc.cluster.local./v1/keys`. On Grafana Cloud the stack
    issues ID tokens but does not sign them; auth-api does. The plugin already reaches that host for
    the outbound on-behalf-of mint, and `deployment_tools` provisions the same URL into other
-   services as `AUTH_JWKS_URL` for this exact purpose.
-2. **the stack itself**, `GET {appURL}/api/signing-keys/keys` — the unauthenticated endpoint of the
-   same instance that issued the token. Self-hosted Grafana is its own issuer and populates this;
-   a Grafana Cloud stack serves `{"keys":null}` here.
+   services as `AUTH_JWKS_URL` for this exact purpose. Reached only where the stack published no
+   matching key — which is exactly the Cloud shape, since `{"keys":null}` counts as an answer
+   without resolving the `kid`.
+
+That order costs one thing, and it is worth stating rather than leaving implied: on a colliding
+`kid`, a Grafana Cloud stack that published a stale or wrong key would now outrank auth-api, which
+is the actual issuer there. Cloud stacks publish `{"keys":null}` today, so this does not arise in
+practice — but the ordering is what would decide it if one ever did.
 
 Exhausting both sources splits two ways, and the split is what keeps a misconfigured auth-api from
 being worse than no auth-api: if **any** source served a key set that did not carry the token's
@@ -245,24 +255,18 @@ at most **five minutes**, then rebuilds it against the same signing-keys sources
 from JWKS remains trusted for no more than five minutes. The cache holds what a source **answered**,
 never a failure to reach one, so steady-state verification is free of network calls only for the
 sources that answered: a source nothing can reach is re-dialled on every verification. On a
-self-hosted stack that source is auth-api. Accepted rather than negative-cached — the cost is
-bounded per request by that source's share of the fetch budget, not by the session. The per-session
-framing holds only where the route also refuses the caller: with the custom-guide aggregation toggle
-off the front-end never calls the route at all, because `isBackendApiAvailable`
-(`src/utils/interactive-guides-api.ts`) gates on that toggle. With the toggle on, verification
-succeeds via the stack's own source, so nothing refuses and every gated request pays the dead dial —
-and the catalogue client's 30-second cache means each expiry drives another one. The **first**
-request bearing an unknown `kid` triggers an immediate re-fetch, so a newly published key need not
-wait for that interval; if the key is still unpublished at that moment, authlib negative-caches the
-`kid` and later requests carrying it are rejected without re-fetching until the rebuild. That
-re-fetch merges into the current verifier's cached set rather than replacing it, so it never prunes
-a retired key and the five-minute rebuild stays the revocation bound. The fetch itself is detached
-from the caller's cancellation and separately deadlined, because authlib dedupes it across
-concurrent callers with singleflight: one canceled request would otherwise fail every waiter with a
-spurious outage. Within that deadline each source gets its own slice of what is left, so a source
-that stalls to its own timeout cannot consume the budget the next one needs — otherwise a
-self-hosted stack publishing a perfectly good key set would be reported as an outage without ever
-getting to answer. The fetch refuses any redirect that leaves the endpoint's **origin** — scheme and
+self-hosted stack the stack's own endpoint answers first, so auth-api is not reached at all. The
+**first** request bearing an unknown `kid` triggers an immediate re-fetch, so a newly published key
+need not wait for that interval; if the key is still unpublished at that moment, authlib
+negative-caches the `kid` and later requests carrying it are rejected without re-fetching until the
+rebuild. That re-fetch merges into the current verifier's cached set rather than replacing it, so it
+never prunes a retired key and the five-minute rebuild stays the revocation bound. The fetch itself
+is detached from the caller's cancellation and separately deadlined, because authlib dedupes it
+across concurrent callers with singleflight: one canceled request would otherwise fail every waiter
+with a spurious outage. Within that deadline each source gets its own slice of what is left, so a
+source that stalls to its own timeout cannot consume the budget the next one needs — otherwise a
+source publishing a perfectly good key set would be reported as an outage without ever getting to
+answer. The fetch refuses any redirect that leaves the endpoint's **origin** — scheme and
 host:port both, because a listener on another port or reached over another scheme serves different
 keys — and caps the chain at ten hops, since replacing net/http's `CheckRedirect` drops the cap that
 comes with it.
