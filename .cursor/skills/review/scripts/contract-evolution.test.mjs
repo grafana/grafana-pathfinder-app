@@ -238,7 +238,7 @@ test('#1297-style second unanchored branch is advisory and schema-compatible', (
     suggested_action: 'Centralize the event type',
     reversibility: 'reversible',
     applies_to_files: ['src/lib/telemetry.ts'],
-    disposition: 'advisory',
+    recommended_disposition: 'suggestion',
   });
 });
 
@@ -246,6 +246,7 @@ test('violated-anchor or mature branching is blocking', () => {
   assert.equal(decideDisposition(packet({ has_recorded_anchor: true, anchor_violated: true })).disposition, 'blocking');
   assert.equal(decideDisposition(packet({ use_ordinal: 'third_or_later' })).disposition, 'blocking');
   assert.equal(decideDisposition(packet({ same_bug_count: 2 })).disposition, 'blocking');
+  assert.equal(buildFinding(packet({ use_ordinal: 'third_or_later' })).recommended_disposition, 'blocking');
 });
 
 test('an unviolated anchor does not block early-use branching', () => {
@@ -290,7 +291,7 @@ test('downgraded clean verdict synthesizes a deterministic finding', () => {
   assert.equal(decideDisposition(value).effective_verdict, 'insufficient_history');
   const result = buildFinding(value);
   assert.equal(result.confidence, 'low');
-  assert.equal(result.disposition, 'advisory');
+  assert.equal(result.recommended_disposition, 'suggestion');
   assert.equal(result.finding_id, 'contract-evolution-telemetry-insufficient-history');
   assert.equal(result.reversibility, 'unknown');
   assert.deepEqual(result.applies_to_files, []);

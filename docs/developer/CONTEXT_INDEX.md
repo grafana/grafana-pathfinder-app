@@ -8,12 +8,13 @@ Load these files **only when working in the relevant domain**.
 
 ## Architecture and project context
 
-| File                      | When to load                                                                                                     | Auto-triggered by globs |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `projectbrief.mdc`        | Understanding project scope and goals                                                                            | --                      |
-| `techContext.mdc`         | Tech stack, dependencies, build system                                                                           | --                      |
-| `systemPatterns.mdc`      | Architecture, component relationships, per-subsystem entry points and key files                                  | --                      |
-| `docs/design/CONCERNS.md` | PR review routing, impact analysis, change risk classification, one-way door analysis, subsystem-aware debugging | --                      |
+| File                             | When to load                                                                                                            | Auto-triggered by globs |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `projectbrief.mdc`               | Understanding project scope and goals                                                                                   | --                      |
+| `techContext.mdc`                | Tech stack, dependencies, build system                                                                                  | --                      |
+| `systemPatterns.mdc`             | Architecture, component relationships, per-subsystem entry points and key files                                         | --                      |
+| `docs/design/CONCERNS.md`        | Compact PR review routing, impact analysis, and change risk classification                                              | --                      |
+| `docs/design/CONCERN_DETAILS.md` | Review guidance, one-way doors, and contract anchors; extract only the activated concern with the review skill's script | --                      |
 
 ## Interactive tutorial / guide authoring
 
