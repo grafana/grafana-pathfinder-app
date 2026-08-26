@@ -148,6 +148,17 @@ async function probePublishedGuide(namespace: string, packageId: string): Promis
  * present, otherwise an inferred `{ id, type: 'guide', repository: 'app-platform' }`
  * so legacy content-only guides stay loadable with no migration event (RFC §6.5).
  *
+ * `id` prefers `spec.id` over `packageId` (the resource name used to address
+ * this fetch) so this builder agrees with `buildLoaderManifest` in
+ * docs-retrieval's `backend-guide.ts` — the other manifest-builder for the
+ * same resource shape, which has always preferred `spec.id`. `spec.id` tracks
+ * an author's live guide id and can drift from the immutable resource name
+ * after a rename; before either builder's output reached a completion record
+ * for this scheme, the two disagreeing was dormant. `packageId` remains the
+ * fallback for legacy resources with no `spec.id` of their own, and a stray
+ * `spec.manifest.id` still never wins — it's overwritten by `id` below either
+ * way.
+ *
  * spec.title is mapped into the inferred manifest's `description` — milestone
  * resolution runs metadata-only (no `content`), so the label chain
  * (`content?.title ?? manifest?.description ?? id`) would otherwise fall back
@@ -164,17 +175,20 @@ async function probePublishedGuide(namespace: string, packageId: string): Promis
  * masquerade as authored data.
  */
 function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']): ManifestJson {
+  const resolvedId = spec?.id || packageId;
+
   if (spec?.manifest) {
     // Spread the persisted manifest first, then force BOTH id and repository
-    // last. id: a stray spec.manifest.id must not override the package being
-    // resolved. repository: the CR shape leaves it optional and the schema
-    // defaults it to the public CDN ('interactive-tutorials'); an App Platform
-    // guide is always app-platform-sourced, and `repository` is the sole input
-    // to the durable completion key (guideSource, completion-identity.ts), so a
-    // missing value would mislabel a private guide's provenance.
+    // last. id: a stray spec.manifest.id must not override the resource's own
+    // declared identity (resolvedId). repository: the CR shape leaves it
+    // optional and the schema defaults it to the public CDN
+    // ('interactive-tutorials'); an App Platform guide is always
+    // app-platform-sourced, and `repository` is the sole input to the durable
+    // completion key (guideSource, completion-identity.ts), so a missing value
+    // would mislabel a private guide's provenance.
     const parsed = ManifestJsonObjectSchema.loose().safeParse({
       ...spec.manifest,
-      id: packageId,
+      id: resolvedId,
       repository: APP_PLATFORM_REPOSITORY,
     });
     if (parsed.success) {
@@ -196,7 +210,7 @@ function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']
   }
 
   return {
-    id: packageId,
+    id: resolvedId,
     type: 'guide',
     repository: APP_PLATFORM_REPOSITORY,
     description: spec?.title,
