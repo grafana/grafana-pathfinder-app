@@ -55,9 +55,12 @@ export interface CustomGuideRepositoryEntry {
  * error.
  *
  * The identity gate runs before the backend resolver, so that resolver's
- * `namespace-unavailable`, `app-url-unavailable`, and `grafana-config-unavailable`
- * are all unreachable on this route — a stack missing any of those reports
- * `identity-unverifiable` first.
+ * `namespace-unavailable` and `app-url-unavailable` are unreachable on this
+ * route — a stack missing either reports `identity-unverifiable` first. Its
+ * `grafana-config-unavailable` is unreachable for an unrelated reason: the guard
+ * is `cfg == nil`, and the plugin SDK never returns a nil Grafana config (a
+ * missing context value and a nil pointer both yield an empty one), so that
+ * branch is dead whatever the gate ordering.
  */
 interface CustomGuideCapability {
   available: boolean;

@@ -245,22 +245,27 @@ at most **five minutes**, then rebuilds it against the same signing-keys sources
 from JWKS remains trusted for no more than five minutes. The cache holds what a source **answered**,
 never a failure to reach one, so steady-state verification is free of network calls only for the
 sources that answered: a source nothing can reach is re-dialled on every verification. On a
-self-hosted stack that source is auth-api. Accepted rather than negative-cached — the routes a
-self-hosted stack actually calls stop calling after their first refusal, so the cost is roughly one
-dead dial per browser session. The **first** request bearing an unknown `kid` triggers an immediate
-re-fetch, so a newly published key need not wait for that interval; if the key is still unpublished
-at that moment, authlib negative-caches the `kid` and later requests carrying it are rejected
-without re-fetching until the rebuild. That re-fetch merges into the current verifier's cached set
-rather than replacing it, so it never prunes a retired key and the five-minute rebuild stays the
-revocation bound. The fetch itself is detached from the caller's cancellation and
-separately deadlined, because authlib dedupes it across concurrent callers with singleflight: one
-canceled request would otherwise fail every waiter with a spurious outage. Within that deadline
-each source gets its own slice of what is left, so a source that stalls to its own timeout cannot
-consume the budget the next one needs — otherwise a self-hosted stack publishing a perfectly good
-key set would be reported as an outage without ever getting to answer. The fetch refuses any
-redirect that leaves the endpoint's **origin** — scheme and host:port both, because a listener on
-another port or reached over another scheme serves different keys — and caps the chain at ten hops,
-since replacing net/http's `CheckRedirect` drops the cap that comes with it.
+self-hosted stack that source is auth-api. Accepted rather than negative-cached — the cost is
+bounded per request by that source's share of the fetch budget, not by the session. The per-session
+framing holds only where the route also refuses the caller: with the custom-guide aggregation toggle
+off the front-end never calls the route at all, because `isBackendApiAvailable`
+(`src/utils/interactive-guides-api.ts`) gates on that toggle. With the toggle on, verification
+succeeds via the stack's own source, so nothing refuses and every gated request pays the dead dial —
+and the catalogue client's 30-second cache means each expiry drives another one. The **first**
+request bearing an unknown `kid` triggers an immediate re-fetch, so a newly published key need not
+wait for that interval; if the key is still unpublished at that moment, authlib negative-caches the
+`kid` and later requests carrying it are rejected without re-fetching until the rebuild. That
+re-fetch merges into the current verifier's cached set rather than replacing it, so it never prunes
+a retired key and the five-minute rebuild stays the revocation bound. The fetch itself is detached
+from the caller's cancellation and separately deadlined, because authlib dedupes it across
+concurrent callers with singleflight: one canceled request would otherwise fail every waiter with a
+spurious outage. Within that deadline each source gets its own slice of what is left, so a source
+that stalls to its own timeout cannot consume the budget the next one needs — otherwise a
+self-hosted stack publishing a perfectly good key set would be reported as an outage without ever
+getting to answer. The fetch refuses any redirect that leaves the endpoint's **origin** — scheme and
+host:port both, because a listener on another port or reached over another scheme serves different
+keys — and caps the chain at ten hops, since replacing net/http's `CheckRedirect` drops the cap that
+comes with it.
 
 Outbound, the ID token is **not** forwarded as a credential. It is exchanged for a short-lived
 on-behalf-of access token sent on `X-Access-Token`, per the outbound bullets above — never the
@@ -339,8 +344,11 @@ The baseline's model — error cached sticky for the full 6 h TTL, no stale-serv
   than lumping — the custom-guide route distinguishes missing identity, toggle off, no provisioned
   on-behalf-of credential, and `upstream-<status>` for a terminal upstream. Its resolver also
   defines `no app URL`, `no namespace` and `no Grafana config`, but the identity gate runs first
-  and needs all three itself, so a stack missing any of them reports `identity-unverifiable` and
-  those three reasons never reach the wire. The completion routes still collapse the config causes
+  and needs the first two itself, so a stack missing either reports `identity-unverifiable` and
+  those two reasons never reach the wire. `no Grafana config` never reaches it either, for an
+  unrelated reason: its guard is `cfg == nil`, and the plugin SDK never returns a nil Grafana
+  config — a missing context value and a nil pointer both yield an empty one — so that branch is
+  dead whatever the gate ordering. The completion routes still collapse the config causes
   into the catch-all `backend-unavailable`, while keeping identity itself split three ways into
   `identity-unavailable` (no acceptable caller token),
   `identity-unverifiable` (nothing this stack supplies makes verification possible), and

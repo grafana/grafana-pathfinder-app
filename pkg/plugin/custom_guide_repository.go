@@ -81,8 +81,12 @@ var customGuideListMaxTotalEntries = 50_000
 // customGuideCapability is the availability signal the front-end gates the
 // Custom Guides / My Learning surfaces on. `available` is read-derived: it
 // measures identity presence plus read-path reachability of the
-// interactiveguides API on this stack. Reasons use the shared machine tokens
-// reasonIdentityUnavailable / reasonBackendUnavailable (completion_records.go).
+// interactiveguides API on this stack. Reasons are reasonIdentityUnavailable,
+// reasonIdentityUnverifiable and reasonSigningKeysUnreachable (all via
+// identityStatus.capabilityReason()), reasonFeatureToggleDisabled,
+// reasonOBOUnavailable, and `upstream-<status>` for a terminal upstream.
+// reasonBackendUnavailable is unreachable here: its only assignment is
+// overwritten by `upstream-<status>`.
 type customGuideCapability struct {
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty"`
