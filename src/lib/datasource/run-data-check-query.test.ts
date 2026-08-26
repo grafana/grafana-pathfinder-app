@@ -125,7 +125,7 @@ describe('runDataCheckQuery', () => {
     });
 
     // Asserting against the constant only proves it is wired, never that it is
-    // still small. `CONCERNS.md` records relaxing these as a fracture, so the
+    // still small. `CONCERN_DETAILS.md` records relaxing these as a fracture, so the
     // numbers themselves are the contract and a one-line edit has to fail here.
     it('pins the caps to their agreed values, not merely to the constant', () => {
       expect(DATA_CHECK_QUERY_LIMITS.maxDataPoints).toBe(100);

@@ -149,18 +149,18 @@ Record each applicable condition; conditions classify the delta but do not deter
 
 ### Disposition table
 
-This table is the only source of disposition truth. `.cursor/skills/review/scripts/contract-evolution-policy.mjs` implements it.
+This table is the only source of disposition truth **for the contract evolution scan**. `.cursor/skills/review/scripts/contract-evolution-policy.mjs` implements it. Its `advisory` value is scan-internal vocabulary: `contract-evolution-policy.mjs` maps it to the author-facing `suggestion` when it converts a packet to a reviewer finding. The synthesizer still owns the final author disposition (see Author disposition guidance).
 
-| History and contract state                                             | Verdict                | Severity | Disposition |
-| ---------------------------------------------------------------------- | ---------------------- | -------- | ----------- |
-| Complete history; change conforms                                      | `follows_contract`     | —        | none        |
-| Complete history; one owner grows coherently                           | `coherent_extension`   | —        | none        |
-| No owner, any use ordinal                                              | `contract_missing`     | medium   | advisory    |
-| First or second use, no anchor violation                               | `contract_branching`   | medium   | advisory    |
-| Recorded anchor is violated and a branching condition exists           | `contract_branching`   | high     | blocking    |
-| Third-or-later use and a branching condition exists                    | `contract_branching`   | high     | blocking    |
-| Second or later bug in the same class and a branching condition exists | `contract_branching`   | high     | blocking    |
-| Partial or unavailable history with no recorded anchor                 | `insufficient_history` | low      | advisory    |
+| History and contract state                                             | Verdict                | Severity | Recommended disposition |
+| ---------------------------------------------------------------------- | ---------------------- | -------- | ----------------------- |
+| Complete history; change conforms                                      | `follows_contract`     | —        | none                    |
+| Complete history; one owner grows coherently                           | `coherent_extension`   | —        | none                    |
+| No owner, any use ordinal                                              | `contract_missing`     | medium   | advisory                |
+| First or second use, no anchor violation                               | `contract_branching`   | medium   | advisory                |
+| Recorded anchor is violated and a branching condition exists           | `contract_branching`   | high     | blocking                |
+| Third-or-later use and a branching condition exists                    | `contract_branching`   | high     | blocking                |
+| Second or later bug in the same class and a branching condition exists | `contract_branching`   | high     | blocking                |
+| Partial or unavailable history with no recorded anchor                 | `insufficient_history` | low      | advisory                |
 
 Every advisory or blocking packet is converted to the shared reviewer output schema before adversarial verification. Skeptics receive that finding, the relevant hunks, and the immutable sources recorded in the packet.
 
@@ -247,6 +247,8 @@ For PRs touching `pkg/**/*.go`, also check:
 
 ## Comment prefixes
 
+Reviewer-internal vocabulary for labelling findings before synthesis. The author-facing report carries only the three dispositions `review-report.mjs` accepts: a `[question]` becomes `blocking` or `suggestion` per the disposition guidance above, and `[security]` and `[react]` become the finding's `concern_id`.
+
 | Prefix         | Meaning                     |
 | -------------- | --------------------------- |
 | `[blocking]`   | Must fix before merge       |
@@ -274,18 +276,28 @@ The synthesizer emits this `ReviewReport` object after all supplemental checks f
 | `pr_title`      | string | Current PR title; the renderer derives a one-line purpose  |
 | `reviewed_head` | string | Full 40-character commit SHA                               |
 | `findings`      | array  | Retained, verified, deduplicated author-facing findings    |
+| `assessment`    | object | Optional; defaults to complete. See Incomplete assessment  |
 
 Each `findings` entry contains:
 
-- `id` — stable across re-reviews
-- `concern_id` — owning concern used to route an incremental re-review
+- `id` — stable across re-reviews, and unique within the report
+- `concern_id` — owning concern; rendered compactly and used to route an incremental re-review
 - `disposition` — `blocking | suggestion | nit`
-- `severity` — `critical | high | medium | low`
+- `severity` — `critical | high | medium | low`; rendered compactly
 - `title`
-- `problem` — concise evidence and consequence written for the PR author
+- `problem` — concise evidence and consequence written for the PR author, in one rendered line
 - `suggested_action` — the smallest change that resolves the finding
+- `reversibility` — optional; one of the four reversibility values. The renderer surfaces only `partially_reversible` and `irreversible_without_cleanup`, because only those change what the author must weigh
 
-Serialize the object to a temporary JSON file and render it with `.cursor/skills/review/scripts/review-report.mjs`. The script validates the schema, orders findings by disposition and severity, derives the verdict and counts, and emits the final text. Never hand-format around it.
+This is the complete author-facing vocabulary. `confidence`, skeptic reasoning, and every other reviewer-internal field stay in the debug trace — the renderer has no channel for them, so the synthesizer must not fold them into `problem` as prose.
+
+Serialize the object to a temporary JSON file and render it with `.cursor/skills/review/scripts/review-report.mjs`. The script validates the schema, orders findings by disposition and then severity, derives the verdict and counts, and emits the final text. Never hand-format around it.
+
+### Incomplete assessment
+
+`assessment` is `{ "status": "complete" }` by default and may be omitted. Set `{ "status": "incomplete", "reason": "<one concise sentence>" }` only when the review could not be completed — a reviewer that could not run, history the scan could not resolve, or a center of gravity the concern registry does not model well enough to assert a merge contract over.
+
+An incomplete report states the reason, claims no mergeability, renders `Verdict: Review Incomplete`, and lists any blockers found so far as findings rather than as a merge contract. A complete assessment with zero blockers still states that the PR is mergeable. Coverage gaps that do not undermine the merge claim stay in the debug trace.
 
 ### Merge contract
 
@@ -295,7 +307,7 @@ Do not emit headings, summaries, or status lines for processors that returned no
 
 ### Re-review state
 
-Immediately before the operator recap, the renderer emits a hidden `pathfinder-review-state` HTML comment containing version 1, `reviewed_head`, and each blocking finding's ID and owning concern. Only `review-report.mjs --parse-state` may consume it. A malformed marker or non-ancestor head disables the incremental fast path.
+Immediately before the operator recap, the renderer emits a hidden `pathfinder-review-state` HTML comment containing version 1, `reviewed_head`, and each blocking finding's ID and owning concern. Only `review-report.mjs --parse-state` may consume it, and only from that trailing position: the parser accepts the marker solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental fast path.
 
 ### Operator recap
 
@@ -308,7 +320,7 @@ Verdict: Request Changes
 1 blocking, 2 suggestions, 3 nits
 ```
 
-`Purpose` contains no newline and is capped at 120 characters. The renderer chooses `Approve`, `Approve with Minor`, or `Request Changes`. Nothing follows the count line.
+`Purpose` contains no newline and is capped at 120 characters. The renderer chooses `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Nothing follows the count line.
 
 ### Debug trace
 

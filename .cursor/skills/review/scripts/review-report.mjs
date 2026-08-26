@@ -16,9 +16,44 @@ const SEVERITY_RANK = new Map([
   ['medium', 2],
   ['low', 3],
 ]);
+const REVERSIBILITY = new Map([
+  ['reversible', null],
+  ['unknown', null],
+  ['partially_reversible', 'partially reversible'],
+  ['irreversible_without_cleanup', 'irreversible without cleanup'],
+]);
+const ASSESSMENT_STATUSES = ['complete', 'incomplete'];
+const MAX_INCOMPLETE_REASON = 240;
+const STATE_MARKER = /^<!-- pathfinder-review-state:(\{.+\}) -->$/;
+const RECAP_SHAPE = [
+  /^PR Review: https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/,
+  /^Purpose: \S.*$/,
+  /^Verdict: (?:Approve|Approve with Minor|Request Changes|Review Incomplete)$/,
+  /^\d+ blocking, \d+ suggestions?, \d+ nits?$/,
+];
+
+function oneLine(value) {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function trailingStateMarker(output) {
+  const lines = output.split('\n');
+  while (lines.length > 0 && lines.at(-1).trim() === '') {
+    lines.pop();
+  }
+  const recap = lines.slice(-RECAP_SHAPE.length);
+  if (recap.length !== RECAP_SHAPE.length || !RECAP_SHAPE.every((shape, index) => shape.test(recap[index]))) {
+    return null;
+  }
+  let index = lines.length - RECAP_SHAPE.length - 1;
+  while (index >= 0 && lines[index].trim() === '') {
+    index -= 1;
+  }
+  return index >= 0 ? (lines[index].match(STATE_MARKER)?.[1] ?? null) : null;
+}
 
 export function parseReviewState(output) {
-  const encoded = output.match(/<!-- pathfinder-review-state:(\{[^\n]+\}) -->/)?.[1];
+  const encoded = trailingStateMarker(output);
   if (!encoded) {
     return null;
   }
@@ -50,11 +85,30 @@ function countLabel(count, singular, plural = `${singular}s`) {
 
 function renderFinding(finding, index) {
   const actionLabel = finding.disposition === 'blocking' ? 'Required' : 'Suggested';
+  const meta = [finding.severity, finding.concern_id, REVERSIBILITY.get(finding.reversibility)].filter(Boolean);
   return [
-    `${index + 1}. [${finding.disposition}] **${finding.id} — ${finding.title}**`,
-    `   ${finding.problem.replace(/\s+/g, ' ').trim()}`,
-    `   ${actionLabel}: ${finding.suggested_action.replace(/\s+/g, ' ').trim()}`,
+    `${index + 1}. [${finding.disposition}] **${finding.id} — ${finding.title}** (${meta.join(' · ')})`,
+    `   ${oneLine(finding.problem)}`,
+    `   ${actionLabel}: ${oneLine(finding.suggested_action)}`,
   ].join('\n');
+}
+
+function readAssessment(report) {
+  const assessment = report.assessment;
+  if (assessment === undefined || assessment === null) {
+    return { status: 'complete', reason: null };
+  }
+  if (typeof assessment !== 'object' || !ASSESSMENT_STATUSES.includes(assessment.status)) {
+    throw new Error('assessment status must be complete or incomplete');
+  }
+  if (assessment.status === 'complete') {
+    return { status: 'complete', reason: null };
+  }
+  const reason = typeof assessment.reason === 'string' ? oneLine(assessment.reason) : '';
+  if (reason.length === 0 || reason.length > MAX_INCOMPLETE_REASON) {
+    throw new Error(`an incomplete assessment must state one reason of at most ${MAX_INCOMPLETE_REASON} characters`);
+  }
+  return { status: 'incomplete', reason };
 }
 
 function validateReport(report) {
@@ -73,6 +127,7 @@ function validateReport(report) {
   if (!Array.isArray(report.findings)) {
     throw new Error('findings must be an array');
   }
+  const seenIds = new Set();
   for (const finding of report.findings) {
     if (!DISPOSITIONS.includes(finding.disposition)) {
       throw new Error('finding disposition must be blocking, suggestion, or nit');
@@ -83,8 +138,15 @@ function validateReport(report) {
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(finding.id ?? '')) {
       throw new Error('finding id must be a stable identifier');
     }
+    if (seenIds.has(finding.id)) {
+      throw new Error(`finding id ${finding.id} must be unique across the report`);
+    }
+    seenIds.add(finding.id);
     if (!/^[a-z0-9-]+$/.test(finding.concern_id ?? '')) {
       throw new Error('finding concern_id must be a concern identifier');
+    }
+    if (finding.reversibility !== undefined && !REVERSIBILITY.has(finding.reversibility)) {
+      throw new Error('finding reversibility must be a documented reversibility value');
     }
     for (const field of ['title', 'problem', 'suggested_action']) {
       if (typeof finding[field] !== 'string' || finding[field].trim().length === 0) {
@@ -96,6 +158,7 @@ function validateReport(report) {
 
 export function renderReviewReport(report) {
   validateReport(report);
+  const assessment = readAssessment(report);
   const purpose = normalizePurpose(report.pr_title);
   const grouped = Object.fromEntries(DISPOSITIONS.map((disposition) => [disposition, []]));
   for (const finding of report.findings) {
@@ -108,7 +171,18 @@ export function renderReviewReport(report) {
   }
 
   const sections = [];
-  if (grouped.blocking.length > 0) {
+  if (assessment.status === 'incomplete') {
+    sections.push(
+      '## Review incomplete',
+      '',
+      `Reason: ${assessment.reason}`,
+      '',
+      'This review states no merge contract; treat merge readiness as unknown.'
+    );
+    if (grouped.blocking.length > 0) {
+      sections.push('', '## Blocking findings so far', '', grouped.blocking.map(renderFinding).join('\n\n'));
+    }
+  } else if (grouped.blocking.length > 0) {
     sections.push(
       '## Merge contract',
       '',
@@ -134,11 +208,13 @@ export function renderReviewReport(report) {
     countLabel(grouped.nit.length, 'nit'),
   ].join(', ');
   const verdict =
-    grouped.blocking.length > 0
-      ? 'Request Changes'
-      : grouped.suggestion.length > 0 || grouped.nit.length > 0
-        ? 'Approve with Minor'
-        : 'Approve';
+    assessment.status === 'incomplete'
+      ? 'Review Incomplete'
+      : grouped.blocking.length > 0
+        ? 'Request Changes'
+        : grouped.suggestion.length > 0 || grouped.nit.length > 0
+          ? 'Approve with Minor'
+          : 'Approve';
   const state = JSON.stringify({
     version: 1,
     reviewed_head: report.reviewed_head,

@@ -243,17 +243,20 @@ The synthesizer must:
 - treat an unanswered question as `blocking` only when the answer is required to merge; otherwise render it as a `suggestion`
 - state a complete merge contract: fixing every blocking ID must make the reviewed head mergeable, subject only to risks introduced by later commits
 
-Order findings by author disposition, then severity, then confidence.
+Order findings by author disposition, then severity. `review-report.mjs` applies that order; confidence stays internal and never reorders the author-facing report.
 
-Each finding should include:
+Emit each retained finding as a `ReviewReport` finding — that schema in `docs/design/PR_REVIEW.md` is the whole author-facing vocabulary, and the renderer expresses every field of it:
 
-- concern
-- problem
-- why it matters
-- reversibility classification
-- suggested action
+- `concern_id` and `severity` — rendered compactly on the finding's first line
+- `problem` — the evidence and its consequence, compressed into one line
+- `suggested_action`
+- `reversibility` — set it when a reviewer classified one; the renderer surfaces only `partially_reversible` and `irreversible_without_cleanup`, so an elevated one-way door reads as such without a separate section
+
+Confidence and raw reviewer reasoning have no field here by design: keep them in the debug trace rather than restating them inside `problem`.
 
 Do not report reviewers, processors, or evaluation lenses that produced no findings. If `coverage_confidence` is not `high`, emit a suggestion only when there is a concrete concern-registry change the author can make; otherwise retain the gap in the debug trace.
+
+Set the report's `assessment` to `incomplete` with one concise reason when the review could not be completed — a reviewer that could not run, history the scan could not resolve, or a center of gravity too weakly modelled to assert a merge contract over. An incomplete report claims no mergeability. A completed review with zero blockers still states that the PR is mergeable; do not use `incomplete` to hedge an ordinary clean result.
 
 ## 6. Tech-debt scan
 
@@ -307,8 +310,8 @@ Verdict: Request Changes
 1 blocking, 2 suggestions, 3 nits
 ```
 
-The PR URL must be complete and clickable. `Purpose` is derived from the PR title, contains no newline, and is capped at 120 characters. Nothing follows the count line.
+The PR URL must be complete and clickable. `Purpose` is derived from the PR title, contains no newline, and is capped at 120 characters. `Verdict` is `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Nothing follows the count line.
 
 ## 10. Pattern catalog
 
-The unified detection table (R1-R21, F1-F6, QC1-QC7), Go backend table (G1-G7), comment prefixes, and disposition matrix all live in `docs/design/PR_REVIEW.md`. Apply those checks during subsystem review under the `correctness-and-reliability`, `security`, and `go-backend` concerns, and use the prefix and disposition tables when reporting.
+The unified detection table (R1-R21, F1-F6, QC1-QC7), Go backend table (G1-G7), comment prefixes, and disposition matrix all live in `docs/design/PR_REVIEW.md`. Apply those checks during subsystem review under the `correctness-and-reliability`, `security`, and `go-backend` concerns. The prefix table is reviewer-internal vocabulary; the synthesizer maps it onto the three author dispositions the renderer accepts.
