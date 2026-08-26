@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { extractConcernContext, validateConcernRegistry } from './concern-context.mjs';
@@ -56,4 +56,22 @@ test('rejects routing values outside the registry schema', () => {
 
 test('keeps the always-loaded routing registry within its context budget', () => {
   assert.ok(Buffer.byteLength(concerns) < 25_000);
+});
+
+test('emits every completion-records doc as one loadable path', () => {
+  const context = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'completion-records',
+  });
+
+  assert.deepEqual(context.load_docs, [
+    'docs/design/BACKEND_PROXY_PATTERN.md',
+    '.cursor/rules/systemPatterns.mdc (tier-1 lib/ guide-stats bullet)',
+    'docs/developer/STEP_MODEL.md',
+  ]);
+  for (const doc of context.load_docs) {
+    assert.doesNotMatch(doc, /`/);
+    assert.ok(existsSync(fileURLToPath(new URL(`../../../../${doc.split(' ')[0]}`, import.meta.url))), doc);
+  }
 });
