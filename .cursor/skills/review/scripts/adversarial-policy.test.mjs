@@ -74,7 +74,10 @@ test('a split first wave escalates to exactly one tiebreaker', () => {
     ['uncertain', 'uncertain'],
   ]) {
     assert.deepEqual(
-      decideVerification({ severity: 'high' }, split.map((value) => verdict(value))),
+      decideVerification(
+        { severity: 'high' },
+        split.map((value) => verdict(value))
+      ),
       {
         lane: 'high_risk',
         dispatch: { role: 'tiebreaker', count: 1 },
@@ -168,10 +171,7 @@ test('the CLI emits the decision for a serialized finding and verdict trail', ()
   const dir = mkdtempSync(join(tmpdir(), 'adversarial-policy-'));
   tempDirs.push(dir);
   const inputPath = join(dir, 'input.json');
-  writeFileSync(
-    inputPath,
-    JSON.stringify({ finding: { severity: 'medium' }, verdicts: [verdict('refuted')] })
-  );
+  writeFileSync(inputPath, JSON.stringify({ finding: { severity: 'medium' }, verdicts: [verdict('refuted')] }));
   const output = execFileSync('node', [join(scriptDir, 'adversarial-policy.mjs'), inputPath], {
     encoding: 'utf8',
   });

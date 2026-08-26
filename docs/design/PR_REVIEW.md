@@ -2,7 +2,7 @@
 
 Canonical reference for what reviewers (human or agent) check against when reviewing a PR in this repository. Tool-neutral. Both Cursor and Claude Code skills load this document.
 
-The orchestration workflow that uses this catalog lives in `.cursor/skills/review/SKILL.md` (invoked via `/review`). The concern routing table lives in `docs/design/CONCERNS.md`.
+The orchestration workflow that uses this catalog lives in `.cursor/skills/review/SKILL.md` (invoked via `/review`). The concern routing table lives in `docs/design/CONCERNS.md`; per-concern review guidance, one-way doors, and contract anchors live in `docs/design/CONCERN_DETAILS.md` and are extracted one concern at a time by `.cursor/skills/review/scripts/concern-context.mjs`.
 
 ## Reviewer output schema
 
