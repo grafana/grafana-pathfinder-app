@@ -297,7 +297,7 @@ Serialize the object to a temporary JSON file and render it with `.cursor/skills
 
 `assessment` is `{ "status": "complete" }` by default and may be omitted. Set `{ "status": "incomplete", "reason": "<one concise sentence>" }` only when the review could not be completed — a reviewer that could not run, history the scan could not resolve, or a center of gravity the concern registry does not model well enough to assert a merge contract over.
 
-An incomplete report states the reason, claims no mergeability, renders `Verdict: Review Incomplete`, and lists any blockers found so far as findings rather than as a merge contract. A complete assessment with zero blockers still states that the PR is mergeable. Coverage gaps that do not undermine the merge claim stay in the debug trace.
+An incomplete report states the reason, claims no mergeability, renders `Verdict: Review Incomplete`, lists any blockers found so far as findings rather than as a merge contract, and publishes no re-review state marker. A complete assessment with zero blockers still states that the PR is mergeable. Coverage gaps that do not undermine the merge claim stay in the debug trace.
 
 ### Merge contract
 
@@ -307,7 +307,9 @@ Do not emit headings, summaries, or status lines for processors that returned no
 
 ### Re-review state
 
-Immediately before the operator recap, the renderer emits a hidden `pathfinder-review-state` HTML comment containing version 1, `reviewed_head`, and each blocking finding's ID and owning concern. Only `review-report.mjs --parse-state` may consume it, and only from that trailing position: the parser accepts the marker solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental fast path.
+Immediately before the operator recap, a **complete** review emits a hidden `pathfinder-review-state` HTML comment containing version 1, `reviewed_head`, and each blocking finding's ID and owning concern. Only `review-report.mjs --parse-state` may consume it, and only from that trailing position: the parser accepts the marker solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. It accepts either LF or CRLF line endings, because a body edited through the GitHub web UI comes back CRLF-encoded. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental fast path.
+
+An **incomplete** review emits no marker at all. Its coverage hole is exactly what an incremental baseline must not inherit, so every later review of that PR falls back to a full review.
 
 ### Operator recap
 

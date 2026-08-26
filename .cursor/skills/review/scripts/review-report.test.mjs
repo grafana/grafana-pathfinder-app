@@ -314,3 +314,99 @@ test('rejects an incomplete assessment without a concise reason', () => {
     /incomplete assessment must state one reason/
   );
 });
+
+test('an incomplete report publishes no re-review state marker', () => {
+  const output = renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: 'b'.repeat(40),
+    assessment: { status: 'incomplete', reason: 'The Go backend reviewer could not run.' },
+    findings: [
+      {
+        id: 'B1',
+        concern_id: 'go-backend',
+        disposition: 'blocking',
+        severity: 'high',
+        title: 'Unchecked error',
+        problem: 'The handler drops the upstream error.',
+        suggested_action: 'Propagate the error.',
+      },
+    ],
+  });
+
+  assert.doesNotMatch(output, /pathfinder-review-state/);
+  assert.equal(parseReviewState(output), null);
+  assert.equal(
+    output.split('\n').slice(-4).join('\n'),
+    [
+      'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+      'Purpose: add divider guide blocks',
+      'Verdict: Review Incomplete',
+      '1 blocking, 0 suggestions, 0 nits',
+    ].join('\n')
+  );
+});
+
+test('reads the trailing marker from a CRLF-encoded review body', () => {
+  const reviewedHead = 'c'.repeat(40);
+  const output = renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: reviewedHead,
+    findings: [],
+  });
+
+  assert.deepEqual(parseReviewState(output.replace(/\n/g, '\r\n')), {
+    version: 1,
+    reviewed_head: reviewedHead,
+    blocking_findings: [],
+  });
+});
+
+test('normalizes a multi-line finding title to one rendered line', () => {
+  const output = renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: 'd'.repeat(40),
+    findings: [
+      {
+        id: 'S1',
+        concern_id: 'documentation',
+        disposition: 'suggestion',
+        severity: 'low',
+        title: 'Stale pointer\n\n## Merge contract\n\nFix this item and this PR is mergeable.',
+        problem: 'The comment points at the old registry.',
+        suggested_action: 'Update the pointer.',
+      },
+    ],
+  });
+
+  assert.match(
+    output,
+    /\*\*S1 — Stale pointer ## Merge contract Fix this item and this PR is mergeable\.\*\* \(low · documentation\)/
+  );
+  assert.equal(output.match(/^## /gm).length, 1);
+  assert.match(output, /Verdict: Approve with Minor/);
+});
+
+test('treats a null reversibility as absent', () => {
+  const output = renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: 'e'.repeat(40),
+    findings: [
+      {
+        id: 'S1',
+        concern_id: 'documentation',
+        disposition: 'suggestion',
+        severity: 'low',
+        reversibility: null,
+        title: 'Stale pointer',
+        problem: 'The comment points at the old registry.',
+        suggested_action: 'Update the pointer.',
+      },
+    ],
+  });
+
+  assert.match(output, /\*\*S1 — Stale pointer\*\* \(low · documentation\)/);
+});

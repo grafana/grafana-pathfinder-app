@@ -54,7 +54,7 @@ Use the fast path only when the marker validates and its `reviewed_head` is an a
 3. Activate the union of concerns owning prior blockers and concerns routed by the incremental diff.
 4. Do not repeat resolved optional findings unless the new diff reintroduces them.
 
-This is an incremental review, not a blockers-only check. Fall back to a full review when the prior head is not an ancestor, the marker is absent or malformed, a blocker cannot be resolved to current code, or the incremental diff crosses an unmapped concern boundary.
+This is an incremental review, not a blockers-only check. Fall back to a full review when the prior head is not an ancestor, the marker is absent or malformed, a blocker cannot be resolved to current code, or the incremental diff crosses an unmapped concern boundary. A review that ended `incomplete` emits no marker, so it can never seed a fast path.
 
 ## 3b. Contract evolution scan
 
@@ -256,7 +256,7 @@ Confidence and raw reviewer reasoning have no field here by design: keep them in
 
 Do not report reviewers, processors, or evaluation lenses that produced no findings. If `coverage_confidence` is not `high`, emit a suggestion only when there is a concrete concern-registry change the author can make; otherwise retain the gap in the debug trace.
 
-Set the report's `assessment` to `incomplete` with one concise reason when the review could not be completed — a reviewer that could not run, history the scan could not resolve, or a center of gravity too weakly modelled to assert a merge contract over. An incomplete report claims no mergeability. A completed review with zero blockers still states that the PR is mergeable; do not use `incomplete` to hedge an ordinary clean result.
+Set the report's `assessment` to `incomplete` with one concise reason when the review could not be completed — a reviewer that could not run, history the scan could not resolve, or a center of gravity too weakly modelled to assert a merge contract over. An incomplete report claims no mergeability and emits no re-review state, so the next review starts over in full. A completed review with zero blockers still states that the PR is mergeable; do not use `incomplete` to hedge an ordinary clean result.
 
 ## 6. Tech-debt scan
 

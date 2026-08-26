@@ -37,7 +37,7 @@ function oneLine(value) {
 }
 
 function trailingStateMarker(output) {
-  const lines = output.split('\n');
+  const lines = output.split(/\r?\n/);
   while (lines.length > 0 && lines.at(-1).trim() === '') {
     lines.pop();
   }
@@ -87,7 +87,7 @@ function renderFinding(finding, index) {
   const actionLabel = finding.disposition === 'blocking' ? 'Required' : 'Suggested';
   const meta = [finding.severity, finding.concern_id, REVERSIBILITY.get(finding.reversibility)].filter(Boolean);
   return [
-    `${index + 1}. [${finding.disposition}] **${finding.id} — ${finding.title}** (${meta.join(' · ')})`,
+    `${index + 1}. [${finding.disposition}] **${finding.id} — ${oneLine(finding.title)}** (${meta.join(' · ')})`,
     `   ${oneLine(finding.problem)}`,
     `   ${actionLabel}: ${oneLine(finding.suggested_action)}`,
   ].join('\n');
@@ -145,7 +145,7 @@ function validateReport(report) {
     if (!/^[a-z0-9-]+$/.test(finding.concern_id ?? '')) {
       throw new Error('finding concern_id must be a concern identifier');
     }
-    if (finding.reversibility !== undefined && !REVERSIBILITY.has(finding.reversibility)) {
+    if (finding.reversibility != null && !REVERSIBILITY.has(finding.reversibility)) {
       throw new Error('finding reversibility must be a documented reversibility value');
     }
     for (const field of ['title', 'problem', 'suggested_action']) {
@@ -215,21 +215,16 @@ export function renderReviewReport(report) {
         : grouped.suggestion.length > 0 || grouped.nit.length > 0
           ? 'Approve with Minor'
           : 'Approve';
-  const state = JSON.stringify({
-    version: 1,
-    reviewed_head: report.reviewed_head,
-    blocking_findings: grouped.blocking.map(({ id, concern_id }) => ({ id, concern_id })),
-  });
+  if (assessment.status === 'complete') {
+    const state = JSON.stringify({
+      version: 1,
+      reviewed_head: report.reviewed_head,
+      blocking_findings: grouped.blocking.map(({ id, concern_id }) => ({ id, concern_id })),
+    });
+    sections.push('', `<!-- pathfinder-review-state:${state} -->`);
+  }
 
-  sections.push(
-    '',
-    `<!-- pathfinder-review-state:${state} -->`,
-    '',
-    `PR Review: ${report.pr_url}`,
-    `Purpose: ${purpose}`,
-    `Verdict: ${verdict}`,
-    counts
-  );
+  sections.push('', `PR Review: ${report.pr_url}`, `Purpose: ${purpose}`, `Verdict: ${verdict}`, counts);
   return sections.join('\n');
 }
 
