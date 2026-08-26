@@ -125,3 +125,13 @@ Keep this file for knowledge useful to almost every future agent session in this
 Do not repeat what the codebase already shows; point to the authoritative file or command instead.
 Prefer rewriting or pruning existing entries over appending new ones.
 When updating this file, preserve this bar for all agents and keep entries concise.
+
+Two exceptions, both enforced elsewhere:
+
+- The tier list under "Frontend tier model" is a deliberate repetition of `TIER_MAP` in
+  `src/validation/import-graph.ts`. `src/validation/architecture.test.ts` fails when the two
+  disagree, so keep that list in sync rather than replacing it with a pointer.
+- The section headings are addressable. `.cursor/skills/prevent-doc-drift/SKILL.md` decides where to
+  write by heading name — "Essential commands", "Frontend tier model", "Backend (`pkg/`)" and
+  "On-demand context" — so renaming or removing one of those means updating that skill in the same
+  change.
