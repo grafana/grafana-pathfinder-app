@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "repository": "grafana/grafana-pathfinder-app",
+  "internal_author_policy": "explicit_internal_handles",
+  "ci_config_prefix": ".github/",
+  "cla": {
+    "context": "license/cla",
+    "signed_description": "Contributor License Agreement is signed.",
+    "not_signed_description": "Contributor License Agreement is not signed yet."
+  },
+  "scanner": {
+    "minimum_blocking_severity": "High"
+  },
+  "review_skill": ".cursor/skills/review/SKILL.md",
+  "review_policy": "docs/design/PR_REVIEW.md",
+  "contributor_guide": "https://github.com/grafana/grafana-pathfinder-app/blob/main/CONTRIBUTING.md",
+  "internal_handles": [
+    "Jayclifford345",
+    "tomglenn",
+    "leslie-heinzen",
+    "moxious",
+    "Spidy88",
+    "dgehring-grafana"
+  ],
+  "blocker_priority": ["cla", "signing"]
+}
