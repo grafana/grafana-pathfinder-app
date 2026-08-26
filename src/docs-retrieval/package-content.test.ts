@@ -952,6 +952,43 @@ describe('fetchPackageContent path-type enrichment', () => {
       expect(result.content.metadata.learningJourney).toBeDefined();
     }
   });
+
+  it('degrades baseUrl gracefully when the manifest id no longer resolves (e.g. a renamed guide)', async () => {
+    // manifest.id feeds the baseUrl-hydration resolve() call below. If it no
+    // longer matches any resolvable resource — the exact shape a resource-name
+    // vs. spec.id divergence produces after app-platform-resolver.ts's
+    // buildManifest fix — that resolve() call fails (`ok: false`), and
+    // learningJourney.baseUrl must fall back to the milestone's own contentUrl
+    // rather than throwing or leaving baseUrl undefined.
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) => {
+        if (id === 'renamed-path-id') {
+          return Promise.resolve({ ok: false, id, error: { code: 'not-found', message: 'renamed' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        });
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'renamed-path-id',
+      type: 'path',
+      milestones: ['first-dashboard'],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content).toBeTruthy();
+    expect(result.content?.metadata.learningJourney?.baseUrl).toBe('bundled:first-dashboard/content.json');
+  });
 });
 
 // The realistically-broken catalogue inputs: the CR manifest leaves
