@@ -117,15 +117,16 @@ describe('getAvailableConversions', () => {
       ]);
     });
 
-    it('should offer every non-excluded target except the source, for every eligible source', () => {
-      const eligibleSources = ALL_BLOCK_TYPES.filter((type) => !SOURCE_EXCLUDED_BLOCK_TYPES.includes(type));
-
-      for (const source of eligibleSources) {
-        const expected = ALL_BLOCK_TYPES.filter(
-          (target) => target !== source && !TARGET_EXCLUDED_BLOCK_TYPES.includes(target)
-        );
-        expect([...getAvailableConversions(source)].sort()).toEqual([...expected].sort());
-      }
+    it('should hide targets whose required content cannot be supplied by a divider', () => {
+      expect(getAvailableConversions('divider')).toEqual([
+        'image',
+        'video',
+        'multistep',
+        'guided',
+        'terminal-connect',
+        'challenge',
+        'code-block',
+      ]);
     });
   });
 });
@@ -500,21 +501,6 @@ describe('convertBlockType', () => {
 
     const sampleEntries = Object.entries(SAMPLE_BLOCKS) as Array<[BlockType, JsonBlock]>;
 
-    /**
-     * Sources with no `CONTENT_FIELDS` entry — `image`, `video`, `collapsible`,
-     * `assistant` and `snippet-ref` — carry no text into a target whose required
-     * text field has no `REQUIRED_DEFAULTS` fallback, so the conversion throws.
-     * Pinned here so adding a fallback moves this list deliberately.
-     */
-    const CONTENTLESS_SOURCE_FAILURES: Partial<Record<BlockType, readonly BlockType[]>> = {
-      image: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
-      video: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
-      divider: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
-      collapsible: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
-      assistant: ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
-      'snippet-ref': ['markdown', 'html', 'interactive', 'quiz', 'input', 'terminal', 'callout'],
-    };
-
     it('samples every convertible source type', () => {
       const missing = ALL_BLOCK_TYPES.filter(
         (type) => !SOURCE_EXCLUDED_BLOCK_TYPES.includes(type) && !sampleEntries.some(([sampled]) => sampled === type)
@@ -523,16 +509,11 @@ describe('convertBlockType', () => {
     });
 
     it.each(sampleEntries)('should convert %s to every available target', (sourceType, source) => {
-      const expectedFailures = CONTENTLESS_SOURCE_FAILURES[sourceType] ?? [];
       const targets = getAvailableConversions(sourceType);
       expect(targets.length).toBeGreaterThan(0);
 
       for (const target of targets) {
-        if (expectedFailures.includes(target)) {
-          expect(() => convertBlockType(source, target)).toThrow(/failed validation/);
-        } else {
-          expect(convertBlockType(source, target).type).toBe(target);
-        }
+        expect(convertBlockType(source, target).type).toBe(target);
       }
     });
 

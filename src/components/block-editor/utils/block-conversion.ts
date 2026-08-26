@@ -169,6 +169,29 @@ const REQUIRED_DEFAULTS: Record<BlockType, Record<string, unknown> | null> = {
   'snippet-ref': null,
 };
 
+const CONTENT_REQUIRED_TARGETS = new Set<BlockType>([
+  'markdown',
+  'html',
+  'callout',
+  'interactive',
+  'quiz',
+  'input',
+  'terminal',
+]);
+
+function canProvideTargetContent(sourceType: BlockType, targetType: BlockType): boolean {
+  if (!CONTENT_REQUIRED_TARGETS.has(targetType) || CONTENT_FIELDS[sourceType]) {
+    return true;
+  }
+
+  const targetContentField = CONTENT_FIELDS[targetType];
+  if (!targetContentField) {
+    return true;
+  }
+
+  return REQUIRED_DEFAULTS[targetType]?.[targetContentField] !== undefined;
+}
+
 // ============ Public API ============
 
 /**
@@ -190,7 +213,9 @@ export function getAvailableConversions(sourceType: BlockType): BlockType[] {
     return [];
   }
 
-  return CONVERTIBLE_TYPES.filter((t) => t !== sourceType);
+  return CONVERTIBLE_TYPES.filter(
+    (targetType) => targetType !== sourceType && canProvideTargetContent(sourceType, targetType)
+  );
 }
 
 /**
