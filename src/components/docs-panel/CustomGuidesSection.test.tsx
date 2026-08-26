@@ -96,6 +96,7 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
       // can recover the cover baseUrl.
       packageManifest: { ...pathGuide.manifest, id: 'fe-alerting-path' },
       resolvedMilestones: undefined,
+      launchSource: 'custom_guide',
     });
   });
 
@@ -141,7 +142,7 @@ describe('CustomGuidesSection — path cards (launch bridge)', () => {
     expect(openDocsPage).toHaveBeenCalledWith(
       'backend-guide:fe-alerting-01',
       'Alerting enablement',
-      expect.objectContaining({ packageId: 'fe-alerting-path' })
+      expect.objectContaining({ packageId: 'fe-alerting-path', launchSource: 'custom_guide' })
     );
 
     // Locked member is rendered but disabled and not clickable.

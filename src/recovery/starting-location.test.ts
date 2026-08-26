@@ -150,6 +150,44 @@ describe('resolveStartingLocation', () => {
     const result = resolveStartingLocation('bundled:array-shape', parsed);
     expect(result).toBe('/explore');
   });
+
+  describe('with more than one manifest', () => {
+    it('keeps the earlier manifest authoritative when it declares a value', () => {
+      const result = resolveStartingLocation('https://example/foo', [
+        { startingLocation: '/from-catalogue' },
+        { startingLocation: '/from-loader' },
+      ]);
+      expect(result).toBe('/from-catalogue');
+    });
+
+    it('falls back to a later manifest when the earlier one was pruned at the wire', () => {
+      // The catalogue proxy's Go manifest struct declares no startingLocation, so
+      // the key never survives encoding; the loader's manifest still carries it.
+      const result = resolveStartingLocation('https://example/foo', [
+        { id: 'guide-1' },
+        { startingLocation: '/from-loader' },
+      ]);
+      expect(result).toBe('/from-loader');
+    });
+
+    it('skips an undefined manifest without consuming the fallback', () => {
+      const result = resolveStartingLocation('https://example/foo', [undefined, { startingLocation: '/from-loader' }]);
+      expect(result).toBe('/from-loader');
+    });
+
+    it('treats an empty-string value as undeclared and keeps looking', () => {
+      const result = resolveStartingLocation('https://example/foo', [
+        { startingLocation: '' },
+        { startingLocation: '/from-loader' },
+      ]);
+      expect(result).toBe('/from-loader');
+    });
+
+    it('still reaches the bundled index when no manifest declares a value', () => {
+      const result = resolveStartingLocation('bundled:array-shape', [{}, {}]);
+      expect(result).toBe('/explore');
+    });
+  });
 });
 
 // The manifest is authored data that ends up at `locationService.push` via
