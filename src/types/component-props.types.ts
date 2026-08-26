@@ -45,6 +45,8 @@ export interface InteractiveStepProps extends BaseInteractiveProps {
   title?: string;
   description?: string;
   children?: React.ReactNode;
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 
   // Unified state management props (added by parent)
   stepId?: string;
@@ -98,6 +100,8 @@ export interface StepInfo {
   // Do Section stops here for the user. Without it the runner falls through to
   // `executeInteractiveAction`'s default branch, which warns and reports success.
   pausesSectionRun?: boolean;
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 // ============================================================================

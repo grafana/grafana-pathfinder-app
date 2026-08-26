@@ -360,7 +360,7 @@ describe('buildRepository', () => {
     writeJson(path.join(tmpDir, 'guide-with-extensions', 'manifest.json'), {
       id: 'guide-with-extensions',
       type: 'guide',
-      estimatedMinutes: 15,
+      priority: 15,
       owningTeam: 'enablement',
       flags: ['beta', 'internal'],
     });
@@ -370,17 +370,36 @@ describe('buildRepository', () => {
 
     const entry = repository['guide-with-extensions'];
     expect(entry).toBeDefined();
-    expect(entry!.estimatedMinutes).toBe(15);
+    expect(entry!.priority).toBe(15);
     expect(entry!.owningTeam).toBe('enablement');
     expect(entry!.flags).toEqual(['beta', 'internal']);
     expect(warnings).toHaveLength(0);
   });
 
-  // `stats` was this suite's example of an unknown key until #1682 declared it on
-  // the manifest schema. It is now a NAMED field, so the extension forwarding
-  // skips it and `build-repository` has to carry it deliberately — the case that
-  // silently dropped the stamp from repository.json when only half of that
-  // landed.
+  // `stats` and `estimatedMinutes` were this suite's examples of unknown keys
+  // until #1682 and this branch's own manifest-schema change respectively
+  // declared them on the manifest schema. They are now NAMED fields, so the
+  // extension forwarding skips them and `build-repository` has to carry them
+  // deliberately — the case that silently dropped the stamp from
+  // repository.json when only half of that landed.
+  it('should carry a well-formed estimatedMinutes value onto the entry as a named field', () => {
+    writeJson(path.join(tmpDir, 'guide-with-estimate', 'content.json'), {
+      id: 'guide-with-estimate',
+      title: 'Guide with an estimate',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-estimate', 'manifest.json'), {
+      id: 'guide-with-estimate',
+      type: 'guide',
+      estimatedMinutes: 15,
+    });
+
+    const { repository, info, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-with-estimate']?.estimatedMinutes).toBe(15);
+    // Named, so it is not announced as a forwarded extension field.
+    expect(info).toEqual([]);
+  });
   it('should carry a well-formed stats stamp onto the entry as a named field', () => {
     const stamp = {
       version: 1,
@@ -490,13 +509,13 @@ describe('buildRepository', () => {
       id: 'noisy',
       type: 'guide',
       owningTeam: 'enablement',
-      estimatedMinutes: 15,
+      priority: 15,
     });
 
     const { info, warnings, errors } = buildRepository(tmpDir);
     expect(errors).toHaveLength(0);
     expect(warnings).toHaveLength(0);
-    expect(info).toEqual(['noisy: forwarding 2 extension field(s): owningTeam, estimatedMinutes']);
+    expect(info).toEqual(['noisy: forwarding 2 extension field(s): owningTeam, priority']);
   });
 
   it('should surface a misspelled known field as a forwarded extension field', () => {

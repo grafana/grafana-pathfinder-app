@@ -197,6 +197,7 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.description = manifest.description;
     entry.category = manifest.category;
     entry.author = manifest.author;
+    entry.estimatedMinutes = manifest.estimatedMinutes;
     if (manifest.startingLocation !== undefined) {
       entry.startingLocation = manifest.startingLocation;
     }

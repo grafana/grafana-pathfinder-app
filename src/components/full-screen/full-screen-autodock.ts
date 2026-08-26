@@ -24,6 +24,21 @@ import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
 export type AutoDockOutcome = 'sidebar' | 'floating' | 'noop' | 'transient_back';
 
+/**
+ * Every `reason` value reported on `UserInteraction.FullScreenExit`, across
+ * both this module's automatic auto-dock decisions and `FullScreenPanel.tsx`'s
+ * manual/handoff exit paths — one shared union so the two files can't drift
+ * into colliding or undocumented values for the same analytics dimension.
+ */
+export type FullScreenExitReason =
+  | 'transient_back'
+  | 'navigation_away_sidebar_occupied'
+  | 'navigation_away'
+  | 'manual_exit'
+  | 'empty_state_fallback'
+  | 'dock_request'
+  | 'content_requires_grafana_ui';
+
 /** history@4 navigation actions (`history.listen`'s second argument). */
 export type HistoryAction = 'PUSH' | 'REPLACE' | 'POP';
 
@@ -95,7 +110,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
       destination: 'none',
       guide_url: guideUrl || '',
       guide_title: title,
-      reason: 'transient_back',
+      reason: 'transient_back' satisfies FullScreenExitReason,
     });
     deferred(() => panelModeManager.endTransientSession());
     return 'transient_back';
@@ -108,7 +123,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
       destination: 'floating',
       guide_url: guideUrl || '',
       guide_title: title,
-      reason: 'navigation_away_sidebar_occupied',
+      reason: 'navigation_away_sidebar_occupied' satisfies FullScreenExitReason,
     });
     deferred(() => panelModeManager.setMode('floating'));
     return 'floating';
@@ -118,7 +133,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
     destination: 'sidebar',
     guide_url: guideUrl || '',
     guide_title: title,
-    reason: 'navigation_away',
+    reason: 'navigation_away' satisfies FullScreenExitReason,
   });
 
   // All surfaces share `tabStorage` — the docking sidebar restores the
