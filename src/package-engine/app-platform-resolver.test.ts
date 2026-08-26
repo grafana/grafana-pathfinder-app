@@ -463,6 +463,41 @@ describe('AppPlatformPackageResolver — full content', () => {
     expect(result.manifest?.id).toBe('fe-alerting-01');
   });
 
+  it('keeps the resolve() input as id for a path/journey manifest, even when spec.id has drifted', async () => {
+    // A path/journey's id must stay resource-name-equal: fetchPackageContent's
+    // baseUrl-hydration re-resolves it in URL-only mode, which never verifies
+    // — it only string-templates `backend-guide:<id>` — on the documented
+    // assumption that the id is "already known-good" (fetchPackageById's own
+    // comment). A drifted spec.id would silently produce an unfetchable URL.
+    // This is the one case where a plain guide's spec.id preference does not
+    // apply (Cursor Bugbot flagged this on the guide-preference commit).
+    mockFetch.mockReturnValue(
+      of(okResource({ id: 'renamed-path-id', manifest: { type: 'path', milestones: ['m1'] } }))
+    );
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('legacy-resource-name', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest?.id).toBe('legacy-resource-name');
+  });
+
+  it('keeps the resolve() input as id for a journey manifest too', async () => {
+    mockFetch.mockReturnValue(of(okResource({ id: 'renamed-journey-id', manifest: { type: 'journey' } })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('legacy-resource-name', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest?.id).toBe('legacy-resource-name');
+  });
+
   it('overwrites a persisted spec.manifest.repository pointing at the public CDN', async () => {
     mockFetch.mockReturnValue(of(okResource({ manifest: { type: 'guide', repository: 'interactive-tutorials' } })));
     const resolver = new AppPlatformPackageResolver();
