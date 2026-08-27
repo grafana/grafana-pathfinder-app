@@ -10,7 +10,7 @@ The project uses several GitHub Actions workflows for different release scenario
 
 - **Trigger**: Push of version tags matching pattern `v*` (e.g., `v1.0.0`)
 - **Process**:
-  - Pins the Go toolchain via `actions/setup-go` (`go-version-file: go.mod`) before building, same as `ci.yml`
+  - Pins the Go toolchain via `build-plugin`'s `go-version` input (its own internal setup-go step defaults to 1.25 and would otherwise drift behind `go.mod`)
   - Uses `grafana/plugin-actions/build-plugin` action
   - Builds the plugin for distribution
   - Plugin signing is available but currently commented out
@@ -209,7 +209,7 @@ The CLI is not bundled into the plugin tarball. Webpack only enters from `src/mo
 
 ### Common Issues
 
-- **Build Failures**: Check GitHub Actions logs for specific error messages. `release.yml` pins its Go toolchain via `actions/setup-go` with `go-version-file: go.mod`, matching `ci.yml` — without it, the runner's preinstalled Go can drift behind `go.mod`'s minimum and `mage` fails with `go.mod requires go >= X (running go Y; GOTOOLCHAIN=local)`.
+- **Build Failures**: Check GitHub Actions logs for specific error messages. `release.yml` passes `go-version` to `grafana/plugin-actions/build-plugin` to match `go.mod`'s minimum — a separate top-level `setup-go` step doesn't work here, since `build-plugin` runs its own internal `setup-go` (default Go 1.25) afterward and silently overwrites it. Without the input pinned, `mage` fails with `go.mod requires go >= X (running go Y; GOTOOLCHAIN=local)`.
 - **Deployment Issues**: Verify environment permissions and Argo Workflow status
 - **Version Conflicts**: Ensure `package.json` version matches expected format
 
