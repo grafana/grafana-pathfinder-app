@@ -51,6 +51,26 @@ test('records the review orchestration contract under ai-subsystem', () => {
   assert.match(context.contract_anchor.contract, /concern-context\.mjs/);
 });
 
+test('routes shared CLI and MCP command-contract changes to both owners', () => {
+  const cli = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'cli-and-e2e-runner',
+  });
+  const mcp = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'mcp-authoring-server',
+  });
+
+  assert.ok(cli.trigger_keywords.includes('defineCommand'));
+  assert.ok(cli.trigger_keywords.includes('CommandSpec'));
+  assert.ok(cli.trigger_keywords.includes('COMMAND_MANIFEST'));
+  assert.ok(mcp.trigger_keywords.includes('bindCommandInterface'));
+  assert.ok(mcp.trigger_keywords.includes('defineCommand'));
+  assert.ok(mcp.trigger_keywords.includes('CommandSpec'));
+});
+
 test('preserves grammatical commas in reviewer code scopes', () => {
   const ai = extractConcernContext({
     routingMarkdown: concerns,
@@ -85,6 +105,19 @@ test('rejects routing values outside the registry schema', () => {
     'min_signals must be between 1 and 8 for security',
     'max_context_files must be between 1 and 20 for security',
   ]);
+});
+
+test('rejects blank trigger keywords for conditional concerns', () => {
+  for (const id of ['context-engine', 'analytics-and-telemetry']) {
+    const row = concerns.split('\n').find((line) => line.startsWith(`| \`${id}\` |`));
+    assert.ok(row);
+    const keywordsStart = row.lastIndexOf(' | ');
+    const invalid = concerns.replace(row, `${row.slice(0, keywordsStart)} | |`);
+
+    assert.deepEqual(validateConcernRegistry({ routingMarkdown: invalid, detailMarkdown: concernDetails }), [
+      `trigger_keywords must not be empty for ${id}`,
+    ]);
+  }
 });
 
 test('rejects duplicate contract owners and invariant names', () => {

@@ -27,7 +27,10 @@ export function classifyFinding(finding) {
   if (!SEVERITIES.has(finding.severity)) {
     throw new Error(`Unknown severity: ${finding.severity}`);
   }
-  const disposition = finding.recommended_disposition ?? 'suggestion';
+  if (!Object.hasOwn(finding, 'recommended_disposition')) {
+    throw new Error('recommended_disposition is required');
+  }
+  const disposition = finding.recommended_disposition;
   if (!DISPOSITIONS.has(disposition)) {
     throw new Error(`Unknown recommended disposition: ${disposition}`);
   }

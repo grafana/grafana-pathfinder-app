@@ -187,6 +187,15 @@ test('rejects an unknown severity, disposition, or verdict, and an uncited verdi
   assert.throws(() => decideVerification(reviewerFinding(), [verdict('refuted', '')]), /non-empty reason/);
 });
 
+test('rejects a finding without a recommended disposition before selecting a lane', () => {
+  for (const severity of ['medium', 'low']) {
+    const finding = reviewerFinding({ severity });
+    delete finding.recommended_disposition;
+
+    assert.throws(() => classifyFinding(finding), /recommended_disposition is required/);
+  }
+});
+
 test('the CLI emits the decision for a serialized finding and verdict trail', () => {
   const dir = mkdtempSync(join(tmpdir(), 'adversarial-policy-'));
   tempDirs.push(dir);

@@ -134,6 +134,9 @@ export function validateConcernRegistry({ routingMarkdown, detailMarkdown }) {
     if (splitList(row.trigger_paths).length === 0) {
       errors.push(`trigger_paths must not be empty for ${id}`);
     }
+    if (row.cat !== 'AO' && splitList(row.trigger_keywords).length === 0) {
+      errors.push(`trigger_keywords must not be empty for ${id}`);
+    }
   }
   for (const row of tables.details) {
     const id = unquote(row.id);

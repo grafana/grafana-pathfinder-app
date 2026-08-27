@@ -1,8 +1,24 @@
 export function splitTableRow(row) {
-  return row
-    .slice(1, -1)
-    .split('|')
-    .map((cell) => cell.trim());
+  const cells = [];
+  let cell = '';
+  for (const character of row.slice(1, -1)) {
+    if (character !== '|') {
+      cell += character;
+      continue;
+    }
+    let precedingBackslashes = 0;
+    for (let index = cell.length - 1; index >= 0 && cell[index] === '\\'; index -= 1) {
+      precedingBackslashes += 1;
+    }
+    if (precedingBackslashes % 2 === 1) {
+      cell = `${cell.slice(0, -1)}|`;
+      continue;
+    }
+    cells.push(cell.trim());
+    cell = '';
+  }
+  cells.push(cell.trim());
+  return cells;
 }
 
 export function unquote(value) {
