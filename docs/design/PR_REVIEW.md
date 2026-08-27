@@ -6,27 +6,31 @@ The orchestration workflow that uses this catalog lives in `.cursor/skills/revie
 
 ## Reviewer output schema
 
-Every reviewer (subsystem or cross-cutting) emits the same schema.
+Every reviewer (subsystem or cross-cutting) emits the same candidate-inventory schema. Candidate discovery is exhaustive within the supplied concern packet and hunks; report compression happens later.
 
 If findings exist, include:
 
 - `concern_id`
-- `finding_id`
-- `severity`
-- `confidence`
-- `recommended_disposition` — `blocking | suggestion | nit`
-- `title`
-- `evidence`
-- `why_it_matters`
-- `suggested_action`
-- `reversibility`
-- `applies_to_files`
+- `findings` — every concrete high-confidence candidate, each containing:
+  - `finding_id`
+  - `severity`
+  - `confidence`
+  - `recommended_disposition` — `blocking | suggestion | nit`
+  - `title`
+  - `evidence`
+  - `why_it_matters`
+  - `suggested_action`
+  - `reversibility`
+  - `applies_to_files`
+  - `disposition_context` — `evidence_origin`, `impact`, `deterministic_reproduction`, `direct_material_impact`, `deferral_safe`, and `finite_fix`; the orchestrator adds `review_mode` and `evaluator_source` before calling `disposition-policy.mjs`
 
 If no findings, include:
 
 - `concern_id`
 - `status: no_findings`
 - `reason: not_applicable | reviewed_clean`
+
+Validate each serialized reviewer response with `.cursor/skills/review/scripts/candidate-inventory.mjs <inventory-file>` before adversarial verification. The validator rejects the legacy singleton shape so the first candidate cannot prematurely end concern review.
 
 ### Confidence guidance
 
@@ -47,7 +51,9 @@ If no findings, include:
 - `suggestion`: concrete non-blocking improvement, including an optional question
 - `nit`: minor style or wording preference
 
-Severity describes impact; disposition describes the merge contract. A medium finding can be blocking when the ambiguity must be resolved before merge, and a high-risk observation can remain a suggestion when the PR does not create that risk. Reviewers recommend a disposition; the synthesizer owns the final value after verification and deduplication.
+Severity describes impact; disposition describes the merge contract. Reviewers recommend a disposition, factual verification decides whether the claim survives, and `.cursor/skills/review/scripts/disposition-policy.mjs` caps the final value using provenance and deferral criteria. The synthesizer may downgrade that result after deduplication but cannot promote it.
+
+`evidence_origin` is `full_diff | incremental_diff | prior_blocker | unchanged`. `impact` is `direct | hypothetical_coverage_gap | documentation_drift | tech_debt`. A hypothetical future review-coverage gap is a suggestion unless a changed hunk actually escaped required routing; exhaustive keyword-list completeness is never a merge gate.
 
 ### Reversibility values
 
@@ -270,13 +276,17 @@ Reviewer-internal vocabulary for labelling findings before synthesis. The author
 
 The synthesizer emits this `ReviewReport` object after all supplemental checks finish:
 
-| Field           | Type   | Rule                                                       |
-| --------------- | ------ | ---------------------------------------------------------- |
-| `pr_url`        | string | Full `https://github.com/<owner>/<repo>/pull/<number>` URL |
-| `pr_title`      | string | Current PR title; the renderer derives a one-line purpose  |
-| `reviewed_head` | string | Full 40-character commit SHA                               |
-| `findings`      | array  | Retained, verified, deduplicated author-facing findings    |
-| `assessment`    | object | Optional; defaults to complete. See Incomplete assessment  |
+| Field              | Type   | Rule                                                                  |
+| ------------------ | ------ | --------------------------------------------------------------------- |
+| `pr_url`           | string | Full `https://github.com/<owner>/<repo>/pull/<number>` URL            |
+| `pr_title`         | string | Current PR title; the renderer derives a one-line purpose             |
+| `reviewed_head`    | string | Full 40-character commit SHA                                          |
+| `evaluator_source` | string | `stable \| head_smoke`; defaults to `stable`                          |
+| `review_mode`      | string | `full \| incremental`; defaults to `full`                             |
+| `findings`         | array  | Retained, verified, deduplicated author-facing findings               |
+| `candidate_ledger` | array  | Optional prior `dropped` or `resolved` candidates with SHA-256 hashes |
+| `inspected_scopes` | array  | Concern IDs and SHA-256 fingerprints for reviewed concern/hunk inputs |
+| `assessment`       | object | Optional; defaults to complete. See Incomplete assessment             |
 
 Each `findings` entry contains:
 
@@ -307,7 +317,9 @@ Do not emit headings, summaries, or status lines for processors that returned no
 
 ### Re-review state
 
-Immediately before the operator recap, a **complete** review emits a hidden `pathfinder-review-state` HTML comment containing version 1, `reviewed_head`, and each blocking finding's ID and owning concern. Only `review-report.mjs --parse-state` may consume it, and only from that trailing position: the parser accepts the marker solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. It accepts either LF or CRLF line endings, because a body edited through the GitHub web UI comes back CRLF-encoded. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental fast path.
+Immediately before the operator recap, a **complete** review emits a hidden `pathfinder-review-state` HTML comment. Version 2 contains `reviewed_head`, `evaluator_source`, `review_mode`, blocking IDs, the candidate ledger, and inspected-scope fingerprints. Retained findings are fingerprinted automatically; callers add prior dropped and resolved candidates without their reasoning. The parser still accepts legacy version 1 markers, which trigger the narrower blocker-only fast path.
+
+Only `review-report.mjs --parse-state` may consume the marker, and only from that trailing position: the parser accepts it solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. It accepts either LF or CRLF line endings. Malformed, misplaced, duplicated, internally inconsistent, or non-ancestor state disables the incremental fast path.
 
 An **incomplete** review emits no marker at all. Its coverage hole is exactly what an incremental baseline must not inherit, so every later review of that PR falls back to a full review.
 

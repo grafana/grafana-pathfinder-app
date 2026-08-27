@@ -63,12 +63,15 @@ test('routes shared CLI and MCP command-contract changes to both owners', () => 
     concern: 'mcp-authoring-server',
   });
 
-  assert.ok(cli.trigger_keywords.includes('defineCommand'));
-  assert.ok(cli.trigger_keywords.includes('CommandSpec'));
-  assert.ok(cli.trigger_keywords.includes('COMMAND_MANIFEST'));
   assert.ok(mcp.trigger_keywords.includes('bindCommandInterface'));
-  assert.ok(mcp.trigger_keywords.includes('defineCommand'));
-  assert.ok(mcp.trigger_keywords.includes('CommandSpec'));
+  assert.deepEqual(cli.owner_paths, ['src/cli/contracts/**']);
+  assert.deepEqual(mcp.owner_paths, ['src/cli/contracts/**']);
+  for (const keyword of ['defineCommand', 'CommandSpec', 'COMMAND_MANIFEST']) {
+    assert.equal(cli.trigger_keywords.includes(keyword), false);
+  }
+  for (const keyword of ['defineCommand', 'CommandSpec']) {
+    assert.equal(mcp.trigger_keywords.includes(keyword), false);
+  }
 });
 
 test('preserves grammatical commas in reviewer code scopes', () => {
@@ -136,6 +139,20 @@ test('rejects duplicate contract owners and invariant names', () => {
     'Duplicate contract anchor: completion-records',
     'Duplicate pre-contract candidate: analytics-and-telemetry',
     'Duplicate named invariant: payload-boundary-normalization',
+  ]);
+});
+
+test('rejects a concern that is both a contract anchor and a pre-contract candidate', () => {
+  const anchor = concernDetails.split('\n').find((line) => line.startsWith('| `completion-records` | #1411'));
+  const candidate = concernDetails
+    .split('\n')
+    .find((line) => line.startsWith('| `analytics-and-telemetry` | Accreting'));
+  assert.ok(anchor && candidate);
+  const overlappingCandidate = candidate.replace('`analytics-and-telemetry`', '`completion-records`');
+  const invalid = concernDetails.replace(candidate, `${candidate}\n${overlappingCandidate}`);
+
+  assert.deepEqual(validateConcernRegistry({ routingMarkdown: concerns, detailMarkdown: invalid }), [
+    'Concern cannot be both a contract anchor and pre-contract candidate: completion-records',
   ]);
 });
 

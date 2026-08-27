@@ -47,11 +47,14 @@ function replay(finding, values) {
   return decisions;
 }
 
-test('critical, high, and any recommended blocker share the high-risk lane', () => {
+test('factual verification lanes depend on severity, not recommended disposition', () => {
   assert.equal(classifyFinding(reviewerFinding({ severity: 'critical' })), 'high_risk');
   assert.equal(classifyFinding(reviewerFinding({ severity: 'high' })), 'high_risk');
-  assert.equal(classifyFinding(reviewerFinding({ recommended_disposition: 'blocking' })), 'high_risk');
-  assert.equal(classifyFinding(reviewerFinding({ severity: 'low', recommended_disposition: 'blocking' })), 'high_risk');
+  assert.equal(classifyFinding(reviewerFinding({ recommended_disposition: 'blocking' })), 'advisory');
+  assert.equal(
+    classifyFinding(reviewerFinding({ severity: 'low', recommended_disposition: 'blocking' })),
+    'unverified'
+  );
   assert.equal(classifyFinding(reviewerFinding()), 'advisory');
   assert.equal(classifyFinding(reviewerFinding({ severity: 'low' })), 'unverified');
 });
@@ -114,11 +117,11 @@ test('a high-risk finding drops only on a two-of-three refutation majority', () 
   assert.equal(replay(finding, ['uncertain', 'uncertain', 'uncertain']).at(-1).outcome, 'kept');
 });
 
-test('a recommended blocker keeps the majority rule even at medium severity', () => {
+test('a recommended blocker does not change a medium finding verification lane', () => {
   const finding = reviewerFinding({ recommended_disposition: 'blocking' });
-  assert.equal(decideVerification(finding).dispatch.count, 2);
-  assert.equal(replay(finding, ['refuted', 'uncertain']).at(-1).dispatch.role, 'tiebreaker');
-  assert.equal(replay(finding, ['refuted', 'uncertain', 'confirmed']).at(-1).outcome, 'kept');
+  assert.equal(decideVerification(finding).dispatch.count, 1);
+  assert.equal(replay(finding, ['refuted']).at(-1).dispatch.role, 'adjudicator');
+  assert.equal(replay(finding, ['refuted', 'confirmed']).at(-1).outcome, 'kept');
 });
 
 test('a confirmed medium advisory is kept without an adjudicator', () => {
@@ -185,6 +188,7 @@ test('rejects an unknown severity, disposition, or verdict, and an uncited verdi
   assert.throws(() => decideVerification(reviewerFinding({ recommended_disposition: 'veto' })), /Unknown recommended/);
   assert.throws(() => decideVerification(reviewerFinding(), [verdict('maybe')]), /Unknown verdict/);
   assert.throws(() => decideVerification(reviewerFinding(), [verdict('refuted', '')]), /non-empty reason/);
+  assert.throws(() => decideVerification(reviewerFinding(), [verdict('refuted', '   ')]), /non-empty reason/);
 });
 
 test('rejects a finding without a recommended disposition before selecting a lane', () => {

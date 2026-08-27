@@ -94,9 +94,10 @@ Both the controller overlay (`?controller=1` path) and the live-tab executor ins
 
 ## Security / trust model
 
-> **Reviewing a change in this subsystem?** The `cross-tab-controller` concern in
-> [`docs/design/CONCERN_DETAILS.md`](../design/CONCERN_DETAILS.md) is the canonical review checklist
-> for these files. It fires on any single touch of the cross-tab files and enumerates
+> **Reviewing a change in this subsystem?** The `cross-tab-controller` concern is routed by
+> [`docs/design/CONCERNS.md`](../design/CONCERNS.md). Load its canonical checklist with
+> `node .cursor/skills/review/scripts/concern-context.mjs cross-tab-controller`; do not load
+> `docs/design/CONCERN_DETAILS.md` wholesale. It activates on any single touch of the owner files and enumerates
 > the trust invariants below — signed commands, gesture-to-accept pairing, the per-kind
 > validation gate, and the `enableTwoTabController` re-enable one-way door — that a
 > reviewer must confirm before merge.

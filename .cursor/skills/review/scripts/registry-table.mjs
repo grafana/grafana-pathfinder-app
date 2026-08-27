@@ -22,7 +22,8 @@ export function splitTableRow(row) {
 }
 
 export function unquote(value) {
-  return String(value ?? '').replace(/^`|`$/g, '');
+  const text = String(value ?? '');
+  return text.startsWith('`') && text.endsWith('`') ? text.slice(1, -1) : text;
 }
 
 export function findTable(markdown, requiredHeaders, { notFoundMessage } = {}) {

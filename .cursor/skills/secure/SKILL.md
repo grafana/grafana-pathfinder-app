@@ -235,7 +235,7 @@ This helps the reviewer scan the surface quickly.
 
 ## Integration
 
-- **`/review`** invokes this skill as a security pass when the `security` concern from `docs/design/CONCERNS.md` is activated (per its `trigger_paths` / `trigger_keywords`).
+- **`/review`** always runs its concern-level security reviewer. It invokes this standalone deep-security audit only for the sensitive surfaces listed in the review skill, such as credentials, trust boundaries, workflows, transports, and dependency manifests.
 - **`/pr-summary`** consults `activated_concerns` from the same routing; if security activates, the Test plan section references this skill's manual checks.
 - **`prevent-doc-drift`** catches new security patterns that need documentation; this skill catches missing checks against the existing rules.
 

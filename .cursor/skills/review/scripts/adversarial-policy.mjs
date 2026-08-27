@@ -34,7 +34,7 @@ export function classifyFinding(finding) {
   if (!DISPOSITIONS.has(disposition)) {
     throw new Error(`Unknown recommended disposition: ${disposition}`);
   }
-  if (finding.severity === 'critical' || finding.severity === 'high' || disposition === 'blocking') {
+  if (finding.severity === 'critical' || finding.severity === 'high') {
     return 'high_risk';
   }
   return finding.severity === 'medium' ? 'advisory' : 'unverified';
@@ -55,7 +55,7 @@ function countVerdicts(verdicts) {
     if (!verdict || !VERDICTS.has(verdict.verdict)) {
       throw new Error(`Unknown verdict: ${verdict?.verdict}`);
     }
-    if (typeof verdict.reason !== 'string' || verdict.reason.length === 0) {
+    if (typeof verdict.reason !== 'string' || verdict.reason.trim().length === 0) {
       throw new Error('Each verdict must cite a non-empty reason');
     }
     if (verdict.verdict === 'refuted') {

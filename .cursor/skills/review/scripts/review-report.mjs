@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -23,6 +24,9 @@ const REVERSIBILITY = new Map([
   ['irreversible_without_cleanup', 'irreversible without cleanup'],
 ]);
 const ASSESSMENT_STATUSES = ['complete', 'incomplete'];
+const EVALUATOR_SOURCES = ['stable', 'head_smoke'];
+const REVIEW_MODES = ['full', 'incremental'];
+const LEDGER_OUTCOMES = ['blocking', 'suggestion', 'nit', 'dropped', 'resolved'];
 const MAX_INCOMPLETE_REASON = 240;
 const STATE_MARKER = /^<!-- pathfinder-review-state:(\{.+\}) -->$/;
 const STATE_MARKER_PREFIX = /^<!-- pathfinder-review-state:/;
@@ -35,6 +39,17 @@ const RECAP_SHAPE = [
 
 function oneLine(value) {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function neutralizeMarkdown(value) {
+  return oneLine(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\b(https?):\/\//gi, '$1:\u200B//')
+    .replace(/\bwww\./gi, 'www.\u200B')
+    .replace(/@/g, '@\u200B')
+    .replace(/([\\`*_{}\[\]()#+!|])/g, '\\$1');
 }
 
 function completeVerdict(blocking, suggestions, nits) {
@@ -72,17 +87,39 @@ export function parseReviewState(output) {
   }
   try {
     const state = JSON.parse(trailing.encoded);
+    const validFindingRef = (finding) =>
+      finding &&
+      typeof finding === 'object' &&
+      /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(finding.id ?? '') &&
+      /^[a-z0-9-]+$/.test(finding.concern_id ?? '');
     if (
-      state.version !== 1 ||
+      ![1, 2].includes(state.version) ||
       !/^[0-9a-f]{40}$/i.test(state.reviewed_head ?? '') ||
       !Array.isArray(state.blocking_findings) ||
-      state.blocking_findings.some(
-        (finding) =>
-          !finding ||
-          typeof finding !== 'object' ||
-          !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(finding.id ?? '') ||
-          !/^[a-z0-9-]+$/.test(finding.concern_id ?? '')
-      )
+      state.blocking_findings.some((finding) => !validFindingRef(finding))
+    ) {
+      return null;
+    }
+    if (
+      state.version === 2 &&
+      (!EVALUATOR_SOURCES.includes(state.evaluator_source) ||
+        !REVIEW_MODES.includes(state.review_mode) ||
+        !Array.isArray(state.candidate_ledger) ||
+        state.candidate_ledger.length > 100 ||
+        state.candidate_ledger.some(
+          (finding) =>
+            !validFindingRef(finding) ||
+            !LEDGER_OUTCOMES.includes(finding.outcome) ||
+            !/^[0-9a-f]{64}$/i.test(finding.fingerprint ?? '')
+        ) ||
+        new Set(state.candidate_ledger.map((finding) => finding.id)).size !== state.candidate_ledger.length ||
+        !Array.isArray(state.inspected_scopes) ||
+        state.inspected_scopes.length > 50 ||
+        state.inspected_scopes.some(
+          (scope) =>
+            !scope || !/^[a-z0-9-]+$/.test(scope.concern_id ?? '') || !/^[0-9a-f]{64}$/i.test(scope.fingerprint ?? '')
+        ) ||
+        new Set(state.inspected_scopes.map((scope) => scope.concern_id)).size !== state.inspected_scopes.length)
     ) {
       return null;
     }
@@ -90,9 +127,28 @@ export function parseReviewState(output) {
     const [, blocking, suggestions, nits] =
       trailing.recap[3].match(/^(\d+) blocking, (\d+) suggestions?, (\d+) nits?$/) ?? [];
     const [blockingCount, suggestionCount, nitCount] = [blocking, suggestions, nits].map(Number);
+    const ledgerCounts =
+      state.version === 2
+        ? ['blocking', 'suggestion', 'nit'].map(
+            (outcome) => state.candidate_ledger.filter((candidate) => candidate.outcome === outcome).length
+          )
+        : null;
+    const ledgerBlockersMatch =
+      state.version !== 2 ||
+      state.blocking_findings.every((blockingFinding) =>
+        state.candidate_ledger.some(
+          (candidate) =>
+            candidate.id === blockingFinding.id &&
+            candidate.concern_id === blockingFinding.concern_id &&
+            candidate.outcome === 'blocking'
+        )
+      );
     if (
       verdict !== completeVerdict(blockingCount, suggestionCount, nitCount) ||
-      state.blocking_findings.length !== blockingCount
+      state.blocking_findings.length !== blockingCount ||
+      (ledgerCounts &&
+        (ledgerCounts[0] !== blockingCount || ledgerCounts[1] !== suggestionCount || ledgerCounts[2] !== nitCount)) ||
+      !ledgerBlockersMatch
     ) {
       return null;
     }
@@ -110,10 +166,26 @@ function renderFinding(finding, index) {
   const actionLabel = finding.disposition === 'blocking' ? 'Required' : 'Suggested';
   const meta = [finding.severity, finding.concern_id, REVERSIBILITY.get(finding.reversibility)].filter(Boolean);
   return [
-    `${index + 1}. [${finding.disposition}] **${finding.id} — ${oneLine(finding.title)}** (${meta.join(' · ')})`,
-    `   ${oneLine(finding.problem)}`,
-    `   ${actionLabel}: ${oneLine(finding.suggested_action)}`,
+    `${index + 1}. [${finding.disposition}] **${finding.id} — ${neutralizeMarkdown(finding.title)}** (${meta.join(' · ')})`,
+    `   ${neutralizeMarkdown(finding.problem)}`,
+    `   ${actionLabel}: ${neutralizeMarkdown(finding.suggested_action)}`,
   ].join('\n');
+}
+
+function findingFingerprint(finding) {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        finding.id,
+        finding.concern_id,
+        finding.disposition,
+        finding.severity,
+        finding.title,
+        finding.problem,
+        finding.suggested_action,
+      ])
+    )
+    .digest('hex');
 }
 
 function readAssessment(report) {
@@ -150,6 +222,12 @@ function validateReport(report) {
   if (!Array.isArray(report.findings)) {
     throw new Error('findings must be an array');
   }
+  if (report.evaluator_source != null && !EVALUATOR_SOURCES.includes(report.evaluator_source)) {
+    throw new Error('evaluator_source must be stable or head_smoke');
+  }
+  if (report.review_mode != null && !REVIEW_MODES.includes(report.review_mode)) {
+    throw new Error('review_mode must be full or incremental');
+  }
   const seenIds = new Set();
   for (const finding of report.findings) {
     if (!DISPOSITIONS.includes(finding.disposition)) {
@@ -177,12 +255,51 @@ function validateReport(report) {
       }
     }
   }
+  const candidateLedger = report.candidate_ledger ?? [];
+  if (!Array.isArray(candidateLedger) || candidateLedger.length > 100) {
+    throw new Error('candidate_ledger must be an array with at most 100 entries');
+  }
+  for (const candidate of candidateLedger) {
+    if (!candidate || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(candidate.id ?? '')) {
+      throw new Error('candidate id must be stable');
+    }
+    if (seenIds.has(candidate.id)) {
+      throw new Error(`candidate id ${candidate.id} must be unique across the report`);
+    }
+    seenIds.add(candidate.id);
+    if (!/^[a-z0-9-]+$/.test(candidate.concern_id ?? '')) {
+      throw new Error('candidate concern_id must be a concern identifier');
+    }
+    if (!['dropped', 'resolved'].includes(candidate.outcome)) {
+      throw new Error('supplied candidate outcome must be dropped or resolved');
+    }
+    if (!/^[0-9a-f]{64}$/i.test(candidate.fingerprint ?? '')) {
+      throw new Error('candidate fingerprint must be a SHA-256 value');
+    }
+  }
+  const inspectedScopes = report.inspected_scopes ?? [];
+  if (!Array.isArray(inspectedScopes) || inspectedScopes.length > 50) {
+    throw new Error('inspected_scopes must be an array with at most 50 entries');
+  }
+  const seenScopes = new Set();
+  for (const scope of inspectedScopes) {
+    if (!scope || !/^[a-z0-9-]+$/.test(scope.concern_id ?? '')) {
+      throw new Error('inspected scope concern_id must be a concern identifier');
+    }
+    if (seenScopes.has(scope.concern_id)) {
+      throw new Error(`inspected scope ${scope.concern_id} must be unique`);
+    }
+    seenScopes.add(scope.concern_id);
+    if (!/^[0-9a-f]{64}$/i.test(scope.fingerprint ?? '')) {
+      throw new Error('inspected scope fingerprint must be a SHA-256 value');
+    }
+  }
 }
 
 export function renderReviewReport(report) {
   validateReport(report);
   const assessment = readAssessment(report);
-  const purpose = normalizePurpose(report.pr_title);
+  const purpose = neutralizeMarkdown(normalizePurpose(report.pr_title));
   const grouped = Object.fromEntries(DISPOSITIONS.map((disposition) => [disposition, []]));
   for (const finding of report.findings) {
     grouped[finding.disposition].push(finding);
@@ -235,10 +352,23 @@ export function renderReviewReport(report) {
       ? 'Review Incomplete'
       : completeVerdict(grouped.blocking.length, grouped.suggestion.length, grouped.nit.length);
   if (assessment.status === 'complete') {
+    const candidateLedger = [
+      ...report.findings.map((finding) => ({
+        id: finding.id,
+        concern_id: finding.concern_id,
+        outcome: finding.disposition,
+        fingerprint: findingFingerprint(finding),
+      })),
+      ...(report.candidate_ledger ?? []),
+    ];
     const state = JSON.stringify({
-      version: 1,
+      version: 2,
       reviewed_head: report.reviewed_head,
+      evaluator_source: report.evaluator_source ?? 'stable',
+      review_mode: report.review_mode ?? 'full',
       blocking_findings: grouped.blocking.map(({ id, concern_id }) => ({ id, concern_id })),
+      candidate_ledger: candidateLedger,
+      inspected_scopes: report.inspected_scopes ?? [],
     });
     sections.push('', `<!-- pathfinder-review-state:${state} -->`);
   }

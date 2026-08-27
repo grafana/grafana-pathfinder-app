@@ -24,8 +24,8 @@ npm run server
 # Run all tests, no coverage (CI mode - agents should use this for focused runs)
 npm run test:ci
 
-# Validate the review skill's scripts: concern extractor, contract-evolution gate
-# and disposition policy, adversarial-verification policy, and report renderer
+# Validate the review skill's candidate inventory, concern extractor, evolution gate,
+# factual-verification and blocker-disposition policies, and report renderer
 npm run test:review-contract
 
 # Run tests in watch mode (for local development)

@@ -33,6 +33,7 @@ function duplicateValues(values) {
 function registryTables(routingMarkdown, detailMarkdown) {
   return {
     routing: findTable(routingMarkdown, ['id', 'trigger_paths', 'trigger_keywords']),
+    owners: findTable(routingMarkdown, ['concern', 'owner_paths']),
     details: findTable(detailMarkdown, ['id', 'purpose', 'review_questions', 'one_way_doors']),
     anchors: findTable(detailMarkdown, ['concern', 'anchor', 'contract']),
     invariants: findTable(detailMarkdown, ['name', 'concern', 'invariant']),
@@ -49,6 +50,7 @@ export function extractConcernContext({ routingMarkdown, detailMarkdown, concern
   }
   const anchor = tables.anchors.find((row) => unquote(row.concern) === concern);
   const candidate = tables.candidates.find((row) => unquote(row.concern) === concern);
+  const owner = tables.owners.find((row) => unquote(row.concern) === concern);
   const category = { AO: 'always-on', sub: 'subsystem', xcut: 'cross-cutting' }[routing.cat];
 
   return {
@@ -61,6 +63,7 @@ export function extractConcernContext({ routingMarkdown, detailMarkdown, concern
     },
     trigger_paths: splitList(routing.trigger_paths),
     trigger_keywords: splitList(routing.trigger_keywords),
+    owner_paths: owner ? splitList(owner.owner_paths) : [],
     purpose: details.purpose,
     load_docs: splitList(details.load_docs),
     load_code: splitContextList(details.load_code),
@@ -165,11 +168,29 @@ export function validateConcernRegistry({ routingMarkdown, detailMarkdown }) {
       errors.push(`Unknown concern reference: ${id}`);
     }
   }
+  for (const row of tables.owners) {
+    const id = unquote(row.concern);
+    if (!known.has(id)) {
+      errors.push(`Unknown concern owner reference: ${id}`);
+    }
+    if (splitList(row.owner_paths).length === 0) {
+      errors.push(`owner_paths must not be empty for ${id}`);
+    }
+  }
   for (const id of duplicateValues(tables.anchors.map((row) => unquote(row.concern)))) {
     errors.push(`Duplicate contract anchor: ${id}`);
   }
   for (const id of duplicateValues(tables.candidates.map((row) => unquote(row.concern)))) {
     errors.push(`Duplicate pre-contract candidate: ${id}`);
+  }
+  const anchorIds = new Set(tables.anchors.map((row) => unquote(row.concern)));
+  for (const id of new Set(tables.candidates.map((row) => unquote(row.concern)))) {
+    if (anchorIds.has(id)) {
+      errors.push(`Concern cannot be both a contract anchor and pre-contract candidate: ${id}`);
+    }
+  }
+  for (const id of duplicateValues(tables.owners.map((row) => unquote(row.concern)))) {
+    errors.push(`Duplicate concern owner: ${id}`);
   }
   for (const name of duplicateValues(tables.invariants.map((row) => unquote(row.name)))) {
     errors.push(`Duplicate named invariant: ${name}`);
