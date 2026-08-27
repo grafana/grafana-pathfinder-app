@@ -12,6 +12,24 @@ function splitList(value, separator = ',') {
     .filter(Boolean);
 }
 
+function splitContextList(value) {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(';')
+    .flatMap((entry) => (entry.includes('`') ? splitList(entry) : [unquote(entry.trim())]))
+    .filter(Boolean);
+}
+
+function duplicateValues(values) {
+  const counts = new Map();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return [...counts.entries()].filter(([, count]) => count > 1).map(([value]) => value);
+}
+
 function registryTables(routingMarkdown, detailMarkdown) {
   return {
     routing: findTable(routingMarkdown, ['id', 'trigger_paths', 'trigger_keywords']),
@@ -45,7 +63,7 @@ export function extractConcernContext({ routingMarkdown, detailMarkdown, concern
     trigger_keywords: splitList(routing.trigger_keywords),
     purpose: details.purpose,
     load_docs: splitList(details.load_docs),
-    load_code: splitList(details.load_code),
+    load_code: splitContextList(details.load_code),
     review_questions: splitList(details.review_questions, ';'),
     one_way_doors: splitList(details.one_way_doors, ';'),
     verification: splitList(details.verification, ';'),
@@ -119,6 +137,19 @@ export function validateConcernRegistry({ routingMarkdown, detailMarkdown }) {
   }
   for (const row of tables.details) {
     const id = unquote(row.id);
+    for (const field of [
+      'purpose',
+      'load_docs',
+      'load_code',
+      'review_questions',
+      'one_way_doors',
+      'verification',
+      'related',
+    ]) {
+      if (!unquote(row[field] ?? '').trim()) {
+        errors.push(`Missing ${field} for ${id}`);
+      }
+    }
     for (const related of splitList(row.related)) {
       if (related !== 'all¹' && !known.has(related)) {
         errors.push(`Unknown related concern ${related} from ${id}`);
@@ -130,6 +161,15 @@ export function validateConcernRegistry({ routingMarkdown, detailMarkdown }) {
     if (!known.has(id)) {
       errors.push(`Unknown concern reference: ${id}`);
     }
+  }
+  for (const id of duplicateValues(tables.anchors.map((row) => unquote(row.concern)))) {
+    errors.push(`Duplicate contract anchor: ${id}`);
+  }
+  for (const id of duplicateValues(tables.candidates.map((row) => unquote(row.concern)))) {
+    errors.push(`Duplicate pre-contract candidate: ${id}`);
+  }
+  for (const name of duplicateValues(tables.invariants.map((row) => unquote(row.name)))) {
+    errors.push(`Duplicate named invariant: ${name}`);
   }
   return errors;
 }

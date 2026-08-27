@@ -37,6 +37,10 @@ function oneLine(value) {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function completeVerdict(blocking, suggestions, nits) {
+  return blocking > 0 ? 'Request Changes' : suggestions > 0 || nits > 0 ? 'Approve with Minor' : 'Approve';
+}
+
 function trailingStateMarker(output) {
   const lines = output.split(/\r?\n/);
   while (lines.length > 0 && lines.at(-1).trim() === '') {
@@ -57,16 +61,17 @@ function trailingStateMarker(output) {
   if (index !== markerIndexes[0]) {
     return null;
   }
-  return lines[index].match(STATE_MARKER)?.[1] ?? null;
+  const encoded = lines[index].match(STATE_MARKER)?.[1];
+  return encoded ? { encoded, recap } : null;
 }
 
 export function parseReviewState(output) {
-  const encoded = trailingStateMarker(output);
-  if (!encoded) {
+  const trailing = trailingStateMarker(output);
+  if (!trailing) {
     return null;
   }
   try {
-    const state = JSON.parse(encoded);
+    const state = JSON.parse(trailing.encoded);
     if (
       state.version !== 1 ||
       !/^[0-9a-f]{40}$/i.test(state.reviewed_head ?? '') ||
@@ -78,6 +83,16 @@ export function parseReviewState(output) {
           !/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(finding.id ?? '') ||
           !/^[a-z0-9-]+$/.test(finding.concern_id ?? '')
       )
+    ) {
+      return null;
+    }
+    const verdict = trailing.recap[2].slice('Verdict: '.length);
+    const [, blocking, suggestions, nits] =
+      trailing.recap[3].match(/^(\d+) blocking, (\d+) suggestions?, (\d+) nits?$/) ?? [];
+    const [blockingCount, suggestionCount, nitCount] = [blocking, suggestions, nits].map(Number);
+    if (
+      verdict !== completeVerdict(blockingCount, suggestionCount, nitCount) ||
+      state.blocking_findings.length !== blockingCount
     ) {
       return null;
     }
@@ -218,11 +233,7 @@ export function renderReviewReport(report) {
   const verdict =
     assessment.status === 'incomplete'
       ? 'Review Incomplete'
-      : grouped.blocking.length > 0
-        ? 'Request Changes'
-        : grouped.suggestion.length > 0 || grouped.nit.length > 0
-          ? 'Approve with Minor'
-          : 'Approve';
+      : completeVerdict(grouped.blocking.length, grouped.suggestion.length, grouped.nit.length);
   if (assessment.status === 'complete') {
     const state = JSON.stringify({
       version: 1,

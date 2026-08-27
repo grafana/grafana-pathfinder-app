@@ -51,6 +51,25 @@ test('records the review orchestration contract under ai-subsystem', () => {
   assert.match(context.contract_anchor.contract, /concern-context\.mjs/);
 });
 
+test('preserves grammatical commas in reviewer code scopes', () => {
+  const ai = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'ai-subsystem',
+  });
+  const performance = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'performance-and-bundle',
+  });
+
+  assert.deepEqual(ai.load_code, [
+    'changed agent-facing docs and rules only',
+    'directly related skill, rule, or prompt files',
+  ]);
+  assert.deepEqual(performance.load_code, ['changed files adding monitoring, async fetches, or heavy imports']);
+});
+
 test('validates cross-table IDs and references', () => {
   assert.deepEqual(validateConcernRegistry({ routingMarkdown: concerns, detailMarkdown: concernDetails }), []);
 });
@@ -65,6 +84,36 @@ test('rejects routing values outside the registry schema', () => {
     'Unknown category invalid for security',
     'min_signals must be between 1 and 8 for security',
     'max_context_files must be between 1 and 20 for security',
+  ]);
+});
+
+test('rejects duplicate contract owners and invariant names', () => {
+  const lines = concernDetails.split('\n');
+  const anchor = lines.find((line) => line.startsWith('| `completion-records` | #1411'));
+  const candidate = lines.find((line) => line.startsWith('| `analytics-and-telemetry` | Accreting'));
+  const invariant = lines.find((line) => line.startsWith('| `payload-boundary-normalization` |'));
+  assert.ok(anchor && candidate && invariant);
+
+  const invalid = concernDetails
+    .replace(anchor, `${anchor}\n${anchor}`)
+    .replace(candidate, `${candidate}\n${candidate}`)
+    .replace(invariant, `${invariant}\n${invariant}`);
+
+  assert.deepEqual(validateConcernRegistry({ routingMarkdown: concerns, detailMarkdown: invalid }), [
+    'Duplicate contract anchor: completion-records',
+    'Duplicate pre-contract candidate: analytics-and-telemetry',
+    'Duplicate named invariant: payload-boundary-normalization',
+  ]);
+});
+
+test('rejects blank required concern guidance', () => {
+  const invalid = concernDetails.replace(
+    'Protect the plugin from XSS, unsafe URL handling, insecure DOM APIs, unsafe HTML rendering, and other trust-boundary mistakes.',
+    ''
+  );
+
+  assert.deepEqual(validateConcernRegistry({ routingMarkdown: concerns, detailMarkdown: invalid }), [
+    'Missing purpose for security',
   ]);
 });
 

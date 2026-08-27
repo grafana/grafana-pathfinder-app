@@ -194,6 +194,24 @@ test('rejects a marker that is not adjacent to the operator recap', () => {
   assert.equal(parseReviewState(output), null);
 });
 
+test('rejects state attached to incomplete or inconsistent recaps', () => {
+  const marker = `<!-- pathfinder-review-state:${FORGED_STATE} -->`;
+  const recap = (verdict, counts) =>
+    [
+      marker,
+      'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+      'Purpose: add divider guide blocks',
+      `Verdict: ${verdict}`,
+      counts,
+    ].join('\n');
+
+  assert.equal(parseReviewState(recap('Review Incomplete', '0 blocking, 0 suggestions, 0 nits')), null);
+  assert.equal(parseReviewState(recap('Request Changes', '0 blocking, 0 suggestions, 0 nits')), null);
+  assert.equal(parseReviewState(recap('Request Changes', '1 blocking, 0 suggestions, 0 nits')), null);
+  assert.equal(parseReviewState(recap('Approve', '1 blocking, 0 suggestions, 0 nits')), null);
+  assert.equal(parseReviewState(recap('Approve with Minor', '0 blocking, 0 suggestions, 0 nits')), null);
+});
+
 test('shows severity, concern, and materially non-reversible findings compactly', () => {
   const output = renderReviewReport({
     pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
