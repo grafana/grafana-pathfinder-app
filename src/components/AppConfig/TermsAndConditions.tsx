@@ -3,9 +3,10 @@ import { Button, useStyles2, FieldSet, Switch, Text, Alert } from '@grafana/ui';
 import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
-import { PathfinderPluginConfig, TERMS_VERSION, getConfigWithDefaults } from '../../constants';
+import { PathfinderPluginConfig, ResolvedPathfinderConfig, TERMS_VERSION } from '../../constants';
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
 import { saveTenantSettings } from './save-settings';
+import { useSeededDraft } from './use-seeded-draft';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { logger } from '../../lib/logging';
 
@@ -13,25 +14,23 @@ type JsonData = PathfinderPluginConfig & {
   isDocsPasswordSet?: boolean;
 };
 
+function buildStateFromConfig(config: ResolvedPathfinderConfig): { acceptedTermsAndConditions: boolean } {
+  return { acceptedTermsAndConditions: config.acceptedTermsAndConditions };
+}
+
 export interface TermsAndConditionsProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
 
 const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
   const styles = useStyles2(getStyles);
-  // `enabled`/`pinned` are deliberately not read here: echoing a possibly-stale
-  // snapshot of them is what unpinned the plugin (`aa1c2efd`). saveTenantSettings
-  // reads them authoritatively at write time.
-  const { jsonData } = plugin.meta;
-
-  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
-  // After save, page reload brings fresh jsonData - no sync needed
-  const [isRecommenderEnabled, setIsRecommenderEnabled] = useState<boolean>(() => {
-    const configWithDefaults = getConfigWithDefaults(jsonData || {});
-    return configWithDefaults.acceptedTermsAndConditions;
-  });
+  // Seeded through `useSeededDraft`, which reads the store this tab writes to.
+  // `enabled`/`pinned` stay unread here: echoing a stale snapshot of them is what
+  // unpinned the plugin (`aa1c2efd`). saveTenantSettings reads them at write time.
+  const { draft, edit } = useSeededDraft(buildStateFromConfig);
+  const isRecommenderEnabled = draft.acceptedTermsAndConditions;
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const onToggleRecommender = (event: ChangeEvent<HTMLInputElement>) => {
-    setIsRecommenderEnabled(event.target.checked);
+    edit({ acceptedTermsAndConditions: event.target.checked });
   };
 
   const onSubmit = async (event: React.SubmitEvent) => {

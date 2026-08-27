@@ -31,13 +31,23 @@ import { StorageKeys } from './storage-keys';
 const KEY = StorageKeys.DEV_MODE_OPT_IN;
 
 /**
- * Reads this user's opt-in. Returns false on anything unexpected — a missing
- * key, unparseable JSON, or a browser that denies storage access — because the
- * safe default for a dev surface is "hidden".
+ * Reads this user's opt-in, tri-state: `undefined` means this browser has never
+ * recorded a choice, which is what separates a fresh browser from a deliberate
+ * opt-out. The legacy `devModeUserIds` migration reads only the former; without
+ * the distinction it would re-derive an opt-in from the allow-list on every
+ * publish and a later opt-out could never stick.
+ *
+ * Anything unexpected — unparseable JSON, or a browser that denies storage — is
+ * read as `false` rather than `undefined`: the safe default for a dev surface is
+ * "hidden", and a store we cannot read is not a store we can migrate into.
  */
-export function readDevModeOptIn(): boolean {
+export function readDevModeOptIn(): boolean | undefined {
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? 'false') === true;
+    const raw = localStorage.getItem(KEY);
+    if (raw === null) {
+      return undefined;
+    }
+    return JSON.parse(raw) === true;
   } catch {
     return false;
   }
@@ -55,5 +65,19 @@ export async function writeDevModeOptIn(enabled: boolean): Promise<void> {
     // Quota, or a browser that denies storage. Nothing else records this, so the
     // toggle genuinely failed and the caller should surface it.
     throw error instanceof Error ? error : new Error('Failed to persist dev-mode opt-in');
+  }
+}
+
+/**
+ * Records an opt-in carried over from the deprecated `devModeUserIds` array,
+ * without the throw: the migration runs during a config publish, where a browser
+ * that denies storage is not a failure the user asked for. It just means the
+ * carry-forward is re-attempted on the next load.
+ */
+export function adoptLegacyDevModeOptIn(): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(true));
+  } catch {
+    // Storage unavailable; the opt-in stays derived from the allow-list for now.
   }
 }

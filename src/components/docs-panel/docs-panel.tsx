@@ -66,7 +66,7 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { config, getAppEvents, locationService } from '@grafana/runtime';
+import { getAppEvents, locationService } from '@grafana/runtime';
 import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -987,9 +987,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // read as an explicit "dev mode off" and prune authorized tabs.
   const { config: pluginConfig, isResolved: isPluginConfigResolved } = usePathfinderPluginConfig();
 
-  // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
-  const currentUserId = config.bootData.user?.id;
-  const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+  const isDevMode = isDevModeEnabled(pluginConfig);
 
   const isEditorUser = isCurrentUserEditor();
 

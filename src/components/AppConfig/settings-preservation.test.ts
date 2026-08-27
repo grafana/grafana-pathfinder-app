@@ -22,12 +22,12 @@
  */
 
 import { getConfigWithDefaults, PathfinderPluginConfig } from '../../constants';
-import { fetchPathfinderSettings, savePathfinderSettings } from '../../utils/pathfinder-settings-api';
+import { fetchPathfinderSettingsSnapshot, savePathfinderSettings } from '../../utils/pathfinder-settings-api';
 import { fetchPluginSettings, updatePluginSettings } from '../../utils/utils.plugin';
 import { saveTenantSettings } from './save-settings';
 
 jest.mock('../../utils/pathfinder-settings-api', () => ({
-  fetchPathfinderSettings: jest.fn(),
+  fetchPathfinderSettingsSnapshot: jest.fn(),
   savePathfinderSettings: jest.fn(),
 }));
 
@@ -36,12 +36,17 @@ jest.mock('../../utils/utils.plugin', () => ({
   updatePluginSettings: jest.fn(),
 }));
 
-const mockFetchTenant = fetchPathfinderSettings as jest.MockedFunction<typeof fetchPathfinderSettings>;
+const mockFetchTenant = fetchPathfinderSettingsSnapshot as jest.MockedFunction<typeof fetchPathfinderSettingsSnapshot>;
 const mockSaveTenant = savePathfinderSettings as jest.MockedFunction<typeof savePathfinderSettings>;
 const mockFetchPlugin = fetchPluginSettings as jest.MockedFunction<typeof fetchPluginSettings>;
 const mockUpdatePlugin = updatePluginSettings as jest.MockedFunction<typeof updatePluginSettings>;
 
 const PLUGIN_ID = 'grafana-pathfinder-app';
+
+/** A settings-resource snapshot, so a test only has to name the stored config. */
+function tenantSnapshot(config: PathfinderPluginConfig, resourceVersion = '7') {
+  return { config, spec: {}, resourceVersion };
+}
 
 /** The jsonData a provisioned Cloud stack carries. */
 function provisionedJsonData(extra: PathfinderPluginConfig = {}): PathfinderPluginConfig {
@@ -72,7 +77,7 @@ describe('saveTenantSettings — App Platform path', () => {
   });
 
   it('sends the resolved config, not just the edited field', async () => {
-    mockFetchTenant.mockResolvedValue({ enableLiveSessions: true });
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({ enableLiveSessions: true }));
 
     await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
 
@@ -84,11 +89,24 @@ describe('saveTenantSettings — App Platform path', () => {
     expect(written.enableAutoDetection).toBe(true);
   });
 
+  it('hands the read snapshot to the writer so the save is a compare-and-swap', async () => {
+    // Without the resourceVersion the write is an unconditioned replace and two
+    // admins saving at once silently lose one of the two sets of edits.
+    const snapshot = tenantSnapshot({ enableLiveSessions: true }, '42');
+    mockFetchTenant.mockResolvedValue(snapshot);
+
+    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
+
+    expect(mockSaveTenant.mock.calls[0]![1]).toBe(snapshot);
+  });
+
   it('does not let one tab overwrite another tab with a stale value', async () => {
     // The stale-snapshot bug: this tab was rendered before another tab saved
     // `enableLiveSessions: true`. It owns only `tutorialUrl`, so the read at write
     // time — not the render-time snapshot — decides everything else.
-    mockFetchTenant.mockResolvedValue({ enableLiveSessions: true, tutorialUrl: 'https://old.example.com' });
+    mockFetchTenant.mockResolvedValue(
+      tenantSnapshot({ enableLiveSessions: true, tutorialUrl: 'https://old.example.com' })
+    );
 
     await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
 
@@ -168,6 +186,31 @@ describe('saveTenantSettings — legacy jsonData fallback', () => {
     expect(stored.stackId).toBe('123456');
     expect(stored.acceptedTermsAndConditions).toBe(true);
     expect(stored.tutorialUrl).toBe('https://changed.example.com');
+  });
+});
+
+describe('saveTenantSettings — the kind is not served here', () => {
+  it('falls back to jsonData rather than failing the save', async () => {
+    // The GAP aggregation toggle is shared with InteractiveGuide, so it can be on
+    // while `pathfindersettings` is not served — a stack running the plugin ahead
+    // of the backend. The writer reports that as `false`, and the save must land.
+    mockSaveTenant.mockResolvedValue(false);
+    mockFetchPlugin.mockResolvedValue({ jsonData: provisionedJsonData(), enabled: true, pinned: true });
+
+    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } });
+
+    const written = mockUpdatePlugin.mock.calls[0]![1].jsonData as PathfinderPluginConfig;
+    expect(written.tutorialUrl).toBe('https://new.example.com');
+    expect(written.stackId).toBe('123456');
+  });
+
+  it('surfaces a real write failure instead of quietly using the other store', async () => {
+    mockSaveTenant.mockRejectedValue(Object.assign(new Error('forbidden'), { status: 403 }));
+
+    await expect(
+      saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } })
+    ).rejects.toThrow('forbidden');
+    expect(mockUpdatePlugin).not.toHaveBeenCalled();
   });
 });
 

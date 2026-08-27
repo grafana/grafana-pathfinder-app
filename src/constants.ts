@@ -112,9 +112,11 @@ export const DEFAULT_DEV_MODE_OPT_IN = false;
 //
 //   1. PathfinderSettings (App Platform, tenant-scoped, admin-write) — every
 //      field in TENANT_SETTING_KEYS below. See utils/pathfinder-settings-api.ts.
-//   2. Grafana per-user storage — `devModeOptIn`. Per-user state must never sit
-//      in a tenant-scoped store; the old `devModeUserIds` array was a per-user
-//      list kept in an org-wide blob for want of anywhere better.
+//   2. This browser's localStorage — `devModeOptIn`, via lib/dev-mode-opt-in.ts,
+//      which records why the hybrid user-storage layer was ruled out. Per-user
+//      state must never sit in a tenant-scoped store; the old `devModeUserIds`
+//      array was a per-user list kept in an org-wide blob for want of anywhere
+//      better.
 //   3. Plugin jsonData — provisioning only (`stackId`, and
 //      `secureJsonData.accessToken`), plus the legacy copy of slice 1 that is
 //      still read as a fallback wherever App Platform is unavailable (OSS,
@@ -199,12 +201,26 @@ export const TENANT_SETTING_KEYS = [
   'kioskRulesUrl',
 ] as const satisfies ReadonlyArray<keyof PathfinderTenantSettings>;
 
-/** Per-user settings, resolved from Grafana per-user storage. */
+/**
+ * Inclusive bounds the `PathfinderSettings` kind enforces on its numeric fields,
+ * in lockstep with kinds/pathfindersettings.cue. The apiserver rejects an
+ * out-of-range value with a 422, and the settings client writes the whole
+ * resolved config, so one bad legacy value would block every tab's first save;
+ * `clampToKindBounds` in utils/pathfinder-settings-api.ts applies these first.
+ */
+export const TENANT_SETTING_BOUNDS = {
+  requirementsCheckTimeout: { min: 100, max: 60000 },
+  guidedStepTimeout: { min: 1000, max: 600000 },
+  peerjsPort: { min: 1, max: 65535 },
+} as const satisfies Partial<Record<keyof PathfinderTenantSettings, { min: number; max: number }>>;
+
+/** Per-user settings, resolved from this browser's localStorage. */
 export interface PathfinderUserSettings {
   /**
    * Whether THIS user has opted into developer surfaces. Gated by the
    * tenant-level `devMode`; both must be true. Replaces the old
-   * `devModeUserIds` array.
+   * `devModeUserIds` array. Per-browser, not per-account — see
+   * lib/dev-mode-opt-in.ts.
    */
   devModeOptIn: boolean;
 }

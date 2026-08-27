@@ -3,13 +3,13 @@ import { cx } from '@emotion/css';
 
 import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
 import { Icon, useStyles2, Card, Alert, Button } from '@grafana/ui';
-import { usePluginContext, IconName } from '@grafana/data';
+import { IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { HelpFooter } from '../HelpFooter';
 import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
-import { locationService, config, getAppEvents } from '@grafana/runtime';
+import { locationService, getAppEvents } from '@grafana/runtime';
 
 // Import refactored context system
 import { getStyles } from '../../styles/context-panel.styles';
@@ -23,7 +23,8 @@ import {
   AnalyticsContentType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { getConfigWithDefaults, PLUGIN_BASE_URL } from '../../constants';
+import { PLUGIN_BASE_URL } from '../../constants';
+import { usePathfinderPluginConfig } from '../../hooks';
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { testIds } from '../../constants/testIds';
 import { CustomGuidesSection } from './CustomGuidesSection';
@@ -1081,12 +1082,13 @@ export const RecommendationsSection = memo(function RecommendationsSection({
 
 function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   // Get plugin configuration with proper defaults applied
-  const pluginContext = usePluginContext();
-  const configWithDefaults = getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
+  // Resolved rather than read off `plugin.meta.jsonData`: where the
+  // `PathfinderSettings` resource is authoritative, jsonData no longer receives
+  // saves, so the terms gate and the dev-mode gate would both read pre-migration
+  // values here.
+  const { config: configWithDefaults } = usePathfinderPluginConfig();
 
-  // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
-  const currentUserId = config.bootData.user?.id;
-  const devModeEnabled = isDevModeEnabled(configWithDefaults, currentUserId);
+  const devModeEnabled = isDevModeEnabled(configWithDefaults);
 
   // Use the simplified context hook
   const {

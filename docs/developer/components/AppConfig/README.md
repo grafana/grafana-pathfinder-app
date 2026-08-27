@@ -59,8 +59,8 @@ The plugin configuration interface that allows administrators to set up the docu
 
 **Dev Mode:**
 
-- `devModeUserIds` - List of user IDs with dev mode access
-- Developer tools enablement
+- `devMode` - The stack-wide gate (tenant setting)
+- `devModeOptIn` - This browser's opt-in (`localStorage`). Both must be true; see `docs/developer/DEV_MODE.md`
 
 ### `TermsAndConditions.tsx`
 
@@ -131,6 +131,12 @@ shape and `src/utils/pathfinder-settings-api.ts` for the client.
 
 Plugin `jsonData` also remains the **fallback** store for tenant settings
 wherever the App Platform group is not served — OSS, self-managed, and local dev.
+Availability is not knowable up front: the GAP aggregation toggle is shared with
+`InteractiveGuide`, so it can be on while `pathfindersettings` is not served — a
+stack running the plugin ahead of the backend. Both the read and the write treat
+an "unavailable" status as "not served here" and fall back; only 403 escalates,
+so a permission failure surfaces rather than silently landing in the other store.
+Which rung a read landed on is reported by `recordSettingsStoreResolved`.
 
 **Why not `jsonData` for everything**: Grafana replaces `jsonData` wholesale on
 write and Cloud provisioning targets the same record, so the two writers
@@ -182,12 +188,12 @@ interface PathfinderPluginConfig extends Partial<PathfinderTenantSettings>, Part
 
 **Configuration Flow**:
 
-1. **Load Existing Config**: `usePathfinderPluginConfig` resolves the App Platform resource over `jsonData` over defaults, then folds in the per-user opt-in
+1. **Load Existing Config**: `usePathfinderPluginConfig` resolves the App Platform resource over `jsonData` over defaults (via `resolveTenantSettings`, the same helper `saveTenantSettings` reads through), then folds in the per-user opt-in. Every tab seeds and re-seeds from this through `useSeededDraft`, never from `plugin.meta.jsonData` — where the resource is authoritative, `jsonData` never receives a save, so a form seeded from it would render pre-migration values and write them back
 2. **Tab Navigation**: Admin selects appropriate configuration tab
 3. **Form Input**: Admin updates settings through form fields in selected tab
 4. **Validation**: Ensures required fields are populated and formats are correct
 5. **Terms Acceptance**: (Recommendations tab) Requires accepting terms to enable recommendations
-6. **Save**: The tab passes only the fields it owns to `saveTenantSettings`, which re-reads current settings authoritatively and writes the resolved result
+6. **Save**: The tab passes only the fields it owns to `saveTenantSettings`, which re-reads current settings authoritatively and writes the resolved result. The App Platform write carries that read's `resourceVersion` (so a concurrent admin save conflicts rather than losing) and layers over the read spec (so a field a newer backend added, `schemaVersion` included, is not dropped by an older client)
 7. **Reload**: Refreshes page to apply new configuration across plugin
 
 **Security Features**:
@@ -195,7 +201,8 @@ interface PathfinderPluginConfig extends Partial<PathfinderTenantSettings>, Part
 - **Secret Storage**: Secrets live in `secureJsonData` (encrypted, not queryable). No config tab writes them — the only value there is the provisioned `accessToken`
 - **Least privilege**: Writing tenant settings requires the `pathfinder-backend:settings-editor` role, bound to admin. Reading is bound to viewer
 - **Ownership isolation**: `configToSpec` projects through `TENANT_SETTING_KEYS`, so per-user and provisioned fields cannot reach the tenant resource
-- **Dev Mode Protection**: two gates — the admin-controlled tenant `devMode` flag and the user's own opt-in. Both must be true
+- **Dev Mode Protection**: two gates — the admin-controlled tenant `devMode` flag and the user's own opt-in. Both must be true. The **Dev mode** switch lifts the tenant gate as well as recording the opt-in; **Dev mode for this stack** is the separate admin veto that closes it for everyone
+- **Bounded writes**: `clampToKindBounds` holds numeric fields inside the ranges `kinds/pathfindersettings.cue` enforces. A save carries the whole resolved config, so one out-of-range legacy value would otherwise 422 every tab's save, not just the tab that owns the field
 
 **Default Values**:
 
@@ -212,7 +219,8 @@ interface PathfinderPluginConfig extends Partial<PathfinderTenantSettings>, Part
 
 **Dev Mode:**
 
-- Dev Mode Users: `[]` (empty list)
+- Stack gate (`devMode`): `false`
+- This browser's opt-in (`devModeOptIn`): unset, read as `false`
 
 ## Integration Points
 
@@ -241,10 +249,10 @@ Updates the global configuration via window object which provides settings to:
 
 ### Dev Mode Integration
 
-- Dev mode user list stored in configuration
-- Checked against current user ID at runtime
+- The stack gate is a tenant setting; the opt-in is per-browser
+- Both are resolved onto the published config, so every check stays synchronous
 - Controls visibility of developer tools
-- Enables block editor, PR tester, and URL tester
+- Enables PR tester and URL tester (the block editor no longer requires dev mode)
 
 ## Access Control
 

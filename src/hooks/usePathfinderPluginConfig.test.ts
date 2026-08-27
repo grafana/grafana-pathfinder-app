@@ -2,9 +2,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { usePluginContext } from '@grafana/data';
 import { getConfigWithDefaults } from '../constants';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
-import { fetchPluginJsonData } from '../utils/utils.plugin';
-import { fetchPathfinderSettings } from '../utils/pathfinder-settings-api';
-import { hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
+import { fetchPluginSettings } from '../utils/utils.plugin';
+import { fetchPathfinderSettingsSnapshot } from '../utils/pathfinder-settings-api';
+import { adoptLegacyDevModeOptIn, hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
 import {
   __resetPathfinderPluginConfigForTests,
   publishPathfinderPluginConfig,
@@ -12,12 +12,14 @@ import {
   usePathfinderPluginConfig,
 } from './usePathfinderPluginConfig';
 
+// The two stores are mocked, not `resolveTenantSettings` itself, so these tests
+// still exercise the real merge precedence the config tabs also save through.
 jest.mock('../utils/utils.plugin', () => ({
-  fetchPluginJsonData: jest.fn(),
+  fetchPluginSettings: jest.fn(),
 }));
 
 jest.mock('../utils/pathfinder-settings-api', () => ({
-  fetchPathfinderSettings: jest.fn(),
+  fetchPathfinderSettingsSnapshot: jest.fn(),
 }));
 
 // Kept hermetic: the real module reads localStorage and Grafana boot data, and
@@ -25,6 +27,7 @@ jest.mock('../utils/pathfinder-settings-api', () => ({
 jest.mock('../utils/dev-mode', () => ({
   resolveDevModeOptIn: jest.fn(() => false),
   hasLegacyDevModeOptIn: jest.fn(() => false),
+  adoptLegacyDevModeOptIn: jest.fn(),
 }));
 
 jest.mock('@grafana/data', () => ({
@@ -32,10 +35,21 @@ jest.mock('@grafana/data', () => ({
   usePluginContext: jest.fn(),
 }));
 
-const mockFetch = fetchPluginJsonData as jest.MockedFunction<typeof fetchPluginJsonData>;
-const mockFetchTenant = fetchPathfinderSettings as jest.MockedFunction<typeof fetchPathfinderSettings>;
+const mockFetchPluginSettings = fetchPluginSettings as jest.MockedFunction<typeof fetchPluginSettings>;
+const mockFetchTenant = fetchPathfinderSettingsSnapshot as jest.MockedFunction<typeof fetchPathfinderSettingsSnapshot>;
 const mockOptIn = resolveDevModeOptIn as jest.MockedFunction<typeof resolveDevModeOptIn>;
 const mockLegacyOptIn = hasLegacyDevModeOptIn as jest.MockedFunction<typeof hasLegacyDevModeOptIn>;
+const mockAdoptLegacy = adoptLegacyDevModeOptIn as jest.MockedFunction<typeof adoptLegacyDevModeOptIn>;
+
+/** The plugin-settings record shape, so a test only has to name its jsonData. */
+function pluginSettings(jsonData: Record<string, unknown> = {}) {
+  return { jsonData, enabled: true, pinned: true };
+}
+
+/** A settings-resource snapshot, so a test only has to name the stored config. */
+function tenantSnapshot(config: Record<string, unknown>) {
+  return { config, spec: {}, resourceVersion: '1' };
+}
 const mockPluginContext = usePluginContext as unknown as jest.Mock;
 
 function readGlobal() {
@@ -53,7 +67,7 @@ async function settleRefresh() {
 beforeEach(() => {
   jest.clearAllMocks();
   __resetPathfinderPluginConfigForTests();
-  mockFetch.mockResolvedValue({});
+  mockFetchPluginSettings.mockResolvedValue(pluginSettings());
   // Default posture: no App Platform resource, so the jsonData tier is in play.
   mockFetchTenant.mockResolvedValue(null);
   mockOptIn.mockReturnValue(false);
@@ -114,11 +128,11 @@ describe('refreshPathfinderPluginConfig', () => {
       refreshPathfinderPluginConfig(),
     ]);
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetchPluginSettings).toHaveBeenCalledTimes(1);
   });
 
   it('publishes the fetched settings', async () => {
-    mockFetch.mockResolvedValue({ enableLiveSessions: true });
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ enableLiveSessions: true }));
 
     const refreshed = await refreshPathfinderPluginConfig();
 
@@ -128,7 +142,7 @@ describe('refreshPathfinderPluginConfig', () => {
 
   it('resolves undefined and leaves the published config alone on failure', async () => {
     publishPathfinderPluginConfig({ enableLiveSessions: true });
-    mockFetch.mockRejectedValue(new Error('403'));
+    mockFetchPluginSettings.mockRejectedValue(new Error('403'));
 
     await expect(refreshPathfinderPluginConfig()).resolves.toBeUndefined();
     expect(readGlobal()?.enableLiveSessions).toBe(true);
@@ -137,8 +151,8 @@ describe('refreshPathfinderPluginConfig', () => {
 
 describe('settings resolution across stores', () => {
   it('lets the App Platform resource win over jsonData field by field', async () => {
-    mockFetch.mockResolvedValue({ enableLiveSessions: false, guidedStepTimeout: 1000 });
-    mockFetchTenant.mockResolvedValue({ enableLiveSessions: true, guidedStepTimeout: 2000 });
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ enableLiveSessions: false, guidedStepTimeout: 1000 }));
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({ enableLiveSessions: true, guidedStepTimeout: 2000 }));
 
     const refreshed = await refreshPathfinderPluginConfig();
 
@@ -148,8 +162,8 @@ describe('settings resolution across stores', () => {
 
   it('falls back to jsonData when the App Platform resource is absent', async () => {
     // What OSS, self-managed, and local dev look like: no aggregation toggle, so
-    // fetchPathfinderSettings resolves null rather than throwing.
-    mockFetch.mockResolvedValue({ enableLiveSessions: true });
+    // fetchPathfinderSettingsSnapshot resolves null rather than throwing.
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ enableLiveSessions: true }));
     mockFetchTenant.mockResolvedValue(null);
 
     const refreshed = await refreshPathfinderPluginConfig();
@@ -161,8 +175,8 @@ describe('settings resolution across stores', () => {
     // The post-migration steady state on Cloud: an instance restart has reset
     // jsonData to just the provisioned `stackId`, and every real setting comes
     // from the App Platform resource. This is the case the migration exists for.
-    mockFetch.mockResolvedValue({ stackId: 'stack-123' });
-    mockFetchTenant.mockResolvedValue({ enableLiveSessions: true, guidedStepTimeout: 2000 });
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ stackId: 'stack-123' }));
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({ enableLiveSessions: true, guidedStepTimeout: 2000 }));
 
     await refreshPathfinderPluginConfig();
 
@@ -173,7 +187,7 @@ describe('settings resolution across stores', () => {
   it('reads both stores once per refresh, concurrently', async () => {
     await Promise.all([refreshPathfinderPluginConfig(), refreshPathfinderPluginConfig()]);
 
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetchPluginSettings).toHaveBeenCalledTimes(1);
     expect(mockFetchTenant).toHaveBeenCalledTimes(1);
   });
 
@@ -194,15 +208,40 @@ describe('settings resolution across stores', () => {
     expect(mockOptIn).not.toHaveBeenCalled();
   });
 
-  it('carries a pre-migration devModeUserIds opt-in forward', () => {
-    // Upgrade path: the user was in the old org-wide allow-list and has nothing
-    // in per-user storage yet. They must not be silently dropped out of dev mode.
-    mockOptIn.mockReturnValue(false);
+  it('carries a pre-migration devModeUserIds opt-in forward, once', () => {
+    // Upgrade path: the user was in the old org-wide allow-list and this browser
+    // has recorded nothing yet. They must not be silently dropped out of dev
+    // mode — and the carry-forward writes through, so it is a migration rather
+    // than a rule re-derived on every publish.
+    mockOptIn.mockReturnValue(undefined);
     mockLegacyOptIn.mockReturnValue(true);
 
     const published = publishPathfinderPluginConfig({ devMode: true });
 
     expect(published.devModeOptIn).toBe(true);
+    expect(mockAdoptLegacy).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a deliberate opt-out beat a legacy allow-list entry', () => {
+    // Nothing ever clears `devModeUserIds`, so re-deriving from it would undo
+    // `disableDevMode()` on the very next publish and the opt-out could never
+    // stick. `false` is a recorded choice; only `undefined` is "never chosen".
+    mockOptIn.mockReturnValue(false);
+    mockLegacyOptIn.mockReturnValue(true);
+
+    const published = publishPathfinderPluginConfig({ devMode: true });
+
+    expect(published.devModeOptIn).toBe(false);
+    expect(mockAdoptLegacy).not.toHaveBeenCalled();
+  });
+
+  it('does not consult the legacy allow-list once this browser has opted in', () => {
+    mockOptIn.mockReturnValue(true);
+
+    const published = publishPathfinderPluginConfig({ devMode: true });
+
+    expect(published.devModeOptIn).toBe(true);
+    expect(mockLegacyOptIn).not.toHaveBeenCalled();
   });
 });
 
@@ -242,7 +281,7 @@ describe('usePathfinderPluginConfig', () => {
   });
 
   it('adopts a later publish via the config-updated event', async () => {
-    mockFetch.mockRejectedValue(new Error('403'));
+    mockFetchPluginSettings.mockRejectedValue(new Error('403'));
     const { result } = renderHook(() => usePathfinderPluginConfig());
     await settleRefresh();
     expect(result.current.isResolved).toBe(false);
@@ -268,7 +307,7 @@ describe('usePathfinderPluginConfig', () => {
   });
 
   it('keeps a stable state identity when a publish changes nothing', async () => {
-    mockFetch.mockResolvedValue({ enableLiveSessions: true });
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ enableLiveSessions: true }));
     const { result } = renderHook(() => usePathfinderPluginConfig());
     await settleRefresh();
     const first = result.current;
@@ -282,7 +321,7 @@ describe('usePathfinderPluginConfig', () => {
   });
 
   it('stops responding to publishes after unmount', async () => {
-    mockFetch.mockRejectedValue(new Error('403'));
+    mockFetchPluginSettings.mockRejectedValue(new Error('403'));
     const { result, unmount } = renderHook(() => usePathfinderPluginConfig());
     await settleRefresh();
     const last = result.current;
@@ -297,11 +336,11 @@ describe('usePathfinderPluginConfig', () => {
     renderHook(() => usePathfinderPluginConfig());
     renderHook(() => usePathfinderPluginConfig());
 
-    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockFetchPluginSettings).toHaveBeenCalledTimes(1));
   });
 
   it('publishes the fetched config for non-React readers of the global', async () => {
-    mockFetch.mockResolvedValue({ enableLiveSessions: true });
+    mockFetchPluginSettings.mockResolvedValue(pluginSettings({ enableLiveSessions: true }));
 
     const { result } = renderHook(() => usePathfinderPluginConfig());
 

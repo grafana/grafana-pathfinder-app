@@ -210,6 +210,8 @@ export const testIds = {
     devModeToggle: 'config-dev-mode-toggle',
     /** Pathfinder tutorial anchor for #dev-mode (do not rename without Pathfinder squad). */
     pathfinderDevMode: 'pathfinder-dev-mode',
+    tenantDevMode: 'pathfinder-tenant-dev-mode',
+    tenantDevModeToggle: 'config-tenant-dev-mode-toggle',
     assistantDevModeToggle: 'config-assistant-dev-mode-toggle',
     globalLinkInterception: 'config-global-link-interception',
     openPanelOnLaunch: 'config-open-panel-on-launch',

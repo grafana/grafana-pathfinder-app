@@ -6,11 +6,14 @@
  * - Tenant gate (`devMode`): an admin-controlled flag in tenant settings — the
  *   `PathfinderSettings` App Platform resource, with the legacy plugin-jsonData
  *   value as a fallback. An admin can switch developer surfaces off for the whole
- *   stack.
- * - Per-user opt-in (`devModeOptIn`): this user's own choice, in Grafana per-user
- *   storage (see lib/dev-mode-opt-in.ts).
+ *   stack. It is a tenant setting, so it is written through `saveTenantSettings`
+ *   by the configuration page, not from here.
+ * - Per-user opt-in (`devModeOptIn`): this user's own choice, in this browser's
+ *   localStorage (see lib/dev-mode-opt-in.ts for why not Grafana user storage).
  *
- * Both must be true for a user to see developer features.
+ * Both must be true for a user to see developer features, so the configuration
+ * page's toggle lifts the tenant gate as well as recording the opt-in — writing
+ * only this half would leave the switch visibly doing nothing on a fresh stack.
  *
  * WHY IT CHANGED
  *
@@ -20,8 +23,8 @@
  * — which is how it once unpinned the plugin from the nav (`aa1c2efd`) — and a
  * Cloud instance restart reset the flag along with everything else. The opt-in
  * was already self-service (`enableDevMode` added the *calling* user), so moving
- * it to per-user storage changes no permission: it removes an org-wide write and
- * stops one user's preference being visible to every other user.
+ * it to this browser's storage changes no permission: it removes an org-wide
+ * write and stops one user's preference being visible to every other user.
  *
  * The resolved config carries both flags, so every check here stays synchronous.
  */
@@ -29,7 +32,7 @@
 import { config } from '@grafana/runtime';
 import { PathfinderPluginConfig } from '../constants';
 import { logger } from '../lib/logging';
-import { readDevModeOptIn, writeDevModeOptIn } from '../lib/dev-mode-opt-in';
+import { adoptLegacyDevModeOptIn, readDevModeOptIn, writeDevModeOptIn } from '../lib/dev-mode-opt-in';
 
 /**
  * Check if dev mode is enabled for the current user (synchronous)
@@ -37,12 +40,9 @@ import { readDevModeOptIn, writeDevModeOptIn } from '../lib/dev-mode-opt-in';
  * Requires both the tenant gate and this user's opt-in.
  *
  * @param pluginConfig - Resolved plugin configuration
- * @param _currentUserId - Unused. Kept so existing call sites compile; the
- *   per-user half of the decision is no longer keyed by user ID, because the
- *   opt-in now lives in that user's own storage rather than in a shared list.
  * @returns true if dev mode is enabled for this specific user
  */
-export const isDevModeEnabled = (pluginConfig: PathfinderPluginConfig, _currentUserId?: number): boolean => {
+export const isDevModeEnabled = (pluginConfig: PathfinderPluginConfig): boolean => {
   const tenantEnabled = pluginConfig.devMode ?? false;
 
   if (!tenantEnabled) {
@@ -51,7 +51,7 @@ export const isDevModeEnabled = (pluginConfig: PathfinderPluginConfig, _currentU
 
   // Prefer the resolved value the config layer hydrated; fall back to a direct
   // read for callers holding a raw jsonData object that never went through it.
-  return pluginConfig.devModeOptIn ?? readDevModeOptIn();
+  return pluginConfig.devModeOptIn ?? readDevModeOptIn() ?? false;
 };
 
 /**
@@ -136,12 +136,11 @@ export const isDevModeEnabledGlobal = (): boolean => {
  * the assistant availability and logging prompts instead of opening the real assistant.
  *
  * @param pluginConfig - Plugin configuration
- * @param currentUserId - Unused; see isDevModeEnabled
  * @returns true if assistant dev mode is enabled for this user
  */
-export const isAssistantDevModeEnabled = (pluginConfig: PathfinderPluginConfig, currentUserId?: number): boolean => {
+export const isAssistantDevModeEnabled = (pluginConfig: PathfinderPluginConfig): boolean => {
   // First check if regular dev mode is enabled for this user
-  const devModeEnabled = isDevModeEnabled(pluginConfig, currentUserId);
+  const devModeEnabled = isDevModeEnabled(pluginConfig);
 
   if (!devModeEnabled) {
     return false;
@@ -172,14 +171,20 @@ export const isAssistantDevModeEnabledGlobal = (): boolean => {
 
 /**
  * Resolve this user's dev-mode opt-in for the config layer to hydrate into the
- * published configuration, keeping every check above synchronous.
+ * published configuration, keeping every check above synchronous. Tri-state:
+ * `undefined` is "this browser has never chosen", which the legacy migration
+ * needs to tell apart from a deliberate opt-out.
  */
-export const resolveDevModeOptIn = (): boolean => readDevModeOptIn();
+export const resolveDevModeOptIn = (): boolean | undefined => readDevModeOptIn();
+
+export { adoptLegacyDevModeOptIn };
 
 /**
  * Whether the signed-in user is the one a legacy `devModeUserIds` entry referred
- * to. Used once, at bootstrap, to carry a pre-migration opt-in forward so an
- * existing developer is not silently logged out of dev mode.
+ * to. Read only while this browser has recorded no choice of its own; the caller
+ * adopts the result through `adoptLegacyDevModeOptIn`, which retires the
+ * allow-list for this browser so a later opt-out is not undone on the next
+ * publish.
  */
 export const hasLegacyDevModeOptIn = (pluginConfig: PathfinderPluginConfig): boolean => {
   const userId = config.bootData.user?.id;

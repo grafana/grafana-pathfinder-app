@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, ChangeEvent } from 'react';
+import React, { useState, ChangeEvent } from 'react';
 import { Button, Field, Input, useStyles2, FieldSet, Switch, Alert, Text, Badge } from '@grafana/ui';
 import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -14,14 +14,15 @@ import {
   DEFAULT_PEERJS_KEY,
   DEFAULT_PEERJS_SECURE,
   DEFAULT_ENABLE_CODA_TERMINAL,
+  TENANT_SETTING_BOUNDS,
+  ResolvedPathfinderConfig,
   getDefaultRecommenderUrl,
   isKnownRecommenderUrl,
 } from '../../constants';
-import { fetchPluginJsonData } from '../../utils/utils.plugin';
 import { saveTenantSettings } from './save-settings';
+import { useSeededDraft } from './use-seeded-draft';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
-import { config } from '@grafana/runtime';
 import { CodaBackendStatus } from './CodaBackendStatus';
 
 type JsonData = PathfinderPluginConfig;
@@ -39,21 +40,21 @@ type State = {
   enableCodaTerminal: boolean;
 };
 
-function buildStateFromJsonData(jsonData: PathfinderPluginConfig | undefined): State {
+function buildStateFromConfig(config: ResolvedPathfinderConfig): State {
   return {
     recommenderServiceUrl:
-      jsonData?.recommenderServiceUrl && !isKnownRecommenderUrl(jsonData.recommenderServiceUrl)
-        ? jsonData.recommenderServiceUrl
+      config.recommenderServiceUrl && !isKnownRecommenderUrl(config.recommenderServiceUrl)
+        ? config.recommenderServiceUrl
         : getDefaultRecommenderUrl(),
-    tutorialUrl: jsonData?.tutorialUrl || DEFAULT_TUTORIAL_URL,
-    interceptGlobalDocsLinks: jsonData?.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
-    openPanelOnLaunch: jsonData?.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,
-    enableLiveSessions: jsonData?.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
-    peerjsHost: jsonData?.peerjsHost || DEFAULT_PEERJS_HOST,
-    peerjsPort: jsonData?.peerjsPort ?? DEFAULT_PEERJS_PORT,
-    peerjsKey: jsonData?.peerjsKey || DEFAULT_PEERJS_KEY,
-    peerjsSecure: jsonData?.peerjsSecure ?? DEFAULT_PEERJS_SECURE,
-    enableCodaTerminal: jsonData?.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
+    tutorialUrl: config.tutorialUrl || DEFAULT_TUTORIAL_URL,
+    interceptGlobalDocsLinks: config.interceptGlobalDocsLinks ?? DEFAULT_INTERCEPT_GLOBAL_DOCS_LINKS,
+    openPanelOnLaunch: config.openPanelOnLaunch ?? DEFAULT_OPEN_PANEL_ON_LAUNCH,
+    enableLiveSessions: config.enableLiveSessions ?? DEFAULT_ENABLE_LIVE_SESSIONS,
+    peerjsHost: config.peerjsHost || DEFAULT_PEERJS_HOST,
+    peerjsPort: config.peerjsPort ?? DEFAULT_PEERJS_PORT,
+    peerjsKey: config.peerjsKey || DEFAULT_PEERJS_KEY,
+    peerjsSecure: config.peerjsSecure ?? DEFAULT_PEERJS_SECURE,
+    enableCodaTerminal: config.enableCodaTerminal ?? DEFAULT_ENABLE_CODA_TERMINAL,
   };
 }
 
@@ -63,56 +64,20 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
   const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
-  // `enabled`/`pinned` are deliberately not read here: echoing a possibly-stale
-  // snapshot of them is what unpinned the plugin (`aa1c2efd`). saveTenantSettings
-  // reads them authoritatively at write time.
-  const { jsonData: pluginJsonData } = plugin.meta;
-  const [resolvedJsonData, setResolvedJsonData] = useState<PathfinderPluginConfig>(pluginJsonData || {});
-  const [state, setState] = useState<State>(() => buildStateFromJsonData(pluginJsonData));
+  // Seeded through `useSeededDraft`, which reads the store this tab writes to.
+  // `enabled`/`pinned` stay unread here: echoing a stale snapshot of them is what
+  // unpinned the plugin (`aa1c2efd`). saveTenantSettings reads them at write time.
+  const { draft: state, edit: editDraft, config: resolvedConfig } = useSeededDraft(buildStateFromConfig);
   const [isSaving, setIsSaving] = useState(false);
-  const isDraftEdited = useRef(false);
+  const [portError, setPortError] = useState<string | undefined>(undefined);
 
-  const editDraft = (changes: Partial<State>) => {
-    isDraftEdited.current = true;
-    setState((previous) => ({ ...previous, ...changes }));
-  };
-
-  // `plugin.meta.jsonData` can lag a recent save, so seed the form from the
-  // authoritative read — but never over an edit the admin has already made.
-  useEffect(() => {
-    let cancelled = false;
-
-    fetchPluginJsonData(plugin.meta.id)
-      .then((freshJsonData) => {
-        if (cancelled) {
-          return;
-        }
-
-        setResolvedJsonData(freshJsonData);
-        if (!isDraftEdited.current) {
-          setState(buildStateFromJsonData(freshJsonData));
-        }
-      })
-      .catch((error) => {
-        logger.error('Failed to fetch plugin settings for configuration form', { error });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [plugin.meta.id]);
-
-  // Dev mode needs two gates: the tenant-level flag in settings, and this user's
-  // own opt-in in per-user storage. `isDevModeEnabled` combines them; the user id
-  // is only still read to label the UI and to warn when it cannot be determined.
-  const currentUserId = config.bootData.user?.id;
-
-  // Check if dev mode is enabled for THIS user (synchronous)
-  const devModeEnabledForUser = isDevModeEnabled(resolvedJsonData || {});
+  // Both gates: the tenant flag, and this browser's own opt-in.
+  const devModeEnabledForUser = isDevModeEnabled(resolvedConfig);
+  const tenantDevModeEnabled = resolvedConfig.devMode;
   const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
+  const [tenantDevModeToggling, setTenantDevModeToggling] = useState<boolean>(false);
 
-  // Assistant dev mode state
-  const assistantDevModeEnabled = resolvedJsonData?.enableAssistantDevMode ?? false;
+  const assistantDevModeEnabled = resolvedConfig.enableAssistantDevMode;
   const [assistantDevModeToggling, setAssistantDevModeToggling] = useState<boolean>(false);
 
   // Show dev mode input if URL param is set OR if dev mode is already enabled for this user
@@ -121,10 +86,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   // Show advanced config fields only in dev mode (for Grafana team development)
   const showAdvancedConfig = devModeEnabledForUser || showDevModeInput;
 
-  // Configuration is now retrieved directly from plugin meta via usePluginContext
-
   const isRecommenderUrlMissing = showAdvancedConfig && !state.recommenderServiceUrl;
-  const isSubmitDisabled = isRecommenderUrlMissing;
+  const isSubmitDisabled = isRecommenderUrlMissing || portError !== undefined;
 
   const onChangeRecommenderServiceUrl = (event: ChangeEvent<HTMLInputElement>) => {
     editDraft({ recommenderServiceUrl: event.target.value.trim() });
@@ -135,15 +98,15 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   };
 
   const onChangeDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
-    if (!currentUserId) {
-      alert('Cannot determine current user. Please refresh the page and try again.');
-      return;
-    }
-
-    // This user's opt-in only: it goes to their own per-user storage, never to the
-    // org-wide plugin-settings document. The tenant-level gate stays an admin setting.
     setDevModeToggling(true);
     try {
+      // Both gates must be true for anything to appear, so turning on lifts the
+      // tenant gate too. Turning off touches only this browser — revoking the
+      // stack-wide gate is the separate admin switch below.
+      if (!devModeEnabledForUser && !tenantDevModeEnabled) {
+        await saveTenantSettings({ pluginId: plugin.meta.id, changes: { devMode: true } });
+      }
+
       await toggleDevMode(devModeEnabledForUser);
 
       // Reload page to refresh plugin config and apply changes globally
@@ -158,6 +121,29 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       alert(errorMessage);
 
       setDevModeToggling(false);
+    }
+  };
+
+  // The instance-level veto: the switch above can only ever lift the gate.
+  const onChangeTenantDevMode = async (event: ChangeEvent<HTMLInputElement>) => {
+    const enabled = event.target.checked;
+    setTenantDevModeToggling(true);
+    try {
+      await saveTenantSettings({ pluginId: plugin.meta.id, changes: { devMode: enabled } });
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      logger.error('Failed to toggle stack-wide dev mode', { error });
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Failed to change dev mode for this stack. You may need admin permissions.';
+      alert(errorMessage);
+
+      setTenantDevModeToggling(false);
     }
   };
 
@@ -209,7 +195,13 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const onChangePeerjsPort = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value.trim();
     const port = value === '' ? DEFAULT_PEERJS_PORT : parseInt(value, 10);
-    editDraft({ peerjsPort: isNaN(port) ? DEFAULT_PEERJS_PORT : port });
+    const resolved = isNaN(port) ? DEFAULT_PEERJS_PORT : port;
+    const { min, max } = TENANT_SETTING_BOUNDS.peerjsPort;
+
+    // The kind 422s an out-of-range port, and a save carries the whole config —
+    // so an unvalidated port here fails every tab's save, not just this one's.
+    setPortError(resolved < min || resolved > max ? `Must be between ${min} and ${max}` : undefined);
+    editDraft({ peerjsPort: resolved });
   };
 
   const onChangePeerjsKey = (event: ChangeEvent<HTMLInputElement>) => {
@@ -301,7 +293,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           <>
             <Field
               label="Dev mode"
-              description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments. Requires admin permissions to change. Only visible to the user who enabled it."
+              description="⚠️ WARNING: Disables security protections. Only enable in isolated development environments. Turning this on also enables dev mode for the stack; turning it off affects only this browser."
               className={s.marginTop}
             >
               <div className={s.devModeField} data-testid={testIds.appConfig.pathfinderDevMode}>
@@ -314,6 +306,24 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   disabled={devModeToggling}
                 />
                 {devModeToggling && <span className={s.updateText}>Saving to server and reloading...</span>}
+              </div>
+            </Field>
+
+            <Field
+              label="Dev mode for this stack"
+              description="The instance-level gate. When off, developer surfaces are hidden for every user regardless of their own opt-in. Requires admin permissions to change."
+              className={s.marginTop}
+            >
+              <div className={s.devModeField} data-testid={testIds.appConfig.tenantDevMode}>
+                <Input
+                  type="checkbox"
+                  id="tenant-dev-mode"
+                  data-testid={testIds.appConfig.tenantDevModeToggle}
+                  checked={tenantDevModeEnabled}
+                  onChange={onChangeTenantDevMode}
+                  disabled={tenantDevModeToggling}
+                />
+                {tenantDevModeToggling && <span className={s.updateText}>Saving to server and reloading...</span>}
               </div>
             </Field>
 
@@ -497,9 +507,16 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                     />
                   </Field>
 
-                  <Field label="Server port" description="Port number">
+                  <Field
+                    label="Server port"
+                    description={`Port number (${TENANT_SETTING_BOUNDS.peerjsPort.min}-${TENANT_SETTING_BOUNDS.peerjsPort.max})`}
+                    invalid={portError !== undefined}
+                    error={portError}
+                  >
                     <Input
                       type="number"
+                      min={TENANT_SETTING_BOUNDS.peerjsPort.min}
+                      max={TENANT_SETTING_BOUNDS.peerjsPort.max}
                       data-testid={testIds.appConfig.peerjsPort}
                       value={state.peerjsPort}
                       onChange={onChangePeerjsPort}

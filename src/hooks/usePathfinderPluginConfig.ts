@@ -4,9 +4,8 @@ import { PathfinderPluginConfig, ResolvedPathfinderConfig, getConfigWithDefaults
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import pluginJson from '../plugin.json';
-import { fetchPluginJsonData } from '../utils/utils.plugin';
-import { fetchPathfinderSettings } from '../utils/pathfinder-settings-api';
-import { hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
+import { resolveTenantSettings } from '../utils/resolve-tenant-settings';
+import { adoptLegacyDevModeOptIn, hasLegacyDevModeOptIn, resolveDevModeOptIn } from '../utils/dev-mode';
 
 // Re-exported so existing importers keep a stable path; `constants` owns the shape.
 export type { ResolvedPathfinderConfig };
@@ -47,43 +46,41 @@ function configEquals(a: ResolvedPathfinderConfig, b: ResolvedPathfinderConfig):
  * Folds this user's own settings into a tenant-level config.
  *
  * Dev-mode surfaces need two gates: the tenant `devMode` flag and this user's
- * opt-in. The opt-in lives in per-user storage, but every consumer checks it
- * synchronously, so it is resolved once here and carried on the published config
- * rather than read at each call site.
+ * opt-in. The opt-in lives in this browser's storage, but every consumer checks
+ * it synchronously, so it is resolved once here and carried on the published
+ * config rather than read at each call site.
  *
- * The legacy fall-back reads the deprecated `devModeUserIds` array so a developer
- * who opted in before the split is not silently dropped out of dev mode on the
- * first load after upgrade.
+ * The deprecated `devModeUserIds` array is consulted only while this browser has
+ * never recorded a choice, and adopting it writes the opt-in through — so it is
+ * a one-shot migration rather than a rule re-applied on every publish. Nothing
+ * clears `devModeUserIds`, so re-deriving from it would resurrect the opt-in
+ * every time and make a later opt-out impossible to keep.
  */
 function withPerUserSettings(jsonData: PathfinderPluginConfig): PathfinderPluginConfig {
   if (jsonData.devModeOptIn !== undefined) {
     return jsonData;
   }
-  return { ...jsonData, devModeOptIn: resolveDevModeOptIn() || hasLegacyDevModeOptIn(jsonData) };
+
+  const stored = resolveDevModeOptIn();
+  if (stored !== undefined) {
+    return { ...jsonData, devModeOptIn: stored };
+  }
+
+  const legacy = hasLegacyDevModeOptIn(jsonData);
+  if (legacy) {
+    adoptLegacyDevModeOptIn();
+  }
+  return { ...jsonData, devModeOptIn: legacy };
 }
 
 /**
- * Resolves settings across the three stores that own them, most authoritative
- * last:
- *
- *   1. plugin `jsonData` — the legacy store, and the only one on OSS,
- *      self-managed, and local dev. Also carries provisioned fields such as
- *      `stackId`, which nothing else supplies.
- *   2. the `PathfinderSettings` App Platform resource — authoritative wherever it
- *      is served. Its CRD defaults every field, so a written resource wins
- *      outright rather than partially.
- *   3. per-user storage, applied by `withPerUserSettings` during publish.
- *
- * Missing values fall through to `getConfigWithDefaults`.
+ * The tenant half of the config, resolved through the same helper the config
+ * tabs save through so read and write precedence cannot drift. Per-user state is
+ * layered on by `withPerUserSettings` at publish; missing values fall through to
+ * `getConfigWithDefaults`.
  */
 async function resolvePathfinderSettings(): Promise<PathfinderPluginConfig> {
-  const [jsonData, tenantSettings] = await Promise.all([
-    fetchPluginJsonData(pluginJson.id),
-    // Never rejects: returns null when the API is absent or unwritten.
-    fetchPathfinderSettings(),
-  ]);
-
-  return tenantSettings ? { ...jsonData, ...tenantSettings } : jsonData;
+  return (await resolveTenantSettings(pluginJson.id)).config;
 }
 
 /**

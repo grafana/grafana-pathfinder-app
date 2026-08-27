@@ -16,22 +16,39 @@
  * App Platform namespaces are per-stack, so that is one settings record per
  * stack.
  *
- * AVAILABILITY: gated on the same GAP aggregation toggle as InteractiveGuide, so
- * it degrades cleanly to the `jsonData` fallback on OSS, self-managed, and local
- * dev. Callers get `null` rather than a throw when the API is not there.
+ * AVAILABILITY: the GAP aggregation toggle is shared with InteractiveGuide, so
+ * it says the aggregation layer is on, not that this kind is served — a stack
+ * running the plugin ahead of the backend has the toggle and no
+ * `pathfindersettings`. Both reads and writes therefore treat an
+ * "unavailable" status as "not served here" and hand the caller back to the
+ * `jsonData` fallback; only 403 is escalated, so a permission failure surfaces
+ * instead of silently writing to the wrong store.
  */
 
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
-import { PathfinderPluginConfig, TENANT_SETTING_KEYS, PathfinderTenantSettings } from '../constants';
+import {
+  PathfinderPluginConfig,
+  TENANT_SETTING_BOUNDS,
+  TENANT_SETTING_KEYS,
+  PathfinderTenantSettings,
+} from '../constants';
 import { logger } from '../lib/logging';
+import { recordSettingsStoreResolved } from '../lib/telemetry/facade';
 import { APP_PLATFORM_API_VERSION, isBackendApiAvailable } from './interactive-guides-api';
 
 const RESOURCE = 'pathfindersettings';
 
 /** The singleton resource name. One settings record per stack namespace. */
 export const SETTINGS_RESOURCE_NAME = 'default';
+
+/**
+ * The spec schema version this client writes. Only used when creating the
+ * resource — an existing spec's version is carried forward untouched, so a
+ * stack already migrated to a newer schema is never downgraded by an older app.
+ */
+export const SETTINGS_SCHEMA_VERSION = 1;
 
 /**
  * The kind's `spec`. Mirrors kinds/pathfindersettings.cue in
@@ -50,11 +67,28 @@ interface PathfinderSettingsResource {
 }
 
 /**
- * HTTP status codes that mean "this API is not available here", as opposed to a
- * real failure. Mirrors the set in fetchBackendGuides.ts; 404 also covers "the
- * settings resource has not been created yet", which is the first-run state.
+ * What a read returns beyond the config itself: the raw spec, so a write can
+ * layer over fields this app version does not know about, and the
+ * `resourceVersion` that makes the write a compare-and-swap rather than a
+ * last-writer-wins replace.
  */
-const UNAVAILABLE_STATUSES = new Set([400, 403, 404, 405, 501, 503]);
+export interface PathfinderSettingsSnapshot {
+  config: PathfinderPluginConfig;
+  spec: Partial<PathfinderSettingsSpec>;
+  resourceVersion?: string;
+}
+
+/**
+ * HTTP status codes that mean "this API is not served here", as opposed to a
+ * real failure. 404 also covers "the settings resource has not been created
+ * yet", which is the first-run state.
+ *
+ * 400 is deliberately absent, unlike the set in fetchBackendGuides: these calls
+ * address one object by name and send a spec this client builds, so a 400 is a
+ * malformed request of ours rather than an absent API, and hiding it behind a
+ * silent fallback would bury the bug.
+ */
+const UNAVAILABLE_STATUSES = new Set([404, 405, 501, 503]);
 
 function statusOf(err: unknown): number | undefined {
   const e = err as { status?: number; statusCode?: number; data?: { statusCode?: number } };
@@ -80,9 +114,30 @@ export function isSettingsApiAvailable(): boolean {
 
 /** Maps a stored spec onto the client-side config shape. */
 export function specToConfig(spec: Partial<PathfinderSettingsSpec>): PathfinderPluginConfig {
-  const { devModeEnabled, schemaVersion, ...rest } = spec;
-  void schemaVersion;
+  const { devModeEnabled, schemaVersion: _schemaVersion, ...rest } = spec;
   return { ...rest, ...(devModeEnabled === undefined ? {} : { devMode: devModeEnabled }) };
+}
+
+/**
+ * Holds every bounded numeric field inside the range the kind enforces.
+ *
+ * The apiserver rejects an out-of-range value with a 422, and a write carries
+ * the whole resolved config rather than just the edited field — so a single
+ * legacy `jsonData` value outside the bounds would fail the first migrating
+ * save from *every* tab, not only the tab that owns it.
+ */
+export function clampToKindBounds(cfg: PathfinderPluginConfig): PathfinderPluginConfig {
+  const clamped: PathfinderPluginConfig = { ...cfg };
+
+  for (const [key, { min, max }] of Object.entries(TENANT_SETTING_BOUNDS)) {
+    const value = clamped[key as keyof typeof TENANT_SETTING_BOUNDS];
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      continue;
+    }
+    clamped[key as keyof typeof TENANT_SETTING_BOUNDS] = Math.min(max, Math.max(min, Math.trunc(value)));
+  }
+
+  return clamped;
 }
 
 /**
@@ -92,25 +147,29 @@ export function specToConfig(spec: Partial<PathfinderSettingsSpec>): PathfinderP
  * can never leak into the resource.
  */
 export function configToSpec(cfg: PathfinderPluginConfig): Partial<PathfinderSettingsSpec> {
+  const bounded = clampToKindBounds(cfg);
   const spec: Record<string, unknown> = {};
+
   for (const key of TENANT_SETTING_KEYS) {
-    const value = cfg[key];
+    const value = bounded[key];
     if (value === undefined) {
       continue;
     }
     // `devMode` is the client name for the stored `devModeEnabled`.
     spec[key === 'devMode' ? 'devModeEnabled' : key] = value;
   }
+
   return spec as Partial<PathfinderSettingsSpec>;
 }
 
 /**
- * Reads the stack's settings. Returns `null` when the API is unavailable or the
- * resource does not exist yet, so the caller can fall back to `jsonData`.
- * Never throws for either case.
+ * Reads the stack's settings resource. Returns `null` when the API is
+ * unavailable or the resource does not exist yet, so the caller can fall back
+ * to `jsonData`. Never throws for either case.
  */
-export async function fetchPathfinderSettings(): Promise<PathfinderPluginConfig | null> {
+export async function fetchPathfinderSettingsSnapshot(): Promise<PathfinderSettingsSnapshot | null> {
   if (!isSettingsApiAvailable()) {
+    recordSettingsStoreResolved('api-unavailable');
     return null;
   }
 
@@ -122,15 +181,38 @@ export async function fetchPathfinderSettings(): Promise<PathfinderPluginConfig 
         showErrorAlert: false,
       })
     );
-    return response.data?.spec ? specToConfig(response.data.spec) : null;
+
+    const spec = response.data?.spec;
+    if (!spec) {
+      recordSettingsStoreResolved('empty-spec');
+      return null;
+    }
+
+    recordSettingsStoreResolved('resource');
+    return { config: specToConfig(spec), spec, resourceVersion: response.data?.metadata?.resourceVersion };
   } catch (err) {
     const status = statusOf(err);
     if (status && UNAVAILABLE_STATUSES.has(status)) {
+      recordSettingsStoreResolved(status === 404 ? 'not-created' : 'kind-not-served');
       return null;
     }
-    logger.warn('Failed to read Pathfinder settings resource', { error: err });
+    if (status === 403) {
+      recordSettingsStoreResolved('forbidden');
+    } else {
+      recordSettingsStoreResolved('read-error');
+      logger.warn('Failed to read Pathfinder settings resource', { error: err });
+    }
     return null;
   }
+}
+
+function requestBody(spec: Partial<PathfinderSettingsSpec>, resourceVersion?: string) {
+  return {
+    apiVersion: APP_PLATFORM_API_VERSION,
+    kind: 'PathfinderSettings',
+    metadata: { name: SETTINGS_RESOURCE_NAME, ...(resourceVersion ? { resourceVersion } : {}) },
+    spec,
+  };
 }
 
 /**
@@ -141,29 +223,35 @@ export async function fetchPathfinderSettings(): Promise<PathfinderPluginConfig 
  * spec keeps the "one writer per field" property that the old read-modify-write
  * dance on a shared blob could not offer.
  *
- * Returns false when the API is unavailable, so the caller can fall back to the
- * legacy `jsonData` write. Throws on a real failure, so a save error still
- * surfaces to the admin.
+ * `base` is the snapshot that same caller just read. It does two jobs the whole
+ * spec cannot do on its own: its `resourceVersion` turns the replace into a
+ * compare-and-swap, so two admins saving at once get a 409 rather than one
+ * silently losing; and its `spec` is the write's floor, so a field a newer
+ * backend added — `schemaVersion` included — survives a save from an app version
+ * that has never heard of it.
+ *
+ * Returns false when the kind is not served here, so the caller can fall back to
+ * the legacy `jsonData` write. Throws on a real failure — including 403 — so a
+ * save error still surfaces to the admin rather than silently landing in the
+ * wrong store.
  */
-export async function savePathfinderSettings(next: PathfinderPluginConfig): Promise<boolean> {
+export async function savePathfinderSettings(
+  next: PathfinderPluginConfig,
+  base?: PathfinderSettingsSnapshot | null
+): Promise<boolean> {
   if (!isSettingsApiAvailable()) {
     return false;
   }
 
   const namespace = config.namespace;
-  const spec = configToSpec(next);
+  const spec = { schemaVersion: SETTINGS_SCHEMA_VERSION, ...base?.spec, ...configToSpec(next) };
 
   try {
     await lastValueFrom(
       getBackendSrv().fetch({
         url: itemUrl(namespace),
         method: 'PUT',
-        data: {
-          apiVersion: APP_PLATFORM_API_VERSION,
-          kind: 'PathfinderSettings',
-          metadata: { name: SETTINGS_RESOURCE_NAME },
-          spec,
-        },
+        data: requestBody(spec, base?.resourceVersion),
         showErrorAlert: false,
       })
     );
@@ -174,19 +262,25 @@ export async function savePathfinderSettings(next: PathfinderPluginConfig): Prom
     }
   }
 
-  // 404 on PUT: the singleton has never been written. Create it.
-  await lastValueFrom(
-    getBackendSrv().fetch({
-      url: collectionUrl(namespace),
-      method: 'POST',
-      data: {
-        apiVersion: APP_PLATFORM_API_VERSION,
-        kind: 'PathfinderSettings',
-        metadata: { name: SETTINGS_RESOURCE_NAME },
-        spec,
-      },
-      showErrorAlert: false,
-    })
-  );
-  return true;
+  // 404 on PUT: either the singleton has never been written, or the kind is not
+  // served on this stack at all. Try the create; the same status set tells the
+  // two apart, and an unavailable kind falls back rather than failing the save.
+  try {
+    await lastValueFrom(
+      getBackendSrv().fetch({
+        url: collectionUrl(namespace),
+        method: 'POST',
+        data: requestBody(spec),
+        showErrorAlert: false,
+      })
+    );
+    return true;
+  } catch (err) {
+    const status = statusOf(err);
+    if (status && UNAVAILABLE_STATUSES.has(status)) {
+      logger.warn('PathfinderSettings kind is not served here; falling back to plugin jsonData', { status });
+      return false;
+    }
+    throw err;
+  }
 }

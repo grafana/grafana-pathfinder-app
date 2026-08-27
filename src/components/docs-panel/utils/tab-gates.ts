@@ -27,7 +27,7 @@ export function isCurrentUserEditor(): boolean {
 export function resolveTabGates(pluginConfig: PathfinderPluginConfig | undefined): TabGates {
   return {
     allowEditor: isCurrentUserEditor(),
-    allowDevTools: isDevModeEnabled(pluginConfig || {}, config.bootData?.user?.id),
+    allowDevTools: isDevModeEnabled(pluginConfig || {}),
   };
 }
 

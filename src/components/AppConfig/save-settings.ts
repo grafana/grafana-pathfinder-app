@@ -13,18 +13,21 @@
  * Routing every tab through here fixes the class rather than the instances:
  *
  *   - The current settings are read authoritatively immediately before the write,
- *     so a stale form snapshot can only carry the fields that form actually owns.
+ *     through the same `resolveTenantSettings` the config layer renders from, so
+ *     a stale form snapshot can only carry the fields that form actually owns.
  *   - `enabled` and `pinned` come from that same read, so they can never be
  *     omitted and silently reset to false.
  *   - Writes prefer the `PathfinderSettings` App Platform resource, which shares
- *     no document with provisioning at all.
+ *     no document with provisioning at all, and carry that read's
+ *     `resourceVersion` so a concurrent admin save conflicts rather than losing.
  *   - The legacy `jsonData` path remains for OSS, self-managed, and local dev,
  *     and still spreads the existing document first so provisioned fields survive.
  */
 
-import { PathfinderPluginConfig, PathfinderTenantSettings, getConfigWithDefaults } from '../../constants';
-import { fetchPathfinderSettings, savePathfinderSettings } from '../../utils/pathfinder-settings-api';
-import { fetchPluginSettings, updatePluginSettings } from '../../utils/utils.plugin';
+import { PathfinderTenantSettings, getConfigWithDefaults } from '../../constants';
+import { savePathfinderSettings } from '../../utils/pathfinder-settings-api';
+import { resolveTenantSettings } from '../../utils/resolve-tenant-settings';
+import { updatePluginSettings } from '../../utils/utils.plugin';
 
 export interface SaveTenantSettingsArgs {
   pluginId: string;
@@ -41,19 +44,12 @@ export interface SaveTenantSettingsArgs {
 export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettingsArgs): Promise<void> {
   // Read both stores immediately before writing. This is what stops one tab's
   // stale snapshot overwriting another tab's recent save.
-  const [pluginSettings, tenantSettings] = await Promise.all([
-    fetchPluginSettings(pluginId),
-    // Never rejects: null when the App Platform resource is absent or unwritten.
-    fetchPathfinderSettings(),
-  ]);
-
-  const legacyJsonData: PathfinderPluginConfig = pluginSettings.jsonData || {};
-  const current: PathfinderPluginConfig = tenantSettings ? { ...legacyJsonData, ...tenantSettings } : legacyJsonData;
+  const { config: current, pluginSettings, tenant } = await resolveTenantSettings(pluginId);
 
   // The complete resolved tenant config, with this form's edits applied on top.
   const next = { ...getConfigWithDefaults(current), ...changes };
 
-  if (await savePathfinderSettings(next)) {
+  if (await savePathfinderSettings(next, tenant)) {
     return;
   }
 
@@ -66,6 +62,6 @@ export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettin
   await updatePluginSettings(pluginId, {
     enabled: pluginSettings.enabled,
     pinned: pluginSettings.pinned,
-    jsonData: { ...legacyJsonData, ...tenantOnly },
+    jsonData: { ...pluginSettings.jsonData, ...tenantOnly },
   });
 }
