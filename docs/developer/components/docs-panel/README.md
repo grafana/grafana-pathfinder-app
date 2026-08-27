@@ -49,27 +49,7 @@ The docs-panel exists to:
 - **Progress Tracking**: Automatic progress tracking for guides and milestones
 - **Error Boundary**: Graceful error handling for My Learning tab
 
-**State Management**:
-
-```typescript
-interface CombinedPanelState {
-  tabs: LearningJourneyTab[];
-  activeTabId: string;
-  contextPanel: ContextPanel;
-  pluginConfig: DocsPluginConfig;
-}
-
-interface LearningJourneyTab {
-  id: string;
-  title: string;
-  baseUrl: string;
-  currentUrl: string;
-  content: Content | null;
-  isLoading: boolean;
-  error: string | null;
-  type?: 'learning-journey' | 'docs';
-}
-```
+**State Management**: the scene state (`CombinedPanelState`) and the per-tab shape (`LearningJourneyTab`) are declared in `src/types/content-panel.types.ts`. Read them there rather than from a copy here.
 
 **Hook Integration**:
 
@@ -174,13 +154,10 @@ interface Recommendation {
 
 ### `/utils/` Directory
 
-**Purpose**: Utility functions for docs panel
+**Purpose**: Pure helpers for the docs panel - tab validation, kinds, gates, visibility, state transitions, storage restore, URL validation, docs loading and load finalization, and milestone indexing.
 **Location**: `/src/components/docs-panel/utils/`
 
-**Utilities:**
-
-- **isDocsLikeTab()** - Checks if tab is documentation-type
-- **getTranslatedTitle()** - Handles title localization
+The barrel `src/components/docs-panel/utils/index.ts` is the authoritative list of what this directory exports; each module carries its own unit tests alongside it.
 
 ## Architecture
 
