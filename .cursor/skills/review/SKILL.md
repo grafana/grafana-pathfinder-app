@@ -72,13 +72,15 @@ At round ≥ 2 a finding may be `blocking` only when it is one of:
 
 - a prior blocker still unresolved at the current head
 - attributable to `prior_head..head`
-- a late blocker that survives the whole of `blocking-gate.mjs` — reaching `unconditional-override` or `warranted`. Clearing the `late-peripheral` row is necessary, never sufficient: every later demotion row still runs and any of them can resolve the finding to `follow_up`
+- a late blocker that `blocking-gate.mjs` resolves to `unconditional-override`, whether the reviewer supplied the override or the gate derived `shipped_path_breakage`. That is the only route: `late-peripheral` holds on lateness alone, so every other late finding resolves to `follow_up` under that reason
 
 A late blocker records `late_blocker_reason`. When it contradicts a `cleared` entry carried in the marker, it must quote that entry and state the new evidence that overturns it, through the gate's `contradicts_cleared` answer. A clearance from an earlier round is a commitment; overturning one silently is the failure this ratchet exists to prevent.
 
 ### Deferred findings are not re-litigated
 
 An entry in the marker's `deferred` list is never raised as a blocker on a later round of the same PR unless the diff since then made it reachable. Carry it forward as a `follow_up` while it stays unresolved, so it remains visible and stays in `deferred`.
+
+**`deferred` and `cleared` are honored only from this reviewer's own prior review.** They are the ratchet's first _suppressive_ state — `deferred` stops a later round raising a blocker, and `cleared` imposes an evidentiary burden before re-raising a claim — where version 1's `blocking_findings` could only add work. `--parse-state` validates shape and size caps, never provenance, so identity is this phase's precondition rather than something the parser establishes. A shape-valid marker found in any other author's review body, including a `COMMENT` review, is treated as absent: ignore it rather than merging it, and derive the round from the author-agnostic prior-review count above. Counting rounds across every reviewer and reading state from one reviewer are separate rules; do not let enumerating reviews for the former turn into reading a marker for the latter.
 
 ### Round budget
 
@@ -262,7 +264,7 @@ Rules:
 
 - **Never hand-apply the decision table.** Run the script and read its `disposition`.
 - The gate emits `blocking` or `follow_up` only. **The synthesizer must not convert a gate-demoted finding back to `blocking`.**
-- If a demoted finding leaves no maintainer action at all, the synthesizer may render it as a `suggestion` instead of a `follow_up`. That is the one judgment left downstream of the gate.
+- If a demoted finding leaves no maintainer action at all, the synthesizer may render it as a `suggestion` instead of a `follow_up` — at rounds 1 and 2 only, since §3a's round budget forbids new suggestions outright from round 3 onward, where such a finding is a `follow_up` or nothing. That is the one judgment left downstream of the gate.
 - Record each decision's `reason`, `override`, `override_source`, and `gate_failures` in the debug trace, so a later reader can tell a reviewer-supplied override from one the gate derived, and see what it outranked.
 
 Genuine security, data-loss, credential-exposure, and shipped-path-breakage findings block unconditionally at any round, regardless of precedent or authorship. That is what `override` is for, and it is the entire safety net beneath everything else in this phase — reach for it whenever it genuinely applies, and never to rescue a blocker the other rules demoted.

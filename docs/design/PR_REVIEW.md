@@ -73,7 +73,9 @@ Adversarial verification (`.cursor/skills/review/SKILL.md` §4b) collects verdic
 
 Truth is adjudicated first, then warrant. `adversarial-policy.mjs` resolves each finding to `kept`, `dropped`, or `demoted`. A `demoted` finding is retained as a `follow_up`, not dropped — it stays visible in the report and in the marker's `deferred` list.
 
-The warrant majority is counted **among confirming verdicts only**. A skeptic who refutes a finding has already said it is not true, so its `blocking_warranted: "no"` restates that refutation rather than judging whether a true finding should stop the merge; counting it would let a refuter break a tie between the skeptics who actually believe the finding. Truth adjudication alone decides what a refutation is worth.
+The warrant axis is read **among confirming verdicts only**, and it demotes when there is at least one confirming verdict and _every_ confirming verdict answers `no`. A skeptic who refutes a finding has already said it is not true, so its `blocking_warranted: "no"` restates that refutation rather than judging whether a true finding should stop the merge; counting it would let a refuter break a tie between the skeptics who actually believe the finding. Truth adjudication alone decides what a refutation is worth.
+
+Unanimity among believers is the bar because keeping a blocker whose only believer says it should not block is precisely the over-blocking this calibration exists to remove. The `at least one` clause is not redundant: with zero confirming verdicts the condition is vacuously unanimous, and an all-uncertain trail must resolve `kept` rather than demote on a unanimity nobody expressed.
 
 ### Blocking gate answers
 
@@ -407,6 +409,8 @@ Immediately before the operator recap, a **complete** review emits a hidden `pat
 ```
 
 `deferred` is derived from the report's follow-ups, so it cannot drift from what the report says. `cleared` is the machine-readable form of what a round would otherwise write as prose under "Things I checked, so you do not have to"; carrying it forward is what stops a later round reversing an earlier clearance without noticing. The serialized state stays under 4000 characters, with at most 12 `cleared` and 20 `deferred` entries — the renderer throws instead of truncating.
+
+`--parse-state` checks shape and size caps and **never provenance**: it cannot tell whose review a body came from, so it establishes no trust on its own. Because `deferred` and `cleared` suppress later-round work, the caller carries that precondition — `.cursor/skills/review/SKILL.md` §3a honors a marker only from the same reviewer's own prior review and treats one found anywhere else as absent.
 
 Only `review-report.mjs --parse-state` may consume the marker, and only from that trailing position: the parser accepts it solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. It accepts either LF or CRLF line endings, because a body edited through the GitHub web UI comes back CRLF-encoded. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental path.
 

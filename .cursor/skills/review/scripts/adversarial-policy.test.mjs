@@ -183,6 +183,27 @@ test('three verdicts that survive on truth demote only when the confirmers thems
   );
 });
 
+test('a blocker every one of its believers calls unwarranted demotes, even on a single confirmation', () => {
+  const finding = reviewerFinding({ severity: 'high', recommended_disposition: 'blocking' });
+  const first = [warrantedVerdict('confirmed', 'no'), warrantedVerdict('uncertain', 'no')];
+
+  assert.equal(decideVerification(finding, first).dispatch.role, 'tiebreaker');
+  assert.equal(decideVerification(finding, [...first, warrantedVerdict('uncertain', 'no')]).outcome, 'demoted');
+});
+
+test('unanimity nobody expressed never demotes', () => {
+  const finding = reviewerFinding({ severity: 'high', recommended_disposition: 'blocking' });
+
+  assert.equal(
+    decideVerification(finding, [
+      warrantedVerdict('uncertain', 'no'),
+      warrantedVerdict('uncertain', 'no'),
+      warrantedVerdict('uncertain', 'no'),
+    ]).outcome,
+    'kept'
+  );
+});
+
 test('a refuting skeptic never casts the deciding unwarranted vote', () => {
   const finding = reviewerFinding({ severity: 'high', recommended_disposition: 'blocking' });
 

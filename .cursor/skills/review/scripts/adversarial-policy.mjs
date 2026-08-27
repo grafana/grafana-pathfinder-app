@@ -80,6 +80,10 @@ function countVerdicts(verdicts, warrantRequired) {
   return { refuted, confirmed, unwarranted };
 }
 
+function unwarrantedByEveryBeliever(confirmed, unwarranted) {
+  return confirmed >= 1 && unwarranted === confirmed;
+}
+
 export function decideVerification(finding, verdicts = []) {
   const lane = classifyFinding(finding);
   const { refuted, confirmed, unwarranted } = countVerdicts(verdicts, finding.recommended_disposition === 'blocking');
@@ -104,7 +108,7 @@ export function decideVerification(finding, verdicts = []) {
         return resolved(lane, 'dropped');
       }
       if (confirmed === 2) {
-        return resolved(lane, unwarranted === 2 ? 'demoted' : 'kept');
+        return resolved(lane, unwarrantedByEveryBeliever(confirmed, unwarranted) ? 'demoted' : 'kept');
       }
       return awaiting(lane, 'tiebreaker', 1);
     }
@@ -112,7 +116,7 @@ export function decideVerification(finding, verdicts = []) {
       if (refuted >= 2) {
         return resolved(lane, 'dropped');
       }
-      return resolved(lane, unwarranted >= 2 ? 'demoted' : 'kept');
+      return resolved(lane, unwarrantedByEveryBeliever(confirmed, unwarranted) ? 'demoted' : 'kept');
     }
     throw new Error('A high-risk finding takes at most three skeptic verdicts');
   }

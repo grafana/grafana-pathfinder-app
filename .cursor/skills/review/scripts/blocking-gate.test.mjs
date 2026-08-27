@@ -56,7 +56,7 @@ const NOT_A_SHIPPED_PATH_BREAKAGE = {
   concrete_risk_now: true,
 };
 
-test('row 9 — a live-path finding this PR did not cause, with no precedent and no bound, blocks as warranted', () => {
+test('row 9 — a reachable condition with concrete risk now, no precedent and no bound, blocks as warranted', () => {
   assert.deepEqual(decide(NOT_A_SHIPPED_PATH_BREAKAGE), {
     disposition: 'blocking',
     reason: 'warranted',
@@ -217,7 +217,17 @@ test('row 2 — a late finding demotes on lateness alone, whatever else holds', 
 
 test('row 2 — a prior unresolved or newly attributable blocker is not demoted by attribution', () => {
   for (const attribution of ['prior_unresolved', 'since_prior_head']) {
-    assert.equal(decide({ round: 2, attribution }).disposition, 'blocking', attribution);
+    assert.deepEqual(
+      decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, round: 2, attribution }),
+      {
+        disposition: 'blocking',
+        reason: 'warranted',
+        override: null,
+        override_source: null,
+        gate_failures: [],
+      },
+      attribution
+    );
   }
 });
 
