@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const SEVERITIES = new Set(['critical', 'high', 'medium', 'low']);
-const DISPOSITIONS = new Set(['blocking', 'suggestion', 'nit']);
+const DISPOSITIONS = new Set(['blocking', 'follow_up', 'suggestion', 'nit']);
 const VERDICTS = new Set(['confirmed', 'refuted', 'uncertain']);
+const WARRANTS = new Set(['yes', 'no', 'uncertain']);
 const FIRST_WAVE = new Map([
   ['high_risk', 2],
   ['advisory', 1],
@@ -34,6 +35,9 @@ export function classifyFinding(finding) {
   if (!DISPOSITIONS.has(disposition)) {
     throw new Error(`Unknown recommended disposition: ${disposition}`);
   }
+  if (disposition === 'follow_up') {
+    return finding.severity === 'low' ? 'unverified' : 'advisory';
+  }
   if (finding.severity === 'critical' || finding.severity === 'high' || disposition === 'blocking') {
     return 'high_risk';
   }
@@ -45,12 +49,14 @@ export function planFirstWave(finding) {
   return { lane, skeptics: FIRST_WAVE.get(lane) };
 }
 
-function countVerdicts(verdicts) {
+function countVerdicts(verdicts, warrantRequired) {
   if (!Array.isArray(verdicts)) {
     throw new Error('verdicts must be an array');
   }
   let refuted = 0;
   let confirmed = 0;
+  let warranted = 0;
+  let unwarranted = 0;
   for (const verdict of verdicts) {
     if (!verdict || !VERDICTS.has(verdict.verdict)) {
       throw new Error(`Unknown verdict: ${verdict?.verdict}`);
@@ -63,13 +69,23 @@ function countVerdicts(verdicts) {
     } else if (verdict.verdict === 'confirmed') {
       confirmed += 1;
     }
+    if (warrantRequired) {
+      if (!WARRANTS.has(verdict.blocking_warranted)) {
+        throw new Error(`Unknown blocking warrant: ${verdict.blocking_warranted}`);
+      }
+      if (verdict.blocking_warranted === 'yes') {
+        warranted += 1;
+      } else if (verdict.blocking_warranted === 'no') {
+        unwarranted += 1;
+      }
+    }
   }
-  return { refuted, confirmed };
+  return { refuted, confirmed, warranted, unwarranted };
 }
 
 export function decideVerification(finding, verdicts = []) {
   const lane = classifyFinding(finding);
-  const { refuted, confirmed } = countVerdicts(verdicts);
+  const { refuted, confirmed, unwarranted } = countVerdicts(verdicts, finding.recommended_disposition === 'blocking');
   const seen = verdicts.length;
 
   if (lane === 'unverified') {
@@ -91,12 +107,15 @@ export function decideVerification(finding, verdicts = []) {
         return resolved(lane, 'dropped');
       }
       if (confirmed === 2) {
-        return resolved(lane, 'kept');
+        return resolved(lane, unwarranted === 2 ? 'demoted' : 'kept');
       }
       return awaiting(lane, 'tiebreaker', 1);
     }
     if (seen === 3) {
-      return resolved(lane, refuted >= 2 ? 'dropped' : 'kept');
+      if (refuted >= 2) {
+        return resolved(lane, 'dropped');
+      }
+      return resolved(lane, unwarranted >= 2 ? 'demoted' : 'kept');
     }
     throw new Error('A high-risk finding takes at most three skeptic verdicts');
   }

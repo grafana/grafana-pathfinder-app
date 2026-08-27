@@ -44,11 +44,14 @@ test('records the review orchestration contract under ai-subsystem', () => {
     concern: 'ai-subsystem',
   });
 
-  assert.equal(context.contract_anchor.evidence, '#1711');
+  assert.equal(context.contract_anchor.evidence, '#1711 → #1721');
   assert.match(context.contract_anchor.contract, /docs\/design\/PR_REVIEW\.md/);
   assert.match(context.contract_anchor.contract, /\.cursor\/skills\/review\/SKILL\.md/);
   assert.match(context.contract_anchor.contract, /review-report\.mjs/);
   assert.match(context.contract_anchor.contract, /concern-context\.mjs/);
+  assert.match(context.contract_anchor.contract, /blocking-gate\.mjs/);
+  assert.match(context.contract_anchor.contract, /blocking_warranted/);
+  assert.match(context.contract_anchor.contract, /v1 read-compatibility window/);
 });
 
 test('routes shared CLI and MCP command-contract changes to both owners', () => {

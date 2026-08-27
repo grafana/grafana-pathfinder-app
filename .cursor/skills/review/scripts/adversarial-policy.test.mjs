@@ -20,6 +20,12 @@ function verdict(value, reason = 'cites the changed hunk') {
   return { verdict: value, reason };
 }
 
+// A skeptic on a proposed blocker answers both axes: is the finding true, and does it warrant
+// blocking the merge. `yes` keeps the existing truth-only behavior for these fixtures.
+function warrantedVerdict(value, blocking_warranted = 'yes') {
+  return { ...verdict(value), blocking_warranted };
+}
+
 function reviewerFinding(overrides = {}) {
   return {
     concern_id: 'correctness-and-reliability',
@@ -37,11 +43,11 @@ function reviewerFinding(overrides = {}) {
   };
 }
 
-function replay(finding, values) {
+function replay(finding, values, make = verdict) {
   const verdicts = [];
   const decisions = [decideVerification(finding, verdicts)];
   for (const value of values) {
-    verdicts.push(verdict(value));
+    verdicts.push(make(value));
     decisions.push(decideVerification(finding, verdicts));
   }
   return decisions;
@@ -117,8 +123,91 @@ test('a high-risk finding drops only on a two-of-three refutation majority', () 
 test('a recommended blocker keeps the majority rule even at medium severity', () => {
   const finding = reviewerFinding({ recommended_disposition: 'blocking' });
   assert.equal(decideVerification(finding).dispatch.count, 2);
-  assert.equal(replay(finding, ['refuted', 'uncertain']).at(-1).dispatch.role, 'tiebreaker');
-  assert.equal(replay(finding, ['refuted', 'uncertain', 'confirmed']).at(-1).outcome, 'kept');
+  assert.equal(replay(finding, ['refuted', 'uncertain'], warrantedVerdict).at(-1).dispatch.role, 'tiebreaker');
+  assert.equal(replay(finding, ['refuted', 'uncertain', 'confirmed'], warrantedVerdict).at(-1).outcome, 'kept');
+});
+
+test('two confirmations that both find blocking unwarranted demote rather than keep', () => {
+  const finding = reviewerFinding({ severity: 'high', recommended_disposition: 'blocking' });
+
+  assert.deepEqual(
+    decideVerification(finding, [warrantedVerdict('confirmed', 'no'), warrantedVerdict('confirmed', 'no')]),
+    { lane: 'high_risk', dispatch: { role: null, count: 0 }, status: 'resolved', outcome: 'demoted' }
+  );
+});
+
+test('two confirmations split on warrant keep the blocker', () => {
+  const finding = reviewerFinding({ severity: 'high', recommended_disposition: 'blocking' });
+
+  for (const warrant of ['yes', 'uncertain']) {
+    assert.equal(
+      decideVerification(finding, [warrantedVerdict('confirmed', 'no'), warrantedVerdict('confirmed', warrant)])
+        .outcome,
+      'kept',
+      warrant
+    );
+  }
+});
+
+test('a two-of-three refutation drops even when the skeptics find blocking warranted', () => {
+  const finding = reviewerFinding({ severity: 'high', recommended_disposition: 'blocking' });
+
+  assert.equal(
+    decideVerification(finding, [
+      warrantedVerdict('refuted'),
+      warrantedVerdict('confirmed'),
+      warrantedVerdict('refuted'),
+    ]).outcome,
+    'dropped'
+  );
+});
+
+test('three verdicts that survive on truth still demote on a two-of-three unwarranted majority', () => {
+  const finding = reviewerFinding({ severity: 'high', recommended_disposition: 'blocking' });
+
+  assert.equal(
+    decideVerification(finding, [
+      warrantedVerdict('confirmed', 'no'),
+      warrantedVerdict('refuted', 'no'),
+      warrantedVerdict('confirmed', 'yes'),
+    ]).outcome,
+    'demoted'
+  );
+  assert.equal(
+    decideVerification(finding, [
+      warrantedVerdict('confirmed', 'no'),
+      warrantedVerdict('uncertain', 'yes'),
+      warrantedVerdict('confirmed', 'yes'),
+    ]).outcome,
+    'kept'
+  );
+});
+
+test('a skeptic on a proposed blocker must answer the warrant axis', () => {
+  const finding = reviewerFinding({ recommended_disposition: 'blocking' });
+
+  assert.throws(() => decideVerification(finding, [verdict('confirmed')]), /Unknown blocking warrant: undefined/);
+  assert.throws(
+    () => decideVerification(finding, [warrantedVerdict('confirmed', 'probably')]),
+    /Unknown blocking warrant: probably/
+  );
+});
+
+test('the warrant axis is ignored on a finding nobody proposed as a blocker', () => {
+  for (const recommended of ['follow_up', 'suggestion', 'nit']) {
+    const finding = reviewerFinding({ recommended_disposition: recommended });
+    assert.equal(decideVerification(finding, [verdict('confirmed')]).outcome, 'kept', recommended);
+  }
+});
+
+test('a follow-up recommendation never enters the high-risk lane', () => {
+  for (const severity of ['critical', 'high', 'medium']) {
+    assert.equal(classifyFinding(reviewerFinding({ severity, recommended_disposition: 'follow_up' })), 'advisory');
+  }
+  assert.equal(
+    classifyFinding(reviewerFinding({ severity: 'low', recommended_disposition: 'follow_up' })),
+    'unverified'
+  );
 });
 
 test('a confirmed medium advisory is kept without an adjudicator', () => {

@@ -14,7 +14,7 @@ If findings exist, include:
 - `finding_id`
 - `severity`
 - `confidence`
-- `recommended_disposition` — `blocking | suggestion | nit`
+- `recommended_disposition` — `blocking | follow_up | suggestion | nit`
 - `title`
 - `evidence`
 - `why_it_matters`
@@ -44,10 +44,58 @@ If no findings, include:
 ### Author disposition guidance
 
 - `blocking`: must be fixed or answered before merge
+- `follow_up`: a real finding with real consequence that is deliberately outside this PR's merge contract
 - `suggestion`: concrete non-blocking improvement, including an optional question
 - `nit`: minor style or wording preference
 
-Severity describes impact; disposition describes the merge contract. A medium finding can be blocking when the ambiguity must be resolved before merge, and a high-risk observation can remain a suggestion when the PR does not create that risk. Reviewers recommend a disposition; the synthesizer owns the final value after verification and deduplication.
+Severity describes **defect impact**: how bad the condition is. Disposition describes **merge impact**: whether the repository is better off without this change than with it. Those are different axes, and conflating them is what drives findings toward `blocking`. A medium finding can be blocking when the ambiguity must be resolved before merge, and a critical-severity condition the PR merely exposes can be a `follow_up`.
+
+Reviewers recommend a disposition. The synthesizer owns the value after verification and deduplication, and `blocking-gate.mjs` (`.cursor/skills/review/SKILL.md` §4c) owns the final call on every proposed blocker. A finding the gate demotes may not be converted back to `blocking`.
+
+A `follow_up` carries two fields beyond the standard finding set:
+
+- `owner` — `maintainer | author`
+- `proposed_issue` — `{ title, body }`, copy-pasteable and capped at 120 characters of title
+
+The review **proposes** issue text; the invoker decides whether to file it. No part of the review files GitHub issues.
+
+### Skeptic verdict shape
+
+Adversarial verification (`.cursor/skills/review/SKILL.md` §4b) collects verdicts on two axes, truth and warrant:
+
+```json
+{ "verdict": "confirmed", "blocking_warranted": "no", "reason": "<evidence that confirms or contradicts>" }
+```
+
+- `verdict` — `confirmed | refuted | uncertain`; is the finding true?
+- `blocking_warranted` — `yes | no | uncertain`; should it stop the merge? Required only when the finding's `recommended_disposition` is `blocking`, and ignored otherwise
+- `reason` — non-empty, citing the evidence
+
+Truth is adjudicated first, then warrant. `adversarial-policy.mjs` resolves each finding to `kept`, `dropped`, or `demoted`. A `demoted` finding is retained as a `follow_up`, not dropped — it stays visible in the report and in the marker's `deferred` list.
+
+### Blocking gate answers
+
+Every finding still recommended `blocking` after adversarial verification is serialized as `{ finding, answers }` and passed to `.cursor/skills/review/scripts/blocking-gate.mjs`, which returns `{ disposition, reason, gate_failures }`. `blocking-gate.test.mjs` is its behavioral spec, including the PR #1702 acceptance fixture. Never hand-apply its table.
+
+| Answer                        | Rule                                                                                               |
+| ----------------------------- | -------------------------------------------------------------------------------------------------- |
+| `round`                       | Integer from 1; read from the re-review marker, or derived per §3a when none exists                |
+| `override`                    | `null`, or one of `security`, `data_loss`, `credential_exposure`, `shipped_path_breakage`          |
+| `authorship`                  | `regression \| pre_existing \| latent_exposed`, judged against the base commit                     |
+| `latent_reachable`            | Required when `authorship` is `latent_exposed`                                                     |
+| `breaks_live_path`            | Does the condition break a path that ships today?                                                  |
+| `concrete_risk_now`           | Is there a concrete risk at this head, not a hypothetical future one?                              |
+| `boundable_by_followup`       | Can a tracked follow-up hold this safely?                                                          |
+| `precedent_count`             | Non-negative count of already-merged PRs shipping the same property                                |
+| `induced_by_prior_suggestion` | Does this blocker exist only because of code added in response to a prior-round suggestion or nit? |
+| `attribution`                 | `prior_unresolved \| since_prior_head \| late`; required from round 2 onward                       |
+| `late_blocker_reason`         | Required and non-empty when `attribution` is `late`                                                |
+| `prior_contract_satisfied`    | Optional context for the §5 contract-anchor judgment; no decision rule reads it                    |
+| `contradicts_cleared`         | Optional `{ claim, reason, new_evidence }` quoting a `cleared` marker entry this finding overturns |
+
+The `override` list is the entire safety net, and it must not acquire round, precedent, or authorship conditions. A regression that breaks a shipped path is `shipped_path_breakage` and blocks unconditionally at any round, which is why the gate's late-finding demotion is safe.
+
+`gate_failures` lists every demoting condition that held, not only the one that decided the outcome — including on an override, so the debug trace shows what the override outranked.
 
 ### Reversibility values
 
@@ -151,6 +199,8 @@ Record each applicable condition; conditions classify the delta but do not deter
 
 This table is the only source of disposition truth **for the contract evolution scan**. `.cursor/skills/review/scripts/contract-evolution-policy.mjs` implements it. Its `advisory` value is scan-internal vocabulary: `contract-evolution-policy.mjs` maps it to the author-facing `suggestion` when it converts a packet to a reviewer finding. The synthesizer still owns the final author disposition (see Author disposition guidance).
 
+Its `blocking` rows are **recommendations**, not final dispositions. A contract verdict recommends; §4c's blocking gate disposes, and it may demote any of these rows to `follow_up`. An advisory `contract_missing` packet that names a proposed owner stays a `suggestion`.
+
 | History and contract state                                             | Verdict                | Severity | Recommended disposition |
 | ---------------------------------------------------------------------- | ---------------------- | -------- | ----------------------- |
 | Complete history; change conforms                                      | `follows_contract`     | —        | none                    |
@@ -247,7 +297,7 @@ For PRs touching `pkg/**/*.go`, also check:
 
 ## Comment prefixes
 
-Reviewer-internal vocabulary for labelling findings before synthesis. The author-facing report carries only the three dispositions `review-report.mjs` accepts: a `[question]` becomes `blocking` or `suggestion` per the disposition guidance above, and `[security]` and `[react]` become the finding's `concern_id`.
+Reviewer-internal vocabulary for labelling findings before synthesis. The author-facing report carries only the four dispositions `review-report.mjs` accepts: a `[question]` becomes `blocking`, `follow_up`, or `suggestion` per the disposition guidance above, and `[security]` and `[react]` become the finding's `concern_id`.
 
 | Prefix         | Meaning                     |
 | -------------- | --------------------------- |
@@ -260,11 +310,11 @@ Reviewer-internal vocabulary for labelling findings before synthesis. The author
 
 ## Disposition
 
-| Disposition            | Criteria                                |
-| ---------------------- | --------------------------------------- |
-| **Approve**            | Meets all standards, no blocking issues |
-| **Approve with minor** | Small suggestions, nothing blocking     |
-| **Request changes**    | Blocking issues must be addressed       |
+| Disposition            | Criteria                                           |
+| ---------------------- | -------------------------------------------------- |
+| **Approve**            | Meets all standards, nothing to raise              |
+| **Approve with minor** | Follow-ups, suggestions, or nits, nothing blocking |
+| **Request changes**    | Blocking issues must be addressed                  |
 
 ## Final review report
 
@@ -276,18 +326,26 @@ The synthesizer emits this `ReviewReport` object after all supplemental checks f
 | `pr_title`      | string | Current PR title; the renderer derives a one-line purpose  |
 | `reviewed_head` | string | Full 40-character commit SHA                               |
 | `findings`      | array  | Retained, verified, deduplicated author-facing findings    |
+| `round`         | number | Optional; defaults to 1. Integer from 1 to 100             |
+| `cleared`       | array  | Optional; claims this round examined and cleared           |
 | `assessment`    | object | Optional; defaults to complete. See Incomplete assessment  |
 
 Each `findings` entry contains:
 
 - `id` — stable across re-reviews, and unique within the report
 - `concern_id` — owning concern; rendered compactly and used to route an incremental re-review
-- `disposition` — `blocking | suggestion | nit`
+- `disposition` — `blocking | follow_up | suggestion | nit`
 - `severity` — `critical | high | medium | low`; rendered compactly
 - `title`
 - `problem` — concise evidence and consequence written for the PR author, in one rendered line
 - `suggested_action` — the smallest change that resolves the finding
 - `reversibility` — optional; one of the four reversibility values. The renderer surfaces only `partially_reversible` and `irreversible_without_cleanup`, because only those change what the author must weigh
+- `owner` — required on a `follow_up`; `maintainer | author`
+- `proposed_issue` — required on a `follow_up`; `{ title, body }`. The title renders inline and is capped at 120 characters; the body renders in a fenced block so the invoker can copy it straight into an issue. Neither may embed a review state marker
+
+Each `cleared` entry contains `claim` (≤ 200 characters), `concern_id`, and `reason` (≤ 300 characters): a claim this round examined and found sound, so a later round cannot silently reverse it. At most 12 entries. The renderer throws rather than truncating, so pruning is a synthesizer decision.
+
+Follow-ups render in their own `## Follow-ups` section between the merge contract and `## Suggestions`, under the fixed line `These are tracked separately and do not block merge.` They count toward `Approve with Minor` and never toward `Request Changes`.
 
 This is the complete author-facing vocabulary. `confidence`, skeptic reasoning, and every other reviewer-internal field stay in the debug trace — the renderer has no channel for them, so the synthesizer must not fold them into `problem` as prose.
 
@@ -307,7 +365,24 @@ Do not emit headings, summaries, or status lines for processors that returned no
 
 ### Re-review state
 
-Immediately before the operator recap, a **complete** review emits a hidden `pathfinder-review-state` HTML comment containing version 1, `reviewed_head`, and each blocking finding's ID and owning concern. Only `review-report.mjs --parse-state` may consume it, and only from that trailing position: the parser accepts the marker solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. It accepts either LF or CRLF line endings, because a body edited through the GitHub web UI comes back CRLF-encoded. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental fast path.
+Immediately before the operator recap, a **complete** review emits a hidden `pathfinder-review-state` HTML comment. The renderer always writes **version 2**:
+
+```json
+{
+  "version": 2,
+  "round": 3,
+  "reviewed_head": "<40 hex>",
+  "blocking_findings": [{ "id": "B1", "concern_id": "security" }],
+  "deferred": [{ "id": "F1", "concern_id": "reversibility-and-one-way-door", "proposed_issue_title": "..." }],
+  "cleared": [{ "claim": "...", "concern_id": "...", "reason": "..." }]
+}
+```
+
+`deferred` is derived from the report's follow-ups, so it cannot drift from what the report says. `cleared` is the machine-readable form of what a round would otherwise write as prose under "Things I checked, so you do not have to"; carrying it forward is what stops a later round reversing an earlier clearance without noticing. The serialized state stays under 4000 characters, with at most 12 `cleared` and 20 `deferred` entries — the renderer throws instead of truncating.
+
+Only `review-report.mjs --parse-state` may consume the marker, and only from that trailing position: the parser accepts it solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. It accepts either LF or CRLF line endings, because a body edited through the GitHub web UI comes back CRLF-encoded. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental path.
+
+**Version 1 compatibility window.** The parser also accepts a version 1 marker under a three-count recap, normalizing it to the version 2 field set with `round: 1` and empty `deferred` and `cleared`, and preserving `version: 1` so a caller can tell. Open PRs carry v1 markers, so this stays for at least one release cycle. The compatibility surface is exactly two places — the recap's optional follow-up count group and the parser's version branch. Do not add compatibility shims anywhere else.
 
 An **incomplete** review emits no marker at all. Its coverage hole is exactly what an incremental baseline must not inherit, so every later review of that PR falls back to a full review.
 
@@ -319,11 +394,13 @@ The last four lines are always:
 PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702
 Purpose: add divider guide blocks
 Verdict: Request Changes
-1 blocking, 2 suggestions, 3 nits
+1 blocking, 2 follow-ups, 2 suggestions, 3 nits
 ```
 
-`Purpose` contains no newline and is capped at 120 characters. The renderer chooses `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Nothing follows the count line.
+`Purpose` contains no newline and is capped at 120 characters. The renderer chooses `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`, deriving it from the four counts: any blocker means `Request Changes`, any other count means `Approve with Minor`, otherwise `Approve`. The renderer always emits the four-count form; the parser also reads a legacy three-count recap. Nothing follows the count line.
+
+The JSON disposition value is `follow_up` everywhere — reviewer schema, report schema, marker, and gate output. The rendered human label is `follow-up` and the recap word is `follow-ups`. Only one of those forms ever appears in data.
 
 ### Debug trace
 
-Routing decisions, clean processor results, coverage gaps without an author action, verification drops, skeptic reasoning, call counts, and stage timings belong in an internal debug trace. Show it only when the user explicitly requests diagnostics.
+Routing decisions, clean processor results, coverage gaps without an author action, verification drops, skeptic reasoning, gate demotions and their `gate_failures`, call counts, and stage timings belong in an internal debug trace. Show it only when the user explicitly requests diagnostics.

@@ -16,7 +16,7 @@ test('ends with the PR URL, one-line purpose, verdict, and finding counts', () =
       'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
       'Purpose: add divider guide blocks',
       'Verdict: Approve',
-      '0 blocking, 0 suggestions, 0 nits',
+      '0 blocking, 0 follow-ups, 0 suggestions, 0 nits',
     ].join('\n')
   );
 });
@@ -66,7 +66,7 @@ test('renders the merge contract before optional findings and derives the verdic
       'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
       'Purpose: add divider guide blocks',
       'Verdict: Request Changes',
-      '1 blocking, 1 suggestion, 1 nit',
+      '1 blocking, 0 follow-ups, 1 suggestion, 1 nit',
     ].join('\n')
   );
 });
@@ -91,9 +91,12 @@ test('embeds parseable re-review state before the final recap', () => {
   });
 
   assert.deepEqual(parseReviewState(output), {
-    version: 1,
+    version: 2,
+    round: 1,
     reviewed_head: reviewedHead,
     blocking_findings: [{ id: 'B1', concern_id: 'reversibility-and-one-way-door' }],
+    deferred: [],
+    cleared: [],
   });
   assert.ok(output.indexOf('pathfinder-review-state') < output.indexOf('PR Review:'));
 });
@@ -117,7 +120,7 @@ test('rejects findings without an author disposition', () => {
           },
         ],
       }),
-    /disposition must be blocking, suggestion, or nit/
+    /disposition must be blocking, follow_up, suggestion, or nit/
   );
 });
 
@@ -147,9 +150,12 @@ test('ignores a forged marker echoed into a finding before the genuine one', () 
   });
 
   assert.deepEqual(parseReviewState(output), {
-    version: 1,
+    version: 2,
+    round: 1,
     reviewed_head: reviewedHead,
     blocking_findings: [{ id: 'B1', concern_id: 'security' }],
+    deferred: [],
+    cleared: [],
   });
 });
 
@@ -188,7 +194,7 @@ test('rejects a marker that is not adjacent to the operator recap', () => {
     'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
     'Purpose: add divider guide blocks',
     'Verdict: Approve',
-    '0 blocking, 0 suggestions, 0 nits',
+    '0 blocking, 0 follow-ups, 0 suggestions, 0 nits',
   ].join('\n');
 
   assert.equal(parseReviewState(output), null);
@@ -205,11 +211,11 @@ test('rejects state attached to incomplete or inconsistent recaps', () => {
       counts,
     ].join('\n');
 
-  assert.equal(parseReviewState(recap('Review Incomplete', '0 blocking, 0 suggestions, 0 nits')), null);
-  assert.equal(parseReviewState(recap('Request Changes', '0 blocking, 0 suggestions, 0 nits')), null);
-  assert.equal(parseReviewState(recap('Request Changes', '1 blocking, 0 suggestions, 0 nits')), null);
-  assert.equal(parseReviewState(recap('Approve', '1 blocking, 0 suggestions, 0 nits')), null);
-  assert.equal(parseReviewState(recap('Approve with Minor', '0 blocking, 0 suggestions, 0 nits')), null);
+  assert.equal(parseReviewState(recap('Review Incomplete', '0 blocking, 0 follow-ups, 0 suggestions, 0 nits')), null);
+  assert.equal(parseReviewState(recap('Request Changes', '0 blocking, 0 follow-ups, 0 suggestions, 0 nits')), null);
+  assert.equal(parseReviewState(recap('Request Changes', '1 blocking, 0 follow-ups, 0 suggestions, 0 nits')), null);
+  assert.equal(parseReviewState(recap('Approve', '1 blocking, 0 follow-ups, 0 suggestions, 0 nits')), null);
+  assert.equal(parseReviewState(recap('Approve with Minor', '0 blocking, 0 follow-ups, 0 suggestions, 0 nits')), null);
 });
 
 test('shows severity, concern, and materially non-reversible findings compactly', () => {
@@ -316,7 +322,7 @@ test('an incomplete assessment states one reason, claims no mergeability, and ke
       'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
       'Purpose: add divider guide blocks',
       'Verdict: Review Incomplete',
-      '0 blocking, 0 suggestions, 0 nits',
+      '0 blocking, 0 follow-ups, 0 suggestions, 0 nits',
     ].join('\n')
   );
 });
@@ -375,7 +381,7 @@ test('an incomplete report publishes no re-review state marker', () => {
       'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
       'Purpose: add divider guide blocks',
       'Verdict: Review Incomplete',
-      '1 blocking, 0 suggestions, 0 nits',
+      '1 blocking, 0 follow-ups, 0 suggestions, 0 nits',
     ].join('\n')
   );
 });
@@ -390,9 +396,12 @@ test('reads the trailing marker from a CRLF-encoded review body', () => {
   });
 
   assert.deepEqual(parseReviewState(output.replace(/\n/g, '\r\n')), {
-    version: 1,
+    version: 2,
+    round: 1,
     reviewed_head: reviewedHead,
     blocking_findings: [],
+    deferred: [],
+    cleared: [],
   });
 });
 
@@ -420,6 +429,230 @@ test('normalizes a multi-line finding title to one rendered line', () => {
   );
   assert.equal(output.match(/^## /gm).length, 1);
   assert.match(output, /Verdict: Approve with Minor/);
+});
+
+function followUp(overrides = {}) {
+  return {
+    id: 'F1',
+    concern_id: 'reversibility-and-one-way-door',
+    disposition: 'follow_up',
+    severity: 'high',
+    title: 'Closed block union rejects unknown types on rollback',
+    problem: 'A downgraded reader drops a persisted divider block.',
+    suggested_action: 'Track a downgrade-safe representation for the block union.',
+    owner: 'maintainer',
+    proposed_issue: {
+      title: 'Define a downgrade-safe representation for the block union',
+      body: 'Eleven prior block types shipped through the same closed union.\n\nDecide whether persistence changes that contract.',
+    },
+    ...overrides,
+  };
+}
+
+test('renders follow-ups between the merge contract and suggestions under the fixed non-blocking line', () => {
+  const output = renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: 'a'.repeat(40),
+    findings: [
+      {
+        id: 'S1',
+        concern_id: 'documentation',
+        disposition: 'suggestion',
+        severity: 'low',
+        title: 'Stale pointer',
+        problem: 'The comment points at the old registry.',
+        suggested_action: 'Update the pointer.',
+      },
+      followUp(),
+      {
+        id: 'B1',
+        concern_id: 'security',
+        disposition: 'blocking',
+        severity: 'critical',
+        title: 'Unsanitized block content',
+        problem: 'The renderer writes contributor HTML straight to the DOM.',
+        suggested_action: 'Sanitize with DOMPurify.',
+      },
+    ],
+  });
+
+  assert.ok(output.indexOf('## Merge contract') < output.indexOf('## Follow-ups'));
+  assert.ok(output.indexOf('## Follow-ups') < output.indexOf('## Suggestions'));
+  assert.match(output, /## Follow-ups\n\nThese are tracked separately and do not block merge\.\n/);
+  assert.match(output, /Follow-up: Track a downgrade-safe representation for the block union\./);
+  assert.match(output, /Proposed issue \(maintainer\): Define a downgrade-safe representation for the block union/);
+  assert.match(output, /\n {3}```\n {3}Eleven prior block types shipped through the same closed union\.\n/);
+});
+
+test('a report carrying only follow-ups approves with minor rather than requesting changes', () => {
+  const output = renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: 'b'.repeat(40),
+    findings: [followUp(), followUp({ id: 'F2', severity: 'critical' })],
+  });
+
+  assert.match(output, /No blocking issues\. This PR is mergeable\./);
+  assert.equal(
+    output.split('\n').slice(-4).join('\n'),
+    [
+      'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+      'Purpose: add divider guide blocks',
+      'Verdict: Approve with Minor',
+      '0 blocking, 2 follow-ups, 0 suggestions, 0 nits',
+    ].join('\n')
+  );
+});
+
+test('rejects a follow-up without an owner or a proposed issue', () => {
+  const render = (overrides) =>
+    renderReviewReport({
+      pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+      pr_title: 'feat: add divider guide blocks',
+      reviewed_head: 'c'.repeat(40),
+      findings: [followUp(overrides)],
+    });
+
+  assert.throws(() => render({ owner: undefined }), /owner must be maintainer or author/);
+  assert.throws(() => render({ owner: 'reviewer' }), /owner must be maintainer or author/);
+  assert.throws(() => render({ proposed_issue: undefined }), /must carry a proposed_issue with a title and a body/);
+  assert.throws(
+    () => render({ proposed_issue: { title: 'A title', body: '  ' } }),
+    /must carry a proposed_issue with a title and a body/
+  );
+  assert.throws(
+    () => render({ proposed_issue: { title: 'x'.repeat(121), body: 'A body.' } }),
+    /proposed issue title must be one line of at most 120 characters/
+  );
+});
+
+test('the marker round-trips the round, the deferred follow-ups, and the cleared claims', () => {
+  const reviewedHead = 'd'.repeat(40);
+  const output = renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: reviewedHead,
+    round: 3,
+    cleared: [
+      {
+        claim: 'Forward compatibility with the closed block union',
+        concern_id: 'reversibility-and-one-way-door',
+        reason: 'Documented contract; eleven prior block types shipped through the same union.',
+      },
+    ],
+    findings: [followUp()],
+  });
+
+  assert.deepEqual(parseReviewState(output), {
+    version: 2,
+    round: 3,
+    reviewed_head: reviewedHead,
+    blocking_findings: [],
+    deferred: [
+      {
+        id: 'F1',
+        concern_id: 'reversibility-and-one-way-door',
+        proposed_issue_title: 'Define a downgrade-safe representation for the block union',
+      },
+    ],
+    cleared: [
+      {
+        claim: 'Forward compatibility with the closed block union',
+        concern_id: 'reversibility-and-one-way-door',
+        reason: 'Documented contract; eleven prior block types shipped through the same union.',
+      },
+    ],
+  });
+});
+
+test('a legacy version 1 marker under a three-count recap still parses', () => {
+  const reviewedHead = 'e'.repeat(40);
+  const legacy = JSON.stringify({
+    version: 1,
+    reviewed_head: reviewedHead,
+    blocking_findings: [{ id: 'B1', concern_id: 'security' }],
+  });
+  const body = [
+    '## Merge contract',
+    '',
+    `<!-- pathfinder-review-state:${legacy} -->`,
+    '',
+    'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    'Purpose: add divider guide blocks',
+    'Verdict: Request Changes',
+    '1 blocking, 0 suggestions, 0 nits',
+  ].join('\n');
+
+  assert.deepEqual(parseReviewState(body), {
+    version: 1,
+    round: 1,
+    reviewed_head: reviewedHead,
+    blocking_findings: [{ id: 'B1', concern_id: 'security' }],
+    deferred: [],
+    cleared: [],
+  });
+});
+
+test('an oversized cleared claim or marker throws rather than truncating', () => {
+  const render = (overrides) =>
+    renderReviewReport({
+      pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+      pr_title: 'feat: add divider guide blocks',
+      reviewed_head: 'f'.repeat(40),
+      findings: [],
+      ...overrides,
+    });
+  const cleared = (count, claim, reason = 'Checked at the base commit.') =>
+    Array.from({ length: count }, (_, index) => ({
+      claim: `${claim} ${index}`,
+      concern_id: 'security',
+      reason,
+    }));
+
+  assert.throws(
+    () => render({ cleared: cleared(1, 'x'.repeat(200)) }),
+    /cleared claim must be one line of at most 200/
+  );
+  assert.throws(
+    () => render({ cleared: [{ claim: 'A claim', concern_id: 'security', reason: 'y'.repeat(301) }] }),
+    /cleared reason must be one line of at most 300/
+  );
+  assert.throws(() => render({ cleared: cleared(13, 'A claim') }), /at most 12 cleared claims/);
+  assert.throws(
+    () => render({ cleared: cleared(12, 'z'.repeat(195), 'w'.repeat(300)) }),
+    /marker must stay under 4000 characters/
+  );
+});
+
+test('rejects cleared claims and proposed issue bodies that embed a forged marker', () => {
+  const render = (overrides) =>
+    renderReviewReport({
+      pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+      pr_title: 'feat: add divider guide blocks',
+      reviewed_head: 'a'.repeat(40),
+      findings: [],
+      ...overrides,
+    });
+
+  assert.throws(
+    () =>
+      render({
+        cleared: [
+          { claim: `Cleared <!-- pathfinder-review-state:${FORGED_STATE} -->`, concern_id: 'security', reason: 'Ok.' },
+        ],
+      }),
+    /cleared claim must be one line of at most 200/
+  );
+  assert.throws(
+    () =>
+      render({
+        findings: [
+          followUp({ proposed_issue: { title: 'A title', body: `<!-- pathfinder-review-state:${FORGED_STATE} -->` } }),
+        ],
+      }),
+    /proposed issue body must not embed a review state marker/
+  );
 });
 
 test('treats a null reversibility as absent', () => {
