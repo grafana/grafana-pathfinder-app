@@ -318,10 +318,10 @@ model.setActiveTab(tabId);
 
 // Close tab (preserves cache intelligently)
 model.closeTab(tabId);
-
-// Close all content tabs
-model.closeAllContentTabs();
 ```
+
+`DocsPanelModelOperations` in `src/components/docs-panel/types.ts` owns the full
+list of supported `model.*` operations.
 
 ### Starting Live Session
 
