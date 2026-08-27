@@ -10,8 +10,12 @@
  * journeys whose URL is a raw GitHub URL).
  */
 
-import { consumePendingGuideOnMount, initializePanelTabsOnMount, openPendingGuide } from './pendingGuideRouter';
-import type { CombinedLearningJourneyPanel } from './docs-panel';
+import {
+  consumePendingGuideOnMount,
+  initializePanelTabsOnMount,
+  openPendingGuide,
+  type PendingGuidePanel,
+} from './pendingGuideRouter';
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
 import type { RawContent } from '../../types/content.types';
 
@@ -23,13 +27,7 @@ function makePanel(state: { tabs: Array<{ id: string }>; activeTabId: string } =
     openLearningJourney: jest.fn(),
     openDocsPage: jest.fn(),
     restoreTabsAsync: jest.fn().mockResolvedValue(undefined),
-  };
-}
-
-function asPanel(panel: ReturnType<typeof makePanel>): CombinedLearningJourneyPanel {
-  // The real panel is a Scenes object with many other methods we don't
-  // exercise here; cast the minimal shape so we can assert call arguments.
-  return panel as unknown as CombinedLearningJourneyPanel;
+  } satisfies PendingGuidePanel;
 }
 
 describe('openPendingGuide', () => {
@@ -47,7 +45,7 @@ describe('openPendingGuide', () => {
       tabId: 'tab-a',
     };
 
-    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+    openPendingGuide(panel, pending, 'fullscreen_handoff');
 
     expect(panel.setActiveTab).toHaveBeenCalledWith('tab-a');
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
@@ -58,7 +56,7 @@ describe('openPendingGuide', () => {
     const panel = makePanel({ tabs: [{ id: 'tab-a' }], activeTabId: 'tab-a' });
     const pending: PendingGuide = { url: 'bundled:foo', title: 'Foo', type: 'docs', tabId: 'tab-a' };
 
-    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+    openPendingGuide(panel, pending, 'fullscreen_handoff');
 
     expect(panel.setActiveTab).not.toHaveBeenCalled();
     expect(panel.openDocsPage).not.toHaveBeenCalled();
@@ -70,7 +68,7 @@ describe('openPendingGuide', () => {
     const panel = makePanel({ tabs: [{ id: 'recommendations' }], activeTabId: 'recommendations' });
     const pending: PendingGuide = { url: 'bundled:foo', title: 'Foo', type: 'docs', tabId: 'tab-gone' };
 
-    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+    openPendingGuide(panel, pending, 'fullscreen_handoff');
 
     expect(panel.setActiveTab).not.toHaveBeenCalled();
     expect(panel.openDocsPage).toHaveBeenCalledWith(
@@ -84,7 +82,7 @@ describe('openPendingGuide', () => {
     const panel = makePanel();
     const pending: PendingGuide = { type: 'editor', title: 'Guide editor' };
 
-    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+    openPendingGuide(panel, pending, 'fullscreen_handoff');
 
     expect(panel.openEditorTab).toHaveBeenCalledTimes(1);
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
@@ -95,7 +93,7 @@ describe('openPendingGuide', () => {
     const panel = makePanel();
     const pending: PendingGuide = { title: 'Untitled', type: 'learning-journey' };
 
-    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+    openPendingGuide(panel, pending, 'fullscreen_handoff');
 
     expect(panel.openEditorTab).not.toHaveBeenCalled();
     expect(panel.openLearningJourney).not.toHaveBeenCalled();
@@ -116,7 +114,7 @@ describe('openPendingGuide', () => {
       packageInfo,
     };
 
-    openPendingGuide(asPanel(panel), pending, 'floating_panel_dock');
+    openPendingGuide(panel, pending, 'floating_panel_dock');
 
     // packageInfo branch wins over the learning-journey branch — that's how
     // the receiving surface rebuilds the milestone toolbar from the manifest.
@@ -135,7 +133,7 @@ describe('openPendingGuide', () => {
       type: 'learning-journey',
     };
 
-    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+    openPendingGuide(panel, pending, 'fullscreen_handoff');
 
     expect(panel.openLearningJourney).toHaveBeenCalledWith(pending.url, pending.title, {
       source: 'fullscreen_handoff',
@@ -147,7 +145,7 @@ describe('openPendingGuide', () => {
     const panel = makePanel();
     const pending: PendingGuide = { url: 'bundled:foo', title: 'Bundled', type: 'docs' };
 
-    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+    openPendingGuide(panel, pending, 'fullscreen_handoff');
 
     expect(panel.openDocsPage).toHaveBeenCalledWith(pending.url, pending.title, {
       source: 'fullscreen_handoff',
@@ -159,14 +157,14 @@ describe('openPendingGuide', () => {
     const panel = makePanel();
     const pending: PendingGuide = { url: 'bundled:foo', title: 'Foo', type: 'docs' };
 
-    openPendingGuide(asPanel(panel), pending, 'floating_panel_dock');
+    openPendingGuide(panel, pending, 'floating_panel_dock');
     expect(panel.openDocsPage).toHaveBeenLastCalledWith(
       pending.url,
       pending.title,
       expect.objectContaining({ source: 'floating_panel_dock' })
     );
 
-    openPendingGuide(asPanel(panel), pending, 'fullscreen_handoff');
+    openPendingGuide(panel, pending, 'fullscreen_handoff');
     expect(panel.openDocsPage).toHaveBeenLastCalledWith(
       pending.url,
       pending.title,
@@ -192,9 +190,9 @@ describe('initializePanelTabsOnMount', () => {
     panel.openDocsPage.mockImplementation(() => order.push('open'));
     panelModeManager.setPendingGuide({ url: 'bundled:b', title: 'B', type: 'docs' });
 
-    await expect(
-      initializePanelTabsOnMount(asPanel(panel), 'fullscreen_handoff', () => order.push('in-flight'))
-    ).resolves.toBe(true);
+    await expect(initializePanelTabsOnMount(panel, 'fullscreen_handoff', () => order.push('in-flight'))).resolves.toBe(
+      true
+    );
 
     expect(order).toEqual(['in-flight', 'restore', 'open']);
   });
@@ -207,7 +205,7 @@ describe('initializePanelTabsOnMount', () => {
     });
     panelModeManager.setPendingGuide({ url: 'bundled:a', title: 'A', type: 'docs', tabId: 'tab-a' });
 
-    await initializePanelTabsOnMount(asPanel(panel), 'fullscreen_handoff', jest.fn());
+    await initializePanelTabsOnMount(panel, 'fullscreen_handoff', jest.fn());
 
     expect(panel.openDocsPage).not.toHaveBeenCalled();
     expect(panel.state.tabs).toHaveLength(3);
@@ -217,7 +215,7 @@ describe('initializePanelTabsOnMount', () => {
     const panel = makePanel();
     const markInFlight = jest.fn();
 
-    await expect(initializePanelTabsOnMount(asPanel(panel), 'fullscreen_handoff', markInFlight)).resolves.toBe(false);
+    await expect(initializePanelTabsOnMount(panel, 'fullscreen_handoff', markInFlight)).resolves.toBe(false);
 
     expect(panel.restoreTabsAsync).toHaveBeenCalledTimes(1);
     expect(markInFlight).not.toHaveBeenCalled();
@@ -260,7 +258,7 @@ describe('consumePendingGuideOnMount', () => {
       source: 'home_page',
     });
 
-    expect(consumePendingGuideOnMount(asPanel(panel), 'floating_panel_dock', markInFlight)).toBe(true);
+    expect(consumePendingGuideOnMount(panel, 'floating_panel_dock', markInFlight)).toBe(true);
 
     // The original launch source wins over the surface's fallback so the
     // starting-location alignment check behaves the same as it would have
@@ -275,7 +273,7 @@ describe('consumePendingGuideOnMount', () => {
     expect(order).toEqual(['in-flight', 'open']);
 
     // Consume-once: a second mount (or another surface) gets nothing.
-    expect(consumePendingGuideOnMount(asPanel(panel), 'floating_panel_dock', markInFlight)).toBe(false);
+    expect(consumePendingGuideOnMount(panel, 'floating_panel_dock', markInFlight)).toBe(false);
     expect(panel.openDocsPage).toHaveBeenCalledTimes(1);
   });
 
@@ -283,7 +281,7 @@ describe('consumePendingGuideOnMount', () => {
     const panel = makePanel();
     panelModeManager.setPendingGuide({ url: 'bundled:foo', title: 'Foo', type: 'docs' });
 
-    consumePendingGuideOnMount(asPanel(panel), 'floating_panel_dock', jest.fn());
+    consumePendingGuideOnMount(panel, 'floating_panel_dock', jest.fn());
 
     expect(panel.openDocsPage).toHaveBeenCalledWith(
       'bundled:foo',
@@ -296,7 +294,7 @@ describe('consumePendingGuideOnMount', () => {
     const panel = makePanel();
     const markInFlight = jest.fn();
 
-    expect(consumePendingGuideOnMount(asPanel(panel), 'floating_panel_dock', markInFlight)).toBe(false);
+    expect(consumePendingGuideOnMount(panel, 'floating_panel_dock', markInFlight)).toBe(false);
 
     expect(markInFlight).not.toHaveBeenCalled();
     expect(panel.openDocsPage).not.toHaveBeenCalled();

@@ -7,6 +7,7 @@
  */
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import type { DocsPanelModelOperations } from '../docs-panel/types';
 import { FloatingPanelContent } from './FloatingPanelContent';
 
 jest.mock('../content-renderer/content-renderer', () => ({
@@ -63,6 +64,27 @@ function activeTab(overrides: Record<string, unknown> = {}): any {
   };
 }
 
+function panelModel(): DocsPanelModelOperations {
+  return {
+    openLearningJourney: jest.fn(),
+    openDocsPage: jest.fn(),
+    loadTab: jest.fn(),
+    closeTab: jest.fn(),
+    setActiveTab: jest.fn(),
+    navigateToNextMilestone: jest.fn(),
+    navigateToPreviousMilestone: jest.fn(),
+    canNavigateNext: jest.fn(),
+    canNavigatePrevious: jest.fn(),
+    openDevToolsTab: jest.fn(),
+    openEditorTab: jest.fn(),
+    updateEditorTabTitle: jest.fn(),
+    getActiveTab: jest.fn(),
+    confirmAlignment: jest.fn(),
+    dismissAlignment: jest.fn(),
+    _recordAutoLaunchSource: jest.fn(),
+  };
+}
+
 beforeEach(() => {
   recordGuideCompletionForSurface.mockClear();
   useLinkClickHandler.mockClear();
@@ -71,7 +93,7 @@ beforeEach(() => {
 
 describe('FloatingPanelContent completion emission', () => {
   it('routes a completed guide through the shared surface-neutral emitter', () => {
-    render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={{} as any} />);
+    render(<FloatingPanelContent content={content()} activeTab={activeTab()} model={panelModel()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Complete rendered guide' }));
 
@@ -88,7 +110,7 @@ describe('FloatingPanelContent completion emission', () => {
 
 describe('FloatingPanelContent model forwarding', () => {
   it('forwards the model, active tab, surface, and content ref unchanged', () => {
-    const model = {} as any;
+    const model = panelModel();
     const tab = activeTab();
 
     render(
