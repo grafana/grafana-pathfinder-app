@@ -8,24 +8,68 @@
  * milestone toolbar — see context-panel.tsx ("All packages route through
  * openDocsPage because it handles packageInfo").
  *
- * Pattern matched: `https://interactive-learning.grafana.{net,-dev.net}/packages/<id>/content.json`.
- * The sibling `manifest.json` is fetched and parsed with the loose
- * `ManifestJsonObjectSchema` (no cross-field refinement) so partially-spec
- * manifests still yield enough metadata for routing.
+ * Two URL shapes are recognized:
+ * - `https://interactive-learning.grafana.{net,-dev.net}/packages/<id>/content.json`
+ *   — the sibling `manifest.json` is fetched directly and parsed with the loose
+ *   `ManifestJsonObjectSchema` (no cross-field refinement) so partially-spec
+ *   manifests still yield enough metadata for routing.
+ * - `backend-guide:<id>` — App Platform custom guides. There is no sibling
+ *   manifest URL to fetch; the manifest is resolved metadata-only through the
+ *   shared PackageResolver (same call `resolvePackageMilestones` uses), which
+ *   ultimately reaches `AppPlatformPackageResolver`.
  */
 import { isInteractiveLearningUrl } from '../security';
 import type { PackageOpenInfo } from '../types/content-panel.types';
 import { ManifestJsonObjectSchema } from '../types/package.schema';
 import { DEFAULT_CONTENT_FETCH_TIMEOUT } from '../constants';
+import { getPackageResolver } from './content-fetcher/package-resolver-registry';
 
 const PACKAGE_CONTENT_URL_PATTERN = /\/packages\/([^/]+)\/content\.json(?:[?#].*)?$/;
+const BACKEND_GUIDE_URL_PREFIX = 'backend-guide:';
 
 /** True if the URL is shaped like an interactive-learning package content URL. */
-export function isPackageContentUrl(url: string): boolean {
-  if (!isInteractiveLearningUrl(url)) {
-    return false;
+function isInteractiveLearningPackageUrl(url: string): boolean {
+  return isInteractiveLearningUrl(url) && PACKAGE_CONTENT_URL_PATTERN.test(url);
+}
+
+/** Extracts the bare package id from a `backend-guide:<id>` URL, or undefined if not that scheme. */
+function extractBackendGuideId(url: string): string | undefined {
+  if (!url.startsWith(BACKEND_GUIDE_URL_PREFIX)) {
+    return undefined;
   }
-  return PACKAGE_CONTENT_URL_PATTERN.test(url);
+  const id = url.slice(BACKEND_GUIDE_URL_PREFIX.length).trim();
+  return id.length > 0 ? id : undefined;
+}
+
+/** True if the URL is a package-content URL this module can resolve packageInfo for. */
+export function isPackageContentUrl(url: string): boolean {
+  return isInteractiveLearningPackageUrl(url) || extractBackendGuideId(url) !== undefined;
+}
+
+/**
+ * Resolve packageInfo for a `backend-guide:<id>` URL via the shared
+ * PackageResolver, metadata-only (no content fetch). Mirrors the
+ * resolution → field mapping `resolvePackageMilestones`/`resolvePackageNavLinks`
+ * already use in package-content.ts, just shaped as PackageOpenInfo.
+ */
+async function fetchAppPlatformPackageInfo(packageId: string): Promise<PackageOpenInfo | undefined> {
+  const resolver = await getPackageResolver();
+  if (!resolver) {
+    return undefined;
+  }
+  try {
+    const resolution = await resolver.resolve(packageId, { loadContent: 'metadata-only' });
+    if (!resolution.ok) {
+      return undefined;
+    }
+    return {
+      packageId: resolution.id,
+      packageManifest: resolution.manifest as unknown as Record<string, unknown> | undefined,
+      repository: resolution.repository,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function deriveManifestUrl(contentUrl: string): string | undefined {
@@ -41,7 +85,12 @@ function deriveManifestUrl(contentUrl: string): string | undefined {
  * — callers fall back to the legacy plain-fetch path in those cases.
  */
 export async function fetchPackageInfoFromUrl(url: string): Promise<PackageOpenInfo | undefined> {
-  if (!isPackageContentUrl(url)) {
+  const backendGuideId = extractBackendGuideId(url);
+  if (backendGuideId) {
+    return fetchAppPlatformPackageInfo(backendGuideId);
+  }
+
+  if (!isInteractiveLearningPackageUrl(url)) {
     return undefined;
   }
   const manifestUrl = deriveManifestUrl(url);
