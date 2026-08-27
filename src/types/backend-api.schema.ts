@@ -77,6 +77,21 @@ export const CustomGuideAuthorWireSchema = z.strictObject({
 });
 
 /**
+ * The stamped block statistics — the completion denominator. `version` is the
+ * version of the counting rules that produced the counts, not a content
+ * version.
+ *
+ * @coupling Go struct: customGuideStats
+ */
+export const CustomGuideStatsWireSchema = z.strictObject({
+  version: z.int(),
+  blockCount: z.int(),
+  sectionCount: z.int(),
+  completableBlockCount: z.int(),
+  finalCompletablePosition: z.int(),
+});
+
+/**
  * Two fields are deliberately wider here than in `CustomGuideManifest`
  * (src/lib/custom-guide-repository-client.ts), because Go emits more than that
  * interface admits:
@@ -100,6 +115,8 @@ export const CustomGuideManifestWireSchema = z.strictObject({
   category: z.string().optional(),
   author: CustomGuideAuthorWireSchema.optional(),
   depends: z.array(JsonValueSchema).optional(),
+  stats: CustomGuideStatsWireSchema.optional(),
+  additionalFields: z.record(z.string(), JsonValueSchema).optional(),
 });
 
 /** @coupling Go struct: customGuideRepositoryEntry */
@@ -167,6 +184,7 @@ export const GO_STRUCT_SCHEMAS = {
   customGuideCapability: CustomGuideCapabilityWireSchema,
   customGuideRepositoryEntry: CustomGuideRepositoryEntryWireSchema,
   customGuideManifest: CustomGuideManifestWireSchema,
+  customGuideStats: CustomGuideStatsWireSchema,
   'customGuideManifest.author': CustomGuideAuthorWireSchema,
   myCompletionsResponse: MyCompletionsResponseWireSchema,
   completionCapability: CompletionCapabilityWireSchema,

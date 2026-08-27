@@ -56,6 +56,25 @@ type customGuideManifest struct {
 		Team string `json:"team,omitempty"`
 	} `json:"author,omitempty"`
 	Depends []json.RawMessage `json:"depends,omitempty"`
+	Stats   *customGuideStats `json:"stats,omitempty"`
+	// AdditionalFields is the platform manifest's untyped escape hatch. Carried
+	// verbatim so keys this struct has no field for — including stats before the
+	// typed schema field exists upstream — still reach the browser.
+	AdditionalFields map[string]json.RawMessage `json:"additionalFields,omitempty"`
+}
+
+// customGuideStats mirrors the stamped `manifest.stats` object — the same five
+// members as GuideStatsSummarySchema in src/types/guide-stats.schema.ts. These
+// counts are the denominator for completion percentages, so they must survive
+// decoding; a manifest with no stats leaves this nil.
+type customGuideStats struct {
+	// Version is the version of the COUNTING RULES that produced the counts
+	// below. It says nothing about whether the guide's content changed.
+	Version                  int `json:"version"`
+	BlockCount               int `json:"blockCount"`
+	SectionCount             int `json:"sectionCount"`
+	CompletableBlockCount    int `json:"completableBlockCount"`
+	FinalCompletablePosition int `json:"finalCompletablePosition"`
 }
 
 // customGuideRepositoryEntry is the slim, block-stripped view of an

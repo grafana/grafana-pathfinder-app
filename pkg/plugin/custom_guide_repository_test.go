@@ -460,3 +460,149 @@ func TestCustomGuideHTTPClient_StripsBlocksPreservesManifest(t *testing.T) {
 		t.Errorf("blocks leaked into the shaped entry: %s", raw)
 	}
 }
+
+// --- Stats passthrough -------------------------------------------------------
+
+// The stamped manifest.stats is the denominator for completion percentages, so
+// all five members must survive both the decode and the shaping into the served
+// entry.
+func TestCustomGuideHTTPClient_PreservesManifestStats(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{
+					"id":     "fe-alerting-01",
+					"title":  "Alerting module 1",
+					"blocks": []map[string]any{{"type": "markdown", "content": "body"}},
+					"manifest": map[string]any{
+						"type": "guide",
+						"stats": map[string]any{
+							"version":                  1,
+							"blockCount":               9,
+							"sectionCount":             3,
+							"completableBlockCount":    4,
+							"finalCompletablePosition": 7,
+						},
+					},
+				}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
+	}
+	got := page.Entries[0].Manifest.Stats
+	want := &customGuideStats{Version: 1, BlockCount: 9, SectionCount: 3, CompletableBlockCount: 4, FinalCompletablePosition: 7}
+	if got == nil || *got != *want {
+		t.Fatalf("stats = %+v, want %+v", got, want)
+	}
+}
+
+// Unknown manifest keys arrive under the platform's additionalFields escape
+// hatch — including stats, before the typed schema field exists upstream — so
+// the decode must carry them verbatim rather than drop them.
+func TestCustomGuideHTTPClient_PreservesManifestAdditionalFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{
+					"id": "fe-alerting-02",
+					"manifest": map[string]any{
+						"type": "guide",
+						"additionalFields": map[string]any{
+							"startingLocation": "/alerting/list",
+							"stats":            map[string]any{"version": 1, "blockCount": 2},
+						},
+					},
+				}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
+	}
+	extra := page.Entries[0].Manifest.AdditionalFields
+	if string(extra["startingLocation"]) != `"/alerting/list"` {
+		t.Errorf("startingLocation not carried verbatim: %s", extra["startingLocation"])
+	}
+	var stats customGuideStats
+	if err := json.Unmarshal(extra["stats"], &stats); err != nil {
+		t.Fatalf("decode additionalFields.stats: %v", err)
+	}
+	if stats.Version != 1 || stats.BlockCount != 2 {
+		t.Errorf("additionalFields.stats = %+v, want version 1 blockCount 2", stats)
+	}
+}
+
+// A manifest with no stats and no escape hatch still decodes, and carries
+// neither — the served entry must not gain empty objects for them.
+func TestCustomGuideHTTPClient_NoStatsDecodesCleanly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{"id": "fe-plain", "manifest": map[string]any{"type": "guide"}}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
+	}
+	if page.Entries[0].Manifest.Stats != nil {
+		t.Errorf("expected no stats, got %+v", page.Entries[0].Manifest.Stats)
+	}
+	raw, _ := json.Marshal(page.Entries[0])
+	if strings.Contains(string(raw), "stats") || strings.Contains(string(raw), "additionalFields") {
+		t.Errorf("empty stats/additionalFields leaked into the shaped entry: %s", raw)
+	}
+}
+
+// The route serves what the lister shaped: stats and the escape hatch must
+// survive the drain and the response envelope, not just the decode.
+func TestCustomGuide_ServesManifestStatsToBrowser(t *testing.T) {
+	withFrozenTime(t, time.Unix(1_700_000_000, 0))
+	entry := guideEntry("fe-alerting-01", "Alerting module 1", "published", "guide")
+	entry.Manifest.Stats = &customGuideStats{Version: 1, BlockCount: 9, SectionCount: 3, CompletableBlockCount: 4, FinalCompletablePosition: 7}
+	entry.Manifest.AdditionalFields = map[string]json.RawMessage{"startingLocation": json.RawMessage(`"/alerting/list"`)}
+	withGuideLister(t, singlePageGuideLister(entry))
+
+	rr, body := doCustomGuide(t, "/custom-guide-repository", "user:1")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if len(body.Guides) != 1 || body.Guides[0].Manifest == nil {
+		t.Fatalf("expected one guide with a manifest, got %+v", body.Guides)
+	}
+	got := body.Guides[0].Manifest.Stats
+	want := &customGuideStats{Version: 1, BlockCount: 9, SectionCount: 3, CompletableBlockCount: 4, FinalCompletablePosition: 7}
+	if got == nil || *got != *want {
+		t.Fatalf("served stats = %+v, want %+v", got, want)
+	}
+	if string(body.Guides[0].Manifest.AdditionalFields["startingLocation"]) != `"/alerting/list"` {
+		t.Errorf("additionalFields did not survive the response envelope: %+v", body.Guides[0].Manifest.AdditionalFields)
+	}
+}

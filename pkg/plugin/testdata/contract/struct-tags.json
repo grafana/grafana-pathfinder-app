@@ -221,6 +221,20 @@
       "type": "[]json.RawMessage",
       "wire": "array<json>",
       "omitempty": true
+    },
+    {
+      "field": "Stats",
+      "json": "stats",
+      "type": "*plugin.customGuideStats",
+      "wire": "object",
+      "omitempty": true
+    },
+    {
+      "field": "AdditionalFields",
+      "json": "additionalFields",
+      "type": "map[string]json.RawMessage",
+      "wire": "record<json>",
+      "omitempty": true
     }
   ],
   "customGuideManifest.author": [
@@ -290,6 +304,43 @@
       "type": "string",
       "wire": "string",
       "omitempty": true
+    }
+  ],
+  "customGuideStats": [
+    {
+      "field": "Version",
+      "json": "version",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "BlockCount",
+      "json": "blockCount",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "SectionCount",
+      "json": "sectionCount",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "CompletableBlockCount",
+      "json": "completableBlockCount",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
+    },
+    {
+      "field": "FinalCompletablePosition",
+      "json": "finalCompletablePosition",
+      "type": "int",
+      "wire": "integer",
+      "omitempty": false
     }
   ],
   "myCompletionsResponse": [
