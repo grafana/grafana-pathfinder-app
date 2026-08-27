@@ -22,6 +22,8 @@ const SECTIONS = [
   ['nit', 'Nits'],
 ];
 const FOLLOW_UP_PREAMBLE = 'These are tracked separately and do not block merge.';
+const suppressionNotice = (count) =>
+  `${countLabel(count, 'further follow-up')} ${count === 1 ? 'was' : 'were'} withheld to keep the ${MAX_DEFERRED}-follow-up budget for entries carried forward from earlier rounds.`;
 const FOLLOW_UP_OWNERS = ['maintainer', 'author'];
 const SEVERITY_RANK = new Map([
   ['critical', 0],
@@ -114,6 +116,10 @@ function trailingStateMarker(output) {
   }
   const encoded = lines[index].match(STATE_MARKER)?.[1];
   return encoded ? { encoded, recap } : null;
+}
+
+function isCarriedForward(finding) {
+  return finding.disposition === 'follow_up' && finding.carried_forward === true;
 }
 
 function isFindingRef(entry) {
@@ -217,16 +223,18 @@ function fencedBlock(body, indent) {
 
 function renderFinding(finding, index) {
   const meta = [finding.severity, finding.concern_id, REVERSIBILITY.get(finding.reversibility)].filter(Boolean);
+  const marker = `${index + 1}. `;
+  const indent = ' '.repeat(marker.length);
   const lines = [
-    `${index + 1}. [${finding.disposition}] **${finding.id} — ${oneLine(finding.title)}** (${meta.join(' · ')})`,
-    `   ${oneLine(finding.problem)}`,
-    `   ${ACTION_LABELS.get(finding.disposition)}: ${oneLine(finding.suggested_action)}`,
+    `${marker}[${finding.disposition}] **${finding.id} — ${oneLine(finding.title)}** (${meta.join(' · ')})`,
+    `${indent}${oneLine(finding.problem)}`,
+    `${indent}${ACTION_LABELS.get(finding.disposition)}: ${oneLine(finding.suggested_action)}`,
   ];
   if (finding.disposition === 'follow_up') {
     lines.push(
-      `   Proposed issue (${finding.owner}): ${oneLine(finding.proposed_issue.title)}`,
+      `${indent}Proposed issue (${finding.owner}): ${oneLine(finding.proposed_issue.title)}`,
       '',
-      fencedBlock(finding.proposed_issue.body.trimEnd(), '   ')
+      fencedBlock(finding.proposed_issue.body.trimEnd(), indent)
     );
   }
   return lines.join('\n');
@@ -251,6 +259,9 @@ function readAssessment(report) {
 }
 
 function validateFollowUp(finding) {
+  if (finding.carried_forward != null && typeof finding.carried_forward !== 'boolean') {
+    throw new Error('a follow-up finding carried_forward must be true or false');
+  }
   if (!FOLLOW_UP_OWNERS.includes(finding.owner)) {
     throw new Error('a follow-up finding owner must be maintainer or author');
   }
@@ -350,8 +361,10 @@ function validateReport(report) {
       validateFollowUp(finding);
     }
   }
-  if (report.findings.filter((finding) => finding.disposition === 'follow_up').length > MAX_DEFERRED) {
-    throw new Error(`a review carries at most ${MAX_DEFERRED} follow-ups; fold the rest into one proposed issue`);
+  if (report.findings.filter(isCarriedForward).length > MAX_DEFERRED) {
+    throw new Error(
+      `a review carries forward at most ${MAX_DEFERRED} follow-ups, the same bound the marker's deferred list enforces`
+    );
   }
 }
 
@@ -365,11 +378,16 @@ export function renderReviewReport(report) {
   for (const finding of report.findings) {
     grouped[finding.disposition].push(finding);
   }
+  const bySeverity = (left, right) =>
+    (SEVERITY_RANK.get(left.severity) ?? 99) - (SEVERITY_RANK.get(right.severity) ?? 99);
   for (const disposition of DISPOSITIONS) {
-    grouped[disposition].sort(
-      (left, right) => (SEVERITY_RANK.get(left.severity) ?? 99) - (SEVERITY_RANK.get(right.severity) ?? 99)
-    );
+    grouped[disposition].sort(bySeverity);
   }
+  const carried = grouped.follow_up.filter(isCarriedForward);
+  const introduced = grouped.follow_up.filter((finding) => !isCarriedForward(finding));
+  const admitted = introduced.slice(0, Math.max(0, MAX_DEFERRED - carried.length));
+  const withheld = introduced.length - admitted.length;
+  grouped.follow_up = [...carried, ...admitted].sort(bySeverity);
 
   const sections = [];
   if (assessment.status === 'incomplete') {
@@ -396,7 +414,10 @@ export function renderReviewReport(report) {
   }
   for (const [disposition, heading] of SECTIONS) {
     if (grouped[disposition].length > 0) {
-      const preamble = disposition === 'follow_up' ? [FOLLOW_UP_PREAMBLE, ''] : [];
+      const preamble =
+        disposition === 'follow_up'
+          ? [FOLLOW_UP_PREAMBLE, ...(withheld > 0 ? ['', suppressionNotice(withheld)] : []), '']
+          : [];
       sections.push('', `## ${heading}`, '', ...preamble, grouped[disposition].map(renderFinding).join('\n\n'));
     }
   }
@@ -431,7 +452,7 @@ export function renderReviewReport(report) {
     });
     if (state.length > MAX_MARKER) {
       throw new Error(
-        `the re-review state marker must stay under ${MAX_MARKER} characters; prune cleared claims or fold follow-ups`
+        `the re-review state marker must stay under ${MAX_MARKER} characters; prune cleared claims, then shorten proposed issue titles — never drop a carried-forward follow-up`
       );
     }
     sections.push('', `<!-- pathfinder-review-state:${state} -->`);

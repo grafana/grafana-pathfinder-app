@@ -764,6 +764,74 @@ test('a round past the marker bound still renders, clamped rather than rejected'
   assert.throws(() => render(2.5), /round must be a positive integer/);
 });
 
+function manyFollowUps(count, overrides = {}) {
+  return Array.from({ length: count }, (_, index) =>
+    followUp({
+      id: `F${index + 1}`,
+      title: `Carried concern ${index + 1}`,
+      proposed_issue: { title: `Track concern ${index + 1}`, body: `Body for concern ${index + 1}.` },
+      ...overrides,
+    })
+  );
+}
+
+function renderFollowUps(findings) {
+  return renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: '5'.repeat(40),
+    findings,
+  });
+}
+
+test('a proposed issue fence stays inside its list item once the marker widens past nine', () => {
+  const lines = renderFollowUps(manyFollowUps(11)).split('\n');
+
+  for (const ordinal of [9, 10, 11]) {
+    const start = lines.findIndex((line) => line.startsWith(`${ordinal}. `));
+    assert.notEqual(start, -1, `item ${ordinal}`);
+    const indent = ' '.repeat(`${ordinal}. `.length);
+    const fence = lines.slice(start).findIndex((line) => line.trim().startsWith('```'));
+    assert.ok(lines[start + fence].startsWith(`${indent}\``), `item ${ordinal} fence indent`);
+    for (const offset of [1, 2, 3]) {
+      assert.ok(lines[start + offset].startsWith(indent), `item ${ordinal} continuation ${offset}`);
+    }
+  }
+});
+
+test('carried-forward follow-ups keep the budget and new ones are withheld with a stated count', () => {
+  const output = renderFollowUps([
+    ...manyFollowUps(20, { carried_forward: true }),
+    followUp({ id: 'NEW1', title: 'A newly demoted blocker', severity: 'critical' }),
+    followUp({ id: 'NEW2', title: 'Another newly demoted blocker', severity: 'critical' }),
+  ]);
+
+  assert.match(output, /2 further follow-ups were withheld to keep the 20-follow-up budget/);
+  assert.doesNotMatch(output, /\*\*NEW1 —/);
+  assert.doesNotMatch(output, /\*\*NEW2 —/);
+  assert.match(output, /\*\*F20 —/);
+  assert.equal(output.split('\n').at(-1), '0 blocking, 20 follow-ups, 0 suggestions, 0 nits');
+  assert.equal(parseReviewState(output)?.deferred.length, 20);
+});
+
+test('a single withheld follow-up reads in the singular, and a report inside budget states nothing', () => {
+  const oneOver = renderFollowUps([...manyFollowUps(20, { carried_forward: true }), followUp({ id: 'NEW1' })]);
+  assert.match(oneOver, /1 further follow-up was withheld/);
+
+  const atBudget = renderFollowUps(manyFollowUps(20, { carried_forward: true }));
+  assert.doesNotMatch(atBudget, /withheld/);
+  assert.equal(atBudget.split('\n').at(-1), '0 blocking, 20 follow-ups, 0 suggestions, 0 nits');
+});
+
+test('a carried-forward set larger than the marker can hold is a caller bug', () => {
+  assert.throws(
+    () => renderFollowUps(manyFollowUps(21, { carried_forward: true })),
+    /carries forward at most 20 follow-ups/
+  );
+  assert.equal(parseReviewState(renderFollowUps(manyFollowUps(20, { carried_forward: true })))?.deferred.length, 20);
+  assert.throws(() => renderFollowUps([followUp({ carried_forward: 'yes' })]), /carried_forward must be true or false/);
+});
+
 test('treats a null reversibility as absent', () => {
   const output = renderReviewReport({
     pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',

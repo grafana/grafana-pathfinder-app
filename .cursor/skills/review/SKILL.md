@@ -244,7 +244,7 @@ Before synthesis, run an adversarial verification pass on the reviewer output:
 
 Each skeptic returns `{ verdict, blocking_warranted, reason }` as defined in `docs/design/PR_REVIEW.md`, and must cite the evidence that contradicts or confirms the finding. The two axes are independent: `verdict` answers whether the finding is **true**, `blocking_warranted` answers whether it should **stop the merge**. Answer the warrant axis on every proposed blocker; it is ignored elsewhere. A skeptic that confirms a finding and still answers `blocking_warranted: "no"` is making a coherent and expected judgment, not hedging.
 
-Truth is adjudicated first, then warrant. Two confirmations that both answer `no` resolve to `demoted`; a two-of-three refutation majority still drops the finding outright. **A demoted finding is retained as a `follow_up`, not dropped** — it keeps its evidence, appears in the report, and enters the marker's `deferred` list. Record every demotion and its reasoning in the debug trace so these thresholds can be tuned against real reviews.
+Truth is adjudicated first, then warrant. A finding resolves to `demoted` when at least one verdict confirms it and **every** confirming verdict answers `no` — two confirmations that both answer `no` is one instance, and so is a lone confirmation answering `no` beside two `uncertain` ones. A trail with no confirmation at all demotes on nothing. A two-of-three refutation majority still drops the finding outright. **A demoted finding is retained as a `follow_up`, not dropped** — it keeps its evidence, appears in the report, and enters the marker's `deferred` list. Record every demotion and its reasoning in the debug trace so these thresholds can be tuned against real reviews.
 
 Keep `verification_dropped` and skeptic reasoning in the debug trace only; never include clean verification output in the normal report. Record cluster count, skeptic calls, adjudicator calls, confirmed findings, demoted findings, dropped findings, and elapsed verification time there too.
 
@@ -297,6 +297,7 @@ The synthesizer must:
 - treat an unanswered question as `blocking` only when the answer is required to merge; otherwise render it as a `suggestion`
 - state a complete merge contract: fixing every blocking ID must make the reviewed head mergeable, subject only to risks introduced by later commits
 - carry forward each **still-unresolved** entry from the marker's `deferred` list as a `follow_up`. `deferred` shrinks as work lands: an entry the author has fixed at this head is dropped, not re-rendered, because the next marker's `deferred` is derived from the follow-ups this report renders
+- mark every carried-forward follow-up `carried_forward: true`. The 20-follow-up budget is spent on those first, and the renderer withholds **new** follow-ups once it is full, stating in the report how many it withheld. Never prune, merge, or drop an unresolved `deferred` entry to make room — a new follow-up is already gate-demoted, so withholding it costs no merge safety, while losing a prior commitment is exactly the reversal this ratchet exists to prevent
 - set the report's `cleared` array to the union of the prior marker's `cleared` entries and what this round examined and cleared, deduplicated by claim. Unlike `deferred`, `cleared` persists for the life of the PR — a clearance an earlier round wrote stays readable to every later round, and nothing but the cap removes it. When the union exceeds the 12-entry `cleared` cap or the marker exceeds 4000 characters, prune the least load-bearing entries rather than dropping the earlier rounds wholesale
 
 ### Do not manufacture blockers from the review's own effects
@@ -331,7 +332,7 @@ Instructions for the sub-agent:
 3. Suppress findings on files that the diff only touches in tests (D2 is still relevant there).
 4. Return only **high-confidence findings**; do not emit suggestive findings unless the overall change classification is `mixed` or `product-runtime` and the router has flagged correctness risk.
 
-The tech-debt scan is **non-blocking**. Convert retained items to `follow_up`, `suggestion`, or `nit`, dedupe them against §5, and remain silent when the scan is clean. The §3a round budget applies: at round ≥ 3 this scan emits follow-ups or nothing.
+The tech-debt scan is **non-blocking**. Convert retained items to `follow_up`, `suggestion`, or `nit`, dedupe them against §5, and remain silent when the scan is clean. The §3a round budget applies: at round ≥ 3 this scan emits follow-ups or nothing, and those follow-ups are new, so the §5 follow-up budget withholds them before any carried-forward entry.
 
 ## 7. Documentation drift check
 
@@ -339,7 +340,7 @@ After synthesis, invoke `.cursor/skills/prevent-doc-drift/SKILL.md` in **review 
 
 If the skill emits a "Doc-drift updates recommended" section, convert its concrete action into a `follow_up` or a `suggestion`. The PR author can apply the diffs themselves or invoke `prevent-doc-drift` in apply mode to commit them on the same branch.
 
-The doc-drift check is **non-blocking** — guidance drift does not block merge, but unfixed drift accumulates as tech debt future reviewers and agents will pay for. The §3a round budget applies: at round ≥ 3 this check emits follow-ups or nothing.
+The doc-drift check is **non-blocking** — guidance drift does not block merge, but unfixed drift accumulates as tech debt future reviewers and agents will pay for. The §3a round budget applies: at round ≥ 3 this check emits follow-ups or nothing, and those follow-ups are new, so the §5 follow-up budget withholds them before any carried-forward entry.
 
 ## 8. Instrumentation coverage check
 
@@ -353,7 +354,7 @@ Answer these questions:
 4. Does the PR add a critical multi-step operation with no outcome-stamped `withFaroUserAction` span?
 5. Does the PR add a panel with no URL-derived view and no `setFaroViewName` call? Separately, does a new Pathfinder surface omit `reportPathfinderSurface`?
 
-Convert concrete gaps to follow-ups or suggestions citing the relevant `TELEMETRY.md` rule. Remain silent when coverage is adequate. Instrumentation is a judgment call, not a gate: do not request instrumentation for trivial UI states, and never suggest attributes that would violate the privacy invariants in `TELEMETRY.md` (high-cardinality values, raw error text, unnormalized URLs). Deduplicate observations against synthesized `analytics-and-telemetry` findings. The §3a round budget applies: at round ≥ 3 this check emits follow-ups or nothing.
+Convert concrete gaps to follow-ups or suggestions citing the relevant `TELEMETRY.md` rule. Remain silent when coverage is adequate. Instrumentation is a judgment call, not a gate: do not request instrumentation for trivial UI states, and never suggest attributes that would violate the privacy invariants in `TELEMETRY.md` (high-cardinality values, raw error text, unnormalized URLs). Deduplicate observations against synthesized `analytics-and-telemetry` findings. The §3a round budget applies: at round ≥ 3 this check emits follow-ups or nothing, and those follow-ups are new, so the §5 follow-up budget withholds them before any carried-forward entry.
 
 ## 9. Render the final report
 
@@ -374,7 +375,7 @@ Verdict: Request Changes
 
 The PR URL must be complete and clickable. `Purpose` is derived from the PR title, contains no newline, and is capped at 120 characters. `Verdict` is `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Nothing follows the count line.
 
-Set the report's `round` and `cleared` fields so the emitted marker carries the ratchet forward. `cleared` is the accumulated union across every round of this PR, not just this round's clearances. The renderer throws rather than truncating an oversized marker, so prune the least load-bearing `cleared` claims instead of dropping them silently.
+Set the report's `round` and `cleared` fields so the emitted marker carries the ratchet forward. `cleared` is the accumulated union across every round of this PR, not just this round's clearances. The renderer throws rather than truncating an oversized marker, so prune the least load-bearing `cleared` claims instead of dropping them silently. Prune `cleared` first; if the marker is still oversized, shorten the carried follow-ups' proposed issue titles. An unresolved `deferred` entry is never the thing that yields.
 
 ## 10. Pattern catalog
 
