@@ -1,4 +1,5 @@
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
+import type { TabGates } from './tab-gates';
 import { getGuideStripTabs, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
 
 export interface TabStateSnapshot {
@@ -31,4 +32,26 @@ export function closeTabState(state: TabStateSnapshot, tabId: string): TabStateR
     activeTabId: replacement?.id ?? RECOMMENDATIONS_TAB_ID,
     changed: true,
   };
+}
+
+export function pruneGatedTabState(
+  state: TabStateSnapshot,
+  gates: Pick<TabGates, 'allowEditor' | 'allowDevTools'>
+): TabStateResult {
+  const tabs = state.tabs.filter((tab) => {
+    if (tab.type === 'editor' && !gates.allowEditor) {
+      return false;
+    }
+    if (tab.type === 'devtools' && !gates.allowDevTools) {
+      return false;
+    }
+    return true;
+  });
+
+  if (tabs.length === state.tabs.length) {
+    return { ...state, changed: false };
+  }
+
+  const activeTabId = tabs.some((tab) => tab.id === state.activeTabId) ? state.activeTabId : RECOMMENDATIONS_TAB_ID;
+  return { tabs, activeTabId, changed: true };
 }

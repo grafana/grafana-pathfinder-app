@@ -15,7 +15,7 @@ export {
 } from './tab-kinds';
 export { isCurrentUserEditor, resolveTabGates, didGateClose } from './tab-gates';
 export type { TabGates } from './tab-gates';
-export { closeTabState } from './tab-state-transitions';
+export { closeTabState, pruneGatedTabState } from './tab-state-transitions';
 export type { TabStateResult, TabStateSnapshot } from './tab-state-transitions';
 export {
   restoreTabsFromStorage,

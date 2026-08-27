@@ -98,6 +98,7 @@ import {
   resolveTabGates,
   didGateClose,
   closeTabState,
+  pruneGatedTabState,
   type TabGates,
 } from './utils';
 import { DEFAULT_GUIDE_TITLE } from '../block-editor/editor-chrome-status';
@@ -313,7 +314,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    */
   public pruneGatedTabs(): void {
     const pruned = this.pruneUnauthorizedGatedTabs(this.state.tabs, this.state.activeTabId);
-    if (!pruned.didPrune) {
+    if (!pruned.changed) {
       return;
     }
     this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
@@ -327,44 +328,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * observed gate closure apart from a first read of an unresolved config.
    * Storage is only rewritten for the former — see `didGateClose`.
    */
-  private pruneUnauthorizedGatedTabs(
-    tabs: LearningJourneyTab[],
-    activeTabId: string
-  ): { tabs: LearningJourneyTab[]; activeTabId: string; didPrune: boolean; gateClosed: boolean } {
+  private pruneUnauthorizedGatedTabs(tabs: LearningJourneyTab[], activeTabId: string) {
     const gates = resolveTabGates(this.state.pluginConfig);
     const gateClosed = didGateClose(this._tabGates, gates);
     this._tabGates = gates;
 
-    const pruned = this.withoutUnauthorizedGatedTabs(tabs, activeTabId, gates.allowEditor, gates.allowDevTools);
+    const pruned = pruneGatedTabState({ tabs, activeTabId }, gates);
     return { ...pruned, gateClosed };
-  }
-
-  private withoutUnauthorizedGatedTabs(
-    tabs: LearningJourneyTab[],
-    activeTabId: string,
-    allowEditor: boolean,
-    allowDevTools: boolean
-  ): { tabs: LearningJourneyTab[]; activeTabId: string; didPrune: boolean } {
-    const nextTabs = tabs.filter((t) => {
-      if (t.type === 'editor' && !allowEditor) {
-        return false;
-      }
-      if (t.type === 'devtools' && !allowDevTools) {
-        return false;
-      }
-      return true;
-    });
-
-    if (nextTabs.length === tabs.length) {
-      return { tabs, activeTabId, didPrune: false };
-    }
-
-    const removedActive = !nextTabs.some((t) => t.id === activeTabId);
-    return {
-      tabs: nextTabs,
-      activeTabId: removedActive ? RECOMMENDATIONS_TAB_ID : activeTabId,
-      didPrune: true,
-    };
   }
 
   private generateTabId(): string {
