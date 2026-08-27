@@ -6,6 +6,8 @@ import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { itemUrl } from '../../utils/interactive-guides-api';
 import { validateGuide } from '../../validation';
+import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
+import type { JsonBlock } from '../../types/json-guide.types';
 
 export interface BackendGuideResource {
   metadata?: {
@@ -74,7 +76,7 @@ export function buildBackendGuideContent(
     id: guideResource.spec.id || guideResource.metadata?.name || resourceName,
     title: guideResource.spec.title,
     schemaVersion: guideResource.spec.schemaVersion || '1.0',
-    blocks: guideResource.spec.blocks,
+    blocks: decodeAppPlatformGuideBlocks(guideResource.spec.blocks as JsonBlock[]),
   };
 
   const validationResult = validateGuide(guide);

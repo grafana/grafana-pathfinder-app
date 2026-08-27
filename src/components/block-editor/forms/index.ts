@@ -5,6 +5,7 @@
  */
 
 export { MarkdownBlockForm } from './MarkdownBlockForm';
+export { DividerBlockForm } from './DividerBlockForm';
 export { HtmlBlockForm } from './HtmlBlockForm';
 export { ImageBlockForm } from './ImageBlockForm';
 export { VideoBlockForm } from './VideoBlockForm';

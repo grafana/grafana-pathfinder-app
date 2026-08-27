@@ -79,6 +79,7 @@ function blockRequiresGrafanaUi(block: JsonBlock): boolean {
     case 'snippet-ref':
       return true;
     case 'markdown':
+    case 'divider':
     case 'html':
     case 'image':
     case 'video':

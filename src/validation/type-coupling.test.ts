@@ -11,6 +11,7 @@ import {
   JsonSectionBlockSchema,
   JsonCollapsibleBlockSchema,
   JsonCalloutBlockSchema,
+  JsonDividerBlockSchema,
   PresentationalBlockSchema,
   JsonQuizBlockSchema,
   JsonAssistantBlockSchema,
@@ -154,6 +155,10 @@ describe('KNOWN_FIELDS sync', () => {
     verifyFields(JsonCalloutBlockSchema, 'callout');
   });
 
+  it('should match divider schema fields', () => {
+    verifyFields(JsonDividerBlockSchema, 'divider');
+  });
+
   // Drift guard: PresentationalBlockSchema (collapsible children) and the
   // PresentationalBlock type must list the same block types. If the union
   // gains/loses a member on one side only, one of these assertions fails.
@@ -165,6 +170,7 @@ describe('KNOWN_FIELDS sync', () => {
         { type: 'image', src: 'https://example.com/x.png' },
         { type: 'video', src: 'https://example.com/x.mp4', provider: 'native' },
         { type: 'callout', title: 'Objective', content: 'x' },
+        { type: 'divider' },
       ];
       for (const block of accepted) {
         expect(PresentationalBlockSchema.safeParse(block).success).toBe(true);
