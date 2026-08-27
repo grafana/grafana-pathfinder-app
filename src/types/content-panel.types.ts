@@ -85,6 +85,9 @@ export interface PackageOpenInfo {
   repository?: string;
   /** Pre-resolved milestones from context panel to avoid redundant resolution in fetchPackageContent */
   resolvedMilestones?: Milestone[];
+  /** Launching surface, for context-panel sections that are not the recommender.
+   *  Narrowed with `coerceLaunchSource` at the launch boundary (Tier 0 cannot import it). */
+  launchSource?: string;
 }
 
 export interface ContextPanelState extends SceneObjectState {

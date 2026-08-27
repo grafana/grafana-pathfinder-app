@@ -23,6 +23,7 @@ import {
   GuideResponseProvider,
   useGuideResponses,
   isJourneyCoverPage,
+  getCurrentMilestone,
 } from '../../docs-retrieval';
 import { guideHasSnippetRefs, inlineSnippetRefsInGuide } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
@@ -61,6 +62,7 @@ import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
+import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
 
 /**
  * Scroll to and highlight an element with the given fragment ID
@@ -396,9 +398,29 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   useLayoutEffect(() => registerCompatibilityGuideId(guideId), [guideId]);
 
   const journey = content.metadata.learningJourney;
+  const packageManifestId = content.metadata.packageManifest?.id;
+  const packageManifestDescription = content.metadata.packageManifest?.description;
+  const pathId = typeof packageManifestId === 'string' ? packageManifestId : undefined;
+  const pathDescription = typeof packageManifestDescription === 'string' ? packageManifestDescription : undefined;
+  // Full-screen -> sidebar handoff target (see interactive-engine/interactive.hook.ts):
+  // prefer the current milestone's own starting location, then the course's.
+  // `/` and empty/missing both mean "no real signal" for this feature specifically
+  // — the existing alignment system (resolveStartingLocation) treats `/` as a
+  // real, confirmation-gated target for its own unrelated purpose; this handoff
+  // has no confirmation step, so a bare default must not silently relocate the user.
+  const courseStartingLocation = content.metadata.packageManifest?.startingLocation;
+  const fullScreenFallbackLocation =
+    resolveFullScreenFallbackLocation(getCurrentMilestone(content)?.startingLocation) ??
+    resolveFullScreenFallbackLocation(typeof courseStartingLocation === 'string' ? courseStartingLocation : undefined);
   const beforeContent =
     isJourneyCoverPage(content) && journey && journey.milestones.length > 0 ? (
-      <LearningPathTableOfContents milestones={journey.milestones} baseUrl={journey.baseUrl} />
+      <LearningPathTableOfContents
+        milestones={journey.milestones}
+        baseUrl={journey.baseUrl}
+        pathId={pathId}
+        title={content.metadata.title}
+        description={pathDescription}
+      />
     ) : null;
 
   return (
@@ -416,6 +438,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
           selectionState={selectionState}
           documentContext={documentContext}
           beforeContent={beforeContent}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         />
       </GuideRequirementsProvider>
     </GuideResponseProvider>
@@ -435,6 +458,8 @@ interface ContentWithVariablesProps {
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
+  /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 function ContentWithVariables({
@@ -449,6 +474,7 @@ function ContentWithVariables({
   selectionState,
   documentContext,
   beforeContent,
+  fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
@@ -523,7 +549,7 @@ function ContentWithVariables({
         position: 'relative',
       }}
     >
-      {title && isNativeJson && <h1 className={titleStyle}>{title}</h1>}
+      {title && isNativeJson && !beforeContent && <h1 className={titleStyle}>{title}</h1>}
       {beforeContent}
       <ContentProcessor
         html={processedContent}
@@ -531,6 +557,7 @@ function ContentWithVariables({
         baseUrl={baseUrl}
         onReady={onContentReady}
         responses={responses}
+        fullScreenFallbackLocation={fullScreenFallbackLocation}
       />
       {selectionState.isValid && (
         <AssistantSelectionPopover
@@ -552,9 +579,18 @@ interface ContentProcessorProps {
   onReady?: () => void;
   /** User responses for variable substitution at render time */
   responses: Record<string, unknown>;
+  /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
-function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: ContentProcessorProps) {
+function ContentProcessor({
+  html,
+  contentType,
+  baseUrl,
+  onReady,
+  responses,
+  fullScreenFallbackLocation,
+}: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Reset interactive counters only when content changes (not on every render)
@@ -800,7 +836,14 @@ function ContentProcessor({ html, contentType, baseUrl, onReady, responses }: Co
         // Look up standalone step position from precomputed document layout
         const groupInfo = documentLayout.standaloneGroupMap.get(index);
         const stepPosition = groupInfo ? getDocumentStepPosition(groupInfo.groupId, groupInfo.indexInGroup) : undefined;
-        return renderParsedElement(element, `element-${index}`, baseUrl, responses, stepPosition);
+        return renderParsedElement(
+          element,
+          `element-${index}`,
+          baseUrl,
+          responses,
+          stepPosition,
+          fullScreenFallbackLocation
+        );
       })}
     </div>
   );
@@ -1003,10 +1046,13 @@ function renderParsedElement(
   key: string | number,
   contentKey?: string,
   responses: Record<string, unknown> = {},
-  standaloneStepPosition?: StandaloneStepPosition
+  standaloneStepPosition?: StandaloneStepPosition,
+  fullScreenFallbackLocation?: string
 ): React.ReactNode {
   if (Array.isArray(element)) {
-    return element.map((child, i) => renderParsedElement(child, `${key}-${i}`, contentKey, responses));
+    return element.map((child, i) =>
+      renderParsedElement(child, `${key}-${i}`, contentKey, responses, undefined, fullScreenFallbackLocation)
+    );
   }
 
   // Helper to substitute variables in strings at render time
@@ -1028,7 +1074,14 @@ function renderParsedElement(
     children.map((child: ParsedElement | string, childIndex: number) =>
       typeof child === 'string'
         ? sub(child)
-        : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses, childStepPosition)
+        : renderParsedElement(
+            child,
+            `${key}-child-${childIndex}`,
+            contentKey,
+            responses,
+            childStepPosition,
+            fullScreenFallbackLocation
+          )
     );
 
   // Helper to substitute variables in internal actions (for multistep/guided blocks)
@@ -1084,7 +1137,9 @@ function renderParsedElement(
           whenFalseSectionConfig={element.props.whenFalseSectionConfig}
           whenTrueChildren={element.props.whenTrueChildren || []}
           whenFalseChildren={element.props.whenFalseChildren || []}
-          renderElement={(child: ParsedElement, childKey: string) => renderParsedElement(child, childKey, contentKey)}
+          renderElement={(child: ParsedElement, childKey: string) =>
+            renderParsedElement(child, childKey, contentKey, undefined, undefined, fullScreenFallbackLocation)
+          }
           keyPrefix={String(key)}
         />
       );
@@ -1113,6 +1168,7 @@ function renderParsedElement(
           // Standalone step position (for guides without sections)
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         >
           {renderChildren(element.children)}
         </InteractiveStep>
@@ -1132,6 +1188,7 @@ function renderParsedElement(
           // Standalone step position (for guides without sections)
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         >
           {renderChildren(element.children)}
         </InteractiveMultiStep>
@@ -1152,6 +1209,7 @@ function renderParsedElement(
           // Standalone step position (for guides without sections)
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         >
           {renderChildren(element.children)}
         </InteractiveGuided>
@@ -1241,6 +1299,7 @@ function renderParsedElement(
           hints={element.props.hints}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
+          fullScreenFallbackLocation={fullScreenFallbackLocation}
         >
           {renderChildren(element.children)}
         </CodeBlockStep>
@@ -1462,7 +1521,14 @@ function renderParsedElement(
             ?.map((child: ParsedElement | string, childIndex: number) =>
               typeof child === 'string'
                 ? sub(child)
-                : renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses)
+                : renderParsedElement(
+                    child,
+                    `${key}-child-${childIndex}`,
+                    contentKey,
+                    responses,
+                    undefined,
+                    fullScreenFallbackLocation
+                  )
             )
             .filter((child: React.ReactNode) => child !== null);
 
@@ -1511,7 +1577,14 @@ function renderParsedElement(
               const substituted = sub(child);
               return substituted && substituted.length > 0 ? substituted : null;
             }
-            return renderParsedElement(child, `${key}-child-${childIndex}`, contentKey, responses);
+            return renderParsedElement(
+              child,
+              `${key}-child-${childIndex}`,
+              contentKey,
+              responses,
+              undefined,
+              fullScreenFallbackLocation
+            );
           })
           .filter((child: React.ReactNode) => child !== null);
 

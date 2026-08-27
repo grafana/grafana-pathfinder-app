@@ -53,9 +53,33 @@ npm run prettier-test
 npm run lint:go
 ```
 
+## Go lint
+
+`npm run lint:go` runs `mage -v lint`, which is `golangci-lint run ./...` over the default
+linter set configured by `.golangci.yaml`.
+
+CI runs the identical invocation in the `Lint backend` job of `.github/workflows/ci.yml`, and that job
+is one of the checks `CI Gate` aggregates. `CI Gate` is a required status check on `main`, so a Go lint
+diagnostic blocks merge exactly as an eslint or typecheck error does.
+
+The linter version is pinned in `GOLANGCI_LINT_VERSION` at the top of `.github/workflows/ci.yml`, so an
+upstream release cannot turn the repository red on its own. Install that version locally to reproduce
+CI exactly — `golangci-lint --version` tells you what you have. When a diagnostic is wrong rather than
+a real defect, suppress it at the line with `//nolint:<linter> // <reason>` rather than widening the
+linter set in `.golangci.yaml`.
+
 ## Pre-merge check
 
-`npm run check` runs typecheck + lint + prettier + lint:go + test:go + test:coverage + test:scripts in one command.
+`npm run check` runs the local pre-merge gate in one command. It announces each step as it starts, and
+stops at the first failure. To see what it contains without running it:
+
+```bash
+npm run check -- --list
+```
+
+Every step is also a standalone script: `--list` names them, and this file documents each one in the
+section it belongs to. CI does not run `npm run check`; it additionally enforces manifest freshness and
+the production build, so a green local gate is not by itself a green `CI Gate`.
 
 ## Building and testing
 
@@ -130,7 +154,7 @@ npm run schema:export       # export schema to dist/
 
 # Terms-and-conditions sync
 npm run docs:sync-terms        # sync TERMS_VERSION across docs/
-npm run docs:sync-terms:check  # CI drift check for terms
+npm run docs:sync-terms:check  # local drift check for terms; not run in CI
 ```
 
 ## Uploading guides to a stack
@@ -156,7 +180,7 @@ scripts/upsert-learning-path.sh --stack learn.grafana.net --package ./pkg --dry-
 ```
 
 ```bash
-# Test the scripts themselves (bash -n, shellcheck, stubbed-curl suite)
+# Test the scripts themselves (bash -n, shellcheck, behavioural suites)
 npm run test:scripts
 ```
 

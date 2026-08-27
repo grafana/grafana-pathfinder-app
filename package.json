@@ -48,7 +48,7 @@
     "stats:check": "node dist/cli/cli/index.js build-stats src/bundled-interactives --check",
     "snippets:build": "node dist/cli/cli/index.js build-snippets",
     "schema:export": "node dist/cli/cli/index.js schema --all",
-    "check": "npm run typecheck && npm run lint && npm run prettier-test && npm run docs:sync-terms:check && npm run lint:go && npm run test:go && npm run test:coverage && npm run test:review-contract && npm run test:scripts",
+    "check": "node scripts/check.js",
     "prepare": "husky"
   },
   "author": "Grafanalabs",

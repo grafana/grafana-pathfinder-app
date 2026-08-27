@@ -130,7 +130,6 @@ export function FloatingPanelContent({
               activeTab={activeTab}
               surface={surface}
               contentRoot={contentRef}
-              actionButtonClassName={floatingStyles.secondaryActionButton}
               hasInteractiveProgress={!!hasInteractiveProgress}
               progressKey={progressKey ?? null}
               onResetGuide={onResetGuide!}

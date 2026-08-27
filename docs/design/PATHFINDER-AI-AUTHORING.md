@@ -18,14 +18,14 @@ The MCP service does not perform App Platform writes itself. It returns publish 
 
 ## Component documents
 
-| Component                            | Document                                                                  | Responsibility                                                                                                                                                                         |
-| ------------------------------------ | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CLI authoring tools                  | [Agent authoring CLI](./AGENT-AUTHORING.md)                               | Deterministic guide/package mutations, schema-driven help, validate-on-write, inspect, structured output, distribution as npm package and Docker image                                 |
-| Pathfinder authoring MCP service     | [Pathfinder authoring MCP service](./HOSTED-AUTHORING-MCP.md)             | Standalone TS MCP server (sibling entrypoint to `pathfinder-cli`), imports CLI commands as library functions, stateless tool surface                                                   |
-| Authoring artifacts                  | [Authoring artifacts](./AUTHORING-SESSION-ARTIFACTS.md)                   | Stateless artifact-as-wire-state model, durable IDs, validate-on-write, idempotency, finalization output                                                                               |
-| Grafana App Platform publish handoff | [Grafana App Platform publish handoff](./APP-PLATFORM-PUBLISH-HANDOFF.md) | `InteractiveGuide` payload, POST/PUT instructions, draft/published status, manifest stripped at publish (CRD limitation), `localExport` fallback for non-Grafana-aware clients and OSS |
-| Viewer deep link contract            | [Viewer deep link contract](./VIEWER-DEEP-LINK-CONTRACT.md)               | `doc=api:<id>`, `panelMode=floating`, link generation after publish                                                                                                                    |
-| Client orchestration guide           | [Client orchestration guide](./CLIENT-ORCHESTRATION-GUIDE.md)             | How an AI client uses the MCP service, asks for confirmation, publishes through Grafana, and returns a link                                                                            |
+| Component                            | Document                                                                  | Responsibility                                                                                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI authoring tools                  | [Agent authoring CLI](./AGENT-AUTHORING.md)                               | Deterministic guide/package mutations, schema-driven help, validate-on-write, inspect, structured output, distribution as npm package and Docker image                                    |
+| Pathfinder authoring MCP service     | [Pathfinder authoring MCP service](./HOSTED-AUTHORING-MCP.md)             | Standalone TS MCP server (sibling entrypoint to `pathfinder-cli`), imports CLI commands as library functions, stateless tool surface                                                      |
+| Authoring artifacts                  | [Authoring artifacts](./AUTHORING-SESSION-ARTIFACTS.md)                   | Stateless artifact-as-wire-state model, durable IDs, validate-on-write, idempotency, finalization output                                                                                  |
+| Grafana App Platform publish handoff | [Grafana App Platform publish handoff](./APP-PLATFORM-PUBLISH-HANDOFF.md) | `InteractiveGuide` payload, POST/PUT instructions, draft/published status, manifest projected to `spec.manifest` at publish, `localExport` fallback for non-Grafana-aware clients and OSS |
+| Viewer deep link contract            | [Viewer deep link contract](./VIEWER-DEEP-LINK-CONTRACT.md)               | `doc=api:<id>`, `panelMode=floating`, link generation after publish                                                                                                                       |
+| Client orchestration guide           | [Client orchestration guide](./CLIENT-ORCHESTRATION-GUIDE.md)             | How an AI client uses the MCP service, asks for confirmation, publishes through Grafana, and returns a link                                                                               |
 
 ## End-to-end flow
 
@@ -43,7 +43,7 @@ AI client
     v
 Pathfinder authoring MCP (TypeScript)
   imports pathfinder-cli command functions directly (no shell-out, no IPC)
-  performs no schema validation of its own — the CLI is the validator
+  validates argument shape only (preflight against the pathfinder_help interface) — the CLI validates guide content
   returns the updated artifact (or structured validation errors)
   finalizes App Platform handoff on request — handoff includes localExport fallback
     |
@@ -79,7 +79,7 @@ Pathfinder in Grafana
 
 6. **The MVP authoring surface is stateless.** Tool calls take the artifact in and return the artifact out. There is no `sessionId`, no checkpoint counter, no server-side lifecycle. Idempotency comes from durable artifact IDs (the package `id` and per-block IDs the CLI auto-assigns). A stateful model can be layered in later if scale or UX needs demonstrate it. See [Authoring artifacts — Stateless model](./AUTHORING-SESSION-ARTIFACTS.md#stateless-model).
 
-7. **Manifest data is stripped at publish for the MVP — but this is a CRD limitation, not an AI-authoring choice.** The artifact is package-shaped (content + manifest + assets), but the current `InteractiveGuide` CRD only persists content-shaped fields, and that limitation affects all custom guides (block-editor and AI alike). Authoring tools still produce correctly-shaped manifest data inside the artifact so that future CRD extension lights up persistence without changing the tool surface. Recommendation-engine parity for custom guides is downstream of CRD work, not of this design. See [Grafana App Platform publish handoff — Fields dropped at publish](./APP-PLATFORM-PUBLISH-HANDOFF.md#fields-dropped-at-publish-mvp).
+7. **Manifest data is carried through to the CRD at `spec.manifest`.** The artifact is package-shaped (content + manifest + assets), and the `InteractiveGuide` CRD carries that manifest at `spec.manifest`, so the publish handoff projects it there rather than dropping it. The CRD types a subset of the keys verbatim and sweeps the remainder into `additionalFields`, its escape hatch, so nothing authored is lost on the way in; `spec.type` is deliberately not emitted, because the CRD declares no such field. This applies to all custom guides (block-editor and AI alike), not just AI authoring. Recommendation-engine parity for custom guides reads this data but is otherwise downstream of this design. See [Grafana App Platform publish handoff — Manifest fields at publish](./APP-PLATFORM-PUBLISH-HANDOFF.md#manifest-fields-at-publish).
 
 8. **Grafana Assistant is the primary publish path, with `localExport` as the universal fallback.** Assistant can resolve the current Grafana namespace and make authenticated POST/PUT calls to private App Platform endpoints from within an Assistant turn — this is high-confidence based on Assistant's documented use of customer-instance APIs, though the specific MCP-handoff → Assistant → App-Platform pattern is unprototyped (see [Phase 0.5 spike](#phase-05-assistant-handoff-spike)). The handoff response also includes a `localExport` companion that any agent can follow to write `content.json` and `manifest.json` to a user-accessible directory when the App Platform path is unavailable. Three concrete cases land in `localExport`: non-Grafana-aware MCP clients (Cursor, Claude Desktop), Assistant on Grafana OSS (where App Platform is not available), and App Platform write failures. See [Grafana App Platform publish handoff — Local-export fallback](./APP-PLATFORM-PUBLISH-HANDOFF.md#local-export-fallback).
 
@@ -109,7 +109,7 @@ Publish the npm package (`pathfinder-cli`) with a single binary entrypoint (`pat
 
 Build the standalone TS MCP server under `src/cli/` (sibling to the CLI entrypoint). Tool dispatchers map each authoring tool call to the corresponding imported CLI command function — no shell-out, no temp directory, no IPC. Implement the stateless model: tool calls take the artifact in and return the artifact out.
 
-The MVP tool surface includes `pathfinder_authoring_start` (the documented "first tool" — returns workflow + tutorial + discovery hints), `pathfinder_help` (composes the same `--help --format json` surface the CLI exposes, as a function call), the mutation tools, `pathfinder_inspect`, `pathfinder_validate`, and `pathfinder_finalize_for_app_platform` returning both an App Platform path and a `localExport` fallback.
+The MVP tool surface includes `pathfinder_authoring_start` (the documented "first tool" — returns workflow + tutorial + discovery hints), `pathfinder_help` (derives filtered, camelCase parameter interfaces from the CLI's Commander metadata), help-derived CLI-backed tools for create/mutation/inspect/schema operations, `pathfinder_validate`, and `pathfinder_finalize_for_app_platform` returning both an App Platform path and a `localExport` fallback.
 
 The server supports two transports from the same code: stdio (for Cursor/Claude Desktop and other local MCP clients) and HTTP (for centrally hosted deployments — primarily Grafana Assistant on Cloud, fronted by the Grafana MCP token-verifier pattern). The existing Go MCP at `/api/plugins/grafana-pathfinder-app/resources/mcp` is unchanged.
 
@@ -123,6 +123,6 @@ Return `panelMode=floating` links after successful App Platform save or publish 
 
 ## Open questions
 
-1. When the `InteractiveGuide` CRD is extended to carry manifest fields (round-tripping `description`, `depends`, `recommends`, `targeting`, etc.), what is the smallest change to the publish handoff projection that lights up persistence end-to-end? See [Grafana App Platform publish handoff — Open questions](./APP-PLATFORM-PUBLISH-HANDOFF.md#open-questions).
+1. ~~When the `InteractiveGuide` CRD is extended to carry manifest fields (round-tripping `description`, `depends`, `recommends`, `targeting`, etc.), what is the smallest change to the publish handoff projection that lights up persistence end-to-end?~~ Resolved: the CRD carries the manifest at `spec.manifest`, and the handoff projects the artifact's manifest into that field. See [Grafana App Platform publish handoff — Manifest fields at publish](./APP-PLATFORM-PUBLISH-HANDOFF.md#manifest-fields-at-publish).
 2. Should finalization support package export (downloadable `content.json` + `manifest.json` + assets) in addition to App Platform handoff?
 3. If a future need for stateful authoring sessions emerges, what concrete signal triggers the transition? See [Authoring artifacts — Open questions](./AUTHORING-SESSION-ARTIFACTS.md#open-questions).

@@ -2,44 +2,39 @@
  * `pathfinder-cli remove-block <dir> <id> [--cascade | --orphan-children]`
  * Refuses to drop a non-empty container without one of the two child-handling
  * flags. The flags are mutually exclusive.
+ *
+ * `RemoveBlockCommand` is the sole authority for the input shape; the Commander tree
+ * and the MCP binding are both renderers over it.
  */
 
-import { Command, Option } from 'commander';
+import { z } from 'zod';
 
+import { defineCommand } from '../contracts';
 import { mutateAndValidate, PackageIOError, removeBlock } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
-export const removeBlockCommand = new Command('remove-block')
-  .description('Remove a block by id')
-  .argument('<dir>', 'package directory')
-  .argument('<id>', 'id of the block to remove')
-  .addOption(new Option('--cascade', 'Also remove all child blocks (required for non-empty containers)'))
-  .addOption(
-    new Option(
-      '--orphan-children',
+export const RemoveBlockCommand = z.object({
+  dir: z.string().describe('package directory').meta({ role: 'io' }),
+  id: z.string().describe('id of the block to remove').meta({ role: 'addressing' }),
+  cascade: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Also remove all child blocks (required for non-empty containers). Destructive: deletes the entire subtree with no undo.'
+    )
+    .meta({ role: 'control' }),
+  orphanChildren: z
+    .boolean()
+    .optional()
+    .describe(
       "Promote the removed block's children into its parent's child array instead of removing them. Promoted children are inserted at the index the removed block previously occupied, in their original order; subsequent siblings are pushed back."
     )
-  )
-  .action(async function (this: Command, dir: string, id: string) {
-    const opts = this.opts() as { cascade?: boolean; orphanChildren?: boolean };
-    const output = readOutputOptions(this);
-    const outcome = await runRemoveBlock({
-      dir,
-      id,
-      cascade: opts.cascade === true,
-      orphanChildren: opts.orphanChildren === true,
-    });
-    process.exit(printOutcome(outcome, output));
-  });
+    .meta({ role: 'control' }),
+});
 
-interface RemoveBlockArgs {
-  dir: string;
-  id: string;
-  cascade: boolean;
-  orphanChildren?: boolean;
-}
+export type RemoveBlockInput = z.output<typeof RemoveBlockCommand>;
 
-export async function runRemoveBlock(args: RemoveBlockArgs): Promise<CommandOutcome> {
+export async function runRemoveBlock(args: RemoveBlockInput): Promise<CommandOutcome> {
   let removed = '';
   let childrenRemoved = 0;
   let childrenOrphaned = 0;
@@ -101,3 +96,10 @@ export async function runRemoveBlock(args: RemoveBlockArgs): Promise<CommandOutc
     },
   };
 }
+
+export const removeBlockSpec = defineCommand({
+  name: 'remove-block',
+  summary: 'Remove a block by id',
+  schema: RemoveBlockCommand,
+  run: runRemoveBlock,
+});

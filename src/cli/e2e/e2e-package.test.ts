@@ -11,7 +11,7 @@ jest.mock('../../validation', () => ({
 jest.mock('./recommender-resolver', () => ({
   resolvePackageById: jest.fn(),
 }));
-jest.mock('../mcp/lib/repository-client', () => ({
+jest.mock('../utils/repository-client', () => ({
   fetchRepositoryIndex: jest.fn(),
   buildPackageFileUrl: jest.fn((base: string, path: string, file: string) => `${base}${path}/${file}`),
 }));
@@ -19,7 +19,7 @@ jest.mock('../mcp/lib/repository-client', () => ({
 import { resolveRemotePackage, resolveRemoteRepository } from './e2e-package';
 import { validateGuideFromString } from '../../validation';
 import { resolvePackageById } from './recommender-resolver';
-import { fetchRepositoryIndex } from '../mcp/lib/repository-client';
+import { fetchRepositoryIndex } from '../utils/repository-client';
 
 const OPTIONS = {
   grafanaUrl: 'http://localhost:3000',

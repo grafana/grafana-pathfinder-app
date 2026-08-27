@@ -13,26 +13,8 @@
 import { Command, Option } from 'commander';
 
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
-import { formatHelpAsJson } from './utils/output';
-import { addBlockCommand } from './commands/add-block';
-import { addChoiceCommand } from './commands/add-choice';
-import { addStepCommand } from './commands/add-step';
-import { buildGraphCommand } from './commands/build-graph';
-import { buildRepositoryCommand } from './commands/build-repository';
-import { buildSnippetsCommand } from './commands/build-snippets';
-import { buildStatsCommand } from './commands/build-stats';
-import { createCommand } from './commands/create';
-import { e2eCommand } from './commands/e2e';
-import { editBlockCommand } from './commands/edit-block';
-import { inspectCommand } from './commands/inspect';
-import { moveBlockCommand } from './commands/move-block';
-import { removeBlockCommand } from './commands/remove-block';
-import { renameIdCommand } from './commands/rename-id';
-import { requirementsCommand } from './commands/requirements';
-import { schemaCommand } from './commands/schema';
-import { setManifestCommand } from './commands/set-manifest';
-import { validateCommand } from './commands/validate';
-import { mcpCommand } from './mcp';
+import { COMMANDER_COMMANDS } from './cli-commands';
+import { helpJsonForCommand } from './help-json';
 
 const program = new Command();
 
@@ -49,9 +31,10 @@ program
     new Option('--format <format>', 'Output format for command responses').choices(['text', 'json']).default('text')
   );
 
-// `--help --format json` is a stability contract — when the user requests
-// help with the JSON format, emit the structured shape the P3 MCP layer
-// will pass through verbatim instead of Commander's default text help.
+// `--help --format json` is a stability contract for the CLI's own JSON
+// consumers (scripts, docs) — Commander's default text help, replaced by the
+// structured shape below. MCP does not read this: `mcp/lib/command-interface.ts`
+// renders the same CommandSpec independently (see AGENT-AUTHORING.md).
 //
 // Hooked via the `preActionHook` chain rather than per-command override
 // because Commander resolves --help before the action runs; we install a
@@ -68,7 +51,7 @@ function attachJsonHelpHook(cmd: Command): void {
     while (cursor) {
       const opts = cursor.opts() as { format?: string };
       if (opts.format === 'json') {
-        return JSON.stringify(formatHelpAsJson(cmd), null, 2) + '\n';
+        return JSON.stringify(helpJsonForCommand(cmd), null, 2) + '\n';
       }
       cursor = cursor.parent ?? null;
     }
@@ -79,31 +62,11 @@ function attachJsonHelpHook(cmd: Command): void {
   }
 }
 
-// Authoring commands (P1).
-program.addCommand(createCommand);
-program.addCommand(addBlockCommand);
-program.addCommand(addStepCommand);
-program.addCommand(addChoiceCommand);
-program.addCommand(setManifestCommand);
-program.addCommand(inspectCommand);
-program.addCommand(editBlockCommand);
-program.addCommand(removeBlockCommand);
-// Structural edits (P2).
-program.addCommand(moveBlockCommand);
-program.addCommand(renameIdCommand);
-
-// Existing commands (validation, build, schema export, e2e).
-program.addCommand(validateCommand);
-program.addCommand(e2eCommand);
-program.addCommand(buildRepositoryCommand);
-program.addCommand(buildStatsCommand);
-program.addCommand(buildSnippetsCommand);
-program.addCommand(buildGraphCommand);
-program.addCommand(schemaCommand);
-program.addCommand(requirementsCommand);
-
-// MCP authoring server (P3): `pathfinder-cli mcp --transport stdio|http`.
-program.addCommand(mcpCommand);
+// Registration order is the manifest's, so `--help` lists commands in the order the
+// runners declare them, followed by what the command line adds itself.
+for (const command of COMMANDER_COMMANDS.values()) {
+  program.addCommand(command);
+}
 
 // Walk the entire command tree (including nested add-block subcommands) and
 // install the JSON help hook. Called after all addCommand() so every node is

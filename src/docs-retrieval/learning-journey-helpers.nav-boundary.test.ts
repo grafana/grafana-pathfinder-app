@@ -3,8 +3,8 @@ import type { RawContent, Milestone } from '../types/content.types';
 
 const baseUrl = 'https://grafana.com/docs/learning-paths/demo/';
 const milestones: Milestone[] = [
-  { number: 1, title: 'One', duration: '', url: `${baseUrl}one/`, isActive: false },
-  { number: 2, title: 'Two', duration: '', url: `${baseUrl}two/`, isActive: false },
+  { number: 1, title: 'One', url: `${baseUrl}one/`, isActive: false },
+  { number: 2, title: 'Two', url: `${baseUrl}two/`, isActive: false },
 ];
 
 function contentAtMilestone(currentMilestone: number): RawContent {

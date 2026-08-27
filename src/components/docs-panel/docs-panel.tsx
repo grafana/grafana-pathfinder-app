@@ -67,7 +67,8 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
+import { coerceLaunchSource, evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
+import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
@@ -217,7 +218,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         return this.openLearningJourney(url, title, { source: 'recommender' });
       },
       (url: string, title: string, packageInfo?: PackageOpenInfo) => {
-        return this.openDocsPage(url, title, { source: 'recommender', packageInfo });
+        // Sections other than the recommender declare their own source.
+        return this.openDocsPage(url, title, {
+          source: coerceLaunchSource(packageInfo?.launchSource) ?? 'recommender',
+          packageInfo,
+        });
       },
       () => this.openEditorTab()
     );
@@ -571,9 +576,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           };
 
           if (currentMilestone === 0) {
+            // The cover-page component now owns the start/continue CTA, so skip
+            // the legacy injected "Ready to Begin" button here (matches the
+            // `skipReadyToBegin` default fetchContent's own callers already use).
             content = {
               ...content,
-              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney),
+              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney, true),
             };
           }
 
@@ -920,7 +928,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
         // Implied 0th step: decide whether to prompt the user to navigate to
         // the guide's declared starting location before step 1 begins.
-        const startingLocation = resolveStartingLocation(url, packageInfo?.packageManifest);
+        // Two manifests can describe this launch and they are not equally complete.
+        // `packageInfo` comes from the catalogue proxy, whose Go `customGuideManifest`
+        // declares no starting location, so the key is dropped at the wire boundary;
+        // the loader's manifest on the fetched content carries it intact. Passing both
+        // keeps `packageInfo` authoritative wherever it actually declares a value and
+        // only falls back where it previously resolved to null — so a guide opened
+        // from inside a learning path gets the same prompt as the same guide opened
+        // standalone.
+        const startingLocation = resolveStartingLocation(
+          url,
+          [packageInfo?.packageManifest, fetchedContent.metadata.packageManifest],
+          { isAdmin: currentUserIsAdmin() }
+        );
         const currentPath = locationService.getLocation().pathname;
         const evaluation = evaluateAlignment({
           currentPath,

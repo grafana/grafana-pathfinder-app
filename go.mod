@@ -3,6 +3,7 @@ module github.com/grafana/grafana-pathfinder-app
 go 1.26.5
 
 require (
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/grafana/authlib v0.0.0-20260814184937-0d62418c2815
 	github.com/grafana/grafana-plugin-sdk-go v0.296.2
 )
@@ -18,7 +19,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/fatih/color v1.19.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
