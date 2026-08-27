@@ -381,10 +381,11 @@ export function mountCommander(spec: CommandSpec, presentation: CommanderPresent
     // A streaming command has already written everything it means to say, in the shape
     // its consumers parse, and may still own the process — `mcp` serves until it is
     // signalled — so the adapter adds nothing on success and only forces the failing
-    // exit code.
+    // exit code. Respect the outcome's exitCode field when present to preserve exit
+    // code differentiation for commands like e2e.
     if (spec.emits === 'stream') {
       if (outcome.status !== 'ok') {
-        process.exit(1);
+        process.exit(outcome.exitCode ?? 1);
       }
       return;
     }

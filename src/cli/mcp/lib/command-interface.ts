@@ -382,6 +382,20 @@ function groupViolations(
   const published = [...iface.required, ...iface.optional, ...(iface.addressing ?? [])];
 
   if (!variant) {
+    // Check if discriminator is present but wrong-typed
+    const discriminatorValue = opts[group.discriminator];
+    if (discriminatorValue !== undefined) {
+      // Present but invalid: either wrong type or not in enum
+      const validValues = [...group.variants.keys()];
+      const expected = validValues.join('|');
+      return {
+        missing: [],
+        unsupported: [],
+        invalid: [{ name: group.discriminator, expected, received: receivedTypeLabel(discriminatorValue) }],
+        exposed: [group.discriminator],
+      };
+    }
+    // Absent
     return { missing: [group.discriminator], unsupported: [], invalid: [], exposed: [group.discriminator] };
   }
 

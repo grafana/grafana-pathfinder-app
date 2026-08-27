@@ -123,6 +123,8 @@ export interface ErrorOutcome {
   data?: Record<string, unknown>;
   /** The command that fixes this, named rather than spelled. Renders only on the CLI. */
   remedy?: IssueRemedy;
+  /** Optional process exit code for commands that distinguish failure types */
+  exitCode?: number;
 }
 
 export type CommandOutcome = SuccessOutcome | ErrorOutcome;
@@ -242,12 +244,12 @@ export function printOutcome(raw: CommandOutcome, output: OutputOptions): number
   if (output.format === 'json') {
     const stream = outcome.status === 'ok' ? process.stdout : process.stderr;
     stream.write(renderMachineJson(outcome) + '\n');
-    return outcome.status === 'ok' ? 0 : 1;
+    return outcome.status === 'ok' ? 0 : (outcome.exitCode ?? 1);
   }
 
   if (outcome.status === 'error') {
     process.stderr.write(formatErrorText(outcome) + '\n');
-    return 1;
+    return outcome.exitCode ?? 1;
   }
 
   process.stdout.write(formatSuccessText(outcome, output.quiet) + '\n');
