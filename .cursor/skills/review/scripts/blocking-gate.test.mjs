@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { decideBlocking } from './blocking-gate.mjs';
+import { advanceReviewPolicy } from './review-policy.mjs';
 import { parseReviewState, renderReviewReport } from './review-report.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -574,6 +575,11 @@ const ROUND_1_CLEARANCE = {
   reason: 'Documented contract; eleven prior block types.',
 };
 
+const CONFIRMED_WARRANTED = [
+  { verdict: 'confirmed', blocking_warranted: 'yes', reason: 'The fixture finding is evidenced.' },
+  { verdict: 'confirmed', blocking_warranted: 'yes', reason: 'The fixture finding warrants gate evaluation.' },
+];
+
 function reportFor(round, dispositions, carried, cleared) {
   return {
     pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
@@ -612,10 +618,15 @@ test('the #1702 rounds publish as mergeable and carry round 1 clearance to round
     const derivedRound = priorState === null ? 1 : priorState.round + 1;
     assert.equal(derivedRound, round.round, 'the round is read back out of the prior marker');
 
-    const decided = round.proposed_blockers.map((entry) => ({
-      finding: entry.finding,
-      disposition: decideBlocking(entry).disposition,
-    }));
+    const decided = round.proposed_blockers.map((entry) => {
+      const result = advanceReviewPolicy({
+        finding: entry.finding,
+        verdicts: CONFIRMED_WARRANTED,
+        gate_answers: entry.answers,
+      });
+      assert.equal(result.status, 'final');
+      return { finding: result.finding, disposition: result.decision.disposition };
+    });
     // A follow-up the author resolved between rounds leaves; the fixture records how many of
     // #1702's survived, most recent first.
     const carried = pool.slice(0, round.carried_follow_ups);

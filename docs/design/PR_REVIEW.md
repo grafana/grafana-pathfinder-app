@@ -50,7 +50,7 @@ If no findings, include:
 
 Severity describes **defect impact**: how bad the condition is. Disposition describes **merge impact**: whether the repository is better off without this change than with it. Those are different axes, and conflating them is what drives findings toward `blocking`. A medium finding can be blocking when the ambiguity must be resolved before merge, and a critical-severity condition the PR merely exposes can be a `follow_up`.
 
-Reviewers recommend a disposition. The synthesizer owns the value after verification and deduplication, and `blocking-gate.mjs` (`.cursor/skills/review/SKILL.md` §4c) owns the final call on every proposed blocker. A finding the gate demotes may not be converted back to `blocking`.
+Reviewers recommend a disposition, and §4b normalizes and deduplicates those recommendations before policy resolution. `review-policy.mjs` owns every transition after that point: one-way-door promotion, verification dispatch and adjudication, and the final blocking-gate decision. Its final disposition may not be changed downstream.
 
 A `follow_up` carries two fields beyond the standard finding set:
 
@@ -59,9 +59,9 @@ A `follow_up` carries two fields beyond the standard finding set:
 
 The review **proposes** issue text; the invoker decides whether to file it. No part of the review files GitHub issues.
 
-### Skeptic verdict shape
+### Review policy and skeptic verdict shape
 
-Adversarial verification (`.cursor/skills/review/SKILL.md` §4b) collects verdicts on two axes, truth and warrant:
+Run `.cursor/skills/review/scripts/review-policy.mjs` as the single policy entry point described in `.cursor/skills/review/SKILL.md` §4c. It promotes a `partially_reversible` or `irreversible_without_cleanup` recommendation to `blocking` before selecting a verification lane, then collects skeptic verdicts on two axes, truth and warrant:
 
 ```json
 { "verdict": "confirmed", "blocking_warranted": "no", "reason": "<evidence that confirms or contradicts>" }
@@ -71,7 +71,7 @@ Adversarial verification (`.cursor/skills/review/SKILL.md` §4b) collects verdic
 - `blocking_warranted` — `yes | no | uncertain`; should it stop the merge? Required only when the finding's `recommended_disposition` is `blocking`, and ignored otherwise
 - `reason` — non-empty, citing the evidence
 
-Truth is adjudicated first, then warrant. `adversarial-policy.mjs` resolves each finding to `kept`, `dropped`, or `demoted`. A `demoted` finding is retained as a `follow_up`, not dropped — it stays visible in the report and in the marker's `deferred` list.
+Truth is adjudicated first, then warrant. The facade uses `adversarial-policy.mjs` internally to resolve each finding to `kept`, `dropped`, or `demoted`. A `demoted` finding is finalized as a `follow_up`, not dropped — it stays visible in the report and in the marker's `deferred` list.
 
 The warrant axis is read **among confirming verdicts only**, and it demotes when there is at least one confirming verdict and _every_ confirming verdict answers `no`. A skeptic who refutes a finding has already said it is not true, so its `blocking_warranted: "no"` restates that refutation rather than judging whether a true finding should stop the merge; counting it would let a refuter break a tie between the skeptics who actually believe the finding. Truth adjudication alone decides what a refutation is worth.
 
@@ -79,7 +79,7 @@ Unanimity among believers is the bar because keeping a blocker whose only believ
 
 ### Blocking gate answers
 
-Every finding still recommended `blocking` after adversarial verification is serialized as `{ finding, answers }` and passed to `.cursor/skills/review/scripts/blocking-gate.mjs`, which returns `{ disposition, reason, override, override_source, gate_failures }`. `blocking-gate.test.mjs` is its behavioral spec, including the PR #1702 acceptance fixture. Never hand-apply its table.
+When `review-policy.mjs` returns `needs_gate_answers`, add the answers below to the same policy input and call the facade again. The facade passes every verified proposed blocker to `blocking-gate.mjs` internally and returns its `{ disposition, reason, override, override_source, gate_failures }` as the final decision. Never call the inner gate or hand-apply its table.
 
 | Answer                           | Rule                                                                                                  |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -95,7 +95,7 @@ Every finding still recommended `blocking` after adversarial verification is ser
 | `induced_by_prior_suggestion`    | Does this blocker exist only because of code added in response to a prior-round suggestion or nit?    |
 | `attribution`                    | `prior_unresolved \| since_prior_head \| late`; required from round 2 onward                          |
 | `late_blocker_reason`            | Required and non-empty when `attribution` is `late`                                                   |
-| `prior_contract_satisfied`       | Optional context for the §5 contract-anchor judgment; no decision rule reads it                       |
+| `prior_contract_satisfied`       | Optional context for the §4b contract-anchor judgment; no decision rule reads it                      |
 | `contradicts_cleared`            | Optional `{ claim, reason, new_evidence }` quoting a `cleared` marker entry this finding overturns    |
 
 The `override` list is the entire safety net. Its **membership** is fixed at exactly `security`, `data_loss`, `credential_exposure`, and `shipped_path_breakage`, and must not grow. Once an override applies, it is never weakened by round, precedent, or authorship — it blocks unconditionally. Whether `shipped_path_breakage` applies, by contrast, _is_ derived from authorship, deliberately, per the rule below; that is a rule for resolving an override, not a condition that weakens one.
@@ -126,7 +126,7 @@ First match wins, in this order. The reason code is the stable identifier; cite 
 | 8   | `boundable_by_followup`, and not a one-way door                            | `follow_up` | `safely-bounded`         |
 | 9   | no rule above holds                                                        | `blocking`  | `warranted`              |
 
-**A one-way door is not boundable by a follow-up.** Rows 7 and 8 are the two that demote on the premise that the finding can wait, so neither holds when the finding's `reversibility` is `partially_reversible` or `irreversible_without_cleanup`: the harm of a door that closes on merge lands at merge, which is exactly when a follow-up has not yet been acted on. That is why §5 can forbid elevating a `follow_up` to `blocking` without losing one-way doors — the invariant binds where the disposition is decided rather than being bolted on after. The gate reads `reversibility` off the finding; the other rows are about provenance and precedent rather than boundability, and are unchanged.
+**A one-way door is not boundable by a follow-up.** Before verification, `review-policy.mjs` promotes every `partially_reversible` or `irreversible_without_cleanup` recommendation to `blocking`, regardless of its original recommendation. It therefore receives blocker-level verification and the warrant question before reaching the gate. Rows 7 and 8 are the two that demote on the premise that the finding can wait, so neither holds for a one-way door; provenance and precedent rows may still demote it. This ordering lets the gate remain the final authority without allowing a downstream elevation to bypass verification.
 
 Row 2 carries no carve-out. A late finding that breaks a shipped path because of this PR already blocked at row 1 on the derived override, so it never reaches row 2 — the exception lives at row 1, as one rule, rather than as a clause repeated on another. Row 2 therefore holds on lateness alone, and `gate_failures` records it even where row 1 outranked it.
 
@@ -232,9 +232,9 @@ Record each applicable condition; conditions classify the delta but do not deter
 
 ### Disposition table
 
-This table is the only source of disposition truth **for the contract evolution scan**. `.cursor/skills/review/scripts/contract-evolution-policy.mjs` implements it. Its `advisory` value is scan-internal vocabulary: `contract-evolution-policy.mjs` maps it to the author-facing `suggestion` when it converts a packet to a reviewer finding. The synthesizer still owns the final author disposition (see Author disposition guidance).
+This table is the only source of recommendation truth **for the contract evolution scan**. `.cursor/skills/review/scripts/contract-evolution-policy.mjs` implements it. Its `advisory` value is scan-internal vocabulary: `contract-evolution-policy.mjs` maps it to `suggestion` when it converts a packet to a reviewer finding. The shared review policy still owns the final author disposition.
 
-Its `blocking` rows are **recommendations**, not final dispositions. A contract verdict recommends; §4c's blocking gate disposes, and it may demote any of these rows to `follow_up`. An advisory `contract_missing` packet that names a proposed owner stays a `suggestion`.
+Its `blocking` rows are **recommendations**, not final dispositions. A contract verdict recommends; §4c's shared policy disposes, and it may demote any of these rows to `follow_up`. An advisory `contract_missing` packet that names a proposed owner stays a `suggestion`.
 
 | History and contract state                                             | Verdict                | Severity | Recommended disposition |
 | ---------------------------------------------------------------------- | ---------------------- | -------- | ----------------------- |
@@ -332,7 +332,7 @@ For PRs touching `pkg/**/*.go`, also check:
 
 ## Comment prefixes
 
-Reviewer-internal vocabulary for labelling findings before synthesis. The author-facing report carries only the four dispositions `review-report.mjs` accepts: a `[question]` becomes `blocking`, `follow_up`, or `suggestion` per the disposition guidance above, and `[security]` and `[react]` become the finding's `concern_id`.
+Reviewer-internal vocabulary for labelling findings before normalization. The author-facing report carries only the four dispositions `review-report.mjs` accepts: a `[question]` becomes `blocking`, `follow_up`, or `suggestion` per the disposition guidance above, and `[security]` and `[react]` become the finding's `concern_id`.
 
 | Prefix         | Meaning                     |
 | -------------- | --------------------------- |
@@ -353,7 +353,7 @@ Reviewer-internal vocabulary for labelling findings before synthesis. The author
 
 ## Final review report
 
-The synthesizer emits this `ReviewReport` object after all supplemental checks finish:
+The final assembly phase emits this `ReviewReport` object after all supplemental checks finish:
 
 | Field           | Type   | Rule                                                       |
 | --------------- | ------ | ---------------------------------------------------------- |
@@ -379,17 +379,17 @@ Each `findings` entry contains:
 - `carried_forward` — optional on a `follow_up`; `true` marks an entry carried over from the prior marker's `deferred` list. It decides only which entries may be compressed when the rendered section is full, never what the marker tracks, so omitting it costs space rather than data
 - `proposed_issue` — required on a `follow_up`; `{ title, body }`. The title renders inline and is capped at 120 characters; the body renders in a fenced block so the invoker can copy it straight into an issue and is capped at 2000 characters, which bounds what a single entry costs the 60000-character body budget below. Neither may embed a review state marker
 
-Each `cleared` entry contains `claim` (≤ 200 characters), `concern_id`, and `reason` (≤ 300 characters): a claim a round examined and found sound, so a later round cannot silently reverse it. The array accumulates for the life of the PR — the synthesizer unions the prior marker's entries with this round's, deduplicated by claim. This is unlike `deferred`, which shrinks as its entries are resolved. At most 12 entries, and past that count the renderer rejects the report, so pruning the least load-bearing entries is a synthesizer decision. Exceeding the list's character budget is different: there the marker truncates and declares saturation rather than failing, which costs the next round a full review. No free-text marker field may embed `<!-- pathfinder-review-state:` or `-->`; the renderer rejects both rather than escaping them, because either would break the hidden comment or forge a second one.
+Each `cleared` entry contains `claim` (≤ 200 characters), `concern_id`, and `reason` (≤ 300 characters): a claim a round examined and found sound, so a later round cannot silently reverse it. The array accumulates for the life of the PR — final assembly unions the prior marker's entries with this round's, deduplicated by claim. This is unlike `deferred`, which shrinks as its entries are resolved. At most 12 entries, and past that count the renderer rejects the report, so final assembly prunes the least load-bearing entries. Exceeding the list's character budget is different: there the marker truncates and declares saturation rather than failing, which costs the next round a full review. No free-text marker field may embed `<!-- pathfinder-review-state:` or `-->`; the renderer rejects both rather than escaping them, because either would break the hidden comment or forge a second one.
 
 Follow-ups render in their own `## Follow-ups` section between the merge contract and `## Suggestions`, under the fixed line `These are tracked separately and do not block merge.` They count toward `Approve with Minor` and never toward `Request Changes`.
 
-**Follow-up and marker volume never fail a review.** The renderer rejects no follow-up count and no marker size: it compresses follow-up detail and truncates the marker instead. Every follow-up a round produces is offered to the marker's `deferred` list — gate demotions, §4b demotions, tech debt, doc drift, instrumentation, and §5's suggestion-surface rule alike — and reaches it unless the marker saturates, which it declares. Every other cap keeps rejecting exactly as before; this applies to quantity alone, never to malformed input.
+**Follow-up and marker volume never fail a review.** The renderer rejects no follow-up count and no marker size: it compresses follow-up detail and truncates the marker instead. Every follow-up a round produces is offered to the marker's `deferred` list — policy demotions, normalized suggestion-surface findings, tech debt, doc drift, and instrumentation alike — and reaches it unless the marker saturates, which it declares. Every other cap keeps rejecting exactly as before; this applies to quantity alone, never to malformed input.
 
 Body size is the one volume the renderer cannot always absorb. Follow-ups are its only compressible content — blocking, suggestion, and nit detail never yields, deliberately — so a report whose non-follow-up sections alone exceed the budget is emitted over it, and GitHub rejects the post. That is not defended against, and should not be: `problem` and `suggested_action` are one rendered line each, so reaching 60000 characters on blockers alone takes dozens of paragraph-length blocking findings, and a review with that many blockers has a calibration problem this document exists to fix, not a rendering problem.
 
-**Carried follow-ups compress before new ones.** The renderer targets a 60000-character body, under GitHub's 65536 limit, and reaches it by compressing follow-ups — so the target holds whenever follow-up detail is what makes the body large. A count cap could not do this, because a single entry may carry a 2000-character proposed-issue body. When the assembled body is over budget the renderer compresses entries to identifiers on the overflow line until it fits, taking **carried entries first, lowest severity first, and within a severity the last one the synthesizer listed**; only if that is not enough does it start on new ones by the same order. Compressing a new entry is the last resort because its `proposed_issue` exists nowhere but this report. The overflow line says only that the detail was omitted to keep the review postable — it makes no claim about where the detail lives, because for a compressed new entry there is nowhere it does. Past the point where compressing every entry still leaves the body over budget, that line sheds identifiers too, into an `and <n> more` tail; the marker's `deferred` list still carries each one, so what is lost there is legibility rather than tracking.
+**Carried follow-ups compress before new ones.** The renderer targets a 60000-character body, under GitHub's 65536 limit, and reaches it by compressing follow-ups — so the target holds whenever follow-up detail is what makes the body large. A count cap could not do this, because a single entry may carry a 2000-character proposed-issue body. When the assembled body is over budget the renderer compresses entries to identifiers on the overflow line until it fits, taking **carried entries first, lowest severity first, and within a severity the last one final assembly listed**; only if that is not enough does it start on new ones by the same order. Compressing a new entry is the last resort because its `proposed_issue` exists nowhere but this report. The overflow line says only that the detail was omitted to keep the review postable — it makes no claim about where the detail lives, because for a compressed new entry there is nowhere it does. Past the point where compressing every entry still leaves the body over budget, that line sheds identifiers too, into an `and <n> more` tail; the marker's `deferred` list still carries each one, so what is lost there is legibility rather than tracking.
 
-This is the complete author-facing vocabulary. `confidence`, skeptic reasoning, and every other reviewer-internal field stay in the debug trace — the renderer has no channel for them, so the synthesizer must not fold them into `problem` as prose.
+This is the complete author-facing vocabulary. `confidence`, skeptic reasoning, and every other reviewer-internal field stay in the debug trace — the renderer has no channel for them, so final assembly must not fold them into `problem` as prose.
 
 Serialize the object to a temporary JSON file and render it with `.cursor/skills/review/scripts/review-report.mjs`. The script validates the schema, orders findings by disposition and then severity, derives the verdict and counts, and emits the final text. Never hand-format around it.
 
@@ -423,7 +423,7 @@ Immediately before the operator recap, a **complete** review emits a hidden `pat
 
 `truncated` appears only when a list was cut to fit; a marker that held everything omits it.
 
-`deferred` is derived from the report's follow-ups, so it cannot drift from what the report says — and so an entry the author has fixed leaves the list, because the synthesizer stops carrying a follow-up for it. It holds bare identifiers, not proposed-issue prose: an identifier is all a later round needs to recognize what it must not re-raise, and keeping them small is what stops `deferred` competing with `cleared` for the marker's character budget. The two lists have different lifetimes: `deferred` tracks outstanding work and shrinks as that work lands, `cleared` is a record and only grows until its own cap prunes it. `cleared` is the machine-readable form of what a round would otherwise write as prose under "Things I checked, so you do not have to"; carrying it forward is what stops a later round reversing an earlier clearance without noticing. `deferred` and `cleared` hold **separate** character budgets — 3300 and 4500 within an 8192-character marker — checked independently on both the render and parse sides, so within their own budgets neither squeezes the other. The arithmetic: a `deferred` entry is a bare `{ id, concern_id }` pair measuring 48 characters at a typical concern and 65 at the longest, so its budget holds roughly fifty; a `cleared` entry measures about 267 characters at typical claim and reason lengths and 367 at generous ones, so its budget holds all 12 the count cap allows.
+`deferred` is derived from the report's follow-ups, so it cannot drift from what the report says — and so an entry the author has fixed leaves the list, because final assembly stops carrying a follow-up for it. It holds bare identifiers, not proposed-issue prose: an identifier is all a later round needs to recognize what it must not re-raise, and keeping them small is what stops `deferred` competing with `cleared` for the marker's character budget. The two lists have different lifetimes: `deferred` tracks outstanding work and shrinks as that work lands, `cleared` is a record and only grows until its own cap prunes it. `cleared` is the machine-readable form of what a round would otherwise write as prose under "Things I checked, so you do not have to"; carrying it forward is what stops a later round reversing an earlier clearance without noticing. `deferred` and `cleared` hold **separate** character budgets — 3300 and 4500 within an 8192-character marker — checked independently on both the render and parse sides, so within their own budgets neither squeezes the other. The arithmetic: a `deferred` entry is a bare `{ id, concern_id }` pair measuring 48 characters at a typical concern and 65 at the longest, so its budget holds roughly fifty; a `cleared` entry measures about 267 characters at typical claim and reason lengths and 367 at generous ones, so its budget holds all 12 the count cap allows.
 
 **Saturation is a declared state, not a failure.** Past those budgets the renderer drops entries from the tail — each list down to its own budget first, then `cleared` and finally `deferred` against the total, with `blocking_findings` never yielding — and sets `truncated: true`. §3a treats a truncated marker exactly like an absent one: the next round runs a **full** review, which re-derives every finding from the diff. That is why truncation is safe to prefer over throwing. It costs a more expensive round and can surface a previously deferred item again; it cannot lose a defect.
 

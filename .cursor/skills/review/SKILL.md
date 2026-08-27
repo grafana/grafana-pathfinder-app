@@ -74,7 +74,7 @@ At round ≥ 2 a finding may be `blocking` only when it is one of:
 
 - a prior blocker still unresolved at the current head
 - attributable to `prior_head..head`
-- a late blocker that `blocking-gate.mjs` resolves to `unconditional-override`, whether the reviewer supplied the override or the gate derived `shipped_path_breakage`. That is the only route: `late-peripheral` holds on lateness alone, so every other late finding resolves to `follow_up` under that reason
+- a late blocker that `review-policy.mjs` resolves to `unconditional-override`, whether the reviewer supplied the override or the inner gate derived `shipped_path_breakage`. That is the only route: `late-peripheral` holds on lateness alone, so every other late finding resolves to `follow_up` under that reason
 
 A late blocker records `late_blocker_reason`. When it contradicts a `cleared` entry carried in the marker, it must quote that entry and state the new evidence that overturns it, through the gate's `contradicts_cleared` answer. A clearance from an earlier round is a commitment; overturning one silently is the failure this ratchet exists to prevent.
 
@@ -181,7 +181,7 @@ In addition to the `security` concern reviewer, when the PR touches any of:
 - MCP transport, peerjs, or any cross-origin surface
 - dependency manifests (`package.json`, `go.mod`, lockfiles)
 
-…also invoke `.cursor/skills/secure/SKILL.md` as a dedicated lens running alongside the `security` concern. The concern-level reviewer applies the F1–F6 / G1–G7 catalog against the diff; the standalone `secure` skill runs the full audit (frontend F1–F6 + backend allowlists + MCP transport + deps) with deeper context. Both report findings under the `security` concern; the synthesizer dedupes per §5.
+…also invoke `.cursor/skills/secure/SKILL.md` as a dedicated lens running alongside the `security` concern. The concern-level reviewer applies the F1–F6 / G1–G7 catalog against the diff; the standalone `secure` skill runs the full audit (frontend F1–F6 + backend allowlists + MCP transport + deps) with deeper context. Both report findings under the `security` concern; normalize and dedupe them per §4b.
 
 ### Reviewer context discipline
 
@@ -233,47 +233,7 @@ Additional instructions for subsystem reviewers:
 
 Every reviewer emits the schema defined in `docs/design/PR_REVIEW.md` (Reviewer output schema), including the severity, confidence, and reversibility values.
 
-## 4b. Adversarial verification
-
-Before synthesis, run an adversarial verification pass on the reviewer output:
-
-1. Collect every finding with severity `medium` or higher across all reviewers.
-2. Before spawning skeptics, cluster findings that identify the same affected symbol, invariant, evidence, and required action. Preserve all owning concerns on the representative finding. This is deduplication only; do not weaken severity or disposition here.
-3. Dispatch the first skeptic wave for every cluster in parallel. Skeptics receive only the normalized finding, relevant diff hunks, extracted concern packet, and immutable contract sources when applicable — not the original reviewer's reasoning.
-4. `.cursor/skills/review/scripts/adversarial-policy.mjs` owns dispatch and adjudication. After every wave, call `decideVerification(finding, verdicts_so_far)` — or the CLI with a `{ finding, verdicts }` JSON file — launch exactly the `dispatch` it returns, and repeat until `status` is `resolved`. Keep a finding whose `outcome` is `kept`; drop one whose `outcome` is `dropped`; retain one whose `outcome` is `demoted` as a `follow_up`.
-5. The policy it encodes: a `critical` or `high` finding, or any proposed blocker, gets two independent skeptics in the first wave and a third only when they split, which preserves the two-of-three refutation majority while avoiding a third call in the common case. A `medium` advisory gets one skeptic, and only a refuted or uncertain verdict spends an adjudicator, which must also refute before the finding drops. A `low` non-blocking finding passes through unverified. A `follow_up` recommendation never enters the high-risk lane — it does not block merge, so there is nothing for a second skeptic to protect. It takes the advisory lane's single skeptic at `critical`, `high`, and `medium`, and passes through unverified at `low`, so the lane it lands in is still monotone in severity.
-6. The policy decides who runs and what their verdicts add up to; whether a finding is real stays with the skeptics.
-
-Each skeptic returns `{ verdict, blocking_warranted, reason }` as defined in `docs/design/PR_REVIEW.md`, and must cite the evidence that contradicts or confirms the finding. The two axes are independent: `verdict` answers whether the finding is **true**, `blocking_warranted` answers whether it should **stop the merge**. Answer the warrant axis on every proposed blocker; it is ignored elsewhere. A skeptic that confirms a finding and still answers `blocking_warranted: "no"` is making a coherent and expected judgment, not hedging.
-
-Truth is adjudicated first, then warrant. A finding resolves to `demoted` when at least one verdict confirms it and **every** confirming verdict answers `no` — two confirmations that both answer `no` is one instance, and so is a lone confirmation answering `no` beside two `uncertain` ones. A trail with no confirmation at all demotes on nothing. A two-of-three refutation majority still drops the finding outright. **A demoted finding is retained as a `follow_up`, not dropped** — it keeps its evidence, appears in the report, and enters the marker's `deferred` list. Record every demotion and its reasoning in the debug trace so these thresholds can be tuned against real reviews.
-
-Keep `verification_dropped` and skeptic reasoning in the debug trace only; never include clean verification output in the normal report. Record cluster count, skeptic calls, adjudicator calls, confirmed findings, demoted findings, dropped findings, and elapsed verification time there too.
-
-## 4c. Blocking gate
-
-Adversarial verification establishes that a finding is **true**. This phase decides whether it **blocks**, and it is the only place that decision is made.
-
-Every finding whose disposition after §4b is `blocking` — including one §5 elevated from a `suggestion` or `nit` by its one-way-door instruction, and including any blocking contract verdict from §3b — is serialized with its gate answers to a temporary JSON file and passed to the gate. A `follow_up` never reaches this phase by elevation; §5 may not elevate one:
-
-```bash
-node .cursor/skills/review/scripts/blocking-gate.mjs <gate-input-file>
-```
-
-The answer schema and the override list live in `docs/design/PR_REVIEW.md` (Blocking gate answers); `blocking-gate.test.mjs` is the behavioral spec. Answer honestly from evidence you have actually checked — the gate is only as good as its inputs, and guessing `concrete_risk_now: true` to preserve a blocker defeats the whole phase.
-
-Rules:
-
-- **Never hand-apply the decision table.** Run the script and read its `disposition`.
-- The gate emits `blocking` or `follow_up` only. **The synthesizer must not convert a gate-demoted finding back to `blocking`.**
-- If a demoted finding leaves no maintainer action at all, the synthesizer may render it as a `suggestion` instead of a `follow_up` — at rounds 1 and 2 only, since §3a's round budget forbids new suggestions outright from round 3 onward, where such a finding is a `follow_up` or nothing. That is the one judgment left downstream of the gate.
-- Record each decision's `reason`, `override`, `override_source`, and `gate_failures` in the debug trace, so a later reader can tell a reviewer-supplied override from one the gate derived, and see what it outranked.
-
-Send the finding's `reversibility` with its answers. A one-way door — `partially_reversible` or `irreversible_without_cleanup` — is not boundable by a follow-up, so the gate withholds the two rows that demote on that premise (`no-live-impact` and `safely-bounded`) and such a finding leaves the gate `blocking` unless a provenance row demotes it. That is the whole reason §5 can forbid elevating a `follow_up`.
-
-Genuine security, data-loss, credential-exposure, and shipped-path-breakage findings block unconditionally at any round, regardless of precedent or authorship. That is what `override` is for, and it is the entire safety net beneath everything else in this phase — reach for it whenever it genuinely applies, and never to rescue a blocker the other rules demoted.
-
-## 5. Synthesize findings
+## 4b. Normalize candidate findings
 
 After concern-specific reviewers finish, run one final cross-cutting reviewer that:
 
@@ -282,33 +242,59 @@ After concern-specific reviewers finish, run one final cross-cutting reviewer th
 - catches risks not owned by any single concern
 - checks whether the combined change is still coherent
 
-This reviewer is required even if all subsystem reviewers are clean.
-
-The synthesizer must:
+This reviewer is required even if all subsystem reviewers are clean. Then normalize the combined candidate set before verification:
 
 - deduplicate overlapping findings from different concerns
 - choose a primary owning concern for each merged finding
 - preserve secondary concern links only when they add real explanatory value
 - prefer one high-signal finding over several repetitive variants of the same issue
-- elevate one-way door findings when rollback would not restore the system cleanly — this elevates a **recommendation**; §4c disposes. This applies only to a finding that is **not already** a `follow_up`. A `follow_up` is never elevated to `blocking`, which is what keeps §4b's lane assignment sound: a follow-up takes one skeptic and answers no warrant axis, so elevating one would publish a blocker that skipped both. Nothing is lost by the restriction, because a one-way door cannot be dispositioned as a follow-up in the first place — §4c's rows 7 and 8 do not hold for one, so the gate returns it `blocking` rather than handing §5 something it may not elevate
 - call out disagreement or uncertainty explicitly if reviewers conflict
 - note when change classification may have reduced reviewer fan-out, if that affects confidence
 - disclose when the PR's center of gravity appears only weakly covered by the current concern registry
 - suggest updating `docs/design/CONCERNS.md` when the same unowned area appears important enough to deserve subsystem-aware review
 - surface `contract_missing` and `contract_branching` verdicts from §3b even when all subsystem reviewers are clean
 - require the contract anchor in `docs/design/CONCERN_DETAILS.md` and the concern's routing paths in `docs/design/CONCERNS.md` in the same PR **only** when the PR _deliberately_ establishes or replaces a contract — a typed facade, reducer, schema owner, or lifecycle owner — **and** its author is a maintainer, which the handle list in `.github/community-pr-gate.json` decides — authoritative for this question even where `.github/CODEOWNERS` differs. Otherwise record it as a `follow_up` with `owner: maintainer` and a proposed issue. Requiring a community contributor to write an internal architecture anchor in order to land a block type is the review imposing its own scope on someone else's change
-- assign every retained finding a stable ID and final author disposition: `blocking`, `follow_up`, `suggestion`, or `nit`
+- assign every candidate a stable ID and recommended disposition: `blocking`, `follow_up`, `suggestion`, or `nit`
 - treat an unanswered question as `blocking` only when the answer is required to merge; otherwise render it as a `suggestion`
-- state a complete merge contract: fixing every blocking ID must make the reviewed head mergeable, subject only to risks introduced by later commits
 - carry forward each **still-unresolved** entry from the marker's `deferred` list as a `follow_up`, and mark it `carried_forward: true`. `deferred` shrinks as work lands: an entry the author has fixed at this head is dropped, not re-rendered, because the next marker's `deferred` is derived from the follow-ups this report carries. Nothing else removes an entry — every follow-up this round produces reaches the marker, whatever its source, so none of them can lose the suppression `deferred` grants, unless the marker saturates and says so
-- expect **carried** follow-ups to lose their rendered detail first. The renderer targets a 60000-character body, and when it is over it compresses entries to identifiers on the overflow line — carried entries first, lowest severity first, and within a severity the last one you listed; new entries only if that is not enough. A new follow-up's proposed issue exists nowhere else, so it is the last thing to go. Forgetting the tag is harmless: an untagged carried entry is treated as new, so it renders in full, costing space and losing nothing
-- set the report's `cleared` array to the union of the prior marker's `cleared` entries and what this round examined and cleared, deduplicated by claim. Unlike `deferred`, `cleared` persists for the life of the PR — a clearance an earlier round wrote stays readable to every later round, and nothing but the cap removes it. When the union exceeds the 12-entry `cleared` cap the renderer rejects it, so prune the least load-bearing entries rather than dropping the earlier rounds wholesale. Exceeding the 4500-character budget is not a rejection — the marker truncates and declares itself saturated, which costs the next round a full review
 
 ### Do not manufacture blockers from the review's own effects
 
-**Induced scope.** A blocker whose existence traces to code the contributor added _in response to_ a prior-round `suggestion` or `nit` sets `induced_by_prior_suggestion` and is presumptively a `follow_up`. To stay blocking it must clear §4c on the `unconditional-override` row — an override the reviewer supplies, or the one the gate derives when this PR is what breaks a shipped path. Suggesting an expansion and then gating merge on the expansion's quality is how a review grows a PR it was supposed to evaluate.
+**Induced scope.** A proposed blocker whose existence traces to code the contributor added _in response to_ a prior-round `suggestion` or `nit` sets `induced_by_prior_suggestion`. The policy will demote it unless an unconditional override applies. Suggesting an expansion and then gating merge on the expansion's quality is how a review grows a PR it was supposed to evaluate.
 
 **Suggestion surface.** A suggestion that would widen the PR's changed surface — a new file, a new component, a new exported symbol, a new user-facing affordance — is a `follow_up`, not a `suggestion`. Optional advice that grows the diff is how a PR metastasizes; a proposed issue keeps the idea without charging this PR for it.
+
+## 4c. Resolve policy
+
+For each normalized candidate, serialize `{ finding, verdicts, gate_answers? }` to a temporary JSON file and run:
+
+```bash
+node .cursor/skills/review/scripts/review-policy.mjs <policy-input-file>
+```
+
+Follow the returned status exactly:
+
+- `needs_verification` — launch the returned `dispatch`, append the skeptic verdicts, and call the policy again
+- `needs_gate_answers` — answer the blocking-gate schema in `docs/design/PR_REVIEW.md` from checked evidence and call the policy again
+- `final` — retain the finding with `decision.disposition`
+- `dropped` — omit the finding and keep the refutation in the debug trace
+
+Do not call `adversarial-policy.mjs` or `blocking-gate.mjs` directly and never hand-apply their tables. `review-policy.mjs` owns their order: it first promotes every `partially_reversible` or `irreversible_without_cleanup` recommendation to `blocking`, so one-way doors receive blocker-level verification; it then establishes truth and merge warrant; finally it runs the blocking gate on every surviving proposed blocker. A policy decision is final. No downstream phase may change its disposition.
+
+Each skeptic returns `{ verdict, blocking_warranted, reason }` as defined in `docs/design/PR_REVIEW.md` and cites evidence that contradicts or confirms the finding. `verdict` answers whether the finding is true; `blocking_warranted` answers whether it should stop the merge. The policy asks the warrant question only after promotion, so every finding that could block receives it.
+
+Answer gate fields honestly from checked evidence. Guessing `concrete_risk_now: true` to preserve a blocker defeats the policy. Genuine security, data-loss, credential-exposure, and shipped-path-breakage findings remain unconditional overrides at any round; do not use an override to rescue a finding the ordinary rules demote.
+
+Keep dropped findings, skeptic reasoning, verification counts, policy reasons, override provenance, and `gate_failures` in the debug trace only. Never include clean verification output in the author-facing report.
+
+## 5. Assemble final findings
+
+Policy decisions are already deduplicated and final. Assemble them into the report without reinterpreting their dispositions:
+
+- assign the final author disposition from `decision.disposition`
+- state a complete merge contract: fixing every blocking ID makes the reviewed head mergeable, subject only to later commits
+- expect carried follow-ups to lose rendered detail first when the renderer compresses an oversized report
+- set `cleared` to the union of prior clearances and this round's clearances, deduplicated by claim; when it exceeds 12 entries, prune the least load-bearing entries
 
 Order findings by author disposition, then severity. `review-report.mjs` applies that order; confidence stays internal and never reorders the author-facing report.
 
@@ -327,7 +313,7 @@ Set the report's `assessment` to `incomplete` with one concise reason when the r
 
 ## 6. Tech-debt scan
 
-After synthesis, spawn a sub-agent scoped to **only the files changed in this PR** to detect tech-debt patterns. The sub-agent reads `.cursor/skills/techdebt/SKILL.md` and runs all categories (A–E) against the changed file set.
+After policy resolution, spawn a sub-agent scoped to **only the files changed in this PR** to detect tech-debt patterns. The sub-agent reads `.cursor/skills/techdebt/SKILL.md` and runs all categories (A–E) against the changed file set.
 
 Instructions for the sub-agent:
 
@@ -340,7 +326,7 @@ The tech-debt scan is **non-blocking**. Convert retained items to `follow_up`, `
 
 ## 7. Documentation drift check
 
-After synthesis, invoke `.cursor/skills/prevent-doc-drift/SKILL.md` in **review mode** to detect whether this PR introduces new subsystems, scripts, skills, docs, plugin routes, feature flags, or architecture changes that require updates to agent guidance (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`).
+After policy resolution, invoke `.cursor/skills/prevent-doc-drift/SKILL.md` in **review mode** to detect whether this PR introduces new subsystems, scripts, skills, docs, plugin routes, feature flags, or architecture changes that require updates to agent guidance (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`).
 
 If the skill emits a "Doc-drift updates recommended" section, convert its concrete action into a `follow_up` or a `suggestion`. The PR author can apply the diffs themselves or invoke `prevent-doc-drift` in apply mode to commit them on the same branch.
 
@@ -348,7 +334,7 @@ The doc-drift check is **non-blocking** — guidance drift does not block merge,
 
 ## 8. Instrumentation coverage check
 
-After synthesis, for PRs classified `product-runtime` or `mixed` that **add feature behavior** (new user-facing actions, new async/fetch/fallback paths, or new panel surfaces), assess instrumentation coverage against the decision rule and free-channel table in `docs/developer/TELEMETRY.md`. Skip this check for `tests-only`, `docs-only`, and `infra-build-ci` changes, and for pure refactors or bug fixes of existing behavior.
+After policy resolution, for PRs classified `product-runtime` or `mixed` that **add feature behavior** (new user-facing actions, new async/fetch/fallback paths, or new panel surfaces), assess instrumentation coverage against the decision rule and free-channel table in `docs/developer/TELEMETRY.md`. Skip this check for `tests-only`, `docs-only`, and `infra-build-ci` changes, and for pure refactors or bug fixes of existing behavior.
 
 Answer these questions:
 
@@ -385,6 +371,6 @@ Set the report's `round` and `cleared` fields so the emitted marker carries the 
 
 ## 10. Pattern catalog
 
-The unified detection table (R1-R21, F1-F6, QC1-QC7), Go backend table (G1-G7), comment prefixes, and disposition matrix all live in `docs/design/PR_REVIEW.md`. Apply those checks during subsystem review under the `correctness-and-reliability`, `security`, and `go-backend` concerns. The prefix table is reviewer-internal vocabulary; the synthesizer maps it onto the four author dispositions the renderer accepts.
+The unified detection table (R1-R21, F1-F6, QC1-QC7), Go backend table (G1-G7), comment prefixes, and disposition matrix all live in `docs/design/PR_REVIEW.md`. Apply those checks during subsystem review under the `correctness-and-reliability`, `security`, and `go-backend` concerns. The prefix table is reviewer-internal vocabulary; §4b maps it onto the four recommendations the policy accepts.
 
-A detection-table hit is evidence of a defect, not a merge verdict. Every table severity feeds §4c as a recommendation; the gate decides what blocks.
+A detection-table hit is evidence of a defect, not a merge verdict. Every table severity feeds §4c as a recommendation; the policy decides what blocks.

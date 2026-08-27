@@ -246,7 +246,7 @@ test('the warrant axis is ignored on a finding nobody proposed as a blocker', ()
   }
 });
 
-test('a follow-up recommendation never enters the high-risk lane', () => {
+test('the inner verifier keeps an unpromoted follow-up out of the high-risk lane', () => {
   for (const severity of ['critical', 'high', 'medium']) {
     assert.equal(classifyFinding(reviewerFinding({ severity, recommended_disposition: 'follow_up' })), 'advisory');
   }

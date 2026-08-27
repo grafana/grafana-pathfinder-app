@@ -49,6 +49,7 @@ test('records the review orchestration contract under ai-subsystem', () => {
   assert.match(context.contract_anchor.contract, /\.cursor\/skills\/review\/SKILL\.md/);
   assert.match(context.contract_anchor.contract, /review-report\.mjs/);
   assert.match(context.contract_anchor.contract, /concern-context\.mjs/);
+  assert.match(context.contract_anchor.contract, /review-policy\.mjs/);
   assert.match(context.contract_anchor.contract, /blocking-gate\.mjs/);
   assert.match(context.contract_anchor.contract, /blocking_warranted/);
   assert.match(context.contract_anchor.contract, /v1 read-compatibility window/);
