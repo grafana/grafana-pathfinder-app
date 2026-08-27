@@ -346,6 +346,7 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
     jest.clearAllMocks();
     mockGetLocation.mockReturnValue({ pathname: '/explore', search: '' });
     jest.requireMock('../../global-state/panel-mode').panelModeManager.getMode.mockReturnValue('sidebar');
+    jest.requireMock('../../types/package.types').getPackageRenderType.mockReturnValue('interactive');
     // openDocsPage routes through loadTab → shouldUseDocsLoader; force the docs loader.
     jest.requireMock('./utils').shouldUseDocsLoader.mockReturnValue(true);
   });
