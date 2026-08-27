@@ -286,6 +286,19 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(request.data.metadata).toEqual({ name: 'fresh', namespace: 'stacks-1' });
   });
 
+  it('stamps the schema version the editor emits, not a stale literal', async () => {
+    const result = await renderLoaded([]);
+
+    // getGuide() never returns a schemaVersion, so every editor save takes the fallback.
+    const guide = { id: 'fresh', title: 'Fresh guide', blocks: [] };
+    await act(async () => {
+      await result.current.saveGuide(guide as JsonGuide);
+    });
+
+    expect(lastRequest().data.spec.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(lastRequest().data.spec.schemaVersion).not.toBe('1.0');
+  });
+
   it('does not borrow a manifest from an unrelated resource in the loaded list', async () => {
     const resource = pathCoverPage();
     const result = await renderLoaded([resource]);
