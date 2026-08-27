@@ -370,11 +370,10 @@ these:
 | Standalone guide from the Custom guides list | Yes              |
 | `?doc=api:<id>` share link                   | Yes              |
 | Auto-dock tab restore                        | Yes              |
-| Path **member** opened from a path card      | No               |
+| Path **member** opened from a path card      | Yes              |
 | Path **cover page** opened from a path card  | No               |
 
-Both path rows read "No", but for two different reasons, and only one of them is
-a transport problem.
+The two path rows differ, and only the cover page is a transport problem.
 
 **Path cover page — the value never arrives.** `packageInfoForPath`
 (`src/components/docs-panel/CustomGuidesSection.tsx`) builds the cover's
@@ -384,22 +383,26 @@ no `additionalFields`, so `encoding/json` drops the key at the wire boundary
 before the reader ever sees it. Promoting `startingLocation` to a typed CUE field
 is the fix for this one.
 
-**Path member — the value arrives intact and is then shadowed.** `openMember`
+**Path member — the value arrives intact and survives the seam.** `openMember`
 opens `member.url`, which `resolvePackageMilestones` takes from the resolution's
 `contentUrl` — `backend-guide:<memberId>` for an App Platform package
 (`src/package-engine/app-platform-resolver.ts`). So the member's own resource is
 fetched through the `backend-guide:` loader, whose `buildLoaderManifest` spreads
-`spec.manifest` through with `additionalFields` intact. The value is at the
-reader. It is then discarded at the panel seam: `openMember` also passes the
-PATH's `packageInfo`, and `resolveDocsLoadAlignment`
-(`src/components/docs-panel/utils/docs-load-finalizer.ts`) reads
-`packageInfo?.packageManifest` ahead of
-`fetchedContent.metadata.packageManifest`, so the stripped catalogue
-manifest — truthy, and therefore never falling back — wins over the complete
-one. The CUE
-promotion does NOT fix this: the problem is precedence, not transport. Worse,
-once the path's `startingLocation` is a typed field it would win at that same
-seam and prompt a member towards the cover's entry page. Tracked as
+`spec.manifest` through with `additionalFields` intact. `openMember` also passes
+the PATH's `packageInfo`, and `resolveDocsLoadAlignment`
+(`src/components/docs-panel/utils/docs-load-finalizer.ts`) offers
+`packageInfo?.packageManifest` ahead of `fetchedContent.metadata.packageManifest`.
+Precedence is per-declaration rather than per-manifest:
+`resolveStartingLocation` (`src/recovery/starting-location.ts`) walks the
+candidates in order and stops only at one that declares `startingLocation` or
+`additionalFields.startingLocation`. The catalogue manifest declares neither, so
+resolution falls through to the member's own manifest and the member's starting
+location wins.
+
+The CUE promotion is not neutral here. Once the path's `startingLocation` is a
+typed field the catalogue manifest WOULD declare it, it would settle resolution
+at the first candidate, and a member would be prompted towards the cover's entry
+page. Tracked as
 [#1681](https://github.com/grafana/grafana-pathfinder-app/issues/1681).
 
 Promoting a key out of `additionalFields` into a real CUE field is additive and

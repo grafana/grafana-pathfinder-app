@@ -154,7 +154,7 @@ interface Recommendation {
 
 ### `/utils/` Directory
 
-**Purpose**: Pure helpers for the docs panel - tab validation, kinds, gates, visibility, state transitions, storage restore, URL validation, docs loading and load finalization, and milestone indexing.
+**Purpose**: Helpers for the docs panel - tab validation, kinds, gates, visibility, state transitions, storage restore, URL validation, docs loading and load finalization, and milestone indexing. The state-transition and load-finalization modules (`tab-state-transitions.ts`, `docs-load-finalizer.ts`) are pure; storage restore reads user storage and the docs loader fetches over the network.
 **Location**: `/src/components/docs-panel/utils/`
 
 The barrel `src/components/docs-panel/utils/index.ts` is the authoritative list of what this directory exports; each module carries its own unit tests alongside it.
