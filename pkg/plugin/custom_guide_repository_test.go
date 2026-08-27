@@ -499,10 +499,10 @@ func TestCustomGuideHTTPClient_PreservesManifestStats(t *testing.T) {
 	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
 		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
 	}
-	got := page.Entries[0].Manifest.Stats
-	want := &customGuideStats{Version: 1, BlockCount: 9, SectionCount: 3, CompletableBlockCount: 4, FinalCompletablePosition: 7}
-	if got == nil || *got != *want {
-		t.Fatalf("stats = %+v, want %+v", got, want)
+	got, _ := json.Marshal(page.Entries[0].Manifest.Stats)
+	want := `{"version":1,"blockCount":9,"sectionCount":3,"completableBlockCount":4,"finalCompletablePosition":7}`
+	if string(got) != want {
+		t.Fatalf("stats reached the wire as %s, want %s", got, want)
 	}
 }
 
@@ -536,35 +536,84 @@ func TestCustomGuideHTTPClient_NoStatsDecodesCleanly(t *testing.T) {
 	}
 }
 
-// Typing a field turns a shape this hand-written mirror disagrees with into a
-// decode error. That error is not terminal upstream, so failing the page would
-// answer 503 with a Retry-After forever, and dropping the entry would hide the
-// guide (or, on a systemic drift, serve an empty catalogue as if nobody had
-// authored anything). Keep the guide, and treat its stats as absent — a
-// half-decoded stamp would put a zero blockCount under a completion percentage.
-func TestCustomGuideHTTPClient_UndecodableStatsKeepsGuideWithoutStats(t *testing.T) {
+// The stamp is the denominator for completion percentages, so an unusable one
+// must read as ABSENT rather than as a plausible set of counts. Zero is a legal
+// count, so a missing member cannot be told from a real 0 once decoded — a
+// laundered {version:1, blockCount:9, 0, 0, 0} even satisfies the reader's own
+// validation, which is worse than no stamp at all. The guide itself always
+// survives: dropping it would hide a usable guide, and a drift that hits every
+// stored guide at once would serve an empty catalogue as if nobody had authored
+// anything.
+func TestCustomGuideHTTPClient_UnusableStatsStampReadsAsAbsent(t *testing.T) {
+	cases := map[string]any{
+		"missing members":     map[string]any{"version": 1, "blockCount": 9},
+		"member type drifted": map[string]any{"version": "1", "blockCount": 9, "sectionCount": 3, "completableBlockCount": 4, "finalCompletablePosition": 7},
+		"not an object":       "9 blocks",
+		"empty object":        map[string]any{},
+	}
+	for name, stats := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"metadata": map[string]any{"continue": ""},
+					"items": []map[string]any{
+						{"spec": map[string]any{
+							"id":     "fe-bad-stats",
+							"title":  "Alerting module 1",
+							"status": "published",
+							"manifest": map[string]any{
+								"type":       "guide",
+								"repository": "app-platform",
+								"stats":      stats,
+							},
+						}},
+					},
+				})
+			}))
+			defer srv.Close()
+
+			c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+			page, err := c.ListPage(context.Background(), testNamespace, "")
+			if err != nil {
+				t.Fatalf("an unusable stats stamp failed the whole page: %v", err)
+			}
+			if len(page.Entries) != 1 {
+				t.Fatalf("expected the guide to survive, got %+v", page.Entries)
+			}
+
+			got := page.Entries[0]
+			if got.ID != "fe-bad-stats" || got.Title != "Alerting module 1" || got.Status != "published" {
+				t.Errorf("the rest of the entry was not preserved: %+v", got)
+			}
+			if got.Manifest == nil || got.Manifest.Type != "guide" || got.Manifest.Repository != "app-platform" {
+				t.Errorf("the rest of the manifest was not preserved: %+v", got.Manifest)
+			}
+			// Indistinguishable on the wire from a guide that never carried stats.
+			raw, _ := json.Marshal(got)
+			if strings.Contains(string(raw), `"stats":`) {
+				t.Errorf("an unusable stamp reached the wire: %s", raw)
+			}
+		})
+	}
+}
+
+// A type mismatch in an unrelated field must not cost the guide its stats:
+// encoding/json records the error and keeps decoding, so a complete stamp is
+// still a complete stamp.
+func TestCustomGuideHTTPClient_UnrelatedTypeErrorKeepsStats(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"metadata": map[string]any{"continue": ""},
 			"items": []map[string]any{
 				{"spec": map[string]any{
-					"id":     "fe-bad-stats",
+					"id":     "fe-alerting-01",
 					"title":  "Alerting module 1",
-					"status": "published",
-					"manifest": map[string]any{
-						"type":       "guide",
-						"repository": "app-platform",
-						// version drifts to a string; blockCount would still decode.
-						"stats": map[string]any{"version": "1", "blockCount": 9},
-					},
-				}},
-				{"spec": map[string]any{
-					"id": "fe-good",
+					"status": 7, // drifts to a number; stats is untouched
 					"manifest": map[string]any{
 						"type": "guide",
 						"stats": map[string]any{
-							"version": 1, "blockCount": 4, "sectionCount": 2,
-							"completableBlockCount": 3, "finalCompletablePosition": 3,
+							"version": 1, "blockCount": 9, "sectionCount": 3,
+							"completableBlockCount": 4, "finalCompletablePosition": 7,
 						},
 					},
 				}},
@@ -576,32 +625,52 @@ func TestCustomGuideHTTPClient_UndecodableStatsKeepsGuideWithoutStats(t *testing
 	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	page, err := c.ListPage(context.Background(), testNamespace, "")
 	if err != nil {
-		t.Fatalf("one undecodable stats stamp failed the whole page: %v", err)
+		t.Fatalf("ListPage: %v", err)
 	}
-	if len(page.Entries) != 2 {
-		t.Fatalf("expected both guides to survive, got %+v", page.Entries)
+	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
 	}
+	got, _ := json.Marshal(page.Entries[0].Manifest.Stats)
+	want := `{"version":1,"blockCount":9,"sectionCount":3,"completableBlockCount":4,"finalCompletablePosition":7}`
+	if string(got) != want {
+		t.Errorf("a drift in status cost the guide its stats: %s, want %s", got, want)
+	}
+}
 
-	bad := page.Entries[0]
-	if bad.ID != "fe-bad-stats" || bad.Title != "Alerting module 1" || bad.Status != "published" {
-		t.Errorf("the rest of the drifted entry was not preserved: %+v", bad)
-	}
-	if bad.Manifest == nil || bad.Manifest.Type != "guide" || bad.Manifest.Repository != "app-platform" {
-		t.Errorf("the rest of the drifted manifest was not preserved: %+v", bad.Manifest)
-	}
-	if bad.Manifest.Stats != nil {
-		t.Errorf("a partially decoded stats stamp was served: %+v", bad.Manifest.Stats)
-	}
-	// Indistinguishable from a guide that never carried stats: neither emits the key.
-	raw, _ := json.Marshal(bad)
-	if strings.Contains(string(raw), `"stats":`) {
-		t.Errorf("dropped stats still reached the wire: %s", raw)
-	}
+// A zero count is a real count, so an all-zero stamp is served intact — the
+// completeness check must key on member presence, not on the decoded values.
+func TestCustomGuideHTTPClient_ZeroValuedStatsSurvive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{
+					"id": "fe-empty-guide",
+					"manifest": map[string]any{
+						"type": "guide",
+						"stats": map[string]any{
+							"version": 1, "blockCount": 0, "sectionCount": 0,
+							"completableBlockCount": 0, "finalCompletablePosition": 0,
+						},
+					},
+				}},
+			},
+		})
+	}))
+	defer srv.Close()
 
-	good := page.Entries[1]
-	want := &customGuideStats{Version: 1, BlockCount: 4, SectionCount: 2, CompletableBlockCount: 3, FinalCompletablePosition: 3}
-	if good.Manifest.Stats == nil || *good.Manifest.Stats != *want {
-		t.Errorf("a neighbouring guide lost its stats: %+v", good.Manifest.Stats)
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Manifest == nil {
+		t.Fatalf("expected one entry with a manifest, got %+v", page.Entries)
+	}
+	got, _ := json.Marshal(page.Entries[0].Manifest.Stats)
+	want := `{"version":1,"blockCount":0,"sectionCount":0,"completableBlockCount":0,"finalCompletablePosition":0}`
+	if string(got) != want {
+		t.Errorf("an all-zero stamp was mistaken for an absent one: %s, want %s", got, want)
 	}
 }
 
@@ -645,9 +714,9 @@ func TestCustomGuide_ServesManifestStatsToBrowser(t *testing.T) {
 	if len(body.Guides) != 1 || body.Guides[0].Manifest == nil {
 		t.Fatalf("expected one guide with a manifest, got %+v", body.Guides)
 	}
-	got := body.Guides[0].Manifest.Stats
-	want := &customGuideStats{Version: 1, BlockCount: 9, SectionCount: 3, CompletableBlockCount: 4, FinalCompletablePosition: 7}
-	if got == nil || *got != *want {
-		t.Fatalf("served stats = %+v, want %+v", got, want)
+	got, _ := json.Marshal(body.Guides[0].Manifest.Stats)
+	want := `{"version":1,"blockCount":9,"sectionCount":3,"completableBlockCount":4,"finalCompletablePosition":7}`
+	if string(got) != want {
+		t.Fatalf("served stats = %s, want %s", got, want)
 	}
 }

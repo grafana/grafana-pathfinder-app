@@ -77,6 +77,44 @@ type customGuideStats struct {
 	SectionCount             int `json:"sectionCount"`
 	CompletableBlockCount    int `json:"completableBlockCount"`
 	FinalCompletablePosition int `json:"finalCompletablePosition"`
+
+	// complete records whether the stored object supplied all five members. It
+	// is unexported, so it never reaches the wire; ListPage drops a stamp that
+	// does not carry it.
+	complete bool
+}
+
+// UnmarshalJSON accepts a stamp only when the stored object supplies every
+// member. Zero is a legitimate count, so a missing one would otherwise be
+// laundered into a plausible denominator — all five members present and
+// non-negative, which is precisely what the reader's own validation checks —
+// rather than reading as absent the way `completion-denominator-authority`
+// requires. It reports no error, so an unusable stamp degrades to an absent one
+// instead of aborting the surrounding spec the way a returned error would.
+func (s *customGuideStats) UnmarshalJSON(data []byte) error {
+	var probe struct {
+		Version                  *int `json:"version"`
+		BlockCount               *int `json:"blockCount"`
+		SectionCount             *int `json:"sectionCount"`
+		CompletableBlockCount    *int `json:"completableBlockCount"`
+		FinalCompletablePosition *int `json:"finalCompletablePosition"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil
+	}
+	if probe.Version == nil || probe.BlockCount == nil || probe.SectionCount == nil ||
+		probe.CompletableBlockCount == nil || probe.FinalCompletablePosition == nil {
+		return nil
+	}
+	*s = customGuideStats{
+		Version:                  *probe.Version,
+		BlockCount:               *probe.BlockCount,
+		SectionCount:             *probe.SectionCount,
+		CompletableBlockCount:    *probe.CompletableBlockCount,
+		FinalCompletablePosition: *probe.FinalCompletablePosition,
+		complete:                 true,
+	}
+	return nil
 }
 
 // customGuideRepositoryEntry is the slim, block-stripped view of an
@@ -135,24 +173,27 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 	// Decode each spec directly into the slim entry: spec.blocks has no field
 	// here, so encoding/json drops it — that omission IS the block-stripping.
 	entries := make([]customGuideRepositoryEntry, 0, len(page.Specs))
-	degraded := 0
+	warnings := 0
+	warn := func(msg string, args ...any) {
+		warnings++
+		if warnings <= customGuideDecodeWarnPerPage {
+			c.inner.logger.Warn(msg, append([]any{"namespace", namespace}, args...)...)
+		}
+	}
 	for _, raw := range page.Specs {
 		var entry customGuideRepositoryEntry
-		if err := json.Unmarshal(raw, &entry); err != nil {
+		err := json.Unmarshal(raw, &entry)
+		if m := entry.Manifest; m != nil && m.Stats != nil && !m.Stats.complete {
+			m.Stats = nil
+			warn("custom guide repository: incomplete manifest stats dropped", "id", entry.ID)
+		}
+		if err != nil {
 			// A spec this hand-written mirror disagrees with must neither fail
 			// the page — that error is not terminal, so the route would answer
 			// 503 forever and hide the whole namespace — nor drop the guide.
-			// encoding/json keeps decoding past a type mismatch, so the rest of
-			// the entry is intact; only the stats stamp is now untrustworthy,
-			// and half of one would serve zeroes as a completion denominator.
-			if entry.Manifest != nil {
-				entry.Manifest.Stats = nil
-			}
-			degraded++
-			if degraded <= customGuideDecodeWarnPerPage {
-				c.inner.logger.Warn("custom guide repository: spec did not fully decode, manifest stats dropped",
-					"namespace", namespace, "id", entry.ID, "error", err)
-			}
+			// encoding/json keeps decoding past a type mismatch, so every field
+			// it did understand is still usable.
+			warn("custom guide repository: spec did not fully decode", "id", entry.ID, "error", err)
 		}
 		if entry.ID == "" {
 			// id is required by the CRD schema; skip anything malformed rather
@@ -161,9 +202,9 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 		}
 		entries = append(entries, entry)
 	}
-	if degraded > customGuideDecodeWarnPerPage {
-		c.inner.logger.Warn("custom guide repository: further specs did not fully decode",
-			"namespace", namespace, "degraded", degraded, "logged", customGuideDecodeWarnPerPage)
+	if warnings > customGuideDecodeWarnPerPage {
+		c.inner.logger.Warn("custom guide repository: further decode warnings suppressed",
+			"namespace", namespace, "warnings", warnings, "logged", customGuideDecodeWarnPerPage)
 	}
 	return &customGuidePage{Entries: entries, Continue: page.Continue}, nil
 }

@@ -104,9 +104,12 @@ export const CustomGuideStatsWireSchema = z.strictObject({
  *   `Depends []json.RawMessage`, which forwards whatever the CR holds; the
  *   client declares no `depends` field, so nothing reads it as a typed
  *   `DependencyList`.
- * - `stats` is on the wire but off the interface. Go emits the stamped
- *   `manifest.stats`; the client declares no `stats` field, so the counts reach
- *   the browser and stay untyped until a reader lands.
+ * - `stats` is on the wire but off the interface. Nothing populates it yet: the
+ *   CRD's `#Manifest` declares no `stats` and prunes a top-level write silently,
+ *   so both App Platform writers stamp `additionalFields.stats` instead, which
+ *   this proxy does not carry. Once the platform CUE field lands, the counts
+ *   will reach the browser untyped — the client declares no `stats` field for a
+ *   reader to use.
  *
  * @coupling Go struct: customGuideManifest
  */
