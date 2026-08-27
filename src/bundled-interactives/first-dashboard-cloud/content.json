@@ -15,6 +15,7 @@
       "id": "datasource-setup",
       "title": "Configure TestData data source",
       "objectives": ["has-datasource:testdata"],
+      "requirements": ["min-version:13.2.0"],
       "blocks": [
         {
           "type": "interactive",
@@ -67,7 +68,7 @@
       "type": "section",
       "id": "explore-tutorial",
       "title": "Explore your data",
-      "requirements": ["section-completed:section-datasource-setup"],
+      "requirements": ["min-version:13.2.0", "section-completed:section-datasource-setup"],
       "blocks": [
         {
           "type": "interactive",
@@ -141,7 +142,7 @@
       "type": "section",
       "id": "dashboard-section",
       "title": "Create a dashboard",
-      "requirements": ["section-completed:section-explore-tutorial"],
+      "requirements": ["min-version:13.2.0", "section-completed:section-explore-tutorial"],
       "blocks": [
         {
           "type": "multistep",
