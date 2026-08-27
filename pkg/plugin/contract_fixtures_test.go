@@ -734,6 +734,13 @@ func captureCustomGuideDefault(t *testing.T) *httptest.ResponseRecorder {
 				Team string `json:"team,omitempty"`
 			}{Name: "Field engineering", Team: "field-eng"},
 			Depends: []json.RawMessage{json.RawMessage(`"fe-intro"`), json.RawMessage(`["fe-loki","fe-mimir"]`)},
+			Stats: &customGuideStats{
+				Version:                  1,
+				BlockCount:               9,
+				SectionCount:             3,
+				CompletableBlockCount:    4,
+				FinalCompletablePosition: 7,
+			},
 		},
 	}
 	bare := customGuideRepositoryEntry{ID: "fe-alerting-01"}

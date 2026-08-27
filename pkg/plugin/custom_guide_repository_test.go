@@ -538,20 +538,35 @@ func TestCustomGuideHTTPClient_NoStatsDecodesCleanly(t *testing.T) {
 
 // Typing a field turns a shape this hand-written mirror disagrees with into a
 // decode error. That error is not terminal upstream, so failing the page would
-// answer 503 with a Retry-After forever and hide every guide in the namespace
-// because of one stored guide. Skip the offender instead, and serve the rest.
-func TestCustomGuideHTTPClient_SkipsUndecodableSpec(t *testing.T) {
+// answer 503 with a Retry-After forever, and dropping the entry would hide the
+// guide (or, on a systemic drift, serve an empty catalogue as if nobody had
+// authored anything). Keep the guide, and treat its stats as absent — a
+// half-decoded stamp would put a zero blockCount under a completion percentage.
+func TestCustomGuideHTTPClient_UndecodableStatsKeepsGuideWithoutStats(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"metadata": map[string]any{"continue": ""},
 			"items": []map[string]any{
 				{"spec": map[string]any{
-					"id":       "fe-bad-stats",
-					"manifest": map[string]any{"type": "guide", "stats": map[string]any{"version": "1"}},
+					"id":     "fe-bad-stats",
+					"title":  "Alerting module 1",
+					"status": "published",
+					"manifest": map[string]any{
+						"type":       "guide",
+						"repository": "app-platform",
+						// version drifts to a string; blockCount would still decode.
+						"stats": map[string]any{"version": "1", "blockCount": 9},
+					},
 				}},
 				{"spec": map[string]any{
-					"id":       "fe-good",
-					"manifest": map[string]any{"type": "guide", "stats": map[string]any{"version": 1, "blockCount": 4}},
+					"id": "fe-good",
+					"manifest": map[string]any{
+						"type": "guide",
+						"stats": map[string]any{
+							"version": 1, "blockCount": 4, "sectionCount": 2,
+							"completableBlockCount": 3, "finalCompletablePosition": 3,
+						},
+					},
 				}},
 			},
 		})
@@ -561,13 +576,56 @@ func TestCustomGuideHTTPClient_SkipsUndecodableSpec(t *testing.T) {
 	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
 	page, err := c.ListPage(context.Background(), testNamespace, "")
 	if err != nil {
-		t.Fatalf("one undecodable spec failed the whole page: %v", err)
+		t.Fatalf("one undecodable stats stamp failed the whole page: %v", err)
+	}
+	if len(page.Entries) != 2 {
+		t.Fatalf("expected both guides to survive, got %+v", page.Entries)
+	}
+
+	bad := page.Entries[0]
+	if bad.ID != "fe-bad-stats" || bad.Title != "Alerting module 1" || bad.Status != "published" {
+		t.Errorf("the rest of the drifted entry was not preserved: %+v", bad)
+	}
+	if bad.Manifest == nil || bad.Manifest.Type != "guide" || bad.Manifest.Repository != "app-platform" {
+		t.Errorf("the rest of the drifted manifest was not preserved: %+v", bad.Manifest)
+	}
+	if bad.Manifest.Stats != nil {
+		t.Errorf("a partially decoded stats stamp was served: %+v", bad.Manifest.Stats)
+	}
+	// Indistinguishable from a guide that never carried stats: neither emits the key.
+	raw, _ := json.Marshal(bad)
+	if strings.Contains(string(raw), `"stats":`) {
+		t.Errorf("dropped stats still reached the wire: %s", raw)
+	}
+
+	good := page.Entries[1]
+	want := &customGuideStats{Version: 1, BlockCount: 4, SectionCount: 2, CompletableBlockCount: 3, FinalCompletablePosition: 3}
+	if good.Manifest.Stats == nil || *good.Manifest.Stats != *want {
+		t.Errorf("a neighbouring guide lost its stats: %+v", good.Manifest.Stats)
+	}
+}
+
+// A spec that decodes to no id has no stable identifier, so it is still skipped
+// rather than served.
+func TestCustomGuideHTTPClient_SkipsSpecWithoutID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"metadata": map[string]any{"continue": ""},
+			"items": []map[string]any{
+				{"spec": map[string]any{"id": 7, "title": "no usable id"}},
+				{"spec": map[string]any{"id": "fe-good"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", log.DefaultLogger)
+	page, err := c.ListPage(context.Background(), testNamespace, "")
+	if err != nil {
+		t.Fatalf("ListPage: %v", err)
 	}
 	if len(page.Entries) != 1 || page.Entries[0].ID != "fe-good" {
-		t.Fatalf("expected only fe-good to survive, got %+v", page.Entries)
-	}
-	if page.Entries[0].Manifest.Stats == nil || page.Entries[0].Manifest.Stats.BlockCount != 4 {
-		t.Errorf("surviving entry lost its stats: %+v", page.Entries[0].Manifest)
+		t.Fatalf("expected only fe-good, got %+v", page.Entries)
 	}
 }
 

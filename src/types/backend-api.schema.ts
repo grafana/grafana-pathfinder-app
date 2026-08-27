@@ -92,7 +92,7 @@ export const CustomGuideStatsWireSchema = z.strictObject({
 });
 
 /**
- * Two fields are deliberately wider here than in `CustomGuideManifest`
+ * Three fields are deliberately wider here than in `CustomGuideManifest`
  * (src/lib/custom-guide-repository-client.ts), because Go emits more than that
  * interface admits:
  *
@@ -104,6 +104,9 @@ export const CustomGuideStatsWireSchema = z.strictObject({
  *   `Depends []json.RawMessage`, which forwards whatever the CR holds; the
  *   client declares no `depends` field, so nothing reads it as a typed
  *   `DependencyList`.
+ * - `stats` is on the wire but off the interface. Go emits the stamped
+ *   `manifest.stats`; the client declares no `stats` field, so the counts reach
+ *   the browser and stay untyped until a reader lands.
  *
  * @coupling Go struct: customGuideManifest
  */

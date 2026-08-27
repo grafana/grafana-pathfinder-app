@@ -27,6 +27,13 @@ const (
 	// carries full InteractiveGuide specs (blocks included) off the wire — they
 	// are stripped in-process during shaping — so the per-page cap is generous.
 	customGuideListMaxBytes = 8 * 1024 * 1024
+
+	// customGuideDecodeWarnPerPage bounds the per-spec decode warnings one page
+	// may emit. A schema drift affects every stored guide at once, and the
+	// aggregate drain budget is customGuideListMaxTotalEntries, so an uncapped
+	// warning is a log flood rather than a diagnostic; the remainder is
+	// summarised in a single line.
+	customGuideDecodeWarnPerPage = 10
 )
 
 // customGuideAggregationToggle is the boot-time toggle the aggregation layer sets
@@ -128,14 +135,24 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 	// Decode each spec directly into the slim entry: spec.blocks has no field
 	// here, so encoding/json drops it — that omission IS the block-stripping.
 	entries := make([]customGuideRepositoryEntry, 0, len(page.Specs))
+	degraded := 0
 	for _, raw := range page.Specs {
 		var entry customGuideRepositoryEntry
 		if err := json.Unmarshal(raw, &entry); err != nil {
-			// One stored guide whose spec doesn't fit this hand-written mirror
-			// must not fail the page: that error is not terminal, so the route
-			// would answer 503 forever and hide the whole namespace.
-			c.inner.logger.Warn("custom guide repository: skipping undecodable spec", "error", err)
-			continue
+			// A spec this hand-written mirror disagrees with must neither fail
+			// the page — that error is not terminal, so the route would answer
+			// 503 forever and hide the whole namespace — nor drop the guide.
+			// encoding/json keeps decoding past a type mismatch, so the rest of
+			// the entry is intact; only the stats stamp is now untrustworthy,
+			// and half of one would serve zeroes as a completion denominator.
+			if entry.Manifest != nil {
+				entry.Manifest.Stats = nil
+			}
+			degraded++
+			if degraded <= customGuideDecodeWarnPerPage {
+				c.inner.logger.Warn("custom guide repository: spec did not fully decode, manifest stats dropped",
+					"namespace", namespace, "id", entry.ID, "error", err)
+			}
 		}
 		if entry.ID == "" {
 			// id is required by the CRD schema; skip anything malformed rather
@@ -143,6 +160,10 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 			continue
 		}
 		entries = append(entries, entry)
+	}
+	if degraded > customGuideDecodeWarnPerPage {
+		c.inner.logger.Warn("custom guide repository: further specs did not fully decode",
+			"namespace", namespace, "degraded", degraded, "logged", customGuideDecodeWarnPerPage)
 	}
 	return &customGuidePage{Entries: entries, Continue: page.Continue}, nil
 }
