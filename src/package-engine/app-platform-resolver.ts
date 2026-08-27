@@ -148,27 +148,69 @@ async function probePublishedGuide(namespace: string, packageId: string): Promis
  * present, otherwise an inferred `{ id, type: 'guide', repository: 'app-platform' }`
  * so legacy content-only guides stay loadable with no migration event (RFC §6.5).
  *
+ * `id` prefers `spec.id` over `packageId` (the resource name used to address
+ * this fetch) so this builder agrees with `buildLoaderManifest` in
+ * docs-retrieval's `backend-guide.ts` — the other manifest-builder for the
+ * same resource shape, which has always preferred `spec.id`. `spec.id` tracks
+ * an author's live guide id and can drift from the immutable resource name
+ * after a rename; before either builder's output reached a completion record
+ * for this scheme, the two disagreeing was dormant.
+ *
+ * A path/journey is the one exception: `packageId` wins there regardless of
+ * `spec.id`, because `fetchPackageContent`'s baseUrl-hydration re-resolves
+ * `manifest.id` in URL-only mode on every milestone fetch on the documented
+ * assumption that it's "already known-good" (`fetchPackageById`'s own
+ * comment) — that mode never verifies, it only string-templates
+ * `backend-guide:<id>`, so a drifted `spec.id` would silently reconstruct a
+ * `backend-guide:` URL the loader can't actually fetch (it addresses
+ * resources by name, not by this author-editable id). A plain guide has no
+ * such consumer.
+ *
+ * `packageId` remains the fallback for legacy resources with no `spec.id` of
+ * their own, and a stray `spec.manifest.id` still never wins — it's
+ * overwritten by `id` below either way.
+ *
  * spec.title is mapped into the inferred manifest's `description` — milestone
  * resolution runs metadata-only (no `content`), so the label chain
  * (`content?.title ?? manifest?.description ?? id`) would otherwise fall back
  * to the bare package ID instead of a human-readable title (RFC Appendix A3).
+ * A persisted manifest carrying no description gets the same fallback, so this
+ * site and `buildLoaderManifest` in docs-retrieval agree on the shape they
+ * synthesize for one resource.
+ *
+ * `startingLocation` is dropped again when the raw `spec.manifest` did not
+ * declare one: the schema defaults it to `'/'`, and `resolveStartingLocation`
+ * reads the typed field before `additionalFields`, so that synthetic value would
+ * shadow the real authored one and prompt the reader to navigate to the root.
+ * Same reasoning as forcing `repository` above — a schema default must not
+ * masquerade as authored data.
  */
 function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']): ManifestJson {
   if (spec?.manifest) {
+    const isPathOrJourney = spec.manifest.type === 'path' || spec.manifest.type === 'journey';
+    const resolvedId = isPathOrJourney ? packageId : spec.id || packageId;
+
     // Spread the persisted manifest first, then force BOTH id and repository
-    // last. id: a stray spec.manifest.id must not override the package being
-    // resolved. repository: the CR shape leaves it optional and the schema
-    // defaults it to the public CDN ('interactive-tutorials'); an App Platform
-    // guide is always app-platform-sourced, and `repository` is the sole input
-    // to the durable completion key (guideSource, completion-identity.ts), so a
-    // missing value would mislabel a private guide's provenance.
+    // last. id: a stray spec.manifest.id must not override the resolved
+    // identity above. repository: the CR shape leaves it optional and the
+    // schema defaults it to the public CDN ('interactive-tutorials'); an App
+    // Platform guide is always app-platform-sourced, and `repository` is the
+    // sole input to the durable completion key (guideSource,
+    // completion-identity.ts), so a missing value would mislabel a private
+    // guide's provenance.
     const parsed = ManifestJsonObjectSchema.loose().safeParse({
       ...spec.manifest,
-      id: packageId,
+      id: resolvedId,
       repository: APP_PLATFORM_REPOSITORY,
     });
     if (parsed.success) {
-      return parsed.data as ManifestJson;
+      const resolved = parsed.data as ManifestJson;
+      const described = resolved.description ? resolved : { ...resolved, description: spec?.title };
+      if (typeof spec.manifest.startingLocation === 'string') {
+        return described;
+      }
+      const { startingLocation: _synthetic, ...withoutStartingLocation } = described;
+      return withoutStartingLocation;
     }
     // A malformed persisted manifest silently falls through to the inferred guide
     // shape below — so a path would render as a plain guide with no milestone
@@ -179,8 +221,10 @@ function buildManifest(packageId: string, spec: InteractiveGuideResource['spec']
     });
   }
 
+  // Always type 'guide' here (never path/journey), so preferring spec.id is
+  // always safe — no baseUrl-hydration consumer ever sees this shape.
   return {
-    id: packageId,
+    id: spec?.id || packageId,
     type: 'guide',
     repository: APP_PLATFORM_REPOSITORY,
     description: spec?.title,

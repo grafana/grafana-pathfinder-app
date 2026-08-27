@@ -1,6 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { ContentRenderer } from '../content-renderer/content-renderer';
+import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { recordGuideCompletionForSurface } from '../../docs-retrieval';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
@@ -129,7 +130,6 @@ export function FloatingPanelContent({
               activeTab={activeTab}
               surface={surface}
               contentRoot={contentRef}
-              actionButtonClassName={floatingStyles.secondaryActionButton}
               hasInteractiveProgress={!!hasInteractiveProgress}
               progressKey={progressKey ?? null}
               onResetGuide={onResetGuide!}
@@ -146,6 +146,11 @@ export function FloatingPanelContent({
             />
           </div>
         )}
+        {/* Treatment arm of the interactive-learning banner experiment; renders null
+            otherwise. Covers floating and full-screen, neither of which has a
+            context page to carry it. */}
+        <InteractiveLearningBanner placement="guide" />
+
         <ContentRenderer
           key={content.url}
           content={content}

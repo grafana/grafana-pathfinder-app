@@ -26,6 +26,7 @@ import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai
 import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
+import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
@@ -86,6 +87,18 @@ export async function executeWithLazyScroll(
 ): Promise<LazyScrollResult> {
   // Navigate, noop, and popout actions don't target DOM elements - execute immediately without element checking
   if (targetAction === 'navigate' || targetAction === 'noop' || targetAction === 'popout') {
+    return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
+  }
+
+  // A full-screen -> sidebar handoff is about to happen inside `action()`
+  // (executeInteractiveAction's own gate) — full screen has no live Grafana
+  // DOM yet for this action to target, so the precheck below would always
+  // fail fast and `action()` would never run, silently skipping the handoff
+  // gate entirely. Skip straight to the real action; its handler does its
+  // own full-retry DOM resolution against the destination page once the
+  // handoff completes. Applies to "Show me" as well as "Do it" — both need
+  // the live Grafana UI in place before they have anything to preview or act on.
+  if (targetAction && isGrafanaDrivingHandoffNeeded(targetAction)) {
     return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
@@ -208,6 +221,7 @@ export const InteractiveStep = forwardRef<
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -489,6 +503,7 @@ export const InteractiveStep = forwardRef<
           targetState,
           targetComment,
           buttonType: 'do',
+          fullScreenFallbackLocation,
         });
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
@@ -564,6 +579,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       renderedStepId,
       persistCompletion,
+      fullScreenFallbackLocation,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -745,6 +761,7 @@ export const InteractiveStep = forwardRef<
               targetState,
               targetComment,
               buttonType: 'show',
+              fullScreenFallbackLocation,
             });
             return outcome !== 'error';
           },
@@ -784,6 +801,7 @@ export const InteractiveStep = forwardRef<
       finalIsEnabled,
       lazyRender,
       scrollContainer,
+      fullScreenFallbackLocation,
       executeInteractiveAction,
       onStepComplete,
       onComplete,

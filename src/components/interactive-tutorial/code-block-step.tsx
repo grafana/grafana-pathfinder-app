@@ -15,6 +15,7 @@ import { useStepChecker, validateInteractiveRequirements } from '../../requireme
 import { clearAndInsertCode, useInteractiveElements } from '../../interactive-engine';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { panelModeManager, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import { logger } from '../../lib/logging';
@@ -44,6 +45,9 @@ export interface CodeBlockStepProps {
   totalSteps?: number;
   sectionId?: string;
   sectionTitle?: string;
+
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
 }
 
 let codeBlockStepCounter = 0;
@@ -125,6 +129,7 @@ export const CodeBlockStep = forwardRef<
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -198,19 +203,42 @@ export const CodeBlockStep = forwardRef<
       }
       setIsShowRunning(true);
       try {
-        // Highlight the target Monaco editor using the interactive engine
-        await executeInteractiveAction({ targetAction: 'highlight', refTarget, buttonType: 'show' });
+        // Highlight the target Monaco editor using the interactive engine.
+        // Threading fullScreenFallbackLocation lets executeInteractiveAction's
+        // own gate dock + navigate first when in full screen — mirrors
+        // handleInsert's handOffFromFullScreenIfNeeded below, but for real
+        // this time: "highlight" is a Grafana-driving action, so the gate
+        // handles it automatically instead of needing its own explicit call.
+        await executeInteractiveAction({
+          targetAction: 'highlight',
+          refTarget,
+          buttonType: 'show',
+          fullScreenFallbackLocation,
+        });
       } catch (err) {
         logger.error('[CodeBlockStep] Show me failed', { error: err });
       } finally {
         setIsShowRunning(false);
       }
-    }, [refTarget, isShowRunning, executeInteractiveAction]);
+    }, [refTarget, isShowRunning, executeInteractiveAction, fullScreenFallbackLocation]);
+
+    // "Insert" targets a live Monaco editor unconditionally — full screen has
+    // none behind it (mirrors requires-grafana-ui.ts's `code-block` case) — so
+    // unlike the interactive-engine's own gate, this doesn't need to check the
+    // action type, only whether we're currently in full screen at all. Insert
+    // never routes through executeInteractiveAction (clearAndInsertCode is
+    // called directly), so it needs this handoff applied here directly too.
+    const handOffFromFullScreenIfNeeded = useCallback(async () => {
+      if (panelModeManager.getMode() === 'fullscreen') {
+        await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
+      }
+    }, [fullScreenFallbackLocation]);
 
     const handleInsert = useCallback(async () => {
       setIsInsertRunning(true);
       setInsertError(null);
       try {
+        await handOffFromFullScreenIfNeeded();
         const result = await clearAndInsertCode(refTarget, currentCode);
         if (result.success) {
           markComplete();
@@ -223,7 +251,7 @@ export const CodeBlockStep = forwardRef<
       } finally {
         setIsInsertRunning(false);
       }
-    }, [currentCode, refTarget, markComplete]);
+    }, [currentCode, refTarget, markComplete, handOffFromFullScreenIfNeeded]);
 
     useImperativeHandle(
       ref,
@@ -232,6 +260,7 @@ export const CodeBlockStep = forwardRef<
           if (isCompleted) {
             return true;
           }
+          await handOffFromFullScreenIfNeeded();
           const result = await clearAndInsertCode(refTarget, currentCode);
           if (result.success) {
             markComplete();
@@ -243,7 +272,7 @@ export const CodeBlockStep = forwardRef<
           markComplete();
         },
       }),
-      [isCompleted, currentCode, refTarget, markComplete]
+      [isCompleted, currentCode, refTarget, markComplete, handOffFromFullScreenIfNeeded]
     );
 
     const isEnabled = checker.isEnabled && !disabled;

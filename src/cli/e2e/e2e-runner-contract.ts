@@ -29,9 +29,8 @@ export const E2E_ENV = {
   /** Password used by form-login auth setup. Defaults to admin. Not used in token mode. */
   GRAFANA_PASSWORD: 'GRAFANA_PASSWORD',
   /**
-   * Minted short-lived service-account token for a provisioned cloud target.
-   * When set, the runner authenticates browser requests with an Authorization
-   * header and skips form-login auth.
+   * Opaque Bearer credential for the Grafana target origin. When set, the
+   * runner adds it only to same-origin requests and skips form-login auth.
    */
   GRAFANA_TOKEN: 'GRAFANA_TOKEN',
   /** Flag: enable Playwright tracing. */

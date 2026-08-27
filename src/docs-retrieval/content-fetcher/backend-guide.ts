@@ -30,14 +30,24 @@ const APP_PLATFORM_REPOSITORY = 'app-platform';
  * id of its own gets none, so the recorder fails closed rather than keying on the
  * loader URL. `type` is carried through unforced so a path cover is not recorded
  * as a standalone guide.
+ *
+ * `description` falls back to `spec.title` when the resource carries no manifest
+ * description, matching `buildManifest` in the app-platform resolver. The two
+ * sites synthesize a manifest for the same resource shape, so a reader that gets
+ * one of them must not see a different shape depending on which entry point the
+ * guide was opened from.
  */
 function buildLoaderManifest(guideResource: BackendGuideResource): Record<string, unknown> {
-  return {
+  const manifest: Record<string, unknown> = {
     type: 'guide',
     ...guideResource.spec?.manifest,
     id: guideResource.spec?.id || guideResource.metadata?.name,
     repository: APP_PLATFORM_REPOSITORY,
   };
+  if (typeof manifest.description !== 'string' || manifest.description.length === 0) {
+    manifest.description = guideResource.spec?.title;
+  }
+  return manifest;
 }
 
 /**

@@ -7,17 +7,38 @@ import type { PathGuide } from '../../types/learning-paths.types';
 import { milestoneCompletionStorage } from '../../lib/user-storage';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
 import { testIds } from '../../constants/testIds';
+import { getBadgeForPath } from '../../learning-paths';
 import { GuideList } from './GuideList';
+import { ProgressRing } from './ProgressRing';
+import { BadgeIcon } from './BadgeIcon';
 import { getTableOfContentsStyles } from './learning-paths.styles';
 
 export interface LearningPathTableOfContentsProps {
   milestones: Milestone[];
   baseUrl: string;
+  /** Package manifest ID, when known — used to look up a completion badge to preview. */
+  pathId?: string;
+  /** The path's own title, when known — shown as the hero heading above the description. */
+  title?: string;
+  /** Package manifest description, when known — shown as the hero summary above the module list. */
+  description?: string;
 }
 
-export function LearningPathTableOfContents({ milestones, baseUrl }: LearningPathTableOfContentsProps) {
+export function LearningPathTableOfContents({
+  milestones,
+  baseUrl,
+  pathId,
+  title,
+  description,
+}: LearningPathTableOfContentsProps) {
   const styles = useStyles2(getTableOfContentsStyles);
   const [completedSlugs, setCompletedSlugs] = useState<Set<string>>(new Set());
+  // Guards the CTA and the current-row click target, both derived from
+  // completedSlugs: before this resolves, an empty set reads as "0% done,
+  // start at module 1" regardless of real progress, and a click during that
+  // window would land on the wrong milestone.
+  const [progressLoaded, setProgressLoaded] = useState(false);
+  const badge = pathId ? getBadgeForPath(pathId) : undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +50,7 @@ export function LearningPathTableOfContents({ milestones, baseUrl }: LearningPat
       .then((slugs) => {
         if (!cancelled) {
           setCompletedSlugs(slugs);
+          setProgressLoaded(true);
         }
       });
     return () => {
@@ -36,20 +58,98 @@ export function LearningPathTableOfContents({ milestones, baseUrl }: LearningPat
     };
   }, [baseUrl, milestones]);
 
-  const guides: PathGuide[] = milestones.map((milestone) => ({
-    id: String(milestone.number),
-    title: milestone.title,
-    completed: completedSlugs.has(getMilestoneSlug(milestone.url)),
-    isCurrent: false,
-  }));
+  // "Get started" targets the first unlocked milestone at 0% progress; once
+  // underway, "Resume" targets the actual next incomplete one so returning to
+  // the cover mid-path (e.g. via Previous) doesn't restart it from module 1.
+  // Every later milestone is sequentially locked — it isn't reachable yet
+  // regardless of its own publish-lock state, which stays authoritative for
+  // "unpublished" (locked even once its turn comes).
+  const cursor = milestones.findIndex((m) => !m.isLocked && !completedSlugs.has(getMilestoneSlug(m.url)));
+
+  const guides: PathGuide[] = milestones.map((milestone, index) => {
+    const completed = completedSlugs.has(getMilestoneSlug(milestone.url));
+    return {
+      id: String(milestone.number),
+      title: milestone.title,
+      description: milestone.description,
+      estimatedMinutes: milestone.estimatedMinutes,
+      completed,
+      isCurrent: cursor >= 0 && index === cursor,
+      locked: milestone.isLocked || (!completed && cursor >= 0 && index > cursor),
+      url: milestone.url,
+    };
+  });
+
+  const completedCount = guides.filter((g) => g.completed).length;
+  const progress = milestones.length > 0 ? Math.round((completedCount / milestones.length) * 100) : 0;
+
+  const ctaTarget = cursor >= 0 ? milestones[cursor] : undefined;
+  const ctaLabel = progress === 0 ? t('coverPage.getStarted', 'Get started') : t('coverPage.resume', 'Resume');
+
+  // Sum of authored per-milestone estimates — only when every milestone has
+  // one, matching estimatedMinutes' own "never a guessed default" contract.
+  // A partial sum across e.g. 3 of 10 authored milestones would understate
+  // the real total rather than approximate it.
+  const totalEstimatedMinutes =
+    milestones.length > 0 && milestones.every((m) => typeof m.estimatedMinutes === 'number')
+      ? milestones.reduce((sum, m) => sum + m.estimatedMinutes!, 0)
+      : undefined;
 
   return (
-    <div className={styles.container} data-testid={testIds.learningPaths.tableOfContents}>
-      <h2 className={styles.heading}>
-        <Icon name="list-ul" size="md" className={styles.headingIcon} />
-        {t('coverPage.tableOfContents', 'In this path')}
-      </h2>
-      <GuideList guides={guides} />
-    </div>
+    <>
+      {(title || description || badge) && (
+        <div className={styles.hero} data-testid={testIds.learningPaths.coverHero}>
+          {title && <h1 className={styles.heroTitle}>{title}</h1>}
+          {description && <p className={styles.heroDescription}>{description}</p>}
+          <div className={styles.heroMeta}>
+            <span className={styles.heroMetaItem}>
+              <Icon name="list-ul" size="sm" />
+              {t('coverPage.moduleCount', '{{count}} modules', { count: milestones.length })}
+            </span>
+            {totalEstimatedMinutes != null && (
+              <span className={styles.heroMetaItem}>
+                <Icon name="clock-nine" size="sm" />
+                {totalEstimatedMinutes < 60
+                  ? t('coverPage.totalMinutes', '{{count}} min', { count: totalEstimatedMinutes })
+                  : t('coverPage.totalHours', '~{{count}} hr', { count: Math.round(totalEstimatedMinutes / 60) })}
+              </span>
+            )}
+            {badge && (
+              <span className={styles.heroMetaItem}>
+                <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="sm" />
+                {t('coverPage.earnsBadge', 'Earns {{badge}} badge', { badge: badge.title })}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      <div className={styles.container} data-testid={testIds.learningPaths.tableOfContents}>
+        <div className={styles.header}>
+          <h2 className={styles.heading}>
+            <Icon name="list-ul" size="md" className={styles.headingIcon} />
+            {t('coverPage.tableOfContents', 'In this path')}
+          </h2>
+          <div className={styles.headerActions}>
+            {progress > 0 && (
+              <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={progress >= 100} />
+            )}
+            {progressLoaded && ctaTarget && (
+              <button
+                type="button"
+                className={styles.ctaButton}
+                data-journey-start="true"
+                data-milestone-url={ctaTarget.url}
+                data-interaction-location={progress === 0 ? 'get_started_cta' : 'resume_cta'}
+                data-testid={testIds.learningPaths.tableOfContentsCta}
+              >
+                <Icon name="play" size="sm" />
+                {ctaLabel}
+              </button>
+            )}
+          </div>
+        </div>
+        <GuideList guides={guides} enableCurrentRowLink={progressLoaded} />
+      </div>
+    </>
   );
 }

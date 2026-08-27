@@ -33,7 +33,7 @@ The only top-level hook in `src/utils/` is `usePublishedGuides.ts`. Development-
 - `openfeature.ts` - Feature toggle utilities
 - `openfeature-tracking.ts` - OpenFeature hook for tracking flag evaluations to analytics
 - `sidebar-auto-open.ts` - Config-driven sidebar auto-open on launch (open-panel-on-launch)
-- `experiments/` - Highlighted-guide experiment orchestration, recommendation helpers, and the `window.__pathfinderExperiment` debug surface
+- `experiments/` - The live A/B experiments, the enrolled-arm registry read by analytics, and the `window.__pathfinderExperiment` debug surface
 - `variable-substitution.ts` - Template variable (`{{variableName}}`) substitution for dynamic content
 
 ### Development tools (`devtools/`)
@@ -278,14 +278,16 @@ function prefixRoute(route: string): string {
 - `evaluateFeatureFlag()` - Async function to evaluate a flag's value
 - `getFeatureFlagValue()` - Synchronous boolean flag check
 - `getStringFlagValue()` - Synchronous string flag check
-- `getHighlightedGuideConfig()` and `getActiveExperiments()` - Highlighted-guide experiment state
+- `getHighlightedGuideConfig()` - Highlighted-guide experiment state. The enrolled-arm registry that used to live here, `getActiveExperiments()`, moved to `experiments/active-experiments.ts` so the flag registry stays unaware of which experiments exist
 - `initializeOpenFeature()` - Initialize the OpenFeature SDK
 - `useBooleanFlag`, `useStringFlag`, and `useNumberFlag` - React flag hooks
 
 **Used By**:
 
+- `src/utils/experiments/active-experiments.ts` - Enrolled-arm registry for analytics enrichment
 - `src/utils/experiments/experiment-debug.ts` - Experiment debugging console tools
 - `src/utils/experiments/highlighted-guide-orchestrator.ts` - Experiment auto-open setup
+- `src/utils/experiments/interactive-learning-banner.ts` - Interactive-learning banner enrollment
 - `src/utils/openfeature-tracking.ts` - Flag evaluation analytics tracking
 - `src/module.tsx` - Provider initialization, kill switches, and experiment analytics
 - `src/context-engine/context.service.ts` - Highlighted-guide recommendation injection
@@ -306,10 +308,13 @@ function prefixRoute(route: string): string {
 
 ### `experiments/`
 
-**Purpose**: Implements the highlighted-guide experiment.
+**Purpose**: Implements the live A/B experiments and owns which arms the current user is enrolled in.
 
+- `active-experiments.ts` - `getActiveExperiments()`, the enrolled arms for analytics enrichment and Faro session cohorts. Late-bound into `lib/analytics.ts` via `bindExperimentsProvider` in `src/module.tsx`, which is what keeps the OpenFeature SDK out of the telemetry chunk
+- `enrollment-notifier.ts` - `subscribeToEnrollment()` / `notifyEnrollment()`, the seam that lets an enroller wake the Faro session re-stamp and the banner without importing either. Deliberately importless
 - `highlighted-guide-orchestrator.ts` - Initializes reset state, page matching, once-per-browser auto-open, and guide launch
 - `highlighted-guide-utils.ts` - Manages auto-open markers, matches target pages, and builds featured recommendations
+- `interactive-learning-banner.ts` - Interactive-learning banner arm, enrolled lazily on first panel open rather than at boot. `enrollment-boundary.test.ts` pins the three panel-mount call sites, because evaluating the flag is what emits the exposure; the banner component reads the arm through `subscribeToEnrollment` instead of enrolling
 - `experiment-debug.ts` - Exposes flag overrides and exposure inspection through `window.__pathfinderExperiment`
 - `index.ts` - Public exports consumed by `src/module.tsx` and `src/context-engine/context.service.ts`
 

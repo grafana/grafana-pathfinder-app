@@ -173,6 +173,23 @@ const pathfinderFeatureFlags = {
     defaultValue: DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue,
     trackingKey: 'highlighted_guide_experiment',
   },
+  /**
+   * Interactive-learning banner A/B experiment
+   * - "excluded": Not in experiment, no banner
+   * - "control": In experiment, no banner (variant A)
+   * - "treatment": In experiment, explanatory banner at the top of the context
+   *   page (variant B)
+   *
+   * Unlike the highlighted-guide flag, this one is read lazily at the sidebar-mount
+   * seam rather than at boot. Everything else about it lives in
+   * `src/utils/experiments/interactive-learning-banner.ts`.
+   */
+  'pathfinder.interactive-learning-banner-experiment': {
+    valueType: 'object',
+    values: [{ variant: 'excluded' }, { variant: 'control' }, { variant: 'treatment' }],
+    defaultValue: { variant: 'excluded' },
+    trackingKey: 'interactive_learning_banner_experiment',
+  },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 
 // Helper to get typed keys from the flag definitions
@@ -195,7 +212,7 @@ export type FlagTrackingKey = (typeof pathfinderFeatureFlags)[keyof typeof pathf
 export interface ExperimentAnalyticsEntry {
   flag: FeatureFlagName;
   variant: ExperimentConfig['variant'];
-  pages: string[];
+  pages?: string[];
   resetCache?: boolean;
   [key: string]: unknown;
 }
@@ -546,14 +563,14 @@ export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
         reportFeatureFlagExposure(flagName, validated as unknown as JsonValue);
         return validated;
       }
-      warnHighlightedGuideRejection('override', flagName, override);
+      warnExperimentRejection('override', flagName, override);
     }
 
     const client = getFeatureFlagClient();
     const value = client.getObjectValue(flagName, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG as unknown as JsonValue);
     const validatedRemote = validateHighlightedGuideValue(value);
     if (!validatedRemote) {
-      warnHighlightedGuideRejection('remote', flagName, value);
+      warnExperimentRejection('remote', flagName, value);
     }
     return validatedRemote ?? DEFAULT_HIGHLIGHTED_GUIDE_CONFIG;
   } catch (error) {
@@ -566,56 +583,67 @@ const VALID_VARIANTS: ReadonlySet<HighlightedGuideConfig['variant']> = new Set([
 
 const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set(['docs-page', 'learning-journey', 'interactive']);
 
-type HighlightedGuideRejectionSource = 'override' | 'remote';
+export type ExperimentRejectionSource = 'override' | 'remote';
 
-// Once per source per page load: getActiveExperiments re-reads this flag on every
-// reportAppInteraction, so an unguarded warn would flood the console and Faro.
-const warnedRejectionSources = new Set<HighlightedGuideRejectionSource>();
+// Once per source per flag per page load: getActiveExperiments re-reads these flags
+// on every reportAppInteraction, so an unguarded warn would flood the console and Faro.
+const warnedRejectionSources = new Set<string>();
+
+/**
+ * Read a known experiment arm off an unvalidated payload.
+ *
+ * @param value - Any payload that may carry a `variant` field
+ * @returns The arm, or null if the payload is not an object or the arm is unknown
+ */
+export function parseExperimentVariant(value: unknown): ExperimentConfig['variant'] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const { variant } = value as Record<string, unknown>;
+  if (typeof variant !== 'string' || !VALID_VARIANTS.has(variant as ExperimentConfig['variant'])) {
+    return null;
+  }
+  return variant as ExperimentConfig['variant'];
+}
 
 // Classification, not the raw string: the payload is operator free text and would
 // be a high-cardinality Faro attribute (TELEMETRY.md privacy invariants).
-function classifyHighlightedGuideRejection(value: unknown): 'unknown_variant' | 'invalid_shape' {
+function classifyExperimentRejection(value: unknown): 'unknown_variant' | 'invalid_shape' {
   const variant =
     value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>).variant
       : undefined;
-  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant as HighlightedGuideConfig['variant']);
+  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant as ExperimentConfig['variant']);
   return isUnknownArm ? 'unknown_variant' : 'invalid_shape';
 }
 
-function warnHighlightedGuideRejection(
-  source: HighlightedGuideRejectionSource,
-  flagName: string,
-  value: unknown
-): void {
-  if (warnedRejectionSources.has(source)) {
+export function warnExperimentRejection(source: ExperimentRejectionSource, flagName: string, value: unknown): void {
+  const warnKey = `${source}:${flagName}`;
+  if (warnedRejectionSources.has(warnKey)) {
     return;
   }
-  warnedRejectionSources.add(source);
+  warnedRejectionSources.add(warnKey);
 
   const consequence =
     source === 'override'
       ? 'ignoring it and using the MTFF value instead (locally, with no MTFF provider, that is the safe excluded default)'
       : 'using the safe excluded default, so nobody is enrolled';
   logger.warn(`[OpenFeature] Rejected the ${source} payload for '${flagName}' — ${consequence}`, {
-    reason: classifyHighlightedGuideRejection(value),
+    reason: classifyExperimentRejection(value),
   });
 }
 
 function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  const variant = parseExperimentVariant(value);
+  if (!variant) {
     return null;
   }
   const record = value as Record<string, unknown>;
   if (
-    typeof record.variant !== 'string' ||
     !Array.isArray(record.pages) ||
     !record.pages.every((p): p is string => typeof p === 'string') ||
     typeof record.guideId !== 'string'
   ) {
-    return null;
-  }
-  if (!VALID_VARIANTS.has(record.variant as HighlightedGuideConfig['variant'])) {
     return null;
   }
   const docType =
@@ -624,7 +652,7 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
       : undefined;
 
   return {
-    variant: record.variant as HighlightedGuideConfig['variant'],
+    variant,
     pages: record.pages,
     guideId: record.guideId,
     autoOpen: typeof record.autoOpen === 'boolean' ? record.autoOpen : true,
@@ -632,20 +660,6 @@ function validateHighlightedGuideValue(value: unknown): HighlightedGuideConfig |
     ...(docType ? { docType } : {}),
   };
 }
-
-// ============================================================================
-// EXPERIMENT ANALYTICS
-// ============================================================================
-
-const HIGHLIGHTED_GUIDE_FLAG: FeatureFlagName = 'pathfinder.highlighted-guide-experiment';
-
-// The highlighted-guide experiment is the only live experiment. Excluded arms
-// are dropped — 'excluded' means the user isn't enrolled, matching the
-// exposure-event convention (openfeature-tracking.ts).
-export const getActiveExperiments = (): ExperimentAnalyticsEntry[] => {
-  const config = getHighlightedGuideConfig();
-  return config.variant === 'excluded' ? [] : [{ flag: HIGHLIGHTED_GUIDE_FLAG, ...config }];
-};
 
 // ============================================================================
 // URL PATTERN MATCHING

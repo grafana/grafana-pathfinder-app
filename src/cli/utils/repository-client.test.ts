@@ -16,7 +16,7 @@ import {
   fetchRepositoryIndex,
   getRepositoryBaseUrl,
   REPOSITORY_URL_ENV_VAR,
-} from '../repository-client';
+} from './repository-client';
 
 const DEFAULT_BASE = 'https://interactive-learning.grafana.net/packages/';
 
@@ -210,6 +210,31 @@ describe('fetchRepositoryIndex', () => {
       return;
     }
     expect(result.code).toBe('PARSE_ERROR');
+  });
+
+  it('keeps the map key as the package id when an entry body carries a conflicting id', async () => {
+    mockFetchJsonOnce({
+      'guide-a': { path: 'guide-a/', type: 'guide', id: 'guide-b' },
+    });
+    const result = await fetchRepositoryIndex();
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.packages.map((p) => p.id)).toEqual(['guide-a']);
+  });
+
+  it('keeps the map key as the package id on the best-effort include path', async () => {
+    mockFetchJsonOnce({
+      'guide-a': { path: 'guide-a/', type: 42, id: 'guide-b' },
+    });
+    const result = await fetchRepositoryIndex();
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.validation.isValid).toBe(false);
+    expect(result.packages.map((p) => p.id)).toEqual(['guide-a']);
   });
 
   it('surfaces drift in a single entry as validation issues without failing', async () => {

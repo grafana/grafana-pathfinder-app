@@ -93,47 +93,48 @@ describe('mutation tools — session-mode dispatch', () => {
   });
 
   describe('input mode validation', () => {
-    it('errors INPUT_MODE_MISSING when neither artifact nor sessionToken is provided', async () => {
-      const r = await h.call('pathfinder_add_block', {
-        type: 'markdown',
-        fields: { content: 'x' },
+    it('pathfinder_manage_block — add-block: errors INPUT_MODE_MISSING when neither artifact nor sessionToken is provided', async () => {
+      const r = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
+        opts: { type: 'markdown', content: 'x' },
       });
       expect(r.code).toBe('INPUT_MODE_MISSING');
     });
 
-    it('errors INPUT_MODE_AMBIGUOUS when both are provided', async () => {
+    it('pathfinder_manage_block — add-block: errors INPUT_MODE_AMBIGUOUS when both are provided', async () => {
       await seedSession(h.store, TOKEN);
-      const r = await h.call('pathfinder_add_block', {
+      const r = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
         sessionToken: TOKEN,
         artifact: { content: { id: 'x', title: 'x', blocks: [] } },
-        type: 'markdown',
-        fields: { content: 'x' },
+        opts: { type: 'markdown', content: 'x' },
       });
       expect(r.code).toBe('INPUT_MODE_AMBIGUOUS');
     });
 
-    it('errors INVALID_SESSION_TOKEN when sessionToken is malformed', async () => {
-      const r = await h.call('pathfinder_add_block', {
+    it('pathfinder_manage_block — add-block: errors INVALID_SESSION_TOKEN when sessionToken is malformed', async () => {
+      const r = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
         sessionToken: 'not-a-token',
-        type: 'markdown',
-        fields: { content: 'x' },
+        opts: { type: 'markdown', content: 'x' },
       });
       expect(r.code).toBe('INVALID_SESSION_TOKEN');
     });
   });
 
   describe('session-mode happy path', () => {
-    it('add_block: appends, returns ack with sessionToken + generation, no artifact echo', async () => {
+    it('pathfinder_manage_block — add-block: appends, returns ack with sessionToken + generation, no artifact echo', async () => {
       await seedSession(h.store, TOKEN);
-      const r = await h.call('pathfinder_add_block', {
+      const r = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
         sessionToken: TOKEN,
-        type: 'markdown',
-        fields: { content: 'Hello' },
+        opts: { type: 'markdown', content: 'Hello' },
       });
       expect(r.status).toBe('ok');
       expect(r.sessionToken).toBe(TOKEN);
       expect(r.generation).toBe(2); // seeded at 1, this is the first mutation
       expect(r.artifact).toBeUndefined();
+      expect(r.hints).toBeUndefined();
       expect(Array.isArray(r.summary)).toBe(true);
 
       // Bucket state reflects the mutation.
@@ -142,46 +143,47 @@ describe('mutation tools — session-mode dispatch', () => {
       expect((loaded?.artifact.content.blocks as unknown[]).length).toBe(1);
     });
 
-    it('add_block: returns SESSION_NOT_FOUND for an unknown token', async () => {
-      const r = await h.call('pathfinder_add_block', {
+    it('pathfinder_manage_block — add-block: returns SESSION_NOT_FOUND for an unknown token', async () => {
+      const r = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
         sessionToken: TOKEN,
-        type: 'markdown',
-        fields: { content: 'x' },
+        opts: { type: 'markdown', content: 'x' },
       });
       expect(r.code).toBe('SESSION_NOT_FOUND');
     });
 
-    it('set_manifest: updates manifest under session-mode', async () => {
+    it('pathfinder_manage_guide — set-manifest: updates manifest under session-mode', async () => {
       await seedSession(h.store, TOKEN);
-      const r = await h.call('pathfinder_set_manifest', {
+      const r = await h.call('pathfinder_manage_guide', {
+        operation: 'set-manifest',
         sessionToken: TOKEN,
-        fields: { description: 'updated description' },
+        opts: { description: 'updated description', startingLocation: '/explore' },
       });
       expect(r.status).toBe('ok');
       expect(r.generation).toBe(2);
       const loaded = await h.store.load(TOKEN);
-      expect((loaded?.artifact.manifest as unknown as Record<string, unknown>)?.description).toBe(
-        'updated description'
-      );
+      expect(loaded?.artifact.manifest).toMatchObject({
+        description: 'updated description',
+        startingLocation: '/explore',
+      });
     });
 
-    it('edit_block + remove_block: full mutation arc through the session', async () => {
+    it('pathfinder_manage_block — edit-block + remove-block: full mutation arc through the session', async () => {
       await seedSession(h.store, TOKEN);
       // Add
-      const added = await h.call('pathfinder_add_block', {
+      const added = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
         sessionToken: TOKEN,
-        type: 'markdown',
-        explicitId: 'md-1',
-        fields: { content: 'original' },
+        opts: { type: 'markdown', id: 'md-1', content: 'original' },
       });
       expect(added.status).toBe('ok');
       expect(added.generation).toBe(2);
 
       // Edit
-      const edited = await h.call('pathfinder_edit_block', {
+      const edited = await h.call('pathfinder_manage_block', {
+        operation: 'edit-block',
         sessionToken: TOKEN,
-        id: 'md-1',
-        fields: { content: 'rewritten' },
+        opts: { id: 'md-1', content: 'rewritten' },
       });
       expect(edited.status).toBe('ok');
       expect(edited.generation).toBe(3);
@@ -191,9 +193,10 @@ describe('mutation tools — session-mode dispatch', () => {
       expect(blocks[0]?.content).toBe('rewritten');
 
       // Remove
-      const removed = await h.call('pathfinder_remove_block', {
+      const removed = await h.call('pathfinder_manage_block', {
+        operation: 'remove-block',
         sessionToken: TOKEN,
-        id: 'md-1',
+        opts: { id: 'md-1' },
       });
       expect(removed.status).toBe('ok');
       expect(removed.generation).toBe(4);
@@ -203,19 +206,19 @@ describe('mutation tools — session-mode dispatch', () => {
   });
 
   describe('expectedGeneration', () => {
-    it('proceeds when expectedGeneration matches', async () => {
+    it('pathfinder_manage_block — add-block: proceeds when expectedGeneration matches', async () => {
       await seedSession(h.store, TOKEN);
-      const r = await h.call('pathfinder_add_block', {
+      const r = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
         sessionToken: TOKEN,
         expectedGeneration: 1,
-        type: 'markdown',
-        fields: { content: 'x' },
+        opts: { type: 'markdown', content: 'x' },
       });
       expect(r.status).toBe('ok');
       expect(r.generation).toBe(2);
     });
 
-    it('returns CONCURRENT_MODIFICATION when expectedGeneration is stale', async () => {
+    it('pathfinder_manage_block — add-block: returns CONCURRENT_MODIFICATION when expectedGeneration is stale', async () => {
       await seedSession(h.store, TOKEN);
       // Bump the session out of band.
       const cur = await h.store.load(TOKEN);
@@ -224,11 +227,11 @@ describe('mutation tools — session-mode dispatch', () => {
       }
       await h.store.save(TOKEN, cur.artifact, cur.generation); // -> gen=2
 
-      const r = await h.call('pathfinder_add_block', {
+      const r = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
         sessionToken: TOKEN,
         expectedGeneration: 1, // stale
-        type: 'markdown',
-        fields: { content: 'x' },
+        opts: { type: 'markdown', content: 'x' },
       });
       expect(r.code).toBe('CONCURRENT_MODIFICATION');
       expect(r.data).toEqual({ expected: 1, actual: 2 });
@@ -236,13 +239,13 @@ describe('mutation tools — session-mode dispatch', () => {
   });
 
   describe('stateless mode preserved', () => {
-    it('add_block still works with {artifact} and does NOT touch the session store', async () => {
+    it('pathfinder_manage_block — add-block: still works with {artifact} and does NOT touch the session store', async () => {
       // Seed an unrelated session so we can verify the store stays untouched.
       await seedSession(h.store, TOKEN);
-      const r = await h.call('pathfinder_add_block', {
+      const r = await h.call('pathfinder_manage_block', {
+        operation: 'add-block',
         artifact: { content: { id: 'inline', title: 'Inline', blocks: [] } },
-        type: 'markdown',
-        fields: { content: 'inline-mode' },
+        opts: { type: 'markdown', content: 'inline-mode' },
       });
       expect(r.status).toBe('ok');
       expect(r.artifact).toBeDefined();

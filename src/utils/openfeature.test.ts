@@ -130,6 +130,23 @@ describe('openfeature', () => {
         expect(pathfinderFeatureFlags['pathfinder.session-replay-sampling-rate'].trackingKey).toBe(
           'session_replay_sampling_rate'
         );
+        expect(pathfinderFeatureFlags['pathfinder.interactive-learning-banner-experiment'].trackingKey).toBe(
+          'interactive_learning_banner_experiment'
+        );
+      });
+    });
+
+    it('pathfinder.interactive-learning-banner-experiment must be object-valued to emit exposures', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        // reportFeatureFlagExposure drops non-object flags, so a boolean here would
+        // silently mean the experiment never records an enrollment.
+        expect(pathfinderFeatureFlags['pathfinder.interactive-learning-banner-experiment'].valueType).toBe('object');
       });
     });
 
@@ -359,92 +376,6 @@ describe('openfeature', () => {
           expect.stringContaining("[OpenFeature] Error evaluating flag 'experiment-flag'"),
           expect.any(Error),
           ''
-        );
-
-        consoleSpy.mockRestore();
-      });
-    });
-  });
-
-  describe('getActiveExperiments', () => {
-    beforeEach(() => {
-      localStorage.clear();
-    });
-
-    it('returns only the enrolled experiment, dropping excluded arms', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockImplementation((flagName: string) => {
-          if (flagName === 'pathfinder.highlighted-guide-experiment') {
-            return {
-              variant: 'treatment',
-              pages: ['/a/grafana-irm-app*'],
-              guideId: 'https://interactive-learning.grafana.net/packages/grafana-irm-configuration-lj/content.json',
-              autoOpen: true,
-              docType: 'learning-journey',
-            };
-          }
-          return { variant: 'excluded', pages: [] };
-        });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getActiveExperiments } = require('./openfeature');
-        const result = getActiveExperiments();
-
-        expect(result).toEqual([
-          {
-            flag: 'pathfinder.highlighted-guide-experiment',
-            variant: 'treatment',
-            pages: ['/a/grafana-irm-app*'],
-            guideId: 'https://interactive-learning.grafana.net/packages/grafana-irm-configuration-lj/content.json',
-            autoOpen: true,
-            docType: 'learning-journey',
-            resetCache: false,
-          },
-        ]);
-      });
-    });
-
-    it('returns an empty array when no experiment is enrolled', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({ variant: 'excluded', pages: [] });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const { getActiveExperiments } = require('./openfeature');
-        expect(getActiveExperiments()).toEqual([]);
-      });
-    });
-
-    it('reflects a localStorage override for the highlighted-guide flag (incl. guideId/docType)', () => {
-      jest.isolateModules(() => {
-        const mockOF = createMockOpenFeature();
-        const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({ variant: 'excluded', pages: [] });
-        jest.doMock('@openfeature/web-sdk', () => mockOF);
-        jest.doMock('@openfeature/react-sdk', () => mockReact);
-
-        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-        const { setFlagOverride, getActiveExperiments } = require('./openfeature');
-        setFlagOverride('pathfinder.highlighted-guide-experiment', {
-          variant: 'treatment',
-          pages: ['/a/grafana-irm-app*'],
-          guideId: 'bundled:my-guide',
-          autoOpen: true,
-          docType: 'interactive',
-        });
-
-        const highlighted = getActiveExperiments().find(
-          (entry: { flag: string }) => entry.flag === 'pathfinder.highlighted-guide-experiment'
-        );
-
-        expect(highlighted).toEqual(
-          expect.objectContaining({ variant: 'treatment', guideId: 'bundled:my-guide', docType: 'interactive' })
         );
 
         consoleSpy.mockRestore();
@@ -869,11 +800,8 @@ describe('openfeature', () => {
           jest.doMock('@openfeature/web-sdk', () => mockOF);
           jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-          const {
-            getHighlightedGuideConfig,
-            getActiveExperiments,
-            DEFAULT_HIGHLIGHTED_GUIDE_CONFIG,
-          } = require('./openfeature');
+          const { getHighlightedGuideConfig, DEFAULT_HIGHLIGHTED_GUIDE_CONFIG } = require('./openfeature');
+          const { getActiveExperiments } = require('./experiments/active-experiments');
 
           expect(getHighlightedGuideConfig()).toEqual(DEFAULT_HIGHLIGHTED_GUIDE_CONFIG);
           expect(getActiveExperiments()).toEqual([]);

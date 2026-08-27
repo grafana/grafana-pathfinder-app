@@ -49,6 +49,22 @@ describe('OnlineCdnPackageResolver', () => {
       // resolveDeferredData can read milestones immediately.
       expect(result.manifest).toBeDefined();
       expect((result.manifest as unknown as Record<string, unknown>).id).toBe('github-visualize-business-value');
+      expect(result.entryTitle).toBe('Business value');
+    }
+  });
+
+  it('omits entryTitle when the index entry has no title', async () => {
+    (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
+      baseUrl,
+      packages: [{ ...sampleEntry, title: undefined }],
+    });
+    const resolver = new OnlineCdnPackageResolver();
+
+    const result = await resolver.resolve('github-visualize-business-value');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.entryTitle).toBeUndefined();
     }
   });
 

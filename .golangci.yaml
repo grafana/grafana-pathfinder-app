@@ -1,6 +1,14 @@
 version: '2'
 
 linters:
+  enable:
+    - exhaustive
+  settings:
+    exhaustive:
+      # Opt in per switch with //exhaustive:enforce. Repo-wide would demand
+      # exhaustiveness of reflect.Kind switches that have no business being
+      # exhaustive.
+      explicit-exhaustive-switch: true
   exclusions:
     paths:
       - node_modules

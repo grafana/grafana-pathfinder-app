@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -107,6 +106,10 @@ type idToken struct {
 	typ string
 	key *ecdsa.PrivateKey
 
+	// namespace is the stack the token was minted for, in Grafana's
+	// '<type>-<id>' form. Empty omits the claim, which the gate must refuse.
+	namespace string
+
 	// Optional authlib profile claims; empty values are omitted so a test can
 	// pin what an absent claim yields.
 	username string
@@ -127,6 +130,9 @@ func signIDToken(t *testing.T, tok idToken) string {
 	}
 	if tok.exp != 0 {
 		claims["exp"] = tok.exp
+	}
+	if tok.namespace != "" {
+		claims["namespace"] = tok.namespace
 	}
 	if tok.username != "" {
 		claims["username"] = tok.username
@@ -155,7 +161,10 @@ func signIDToken(t *testing.T, tok idToken) string {
 // (exp == 0 omits the claim). Both may be invalid — that is the point.
 func makeIDToken(t *testing.T, sub string, exp int64) string {
 	t.Helper()
-	return signIDToken(t, idToken{sub: sub, exp: exp, kid: testSigningKeyID, typ: "jwt", key: testSigningKey()})
+	return signIDToken(t, idToken{
+		sub: sub, exp: exp, kid: testSigningKeyID, typ: "jwt",
+		key: testSigningKey(), namespace: testNamespace,
+	})
 }
 
 // makeValidIDToken signs a token that verifies against the test JWKS right now.
@@ -174,14 +183,23 @@ func identityRequest(t *testing.T, token string) *http.Request {
 
 func identityRequestWithConfig(t *testing.T, token string, cfg map[string]string) *http.Request {
 	t.Helper()
+	return identityRequestForNamespace(t, token, cfg, testNamespace)
+}
+
+// identityRequestForNamespace is identityRequestWithConfig with the
+// server-derived namespace under the caller's control; "" models a plugin
+// context that carries none.
+func identityRequestForNamespace(t *testing.T, token string, cfg map[string]string, namespace string) *http.Request {
+	t.Helper()
 	r, _ := http.NewRequest(http.MethodGet, "/", nil)
 	if token != "" {
 		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, token)
 	}
-	if cfg == nil {
-		return r
+	ctx := backend.WithPluginContext(r.Context(), backend.PluginContext{Namespace: namespace})
+	if cfg != nil {
+		ctx = sdkconfig.WithGrafanaConfig(ctx, sdkconfig.NewGrafanaCfg(cfg))
 	}
-	return r.WithContext(sdkconfig.WithGrafanaConfig(r.Context(), sdkconfig.NewGrafanaCfg(cfg)))
+	return r.WithContext(ctx)
 }
 
 // makeIDTokenWithProfile signs a token carrying sub/exp plus the authlib profile
@@ -191,7 +209,7 @@ func makeIDTokenWithProfile(t *testing.T, sub string, exp int64, username, name 
 	t.Helper()
 	return signIDToken(t, idToken{
 		sub: sub, exp: exp, kid: testSigningKeyID, typ: "jwt", key: testSigningKey(),
-		username: username, name: name,
+		namespace: testNamespace, username: username, name: name,
 	})
 }
 
@@ -284,24 +302,24 @@ func TestDeriveCompletionUserID(t *testing.T) {
 			// The whole point of #1568: a client-forged header naming any subject
 			// is worthless without the stack's signing key.
 			name:       "signature from a foreign key fails closed",
-			token:      signIDToken(t, idToken{sub: "user:victim", exp: validExp, kid: testSigningKeyID, typ: "jwt", key: foreignKey}),
+			token:      signIDToken(t, idToken{sub: "user:victim", exp: validExp, kid: testSigningKeyID, typ: "jwt", key: foreignKey, namespace: testNamespace}),
 			wantStatus: identityRejected,
 		},
 		{
 			name:       "unrecognized kid fails closed",
-			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: "not-a-real-key", typ: "jwt", key: testSigningKey()}),
+			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: "not-a-real-key", typ: "jwt", key: testSigningKey(), namespace: testNamespace}),
 			wantStatus: identityRejected,
 		},
 		{
 			name:       "missing kid fails closed",
-			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, typ: "jwt", key: testSigningKey()}),
+			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, typ: "jwt", key: testSigningKey(), namespace: testNamespace}),
 			wantStatus: identityRejected,
 		},
 		{
 			// An access token is signed by the same keys but is not an identity
 			// attestation; type confusion must not authenticate a caller.
 			name:       "access-token type fails closed",
-			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: testSigningKeyID, typ: "at+jwt", key: testSigningKey()}),
+			token:      signIDToken(t, idToken{sub: "user:abc123", exp: validExp, kid: testSigningKeyID, typ: "at+jwt", key: testSigningKey(), namespace: testNamespace}),
 			wantStatus: identityRejected,
 		},
 	}
@@ -353,8 +371,9 @@ func TestValidIDToken(t *testing.T) {
 }
 
 // capabilityReason is the single place a status turns into an envelope token, so
-// the three routes cannot invent their own. The transient status has none: it is
-// served as a 503, never in an envelope.
+// the three routes cannot invent their own. Every failing status names one, and
+// the three failures name three DIFFERENT ones: the envelope alone has to say
+// whether the caller, the stack, or our signing-keys address is at fault.
 func TestIdentityStatus_CapabilityReason(t *testing.T) {
 	cases := map[identityStatus]string{
 		// The zero value is a non-verdict: it must not read as verified, and it
@@ -363,7 +382,17 @@ func TestIdentityStatus_CapabilityReason(t *testing.T) {
 		identityVerified:        "",
 		identityRejected:        reasonIdentityUnavailable,
 		identityUnverifiable:    reasonIdentityUnverifiable,
-		identitySigningKeysDown: "",
+		identitySigningKeysDown: reasonSigningKeysUnreachable,
+	}
+	seen := map[string]identityStatus{}
+	for status, reason := range cases {
+		if reason == "" || status == identityUnknown {
+			continue
+		}
+		if other, dup := seen[reason]; dup {
+			t.Errorf("statuses %v and %v both report %q; the envelope cannot tell them apart", other, status, reason)
+		}
+		seen[reason] = status
 	}
 	for status, want := range cases {
 		if got := status.capabilityReason(); got != want {
@@ -408,15 +437,57 @@ func TestVerifyIDToken_UnverifiableFailsClosed(t *testing.T) {
 	}
 }
 
-// --- Signing-keys outage: a transient 503, not a capability envelope ---------
+// --- No reachable signing-keys source: a standing condition, not a 503 -------
 //
-// The signing-keys URL resolves fine, the FETCH fails. §7 reserves the in-band
-// capability envelope for "never works here", and the front-end caches an empty
-// capability=false result without retrying — so reporting a 30-second JWKS blip
-// that way darkens the gated surfaces past the end of the outage. Every route
-// that gates on identity therefore serves the transient path instead.
+// The signing-keys URL resolves fine, the FETCH fails everywhere. Reaching
+// nothing at all points at the configured address far more often than at a
+// brief outage, so this is a standing condition and takes the soft envelope
+// rather than a 503 — under its OWN reason token, because an operator must not
+// have to guess whether they are looking at the normal Grafana Cloud shape or
+// at broken config.
 
-func TestIdentityGate_SigningKeysOutageIsTransient503(t *testing.T) {
+// identityRouteProbe exercises one gated route and reports the status it served
+// plus the capability reason it carried.
+type identityRouteProbe struct {
+	name string
+	do   func(*testing.T, map[string]string) (*httptest.ResponseRecorder, string)
+}
+
+func gatedReadRoutes() []identityRouteProbe {
+	return []identityRouteProbe{
+		{
+			name: "custom-guide-repository",
+			do: func(t *testing.T, cfg map[string]string) (*httptest.ResponseRecorder, string) {
+				rr, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
+				return rr, body.Capability.Reason
+			},
+		},
+		{
+			name: "completion-records/my",
+			do: func(t *testing.T, cfg map[string]string) (*httptest.ResponseRecorder, string) {
+				rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
+				return rr, body.Capability.Reason
+			},
+		},
+		{
+			name: "completion-records/capability",
+			do: func(t *testing.T, cfg map[string]string) (*httptest.ResponseRecorder, string) {
+				rr := httptest.NewRecorder()
+				newTestApp(t).handleCompletionCapability(rr,
+					completionRequestWithConfig(t, "/completion-records/capability", "user:1", cfg))
+				var body completionCapability
+				if rr.Body.Len() > 0 {
+					if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+						t.Fatalf("decode capability: %v (raw %s)", err, rr.Body.String())
+					}
+				}
+				return rr, body.Reason
+			},
+		},
+	}
+}
+
+func TestIdentityGate_NoReachableSigningKeysSourceIsASoftStandingCondition(t *testing.T) {
 	fiveHundred := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -425,8 +496,14 @@ func TestIdentityGate_SigningKeysOutageIsTransient503(t *testing.T) {
 	refused, _ := startJWKSServer(t)
 	refused.Close()
 
-	// Healthy listers and both toggles on: nothing but the identity gate can
-	// 503 these routes, so the status pins the gate's behavior.
+	// auth-api is unreachable too, so NO source answers — the whole point of
+	// this test. TestMain already points it at a dead origin; make it explicit.
+	unreachableAuthAPI, _ := startJWKSServer(t)
+	unreachableAuthAPI.Close()
+	withSigningKeysURL(t, unreachableAuthAPI.URL+"/v1/keys")
+
+	// Healthy listers and both toggles on, so nothing but the identity gate can
+	// decide these responses.
 	withLister(t, singlePageLister())
 	withGuideLister(t, singlePageGuideLister())
 
@@ -434,54 +511,190 @@ func TestIdentityGate_SigningKeysOutageIsTransient503(t *testing.T) {
 		{name: "signing keys 5xx", appURL: fiveHundred.URL},
 		{name: "signing keys unreachable", appURL: refused.URL},
 	}
-	routes := []struct {
-		name string
-		do   func(*testing.T, map[string]string) *httptest.ResponseRecorder
-	}{
-		{
-			name: "custom-guide-repository",
-			do: func(t *testing.T, cfg map[string]string) *httptest.ResponseRecorder {
-				rr, _ := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
-				return rr
-			},
-		},
-		{
-			name: "completion-records/my",
-			do: func(t *testing.T, cfg map[string]string) *httptest.ResponseRecorder {
-				rr, _ := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
-				return rr
-			},
-		},
-		{
-			name: "completion-records/capability",
-			do: func(t *testing.T, cfg map[string]string) *httptest.ResponseRecorder {
-				rr := httptest.NewRecorder()
-				newTestApp(t).handleCompletionCapability(rr,
-					completionRequestWithConfig(t, "/completion-records/capability", "user:1", cfg))
-				return rr
-			},
-		},
-	}
 
 	for _, origin := range origins {
 		cfg := map[string]string{
 			featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
 			sdkconfig.AppURL:               origin.appURL,
 		}
-		for _, route := range routes {
+		for _, route := range gatedReadRoutes() {
 			t.Run(origin.name+"/"+route.name, func(t *testing.T) {
-				rr := route.do(t, cfg)
-				if rr.Code != http.StatusServiceUnavailable {
-					t.Fatalf("status = %d, want 503 (body %s)", rr.Code, rr.Body.String())
+				rr, reason := route.do(t, cfg)
+				if rr.Code != http.StatusOK {
+					t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
 				}
-				if got := rr.Header().Get("Retry-After"); got == "" {
-					t.Errorf("expected a Retry-After hint on a transient 503")
+				if got := rr.Header().Get("Retry-After"); got != "" {
+					t.Errorf("Retry-After = %q on a standing condition, want none", got)
 				}
-				if body := rr.Body.String(); !strings.Contains(body, "-unavailable") {
-					t.Errorf("expected a machine error token, got %s", body)
+				if reason != reasonSigningKeysUnreachable {
+					t.Fatalf("reason = %q, want %q", reason, reasonSigningKeysUnreachable)
 				}
 			})
 		}
+	}
+}
+
+// The two ways a key lookup comes up empty are different faults with different
+// owners, so they must not collapse into one envelope token. A stack answering
+// `{"keys":null}` is the normal Grafana Cloud shape; nothing answering at all
+// almost always means our own address is wrong. The envelope separates them
+// only where no source answers — a Cloud stack always answers its own endpoint,
+// so there the gate's log line is what tells them apart.
+func TestIdentityGate_KeyLookupCausesReportDistinctReasons(t *testing.T) {
+	withLister(t, singlePageLister())
+	withGuideLister(t, singlePageGuideLister())
+
+	unreachable, _ := startJWKSServer(t)
+	unreachable.Close()
+
+	cases := []struct {
+		name string
+		// setUp configures the auth-api source and returns the stack app URL.
+		setUp      func(*testing.T) string
+		wantReason string
+	}{
+		{
+			// Both sources answer, neither publishes the `kid`: the key is
+			// genuinely unknown, so this is a verdict on the caller's token.
+			name: "a source answers with an empty key set",
+			setUp: func(t *testing.T) string {
+				withSigningKeysURL(t, emptyAuthAPIJWKS(t))
+				return cloudStack(t)
+			},
+			wantReason: reasonIdentityUnavailable,
+		},
+		{
+			name: "no source answers at all",
+			setUp: func(t *testing.T) string {
+				withSigningKeysURL(t, unreachable.URL+"/v1/keys")
+				return unreachable.URL
+			},
+			wantReason: reasonSigningKeysUnreachable,
+		},
+	}
+
+	for _, tt := range cases {
+		for _, route := range gatedReadRoutes() {
+			t.Run(tt.name+"/"+route.name, func(t *testing.T) {
+				cfg := map[string]string{
+					featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
+					sdkconfig.AppURL:               tt.setUp(t),
+				}
+				rr, reason := route.do(t, cfg)
+				if rr.Code != http.StatusOK {
+					t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
+				}
+				if reason != tt.wantReason {
+					t.Fatalf("reason = %q, want %q", reason, tt.wantReason)
+				}
+			})
+		}
+	}
+}
+
+// emptyAuthAPIJWKS serves the auth-api key-set path with no keys, so the source
+// ANSWERS rather than failing to fetch.
+func emptyAuthAPIJWKS(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/keys" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys":null}`))
+	}))
+	t.Cleanup(server.Close)
+	return server.URL + "/v1/keys"
+}
+
+// --- Grafana Cloud: auth-api holds the signing key ---------------------------
+//
+// A Grafana Cloud stack issues ID tokens but does not sign them, and serves
+// `{"keys":null}` at its own signing-keys endpoint. Verifying against that
+// endpoint alone resolved no `kid` for any caller, so every proxy route reported
+// identity-unavailable on every Cloud stack.
+
+// authAPIJWKS serves testSigningKey where auth-api publishes its key set.
+func authAPIJWKS(t *testing.T) string {
+	t.Helper()
+	body := jwksBody(testSigningKeyID, testSigningKey())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/keys" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL + "/v1/keys"
+}
+
+// cloudStack is a stack whose signing-keys endpoint answers exactly as a
+// measured Grafana Cloud stack does: 200, and a null key list.
+func cloudStack(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != auth.SigningKeysPath {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys":null}`))
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+func TestIdentityGate_CloudStackVerifiesAgainstAuthAPI(t *testing.T) {
+	withSigningKeysURL(t, authAPIJWKS(t))
+	withLister(t, singlePageLister())
+	withGuideLister(t, singlePageGuideLister())
+
+	cfg := map[string]string{
+		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
+		sdkconfig.AppURL:               cloudStack(t),
+	}
+
+	t.Run("custom-guide-repository", func(t *testing.T) {
+		rr, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
+		if rr.Code != http.StatusOK || !body.Capability.Available {
+			t.Fatalf("status = %d, available = %v, reason = %q", rr.Code, body.Capability.Available, body.Capability.Reason)
+		}
+	})
+	t.Run("completion-records/my", func(t *testing.T) {
+		rr, body := doMyCompletionsReq(t, completionRequestWithConfig(t, "/completion-records/my", "user:1", cfg))
+		if rr.Code != http.StatusOK || !body.Capability.Available {
+			t.Fatalf("status = %d, available = %v, reason = %q", rr.Code, body.Capability.Available, body.Capability.Reason)
+		}
+	})
+}
+
+// A wrong auth-api host would fail its fetch rather than answer empty. That must
+// not turn every proxy route into a hard 503 on a stack that answers: while any
+// signing-keys endpoint is reachable, an unresolvable `kid` stays the soft-200
+// refusal it was before auth-api was consulted at all. This is the Grafana Cloud
+// shape, so the envelope here reads the same as a forged token's; only the gate's
+// log line, carrying `auth-api: <cause>`, separates them.
+func TestIdentityGate_UnreachableAuthAPIWithAnAnsweringStackStaysSoft(t *testing.T) {
+	unreachable, _ := startJWKSServer(t)
+	unreachable.Close()
+	withSigningKeysURL(t, unreachable.URL+"/v1/keys")
+	withLister(t, singlePageLister())
+	withGuideLister(t, singlePageGuideLister())
+
+	cfg := map[string]string{
+		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
+		sdkconfig.AppURL:               cloudStack(t),
+	}
+
+	rr, body := doCustomGuideReq(t, customGuideRequestWithConfig(t, "/custom-guide-repository", "user:1", cfg))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
+	}
+	if body.Capability.Available || body.Capability.Reason != reasonIdentityUnavailable {
+		t.Fatalf("available = %v, reason = %q, want reason %q", body.Capability.Available, body.Capability.Reason, reasonIdentityUnavailable)
 	}
 }
 
@@ -531,9 +744,11 @@ func TestVerifyIDToken_KeySetRefreshBoundsRetiredKeyTrust(t *testing.T) {
 	validExp := time.Now().Add(time.Hour).Unix()
 	retiredToken := signIDToken(t, idToken{
 		sub: "user:1", exp: validExp, kid: "retired-key", typ: "jwt", key: retiredKey,
+		namespace: testNamespace,
 	})
 	activeToken := signIDToken(t, idToken{
 		sub: "user:1", exp: validExp, kid: "active-key", typ: "jwt", key: activeKey,
+		namespace: testNamespace,
 	})
 	cfg := map[string]string{sdkconfig.AppURL: server.URL}
 	app := newTestApp(t)
@@ -589,8 +804,8 @@ func TestVerifyIDToken_NewKeyAcceptedMidWindow(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	validExp := time.Now().Add(time.Hour).Unix()
-	firstToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "first-key", typ: "jwt", key: firstKey})
-	secondToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "second-key", typ: "jwt", key: secondKey})
+	firstToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "first-key", typ: "jwt", key: firstKey, namespace: testNamespace})
+	secondToken := signIDToken(t, idToken{sub: "user:1", exp: validExp, kid: "second-key", typ: "jwt", key: secondKey, namespace: testNamespace})
 	cfg := map[string]string{sdkconfig.AppURL: server.URL}
 	app := newTestApp(t)
 	verify := func(token string) identityStatus {
@@ -679,4 +894,138 @@ func TestVerifyIDToken_RebuiltWhenAppURLChanges(t *testing.T) {
 	if firstFetches.Load() != 1 || secondFetches.Load() != 1 {
 		t.Fatalf("fetches = (%d, %d), want (1, 1)", firstFetches.Load(), secondFetches.Load())
 	}
+}
+
+// --- The stack binding -------------------------------------------------------
+//
+// auth-api's key set is CELL-WIDE: every Grafana Cloud stack in a cell is signed
+// by the same keys, so from #1604 onwards a valid signature proves auth-api
+// issued the token and nothing about which stack it was issued FOR. Combined
+// with #1568 — `X-Grafana-Id` survives to the plugin whenever the authenticated
+// requester has no ID token of its own — a caller on stack B could otherwise
+// present their own genuine token from stack A and be served stack A's identity.
+// The `namespace` claim, bound to the trusted plugin-context namespace, is what
+// closes that.
+
+// makeIDTokenForNamespace signs a token that is valid in every respect except
+// that it was minted for the given namespace.
+func makeIDTokenForNamespace(t *testing.T, sub, namespace string) string {
+	t.Helper()
+	return signIDToken(t, idToken{
+		sub: sub, exp: time.Now().Add(time.Hour).Unix(), kid: testSigningKeyID,
+		typ: "jwt", key: testSigningKey(), namespace: namespace,
+	})
+}
+
+func TestVerifyIDToken_BindsTokenNamespaceToThePluginContext(t *testing.T) {
+	cases := []struct {
+		name string
+		// The namespace the token was minted for; "" omits the claim.
+		tokenNamespace string
+		// The server-derived namespace on the plugin context.
+		stackNamespace string
+		wantID         string
+		wantStatus     identityStatus
+	}{
+		{
+			name:           "token minted for this stack verifies",
+			tokenNamespace: testNamespace, stackNamespace: testNamespace,
+			wantID: "user:abc123", wantStatus: identityVerified,
+		},
+		{
+			name:           "genuine token from a sibling stack is rejected",
+			tokenNamespace: "stacks-2", stackNamespace: testNamespace,
+			wantStatus: identityRejected,
+		},
+		{
+			name:           "token carrying no namespace claim is rejected",
+			tokenNamespace: "", stackNamespace: testNamespace,
+			wantStatus: identityRejected,
+		},
+		{
+			// A deployment property, not a token fault: no re-auth populates a
+			// missing plugin-context namespace, so it must not take the status
+			// the write path defines as retryable.
+			name:           "no server-derived namespace is unverifiable, not rejected",
+			tokenNamespace: testNamespace, stackNamespace: "",
+			wantStatus: identityUnverifiable,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			r := identityRequestForNamespace(t,
+				makeIDTokenForNamespace(t, "user:abc123", tt.tokenNamespace),
+				testGrafanaConfig(), tt.stackNamespace)
+
+			id, status := newTestApp(t).deriveCompletionUserID(r)
+			if status != tt.wantStatus {
+				t.Fatalf("status = %v, want %v", status, tt.wantStatus)
+			}
+			if id != tt.wantID {
+				t.Fatalf("id = %q, want %q", id, tt.wantID)
+			}
+
+			// The catalogue layer takes the same gate: the binding cannot be
+			// bypassed by picking the route that needs no subject.
+			if got := newTestApp(t).validIDToken(r); got != tt.wantStatus {
+				t.Fatalf("validIDToken = %v, want %v", got, tt.wantStatus)
+			}
+		})
+	}
+}
+
+// The headline cell-wide case, end to end on the routes that serve per-user and
+// per-namespace data: the sibling stack's token is signed by the very key set
+// this plugin fetches, so only the binding can refuse it — and no data may be
+// served when it does.
+func TestIdentityGate_SiblingStackTokenServesNoData(t *testing.T) {
+	withSigningKeysURL(t, authAPIJWKS(t))
+	withLister(t, singlePageLister(
+		rec("user:abc123", "bundled", "guide-a", "Guide A", "interactive", "", "manual", "2026-07-20T14:02:11Z", 100)))
+	withGuideLister(t, singlePageGuideLister(guideEntry("fe-guide-1", "Guide one", "published", "guide")))
+
+	cfg := map[string]string{
+		featuretoggles.EnabledFeatures: pathfinderBackendAggregationToggle + "," + customGuideAggregationToggle,
+		sdkconfig.AppURL:               cloudStack(t),
+	}
+	siblingToken := makeIDTokenForNamespace(t, "user:abc123", "stacks-2")
+
+	withToken := func(r *http.Request) *http.Request {
+		r.Header.Set(backend.GrafanaUserSignInTokenHeaderName, siblingToken)
+		return r
+	}
+
+	t.Run("custom-guide-repository", func(t *testing.T) {
+		rr, body := doCustomGuideReq(t,
+			withToken(customGuideRequestWithConfig(t, "/custom-guide-repository", "user:abc123", cfg)))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
+		}
+		if body.Capability.Available || body.Capability.Reason != reasonIdentityUnavailable {
+			t.Fatalf("available = %v, reason = %q, want reason %q",
+				body.Capability.Available, body.Capability.Reason, reasonIdentityUnavailable)
+		}
+		if len(body.Guides) != 0 {
+			t.Fatalf("served %d catalogue guides to a sibling stack's token, want 0", len(body.Guides))
+		}
+	})
+
+	t.Run("completion-records/my", func(t *testing.T) {
+		rr, body := doMyCompletionsReq(t,
+			withToken(completionRequestWithConfig(t, "/completion-records/my", "user:abc123", cfg)))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
+		}
+		if body.Capability.Available || body.Capability.Reason != reasonIdentityUnavailable {
+			t.Fatalf("available = %v, reason = %q, want reason %q",
+				body.Capability.Available, body.Capability.Reason, reasonIdentityUnavailable)
+		}
+		if len(body.Completions) != 0 {
+			t.Fatalf("served %d completions to a sibling stack's token, want 0", len(body.Completions))
+		}
+		if body.UserID != "" {
+			t.Fatalf("echoed userId %q for a sibling stack's token, want none", body.UserID)
+		}
+	})
 }

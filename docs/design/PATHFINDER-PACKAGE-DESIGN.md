@@ -433,12 +433,17 @@ Metadata fields live in `manifest.json`, not in `content.json`. This keeps the b
 
 ### Namespace collision note
 
-Flat metadata fields share the top-level namespace with identity fields (`id`, `repository`), dependency fields (`depends`, `recommends`, etc.), and `targeting`. This is acceptable because:
+Flat metadata fields share the top-level namespace with identity fields (`id`, `repository`), dependency fields (`depends`, `recommends`, etc.), and `targeting`.
 
-- The field inventory is bounded and well-understood — drawn from established standards (Dublin Core, IEEE LOM, Debian)
-- Field names are specific and self-describing (`description`, `language`, `author` do not collide with `depends`, `provides`, `targeting`)
-- The `manifest.json` schema is validated by Zod, which catches any accidental field reuse at compile time
-- Future fields will be vetted against the existing namespace before adoption (see [design principle 6](#design-principles))
+**The top-level manifest namespace is deliberately open.** `ManifestJsonObjectSchema` is a `z.looseObject`, so any top-level key the schema does not name survives parsing, and `buildRepository` forwards it verbatim into that package's `repository.json` entry. `RepositoryEntrySchema` is loose for the same reason, so a forwarded key survives a `repository.json` round-trip. Extension metadata therefore costs no CLI code change and no release per field.
+
+Safety does not come from a bounded field inventory, and Zod no longer rejects or strips anything at the manifest top level. It comes from three narrower guarantees:
+
+- **Known fields keep their full validation.** Loosening affects unknown keys only; every named field is validated exactly as before, and a known field that fails validation still degrades the whole manifest rather than being silently accepted.
+- **Computed entry fields are refused, not overwritten.** `forwardExtensionFields` in `src/cli/commands/build-repository.ts` refuses any manifest key in `RESERVED_ENTRY_FIELDS`, emitting a warning and keeping the computed value. That set is _derived_ — `keys(RepositoryEntrySchema.shape)` minus `keys(ManifestJsonObjectSchema.shape)`, plus `__proto__` — so it stays correct on its own if either schema gains a field, rather than being hand-maintained. Today it evaluates to `path`, `title`, and `__proto__`. `path` and `title` are computed by the build (`path` from the package directory, `title` from `content.json`), so a manifest must not be able to rewrite the path the resolver fetches by.
+- **Named manifest fields are never forwarded generically.** Fields the builder maps by hand keep their existing mapping, and fields that deliberately do not appear in a repository entry (`id`, `schemaVersion`, `repository`, `language`) still do not.
+
+Future field names are deliberately **not** reserved. Promoting a forwarded extension key to a named, validated manifest field is the intended migration path: authors ship the key first, and a later schema version adopts it without a rename. Nested guide and block content is unaffected — permissiveness applies to top-level manifest metadata only.
 
 If the namespace ever becomes crowded (unlikely given the standards-aligned vocabulary), a future schema version could introduce grouping — but the current field set does not warrant it.
 
@@ -551,7 +556,7 @@ Until `build-index` is implemented, `index.json` continues to be maintained sepa
 
 For `content.json`: the existing `KNOWN_FIELDS._guide` applies unchanged. If `content.json` contains metadata/dependency/targeting fields (e.g., from a legacy single-file guide), they are accepted via `.passthrough()` but the canonical location is `manifest.json`.
 
-For `manifest.json`: a new `KNOWN_FIELDS._manifest` set includes `'schemaVersion'`, `'id'`, `'type'`, `'repository'`, `'milestones'`, `'description'`, `'language'`, `'category'`, `'author'`, `'startingLocation'`, `'depends'`, `'recommends'`, `'suggests'`, `'provides'`, `'conflicts'`, `'replaces'`, and `'targeting'`.
+For `manifest.json`: there is no `KNOWN_FIELDS` entry. The top-level manifest namespace is open by design, so unknown-field detection does not apply there — an unrecognized top-level key is extension metadata to forward, not a typo to warn about. See the [namespace collision note](#namespace-collision-note).
 
 ### Schema version
 

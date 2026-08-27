@@ -106,6 +106,24 @@ The constants directory is organized into specialized files that separate concer
 
 ---
 
+### `interactive-actions.ts` - Grafana-Driving Action Types
+
+**Purpose**: Identifies which interactive action types drive the live Grafana UI (as opposed to purely informational or navigational ones), for the full-screen -> sidebar handoff.
+
+**Key Exports**:
+
+- `GRAFANA_DRIVING_ACTIONS` - `ReadonlySet<string>` of `'highlight' | 'button' | 'formfill' | 'navigate' | 'hover'`
+
+**Used By**:
+
+- `src/components/docs-panel/utils/requires-grafana-ui.ts` - decides whole-guide surface eligibility (full screen vs sidebar) at launch
+- `src/global-state/panel-mode.ts` - `isGrafanaDrivingHandoffNeeded`, the shared gate predicate used by both `interactive-engine/interactive.hook.ts`'s `executeInteractiveAction` and `components/interactive-tutorial/interactive-step.tsx`'s `executeWithLazyScroll`
+- `src/components/interactive-tutorial/interactive-guided.tsx` - gates its own click-triggered handoff, keyed off its internal actions' `targetAction`
+
+**Why It Exists**: The launch-surface classifier and the interactive engine's click-triggered handoff gate both need to answer "does this action need the live Grafana UI behind it?" — a single shared set means the two can't drift into disagreeing on which actions count.
+
+---
+
 ### `editor-config.ts` - WYSIWYG Editor Configuration
 
 **Purpose**: Configuration constants specific to the WYSIWYG interactive guide editor (not used in runtime guide execution).

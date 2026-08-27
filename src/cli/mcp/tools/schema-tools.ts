@@ -1,79 +1,47 @@
 /**
- * `pathfinder_get_schema` — exposes the canonical Zod-derived JSON Schema for
- * Pathfinder authoring artifacts (guide, block, content, manifest, repository,
- * graph). Replaces the hand-maintained `guideSchemas` map that lived in
- * `pkg/plugin/mcp.go` (`get_guide_schema`) by wrapping the existing
- * `src/cli/commands/schema.ts` exports — so the TS Zod schema is now the
- * single source of truth for cross-language consumers.
+ * Contract: cli-routed
+ *
+ * Thin wrap of CLI `schema`. Agents copy `opts` from pathfinder_help. No
+ * artifact / sessionToken envelope — the runner is the whole tool.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { exportAllSchemas, exportSchema, listSchemas, SCHEMA_REGISTRY } from '../../commands/schema';
+import { runSchema, schemaSpec } from '../../commands/schema';
+import { parseCommandInput } from '../../contracts';
 import { renderMachineJson } from '../../utils/output';
+import { bindCommandInterface, validateCommandArgs } from '../lib/command-interface';
 import { readOnly } from './annotations';
 import { outcomeResult, textResult } from './result';
 
-const SCHEMA_NAMES = Object.keys(SCHEMA_REGISTRY);
-const SCHEMA_NAMES_LIST = SCHEMA_NAMES.join(', ');
-
 export function registerSchemaTools(server: McpServer): void {
+  bindCommandInterface('schema');
+
   server.registerTool(
     'pathfinder_get_schema',
     {
       description:
-        'Use this tool when an agent or downstream consumer needs the canonical JSON Schema for a Pathfinder authoring artifact (guide, block, content, manifest, repository, graph). Returns the Zod-derived JSON Schema with refinement notes — the same schema the CLI validator enforces. Read-only.',
+        'Use this tool when an agent or downstream consumer needs the canonical JSON Schema for a Pathfinder authoring artifact (guide, block, content, manifest, repository, graph). Call pathfinder_help({ command: "schema" }) for the `opts` interface. Returns the Zod-derived JSON Schema with refinement notes — the same schema the CLI validator enforces. Read-only.',
       annotations: readOnly('Get Pathfinder schema'),
       inputSchema: {
-        name: z
-          .string()
-          .optional()
-          .describe(
-            `Name of the schema to export. One of: ${SCHEMA_NAMES_LIST}. Omit and pass mode="all" to return every schema, or mode="list" to enumerate available names.`
-          ),
-        mode: z
-          .enum(['one', 'all', 'list'])
-          .optional()
-          .describe(
-            'Output mode. "one" (default when name is supplied) returns a single schema. "all" returns every schema keyed by name. "list" returns the registry summary (name + description) without payloads.'
-          ),
-        includeVersion: z
-          .boolean()
-          .optional()
-          .describe('Include x-schema-version metadata in returned schemas. Defaults to true.'),
+        opts: z
+          .record(z.string(), z.unknown())
+          .describe('Parameters keyed exactly as pathfinder_help({ command: "schema" }) returns them.'),
       },
     },
-    async ({ name, mode, includeVersion }) => {
-      const wantVersion = includeVersion !== false;
-      const resolvedMode = mode ?? (name ? 'one' : 'all');
-
-      if (resolvedMode === 'list') {
-        return textResult(renderMachineJson({ schemas: listSchemas() }));
+    async ({ opts }) => {
+      const rejected = validateCommandArgs('schema', opts);
+      if (rejected) {
+        return rejected;
       }
 
-      if (resolvedMode === 'all') {
-        return textResult(renderMachineJson({ schemas: exportAllSchemas(wantVersion), available: SCHEMA_NAMES }));
+      const parsed = parseCommandInput(schemaSpec, opts);
+      if (!parsed.ok) {
+        return outcomeResult(parsed.outcome);
       }
-
-      if (!name) {
-        return outcomeResult({
-          status: 'error',
-          code: 'MISSING_NAME',
-          message: `mode="one" requires a name. Available: ${SCHEMA_NAMES_LIST}.`,
-        });
-      }
-
-      const schema = exportSchema(name, wantVersion);
-      if (!schema) {
-        return outcomeResult({
-          status: 'error',
-          code: 'UNKNOWN_SCHEMA',
-          message: `Unknown schema "${name}". Available: ${SCHEMA_NAMES_LIST}.`,
-        });
-      }
-
-      return textResult(renderMachineJson({ name, schema }));
+      const outcome = runSchema(parsed.value);
+      return outcome.status === 'ok' ? textResult(renderMachineJson(outcome.data)) : outcomeResult(outcome);
     }
   );
 }

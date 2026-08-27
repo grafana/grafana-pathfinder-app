@@ -223,7 +223,7 @@ export function concurrentModification(expected: number, actual: number): Concur
     code: 'CONCURRENT_MODIFICATION',
     expected,
     actual,
-    message: `Session was modified by another writer (expected generation ${expected}, observed ${actual}). Re-fetch the session via pathfinder_inspect or pathfinder_list_blocks and retry the mutation against the current state.`,
+    message: `Session was modified by another writer (expected generation ${expected}, observed ${actual}). Re-fetch the session via pathfinder_inspect or pathfinder_read_session and retry the mutation against the current state.`,
   };
 }
 

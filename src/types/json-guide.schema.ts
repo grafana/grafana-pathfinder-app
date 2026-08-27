@@ -645,7 +645,7 @@ export const JsonChallengeBlockSchema = z.object({
     .enum(['coda', 'standard'])
     .optional()
     .describe(
-      "Execution model. 'standard' runs against the learner's own Grafana — successCriteria is any Pathfinder requirement (e.g. has-dashboard-named:Foo). 'coda' (default) runs in a Coda VM with a terminal — successCriteria is typically coda-exit-zero:<command>."
+      "Execution model. 'standard' runs against the learner's own Grafana — successCriteria is any Pathfinder requirement (e.g. has-dashboard-named:Foo). 'coda' runs in a Coda VM with a terminal — successCriteria is typically coda-exit-zero:<command>. The schema has no default: JSON that omits mode resolves to 'coda' at runtime, while the block editor seeds a new block with 'standard'. Set mode explicitly."
     ),
   title: z.string().min(1, 'Challenge title is required').describe('Short title shown above the brief'),
   brief: z.string().min(1, 'Challenge brief is required').describe('Markdown problem statement'),
@@ -826,14 +826,14 @@ const SnippetIdSchema = z
   .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Snippet ID must be kebab-case (lowercase letters, numbers, hyphens)');
 
 /**
- * Schema for snippet reference block. Resolves at parse time — never
- * reaches the renderer.
+ * Schema for snippet reference block. Resolves after validation and before
+ * render, so it never reaches the renderer.
  * @coupling Type: JsonSnippetRefBlock
  */
 export const JsonSnippetRefBlockSchema = z.object({
   type: z.literal('snippet-ref'),
   id: z.string().optional().describe('Stable identifier for this snippet-ref instance'),
-  snippetId: SnippetIdSchema.describe('Upstream snippet ID to resolve at parse time'),
+  snippetId: SnippetIdSchema.describe('Upstream snippet ID, resolved after validation and before render'),
   ...AuthorAnnotatedSchema.shape,
 });
 
@@ -1149,10 +1149,9 @@ export type InferredJsonQuizChoice = z.infer<typeof JsonQuizChoiceSchema>;
 
 /**
  * Non-block registry keys — nested shapes that are validated positionally
- * (`steps[]`, `choices[]`) or are not blocks at all (the guide root, the
- * package manifest).
+ * (`steps[]`, `choices[]`) or are not blocks at all (the guide root).
  */
-type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_manifest' | '_conditionalSectionConfig';
+type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_conditionalSectionConfig';
 
 /**
  * Known fields for each block type.
@@ -1340,26 +1339,6 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   ]),
   'grot-guide': new Set(['type', 'id', 'welcome', 'screens', 'authorNote']),
   'snippet-ref': new Set(['type', 'id', 'snippetId', 'authorNote']),
-  _manifest: new Set([
-    'schemaVersion',
-    'id',
-    'type',
-    'repository',
-    'milestones',
-    'description',
-    'language',
-    'category',
-    'author',
-    'startingLocation',
-    'depends',
-    'recommends',
-    'suggests',
-    'provides',
-    'conflicts',
-    'replaces',
-    'targeting',
-    'testEnvironment',
-  ]),
 } satisfies Record<JsonBlock['type'] | KnownFieldsMetaKey, ReadonlySet<string>>;
 
 /**

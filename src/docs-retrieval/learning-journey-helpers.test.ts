@@ -17,7 +17,6 @@ function milestone(number: number, overrides: Partial<Milestone> = {}): Mileston
   return {
     number,
     title: `Milestone ${number}`,
-    duration: '5-10 min',
     url: `backend-guide:milestone-${number}`,
     isActive: false,
     ...overrides,

@@ -23,14 +23,20 @@ import { getBackendSrv } from '@grafana/runtime';
 import { of } from 'rxjs';
 
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
+import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import type { JsonGuide } from '../types';
 import { hasManageableBackendGuides, useBackendGuides } from './useBackendGuides';
 
 const mockFetch = jest.fn();
 
+// `type` is deliberately not one of the CRD's three values: it proves the editor passes an inherited
+// type through rather than recognising a whitelist, and that an unrecognised type gets no stats stamp.
 const MANIFEST = {
   id: 'alerting-path',
   type: 'learning-journey',
+  // The CRD defaults `repository` on write, so a manifest read back off a resource always carries
+  // one. Modelling that is what keeps the byte-identical replay below honest.
+  repository: 'app-platform',
   milestones: [
     { id: 'alerting-intro', title: 'Intro' },
     { id: 'alerting-rules', title: 'Rules' },
@@ -103,6 +109,8 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
 
     const request = lastRequest();
     expect(request.method).toBe('PUT');
+    // Byte-identical: the derived manifest owns nothing on a metapackage cover page, so a save that
+    // changed no content replays the stored spec exactly.
     expect(request.data.spec).toEqual(resource.spec);
     expect(request.data.metadata).toEqual({
       name: 'alerting-path',
@@ -153,8 +161,11 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     });
 
     const { spec, metadata } = lastRequest().data;
-    // Inheriting would render this flat guide as the old path, with the old milestones.
-    expect(spec.manifest).toBeUndefined();
+    // Inheriting would render this flat guide as the old path, with the old milestones. It gets a
+    // freshly derived guide manifest instead — the point is that nothing comes from the old resource.
+    expect(spec.manifest.type).toBe('guide');
+    expect(spec.manifest.milestones).toBeUndefined();
+    expect(spec.manifest.id).toBeUndefined();
     // Inheriting would let the upload script's ownership guard pass on content it never wrote.
     expect(metadata.annotations).toBeUndefined();
     expect(metadata.labels).toBeUndefined();
@@ -248,7 +259,7 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(metadata.labels).toEqual({ tier: 'gold' });
   });
 
-  it('creates a brand-new guide with no manifest and no annotations', async () => {
+  it('creates a brand-new guide as a complete package, with no inherited annotations', async () => {
     const result = await renderLoaded([]);
 
     const guide = { id: 'fresh', title: 'Fresh guide', blocks: [{ id: 'b1', type: 'markdown', content: 'hi' }] };
@@ -261,11 +272,31 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     expect(request.data.spec).toEqual({
       id: 'fresh',
       title: 'Fresh guide',
-      schemaVersion: '1.0',
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       blocks: guide.blocks,
       status: 'draft',
+      manifest: {
+        type: 'guide',
+        repository: 'app-platform',
+        additionalFields: {
+          stats: { version: 1, blockCount: 1, sectionCount: 0, completableBlockCount: 0, finalCompletablePosition: 0 },
+        },
+      },
     });
     expect(request.data.metadata).toEqual({ name: 'fresh', namespace: 'stacks-1' });
+  });
+
+  it('stamps the schema version the editor emits, not a stale literal', async () => {
+    const result = await renderLoaded([]);
+
+    // getGuide() never returns a schemaVersion, so every editor save takes the fallback.
+    const guide = { id: 'fresh', title: 'Fresh guide', blocks: [] };
+    await act(async () => {
+      await result.current.saveGuide(guide as JsonGuide);
+    });
+
+    expect(lastRequest().data.spec.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(lastRequest().data.spec.schemaVersion).not.toBe('1.0');
   });
 
   it('does not borrow a manifest from an unrelated resource in the loaded list', async () => {
@@ -277,7 +308,124 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
       await result.current.saveGuide(guide as JsonGuide);
     });
 
-    expect(lastRequest().data.spec.manifest).toBeUndefined();
+    // A freshly derived guide manifest, carrying nothing from the path in the list.
+    const { manifest } = lastRequest().data.spec;
+    expect(manifest.type).toBe('guide');
+    expect(manifest.milestones).toBeUndefined();
+    expect(manifest.id).toBeUndefined();
+  });
+});
+
+describe('saveGuide — startingLocation provenance', () => {
+  const highlight = (requirements?: string[]) => ({
+    id: 'b2',
+    type: 'interactive',
+    action: 'highlight',
+    reftarget: 'a[href="/explore"]',
+    content: 'Click it',
+    ...(requirements ? { requirements } : {}),
+  });
+
+  /** A plain guide as some other tool left it on the backend. */
+  function uploadedGuide(manifest: Record<string, unknown>, blocks: unknown[]) {
+    return {
+      metadata: { name: 'my-guide', namespace: 'stacks-1', uid: 'uid-2', resourceVersion: '7' },
+      spec: {
+        id: 'my-guide',
+        title: 'My guide',
+        schemaVersion: '1.0',
+        blocks,
+        status: 'draft' as const,
+        manifest,
+      },
+    };
+  }
+
+  function editedTitle(resource: ReturnType<typeof uploadedGuide>): JsonGuide {
+    return {
+      id: resource.spec.id,
+      title: 'My guide, renamed',
+      schemaVersion: resource.spec.schemaVersion,
+      blocks: resource.spec.blocks,
+    } as JsonGuide;
+  }
+
+  // The data-loss case: an uploaded package declares its own starting location,
+  // nothing in the content derives one, and someone opens it in the editor to fix
+  // a typo in the title. The metadata has to survive that.
+  it('keeps an uploaded startingLocation through a title-only edit', async () => {
+    const resource = uploadedGuide(
+      { type: 'guide', repository: 'app-platform', additionalFields: { startingLocation: '/d/abc/uploaded' } },
+      [{ id: 'b1', type: 'markdown', content: 'Welcome' }]
+    );
+    const result = await renderLoaded([resource as never]);
+
+    await act(async () => {
+      await result.current.saveGuide(editedTitle(resource), 'my-guide', resource.metadata, 'draft');
+    });
+
+    const { spec } = lastRequest().data;
+    expect(spec.title).toBe('My guide, renamed');
+    expect(spec.manifest.additionalFields.startingLocation).toBe('/d/abc/uploaded');
+  });
+
+  it('does not overwrite an uploaded startingLocation with one the content declares', async () => {
+    const resource = uploadedGuide(
+      { type: 'guide', repository: 'app-platform', additionalFields: { startingLocation: '/d/abc/uploaded' } },
+      [highlight(['on-page:/explore'])]
+    );
+    const result = await renderLoaded([resource as never]);
+
+    await act(async () => {
+      await result.current.saveGuide(editedTitle(resource), 'my-guide', resource.metadata, 'draft');
+    });
+
+    expect(lastRequest().data.spec.manifest.additionalFields.startingLocation).toBe('/d/abc/uploaded');
+  });
+
+  // The other half of the same rule: what the editor derived, the editor clears.
+  it('clears its own startingLocation when the author removes the requirement', async () => {
+    const resource = uploadedGuide(
+      { type: 'guide', repository: 'app-platform', additionalFields: { startingLocation: '/explore' } },
+      [highlight(['on-page:/explore'])]
+    );
+    const result = await renderLoaded([resource as never]);
+
+    const withoutRequirement = {
+      id: 'my-guide',
+      title: 'My guide',
+      schemaVersion: '1.0',
+      blocks: [highlight()],
+    } as unknown as JsonGuide;
+
+    await act(async () => {
+      await result.current.saveGuide(withoutRequirement, 'my-guide', resource.metadata, 'draft');
+    });
+
+    const { additionalFields } = lastRequest().data.spec.manifest;
+    expect(additionalFields.startingLocation).toBeUndefined();
+    expect(additionalFields.stats).toBeDefined();
+  });
+
+  it('updates its own startingLocation when the author moves the requirement', async () => {
+    const resource = uploadedGuide(
+      { type: 'guide', repository: 'app-platform', additionalFields: { startingLocation: '/explore' } },
+      [highlight(['on-page:/explore'])]
+    );
+    const result = await renderLoaded([resource as never]);
+
+    const moved = {
+      id: 'my-guide',
+      title: 'My guide',
+      schemaVersion: '1.0',
+      blocks: [highlight(['on-page:/alerting/list'])],
+    } as unknown as JsonGuide;
+
+    await act(async () => {
+      await result.current.saveGuide(moved, 'my-guide', resource.metadata, 'draft');
+    });
+
+    expect(lastRequest().data.spec.manifest.additionalFields.startingLocation).toBe('/alerting/list');
   });
 });
 
