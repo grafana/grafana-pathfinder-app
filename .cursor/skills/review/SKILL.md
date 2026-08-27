@@ -56,11 +56,15 @@ The incremental review is the **default** on any re-review, not an opportunistic
 3. Activate the union of concerns owning prior blockers and concerns routed by the incremental diff.
 4. Do not repeat resolved optional findings unless the new diff reintroduces them.
 
+A prior blocking finding that can no longer be resolved to code at the current head — its referenced code was restructured or removed — is **unresolved**, never silently resolved. Re-verify the underlying invariant against the new shape, then either restate the blocker against the new code or record why the restructuring resolved it. A blocker whose anchor vanished without either outcome is the failure this step closes.
+
 Fall back to a full review on exactly two conditions: the prior head is not an ancestor of the current head, or the marker is absent or malformed. An incremental diff that crosses an unmapped concern boundary is **not** a fallback trigger — activate the extra concern inside the incremental review. A review that ended `incomplete` emits no marker, so it can never seed an incremental round.
 
 ### Round
 
-Read `round` from the marker and review at `round + 1`. When no marker exists, derive the round as one plus the count of **all** prior review submissions on the PR, regardless of author, so a hand-written prose round still advances the ratchet rather than resetting it. The marker is looked up on the same reviewer's own prior review; the round is counted across every reviewer, because the budget belongs to the PR rather than to one reviewer.
+Read `round` from the marker and review at `round + 1` **only when the marker reports `version: 2`**. A version 1 marker carries no round: the parser normalizes it to `round: 1` as an artifact of the shared field set, not as evidence, and preserves `version: 1` so a caller can tell. Treat it exactly as an absent marker for this purpose.
+
+When no marker exists, or the marker is version 1, derive the round as one plus the count of **all** prior review submissions on the PR, regardless of author, so a hand-written prose round still advances the ratchet rather than resetting it. The marker is looked up on the same reviewer's own prior review; the round is counted across every reviewer, because the budget belongs to the PR rather than to one reviewer.
 
 ### Monotonicity
 
@@ -290,7 +294,7 @@ The synthesizer must:
 - assign every retained finding a stable ID and final author disposition: `blocking`, `follow_up`, `suggestion`, or `nit`
 - treat an unanswered question as `blocking` only when the answer is required to merge; otherwise render it as a `suggestion`
 - state a complete merge contract: fixing every blocking ID must make the reviewed head mergeable, subject only to risks introduced by later commits
-- carry forward each unresolved entry from the marker's `deferred` list as a `follow_up`, and record what this round examined and cleared in the report's `cleared` array
+- carry forward each unresolved entry from the marker's `deferred` list as a `follow_up`, and set the report's `cleared` array to the union of the prior marker's `cleared` entries and what this round examined and cleared, deduplicated by claim. Both lists accumulate for the life of the PR; a clearance an earlier round wrote stays readable to every later round. When the union exceeds 12 entries or the marker exceeds 4000 characters, prune the least load-bearing entries rather than dropping the earlier rounds wholesale
 
 ### Do not manufacture blockers from the review's own effects
 
@@ -367,7 +371,7 @@ Verdict: Request Changes
 
 The PR URL must be complete and clickable. `Purpose` is derived from the PR title, contains no newline, and is capped at 120 characters. `Verdict` is `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Nothing follows the count line.
 
-Set the report's `round` and `cleared` fields so the emitted marker carries the ratchet forward. The renderer throws rather than truncating an oversized marker, so prune the least load-bearing `cleared` claims instead of dropping them silently.
+Set the report's `round` and `cleared` fields so the emitted marker carries the ratchet forward. `cleared` is the accumulated union across every round of this PR, not just this round's clearances. The renderer throws rather than truncating an oversized marker, so prune the least load-bearing `cleared` claims instead of dropping them silently.
 
 ## 10. Pattern catalog
 

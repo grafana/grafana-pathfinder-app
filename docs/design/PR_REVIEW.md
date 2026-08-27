@@ -327,7 +327,7 @@ The synthesizer emits this `ReviewReport` object after all supplemental checks f
 | `reviewed_head` | string | Full 40-character commit SHA                               |
 | `findings`      | array  | Retained, verified, deduplicated author-facing findings    |
 | `round`         | number | Optional; defaults to 1. Integer from 1 to 100             |
-| `cleared`       | array  | Optional; claims this round examined and cleared           |
+| `cleared`       | array  | Optional; every claim cleared so far on this PR            |
 | `assessment`    | object | Optional; defaults to complete. See Incomplete assessment  |
 
 Each `findings` entry contains:
@@ -341,9 +341,9 @@ Each `findings` entry contains:
 - `suggested_action` — the smallest change that resolves the finding
 - `reversibility` — optional; one of the four reversibility values. The renderer surfaces only `partially_reversible` and `irreversible_without_cleanup`, because only those change what the author must weigh
 - `owner` — required on a `follow_up`; `maintainer | author`
-- `proposed_issue` — required on a `follow_up`; `{ title, body }`. The title renders inline and is capped at 120 characters; the body renders in a fenced block so the invoker can copy it straight into an issue. Neither may embed a review state marker
+- `proposed_issue` — required on a `follow_up`; `{ title, body }`. The title renders inline and is capped at 120 characters; the body renders in a fenced block so the invoker can copy it straight into an issue and is capped at 2000 characters, so 20 maximum-length follow-ups stay well inside GitHub's 65536-character review body limit. Neither may embed a review state marker
 
-Each `cleared` entry contains `claim` (≤ 200 characters), `concern_id`, and `reason` (≤ 300 characters): a claim this round examined and found sound, so a later round cannot silently reverse it. At most 12 entries. The renderer throws rather than truncating, so pruning is a synthesizer decision.
+Each `cleared` entry contains `claim` (≤ 200 characters), `concern_id`, and `reason` (≤ 300 characters): a claim a round examined and found sound, so a later round cannot silently reverse it. The array accumulates — the synthesizer unions the prior marker's entries with this round's, deduplicated by claim, exactly as it carries `deferred` forward. At most 12 entries; the renderer throws rather than truncating, so pruning the least load-bearing entries is a synthesizer decision. No free-text marker field may embed `<!-- pathfinder-review-state:` or `-->`; the renderer rejects both rather than escaping them, because either would break the hidden comment or forge a second one.
 
 Follow-ups render in their own `## Follow-ups` section between the merge contract and `## Suggestions`, under the fixed line `These are tracked separately and do not block merge.` They count toward `Approve with Minor` and never toward `Request Changes`.
 
@@ -382,7 +382,7 @@ Immediately before the operator recap, a **complete** review emits a hidden `pat
 
 Only `review-report.mjs --parse-state` may consume the marker, and only from that trailing position: the parser accepts it solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. It accepts either LF or CRLF line endings, because a body edited through the GitHub web UI comes back CRLF-encoded. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental path.
 
-**Version 1 compatibility window.** The parser also accepts a version 1 marker under a three-count recap, normalizing it to the version 2 field set with `round: 1` and empty `deferred` and `cleared`, and preserving `version: 1` so a caller can tell. Open PRs carry v1 markers, so this stays for at least one release cycle. The compatibility surface is exactly two places — the recap's optional follow-up count group and the parser's version branch. Do not add compatibility shims anywhere else.
+**Version 1 compatibility window.** The parser also accepts a version 1 marker under a three-count recap, normalizing it to the version 2 field set with `round: 1` and empty `deferred` and `cleared`, and preserving `version: 1` so a caller can tell. That `round: 1` is a field-set artifact, not evidence: a caller reading a version 1 marker derives the round from the prior-review count instead, exactly as it would with no marker at all. Open PRs carry v1 markers, so this stays for at least one release cycle. The compatibility surface is exactly two places — the recap's optional follow-up count group and the parser's version branch. Do not add compatibility shims anywhere else.
 
 An **incomplete** review emits no marker at all. Its coverage hole is exactly what an incremental baseline must not inherit, so every later review of that PR falls back to a full review.
 

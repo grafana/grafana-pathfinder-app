@@ -43,8 +43,10 @@ const MAX_DEFERRED = 20;
 const MAX_CLAIM = 200;
 const MAX_CLEARED_REASON = 300;
 const MAX_PROPOSED_ISSUE_TITLE = 120;
+const MAX_PROPOSED_ISSUE_BODY = 2000;
 const MAX_MARKER = 4000;
 const STATE_MARKER_TOKEN = '<!-- pathfinder-review-state:';
+const COMMENT_TERMINATOR = '-->';
 const STATE_MARKER = /^<!-- pathfinder-review-state:(\{.+\}) -->$/;
 const STATE_MARKER_PREFIX = /^<!-- pathfinder-review-state:/;
 const RECAP_SHAPE = [
@@ -68,7 +70,11 @@ function completeVerdict(blocking, followUps, suggestions, nits) {
 
 function isCapped(value, max) {
   return (
-    typeof value === 'string' && value.trim().length > 0 && value.length <= max && !value.includes(STATE_MARKER_TOKEN)
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    value.length <= max &&
+    !value.includes(STATE_MARKER_TOKEN) &&
+    !value.includes(COMMENT_TERMINATOR)
   );
 }
 
@@ -243,13 +249,20 @@ function validateFollowUp(finding) {
     throw new Error('a follow-up finding must carry a proposed_issue with a title and a body');
   }
   if (typeof proposed.title !== 'string' || !isCapped(oneLine(proposed.title), MAX_PROPOSED_ISSUE_TITLE)) {
-    throw new Error(`a proposed issue title must be one line of at most ${MAX_PROPOSED_ISSUE_TITLE} characters`);
+    throw new Error(
+      `a proposed issue title must be one line of at most ${MAX_PROPOSED_ISSUE_TITLE} characters and must not embed an HTML comment boundary`
+    );
   }
   if (typeof proposed.body !== 'string' || proposed.body.trim().length === 0) {
     throw new Error('a follow-up finding must carry a proposed_issue with a title and a body');
   }
   if (proposed.body.includes(STATE_MARKER_TOKEN)) {
     throw new Error('a proposed issue body must not embed a review state marker');
+  }
+  if (proposed.body.length > MAX_PROPOSED_ISSUE_BODY) {
+    throw new Error(
+      `a proposed issue body must be at most ${MAX_PROPOSED_ISSUE_BODY} characters; link the detail rather than inlining it`
+    );
   }
 }
 
@@ -268,10 +281,14 @@ function readCleared(report) {
     const claim = typeof entry.claim === 'string' ? oneLine(entry.claim) : '';
     const reason = typeof entry.reason === 'string' ? oneLine(entry.reason) : '';
     if (!isCapped(claim, MAX_CLAIM)) {
-      throw new Error(`a cleared claim must be one line of at most ${MAX_CLAIM} characters`);
+      throw new Error(
+        `a cleared claim must be one line of at most ${MAX_CLAIM} characters and must not embed an HTML comment boundary`
+      );
     }
     if (!isCapped(reason, MAX_CLEARED_REASON)) {
-      throw new Error(`a cleared reason must be one line of at most ${MAX_CLEARED_REASON} characters`);
+      throw new Error(
+        `a cleared reason must be one line of at most ${MAX_CLEARED_REASON} characters and must not embed an HTML comment boundary`
+      );
     }
     return { claim, concern_id: entry.concern_id, reason };
   });
