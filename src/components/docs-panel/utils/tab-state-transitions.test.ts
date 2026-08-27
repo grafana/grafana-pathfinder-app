@@ -1,5 +1,10 @@
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
-import { closeTabState, pruneGatedTabState, type TabStateSnapshot } from './tab-state-transitions';
+import {
+  closeTabState,
+  projectPersistedTabs,
+  pruneGatedTabState,
+  type TabStateSnapshot,
+} from './tab-state-transitions';
 
 function tab(id: string, type: LearningJourneyTab['type'] = 'docs'): LearningJourneyTab {
   return {
@@ -177,4 +182,86 @@ describe('pruneGatedTabState', () => {
     expect(state.tabs[2]).toBe(guide);
     expect(result.tabs[1]).toBe(guide);
   });
+});
+
+describe('projectPersistedTabs', () => {
+  it('projects only persisted fields in input order without mutating runtime state', () => {
+    const packageInfo = { packageId: 'package-1', packageManifest: { id: 'package-1' } };
+    const content = {
+      content: '{}',
+      metadata: { title: 'Guide one' },
+      type: 'learning-journey' as const,
+      url: 'https://example.com/guide/milestone-2',
+      lastFetched: '2026-08-27T00:00:00.000Z',
+    };
+    const guide: LearningJourneyTab = {
+      ...tab('guide-1', 'learning-journey'),
+      title: 'Guide one',
+      baseUrl: 'https://example.com/guide',
+      currentUrl: content.url,
+      packageInfo,
+      content,
+      isLoading: true,
+      error: 'runtime-only',
+      pathContext: {
+        learningJourney: {
+          currentMilestone: 1,
+          totalMilestones: 1,
+          milestones: [],
+          baseUrl: 'https://example.com/guide',
+        },
+      },
+      pendingAlignment: {
+        startingLocation: '/connections',
+        currentPath: '/explore',
+        launchSource: 'home_page',
+        decidedAt: 123,
+      },
+    };
+    const docs = { ...tab('docs-1'), title: 'Docs one', baseUrl: 'https://example.com/docs' };
+    const tabs = [recommendations, guide, docs];
+
+    const result = projectPersistedTabs(tabs);
+
+    expect(result).toEqual([
+      {
+        id: guide.id,
+        title: guide.title,
+        baseUrl: guide.baseUrl,
+        currentUrl: guide.currentUrl,
+        type: guide.type,
+        packageInfo,
+      },
+      {
+        id: docs.id,
+        title: docs.title,
+        baseUrl: docs.baseUrl,
+        currentUrl: docs.currentUrl,
+        type: docs.type,
+        packageInfo: undefined,
+      },
+    ]);
+    const persistedGuide = result[0];
+    expect(persistedGuide).toBeDefined();
+    if (!persistedGuide) {
+      throw new Error('Expected the guide projection');
+    }
+    expect(persistedGuide.packageInfo).toBe(packageInfo);
+    expect(Object.keys(persistedGuide).sort()).toEqual(['baseUrl', 'currentUrl', 'id', 'packageInfo', 'title', 'type']);
+    expect(persistedGuide).not.toHaveProperty('content');
+    expect(persistedGuide).not.toHaveProperty('isLoading');
+    expect(persistedGuide).not.toHaveProperty('error');
+    expect(persistedGuide).not.toHaveProperty('pathContext');
+    expect(persistedGuide).not.toHaveProperty('pendingAlignment');
+    expect(tabs).toEqual([recommendations, guide, docs]);
+    expect(guide.content).toBe(content);
+    expect(guide.packageInfo).toBe(packageInfo);
+  });
+
+  it.each([{ tabs: [] }, { tabs: [recommendations] }])(
+    'returns an empty array for non-persistable input %#',
+    ({ tabs }) => {
+      expect(projectPersistedTabs(tabs)).toEqual([]);
+    }
+  );
 });
