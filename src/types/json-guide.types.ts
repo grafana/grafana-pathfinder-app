@@ -907,7 +907,6 @@ export function isMarkdownBlock(block: JsonBlock): block is JsonMarkdownBlock {
   return block.type === 'markdown';
 }
 
-/** Type guard for JsonDividerBlock. */
 export function isDividerBlock(block: JsonBlock): block is JsonDividerBlock {
   return block.type === 'divider';
 }

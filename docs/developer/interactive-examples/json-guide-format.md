@@ -66,7 +66,7 @@ The primary block type for formatted text content.
 }
 ```
 
-#### Divider Block
+#### Divider block
 
 Adds a semantic horizontal separator with standard guide spacing. Divider blocks have no content fields.
 

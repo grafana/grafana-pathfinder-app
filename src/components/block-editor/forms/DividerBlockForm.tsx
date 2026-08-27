@@ -1,5 +1,3 @@
-/** Form for a content-free divider block. */
-
 import React, { useCallback } from 'react';
 import { Button, useStyles2 } from '@grafana/ui';
 
