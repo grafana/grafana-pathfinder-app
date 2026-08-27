@@ -1,4 +1,4 @@
-import type { LearningJourneyTab } from '../../../types/content-panel.types';
+import type { LearningJourneyTab, PersistedTabData } from '../../../types/content-panel.types';
 import type { TabGates } from './tab-gates';
 import { getGuideStripTabs, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
 
@@ -54,4 +54,17 @@ export function pruneGatedTabState(
 
   const activeTabId = tabs.some((tab) => tab.id === state.activeTabId) ? state.activeTabId : RECOMMENDATIONS_TAB_ID;
   return { tabs, activeTabId, changed: true };
+}
+
+export function projectPersistedTabs(tabs: LearningJourneyTab[]): PersistedTabData[] {
+  return tabs
+    .filter((tab) => tab.type !== 'recommendations')
+    .map((tab) => ({
+      id: tab.id,
+      title: tab.title,
+      baseUrl: tab.baseUrl,
+      currentUrl: tab.currentUrl,
+      type: tab.type,
+      packageInfo: tab.packageInfo,
+    }));
 }

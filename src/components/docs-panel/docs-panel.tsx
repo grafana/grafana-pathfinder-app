@@ -99,6 +99,7 @@ import {
   didGateClose,
   closeTabState,
   pruneGatedTabState,
+  projectPersistedTabs,
   type TabGates,
 } from './utils';
 import { DEFAULT_GUIDE_TITLE } from '../block-editor/editor-chrome-status';
@@ -122,12 +123,7 @@ import {
 } from './hooks';
 
 // Import centralized types
-import {
-  LearningJourneyTab,
-  PersistedTabData,
-  CombinedPanelState,
-  PackageOpenInfo,
-} from '../../types/content-panel.types';
+import { LearningJourneyTab, CombinedPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
 import type { RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
@@ -371,19 +367,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   private async writeTabsToStorage(): Promise<void> {
     try {
-      // Save user-opened tabs (recommendations home is always present and not persisted)
-      const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.type !== 'recommendations')
-        .map((tab) => ({
-          id: tab.id,
-          title: tab.title,
-          baseUrl: tab.baseUrl,
-          currentUrl: tab.currentUrl,
-          type: tab.type,
-          packageInfo: tab.packageInfo,
-        }));
-
-      // Save both tabs and active tab
+      const tabsToSave = projectPersistedTabs(this.state.tabs);
       await Promise.all([tabStorage.setTabs(tabsToSave), tabStorage.setActiveTab(this.state.activeTabId)]);
     } catch (error) {
       logger.error('Failed to save tabs to storage', { error });
