@@ -2,10 +2,15 @@
  * `pathfinder-cli inspect <dir> [--block <id>] [--at <jsonpath>]` — read-only
  * view of a package. The CLI's "describe state for an agent without
  * re-injecting the schema" tool.
+ *
+ * The addressing parameter used to be named twice — `block` on the wire, `blockId` in
+ * the runner's interface — with both call sites renaming it by hand. The schema names
+ * it once.
  */
 
-import { Command, Option } from 'commander';
+import { z } from 'zod';
 
+import { defineCommand } from '../contracts';
 import { isContainerBlockType, type BlockType } from '../utils/block-registry';
 import {
   buildChildrenTree,
@@ -18,33 +23,23 @@ import {
   walkBlocks,
   type TreeNode,
 } from '../utils/package-io';
-import { issueToOutcome, printOutcome, readOutputOptions, renderError, type CommandOutcome } from '../utils/output';
+import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 import type { JsonBlock } from '../../types/json-guide.types';
 
-export const inspectCommand = new Command('inspect')
-  .description('Show the current state of a package (read-only)')
-  .argument('<dir>', 'package directory')
-  .addOption(new Option('--block <id>', 'Show details for a single block by id'))
-  .addOption(
-    new Option(
-      '--at <jsonpath>',
-      'Show the block (or enumerate the array) at a JSONPath (e.g., blocks, blocks[2], blocks[2].blocks)'
-    )
-  )
-  .action(async function (this: Command, dir: string) {
-    const opts = this.opts() as { block?: string; at?: string };
-    const output = readOutputOptions(this);
-    const outcome = runInspect({ dir, blockId: opts.block, at: opts.at });
-    process.exit(printOutcome(outcome, output));
-  });
+export const InspectCommand = z.object({
+  dir: z.string().describe('package directory').meta({ role: 'io' }),
+  block: z.string().optional().describe('Show details for a single block by id').meta({ role: 'addressing' }),
+  at: z
+    .string()
+    .optional()
+    .describe('Show the block (or enumerate the array) at a JSONPath (e.g., blocks, blocks[2], blocks[2].blocks)')
+    .meta({ role: 'addressing' }),
+});
 
-interface InspectArgs {
-  dir: string;
-  blockId?: string;
-  at?: string;
-}
+export type InspectInput = z.output<typeof InspectCommand>;
 
-export function runInspect(args: InspectArgs): CommandOutcome {
+export function runInspect(args: InspectInput): CommandOutcome {
+  const blockId = args.block;
   let state;
   try {
     state = readPackage(args.dir);
@@ -55,13 +50,13 @@ export function runInspect(args: InspectArgs): CommandOutcome {
     return { status: 'error', code: 'NOT_FOUND', message: renderError(err) };
   }
 
-  if (args.blockId) {
-    const block = findBlockById(state.content, args.blockId);
+  if (blockId) {
+    const block = findBlockById(state.content, blockId);
     if (!block) {
       return {
         status: 'error',
         code: 'BLOCK_NOT_FOUND',
-        message: `Block "${args.blockId}" not found in ${args.dir}`,
+        message: `Block "${blockId}" not found in ${args.dir}`,
         data: { availableIds: Array.from(collectAllIds(state.content)) },
       };
     }
@@ -320,3 +315,10 @@ function resolveJsonPath(rootBlocks: JsonBlock[], jsonPath: string): ResolvedPat
 
   return current;
 }
+
+export const inspectSpec = defineCommand({
+  name: 'inspect',
+  summary: 'Show the current state of a package (read-only)',
+  schema: InspectCommand,
+  run: runInspect,
+});

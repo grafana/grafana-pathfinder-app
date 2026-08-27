@@ -91,8 +91,8 @@ const AUTHORING_CONTEXT = {
   },
   interfaceContract: {
     parameters: [
-      "JSON in, always. pathfinder_help({ command }) returns the parameter interface for that tool's `opts`. It is a convenience projection of the CLI option surface into the JSON shape the tool accepts — it is not CLI syntax, and you never build a command line.",
-      'Names are camelCase (`--if-absent` → `ifAbsent`). Values are JSON: boolean flags become booleans (`list: true`), repeatable flags become arrays. Never send `--flag` names.',
+      "JSON in, always. pathfinder_help({ command }) returns the parameter interface for that tool's `opts`. It is the command's own schema rendered as JSON.",
+      'Parameter names are camelCase (e.g., `ifAbsent`, `showMe`, `includeVersion`). Values are JSON: booleans are `true`/`false`, repeatables are arrays, enums are strings.',
       'Positional CLI arguments are republished as ordinary named parameters, so positional order never matters to you.',
       'When help returns `subcommands`, pass your chosen value in `opts` and call help again with that value as `subcommand` to get the full per-subcommand surface.',
       'Parameters a tool owns itself, or cannot honor, are withheld from help and rejected as UNSUPPORTED_PARAMETER. The `exposed` list on that error is authoritative — read it rather than guessing.',
@@ -103,7 +103,7 @@ const AUTHORING_CONTEXT = {
       '`warnings` are advisory and non-blocking (composition nudges, unverified selectors, normalized input). They do not fail the call, but they are the CLI telling you the guide will be worse if you ignore them.',
       '`data` is the stable machine payload and `details` is display text — read ids and paths from `data`.',
       'Mutation acks add a `summary` tree ({path, id, type, hint?, children?}). Navigate and address blocks from it instead of re-reading the artifact.',
-      'Messages come from the CLI, so they name its flags (`--id`, `--parent`, `--help`). Read `--some-flag` as the `someFlag` parameter in `opts`, and ignore any suggestion to run a command — you call tools, not a shell. Withheld parameters are the exception: if a message names one, the `exposed` list from a rejection is authoritative.',
+      'Error messages may reference CLI flag names like `--parent` or `--show-me` for human readers. Map these to camelCase parameter names (`parent`, `showMe`) when reading the message. Ignore any suggestion to run a command — you call tools, not a shell. When a message mentions a withheld parameter, the `exposed` list from UNSUPPORTED_PARAMETER is authoritative.',
     ],
   },
   rules: [

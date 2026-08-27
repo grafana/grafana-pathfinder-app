@@ -27,7 +27,7 @@ import {
   findRepositoryEntry,
   type RepositoryClientError,
   type RepositoryPackage,
-} from '../lib/repository-client';
+} from '../../utils/repository-client';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { renderMachineJson } from '../../utils/output';
 import { readOnly } from './annotations';
