@@ -78,7 +78,7 @@ A late blocker records `late_blocker_reason`. When it contradicts a `cleared` en
 
 ### Deferred findings are not re-litigated
 
-An entry in the marker's `deferred` list is never raised as a blocker on a later round of the same PR unless the diff since then made it reachable. Carry it forward as a `follow_up` while it stays unresolved, so it remains visible and stays in `deferred`.
+An entry in the marker's `deferred` list is never raised as a blocker on a later round of the same PR unless the diff since then made it reachable. Carry it forward as a `follow_up` only while it stays unresolved, so it remains visible and stays in `deferred`. Once the author fixes it, it leaves both — verify it against the current head like any other carried entry, and drop it. A `deferred` list that only grows would keep re-rendering resolved work, and would eventually exceed the 20-follow-up cap and render nothing at all.
 
 **`deferred` and `cleared` are honored only from this reviewer's own prior review.** They are the ratchet's first _suppressive_ state — `deferred` stops a later round raising a blocker, and `cleared` imposes an evidentiary burden before re-raising a claim — where version 1's `blocking_findings` could only add work. `--parse-state` validates shape and size caps, never provenance, so identity is this phase's precondition rather than something the parser establishes. A shape-valid marker found in any other author's review body, including a `COMMENT` review, is treated as absent: ignore it rather than merging it, and derive the round from the author-agnostic prior-review count above. Counting rounds across every reviewer and reading state from one reviewer are separate rules; do not let enumerating reviews for the former turn into reading a marker for the latter.
 
@@ -296,7 +296,8 @@ The synthesizer must:
 - assign every retained finding a stable ID and final author disposition: `blocking`, `follow_up`, `suggestion`, or `nit`
 - treat an unanswered question as `blocking` only when the answer is required to merge; otherwise render it as a `suggestion`
 - state a complete merge contract: fixing every blocking ID must make the reviewed head mergeable, subject only to risks introduced by later commits
-- carry forward each unresolved entry from the marker's `deferred` list as a `follow_up`, and set the report's `cleared` array to the union of the prior marker's `cleared` entries and what this round examined and cleared, deduplicated by claim. Both lists accumulate for the life of the PR; a clearance an earlier round wrote stays readable to every later round. When the union exceeds 12 entries or the marker exceeds 4000 characters, prune the least load-bearing entries rather than dropping the earlier rounds wholesale
+- carry forward each **still-unresolved** entry from the marker's `deferred` list as a `follow_up`. `deferred` shrinks as work lands: an entry the author has fixed at this head is dropped, not re-rendered, because the next marker's `deferred` is derived from the follow-ups this report renders
+- set the report's `cleared` array to the union of the prior marker's `cleared` entries and what this round examined and cleared, deduplicated by claim. Unlike `deferred`, `cleared` persists for the life of the PR — a clearance an earlier round wrote stays readable to every later round, and nothing but the cap removes it. When the union exceeds the 12-entry `cleared` cap or the marker exceeds 4000 characters, prune the least load-bearing entries rather than dropping the earlier rounds wholesale
 
 ### Do not manufacture blockers from the review's own effects
 

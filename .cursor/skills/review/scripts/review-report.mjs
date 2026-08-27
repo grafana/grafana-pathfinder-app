@@ -82,6 +82,16 @@ function isRound(value) {
   return Number.isInteger(value) && value >= 1 && value <= MAX_ROUND;
 }
 
+function resolveRound(round) {
+  if (round === undefined) {
+    return 1;
+  }
+  if (!Number.isInteger(round) || round < 1) {
+    throw new Error('round must be a positive integer');
+  }
+  return Math.min(round, MAX_ROUND);
+}
+
 function trailingStateMarker(output) {
   const lines = output.split(/\r?\n/);
   while (lines.length > 0 && lines.at(-1).trim() === '') {
@@ -307,9 +317,6 @@ function validateReport(report) {
   if (!/^[0-9a-f]{40}$/i.test(report.reviewed_head ?? '')) {
     throw new Error('reviewed_head must be a full commit SHA');
   }
-  if (report.round !== undefined && !isRound(report.round)) {
-    throw new Error(`round must be an integer between 1 and ${MAX_ROUND}`);
-  }
   if (!Array.isArray(report.findings)) {
     throw new Error('findings must be an array');
   }
@@ -350,6 +357,7 @@ function validateReport(report) {
 
 export function renderReviewReport(report) {
   validateReport(report);
+  const round = resolveRound(report.round);
   const assessment = readAssessment(report);
   const cleared = readCleared(report);
   const purpose = normalizePurpose(report.pr_title);
@@ -411,7 +419,7 @@ export function renderReviewReport(report) {
   if (assessment.status === 'complete') {
     const state = JSON.stringify({
       version: 2,
-      round: report.round ?? 1,
+      round,
       reviewed_head: report.reviewed_head,
       blocking_findings: grouped.blocking.map(({ id, concern_id }) => ({ id, concern_id })),
       deferred: grouped.follow_up.map(({ id, concern_id, proposed_issue }) => ({

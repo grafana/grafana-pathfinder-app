@@ -60,9 +60,10 @@ function validateAnswers(answers) {
   if (!answers || typeof answers !== 'object') {
     throw new Error('answers must be an object');
   }
-  if (!Number.isInteger(answers.round) || answers.round < 1 || answers.round > MAX_ROUND) {
-    throw new Error(`round must be an integer between 1 and ${MAX_ROUND}`);
+  if (!Number.isInteger(answers.round) || answers.round < 1) {
+    throw new Error('round must be a positive integer');
   }
+  const round = Math.min(answers.round, MAX_ROUND);
   const suppliedOverride = answers.override ?? null;
   if (suppliedOverride !== null && !OVERRIDES.has(suppliedOverride)) {
     throw new Error(`Unknown override: ${suppliedOverride}`);
@@ -88,7 +89,7 @@ function validateAnswers(answers) {
   if (attribution !== null && !ATTRIBUTIONS.has(attribution)) {
     throw new Error(`Unknown attribution: ${attribution}`);
   }
-  if (answers.round >= 2 && attribution === null) {
+  if (round >= 2 && attribution === null) {
     throw new Error('attribution is required from round 2 onward');
   }
   if (attribution === 'late' && !nonEmpty(answers.late_blocker_reason)) {
@@ -105,7 +106,7 @@ function validateAnswers(answers) {
   }
   const override = suppliedOverride ?? derivedOverride(answers);
   const overrideSource = override === null ? null : suppliedOverride === null ? 'derived' : 'supplied';
-  return { ...answers, override, override_source: overrideSource, attribution };
+  return { ...answers, round, override, override_source: overrideSource, attribution };
 }
 
 export function decideBlocking(input) {

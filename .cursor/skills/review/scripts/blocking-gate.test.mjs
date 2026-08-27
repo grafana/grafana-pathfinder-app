@@ -293,6 +293,26 @@ test('row 8 — a finding safely bounded by a follow-up demotes', () => {
   });
 });
 
+test('a round past the marker bound still gates, clamped rather than rejected', () => {
+  const late = { attribution: 'late', late_blocker_reason: 'Not raised at rounds 1 or 2.' };
+
+  assert.deepEqual(decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, ...late, round: 100 }), {
+    disposition: 'follow_up',
+    reason: 'late-peripheral',
+    override: null,
+    override_source: null,
+    gate_failures: ['late-peripheral'],
+  });
+  assert.deepEqual(
+    decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, ...late, round: 4096 }),
+    decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, ...late, round: 100 })
+  );
+  assert.throws(
+    () => decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, round: 4096, attribution: undefined }),
+    /attribution is required from round 2 onward/
+  );
+});
+
 test('rejects a finding the reviewer did not recommend as blocking', () => {
   for (const recommended of ['follow_up', 'suggestion', 'nit']) {
     assert.throws(
@@ -305,7 +325,8 @@ test('rejects a finding the reviewer did not recommend as blocking', () => {
 
 test('rejects answers that leave the ratchet unable to reason', () => {
   assert.throws(() => decide({ round: 2, attribution: undefined }), /attribution is required from round 2 onward/);
-  assert.throws(() => decide({ round: 0 }), /round must be an integer between 1 and 100/);
+  assert.throws(() => decide({ round: 0 }), /round must be a positive integer/);
+  assert.throws(() => decide({ round: 2.5 }), /round must be a positive integer/);
   assert.throws(() => decide({ override: 'performance' }), /Unknown override: performance/);
   assert.throws(() => decide({ authorship: 'theirs' }), /Unknown authorship: theirs/);
   assert.throws(() => decide({ round: 2, attribution: 'someday' }), /Unknown attribution: someday/);

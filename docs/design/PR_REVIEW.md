@@ -81,23 +81,23 @@ Unanimity among believers is the bar because keeping a blocker whose only believ
 
 Every finding still recommended `blocking` after adversarial verification is serialized as `{ finding, answers }` and passed to `.cursor/skills/review/scripts/blocking-gate.mjs`, which returns `{ disposition, reason, override, override_source, gate_failures }`. `blocking-gate.test.mjs` is its behavioral spec, including the PR #1702 acceptance fixture. Never hand-apply its table.
 
-| Answer                        | Rule                                                                                               |
-| ----------------------------- | -------------------------------------------------------------------------------------------------- |
-| `round`                       | Integer from 1; read from the re-review marker, or derived per §3a when none exists                |
-| `override`                    | `null`, or one of `security`, `data_loss`, `credential_exposure`, `shipped_path_breakage`          |
-| `authorship`                  | `regression \| pre_existing \| latent_exposed`, judged against the base commit                     |
-| `latent_reachable`            | Required when `authorship` is `latent_exposed`                                                     |
-| `breaks_live_path`            | Does the condition break a path that ships today?                                                  |
-| `concrete_risk_now`           | Is there a concrete risk at this head, not a hypothetical future one?                              |
-| `boundable_by_followup`       | Can a tracked follow-up hold this safely?                                                          |
-| `precedent_count`             | Non-negative count of already-merged PRs shipping the same property                                |
-| `induced_by_prior_suggestion` | Does this blocker exist only because of code added in response to a prior-round suggestion or nit? |
-| `attribution`                 | `prior_unresolved \| since_prior_head \| late`; required from round 2 onward                       |
-| `late_blocker_reason`         | Required and non-empty when `attribution` is `late`                                                |
-| `prior_contract_satisfied`    | Optional context for the §5 contract-anchor judgment; no decision rule reads it                    |
-| `contradicts_cleared`         | Optional `{ claim, reason, new_evidence }` quoting a `cleared` marker entry this finding overturns |
+| Answer                        | Rule                                                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `round`                       | Positive integer, clamped at 100; read from the re-review marker, or derived per §3a when none exists |
+| `override`                    | `null`, or one of `security`, `data_loss`, `credential_exposure`, `shipped_path_breakage`             |
+| `authorship`                  | `regression \| pre_existing \| latent_exposed`, judged against the base commit                        |
+| `latent_reachable`            | Required when `authorship` is `latent_exposed`                                                        |
+| `breaks_live_path`            | Does the condition break a path that ships today?                                                     |
+| `concrete_risk_now`           | Is there a concrete risk at this head, not a hypothetical future one?                                 |
+| `boundable_by_followup`       | Can a tracked follow-up hold this safely?                                                             |
+| `precedent_count`             | Non-negative count of already-merged PRs shipping the same property                                   |
+| `induced_by_prior_suggestion` | Does this blocker exist only because of code added in response to a prior-round suggestion or nit?    |
+| `attribution`                 | `prior_unresolved \| since_prior_head \| late`; required from round 2 onward                          |
+| `late_blocker_reason`         | Required and non-empty when `attribution` is `late`                                                   |
+| `prior_contract_satisfied`    | Optional context for the §5 contract-anchor judgment; no decision rule reads it                       |
+| `contradicts_cleared`         | Optional `{ claim, reason, new_evidence }` quoting a `cleared` marker entry this finding overturns    |
 
-The `override` list is the entire safety net, and it must not acquire round, precedent, or authorship conditions.
+The `override` list is the entire safety net. Its **membership** is fixed at exactly `security`, `data_loss`, `credential_exposure`, and `shipped_path_breakage`, and must not grow. Once an override applies, it is never weakened by round, precedent, or authorship — it blocks unconditionally. Whether `shipped_path_breakage` applies, by contrast, _is_ derived from authorship, deliberately, per the rule below; that is a rule for resolving an override, not a condition that weakens one.
 
 **The gate derives `shipped_path_breakage` itself.** When `breaks_live_path` is true, the reviewer supplied no `override`, and this PR is what breaks the path — `authorship` is `regression`, or `latent_exposed` with `latent_reachable` true — the gate resolves the override to `shipped_path_breakage` before any demotion rule runs. A reviewer never has to think to hand-set it: a shipped path that breaks because of this change blocks unconditionally at any round, whatever its precedent count, induced scope, or attribution. That derivation is what makes the late-finding demotion in row 2 safe, and what keeps rows 3, 4, and 8 from demoting such a finding, since it never reaches them.
 
@@ -106,6 +106,8 @@ The derivation keys on the shipped path breaking **because of this PR**, not mer
 The gate returns the resolved `override` and an `override_source` of `supplied` or `derived`, so the trace can tell a reviewer's judgment from the gate's. Both are `null` when no override applies. An explicitly supplied override always wins and is never replaced by the derived one — a reviewer's `security` on a live-path regression resolves to `security` from `supplied`.
 
 `gate_failures` lists every demoting condition that held, not only the one that decided the outcome — including on an override, whether supplied or derived, so the debug trace shows what the override outranked.
+
+A round above 100 is clamped to 100 rather than rejected, in both the gate and the renderer: the bound exists to keep the marker small, and a PR with that many review submissions must still get a report. Every round-budget rule reads as `round >= 3` by then, so clamping changes no decision. A round that is not a positive integer is still rejected — that is a caller bug, not a large-PR fact.
 
 #### Decision table
 
@@ -356,7 +358,7 @@ The synthesizer emits this `ReviewReport` object after all supplemental checks f
 | `pr_title`      | string | Current PR title; the renderer derives a one-line purpose  |
 | `reviewed_head` | string | Full 40-character commit SHA                               |
 | `findings`      | array  | Retained, verified, deduplicated author-facing findings    |
-| `round`         | number | Optional; defaults to 1. Integer from 1 to 100             |
+| `round`         | number | Optional; defaults to 1. Positive integer, clamped at 100  |
 | `cleared`       | array  | Optional; every claim cleared so far on this PR            |
 | `assessment`    | object | Optional; defaults to complete. See Incomplete assessment  |
 
@@ -373,7 +375,7 @@ Each `findings` entry contains:
 - `owner` — required on a `follow_up`; `maintainer | author`
 - `proposed_issue` — required on a `follow_up`; `{ title, body }`. The title renders inline and is capped at 120 characters; the body renders in a fenced block so the invoker can copy it straight into an issue and is capped at 2000 characters, so 20 maximum-length follow-ups stay well inside GitHub's 65536-character review body limit. Neither may embed a review state marker
 
-Each `cleared` entry contains `claim` (≤ 200 characters), `concern_id`, and `reason` (≤ 300 characters): a claim a round examined and found sound, so a later round cannot silently reverse it. The array accumulates — the synthesizer unions the prior marker's entries with this round's, deduplicated by claim, exactly as it carries `deferred` forward. At most 12 entries; the renderer throws rather than truncating, so pruning the least load-bearing entries is a synthesizer decision. No free-text marker field may embed `<!-- pathfinder-review-state:` or `-->`; the renderer rejects both rather than escaping them, because either would break the hidden comment or forge a second one.
+Each `cleared` entry contains `claim` (≤ 200 characters), `concern_id`, and `reason` (≤ 300 characters): a claim a round examined and found sound, so a later round cannot silently reverse it. The array accumulates for the life of the PR — the synthesizer unions the prior marker's entries with this round's, deduplicated by claim. This is unlike `deferred`, which shrinks as its entries are resolved. At most 12 entries; the renderer throws rather than truncating, so pruning the least load-bearing entries is a synthesizer decision. No free-text marker field may embed `<!-- pathfinder-review-state:` or `-->`; the renderer rejects both rather than escaping them, because either would break the hidden comment or forge a second one.
 
 Follow-ups render in their own `## Follow-ups` section between the merge contract and `## Suggestions`, under the fixed line `These are tracked separately and do not block merge.` They count toward `Approve with Minor` and never toward `Request Changes`.
 
@@ -408,7 +410,7 @@ Immediately before the operator recap, a **complete** review emits a hidden `pat
 }
 ```
 
-`deferred` is derived from the report's follow-ups, so it cannot drift from what the report says. `cleared` is the machine-readable form of what a round would otherwise write as prose under "Things I checked, so you do not have to"; carrying it forward is what stops a later round reversing an earlier clearance without noticing. The serialized state stays under 4000 characters, with at most 12 `cleared` and 20 `deferred` entries — the renderer throws instead of truncating.
+`deferred` is derived from the report's follow-ups, so it cannot drift from what the report says — and so an entry the author has fixed leaves the list, because the synthesizer stops rendering a follow-up for it. The two lists have different lifetimes: `deferred` tracks outstanding work and shrinks, `cleared` is a record and only grows until its cap prunes it. `cleared` is the machine-readable form of what a round would otherwise write as prose under "Things I checked, so you do not have to"; carrying it forward is what stops a later round reversing an earlier clearance without noticing. The serialized state stays under 4000 characters, with at most 12 `cleared` and 20 `deferred` entries — the renderer throws instead of truncating.
 
 `--parse-state` checks shape and size caps and **never provenance**: it cannot tell whose review a body came from, so it establishes no trust on its own. Because `deferred` and `cleared` suppress later-round work, the caller carries that precondition — `.cursor/skills/review/SKILL.md` §3a honors a marker only from the same reviewer's own prior review and treats one found anywhere else as absent.
 

@@ -747,6 +747,23 @@ test('rejects a proposed issue body past the render cap', () => {
   assert.throws(() => render('x'.repeat(2001)), /proposed issue body must be at most 2000 characters/);
 });
 
+test('a round past the marker bound still renders, clamped rather than rejected', () => {
+  const reviewedHead = '7'.repeat(40);
+  const render = (round) =>
+    renderReviewReport({
+      pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+      pr_title: 'feat: add divider guide blocks',
+      reviewed_head: reviewedHead,
+      round,
+      findings: [],
+    });
+
+  assert.equal(parseReviewState(render(4096))?.round, 100);
+  assert.equal(render(4096), render(100));
+  assert.throws(() => render(0), /round must be a positive integer/);
+  assert.throws(() => render(2.5), /round must be a positive integer/);
+});
+
 test('treats a null reversibility as absent', () => {
   const output = renderReviewReport({
     pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
