@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { decideBlocking } from './blocking-gate.mjs';
+import { parseReviewState, renderReviewReport } from './review-report.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const tempDirs = [];
@@ -562,5 +563,96 @@ test('the PR #1702 sequence ends at zero blockers and two follow-ups', () => {
     { round: 1, blocking: 0, follow_ups: 2 },
     { round: 2, blocking: 0, follow_ups: 1 },
     { round: 3, blocking: 0, follow_ups: 2 },
+  ]);
+});
+
+// The clearance round 1 of #1702 wrote, which round 3 reversed by hand because the marker carried
+// no record of it. Rounds carry it forward for the life of the PR.
+const ROUND_1_CLEARANCE = {
+  claim: 'Forward compatibility with the closed block union',
+  concern_id: 'reversibility-and-one-way-door',
+  reason: 'Documented contract; eleven prior block types.',
+};
+
+function reportFor(round, dispositions, carried, cleared) {
+  return {
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: `${round}`.repeat(40).slice(0, 40),
+    round,
+    cleared,
+    findings: [...dispositions, ...carried].map(({ finding, disposition, carried_forward }) => ({
+      id: finding.finding_id,
+      disposition,
+      severity: finding.severity,
+      concern_id: finding.concern_id,
+      title: `${finding.finding_id} at round ${round}`,
+      problem: `What ${finding.finding_id} reports at round ${round}.`,
+      suggested_action: `What to do about ${finding.finding_id}.`,
+      ...(disposition === 'follow_up'
+        ? {
+            owner: 'maintainer',
+            carried_forward: carried_forward === true,
+            proposed_issue: { title: `Track ${finding.finding_id}`, body: `Detail for ${finding.finding_id}.` },
+          }
+        : {}),
+    })),
+  };
+}
+
+// The gate decides, the renderer publishes, and the next round reads its own round number and
+// clearance record back out of the marker rather than being told them. Round 3 of #1702 reversed a
+// round 1 clearance because that record did not exist, and nothing else asserts the whole seam.
+test('the #1702 rounds publish as mergeable and carry round 1 clearance to round 3', () => {
+  const published = [];
+  let priorState = null;
+  let pool = [];
+
+  for (const round of PR_1702) {
+    const derivedRound = priorState === null ? 1 : priorState.round + 1;
+    assert.equal(derivedRound, round.round, 'the round is read back out of the prior marker');
+
+    const decided = round.proposed_blockers.map((entry) => ({
+      finding: entry.finding,
+      disposition: decideBlocking(entry).disposition,
+    }));
+    // A follow-up the author resolved between rounds leaves; the fixture records how many of
+    // #1702's survived, most recent first.
+    const carried = pool.slice(0, round.carried_follow_ups);
+
+    const body = renderReviewReport(reportFor(derivedRound, decided, carried, [ROUND_1_CLEARANCE]));
+    const state = parseReviewState(body);
+    assert.ok(state, `round ${round.round} publishes a readable marker`);
+
+    published.push({
+      round: state.round,
+      mergeable: body.startsWith('No blocking issues. This PR is mergeable.'),
+      blocking: state.blocking_findings.length,
+      deferred: state.deferred.map(({ id }) => id),
+      cleared: state.cleared.map(({ claim }) => claim),
+    });
+
+    pool = [...decided, ...carried]
+      .filter(({ disposition }) => disposition === 'follow_up')
+      .map(({ finding }) => ({ finding, disposition: 'follow_up', carried_forward: true }));
+    priorState = state;
+  }
+
+  assert.deepEqual(published, [
+    {
+      round: 1,
+      mergeable: true,
+      blocking: 0,
+      deferred: ['ACK-1702-1', 'DOC-1702-1'],
+      cleared: [ROUND_1_CLEARANCE.claim],
+    },
+    { round: 2, mergeable: true, blocking: 0, deferred: ['CONV-1702-1'], cleared: [ROUND_1_CLEARANCE.claim] },
+    {
+      round: 3,
+      mergeable: true,
+      blocking: 0,
+      deferred: ['RWD-1702-1', 'CONV-1702-1'],
+      cleared: [ROUND_1_CLEARANCE.claim],
+    },
   ]);
 });
