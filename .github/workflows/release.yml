@@ -18,6 +18,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      # build-plugin has no Go setup of its own and falls behind go.mod; pin it like ci.yml does.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
       - uses: grafana/plugin-actions/build-plugin@4698961fa64137fcac207108397ebe8a738a33d1
         with:
           # The action defaults to Node 20; this repo requires >=24 (.nvmrc, engines.node).
