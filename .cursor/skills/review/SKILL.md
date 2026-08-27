@@ -78,7 +78,7 @@ A late blocker records `late_blocker_reason`. When it contradicts a `cleared` en
 
 ### Deferred findings are not re-litigated
 
-An entry in the marker's `deferred` list is never raised as a blocker on a later round of the same PR unless the diff since then made it reachable. Carry it forward as a `follow_up` only while it stays unresolved, so it remains visible and stays in `deferred`. Once the author fixes it, it leaves both — verify it against the current head like any other carried entry, and drop it. A `deferred` list that only grows would keep re-rendering resolved work, and would eventually exceed the 20-follow-up cap and render nothing at all.
+An entry in the marker's `deferred` list is never raised as a blocker on a later round of the same PR unless the diff since then made it reachable. Carry it forward as a `follow_up` only while it stays unresolved, so it remains visible and stays in `deferred`. Once the author fixes it, it leaves both — verify it against the current head like any other carried entry, and drop it. A `deferred` list that only grows would keep asking the author to re-read work they already landed, and would eventually reach the 30-entry tracking bound the renderer rejects.
 
 **`deferred` and `cleared` are honored only from this reviewer's own prior review.** They are the ratchet's first _suppressive_ state — `deferred` stops a later round raising a blocker, and `cleared` imposes an evidentiary burden before re-raising a claim — where version 1's `blocking_findings` could only add work. `--parse-state` validates shape and size caps, never provenance, so identity is this phase's precondition rather than something the parser establishes. A shape-valid marker found in any other author's review body, including a `COMMENT` review, is treated as absent: ignore it rather than merging it, and derive the round from the author-agnostic prior-review count above. Counting rounds across every reviewer and reading state from one reviewer are separate rules; do not let enumerating reviews for the former turn into reading a marker for the latter.
 
@@ -296,8 +296,7 @@ The synthesizer must:
 - assign every retained finding a stable ID and final author disposition: `blocking`, `follow_up`, `suggestion`, or `nit`
 - treat an unanswered question as `blocking` only when the answer is required to merge; otherwise render it as a `suggestion`
 - state a complete merge contract: fixing every blocking ID must make the reviewed head mergeable, subject only to risks introduced by later commits
-- carry forward each **still-unresolved** entry from the marker's `deferred` list as a `follow_up`. `deferred` shrinks as work lands: an entry the author has fixed at this head is dropped, not re-rendered, because the next marker's `deferred` is derived from the follow-ups this report renders
-- mark every carried-forward follow-up `carried_forward: true`. The 20-follow-up budget is spent on those first, and the renderer withholds **new** follow-ups once it is full, stating in the report how many it withheld. Never prune, merge, or drop an unresolved `deferred` entry to make room — a new follow-up is already gate-demoted, so withholding it costs no merge safety, while losing a prior commitment is exactly the reversal this ratchet exists to prevent
+- carry forward each **still-unresolved** entry from the marker's `deferred` list as a `follow_up`. `deferred` shrinks as work lands: an entry the author has fixed at this head is dropped, not re-rendered, because the next marker's `deferred` is derived from the follow-ups this report carries. Nothing else removes an entry — every follow-up this round produces reaches the marker, whatever its source, so none of them can lose the suppression `deferred` grants. Past the twentieth, the report renders one compact line naming the rest instead of their full detail; that caps how much the reader is asked to re-read, never what the ratchet remembers
 - set the report's `cleared` array to the union of the prior marker's `cleared` entries and what this round examined and cleared, deduplicated by claim. Unlike `deferred`, `cleared` persists for the life of the PR — a clearance an earlier round wrote stays readable to every later round, and nothing but the cap removes it. When the union exceeds the 12-entry `cleared` cap or the marker exceeds 4000 characters, prune the least load-bearing entries rather than dropping the earlier rounds wholesale
 
 ### Do not manufacture blockers from the review's own effects
@@ -332,7 +331,7 @@ Instructions for the sub-agent:
 3. Suppress findings on files that the diff only touches in tests (D2 is still relevant there).
 4. Return only **high-confidence findings**; do not emit suggestive findings unless the overall change classification is `mixed` or `product-runtime` and the router has flagged correctness risk.
 
-The tech-debt scan is **non-blocking**. Convert retained items to `follow_up`, `suggestion`, or `nit`, dedupe them against §5, and remain silent when the scan is clean. The §3a round budget applies: at round ≥ 3 this scan emits follow-ups or nothing, and those follow-ups are new, so the §5 follow-up budget withholds them before any carried-forward entry.
+The tech-debt scan is **non-blocking**. Convert retained items to `follow_up`, `suggestion`, or `nit`, dedupe them against §5, and remain silent when the scan is clean. The §3a round budget applies: at round ≥ 3 this scan emits follow-ups or nothing.
 
 ## 7. Documentation drift check
 
@@ -340,7 +339,7 @@ After synthesis, invoke `.cursor/skills/prevent-doc-drift/SKILL.md` in **review 
 
 If the skill emits a "Doc-drift updates recommended" section, convert its concrete action into a `follow_up` or a `suggestion`. The PR author can apply the diffs themselves or invoke `prevent-doc-drift` in apply mode to commit them on the same branch.
 
-The doc-drift check is **non-blocking** — guidance drift does not block merge, but unfixed drift accumulates as tech debt future reviewers and agents will pay for. The §3a round budget applies: at round ≥ 3 this check emits follow-ups or nothing, and those follow-ups are new, so the §5 follow-up budget withholds them before any carried-forward entry.
+The doc-drift check is **non-blocking** — guidance drift does not block merge, but unfixed drift accumulates as tech debt future reviewers and agents will pay for. The §3a round budget applies: at round ≥ 3 this check emits follow-ups or nothing.
 
 ## 8. Instrumentation coverage check
 
@@ -354,7 +353,7 @@ Answer these questions:
 4. Does the PR add a critical multi-step operation with no outcome-stamped `withFaroUserAction` span?
 5. Does the PR add a panel with no URL-derived view and no `setFaroViewName` call? Separately, does a new Pathfinder surface omit `reportPathfinderSurface`?
 
-Convert concrete gaps to follow-ups or suggestions citing the relevant `TELEMETRY.md` rule. Remain silent when coverage is adequate. Instrumentation is a judgment call, not a gate: do not request instrumentation for trivial UI states, and never suggest attributes that would violate the privacy invariants in `TELEMETRY.md` (high-cardinality values, raw error text, unnormalized URLs). Deduplicate observations against synthesized `analytics-and-telemetry` findings. The §3a round budget applies: at round ≥ 3 this check emits follow-ups or nothing, and those follow-ups are new, so the §5 follow-up budget withholds them before any carried-forward entry.
+Convert concrete gaps to follow-ups or suggestions citing the relevant `TELEMETRY.md` rule. Remain silent when coverage is adequate. Instrumentation is a judgment call, not a gate: do not request instrumentation for trivial UI states, and never suggest attributes that would violate the privacy invariants in `TELEMETRY.md` (high-cardinality values, raw error text, unnormalized URLs). Deduplicate observations against synthesized `analytics-and-telemetry` findings. The §3a round budget applies: at round ≥ 3 this check emits follow-ups or nothing.
 
 ## 9. Render the final report
 
@@ -375,7 +374,7 @@ Verdict: Request Changes
 
 The PR URL must be complete and clickable. `Purpose` is derived from the PR title, contains no newline, and is capped at 120 characters. `Verdict` is `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Nothing follows the count line.
 
-Set the report's `round` and `cleared` fields so the emitted marker carries the ratchet forward. `cleared` is the accumulated union across every round of this PR, not just this round's clearances. The renderer throws rather than truncating an oversized marker, so prune the least load-bearing `cleared` claims instead of dropping them silently. Prune `cleared` first; if the marker is still oversized, shorten the carried follow-ups' proposed issue titles. An unresolved `deferred` entry is never the thing that yields.
+Set the report's `round` and `cleared` fields so the emitted marker carries the ratchet forward. `cleared` is the accumulated union across every round of this PR, not just this round's clearances. The renderer throws rather than truncating an oversized marker, so prune the least load-bearing `cleared` claims instead of dropping them silently. `deferred` carries bare identifiers, so it costs the marker almost nothing and never competes with `cleared` for that budget.
 
 ## 10. Pattern catalog
 

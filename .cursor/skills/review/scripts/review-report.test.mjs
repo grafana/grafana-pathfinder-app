@@ -549,13 +549,7 @@ test('the marker round-trips the round, the deferred follow-ups, and the cleared
     round: 3,
     reviewed_head: reviewedHead,
     blocking_findings: [],
-    deferred: [
-      {
-        id: 'F1',
-        concern_id: 'reversibility-and-one-way-door',
-        proposed_issue_title: 'Define a downgrade-safe representation for the block union',
-      },
-    ],
+    deferred: [{ id: 'F1', concern_id: 'reversibility-and-one-way-door' }],
     cleared: [
       {
         claim: 'Forward compatibility with the closed block union',
@@ -799,37 +793,71 @@ test('a proposed issue fence stays inside its list item once the marker widens p
   }
 });
 
-test('carried-forward follow-ups keep the budget and new ones are withheld with a stated count', () => {
-  const output = renderFollowUps([
-    ...manyFollowUps(20, { carried_forward: true }),
-    followUp({ id: 'NEW1', title: 'A newly demoted blocker', severity: 'critical' }),
-    followUp({ id: 'NEW2', title: 'Another newly demoted blocker', severity: 'critical' }),
-  ]);
+test('every follow-up reaches the marker, and only the detail past the twentieth is compacted', () => {
+  const findings = manyFollowUps(23);
+  const output = renderFollowUps(findings);
+  const overflowIds = findings.slice(20).map((finding) => finding.id);
 
-  assert.match(output, /2 further follow-ups were withheld to keep the 20-follow-up budget/);
-  assert.doesNotMatch(output, /\*\*NEW1 —/);
-  assert.doesNotMatch(output, /\*\*NEW2 —/);
+  assert.match(
+    output,
+    new RegExp(
+      `Also still tracked, described in full by the review round that raised them: ${overflowIds.join(', ')}\\.`
+    )
+  );
+  for (const id of overflowIds) {
+    assert.doesNotMatch(output, new RegExp(`\\*\\*${id} —`));
+  }
   assert.match(output, /\*\*F20 —/);
-  assert.equal(output.split('\n').at(-1), '0 blocking, 20 follow-ups, 0 suggestions, 0 nits');
+  assert.equal(output.split('\n').at(-1), '0 blocking, 23 follow-ups, 0 suggestions, 0 nits');
+  assert.deepEqual(
+    parseReviewState(output)?.deferred.map((entry) => entry.id),
+    findings.map((finding) => finding.id)
+  );
+});
+
+test('a report inside the detail budget names no overflow', () => {
+  const output = renderFollowUps(manyFollowUps(20));
+
+  assert.doesNotMatch(output, /Also still tracked/);
+  assert.match(output, /\*\*F20 —/);
   assert.equal(parseReviewState(output)?.deferred.length, 20);
 });
 
-test('a single withheld follow-up reads in the singular, and a report inside budget states nothing', () => {
-  const oneOver = renderFollowUps([...manyFollowUps(20, { carried_forward: true }), followUp({ id: 'NEW1' })]);
-  assert.match(oneOver, /1 further follow-up was withheld/);
+test('a resolved deferred entry leaves the marker while an unresolved one carries forward', () => {
+  const carried = renderFollowUps([followUp({ id: 'F1' }), followUp({ id: 'F2' })]);
+  assert.deepEqual(
+    parseReviewState(carried)?.deferred.map((entry) => entry.id),
+    ['F1', 'F2']
+  );
 
-  const atBudget = renderFollowUps(manyFollowUps(20, { carried_forward: true }));
-  assert.doesNotMatch(atBudget, /withheld/);
-  assert.equal(atBudget.split('\n').at(-1), '0 blocking, 20 follow-ups, 0 suggestions, 0 nits');
+  const afterFix = renderFollowUps([followUp({ id: 'F2' })]);
+  assert.deepEqual(
+    parseReviewState(afterFix)?.deferred.map((entry) => entry.id),
+    ['F2']
+  );
+  assert.equal(afterFix.split('\n').at(-1), '0 blocking, 1 follow-up, 0 suggestions, 0 nits');
 });
 
-test('a carried-forward set larger than the marker can hold is a caller bug', () => {
-  assert.throws(
-    () => renderFollowUps(manyFollowUps(21, { carried_forward: true })),
-    /carries forward at most 20 follow-ups/
-  );
-  assert.equal(parseReviewState(renderFollowUps(manyFollowUps(20, { carried_forward: true })))?.deferred.length, 20);
-  assert.throws(() => renderFollowUps([followUp({ carried_forward: 'yes' })]), /carried_forward must be true or false/);
+test('a full deferred list and a full cleared list fit the marker together', () => {
+  const output = renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: '6'.repeat(40),
+    findings: manyFollowUps(30),
+    cleared: Array.from({ length: 12 }, (_, index) => ({
+      claim: `Forward compatibility of the closed block union (${index + 1})`,
+      concern_id: 'correctness-and-reliability',
+      reason: 'Documented contract; eleven prior types shipped.',
+    })),
+  });
+  const state = parseReviewState(output);
+
+  assert.equal(state?.deferred.length, 30);
+  assert.equal(state?.cleared.length, 12);
+});
+
+test('a runaway follow-up set past the tracking bound is rejected', () => {
+  assert.throws(() => renderFollowUps(manyFollowUps(31)), /tracks at most 30 follow-ups/);
 });
 
 test('treats a null reversibility as absent', () => {
