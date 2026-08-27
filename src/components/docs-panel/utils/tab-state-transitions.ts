@@ -1,0 +1,34 @@
+import type { LearningJourneyTab } from '../../../types/content-panel.types';
+import { getGuideStripTabs, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
+
+export interface TabStateSnapshot {
+  tabs: LearningJourneyTab[];
+  activeTabId: string;
+}
+
+export interface TabStateResult extends TabStateSnapshot {
+  changed: boolean;
+}
+
+export function closeTabState(state: TabStateSnapshot, tabId: string): TabStateResult {
+  const closing = state.tabs.find((tab) => tab.id === tabId);
+  if (!closing || closing.type === 'recommendations') {
+    return { ...state, changed: false };
+  }
+
+  const tabs = state.tabs.filter((tab) => tab.id !== tabId);
+  if (state.activeTabId !== tabId) {
+    return { tabs, activeTabId: state.activeTabId, changed: true };
+  }
+
+  const stripTabs = getGuideStripTabs(state.tabs);
+  const closedIndex = stripTabs.findIndex((tab) => tab.id === tabId);
+  const replacement =
+    closedIndex === -1 ? stripTabs[stripTabs.length - 1] : (stripTabs[closedIndex + 1] ?? stripTabs[closedIndex - 1]);
+
+  return {
+    tabs,
+    activeTabId: replacement?.id ?? RECOMMENDATIONS_TAB_ID,
+    changed: true,
+  };
+}

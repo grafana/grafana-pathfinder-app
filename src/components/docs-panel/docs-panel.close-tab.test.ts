@@ -193,6 +193,7 @@ jest.mock('./utils', () => ({
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: jest.fn(),
   ...jest.requireActual('./utils/tab-kinds'),
+  ...jest.requireActual('./utils/tab-state-transitions'),
 }));
 
 jest.mock('./hooks', () => ({

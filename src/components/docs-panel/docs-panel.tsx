@@ -92,12 +92,12 @@ import {
   RECOMMENDATIONS_TAB_ID,
   DEVTOOLS_TAB_ID,
   EDITOR_TAB_ID,
-  getGuideStripTabs,
   isNonContentTab,
   findCurrentMilestoneIndex,
   isCurrentUserEditor,
   resolveTabGates,
   didGateClose,
+  closeTabState,
   type TabGates,
 } from './utils';
 import { DEFAULT_GUIDE_TITLE } from '../block-editor/editor-chrome-status';
@@ -674,39 +674,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public closeTab(tabId: string) {
-    const currentTabs = this.state.tabs;
-    const closing = currentTabs.find((t) => t.id === tabId);
-    // Unclosable chrome is a kind rule (type), not an identity check.
-    if (!closing || closing.type === 'recommendations') {
+    const nextState = closeTabState(this.state, tabId);
+    if (!nextState.changed) {
       return;
     }
 
-    const newTabs = currentTabs.filter((t) => t.id !== tabId);
-    let newActiveTabId = this.state.activeTabId;
-
-    // Closing a background tab must not move focus — the user may be sitting on
-    // another tab and closing a guide from the overflow menu.
-    if (this.state.activeTabId === tabId) {
-      // Adjacency walks the rendered strip, not raw tab state: the
-      // recommendations rail holds no strip slot, so handing it focus would
-      // leave no visible tab marked active. A tab outside the strip closed via
-      // Ctrl+W has no neighbours of its own, so it inherits the last strip tab
-      // instead of sending the user home. Recommendations is the empty-strip
-      // fallback.
-      const stripTabs = getGuideStripTabs(currentTabs);
-      const closedIndex = stripTabs.findIndex((t) => t.id === tabId);
-      const replacement =
-        closedIndex === -1
-          ? stripTabs[stripTabs.length - 1]
-          : (stripTabs[closedIndex + 1] ?? stripTabs[closedIndex - 1]);
-      newActiveTabId = replacement?.id ?? RECOMMENDATIONS_TAB_ID;
-    }
-
     this.setState({
-      tabs: newTabs,
-      activeTabId: newActiveTabId,
+      tabs: nextState.tabs,
+      activeTabId: nextState.activeTabId,
     });
-
     this.saveTabsToStorage();
   }
 
