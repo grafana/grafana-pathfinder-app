@@ -196,6 +196,7 @@ jest.mock('./utils', () => ({
   ...jest.requireActual('./utils/tab-kinds'),
   ...jest.requireActual('./utils/tab-gates'),
   ...jest.requireActual('./utils/tab-state-transitions'),
+  ...jest.requireActual('./utils/docs-load-finalizer'),
 }));
 
 jest.mock('./hooks', () => ({

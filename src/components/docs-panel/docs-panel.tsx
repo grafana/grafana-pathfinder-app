@@ -67,7 +67,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { coerceLaunchSource, evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
+import { coerceLaunchSource, type LaunchSource } from '../../recovery';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -100,6 +100,8 @@ import {
   closeTabState,
   pruneGatedTabState,
   projectPersistedTabs,
+  resolveDocsLoadAlignment,
+  buildDocsLoadSuccessPatch,
   type TabGates,
 } from './utils';
 import { DEFAULT_GUIDE_TITLE } from '../block-editor/editor-chrome-status';
@@ -851,57 +853,21 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Check if fetch succeeded or failed
       if (result.content) {
         const fetchedContent = result.content;
-
-        const pathContext = fetchedContent.metadata.learningJourney
-          ? { learningJourney: fetchedContent.metadata.learningJourney }
-          : undefined;
-
-        // Implied 0th step: decide whether to prompt the user to navigate to
-        // the guide's declared starting location before step 1 begins.
-        // Two manifests can describe this launch and they are not equally complete.
-        // `packageInfo` comes from the catalogue proxy, whose Go `customGuideManifest`
-        // declares no starting location, so the key is dropped at the wire boundary;
-        // the loader's manifest on the fetched content carries it intact. Passing both
-        // keeps `packageInfo` authoritative wherever it actually declares a value and
-        // only falls back where it previously resolved to null — so a guide opened
-        // from inside a learning path gets the same prompt as the same guide opened
-        // standalone.
-        const startingLocation = resolveStartingLocation(
-          url,
-          [packageInfo?.packageManifest, fetchedContent.metadata.packageManifest],
-          { isAdmin: currentUserIsAdmin() }
-        );
         const currentPath = locationService.getLocation().pathname;
-        const evaluation = evaluateAlignment({
+        const alignmentDecision = resolveDocsLoadAlignment({
+          requestedUrl: url,
+          packageManifest: packageInfo?.packageManifest,
+          fetchedManifest: fetchedContent.metadata.packageManifest,
           currentPath,
-          startingLocation,
-          launchSource: launchSource ?? undefined,
+          launchSource,
+          isAdmin: currentUserIsAdmin(),
+          isFullScreen: panelModeManager.getMode() === 'fullscreen',
         });
-        const isFullScreenMode = panelModeManager.getMode() === 'fullscreen';
-        const pendingAlignment =
-          !isFullScreenMode && evaluation.shouldPrompt && startingLocation
-            ? {
-                startingLocation,
-                currentPath,
-                launchSource: launchSource ?? 'unknown',
-                decidedAt: Date.now(),
-              }
-            : undefined;
+        const pendingAlignment = alignmentDecision ? { ...alignmentDecision, decidedAt: Date.now() } : undefined;
 
-        const finalTab = this.finishTabSuccess(tabId, (t) => ({
-          content: fetchedContent,
-          baseUrl: t.baseUrl || fetchedContent.url,
-          currentUrl: fetchedContent.url || url,
-          type:
-            packageInfo != null
-              ? getPackageRenderType(packageInfo.packageManifest)
-              : fetchedContent.type === 'interactive'
-                ? 'interactive'
-                : t.type,
-          packageInfo: packageInfo ?? t.packageInfo,
-          pathContext,
-          pendingAlignment,
-        }));
+        const finalTab = this.finishTabSuccess(tabId, (tab) =>
+          buildDocsLoadSuccessPatch({ tab, requestedUrl: url, fetchedContent, packageInfo, pendingAlignment })
+        );
 
         if (pendingAlignment) {
           reportAppInteraction(UserInteraction.AlignmentPromptShown, {

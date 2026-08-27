@@ -26,6 +26,12 @@ export {
 export type { UrlValidator, TabRestoreOptions } from './tab-storage-restore';
 export { isGrafanaDocsUrl, cleanDocsUrl, isLearningJourneyUrl } from './url-validation';
 export { loadDocsTabContentResult, UNRESOLVED_PACKAGE_ERROR } from './docs-tab-loader';
+export { resolveDocsLoadAlignment, buildDocsLoadSuccessPatch } from './docs-load-finalizer';
+export type {
+  DocsLoadAlignmentInput,
+  PendingAlignmentDecision,
+  DocsLoadSuccessPatchInput,
+} from './docs-load-finalizer';
 export { findCurrentMilestoneIndex } from './milestone-index';
 export { pickGrafanaDocsOpenAction } from './grafana-docs-open-action';
 export type { GrafanaDocsOpenAction } from './grafana-docs-open-action';
