@@ -116,7 +116,6 @@ export const CustomGuideManifestWireSchema = z.strictObject({
   author: CustomGuideAuthorWireSchema.optional(),
   depends: z.array(JsonValueSchema).optional(),
   stats: CustomGuideStatsWireSchema.optional(),
-  additionalFields: z.record(z.string(), JsonValueSchema).optional(),
 });
 
 /** @coupling Go struct: customGuideRepositoryEntry */

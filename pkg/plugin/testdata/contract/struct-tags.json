@@ -228,13 +228,6 @@
       "type": "*plugin.customGuideStats",
       "wire": "object",
       "omitempty": true
-    },
-    {
-      "field": "AdditionalFields",
-      "json": "additionalFields",
-      "type": "map[string]json.RawMessage",
-      "wire": "record<json>",
-      "omitempty": true
     }
   ],
   "customGuideManifest.author": [

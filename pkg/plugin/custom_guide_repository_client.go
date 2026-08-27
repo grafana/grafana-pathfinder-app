@@ -3,7 +3,6 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
@@ -57,10 +56,6 @@ type customGuideManifest struct {
 	} `json:"author,omitempty"`
 	Depends []json.RawMessage `json:"depends,omitempty"`
 	Stats   *customGuideStats `json:"stats,omitempty"`
-	// AdditionalFields is the platform manifest's untyped escape hatch. Carried
-	// verbatim so keys this struct has no field for — including stats before the
-	// typed schema field exists upstream — still reach the browser.
-	AdditionalFields map[string]json.RawMessage `json:"additionalFields,omitempty"`
 }
 
 // customGuideStats mirrors the stamped `manifest.stats` object — the same five
@@ -136,7 +131,11 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 	for _, raw := range page.Specs {
 		var entry customGuideRepositoryEntry
 		if err := json.Unmarshal(raw, &entry); err != nil {
-			return nil, fmt.Errorf("custom guide repository: decode spec: %w", err)
+			// One stored guide whose spec doesn't fit this hand-written mirror
+			// must not fail the page: that error is not terminal, so the route
+			// would answer 503 forever and hide the whole namespace.
+			c.inner.logger.Warn("custom guide repository: skipping undecodable spec", "error", err)
+			continue
 		}
 		if entry.ID == "" {
 			// id is required by the CRD schema; skip anything malformed rather
