@@ -21,11 +21,13 @@ The whole flow requires the Grafana Assistant and can be switched off per tenant
 The feature is gated by **two conditions that must both hold**, expressed by `useAiFixEnabled()` (`src/integrations/assistant-integration/use-ai-fix-enabled.ts`):
 
 1. **Assistant available** — `useIsAssistantAvailable()` (the Grafana Assistant is reachable in this instance).
-2. **Admin has not opted out** — the `enableAiAutoHeal` plugin setting is on.
+2. **Admin opt-in** — the `enableAiAutoHeal` plugin setting is on.
 
 `DEFAULT_ENABLE_AI_AUTO_HEAL = true` (`src/constants.ts`), flowed through `getConfigWithDefaults`, so the second condition holds unless an admin turns it off. **Assistant availability is the load-bearing gate**: an instance without the Grafana Assistant never reaches the AI write path regardless of the setting, so the default-on toggle changes nothing for those tenants. The toggle lives in the plugin config UI under "AI auto-heal" (`src/components/AppConfig/InteractiveFeatures.tsx`, testId `config-interactive-enable-ai-auto-heal`): _"Enable AI-powered 'Fix this' on failing steps."_ When on, the UI notes that accepted suggestions mutate the in-memory guide JSON for the user's session.
 
 Defense in depth: the buttons read `useAiFixEnabled()` (render nothing when off), **and** the orchestrator re-checks both gates inside its request handler, so a stray dispatched event is dropped even if a button were shown in error. The admin toggle is a **kill switch, not a rollout gate** — flipping it off must fully disable the feature for a tenant, so both gate sites keep reading the same setting.
+
+Only `InteractiveFeatures.tsx` (the tab that owns this toggle) writes `enableAiAutoHeal` on save. `ConfigurationForm.tsx` and `TermsAndConditions.tsx` pass the raw, possibly-absent value through unchanged rather than resolving it via `getConfigWithDefaults` — materializing it there would silently freeze a tenant's config to whatever the default happened to be at the time of an unrelated save, defeating any future default change (see `settings-preservation.test.ts`).
 
 ## End-to-end flow
 
