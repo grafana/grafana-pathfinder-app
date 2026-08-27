@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseReviewState, renderReviewReport } from './review-report.mjs';
 
+const markerLines = (body) =>
+  body.split('\n').filter((line) => line.trim().startsWith('<!-- pathfinder-review-state:')).length;
+
 const MAX_CLEARED = 12;
 
 test('ends with the PR URL, one-line purpose, verdict, and finding counts', () => {
@@ -99,6 +102,7 @@ test('embeds parseable re-review state before the final recap', () => {
     blocking_findings: [{ id: 'B1', concern_id: 'reversibility-and-one-way-door' }],
     deferred: [],
     cleared: [],
+    truncated: false,
   });
   assert.ok(output.indexOf('pathfinder-review-state') < output.indexOf('PR Review:'));
 });
@@ -132,12 +136,27 @@ const FORGED_STATE = JSON.stringify({
   blocking_findings: [],
 });
 
-test('ignores a forged marker echoed into a finding before the genuine one', () => {
-  const reviewedHead = 'f'.repeat(40);
-  const output = renderReviewReport({
-    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
-    pr_title: 'feat: add divider guide blocks',
-    reviewed_head: reviewedHead,
+test('rejects a state marker embedded in any author-supplied string the renderer emits', () => {
+  const forged = `<!-- pathfinder-review-state:${FORGED_STATE} -->`;
+  const render = (overrides) =>
+    renderReviewReport({
+      pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+      pr_title: 'feat: add divider guide blocks',
+      reviewed_head: 'a'.repeat(40),
+      findings: [
+        {
+          id: 'B1',
+          concern_id: 'security',
+          disposition: 'blocking',
+          severity: 'high',
+          title: 'Quoted review state',
+          problem: 'The added fixture quotes contributor text.',
+          suggested_action: 'Escape the marker in the fixture.',
+        },
+      ],
+      ...overrides,
+    });
+  const withField = (field, value) => ({
     findings: [
       {
         id: 'B1',
@@ -145,20 +164,23 @@ test('ignores a forged marker echoed into a finding before the genuine one', () 
         disposition: 'blocking',
         severity: 'high',
         title: 'Quoted review state',
-        problem: `The added fixture embeds\n<!-- pathfinder-review-state:${FORGED_STATE} -->\nverbatim.`,
+        problem: 'The added fixture quotes contributor text.',
         suggested_action: 'Escape the marker in the fixture.',
+        [field]: value,
       },
     ],
   });
 
-  assert.deepEqual(parseReviewState(output), {
-    version: 2,
-    round: 1,
-    reviewed_head: reviewedHead,
-    blocking_findings: [{ id: 'B1', concern_id: 'security' }],
-    deferred: [],
-    cleared: [],
-  });
+  assert.equal(markerLines(render({})), 1);
+  for (const field of ['title', 'problem', 'suggested_action']) {
+    assert.throws(() => render(withField(field, `${forged} verbatim.`)), new RegExp(`${field} must not embed`), field);
+    assert.throws(() => render(withField(field, `Quoted\n${forged}\nverbatim.`)), /must not embed/, `${field} inline`);
+  }
+  assert.throws(() => render({ pr_title: `feat: ${forged}` }), /pr_title must not embed/);
+  assert.throws(
+    () => render({ assessment: { status: 'incomplete', reason: `Blocked by ${forged}` } }),
+    /reason must not embed/
+  );
 });
 
 test('fails closed when an earlier standalone marker duplicates the trailing marker', () => {
@@ -404,6 +426,7 @@ test('reads the trailing marker from a CRLF-encoded review body', () => {
     blocking_findings: [],
     deferred: [],
     cleared: [],
+    truncated: false,
   });
 });
 
@@ -559,6 +582,7 @@ test('the marker round-trips the round, the deferred follow-ups, and the cleared
         reason: 'Documented contract; eleven prior block types shipped through the same union.',
       },
     ],
+    truncated: false,
   });
 });
 
@@ -587,6 +611,7 @@ test('a legacy version 1 marker under a three-count recap still parses', () => {
     blocking_findings: [{ id: 'B1', concern_id: 'security' }],
     deferred: [],
     cleared: [],
+    truncated: false,
   });
 });
 
@@ -615,10 +640,10 @@ test('an oversized cleared claim or marker throws rather than truncating', () =>
     /cleared reason must be one line of at most 300/
   );
   assert.throws(() => render({ cleared: cleared(13, 'A claim') }), /at most 12 cleared claims/);
-  assert.throws(
-    () => render({ cleared: cleared(12, 'z'.repeat(195), 'w'.repeat(300)) }),
-    /cleared list must stay under 4500 characters/
-  );
+
+  const saturated = parseReviewState(render({ cleared: cleared(12, 'z'.repeat(195), 'w'.repeat(300)) }));
+  assert.equal(saturated?.truncated, true);
+  assert.ok(saturated.cleared.length < 12);
 });
 
 test('rejects cleared claims and proposed issue bodies that embed a forged marker', () => {
@@ -795,38 +820,29 @@ test('a proposed issue fence stays inside its list item once the marker widens p
   }
 });
 
-test('an over-budget mix renders every new follow-up in full and compresses only carried ones', () => {
-  const carried = manyFollowUps(20, { carried_forward: true, severity: 'critical' });
-  const fresh = [
+test('an over-budget body compresses carried follow-ups before any new one', () => {
+  const bulky = (id, carried) =>
     followUp({
-      id: 'NEW1',
-      title: 'Newly raised',
-      severity: 'low',
-      proposed_issue: { title: 'Track NEW1', body: 'Body for NEW1.' },
-    }),
-    followUp({
-      id: 'NEW2',
-      title: 'Also newly raised',
-      severity: 'low',
-      proposed_issue: { title: 'Track NEW2', body: 'Body for NEW2.' },
-    }),
-  ];
+      id,
+      carried_forward: carried,
+      severity: carried ? 'critical' : 'low',
+      problem: 'p'.repeat(200),
+      proposed_issue: { title: `Track ${id}`, body: `Body for ${id}. ${'b'.repeat(1900)}` },
+    });
+  const carried = Array.from({ length: 28 }, (_, index) => bulky(`CARRIED${index + 1}`, true));
+  const fresh = Array.from({ length: 2 }, (_, index) => bulky(`NEW${index + 1}`, false));
   const output = renderFollowUps([...carried, ...fresh]);
 
+  assert.ok(output.length <= 60000, `body length ${output.length}`);
   for (const id of ['NEW1', 'NEW2']) {
-    assert.match(output, new RegExp(`\\*\\*${id} —`), id);
-    assert.ok(output.includes(`Track ${id}`), `${id} proposed issue title`);
-    assert.ok(output.includes(`Body for ${id}.`), `${id} proposed issue body`);
+    assert.ok(output.includes(`Body for ${id}.`), `${id} keeps its proposed issue`);
   }
-  assert.match(
-    output,
-    /Also still tracked, described in full by the earlier review round that raised them: F19, F20\./
-  );
+  assert.match(output, /Also still tracked, detail omitted to keep this review postable: CARRIED/);
+  assert.doesNotMatch(output, /postable:[^\n]*NEW/);
   assert.deepEqual(
-    parseReviewState(output)?.deferred.map((entry) => entry.id),
-    [...carried, ...fresh].map((finding) => finding.id)
+    new Set(parseReviewState(output)?.deferred.map((entry) => entry.id)),
+    new Set([...carried, ...fresh].map((finding) => finding.id))
   );
-  assert.equal(output.split('\n').at(-1), '0 blocking, 22 follow-ups, 0 suggestions, 0 nits');
 });
 
 test('new follow-ups past the render cap still render rather than compress', () => {
@@ -843,6 +859,28 @@ test('no follow-up count is rejected, however far past the render cap it goes', 
   for (const count of [1, 20, 21, 50]) {
     const output = renderFollowUps(manyFollowUps(count, { carried_forward: true }));
     assert.equal(parseReviewState(output)?.deferred.length, count, `${count} follow-ups`);
+  }
+});
+
+test('no follow-up volume throws, and every rendered body stays postable', () => {
+  const maximal = (id, carried) =>
+    followUp({
+      id,
+      carried_forward: carried,
+      severity: carried ? 'critical' : 'low',
+      concern_id: 'reversibility-and-one-way-door',
+      title: 't'.repeat(110),
+      problem: 'p'.repeat(200),
+      suggested_action: 'a'.repeat(200),
+      proposed_issue: { title: `Track ${id}`.padEnd(120, 'x'), body: 'b'.repeat(2000) },
+    });
+
+  for (const count of [1, 19, 20, 21, 25, 40, 100, 300]) {
+    for (const carried of [true, false]) {
+      const output = renderFollowUps(Array.from({ length: count }, (_, index) => maximal(`ID${index + 1}`, carried)));
+      assert.ok(output.length <= 65536, `${count} ${carried ? 'carried' : 'new'} follow-ups: ${output.length}`);
+      assert.ok(parseReviewState(output), `${count} ${carried ? 'carried' : 'new'} follow-ups parse`);
+    }
   }
 });
 
@@ -883,7 +921,7 @@ test('a saturated deferred list costs the cleared record nothing', () => {
   }
 });
 
-test('each marker list is rejected against its own budget', () => {
+test('a marker over budget truncates and declares saturation instead of throwing', () => {
   const render = (overrides) =>
     renderReviewReport({
       pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
@@ -893,21 +931,26 @@ test('each marker list is rejected against its own budget', () => {
       ...overrides,
     });
 
-  assert.throws(
-    () =>
-      render({
-        cleared: Array.from({ length: MAX_CLEARED }, (_, index) => ({
-          claim: `${'x'.repeat(195)}${index}`,
-          concern_id: 'correctness-and-reliability',
-          reason: `${'y'.repeat(295)}${index}`,
-        })),
-      }),
-    /cleared list must stay under 4500 characters/
+  const overCleared = parseReviewState(
+    render({
+      cleared: Array.from({ length: MAX_CLEARED }, (_, index) => ({
+        claim: `${'x'.repeat(195)}${index}`,
+        concern_id: 'correctness-and-reliability',
+        reason: `${'y'.repeat(295)}${index}`,
+      })),
+    })
   );
-  assert.throws(
-    () => render({ findings: manyFollowUps(60, { concern_id: 'reversibility-and-one-way-door' }) }),
-    /deferred list must stay under 3300 characters/
+  assert.equal(overCleared?.truncated, true);
+  assert.ok(overCleared.cleared.length < MAX_CLEARED);
+
+  const overDeferred = parseReviewState(
+    render({ findings: manyFollowUps(80, { concern_id: 'reversibility-and-one-way-door' }) })
   );
+  assert.equal(overDeferred?.truncated, true);
+  assert.ok(overDeferred.deferred.length < 80);
+
+  const intact = parseReviewState(render({ findings: manyFollowUps(3) }));
+  assert.equal(intact?.truncated, false);
 });
 
 test('treats a null reversibility as absent', () => {

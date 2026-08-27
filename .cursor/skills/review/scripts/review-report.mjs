@@ -22,8 +22,12 @@ const SECTIONS = [
   ['nit', 'Nits'],
 ];
 const FOLLOW_UP_PREAMBLE = 'These are tracked separately and do not block merge.';
-const overflowNotice = (findings) =>
-  `Also still tracked, described in full by the earlier review round that raised them: ${findings.map((finding) => finding.id).join(', ')}.`;
+const overflowNotice = (findings, listed) => {
+  const named = findings.slice(0, listed).map((finding) => finding.id);
+  const rest = findings.length - named.length;
+  const tail = rest > 0 ? [...named, `and ${rest} more`].join(', ') : named.join(', ');
+  return `Also still tracked, detail omitted to keep this review postable: ${tail}.`;
+};
 const FOLLOW_UP_OWNERS = ['maintainer', 'author'];
 const SEVERITY_RANK = new Map([
   ['critical', 0],
@@ -41,7 +45,7 @@ const ASSESSMENT_STATUSES = ['complete', 'incomplete'];
 const MAX_INCOMPLETE_REASON = 240;
 const MAX_ROUND = 100;
 const MAX_CLEARED = 12;
-const MAX_DETAILED_FOLLOW_UPS = 20;
+const MAX_BODY = 60000;
 const MAX_CLAIM = 200;
 const MAX_CLEARED_REASON = 300;
 const MAX_PROPOSED_ISSUE_TITLE = 120;
@@ -137,6 +141,29 @@ function withinBudget(entries, max) {
   return JSON.stringify(entries).length <= max;
 }
 
+function encodeState(base, deferred, cleared, truncated) {
+  return JSON.stringify({ ...base, deferred, cleared, ...(truncated ? { truncated: true } : {}) });
+}
+
+function buildState(base, allDeferred, allCleared) {
+  let deferred = allDeferred;
+  let cleared = allCleared;
+  let truncated = false;
+  const overBudget = () =>
+    !withinBudget(deferred, MAX_DEFERRED_CHARS) ||
+    !withinBudget(cleared, MAX_CLEARED_CHARS) ||
+    encodeState(base, deferred, cleared, truncated).length > MAX_MARKER;
+  while (overBudget() && deferred.length + cleared.length > 0) {
+    truncated = true;
+    if (!withinBudget(deferred, MAX_DEFERRED_CHARS) || cleared.length === 0) {
+      deferred = deferred.slice(0, -1);
+    } else {
+      cleared = cleared.slice(0, -1);
+    }
+  }
+  return encodeState(base, deferred, cleared, truncated);
+}
+
 function isClearedEntry(entry) {
   return (
     entry &&
@@ -156,12 +183,16 @@ function normalizeState(state) {
       blocking_findings: state.blocking_findings,
       deferred: [],
       cleared: [],
+      truncated: false,
     };
   }
   if (!isRound(state.round) || !Array.isArray(state.deferred) || !Array.isArray(state.cleared)) {
     return null;
   }
   if (state.cleared.length > MAX_CLEARED) {
+    return null;
+  }
+  if (state.truncated != null && state.truncated !== true) {
     return null;
   }
   if (!withinBudget(state.deferred, MAX_DEFERRED_CHARS) || !withinBudget(state.cleared, MAX_CLEARED_CHARS)) {
@@ -177,6 +208,7 @@ function normalizeState(state) {
     blocking_findings: state.blocking_findings,
     deferred: state.deferred,
     cleared: state.cleared,
+    truncated: state.truncated === true,
   };
 }
 
@@ -207,7 +239,8 @@ export function parseReviewState(output) {
     if (
       verdict !== completeVerdict(blockingCount, followUpCount, suggestionCount, nitCount) ||
       normalized.blocking_findings.length !== blockingCount ||
-      (normalized.version === 2 && normalized.deferred.length !== followUpCount)
+      (normalized.version === 2 && !normalized.truncated && normalized.deferred.length !== followUpCount) ||
+      (normalized.truncated && normalized.deferred.length > followUpCount)
     ) {
       return null;
     }
@@ -257,6 +290,9 @@ function readAssessment(report) {
     return { status: 'complete', reason: null };
   }
   const reason = typeof assessment.reason === 'string' ? oneLine(assessment.reason) : '';
+  if (reason.includes(STATE_MARKER_TOKEN)) {
+    throw new Error('an incomplete assessment reason must not embed a review state marker');
+  }
   if (reason.length === 0 || reason.length > MAX_INCOMPLETE_REASON) {
     throw new Error(`an incomplete assessment must state one reason of at most ${MAX_INCOMPLETE_REASON} characters`);
   }
@@ -330,6 +366,9 @@ function validateReport(report) {
   if (typeof report.pr_title !== 'string' || normalizePurpose(report.pr_title).length === 0) {
     throw new Error('pr_title must produce a non-empty purpose');
   }
+  if (report.pr_title.includes(STATE_MARKER_TOKEN)) {
+    throw new Error('pr_title must not embed a review state marker');
+  }
   if (!/^[0-9a-f]{40}$/i.test(report.reviewed_head ?? '')) {
     throw new Error('reviewed_head must be a full commit SHA');
   }
@@ -361,6 +400,9 @@ function validateReport(report) {
       if (typeof finding[field] !== 'string' || finding[field].trim().length === 0) {
         throw new Error(`finding ${field} must be a non-empty string`);
       }
+      if (finding[field].includes(STATE_MARKER_TOKEN)) {
+        throw new Error(`finding ${field} must not embed a review state marker`);
+      }
     }
     if (finding.disposition === 'follow_up') {
       validateFollowUp(finding);
@@ -368,21 +410,8 @@ function validateReport(report) {
   }
 }
 
-export function renderReviewReport(report) {
-  validateReport(report);
-  const round = resolveRound(report.round);
-  const assessment = readAssessment(report);
-  const cleared = readCleared(report);
-  const purpose = normalizePurpose(report.pr_title);
-  const grouped = Object.fromEntries(DISPOSITIONS.map((disposition) => [disposition, []]));
-  for (const finding of report.findings) {
-    grouped[finding.disposition].push(finding);
-  }
-  const bySeverity = (left, right) =>
-    (SEVERITY_RANK.get(left.severity) ?? 99) - (SEVERITY_RANK.get(right.severity) ?? 99);
-  for (const disposition of DISPOSITIONS) {
-    grouped[disposition].sort(bySeverity);
-  }
+function assembleBody(context, compressed, listedOverflow) {
+  const { assessment, grouped, cleared, purpose, round, report, counts, verdict, bySeverity } = context;
   const sections = [];
   if (assessment.status === 'incomplete') {
     sections.push(
@@ -415,22 +444,50 @@ export function renderReviewReport(report) {
       sections.push('', `## ${heading}`, '', findings.map(renderFinding).join('\n\n'));
       continue;
     }
-    const introduced = findings.filter((finding) => !isCarriedForward(finding));
-    const carried = findings.filter(isCarriedForward);
-    const roomForCarried = Math.max(0, MAX_DETAILED_FOLLOW_UPS - introduced.length);
-    const detailed = [...introduced, ...carried.slice(0, roomForCarried)].sort(bySeverity);
-    const overflow = carried.slice(roomForCarried);
+    const detailed = findings.filter((finding) => !compressed.has(finding.id)).sort(bySeverity);
+    const overflow = findings.filter((finding) => compressed.has(finding.id)).sort(bySeverity);
     sections.push(
       '',
       `## ${heading}`,
       '',
       FOLLOW_UP_PREAMBLE,
-      '',
-      detailed.map(renderFinding).join('\n\n'),
-      ...(overflow.length > 0 ? ['', overflowNotice(overflow)] : [])
+      ...(detailed.length > 0 ? ['', detailed.map(renderFinding).join('\n\n')] : []),
+      ...(overflow.length > 0 ? ['', overflowNotice(overflow, listedOverflow)] : [])
     );
   }
+  if (assessment.status === 'complete') {
+    const base = {
+      version: 2,
+      round,
+      reviewed_head: report.reviewed_head,
+      blocking_findings: grouped.blocking.map(({ id, concern_id }) => ({ id, concern_id })),
+    };
+    const deferred = grouped.follow_up.map(({ id, concern_id }) => ({ id, concern_id }));
+    sections.push('', `<!-- pathfinder-review-state:${buildState(base, deferred, cleared)} -->`);
+  }
+  sections.push('', `PR Review: ${report.pr_url}`, `Purpose: ${purpose}`, `Verdict: ${verdict}`, counts);
+  return sections.join('\n');
+}
 
+function markerLineCount(body) {
+  return body.split(/\r?\n/).filter((line) => STATE_MARKER_PREFIX.test(line.trim())).length;
+}
+
+export function renderReviewReport(report) {
+  validateReport(report);
+  const round = resolveRound(report.round);
+  const assessment = readAssessment(report);
+  const cleared = readCleared(report);
+  const purpose = normalizePurpose(report.pr_title);
+  const grouped = Object.fromEntries(DISPOSITIONS.map((disposition) => [disposition, []]));
+  for (const finding of report.findings) {
+    grouped[finding.disposition].push(finding);
+  }
+  const bySeverity = (left, right) =>
+    (SEVERITY_RANK.get(left.severity) ?? 99) - (SEVERITY_RANK.get(right.severity) ?? 99);
+  for (const disposition of DISPOSITIONS) {
+    grouped[disposition].sort(bySeverity);
+  }
   const counts = [
     countLabel(grouped.blocking.length, 'blocking', 'blocking'),
     countLabel(grouped.follow_up.length, 'follow-up'),
@@ -446,32 +503,40 @@ export function renderReviewReport(report) {
           grouped.suggestion.length,
           grouped.nit.length
         );
-  if (assessment.status === 'complete') {
-    const deferred = grouped.follow_up.map(({ id, concern_id }) => ({ id, concern_id }));
-    if (!withinBudget(deferred, MAX_DEFERRED_CHARS)) {
-      throw new Error(`the marker's deferred list must stay under ${MAX_DEFERRED_CHARS} characters`);
+  const context = { assessment, grouped, cleared, purpose, round, report, counts, verdict, bySeverity };
+
+  const carried = grouped.follow_up.filter(isCarriedForward);
+  const introduced = grouped.follow_up.filter((finding) => !isCarriedForward(finding));
+  const compressionOrder = [...carried.slice().reverse(), ...introduced.slice().reverse()];
+  let listed = grouped.follow_up.length;
+  const withCompressed = (count) =>
+    assembleBody(context, new Set(compressionOrder.slice(0, count).map((finding) => finding.id)), listed);
+  let compressedCount = 0;
+  let body = withCompressed(0);
+  if (body.length > MAX_BODY) {
+    let low = 0;
+    let high = compressionOrder.length;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (withCompressed(mid).length <= MAX_BODY) {
+        high = mid;
+      } else {
+        low = mid + 1;
+      }
     }
-    if (!withinBudget(cleared, MAX_CLEARED_CHARS)) {
-      throw new Error(
-        `the marker's cleared list must stay under ${MAX_CLEARED_CHARS} characters; prune the least load-bearing claims`
-      );
-    }
-    const state = JSON.stringify({
-      version: 2,
-      round,
-      reviewed_head: report.reviewed_head,
-      blocking_findings: grouped.blocking.map(({ id, concern_id }) => ({ id, concern_id })),
-      deferred,
-      cleared,
-    });
-    if (state.length > MAX_MARKER) {
-      throw new Error(`the re-review state marker must stay under ${MAX_MARKER} characters`);
-    }
-    sections.push('', `<!-- pathfinder-review-state:${state} -->`);
+    compressedCount = low;
+    body = withCompressed(compressedCount);
+  }
+  while (body.length > MAX_BODY && listed > 0) {
+    listed = Math.floor(listed / 2);
+    body = withCompressed(compressedCount);
   }
 
-  sections.push('', `PR Review: ${report.pr_url}`, `Purpose: ${purpose}`, `Verdict: ${verdict}`, counts);
-  return sections.join('\n');
+  const expectedMarkers = assessment.status === 'complete' ? 1 : 0;
+  if (markerLineCount(body) !== expectedMarkers) {
+    throw new Error('a rendered review must contain exactly the state marker the renderer emits');
+  }
+  return body;
 }
 
 function main() {
