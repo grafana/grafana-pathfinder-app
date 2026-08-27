@@ -42,6 +42,14 @@ const mockRecord = recordSettingsStoreResolved as jest.MockedFunction<typeof rec
 
 const NAMESPACE = 'stacks-123';
 
+/**
+ * The store-ladder rung is emitted through a dynamic import, so it lands a
+ * microtask after the read resolves — the facade must stay out of `module.js`.
+ */
+async function settleTelemetry() {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /** An error shaped the way `getBackendSrv().fetch` rejects. */
 function httpError(status: number) {
   return throwError(() => ({ status }));
@@ -74,6 +82,7 @@ describe('fetchPathfinderSettingsSnapshot', () => {
 
     expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+    await settleTelemetry();
     expect(mockRecord).toHaveBeenCalledWith('api-unavailable');
   });
 
@@ -86,6 +95,7 @@ describe('fetchPathfinderSettingsSnapshot', () => {
     fetchMock.mockReturnValueOnce(httpError(status));
 
     expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
+    await settleTelemetry();
     expect(mockRecord).toHaveBeenCalledWith(outcome);
   });
 
@@ -95,6 +105,7 @@ describe('fetchPathfinderSettingsSnapshot', () => {
     fetchMock.mockReturnValueOnce(httpError(403));
 
     expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
+    await settleTelemetry();
     expect(mockRecord).toHaveBeenCalledWith('forbidden');
   });
 
@@ -104,6 +115,7 @@ describe('fetchPathfinderSettingsSnapshot', () => {
     fetchMock.mockReturnValueOnce(httpError(400));
 
     expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
+    await settleTelemetry();
     expect(mockRecord).toHaveBeenCalledWith('read-error');
   });
 
@@ -111,6 +123,7 @@ describe('fetchPathfinderSettingsSnapshot', () => {
     fetchMock.mockReturnValueOnce(of({ data: { metadata: { resourceVersion: '1' } } }));
 
     expect(await fetchPathfinderSettingsSnapshot()).toBeNull();
+    await settleTelemetry();
     expect(mockRecord).toHaveBeenCalledWith('empty-spec');
   });
 });

@@ -35,10 +35,22 @@ import {
   PathfinderTenantSettings,
 } from '../constants';
 import { logger } from '../lib/logging';
-import { recordSettingsStoreResolved } from '../lib/telemetry/facade';
+import type { SettingsStoreOutcome } from '../lib/telemetry/facade';
 import { APP_PLATFORM_API_VERSION, isBackendApiAvailable } from './interactive-guides-api';
 
 const RESOURCE = 'pathfindersettings';
+
+/**
+ * Emit the store-ladder rung without pulling the telemetry facade — and the Faro
+ * SDK behind it — into `module.js`. This client is reached from the config
+ * bootstrap, which `module.tsx` runs on the critical path, and a static import
+ * here costs ~14KB on first paint for a counter nothing waits on.
+ */
+function recordSettingsStoreResolved(outcome: SettingsStoreOutcome): void {
+  void import('../lib/telemetry/facade')
+    .then((telemetry) => telemetry.recordSettingsStoreResolved(outcome))
+    .catch(() => undefined);
+}
 
 /** The singleton resource name. One settings record per stack namespace. */
 export const SETTINGS_RESOURCE_NAME = 'default';
