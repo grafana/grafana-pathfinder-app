@@ -171,11 +171,26 @@ function renderAllPassiveSection() {
   );
 }
 
+function renderTwoPassiveSections() {
+  return render(
+    <>
+      <InteractiveSection id="first" title="First section" autoCollapse={false}>
+        <p>First body.</p>
+      </InteractiveSection>
+      <InteractiveSection id="second" title="Second section" autoCollapse={false}>
+        <p>Second body.</p>
+      </InteractiveSection>
+    </>
+  );
+}
+
 const SECTION_NOGATE = 'section-nogate';
 const STEP_NOGATE = `${SECTION_NOGATE}-step-1`;
 const SECTION_GATED = 'section-gated';
 const STEP_GATED = `${SECTION_GATED}-step-1`;
 const SECTION_PASSIVE = 'section-passive';
+const SECTION_FIRST = 'section-first';
+const SECTION_SECOND = 'section-second';
 
 const doButton = (id: string) => testIds.interactive.doSectionButton(id);
 const resetButton = (id: string) => testIds.interactive.resetSectionButton(id);
@@ -356,7 +371,7 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
   });
 
   describe('guide-wide progress reset', () => {
-    it('clears acknowledgement and expands a mounted section for the active content', async () => {
+    it('resets mounted UI for the active content without duplicating persistence writes', async () => {
       memoryStore.set(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`, true);
       memoryStore.set(`section-collapse::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`, true);
       renderAllPassiveSection();
@@ -366,15 +381,38 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       act(() => {
         window.dispatchEvent(
           new CustomEvent('interactive-progress-cleared', {
-            detail: { contentKey: NON_PREVIEW_KEY },
+            detail: { scope: 'content', contentKey: NON_PREVIEW_KEY },
           })
         );
       });
 
       await waitFor(() => expect(screen.getByTestId(markButton(SECTION_PASSIVE))).toBeInTheDocument());
       expect(screen.getByText('First paragraph.')).toBeInTheDocument();
-      expect(memoryStore.get(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBeUndefined();
-      expect(memoryStore.get(`section-collapse::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBeUndefined();
+      expect(memoryStore.get(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBe(true);
+      expect(memoryStore.get(`section-collapse::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBe(true);
+    });
+
+    it('isolates a section reset from siblings sharing the same content key', async () => {
+      for (const sectionId of [SECTION_FIRST, SECTION_SECOND]) {
+        memoryStore.set(`section-ack::${NON_PREVIEW_KEY}::${sectionId}`, true);
+        memoryStore.set(`section-collapse::${NON_PREVIEW_KEY}::${sectionId}`, true);
+      }
+      renderTwoPassiveSections();
+
+      await waitFor(() => expect(screen.getAllByRole('button', { name: 'Expand section' })).toHaveLength(2));
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('interactive-progress-cleared', {
+            detail: { scope: 'section', contentKey: NON_PREVIEW_KEY, sectionId: SECTION_FIRST },
+          })
+        );
+      });
+
+      await waitFor(() => expect(screen.getByTestId(markButton(SECTION_FIRST))).toBeInTheDocument());
+      expect(screen.getByTestId(resetButton(SECTION_SECOND))).toBeInTheDocument();
+      expect(screen.getByText('First body.')).toBeInTheDocument();
+      expect(screen.queryByText('Second body.')).not.toBeInTheDocument();
     });
 
     it('ignores a reset for different content', async () => {
@@ -386,13 +424,46 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       act(() => {
         window.dispatchEvent(
           new CustomEvent('interactive-progress-cleared', {
-            detail: { contentKey: '/another-guide' },
+            detail: { scope: 'content', contentKey: '/another-guide' },
           })
         );
       });
 
       expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument();
       expect(memoryStore.get(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBe(true);
+    });
+
+    it('targets path members explicitly and handles a global reset', async () => {
+      memoryStore.set(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`, true);
+      renderAllPassiveSection();
+
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument());
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('interactive-progress-cleared', {
+            detail: { scope: 'path', pathId: 'path-a', contentKeys: ['/another-guide'] },
+          })
+        );
+      });
+      expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument();
+
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('interactive-progress-cleared', {
+            detail: { scope: 'path', pathId: 'path-a', contentKeys: [NON_PREVIEW_KEY] },
+          })
+        );
+      });
+      await waitFor(() => expect(screen.getByTestId(markButton(SECTION_PASSIVE))).toBeInTheDocument());
+
+      await click(markButton(SECTION_PASSIVE));
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument());
+
+      act(() => {
+        window.dispatchEvent(new CustomEvent('interactive-progress-cleared', { detail: { scope: 'global' } }));
+      });
+      await waitFor(() => expect(screen.getByTestId(markButton(SECTION_PASSIVE))).toBeInTheDocument());
     });
 
     it('ignores guide reset events in preview mode', async () => {
@@ -407,7 +478,7 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       act(() => {
         window.dispatchEvent(
           new CustomEvent('interactive-progress-cleared', {
-            detail: { contentKey: PREVIEW_KEY_OVERRIDE },
+            detail: { scope: 'content', contentKey: PREVIEW_KEY_OVERRIDE },
           })
         );
       });

@@ -77,7 +77,12 @@ import {
   AnalyticsContentType,
   createInteractionName,
 } from '../../lib/analytics';
-import { StorageEvents } from '../../lib/event-names';
+import {
+  dispatchInteractiveProgressCleared,
+  isProgressClearForSection,
+  StorageEvents,
+  type InteractiveProgressClearedDetail,
+} from '../../lib/event-names';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
@@ -452,19 +457,18 @@ export function InteractiveSection({
 
     const contentKey = getContentKey();
     const handleProgressCleared = (event: Event) => {
-      const clearedContentKey = (event as CustomEvent<{ contentKey?: string }>).detail?.contentKey;
-      if (clearedContentKey !== contentKey) {
+      const detail = (event as CustomEvent<InteractiveProgressClearedDetail>).detail;
+      if (!isProgressClearForSection(detail, contentKey, sectionId)) {
         return;
       }
 
       dispatch({ type: 'CLEAR_ACK' });
       resetCollapse();
-      clearAckAndCollapseStorage();
     };
 
     window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
     return () => window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
-  }, [clearAckAndCollapseStorage, isPreviewMode, resetCollapse]);
+  }, [isPreviewMode, resetCollapse, sectionId]);
 
   // Enable action monitor when component mounts (if feature is enabled in config)
   useEffect(() => {
@@ -1129,11 +1133,8 @@ export function InteractiveSection({
     // per-section reset, even when no progress is left.
     if (typeof window !== 'undefined') {
       const contentKey = getContentKey();
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
-          detail: { contentKey },
-        })
-      );
+      dispatchProgress({ kind: 'section', sectionId, completed: false });
+      dispatchInteractiveProgressCleared({ scope: 'section', contentKey, sectionId });
       // All-passive sections bypass `persistSection` on reset too;
       // recompute so the persisted percentage drops in lockstep.
       if (!isPreviewMode) {

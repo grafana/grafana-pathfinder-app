@@ -10,7 +10,7 @@
  *
  * What is pinned:
  *   - `interactive-progress-saved`  : detail `{ contentKey, hasProgress, completionPercentage }`
- *   - `interactive-progress-cleared`: detail `{ contentKey }`
+ *   - `interactive-progress-cleared`: discriminated section/content/path/global detail
  *   - `section-completed`           : detail `{ sectionId }` (on `document`)
  *   - `interactive-section-completed`: detail `{ sectionId }` (on `window`)
  *   - `interactive-step-completed`  : detail `{ stepId, sectionId }`
@@ -271,7 +271,7 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
       }
     });
 
-    it('dispatches `interactive-progress-cleared` with { contentKey } on section reset', async () => {
+    it('dispatches a section-scoped `interactive-progress-cleared` event on section reset', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
         renderSingleStepSection();
@@ -288,9 +288,13 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         });
 
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'interactive-progress-cleared');
+          const evt = events.find((e) => e.name === 'interactive-progress-cleared' && e.detail.scope === 'section');
           expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ contentKey: NON_PREVIEW_KEY });
+          expect(evt!.detail).toEqual({
+            scope: 'section',
+            contentKey: NON_PREVIEW_KEY,
+            sectionId: SECTION_ID,
+          });
         });
       } finally {
         unsubscribe();
@@ -410,9 +414,9 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
           screen.getByTestId(resetButton(SECTION_ID)).click();
         });
         await waitFor(() => {
-          const evt = events.find((e) => e.name === 'interactive-progress-cleared');
+          const evt = events.find((e) => e.name === 'interactive-progress-cleared' && e.detail.scope === 'section');
           expect(evt).toBeDefined();
-          expect(evt!.detail).toEqual({ contentKey: PREVIEW_KEY });
+          expect(evt!.detail).toEqual({ scope: 'section', contentKey: PREVIEW_KEY, sectionId: SECTION_ID });
         });
       } finally {
         unsubscribe();

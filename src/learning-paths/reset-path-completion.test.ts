@@ -93,6 +93,25 @@ beforeEach(() => {
 });
 
 describe('resetPath — App Platform path (no url)', () => {
+  it('dispatches a path-scoped reset with the exact cleared content keys', async () => {
+    const events: CustomEvent[] = [];
+    const handler = (event: Event) => events.push(event as CustomEvent);
+    window.addEventListener('interactive-progress-cleared', handler);
+
+    try {
+      await renderAndResetPath();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]!.detail).toEqual({
+        scope: 'path',
+        pathId: PATH_ID,
+        contentKeys: [BUNDLED_PATH_KEY, PATH_KEY, ...MEMBER_KEYS],
+      });
+    } finally {
+      window.removeEventListener('interactive-progress-cleared', handler);
+    }
+  });
+
   it('clears the milestone checklist stored under the path cover key', async () => {
     await seedCompletedCourse();
 

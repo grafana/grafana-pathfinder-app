@@ -33,7 +33,7 @@ import {
   interactiveStepStorage,
   sectionAcknowledgementStorage,
 } from '../lib/user-storage';
-import { StorageEvents } from '../lib/event-names';
+import { dispatchInteractiveProgressCleared } from '../lib/event-names';
 import { StorageKeys } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
 
@@ -265,10 +265,8 @@ function persistSection(contentKey: string, sectionId: string): void {
   if (completedIds.size > 0 && percentage !== undefined) {
     dispatchProgress({ kind: 'guide', contentKey, percentage, hasProgress: true });
   }
-  // Tail-reset / partial-reset coverage for the legacy
-  // `interactive-progress-cleared` event. The manual reset paths
-  // (handleResetSection, useContentReset, block-editor preview reset)
-  // dispatch this event directly; the store also drops to zero progress
+  // Tail-reset / partial-reset coverage for the content-scoped
+  // `interactive-progress-cleared` event. The store also drops to zero progress
   // when the user redoes the first step or runs a reset path that
   // doesn't go through one of those manual sites. Fire here whenever
   // the *guide* total falls to zero so the alignment-prompt and
@@ -282,7 +280,7 @@ function persistSection(contentKey: string, sectionId: string): void {
     // in a mixed guide must not fire "cleared" while acks remain.
     const ackTotal = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
     if (guideTotal === 0 && ackTotal === 0) {
-      window.dispatchEvent(new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey } }));
+      dispatchInteractiveProgressCleared({ scope: 'content', contentKey });
     }
   }
 }
@@ -536,8 +534,7 @@ export function resetSection(sectionId: string): void {
     notify(contentKey);
     // Symmetric with resetSteps — fire per-step events so reactive
     // listeners (interactive-conditional, requirement re-checks) see
-    // the clear, not just the section-level `interactive-progress-cleared`
-    // dispatched by the section's own reset handler.
+    // the clear alongside the section-scoped reset notification.
     clearedIds.forEach((id) => {
       dispatchProgress({
         kind: 'step',

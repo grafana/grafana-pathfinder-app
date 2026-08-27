@@ -7,8 +7,7 @@
  *
  *   - `interactive-progress-saved`    (producer: persistCompletedSteps in
  *                                      interactive-section.tsx)
- *   - `interactive-progress-cleared`  (producer: BlockPreview reset +, after
- *                                      phase-3 of #842, handleResetSection)
+ *   - `interactive-progress-cleared`  (scoped reset notification)
  *
  * If a refactor of either side breaks the event names, payload shape, or the
  * progressKey filter, the assertions here will fail. The hook also drives
@@ -171,7 +170,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: PROGRESS_KEY },
+          detail: { scope: 'content', contentKey: PROGRESS_KEY },
         })
       );
     });
@@ -189,7 +188,7 @@ describe('useGuidePreviewProgress — listener contract', () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: OTHER_KEY },
+          detail: { scope: 'content', contentKey: OTHER_KEY },
         })
       );
     });
@@ -216,10 +215,45 @@ describe('useGuidePreviewProgress — listener contract', () => {
       expect(interactiveStepStorage.clearAllForContent).toHaveBeenCalledWith(PROGRESS_KEY);
       expect(result.current.hasProgress).toBe(false);
       expect(events).toHaveLength(1);
-      expect(events[0]!.detail).toEqual({ contentKey: PROGRESS_KEY });
+      expect(events[0]!.detail).toEqual({ scope: 'content', contentKey: PROGRESS_KEY });
     } finally {
       window.removeEventListener('interactive-progress-cleared', handler);
     }
+  });
+
+  it('keeps sibling preview progress when one section resets', async () => {
+    const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', sectionId: 'section-a', completed: true },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', sectionId: 'section-b', completed: true },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', sectionId: 'section-a', completed: false },
+        })
+      );
+    });
+    expect(result.current.hasProgress).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', sectionId: 'section-b', completed: false },
+        })
+      );
+    });
+    expect(result.current.hasProgress).toBe(false);
   });
 
   it('unsubscribes its listeners on unmount', async () => {
