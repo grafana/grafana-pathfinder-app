@@ -8,12 +8,13 @@ Load these files **only when working in the relevant domain**.
 
 ## Architecture and project context
 
-| File                      | When to load                                                                                                     | Auto-triggered by globs |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `projectbrief.mdc`        | Understanding project scope and goals                                                                            | --                      |
-| `techContext.mdc`         | Tech stack, dependencies, build system                                                                           | --                      |
-| `systemPatterns.mdc`      | Architecture, component relationships, per-subsystem entry points and key files                                  | --                      |
-| `docs/design/CONCERNS.md` | PR review routing, impact analysis, change risk classification, one-way door analysis, subsystem-aware debugging | --                      |
+| File                             | When to load                                                                                                                                                          | Auto-triggered by globs |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `projectbrief.mdc`               | Understanding project scope and goals                                                                                                                                 | --                      |
+| `techContext.mdc`                | Tech stack, dependencies, build system                                                                                                                                | --                      |
+| `systemPatterns.mdc`             | Architecture, component relationships, per-subsystem entry points and key files                                                                                       | --                      |
+| `docs/design/CONCERNS.md`        | Compact PR review routing, impact analysis, and change risk classification                                                                                            | --                      |
+| `docs/design/CONCERN_DETAILS.md` | Design intent (may not match implementation); review guidance, one-way doors, and contract anchors; extract only the activated concern with the review skill's script | --                      |
 
 ## Interactive tutorial / guide authoring
 
@@ -35,7 +36,7 @@ Load these files **only when working in the relevant domain**.
 | `frontend-security.mdc`    | Frontend security (from security team)                                                                                                                                                                                              | `*.ts`, `*.tsx`, `*.js`, `*.jsx`                         |
 | `react-antipatterns.mdc`   | PR reviews (on hit), hooks/effects/state. An index — routes each R-code to a themed file holding the detail                                                                                                                         | --                                                       |
 | `testingStrategy.mdc`      | Writing or reviewing tests                                                                                                                                                                                                          | `*.test.ts`, `*.test.tsx`, `jest.config*`, `jest.setup*` |
-| `docs/design/PR_REVIEW.md` | PR review standards: pattern catalog (R1-R21, F1-F6, QC1-QC7, G1-G7), reviewer schema, comment prefixes                                                                                                                             | --                                                       |
+| `docs/design/PR_REVIEW.md` | PR review standards: pattern catalog (R1-R21, F1-F6, QC1-QC7, G1-G7), reviewer and evolution-packet schemas, comment prefixes, and the final `ReviewReport` schema the renderer consumes                                            | --                                                       |
 | `E2E_TESTING_CONTRACT.md`  | E2E testing, `data-test-*` attributes                                                                                                                                                                                               | --                                                       |
 | `E2E_TESTING.md`           | E2E guide test runner: CLI reference, package-aware testing (guides, paths/journeys), milestone expansion and dependency planning, report selection metadata, options, troubleshooting, error classification, environment variables | --                                                       |
 
