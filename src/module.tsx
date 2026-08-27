@@ -5,7 +5,7 @@ import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { logger } from './lib/logging';
 import { initPluginTranslations } from '@grafana/i18n';
 import pluginJson from './plugin.json';
-import { DocsPluginConfig } from './constants';
+import { PathfinderPluginConfig } from './constants';
 // Direct file import, not the ./hooks barrel: the barrel would pull every hook
 // (and zod, via user-storage) into module.js.
 import { publishPathfinderPluginConfig, refreshPathfinderPluginConfig } from './hooks/usePathfinderPluginConfig';
@@ -156,7 +156,7 @@ const plugin = new AppPlugin<{}>()
   });
 
 // Override init() to handle auto-open when plugin loads
-plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
+plugin.init = function (meta: AppPluginMeta<PathfinderPluginConfig>) {
   // Everything here must stay synchronous. `AppPlugin.init` is typed `void` and
   // Grafana never awaits it, so work behind an await would run after first paint
   // — after scene construction has already read the published config, and after

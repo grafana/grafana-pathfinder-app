@@ -1,174 +1,102 @@
 /**
  * Dev mode utility for per-user developer features
  *
- * SECURITY: Hybrid approach for maximum security with per-user scoping
+ * TWO GATES, TWO STORES
  *
- * Storage: Plugin jsonData (server-side, admin-controlled, cannot be manipulated via browser)
- * Scoping: User ID check (only the user who enabled it sees dev features)
+ * - Tenant gate (`devMode`): an admin-controlled flag in tenant settings — the
+ *   `PathfinderSettings` App Platform resource, with the legacy plugin-jsonData
+ *   value as a fallback. An admin can switch developer surfaces off for the whole
+ *   stack. It is a tenant setting, so it is written through `saveTenantSettings`
+ *   by the configuration page, not from here.
+ * - Per-user opt-in (`devModeOptIn`): this user's own choice, in this browser's
+ *   localStorage (see lib/dev-mode-opt-in.ts for why not Grafana user storage).
  *
- * Benefits:
- * - Server-side storage in Grafana's database (tamper-proof)
- * - Only admins can modify plugin settings
- * - Per-user functionality (other users don't see dev mode even if enabled)
- * - Synchronous checks (no async complexity)
- * - Persists across sessions and page reloads
+ * Both must be true for a user to see developer features, so the configuration
+ * page's toggle lifts the tenant gate as well as recording the opt-in — writing
+ * only this half would leave the switch visibly doing nothing on a fresh stack.
  *
- * Architecture:
- * - devMode: boolean - Whether dev mode is enabled for the instance
- * - devModeUserId: number - User ID who enabled it (only they see dev features)
+ * WHY IT CHANGED
  *
- * USAGE:
- * - isDevModeEnabled(config, currentUserId) - Check if dev mode enabled for this user
- * - enableDevMode(currentUserId) - Enable dev mode for a specific user
- * - disableDevMode() - Disable dev mode entirely
+ * This used to be `devMode` plus a `devModeUserIds` array, both in plugin
+ * `jsonData`. That store is org-wide and provisioning-owned, and Grafana's write
+ * replaces the whole document, so toggling dev mode rewrote every plugin setting
+ * — which is how it once unpinned the plugin from the nav (`aa1c2efd`) — and a
+ * Cloud instance restart reset the flag along with everything else. The opt-in
+ * was already self-service (`enableDevMode` added the *calling* user), so moving
+ * it to this browser's storage changes no permission: it removes an org-wide
+ * write and stops one user's preference being visible to every other user.
+ *
+ * The resolved config carries both flags, so every check here stays synchronous.
  */
 
 import { config } from '@grafana/runtime';
-import { DocsPluginConfig } from '../constants';
+import { PathfinderPluginConfig } from '../constants';
 import { logger } from '../lib/logging';
-import { fetchPluginJsonData, updatePluginSettings } from './utils.plugin';
-import pluginJson from '../plugin.json';
-
-/**
- * Fetch current plugin jsonData from the backend to avoid overwriting
- * fields managed by other config tabs when saving dev mode changes.
- */
-async function fetchCurrentJsonData(): Promise<DocsPluginConfig> {
-  return fetchPluginJsonData(pluginJson.id);
-}
+import { adoptLegacyDevModeOptIn, readDevModeOptIn, writeDevModeOptIn } from '../lib/dev-mode-opt-in';
 
 /**
  * Check if dev mode is enabled for the current user (synchronous)
  *
- * SECURITY: Checks both that dev mode is enabled AND user ID is in the allowed list
- * This allows multiple developers to have access while preventing unauthorized users
+ * Requires both the tenant gate and this user's opt-in.
  *
- * @param config - Plugin configuration from jsonData
- * @param currentUserId - Current user's ID (optional, will auto-detect if not provided)
+ * @param pluginConfig - Resolved plugin configuration
  * @returns true if dev mode is enabled for this specific user
  */
-export const isDevModeEnabled = (pluginConfig: DocsPluginConfig, currentUserId?: number): boolean => {
-  // Auto-detect current user if not provided
-  const userId = currentUserId ?? config.bootData.user?.id;
+export const isDevModeEnabled = (pluginConfig: PathfinderPluginConfig): boolean => {
+  const tenantEnabled = pluginConfig.devMode ?? false;
 
-  const devMode = pluginConfig.devMode ?? false;
-  const devModeUserIds = pluginConfig.devModeUserIds ?? [];
+  if (!tenantEnabled) {
+    return false;
+  }
 
-  // Dev mode must be enabled AND user ID must be in the allowed list
-  const result = devMode && userId !== undefined && devModeUserIds.includes(userId);
-
-  return result;
+  // Prefer the resolved value the config layer hydrated; fall back to a direct
+  // read for callers holding a raw jsonData object that never went through it.
+  return pluginConfig.devModeOptIn ?? readDevModeOptIn() ?? false;
 };
 
 /**
- * Enable dev mode for the current user
+ * Enable developer surfaces for the current user.
  *
- * SECURITY: Writes to plugin jsonData (server-side, requires admin permissions)
- * Adds user to the allowed list (doesn't remove other users)
- *
- * @param currentUserId - User ID to add to dev mode access list
- * @param currentUserIds - Current list of user IDs (to preserve existing users)
+ * Only records this user's opt-in — it cannot turn on the tenant gate, which is
+ * an admin setting. If the gate is off, nothing becomes visible.
  */
-export const enableDevMode = async (currentUserId: number, currentUserIds: number[] = []): Promise<void> => {
+export const enableDevMode = async (): Promise<void> => {
   try {
-    // Add user to list if not already present
-    const updatedUserIds = currentUserIds.includes(currentUserId) ? currentUserIds : [...currentUserIds, currentUserId];
-
-    // Fetch current settings to preserve fields managed by other config tabs
-    const currentJsonData = await fetchCurrentJsonData();
-
-    // Update plugin settings with dev mode enabled and updated user list
-    await updatePluginSettings(pluginJson.id, {
-      enabled: true,
-      jsonData: {
-        ...currentJsonData,
-        devMode: true,
-        devModeUserIds: updatedUserIds,
-      },
-    });
-  } catch (e: any) {
+    await writeDevModeOptIn(true);
+  } catch (e) {
     logger.error('Failed to enable dev mode', { error: e });
-    throw new Error('Failed to enable dev mode. You may need admin permissions to modify plugin settings.');
+    throw new Error('Failed to enable dev mode.');
   }
 };
 
 /**
- * Disable dev mode for a specific user
+ * Disable developer surfaces for the current user.
  *
- * SECURITY: Removes user from access list, disables entirely if last user
- *
- * @param userId - User ID to remove from dev mode access
- * @param currentUserIds - Current list of user IDs
- */
-export const disableDevModeForUser = async (userId: number, currentUserIds: number[] = []): Promise<void> => {
-  try {
-    // Remove user from list
-    const updatedUserIds = currentUserIds.filter((id) => id !== userId);
-
-    // If no users left, disable dev mode entirely
-    const devMode = updatedUserIds.length > 0;
-
-    const currentJsonData = await fetchCurrentJsonData();
-
-    await updatePluginSettings(pluginJson.id, {
-      enabled: true,
-      jsonData: {
-        ...currentJsonData,
-        devMode,
-        devModeUserIds: updatedUserIds,
-      },
-    });
-  } catch (e: any) {
-    logger.error('Failed to disable dev mode for user', { error: e });
-    throw new Error('Failed to disable dev mode. You may need admin permissions to modify plugin settings.');
-  }
-};
-
-/**
- * Disable dev mode for all users
- *
- * SECURITY: Clears both flag and entire user list from server
+ * Affects only this user; other users keep their own opt-in, and the tenant gate
+ * is untouched.
  */
 export const disableDevMode = async (): Promise<void> => {
   try {
-    const currentJsonData = await fetchCurrentJsonData();
-
-    // Update plugin settings to disable dev mode entirely
-    await updatePluginSettings(pluginJson.id, {
-      enabled: true,
-      jsonData: {
-        ...currentJsonData,
-        devMode: false,
-        devModeUserIds: [],
-      },
-    });
-  } catch (e: any) {
+    await writeDevModeOptIn(false);
+  } catch (e) {
     logger.error('Failed to disable dev mode', { error: e });
-    throw new Error('Failed to disable dev mode. You may need admin permissions to modify plugin settings.');
+    throw new Error('Failed to disable dev mode.');
   }
 };
 
 /**
- * Toggle dev mode for the current user
+ * Toggle developer surfaces for the current user.
  *
- * @param currentUserId - User ID to toggle dev mode for
- * @param currentState - Whether THIS user currently has dev mode enabled
- * @param currentUserIds - Current list of all users with dev mode access
- * @returns The new state of dev mode for THIS user
+ * @param currentState - Whether this user currently has dev mode on
+ * @returns The new opt-in state for this user
  */
-export const toggleDevMode = async (
-  currentUserId: number,
-  currentState: boolean,
-  currentUserIds: number[] = []
-): Promise<boolean> => {
+export const toggleDevMode = async (currentState: boolean): Promise<boolean> => {
   const newValue = !currentState;
 
   if (newValue) {
-    // Add user to the list
-    await enableDevMode(currentUserId, currentUserIds);
+    await enableDevMode();
   } else {
-    // Remove user from the list
-    await disableDevModeForUser(currentUserId, currentUserIds);
+    await disableDevMode();
   }
 
   return newValue;
@@ -181,22 +109,21 @@ export const toggleDevMode = async (
  * This function attempts to read config from global state and check current user
  *
  * LIMITATION: May return false if called before plugin context is available
- * Prefer using isDevModeEnabled(config, userId) in React components
+ * Prefer using isDevModeEnabled(config) in React components
  *
  * @returns true if dev mode is enabled for current user, false otherwise
  */
 export const isDevModeEnabledGlobal = (): boolean => {
   try {
     // Try to get plugin config from global window (set by components)
-    const globalConfig = (window as any).__pathfinderPluginConfig as DocsPluginConfig | undefined;
-    const userId = config.bootData.user?.id;
+    const globalConfig = (window as any).__pathfinderPluginConfig as PathfinderPluginConfig | undefined;
 
     if (!globalConfig) {
       // Plugin context not available yet - default to false (safest)
       return false;
     }
 
-    return isDevModeEnabled(globalConfig, userId);
+    return isDevModeEnabled(globalConfig);
   } catch (e) {
     return false;
   }
@@ -208,13 +135,12 @@ export const isDevModeEnabledGlobal = (): boolean => {
  * This allows testing the assistant integration in OSS environments by mocking
  * the assistant availability and logging prompts instead of opening the real assistant.
  *
- * @param pluginConfig - Plugin configuration from jsonData
- * @param currentUserId - Current user's ID (optional, will auto-detect if not provided)
+ * @param pluginConfig - Plugin configuration
  * @returns true if assistant dev mode is enabled for this user
  */
-export const isAssistantDevModeEnabled = (pluginConfig: DocsPluginConfig, currentUserId?: number): boolean => {
+export const isAssistantDevModeEnabled = (pluginConfig: PathfinderPluginConfig): boolean => {
   // First check if regular dev mode is enabled for this user
-  const devModeEnabled = isDevModeEnabled(pluginConfig, currentUserId);
+  const devModeEnabled = isDevModeEnabled(pluginConfig);
 
   if (!devModeEnabled) {
     return false;
@@ -231,15 +157,41 @@ export const isAssistantDevModeEnabled = (pluginConfig: DocsPluginConfig, curren
  */
 export const isAssistantDevModeEnabledGlobal = (): boolean => {
   try {
-    const globalConfig = (window as any).__pathfinderPluginConfig as DocsPluginConfig | undefined;
-    const userId = config.bootData.user?.id;
+    const globalConfig = (window as any).__pathfinderPluginConfig as PathfinderPluginConfig | undefined;
 
     if (!globalConfig) {
       return false;
     }
 
-    return isAssistantDevModeEnabled(globalConfig, userId);
+    return isAssistantDevModeEnabled(globalConfig);
   } catch (e) {
     return false;
   }
+};
+
+/**
+ * Resolve this user's dev-mode opt-in for the config layer to hydrate into the
+ * published configuration, keeping every check above synchronous. Tri-state:
+ * `undefined` is "this browser has never chosen", which the legacy migration
+ * needs to tell apart from a deliberate opt-out.
+ */
+export const resolveDevModeOptIn = (): boolean | undefined => readDevModeOptIn();
+
+export { adoptLegacyDevModeOptIn };
+
+/**
+ * Whether the signed-in user is the one a legacy `devModeUserIds` entry referred
+ * to. Read only while this browser has recorded no choice of its own; the caller
+ * adopts the result through `adoptLegacyDevModeOptIn`, which retires the
+ * allow-list for this browser so a later opt-out is not undone on the next
+ * publish.
+ */
+export const hasLegacyDevModeOptIn = (pluginConfig: PathfinderPluginConfig): boolean => {
+  const userId = config.bootData.user?.id;
+  // The one intentional reader of the deprecated allow-list: this is the upgrade
+  // path that retires it. Nothing writes it.
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
+  const legacyIds = pluginConfig.devModeUserIds;
+
+  return Array.isArray(legacyIds) && userId !== undefined && legacyIds.includes(userId);
 };

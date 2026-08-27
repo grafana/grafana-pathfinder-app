@@ -3,32 +3,34 @@ import { Button, useStyles2, FieldSet, Switch, Text, Alert } from '@grafana/ui';
 import { AppPluginMeta, GrafanaTheme2, PluginConfigPageProps } from '@grafana/data';
 import { css } from '@emotion/css';
 import { testIds } from '../../constants/testIds';
-import { DocsPluginConfig, TERMS_VERSION, getConfigWithDefaults } from '../../constants';
+import { PathfinderPluginConfig, ResolvedPathfinderConfig, TERMS_VERSION } from '../../constants';
 import { TERMS_AND_CONDITIONS_CONTENT } from './terms-content';
-import { updatePluginSettings } from '../../utils/utils.plugin';
+import { saveTenantSettings } from './save-settings';
+import { useSeededDraft } from './use-seeded-draft';
 import { sanitizeDocumentationHTML } from '../../security/html-sanitizer';
 import { logger } from '../../lib/logging';
 
-type JsonData = DocsPluginConfig & {
+type JsonData = PathfinderPluginConfig & {
   isDocsPasswordSet?: boolean;
 };
+
+function buildStateFromConfig(config: ResolvedPathfinderConfig): { acceptedTermsAndConditions: boolean } {
+  return { acceptedTermsAndConditions: config.acceptedTermsAndConditions };
+}
 
 export interface TermsAndConditionsProps extends PluginConfigPageProps<AppPluginMeta<JsonData>> {}
 
 const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
   const styles = useStyles2(getStyles);
-  const { enabled, pinned, jsonData } = plugin.meta;
-
-  // SINGLE SOURCE OF TRUTH: Initialize draft state ONCE from jsonData
-  // After save, page reload brings fresh jsonData - no sync needed
-  const [isRecommenderEnabled, setIsRecommenderEnabled] = useState<boolean>(() => {
-    const configWithDefaults = getConfigWithDefaults(jsonData || {});
-    return configWithDefaults.acceptedTermsAndConditions;
-  });
+  // Seeded through `useSeededDraft`, which reads the store this tab writes to.
+  // `enabled`/`pinned` stay unread here: echoing a stale snapshot of them is what
+  // unpinned the plugin (`aa1c2efd`). saveTenantSettings reads them at write time.
+  const { draft, edit } = useSeededDraft(buildStateFromConfig);
+  const isRecommenderEnabled = draft.acceptedTermsAndConditions;
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const onToggleRecommender = (event: ChangeEvent<HTMLInputElement>) => {
-    setIsRecommenderEnabled(event.target.checked);
+    edit({ acceptedTermsAndConditions: event.target.checked });
   };
 
   const onSubmit = async (event: React.SubmitEvent) => {
@@ -36,21 +38,17 @@ const TermsAndConditions = ({ plugin }: TermsAndConditionsProps) => {
     setIsSaving(true);
 
     try {
-      // Preserve ALL existing jsonData fields first (including provisioned fields
-      // like stackId that aren't in DocsPluginConfig), then apply defaults for
-      // known fields, then override with this form's fields.
-      const newJsonData = {
-        ...(jsonData || {}),
-        ...getConfigWithDefaults(jsonData || {}),
-        acceptedTermsAndConditions: isRecommenderEnabled,
-        // Persist the current terms version when enabling; leave unchanged when disabling
-        termsVersion: isRecommenderEnabled ? TERMS_VERSION : jsonData?.termsVersion,
-      };
-
-      await updatePluginSettings(plugin.meta.id, {
-        enabled,
-        pinned,
-        jsonData: newJsonData,
+      // Only the fields this tab owns. saveTenantSettings reads current settings
+      // authoritatively first, so the `plugin.meta` snapshot this form was seeded
+      // from can no longer write stale values back over another tab's save.
+      await saveTenantSettings({
+        pluginId: plugin.meta.id,
+        changes: {
+          acceptedTermsAndConditions: isRecommenderEnabled,
+          // Persist the current terms version when enabling; leave it to the
+          // authoritative read when disabling.
+          ...(isRecommenderEnabled ? { termsVersion: TERMS_VERSION } : {}),
+        },
       });
 
       // As a fallback, perform a hard reload so plugin context jsonData is guaranteed fresh

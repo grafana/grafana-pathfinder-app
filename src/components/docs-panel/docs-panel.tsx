@@ -21,7 +21,7 @@ const TerminalProviderLazy = lazy(() =>
 );
 // Lazy so @grafana/assistant stays out of the docs-panel init chain (see AiFixOrchestrator).
 const AiFixOrchestrator = lazy(() => import('./AiFixOrchestrator'));
-import { DocsPluginConfig } from '../../constants';
+import { PathfinderPluginConfig } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
@@ -66,7 +66,7 @@ import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../sty
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
-import { config, getAppEvents, locationService } from '@grafana/runtime';
+import { getAppEvents, locationService } from '@grafana/runtime';
 import { coerceLaunchSource, evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
@@ -193,7 +193,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return true;
   }
 
-  public constructor(pluginConfig: DocsPluginConfig = {}) {
+  public constructor(pluginConfig: PathfinderPluginConfig = {}) {
     // Initialize with the recommendations home tab
     const defaultTabs: LearningJourneyTab[] = [
       {
@@ -239,7 +239,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // remote packages — the Tier 3/4 injection point.
     //
     // Seed from the published global, not this surface's snapshot — the resolver is one app-wide singleton.
-    const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: DocsPluginConfig })
+    const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: PathfinderPluginConfig })
       .__pathfinderPluginConfig;
     setPackageResolver(createCompositeResolver(resolverConfig ?? pluginConfig));
 
@@ -296,7 +296,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * indistinguishable from "dev mode off" and would strip an authorized Dev
    * Tools tab.
    */
-  public syncPluginConfig(pluginConfig: DocsPluginConfig | null): void {
+  public syncPluginConfig(pluginConfig: PathfinderPluginConfig | null): void {
     if (pluginConfig && pluginConfig !== this.state.pluginConfig) {
       this.setState({ pluginConfig });
     }
@@ -1007,9 +1007,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // read as an explicit "dev mode off" and prune authorized tabs.
   const { config: pluginConfig, isResolved: isPluginConfigResolved } = usePathfinderPluginConfig();
 
-  // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
-  const currentUserId = config.bootData.user?.id;
-  const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+  const isDevMode = isDevModeEnabled(pluginConfig);
 
   const isEditorUser = isCurrentUserEditor();
 

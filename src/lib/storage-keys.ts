@@ -46,6 +46,11 @@ export const StorageKeys = {
   INTERACTIVE_LEARNING_BANNER_DISMISSED_PREFIX: 'grafana-pathfinder-interactive-learning-banner-dismissed-',
   // Dev/debug feature-flag overrides (localStorage). Read before the MTFF client.
   FLAG_OVERRIDES: 'grafana-pathfinder-flag-overrides',
+  // This user's opt-in to developer surfaces (localStorage, like FLAG_OVERRIDES
+  // above). Per-user, so it lives here rather than in tenant settings — it
+  // replaces the old org-wide `devModeUserIds` array in plugin jsonData. Still
+  // gated by the tenant-level `devMode`: both must be true.
+  DEV_MODE_OPT_IN: 'grafana-pathfinder-app-dev-mode-opt-in',
   // External app suggestions for the featured zone (sessionStorage)
   SUGGESTIONS: 'grafana-pathfinder-app-suggestions',
   // Recommended list scroll position, restored on return from a guide (sessionStorage)
