@@ -23,7 +23,7 @@ const SECTIONS = [
 ];
 const FOLLOW_UP_PREAMBLE = 'These are tracked separately and do not block merge.';
 const overflowNotice = (findings) =>
-  `Also still tracked, described in full by the review round that raised them: ${findings.map((finding) => finding.id).join(', ')}.`;
+  `Also still tracked, described in full by the earlier review round that raised them: ${findings.map((finding) => finding.id).join(', ')}.`;
 const FOLLOW_UP_OWNERS = ['maintainer', 'author'];
 const SEVERITY_RANK = new Map([
   ['critical', 0],
@@ -41,13 +41,14 @@ const ASSESSMENT_STATUSES = ['complete', 'incomplete'];
 const MAX_INCOMPLETE_REASON = 240;
 const MAX_ROUND = 100;
 const MAX_CLEARED = 12;
-const MAX_DEFERRED = 30;
 const MAX_DETAILED_FOLLOW_UPS = 20;
 const MAX_CLAIM = 200;
 const MAX_CLEARED_REASON = 300;
 const MAX_PROPOSED_ISSUE_TITLE = 120;
 const MAX_PROPOSED_ISSUE_BODY = 2000;
-const MAX_MARKER = 4000;
+const MAX_DEFERRED_CHARS = 3300;
+const MAX_CLEARED_CHARS = 4500;
+const MAX_MARKER = 8192;
 const STATE_MARKER_TOKEN = '<!-- pathfinder-review-state:';
 const COMMENT_TERMINATOR = '-->';
 const STATE_MARKER = /^<!-- pathfinder-review-state:(\{.+\}) -->$/;
@@ -128,6 +129,14 @@ function isFindingRef(entry) {
   );
 }
 
+function isCarriedForward(finding) {
+  return finding.disposition === 'follow_up' && finding.carried_forward === true;
+}
+
+function withinBudget(entries, max) {
+  return JSON.stringify(entries).length <= max;
+}
+
 function isClearedEntry(entry) {
   return (
     entry &&
@@ -152,7 +161,10 @@ function normalizeState(state) {
   if (!isRound(state.round) || !Array.isArray(state.deferred) || !Array.isArray(state.cleared)) {
     return null;
   }
-  if (state.deferred.length > MAX_DEFERRED || state.cleared.length > MAX_CLEARED) {
+  if (state.cleared.length > MAX_CLEARED) {
+    return null;
+  }
+  if (!withinBudget(state.deferred, MAX_DEFERRED_CHARS) || !withinBudget(state.cleared, MAX_CLEARED_CHARS)) {
     return null;
   }
   if (!state.deferred.every(isFindingRef) || !state.cleared.every(isClearedEntry)) {
@@ -252,6 +264,9 @@ function readAssessment(report) {
 }
 
 function validateFollowUp(finding) {
+  if (finding.carried_forward != null && typeof finding.carried_forward !== 'boolean') {
+    throw new Error('a follow-up finding carried_forward must be true or false');
+  }
   if (!FOLLOW_UP_OWNERS.includes(finding.owner)) {
     throw new Error('a follow-up finding owner must be maintainer or author');
   }
@@ -351,9 +366,6 @@ function validateReport(report) {
       validateFollowUp(finding);
     }
   }
-  if (report.findings.filter((finding) => finding.disposition === 'follow_up').length > MAX_DEFERRED) {
-    throw new Error(`a review tracks at most ${MAX_DEFERRED} follow-ups`);
-  }
 }
 
 export function renderReviewReport(report) {
@@ -403,14 +415,18 @@ export function renderReviewReport(report) {
       sections.push('', `## ${heading}`, '', findings.map(renderFinding).join('\n\n'));
       continue;
     }
-    const overflow = findings.slice(MAX_DETAILED_FOLLOW_UPS);
+    const introduced = findings.filter((finding) => !isCarriedForward(finding));
+    const carried = findings.filter(isCarriedForward);
+    const roomForCarried = Math.max(0, MAX_DETAILED_FOLLOW_UPS - introduced.length);
+    const detailed = [...introduced, ...carried.slice(0, roomForCarried)].sort(bySeverity);
+    const overflow = carried.slice(roomForCarried);
     sections.push(
       '',
       `## ${heading}`,
       '',
       FOLLOW_UP_PREAMBLE,
       '',
-      findings.slice(0, MAX_DETAILED_FOLLOW_UPS).map(renderFinding).join('\n\n'),
+      detailed.map(renderFinding).join('\n\n'),
       ...(overflow.length > 0 ? ['', overflowNotice(overflow)] : [])
     );
   }
@@ -431,18 +447,25 @@ export function renderReviewReport(report) {
           grouped.nit.length
         );
   if (assessment.status === 'complete') {
+    const deferred = grouped.follow_up.map(({ id, concern_id }) => ({ id, concern_id }));
+    if (!withinBudget(deferred, MAX_DEFERRED_CHARS)) {
+      throw new Error(`the marker's deferred list must stay under ${MAX_DEFERRED_CHARS} characters`);
+    }
+    if (!withinBudget(cleared, MAX_CLEARED_CHARS)) {
+      throw new Error(
+        `the marker's cleared list must stay under ${MAX_CLEARED_CHARS} characters; prune the least load-bearing claims`
+      );
+    }
     const state = JSON.stringify({
       version: 2,
       round,
       reviewed_head: report.reviewed_head,
       blocking_findings: grouped.blocking.map(({ id, concern_id }) => ({ id, concern_id })),
-      deferred: grouped.follow_up.map(({ id, concern_id }) => ({ id, concern_id })),
+      deferred,
       cleared,
     });
     if (state.length > MAX_MARKER) {
-      throw new Error(
-        `the re-review state marker must stay under ${MAX_MARKER} characters; prune the least load-bearing cleared claims`
-      );
+      throw new Error(`the re-review state marker must stay under ${MAX_MARKER} characters`);
     }
     sections.push('', `<!-- pathfinder-review-state:${state} -->`);
   }
