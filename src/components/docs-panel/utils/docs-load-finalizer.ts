@@ -19,6 +19,19 @@ export interface PendingAlignmentDecision {
   launchSource: string;
 }
 
+/**
+ * Implied 0th step: decide whether to prompt the user to navigate to the
+ * guide's declared starting location before step 1 begins.
+ *
+ * Two manifests can describe this launch and they are not equally complete.
+ * `packageManifest` comes from the catalogue proxy, whose Go
+ * `customGuideManifest` declares no starting location, so the key is dropped
+ * at the wire boundary; `fetchedManifest` carries the loader's copy intact.
+ * Passing both keeps `packageManifest` authoritative wherever it actually
+ * declares a value and only falls back where it previously resolved to null —
+ * so a guide opened from inside a learning path gets the same prompt as the
+ * same guide opened standalone.
+ */
 export function resolveDocsLoadAlignment({
   requestedUrl,
   packageManifest,

@@ -11,6 +11,19 @@ export interface TabStateResult extends TabStateSnapshot {
   changed: boolean;
 }
 
+/**
+ * Remove a tab and decide which tab takes focus.
+ *
+ * Unclosable chrome is a kind rule (type), not an identity check. Closing a
+ * background tab must not move focus — the user may be sitting on another tab
+ * and closing a guide from the overflow menu.
+ *
+ * Adjacency walks the rendered strip, not raw tab state: the recommendations
+ * rail holds no strip slot, so handing it focus would leave no visible tab
+ * marked active. A tab outside the strip closed via Ctrl+W has no neighbours
+ * of its own, so it inherits the last strip tab instead of sending the user
+ * home. Recommendations is the empty-strip fallback.
+ */
 export function closeTabState(state: TabStateSnapshot, tabId: string): TabStateResult {
   const closing = state.tabs.find((tab) => tab.id === tabId);
   if (!closing || closing.type === 'recommendations') {
@@ -56,6 +69,7 @@ export function pruneGatedTabState(
   return { tabs, activeTabId, changed: true };
 }
 
+/** Recommendations home is always present, so it is never persisted. */
 export function projectPersistedTabs(tabs: LearningJourneyTab[]): PersistedTabData[] {
   return tabs
     .filter((tab) => tab.type !== 'recommendations')
