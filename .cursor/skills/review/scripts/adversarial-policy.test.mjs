@@ -162,14 +162,14 @@ test('a two-of-three refutation drops even when the skeptics find blocking warra
   );
 });
 
-test('three verdicts that survive on truth still demote on a two-of-three unwarranted majority', () => {
+test('three verdicts that survive on truth demote only when the confirmers themselves find it unwarranted', () => {
   const finding = reviewerFinding({ severity: 'high', recommended_disposition: 'blocking' });
 
   assert.equal(
     decideVerification(finding, [
       warrantedVerdict('confirmed', 'no'),
       warrantedVerdict('refuted', 'no'),
-      warrantedVerdict('confirmed', 'yes'),
+      warrantedVerdict('confirmed', 'no'),
     ]).outcome,
     'demoted'
   );
@@ -177,6 +177,31 @@ test('three verdicts that survive on truth still demote on a two-of-three unwarr
     decideVerification(finding, [
       warrantedVerdict('confirmed', 'no'),
       warrantedVerdict('uncertain', 'yes'),
+      warrantedVerdict('confirmed', 'yes'),
+    ]).outcome,
+    'kept'
+  );
+});
+
+test('a refuting skeptic never casts the deciding unwarranted vote', () => {
+  const finding = reviewerFinding({ severity: 'high', recommended_disposition: 'blocking' });
+
+  assert.equal(
+    decideVerification(finding, [warrantedVerdict('confirmed', 'yes'), warrantedVerdict('confirmed', 'no')]).outcome,
+    'kept'
+  );
+  assert.equal(
+    decideVerification(finding, [
+      warrantedVerdict('confirmed', 'yes'),
+      warrantedVerdict('refuted', 'no'),
+      warrantedVerdict('confirmed', 'no'),
+    ]).outcome,
+    'kept'
+  );
+  assert.equal(
+    decideVerification(finding, [
+      warrantedVerdict('confirmed', 'no'),
+      warrantedVerdict('uncertain', 'no'),
       warrantedVerdict('confirmed', 'yes'),
     ]).outcome,
     'kept'

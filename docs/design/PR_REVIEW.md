@@ -73,6 +73,8 @@ Adversarial verification (`.cursor/skills/review/SKILL.md` §4b) collects verdic
 
 Truth is adjudicated first, then warrant. `adversarial-policy.mjs` resolves each finding to `kept`, `dropped`, or `demoted`. A `demoted` finding is retained as a `follow_up`, not dropped — it stays visible in the report and in the marker's `deferred` list.
 
+The warrant majority is counted **among confirming verdicts only**. A skeptic who refutes a finding has already said it is not true, so its `blocking_warranted: "no"` restates that refutation rather than judging whether a true finding should stop the merge; counting it would let a refuter break a tie between the skeptics who actually believe the finding. Truth adjudication alone decides what a refutation is worth.
+
 ### Blocking gate answers
 
 Every finding still recommended `blocking` after adversarial verification is serialized as `{ finding, answers }` and passed to `.cursor/skills/review/scripts/blocking-gate.mjs`, which returns `{ disposition, reason, gate_failures }`. `blocking-gate.test.mjs` is its behavioral spec, including the PR #1702 acceptance fixture. Never hand-apply its table.
@@ -93,9 +95,29 @@ Every finding still recommended `blocking` after adversarial verification is ser
 | `prior_contract_satisfied`    | Optional context for the §5 contract-anchor judgment; no decision rule reads it                    |
 | `contradicts_cleared`         | Optional `{ claim, reason, new_evidence }` quoting a `cleared` marker entry this finding overturns |
 
-The `override` list is the entire safety net, and it must not acquire round, precedent, or authorship conditions. A regression that breaks a shipped path is `shipped_path_breakage` and blocks unconditionally at any round, which is why the gate's late-finding demotion is safe.
+The `override` list is the entire safety net, and it must not acquire round, precedent, or authorship conditions.
 
-`gate_failures` lists every demoting condition that held, not only the one that decided the outcome — including on an override, so the debug trace shows what the override outranked.
+**The gate derives `shipped_path_breakage` itself.** When `authorship` is `regression` and `breaks_live_path` is true and the reviewer supplied no `override`, the gate resolves the override to `shipped_path_breakage` before any demotion rule runs. A reviewer never has to think to hand-set it: a regression that breaks a shipped path blocks unconditionally at any round, whatever its precedent count, induced scope, or attribution. That derivation is what makes the late-finding demotion in row 2 safe — and equally what keeps rows 3, 4, and 8 from demoting a live-path regression, since such a finding never reaches them. An explicitly supplied override always wins as supplied and is never replaced.
+
+`gate_failures` lists every demoting condition that held, not only the one that decided the outcome — including on an override, whether supplied or derived, so the debug trace shows what the override outranked.
+
+#### Decision table
+
+First match wins, in this order. The reason code is the stable identifier; cite it rather than the row number, which is meaningful only against this table.
+
+| Row | Condition                                                        | Disposition | Reason                   |
+| --- | ---------------------------------------------------------------- | ----------- | ------------------------ |
+| 1   | `override` is supplied, or derived from a live-path regression   | `blocking`  | `unconditional-override` |
+| 2   | `attribution` is `late`, and not a live-path regression          | `follow_up` | `late-peripheral`        |
+| 3   | `precedent_count >= 2`                                           | `follow_up` | `policy-change`          |
+| 4   | `induced_by_prior_suggestion`                                    | `follow_up` | `induced-scope`          |
+| 5   | `authorship` is `pre_existing`                                   | `follow_up` | `pre-existing`           |
+| 6   | `authorship` is `latent_exposed` and `latent_reachable` is false | `follow_up` | `latent-unreachable`     |
+| 7   | neither `breaks_live_path` nor `concrete_risk_now`               | `follow_up` | `no-live-impact`         |
+| 8   | `boundable_by_followup`                                          | `follow_up` | `safely-bounded`         |
+| 9   | no rule above holds                                              | `blocking`  | `warranted`              |
+
+Rows 2 through 8 are the `DEMOTIONS` list in `blocking-gate.mjs`, in source order; the row 1 test pins that order by deep-equalling the full `gate_failures` sequence, so reordering the list fails the suite rather than silently renumbering this table.
 
 ### Reversibility values
 

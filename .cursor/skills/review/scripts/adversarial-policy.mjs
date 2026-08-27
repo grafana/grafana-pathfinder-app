@@ -55,7 +55,6 @@ function countVerdicts(verdicts, warrantRequired) {
   }
   let refuted = 0;
   let confirmed = 0;
-  let warranted = 0;
   let unwarranted = 0;
   for (const verdict of verdicts) {
     if (!verdict || !VERDICTS.has(verdict.verdict)) {
@@ -73,14 +72,12 @@ function countVerdicts(verdicts, warrantRequired) {
       if (!WARRANTS.has(verdict.blocking_warranted)) {
         throw new Error(`Unknown blocking warrant: ${verdict.blocking_warranted}`);
       }
-      if (verdict.blocking_warranted === 'yes') {
-        warranted += 1;
-      } else if (verdict.blocking_warranted === 'no') {
+      if (verdict.blocking_warranted === 'no' && verdict.verdict === 'confirmed') {
         unwarranted += 1;
       }
     }
   }
-  return { refuted, confirmed, warranted, unwarranted };
+  return { refuted, confirmed, unwarranted };
 }
 
 export function decideVerification(finding, verdicts = []) {

@@ -72,7 +72,7 @@ At round ≥ 2 a finding may be `blocking` only when it is one of:
 
 - a prior blocker still unresolved at the current head
 - attributable to `prior_head..head`
-- a late blocker that survives `blocking-gate.mjs` rule 1 or rule 2
+- a late blocker that survives the whole of `blocking-gate.mjs` — reaching `unconditional-override` or `warranted`. Clearing the `late-peripheral` row is necessary, never sufficient: every later demotion row still runs and any of them can resolve the finding to `follow_up`
 
 A late blocker records `late_blocker_reason`. When it contradicts a `cleared` entry carried in the marker, it must quote that entry and state the new evidence that overturns it, through the gate's `contradicts_cleared` answer. A clearance from an earlier round is a commitment; overturning one silently is the failure this ratchet exists to prevent.
 
@@ -298,7 +298,7 @@ The synthesizer must:
 
 ### Do not manufacture blockers from the review's own effects
 
-**Induced scope.** A blocker whose existence traces to code the contributor added _in response to_ a prior-round `suggestion` or `nit` sets `induced_by_prior_suggestion` and is presumptively a `follow_up`. To stay blocking it must clear §4c through rule 1. Suggesting an expansion and then gating merge on the expansion's quality is how a review grows a PR it was supposed to evaluate.
+**Induced scope.** A blocker whose existence traces to code the contributor added _in response to_ a prior-round `suggestion` or `nit` sets `induced_by_prior_suggestion` and is presumptively a `follow_up`. To stay blocking it must clear §4c on the `unconditional-override` row — an override the reviewer supplies, or the one the gate derives for a live-path regression. Suggesting an expansion and then gating merge on the expansion's quality is how a review grows a PR it was supposed to evaluate.
 
 **Suggestion surface.** A suggestion that would widen the PR's changed surface — a new file, a new component, a new exported symbol, a new user-facing affordance — is a `follow_up`, not a `suggestion`. Optional advice that grows the diff is how a PR metastasizes; a proposed issue keeps the idea without charging this PR for it.
 

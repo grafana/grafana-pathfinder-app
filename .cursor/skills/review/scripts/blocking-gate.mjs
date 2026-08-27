@@ -36,6 +36,10 @@ function nonEmpty(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function derivedOverride(answers) {
+  return answers.authorship === 'regression' && answers.breaks_live_path ? 'shipped_path_breakage' : null;
+}
+
 function validateFinding(finding) {
   if (!finding || typeof finding !== 'object') {
     throw new Error('finding must be an object');
@@ -61,9 +65,9 @@ function validateAnswers(answers) {
   if (!Number.isInteger(answers.round) || answers.round < 1 || answers.round > MAX_ROUND) {
     throw new Error(`round must be an integer between 1 and ${MAX_ROUND}`);
   }
-  const override = answers.override ?? null;
-  if (override !== null && !OVERRIDES.has(override)) {
-    throw new Error(`Unknown override: ${override}`);
+  const suppliedOverride = answers.override ?? null;
+  if (suppliedOverride !== null && !OVERRIDES.has(suppliedOverride)) {
+    throw new Error(`Unknown override: ${suppliedOverride}`);
   }
   if (!AUTHORSHIP.has(answers.authorship)) {
     throw new Error(`Unknown authorship: ${answers.authorship}`);
@@ -101,7 +105,7 @@ function validateAnswers(answers) {
       throw new Error('contradicting a cleared claim requires non-empty new_evidence');
     }
   }
-  return { ...answers, override, attribution };
+  return { ...answers, override: suppliedOverride ?? derivedOverride(answers), attribution };
 }
 
 export function decideBlocking(input) {
