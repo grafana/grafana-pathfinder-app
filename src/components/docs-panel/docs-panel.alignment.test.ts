@@ -409,6 +409,20 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
       expect(events).toEqual(['commit', 'save', 'commit', 'commit', 'save', 'telemetry']);
     });
 
+    it('derives the tab render type from the launch manifest on every load', async () => {
+      const packageInfo = { packageId: 'connections-guide', packageManifest: { type: 'guide' } };
+      mockLoadDocsTabContentResult.mockResolvedValue(makeContentResult());
+      const panel = new CombinedLearningJourneyPanel();
+
+      const tabId = await openTabAndLoad(panel, 'bundled:connections-guide', 'home_page', packageInfo);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(jest.requireMock('../../types/package.types').getPackageRenderType).toHaveBeenCalledWith({
+        type: 'guide',
+      });
+      expect(getTab(panel, tabId).type).toBe('interactive');
+    });
+
     it('suppresses the pending decision and telemetry in full-screen mode', async () => {
       let resolveLoad: (value: unknown) => void = () => {};
       jest.requireMock('../../global-state/panel-mode').panelModeManager.getMode.mockReturnValueOnce('fullscreen');
