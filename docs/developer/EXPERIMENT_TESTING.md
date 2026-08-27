@@ -244,18 +244,18 @@ Concretely, the exposure fires on the first of these in a browser:
 
 Filter Rudderstack (or your local analytics tap) for:
 
-| Event                                           | When                                                                                          | Key properties                                                                                          |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `pathfinder_feature_flag_evaluated`             | First sidebar open **or** first guide / learning-path render in any mode — never on page load | `flag_key: pathfinder.interactive-learning-banner-experiment`, `tracking_key`, `variant`                |
-| `pathfinder_interactive_learning_banner_shown`  | Banner actually painted (once per page load, whichever placement rendered first)              | `interaction_location`                                                                                  |
-| `pathfinder_interactive_learning_banner_dismissed` | User dismisses the banner                                                                  | `interaction_location`                                                                                  |
+| Event                                              | When                                                                                          | Key properties                                                                           |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `pathfinder_feature_flag_evaluated`                | First sidebar open **or** first guide / learning-path render in any mode — never on page load | `flag_key: pathfinder.interactive-learning-banner-experiment`, `tracking_key`, `variant` |
+| `pathfinder_interactive_learning_banner_shown`     | Banner actually painted (once per page load, whichever placement rendered first)              | `interaction_location`                                                                   |
+| `pathfinder_interactive_learning_banner_dismissed` | User dismisses the banner                                                                     | `interaction_location`                                                                   |
 
 `interaction_location` is the placement:
 
-| Value                            | Placement                                      |
-| -------------------------------- | ---------------------------------------------- |
-| `interactive_learning_banner`    | Context page (above the profile bar)           |
-| `interactive_learning_banner_guide` | Above a rendered guide / learning path      |
+| Value                               | Placement                              |
+| ----------------------------------- | -------------------------------------- |
+| `interactive_learning_banner`       | Context page (above the profile bar)   |
+| `interactive_learning_banner_guide` | Above a rendered guide / learning path |
 
 Control renders nothing, so `shown` and `dismissed` are **treatment-only by construction**. Do not use them for the engagement comparison — they cannot exist on control. Compare guide-interaction events that carry the experiments enrichment (`pathfinder_open_resource_click`, `pathfinder_docs_panel_interaction`, Show me / Do it, and so on). The exposure event is the one that exists on both arms.
 
@@ -284,24 +284,24 @@ Do not confuse these auto-opens with [`pathfinder.highlighted-guide-experiment`]
 
 Spine: `grafanalabs-global.rudderstack.pathfinder_docs_panel_interaction` where `action = 'auto-open'` and `source` is one of:
 
-| `source`                    | Survey tile (`onboarding_flow_event.component_key_properties_recommendation`) | Product page |
-| --------------------------- | ----------------------------------------------------------------------------- | ------------ |
-| `plg-survey-frontend-o11y`  | `frontend-o11y`                                                               | FE O11y / Kowalski (`/a/grafana-kowalski-app*`) |
-| `plg-survey-monitor-url`    | `monitor-url`                                                                 | Synthetics (`/a/grafana-synthetic-monitoring-app*`) |
+| `source`                   | Survey tile (`onboarding_flow_event.component_key_properties_recommendation`) | Product page                                        |
+| -------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------- |
+| `plg-survey-frontend-o11y` | `frontend-o11y`                                                               | FE O11y / Kowalski (`/a/grafana-kowalski-app*`)     |
+| `plg-survey-monitor-url`   | `monitor-url`                                                                 | Synthetics (`/a/grafana-synthetic-monitoring-app*`) |
 
 The auto-open row does **not** carry `resource_info`, `suggested_urls`, or `experiments.guideId` for these sources (all null). The guide that opened is the first `pathfinder_open_resource_click` with `interaction_location = 'docs_panel'` immediately after auto-open:
 
-| `source`                   | Guide slug                         |
-| -------------------------- | ---------------------------------- |
-| `plg-survey-frontend-o11y` | `welcome-frontend-observability`   |
-| `plg-survey-monitor-url`   | `sm-ping-check-tutorial`           |
+| `source`                   | Guide slug                       |
+| -------------------------- | -------------------------------- |
+| `plg-survey-frontend-o11y` | `welcome-frontend-observability` |
+| `plg-survey-monitor-url`   | `sm-ping-check-tutorial`         |
 
 ### Pre vs post windows
 
-| Period | Clock | Cohort event |
-| ------ | ----- | ------------ |
+| Period                               | Clock                                             | Cohort event                                                                                     |
+| ------------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Pre-change (no Pathfinder auto-open) | 2026-08-04 00:00 UTC through 2026-08-26 00:00 UTC | Survey-tile click (`onboarding_survey_recommendation_click` for `frontend-o11y` / `monitor-url`) |
-| Post-change | 2026-08-26 00:00 UTC onward | `plg-survey-*` auto-open |
+| Post-change                          | 2026-08-26 00:00 UTC onward                       | `plg-survey-*` auto-open                                                                         |
 
 Join `setup-guide.onboarding-plg` separately if you need the parent A/B population. Not every `plg-survey-*` auto-open has a `feature_toggle_event` row on `user_id` — resolve assignment on `org_id` (and tolerate null `user_id` on the flag).
 
