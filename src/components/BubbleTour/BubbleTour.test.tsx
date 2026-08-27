@@ -264,6 +264,34 @@ describe('BubbleTour', () => {
 
       expect(event.defaultPrevented).toBe(true);
     });
+
+    it('sees defaultPrevented ahead of a bubble-phase document listener mounted before it', async () => {
+      // Simulates FloatingPanel: a bubble-phase `document` Escape listener registered before
+      // BubbleTour mounts. Dispatching on a descendant (not `document` itself) makes capture
+      // vs. bubble ordering actually matter, the way it does with real focus inside a field.
+      const panelSawPrevented: boolean[] = [];
+      const panelListener = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          panelSawPrevented.push(e.defaultPrevented);
+        }
+      };
+      document.addEventListener('keydown', panelListener);
+
+      const { onClose } = await renderTour();
+      const field = document.createElement('input');
+      document.body.appendChild(field);
+
+      const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
+      await act(async () => {
+        field.dispatchEvent(event);
+      });
+
+      expect(panelSawPrevented).toEqual([true]);
+      expect(onClose).toHaveBeenCalledTimes(1);
+
+      document.removeEventListener('keydown', panelListener);
+      field.remove();
+    });
   });
 
   it('clears highlights on unmount', async () => {
@@ -273,5 +301,22 @@ describe('BubbleTour', () => {
     unmount();
 
     expect(mockClearAllHighlights).toHaveBeenCalled();
+  });
+
+  it('clears a highlight that paints after the tour has already unmounted', async () => {
+    let resolvePaint: () => void = () => {};
+    mockHighlightWithComment.mockImplementation(() => new Promise<void>((resolve) => (resolvePaint = resolve)));
+
+    const { unmount } = await renderTour();
+    mockClearAllHighlights.mockClear();
+
+    unmount();
+    expect(mockClearAllHighlights).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolvePaint();
+    });
+
+    expect(mockClearAllHighlights).toHaveBeenCalledTimes(2);
   });
 });

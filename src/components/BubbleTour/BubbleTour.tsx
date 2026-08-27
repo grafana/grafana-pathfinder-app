@@ -87,17 +87,26 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
         }
 
         if (resolved) {
-          return navigationManager.highlightWithComment(
-            resolved.element,
-            step.content,
-            false,
-            stepInfo,
-            undefined,
-            close,
-            goToNext,
-            onPrevious,
-            options
-          );
+          // highlightWithComment awaits navigation/scroll before it paints. If the tour is
+          // torn down mid-await, `cancelled` is already true by the time it resolves — clear
+          // what it just painted so it doesn't outlive its own component and key listener.
+          return navigationManager
+            .highlightWithComment(
+              resolved.element,
+              step.content,
+              false,
+              stepInfo,
+              undefined,
+              close,
+              goToNext,
+              onPrevious,
+              options
+            )
+            .then(() => {
+              if (cancelled) {
+                navigationManager.clearAllHighlights();
+              }
+            });
         }
 
         navigationManager.showCenteredComment(
@@ -149,8 +158,11 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    // Capture phase: FloatingPanel's own Escape listener is bubble-phase on document and
+    // registered first, so on bubble order alone it would see defaultPrevented as false and
+    // minimize before this handler runs. Capture always runs first regardless of mount order.
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => document.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [currentStep, close, goToNext, goToPrevious]);
 
   return null;
