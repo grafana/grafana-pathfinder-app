@@ -24,6 +24,7 @@ import { useBackendSaveFlow } from './hooks/useBackendSaveFlow';
 import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import { isBackendApiAvailable } from '../../utils/fetchBackendGuides';
 import { getBlockEditorStyles } from './block-editor.styles';
+import { publishEditorChromeStatus, readStoredEditorGuide, resetEditorChromeStatus } from './editor-chrome-status';
 import { BlockFormModal } from './BlockFormModal';
 import { RecordModeOverlay } from './RecordModeOverlay';
 import { GuideLibraryModal } from './GuideLibraryModal';
@@ -94,6 +95,8 @@ export interface BlockEditorProps {
   onCopy?: (json: string) => void;
   /** Called when download is requested */
   onDownload?: (guide: JsonGuide) => void;
+  /** Called when the working guide title changes (tab chrome). */
+  onGuideTitleChange?: (title: string) => void;
 }
 
 /**
@@ -234,11 +237,15 @@ function isSamePreviewTarget(a: PreviewTarget, b: PreviewTarget): boolean {
   return false;
 }
 
-function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockEditorProps) {
+function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideTitleChange }: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
   const { state } = editor;
   const hasLoadedFromStorage = useRef(false);
+  // Working content must not publish (tab chrome) or auto-save until any stored
+  // draft has been restored — otherwise the default guide can overwrite it.
+  // Flipped by the restore below, or already open when there is nothing to restore.
+  const [isContentReady, setIsContentReady] = useState(() => Boolean(initialGuide) || !readStoredEditorGuide());
 
   // Block editor context - replaces window globals for section/conditional editing
   const { sectionContext, conditionalContext, setGuideLintResult } = useBlockEditorContext();
@@ -252,6 +259,14 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
   useEffect(() => {
     setGuideLintResult(guideLint);
   }, [guideLint, setGuideLintResult]);
+
+  // Keep the owning editor tab's title in sync with the working guide.
+  useEffect(() => {
+    if (!isContentReady) {
+      return;
+    }
+    onGuideTitleChange?.(state.guide.title);
+  }, [state.guide.title, onGuideTitleChange, isContentReady]);
 
   // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
   const modals = useModalManager();
@@ -567,19 +582,37 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     viewMode: state.viewMode,
     jsonModeState: jsonMode.jsonModeState,
     autoSave: true,
-    autoSavePaused: isBlockFormOpen,
+    // Pause until restore as to not auto-save blank or default guide
+    autoSavePaused: isBlockFormOpen || !isContentReady,
     onLoad: (savedGuide, savedBlockIds, savedViewMode, savedJsonModeState) => {
-      if (!hasLoadedFromStorage.current && !initialGuide) {
-        hasLoadedFromStorage.current = true;
-        editor.loadGuide(savedGuide, savedBlockIds, savedViewMode);
-        if (savedViewMode === 'json') {
-          jsonMode.restoreJsonMode(savedGuide, savedBlockIds, savedJsonModeState);
+      try {
+        if (!hasLoadedFromStorage.current && !initialGuide) {
+          hasLoadedFromStorage.current = true;
+          editor.loadGuide(savedGuide, savedBlockIds, savedViewMode);
+          if (savedViewMode === 'json') {
+            jsonMode.restoreJsonMode(savedGuide, savedBlockIds, savedJsonModeState);
+          }
+          editor.markSaved();
         }
-        editor.markSaved();
+      } finally {
+        // A stored guide missing its `blocks` array throws in `loadGuide`, and
+        // persistence swallows that. Unlock content regardless, or the tab title
+        // and badge stay frozen for the rest of the session.
+        setIsContentReady(true);
       }
     },
     onSave: handlePersistenceSave,
   });
+
+  // The strip outlives this component, so hand it back to the persisted
+  // fallback on unmount — otherwise it keeps a frozen badge until a remount.
+  // Flush the draft first
+  useEffect(() => {
+    return () => {
+      persistence.flush();
+      resetEditorChromeStatus();
+    };
+  }, [persistence]);
 
   // Guide operations - extracted hook for copy/download/new/import/template
   const guideOps = useGuideOperations({
@@ -630,14 +663,28 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     selection.clearSelection();
   }, [selection, editor]);
 
-  // Load guide from backend
+  // useBackendSaveFlow returns a fresh object literal every render, so depending
+  // on `backendSaveFlow` directly defeats the memoization below. Destructure the
+  // stable pieces (trackLoadedGuide is a []-stable useCallback; the others are
+  // primitives) and depend on those instead.
+  const { trackLoadedGuide, publishedStatus, hasUnsyncedChanges } = backendSaveFlow;
+
+  // Publish status to the tab strip, which renders outside this component and
+  // has no other view of the save/publish lifecycle.
+  useEffect(() => {
+    if (!isContentReady) {
+      return;
+    }
+    publishEditorChromeStatus({ publishedStatus, hasUnsyncedChanges });
+  }, [publishedStatus, hasUnsyncedChanges, isContentReady]);
+
   const handleLoadGuideFromBackend = useCallback(
     (guide: JsonGuide, resourceName: string) => {
       editor.loadGuide(guide);
-      backendSaveFlow.trackLoadedGuide(guide, resourceName);
+      trackLoadedGuide(guide, resourceName);
       editor.markSaved();
     },
-    [editor, backendSaveFlow]
+    [editor, trackLoadedGuide]
   );
 
   // Open guide library
@@ -651,8 +698,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
     const currentGuide = editor.getGuide();
     const hasBlocksNow = currentGuide.blocks && currentGuide.blocks.length > 0;
     // Has content, and either never saved to backend or diverged from the last backend save
-    const hasChanges =
-      hasBlocksNow && (backendSaveFlow.publishedStatus === 'not-saved' || backendSaveFlow.hasUnsyncedChanges);
+    const hasChanges = hasBlocksNow && (publishedStatus === 'not-saved' || hasUnsyncedChanges);
 
     if (hasChanges) {
       // Show warning modal
@@ -661,7 +707,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       // No changes to lose, just create new guide
       guideOps.handleNewGuide();
     }
-  }, [editor, backendSaveFlow, modals, guideOps]);
+  }, [editor, publishedStatus, hasUnsyncedChanges, modals, guideOps]);
 
   // Modified form submit to handle section insertions, nested block edits, and conditional branch blocks
   const handleBlockFormSubmitWithSection = useCallback(
@@ -752,7 +798,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload }: BlockE
       {/* Header */}
       <BlockEditorHeader
         guideTitle={state.guide.title}
-        guideId={isIdLocked ? state.guide.id : null}
         isDirty={state.isDirty}
         publishedStatus={backendSaveFlow.publishedStatus}
         hasUnsyncedChanges={backendSaveFlow.hasUnsyncedChanges}

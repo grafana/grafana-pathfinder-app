@@ -11,6 +11,7 @@ import { getBlockFormStyles } from '../block-editor.styles';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { testIds } from '../../../constants/testIds';
+import { slugify } from '../../../utils/slug';
 import type { BlockFormProps, JsonBlock } from '../types';
 import type { JsonInputBlock } from '../../../types/json-guide.types';
 
@@ -36,6 +37,18 @@ function isValidVariableName(name: string): boolean {
 }
 
 /**
+ * Validate regex pattern
+ */
+function isValidRegexPattern(pattern: string): boolean {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Input block form component
  */
 export function InputBlockForm({
@@ -50,6 +63,12 @@ export function InputBlockForm({
   // Initialize from existing data or defaults
   const initial = initialData && isInputBlock(initialData) ? initialData : null;
 
+  // Blur-gate inline errors (regex is often temporarily invalid while typing); seed when editing bad data.
+  const [patternBlurred, setPatternBlurred] = useState(() => {
+    const initialPattern = initial?.pattern?.trim() ?? '';
+    return initialPattern.length > 0 && !isValidRegexPattern(initialPattern);
+  });
+
   const [prompt, setPrompt] = useState(initial?.prompt ?? '');
   const [inputType, setInputType] = useState<'text' | 'boolean' | 'datasource'>(initial?.inputType ?? 'text');
   const [variableName, setVariableName] = useState(initial?.variableName ?? '');
@@ -62,6 +81,11 @@ export function InputBlockForm({
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
   const [skippable, setSkippable] = useState(initial?.skippable ?? false);
   const [datasourceFilter, setDatasourceFilter] = useState(initial?.datasourceFilter ?? '');
+  const [dataCheckQuery, setDataCheckQuery] = useState(initial?.dataCheckQuery ?? '');
+  const [dataCheckFailureMessage, setDataCheckFailureMessage] = useState(initial?.dataCheckFailureMessage ?? '');
+  const [dataCheckTimeFrom, setDataCheckTimeFrom] = useState(initial?.dataCheckTimeFrom ?? '');
+  const [dataCheckTimeTo, setDataCheckTimeTo] = useState(initial?.dataCheckTimeTo ?? '');
+  const [dataCheckBlocking, setDataCheckBlocking] = useState(initial?.dataCheckBlocking ?? false);
 
   // Handle requirement quick-add
   const handleRequirementClick = useCallback((req: string) => {
@@ -75,8 +99,15 @@ export function InputBlockForm({
 
   // Form submission
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
+
+      if (inputType === 'text' && pattern.trim().length > 0 && !isValidRegexPattern(pattern.trim())) {
+        setPatternBlurred(true);
+        return;
+      }
+
+      const hasDataCheck = inputType === 'datasource' && dataCheckQuery.trim().length > 0;
 
       // Parse requirements
       const reqArray = requirements
@@ -84,8 +115,17 @@ export function InputBlockForm({
         .map((r) => r.trim())
         .filter((r) => r.length > 0);
 
+      const isBlockingCheck = hasDataCheck && dataCheckBlocking;
+      // The form has no id field, so an edit would otherwise drop the one the
+      // guide already carries — and a blocking check is schema-invalid without
+      // one, because its completion records are keyed on it. Derived from
+      // `variableName`, which is already a validated identifier, so the id is
+      // written into the JSON and survives later edits.
+      const blockId = initial?.id ?? (isBlockingCheck ? `check-${slugify(variableName.trim())}` : undefined);
+
       const block: JsonInputBlock = {
         type: 'input',
+        ...(blockId && { id: blockId }),
         prompt: prompt.trim(),
         inputType,
         variableName: variableName.trim(),
@@ -102,6 +142,15 @@ export function InputBlockForm({
         ...(reqArray.length > 0 && { requirements: reqArray }),
         ...(skippable && { skippable }),
         ...(inputType === 'datasource' && datasourceFilter.trim() && { datasourceFilter: datasourceFilter.trim() }),
+        // The query is what enables the check, so the rest is dropped without it —
+        // the schema rejects a check field that could never take effect.
+        ...(hasDataCheck && {
+          dataCheckQuery: dataCheckQuery.trim(),
+          ...(dataCheckFailureMessage.trim() && { dataCheckFailureMessage: dataCheckFailureMessage.trim() }),
+          ...(dataCheckTimeFrom.trim() && { dataCheckTimeFrom: dataCheckTimeFrom.trim() }),
+          ...(dataCheckTimeTo.trim() && { dataCheckTimeTo: dataCheckTimeTo.trim() }),
+          ...(dataCheckBlocking && { dataCheckBlocking }),
+        }),
       };
 
       onSubmit(block);
@@ -119,6 +168,12 @@ export function InputBlockForm({
       requirements,
       skippable,
       datasourceFilter,
+      dataCheckQuery,
+      dataCheckFailureMessage,
+      dataCheckTimeFrom,
+      dataCheckTimeTo,
+      dataCheckBlocking,
+      initial,
       onSubmit,
     ]
   );
@@ -126,7 +181,9 @@ export function InputBlockForm({
   // Validation
   const hasPrompt = prompt.trim().length > 0;
   const hasValidVariableName = variableName.trim().length > 0 && isValidVariableName(variableName.trim());
-  const isValid = hasPrompt && hasValidVariableName;
+  const hasValidRegexPattern =
+    inputType !== 'text' || pattern.trim().length === 0 || isValidRegexPattern(pattern.trim());
+  const isValid = hasPrompt && hasValidVariableName && hasValidRegexPattern;
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -195,10 +252,16 @@ export function InputBlockForm({
             />
           </Field>
 
-          <Field label="Validation pattern" description="Regex pattern for validating input (optional)">
+          <Field
+            label="Validation pattern"
+            description="Regex pattern for validating input (optional)"
+            invalid={patternBlurred && !hasValidRegexPattern}
+            error={patternBlurred && !hasValidRegexPattern ? 'Invalid regex pattern' : undefined}
+          >
             <Input
               value={pattern}
               onChange={(e) => setPattern(e.currentTarget.value)}
+              onBlur={() => setPatternBlurred(true)}
               placeholder="e.g., ^[a-z][a-z0-9-]*$"
             />
           </Field>
@@ -258,6 +321,54 @@ export function InputBlockForm({
               placeholder="e.g., prometheus, testdata"
             />
           </Field>
+
+          <Field
+            label="Data check query"
+            description="Optional. Runs against the data source the user picks and passes when it returns data, so the guide can confirm the data it teaches against is really there. Prometheus, Loki, Tempo, and Pyroscope only."
+          >
+            <Input
+              value={dataCheckQuery}
+              onChange={(e) => setDataCheckQuery(e.currentTarget.value)}
+              placeholder="e.g., container_cpu_usage_seconds_total"
+            />
+          </Field>
+
+          {dataCheckQuery.trim().length > 0 && (
+            <>
+              <Field label="Check failure message" description="Shown when the check finds no data">
+                <Input
+                  value={dataCheckFailureMessage}
+                  onChange={(e) => setDataCheckFailureMessage(e.currentTarget.value)}
+                  placeholder="e.g., No container metrics here. Pick a data source scraping cAdvisor."
+                />
+              </Field>
+
+              <Field label="Check range from" description="Defaults to now-1h">
+                <Input
+                  value={dataCheckTimeFrom}
+                  onChange={(e) => setDataCheckTimeFrom(e.currentTarget.value)}
+                  placeholder="e.g., now-6h"
+                />
+              </Field>
+
+              <Field label="Check range to" description="Defaults to now">
+                <Input
+                  value={dataCheckTimeTo}
+                  onChange={(e) => setDataCheckTimeTo(e.currentTarget.value)}
+                  placeholder="e.g., now"
+                />
+              </Field>
+
+              <Field label="Blocking">
+                <Checkbox
+                  className={styles.checkbox}
+                  label="A failing check holds the section up until it passes or is skipped"
+                  checked={dataCheckBlocking}
+                  onChange={(e) => setDataCheckBlocking(e.currentTarget.checked)}
+                />
+              </Field>
+            </>
+          )}
         </>
       )}
 

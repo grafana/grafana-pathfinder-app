@@ -184,10 +184,11 @@ jest.mock('./utils', () => ({
   getTranslatedTitle: jest.fn((t: string) => t),
   restoreTabsFromStorage: jest.fn(),
   restoreActiveTabFromStorage: jest.fn(),
+  mergeRestoredTabsWithExisting: jest.requireActual('./utils/tab-storage-restore').mergeRestoredTabsWithExisting,
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: jest.fn(),
-  PERMANENT_TAB_IDS: new Set(['recommendations', 'devtools', 'editor']),
+  ...jest.requireActual('./utils/tab-kinds'),
 }));
 
 jest.mock('./hooks', () => ({
@@ -220,6 +221,8 @@ jest.mock('../../hooks', () => ({}));
 // ---------------------------------------------------------------------------
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
+import type { RawContent } from '../../types/content.types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -227,6 +230,7 @@ import { CombinedLearningJourneyPanel } from './docs-panel';
 
 const makeTab = (id: string) => ({
   id,
+  type: 'docs' as const,
   title: id,
   baseUrl: '',
   currentUrl: '',
@@ -234,6 +238,16 @@ const makeTab = (id: string) => ({
   isLoading: false,
   error: null,
 });
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const preparedContent: RawContent = {
+  content: '{"id":"g","title":"g","blocks":[]}',
+  metadata: { title: 'g' },
+  type: 'interactive',
+  url: 'bundled:prepared',
+  lastFetched: '2026-07-28T00:00:00.000Z',
+};
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -264,5 +278,51 @@ describe('CombinedLearningJourneyPanel.loadTab — empty tab URL', () => {
 
     const tab = (panel as any).state.tabs.find((t: any) => t.id === 'broken-tab');
     expect(tab.error).toBeTruthy();
+  });
+});
+
+describe('CombinedLearningJourneyPanel.openDocsPage — prepared (one-fetch) launch', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('commits prepared content with no second fetch on the journey loader path', async () => {
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(false);
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [], activeTabId: 'recommendations' });
+
+    const tabId = await panel.openDocsPage('bundled:prepared', 'Prepared', {
+      source: 'home_page',
+      preparedContent,
+    });
+    await flush();
+
+    expect(mockFetchContent).not.toHaveBeenCalled();
+    expect(loadDocsTabContentResult as jest.Mock).not.toHaveBeenCalled();
+
+    const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
+    expect(tab.content).toBe(preparedContent);
+    expect(tab.isLoading).toBe(false);
+    expect(tab.error).toBeNull();
+  });
+
+  it('commits prepared content with no second fetch on the docs/package loader path', async () => {
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(true);
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({ tabs: [], activeTabId: 'recommendations' });
+
+    const tabId = await panel.openDocsPage('bundled:prepared', 'Prepared', {
+      source: 'home_page',
+      preparedContent,
+    });
+    await flush();
+
+    expect(mockFetchContent).not.toHaveBeenCalled();
+    expect(loadDocsTabContentResult as jest.Mock).not.toHaveBeenCalled();
+
+    const tab = (panel as any).state.tabs.find((t: any) => t.id === tabId);
+    expect(tab.content).toBe(preparedContent);
+    expect(tab.isLoading).toBe(false);
+    expect(tab.error).toBeNull();
   });
 });

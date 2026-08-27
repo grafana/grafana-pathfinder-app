@@ -5,9 +5,10 @@
  * Uses Zod v4's native z.toJSONSchema() for conversion.
  */
 
-import { Command } from 'commander';
 import { z } from 'zod';
 
+import { defineCommand } from '../contracts';
+import type { CommandOutcome } from '../utils/output';
 import { JsonGuideSchemaStrict, JsonBlockSchema, CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
 import {
   ContentJsonSchema,
@@ -15,11 +16,24 @@ import {
   RepositoryJsonSchema,
   DependencyGraphSchema,
 } from '../../types/package.schema';
+import {
+  E2ETestReportSchema,
+  MultiGuideReportSchema,
+  E2E_REPORT_SCHEMA_VERSION,
+  E2E_REPORT_SCHEMA_ID,
+  E2E_MULTI_REPORT_SCHEMA_ID,
+} from '../e2e/schemas/e2e-report.schema';
 
 interface SchemaRegistryEntry {
   schema: z.ZodType;
   description: string;
   refinements?: string[];
+  /** Canonical JSON Schema `$id`. Zod does not surface `.meta({ id })` as `$id` for a directly-converted schema. */
+  id?: string;
+  /** Version stamped as `x-schema-version`; defaults to the guide schema version. */
+  schemaVersion?: string;
+  /** When true, strips `additionalProperties: false` from the exported JSON Schema so additive fields are non-breaking. */
+  openWorld?: boolean;
 }
 
 /**
@@ -33,12 +47,19 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
     refinements: [
       "Non-noop actions require 'reftarget' (step and interactive blocks)",
       "formfill with validateInput requires 'targetvalue' (step and interactive blocks)",
+      "'dataCheck*' fields require inputType 'datasource' (input blocks)",
+      "'dataCheck*' fields other than 'dataCheckQuery' require 'dataCheckQuery' (input blocks)",
     ],
   },
   block: {
     schema: JsonBlockSchema,
     description: 'Union of all block types with depth-limited nesting',
-    refinements: ["Non-noop actions require 'reftarget'", "formfill with validateInput requires 'targetvalue'"],
+    refinements: [
+      "Non-noop actions require 'reftarget'",
+      "formfill with validateInput requires 'targetvalue'",
+      "'dataCheck*' fields require inputType 'datasource'",
+      "'dataCheck*' fields other than 'dataCheckQuery' require 'dataCheckQuery'",
+    ],
   },
   content: {
     schema: ContentJsonSchema,
@@ -65,7 +86,34 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
     schema: DependencyGraphSchema,
     description: 'Dependency graph schema (D3-compatible output)',
   },
+  'e2e-report': {
+    schema: E2ETestReportSchema,
+    description: 'E2E single-guide test report',
+    id: E2E_REPORT_SCHEMA_ID,
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    openWorld: true,
+  },
+  'e2e-multi-report': {
+    schema: MultiGuideReportSchema,
+    description: 'E2E multi-guide aggregate test report',
+    id: E2E_MULTI_REPORT_SCHEMA_ID,
+    schemaVersion: E2E_REPORT_SCHEMA_VERSION,
+    openWorld: true,
+  },
 };
+
+function stripAdditionalPropertiesFalse(node: unknown): void {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) {
+    return;
+  }
+  const obj = node as Record<string, unknown>;
+  if (obj['additionalProperties'] === false) {
+    delete obj['additionalProperties'];
+  }
+  for (const value of Object.values(obj)) {
+    stripAdditionalPropertiesFalse(value);
+  }
+}
 
 function convertSchema(entry: SchemaRegistryEntry, includeVersion: boolean): Record<string, unknown> {
   // reused: 'ref' is load-bearing. The block schema is recursive (sections /
@@ -75,12 +123,20 @@ function convertSchema(entry: SchemaRegistryEntry, includeVersion: boolean): Rec
   // tool call. Emitting $defs + $ref keeps the same output under ~35 KB.
   const jsonSchema = z.toJSONSchema(entry.schema, { reused: 'ref' }) as Record<string, unknown>;
 
+  if (entry.openWorld) {
+    stripAdditionalPropertiesFalse(jsonSchema);
+  }
+
+  if (entry.id) {
+    jsonSchema.$id = entry.id;
+  }
+
   if (entry.refinements && entry.refinements.length > 0) {
     jsonSchema['x-refinements'] = entry.refinements;
   }
 
   if (includeVersion) {
-    jsonSchema['x-schema-version'] = CURRENT_SCHEMA_VERSION;
+    jsonSchema['x-schema-version'] = entry.schemaVersion ?? CURRENT_SCHEMA_VERSION;
   }
 
   return jsonSchema;
@@ -109,48 +165,87 @@ export function exportAllSchemas(includeVersion: boolean): Record<string, Record
   return result;
 }
 
-interface SchemaOptions {
-  list?: boolean;
-  all?: boolean;
-  includeVersion?: boolean;
+const SCHEMA_NAMES = Object.keys(SCHEMA_REGISTRY);
+
+export const SchemaCommand = z.object({
+  name: z.string().optional().describe('Schema name to export').meta({ role: 'addressing' }),
+  list: z.boolean().optional().describe('List available schema names with descriptions').meta({ role: 'control' }),
+  all: z
+    .boolean()
+    .optional()
+    .describe('Export all schemas as a single JSON object keyed by name')
+    .meta({ role: 'control' }),
+  includeVersion: z
+    .boolean()
+    .optional()
+    .describe('Include schema version in output metadata')
+    .meta({ role: 'control' }),
+});
+
+export type SchemaInput = z.output<typeof SchemaCommand>;
+
+/**
+ * Export one schema, all of them, or the index.
+ *
+ * `artifact` is what the CLI writes to stdout, `data` the envelope an agent reads.
+ * They differ deliberately: a redirected file should hold the schema and nothing else,
+ * while an agent benefits from being told which schema it got and what else exists.
+ * Deciding both here is what stopped the MCP tool re-deciding the same three cases.
+ */
+export function runSchema(input: SchemaInput): CommandOutcome {
+  const includeVersion = input.includeVersion === true;
+
+  if (input.list === true) {
+    const schemas = listSchemas();
+    return {
+      status: 'ok',
+      summary: `${schemas.length} schemas available`,
+      artifact: schemas,
+      data: { schemas },
+    };
+  }
+
+  if (input.all === true) {
+    const schemas = exportAllSchemas(includeVersion);
+    return {
+      status: 'ok',
+      summary: `Exported ${Object.keys(schemas).length} schemas`,
+      artifact: schemas,
+      data: { schemas, available: SCHEMA_NAMES },
+    };
+  }
+
+  if (input.name === undefined) {
+    return {
+      status: 'error',
+      code: 'MISSING_NAME',
+      // Named, not spelled as flags: one runner serves both entrypoints, and `--list`
+      // would be the wrong vocabulary for an agent (§2).
+      message: `Please specify a schema name, or set "list" or "all". Available: ${SCHEMA_NAMES.join(', ')}.`,
+    };
+  }
+
+  const schema = exportSchema(input.name, includeVersion);
+  if (!schema) {
+    return {
+      status: 'error',
+      code: 'UNKNOWN_SCHEMA',
+      message: `Unknown schema "${input.name}". Available: ${SCHEMA_NAMES.join(', ')}.`,
+    };
+  }
+
+  return {
+    status: 'ok',
+    summary: `Exported ${input.name} schema`,
+    artifact: schema,
+    data: { name: input.name, schema },
+  };
 }
 
-export const schemaCommand = new Command('schema')
-  .description('Export Zod validation schemas as JSON Schema')
-  .argument('[name]', 'Schema name to export')
-  .option('--list', 'List available schema names with descriptions')
-  .option('--all', 'Export all schemas as a single JSON object keyed by name')
-  .option('--include-version', 'Include schema version in output metadata')
-  .action((name: string | undefined, options: SchemaOptions) => {
-    try {
-      if (options.list) {
-        const schemas = listSchemas();
-        console.log(JSON.stringify(schemas, null, 2));
-        return;
-      }
-
-      if (options.all) {
-        const all = exportAllSchemas(!!options.includeVersion);
-        console.log(JSON.stringify(all, null, 2));
-        return;
-      }
-
-      if (!name) {
-        console.error('Please specify a schema name, or use --list or --all');
-        console.error('Available schemas: ' + Object.keys(SCHEMA_REGISTRY).join(', '));
-        process.exit(1);
-      }
-
-      const schema = exportSchema(name, !!options.includeVersion);
-      if (!schema) {
-        console.error(`Unknown schema: "${name}"`);
-        console.error('Available schemas: ' + Object.keys(SCHEMA_REGISTRY).join(', '));
-        process.exit(1);
-      }
-
-      console.log(JSON.stringify(schema, null, 2));
-    } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
-      process.exit(1);
-    }
-  });
+export const schemaSpec = defineCommand({
+  name: 'schema',
+  summary: 'Export Zod validation schemas as JSON Schema',
+  schema: SchemaCommand,
+  emits: 'artifact',
+  run: runSchema,
+});

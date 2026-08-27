@@ -2,7 +2,7 @@
 
 This guide covers the two-file package model used by Grafana Pathfinder. It is intended for content authors in the `interactive-tutorials` repository and enablement teams creating packages in any repository.
 
-For the block-level guide format (actions, requirements, sequences, quizzes), see the [JSON guide format](./interactive-examples/json-guide-format.md). For CLI commands that validate, build, and graph packages, see [CLI tools](./CLI_TOOLS.md).
+For the block-level guide format (actions, requirements, sequences, quizzes), see the [JSON guide format](./interactive-examples/json-guide-format.md). For CLI commands that validate, build, and graph packages, see [CLI tools](./CLI_TOOLS.md). For the runtime resolver architecture, see [system patterns](../../.cursor/rules/systemPatterns.mdc). For the prescriptive type/schema synchronization checklist, see [schema-type coupling rules](../../.cursor/rules/schema-coupling.mdc).
 
 ---
 
@@ -28,7 +28,7 @@ The directory name should match the package `id`.
 | `manifest.json` | No       | Product, enablement, recommender teams | Flat metadata, dependencies, `targeting`, `testEnvironment` |
 | `assets/`       | No       | Content authors                        | Images, diagrams, supplementary non-JSON resources          |
 
-Content and metadata are separate files because they serve different consumers, are authored by different roles, and change for different reasons. The block editor reads and writes `content.json` without touching `manifest.json`. Git diffs stay scoped to the concern being changed.
+Content and metadata are separate files because they serve different consumers, are authored by different roles, and change for different reasons. Git diffs stay scoped to the concern being changed. The block editor authors `content.json`; the manifest fields it can compute from the content — `type`, `repository`, the `stats` stamp, and `startingLocation` — it derives, and everything else in an existing manifest it leaves untouched. A `startingLocation` it did not author counts as untouchable too (see [Custom guides](./CUSTOM_GUIDES.md)).
 
 ### Cross-file consistency rule
 
@@ -46,7 +46,7 @@ The content file is what the block editor produces. It contains only the fields 
 
 | Field           | Type          | Required | Description                                                                                    |
 | --------------- | ------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `schemaVersion` | `string`      | No       | Schema version (default: `"1.1.0"` for packages)                                               |
+| `schemaVersion` | `string`      | No       | Schema version                                                                                 |
 | `id`            | `string`      | Yes      | Bare package identifier — must match `manifest.json`                                           |
 | `title`         | `string`      | Yes      | Display title for the guide                                                                    |
 | `blocks`        | `JsonBlock[]` | Yes      | Array of content blocks (see [JSON guide format](./interactive-examples/json-guide-format.md)) |
@@ -63,7 +63,7 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `id`               | `string`                             | **Yes**                       | —                         | Bare package identifier — must match `content.json`                        |
 | `type`             | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                               |
 | `repository`       | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                      |
-| `steps`            | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages                                         |
+| `milestones`       | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages                                         |
 | `description`      | `string`                             | Recommended                   | —                         | Full description for display and search                                    |
 | `language`         | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                              |
 | `category`         | `string`                             | Recommended                   | —                         | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`)     |
@@ -77,6 +77,20 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `replaces`         | `string[]`                           | No                            | —                         | Packages this one supersedes entirely                                      |
 | `targeting`        | `{ match? }`                         | No                            | —                         | Advisory recommendation targeting (see [targeting](#targeting))            |
 | `testEnvironment`  | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment)) |
+
+### Extension fields
+
+Any top-level key not listed above is extension metadata. It survives validation unchanged and `pathfinder-cli build-repository` forwards it verbatim into that package's entry in `repository.json`, so adding one costs no CLI change. Two names are refused with a warning because the build computes them itself: `path` (from the package directory) and `title` (from `content.json`). `__proto__` is refused as well, though a JSON `__proto__` key is already dropped during parsing. Named manifest fields are never forwarded generically, so `id`, `schemaVersion`, `repository`, and `language` still do not appear in a repository entry.
+
+Because forwarding is silent and unvalidated, an extension key's **shape is never checked** — a consumer reading `entry.stats.blockCount` gets whatever the author typed, including a string, a nested object, or nothing at all. The consumer owns that validation. The same openness means a misspelled known field (`startingLocaton`) is not rejected: it is forwarded as an extension field while the real field quietly takes its default. `build-repository` lists the keys it forwards for each package so a typo is visible in the build log — check that line when a manifest field appears not to take effect.
+
+If a key becomes load-bearing, promote it to a named field in the schema — that is the intended migration path and it needs no rename.
+
+A stamped manifest carries a top-level `stats` key, which reaches `repository.json` by exactly this route. It is generated, never hand-authored — see [build-stats](./CLI_TOOLS.md#what-gets-written).
+
+### Package IDs must not collide across repositories
+
+A bare package `id` must be unique across **every** repository a stack can see — bundled, CDN, and private App Platform (custom) guides. The resolver tries repositories in order (bundled → recommender or CDN → App Platform) and the first match wins, so if a private guide reuses a bundled/CDN id, any resolver-mediated lookup for that id (a milestone reference, a `recommends`/`suggests` entry) serves the **public** package, while a Custom Guides card opens the **private** one directly — a split-brain with no warning. Only published App Platform guides participate in bare-ID resolution; direct `backend-guide:` loading also serves drafts so authors can use preview links and restore an open tab. This is convention-only today; the safeguard is to give private guide IDs a distinguishing prefix (e.g. an `fe-` team prefix) so collisions with public content stay vanishingly unlikely.
 
 ---
 
@@ -199,7 +213,7 @@ Each repository publishes a compiled `repository.json` that maps bare package ID
 
 ### What repository.json contains
 
-Each entry maps a bare package ID to a `RepositoryEntry` with the package's path, type, and all denormalized manifest metadata:
+Each entry maps a bare package ID to a `RepositoryEntry` with the package's path, type, all denormalized manifest metadata, and any [extension fields](#extension-fields) the manifest carried:
 
 ```json
 {
@@ -267,8 +281,8 @@ The simplest possible package — just content, no manifest:
   "title": "My guide",
   "blocks": [
     {
-      "type": "text",
-      "body": "Welcome to this guide."
+      "type": "markdown",
+      "content": "Welcome to this guide."
     }
   ]
 }
@@ -325,8 +339,8 @@ A path composes multiple guides into an ordered sequence:
   "title": "Getting started with Grafana",
   "blocks": [
     {
-      "type": "text",
-      "body": "This learning path walks you through the basics of Grafana, from your first dashboard to monitoring with Prometheus."
+      "type": "markdown",
+      "content": "This learning path walks you through the basics of Grafana, from your first dashboard to monitoring with Prometheus."
     }
   ]
 }
@@ -340,7 +354,7 @@ A path composes multiple guides into an ordered sequence:
   "type": "path",
   "description": "A guided learning path through the fundamentals of Grafana.",
   "category": "getting-started",
-  "steps": ["welcome-to-grafana", "first-dashboard", "prometheus-grafana-101"]
+  "milestones": ["welcome-to-grafana", "first-dashboard", "prometheus-grafana-101"]
 }
 ```
 
@@ -355,7 +369,7 @@ Suppose you have a single-file guide `prometheus-grafana-101.json`:
   "schemaVersion": "1.0.0",
   "id": "prometheus-grafana-101",
   "title": "Prometheus and Grafana",
-  "blocks": [{ "type": "text", "body": "..." }]
+  "blocks": [{ "type": "markdown", "content": "..." }]
 }
 ```
 
@@ -376,7 +390,7 @@ Rename the file to `content.json` inside the directory. Remove any metadata fiel
   "schemaVersion": "1.1.0",
   "id": "prometheus-grafana-101",
   "title": "Prometheus and Grafana",
-  "blocks": [{ "type": "text", "body": "..." }]
+  "blocks": [{ "type": "markdown", "content": "..." }]
 }
 ```
 
@@ -419,18 +433,21 @@ npm run build:cli
 node dist/cli/cli/index.js validate --package prometheus-grafana-101
 ```
 
-**Step 5: Rebuild the repository index**
+**Step 5: Stamp the manifest stats, then rebuild the repository index**
 
 ```bash
+node dist/cli/cli/index.js build-stats src/bundled-interactives
 node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bundled-interactives/repository.json
 ```
+
+`build-stats` runs first — see [build-stats command](./CLI_TOOLS.md#build-stats-command). CI fails if either the stamped stats or `repository.json` is stale.
 
 ---
 
 ## Further reading
 
 - [JSON guide format](./interactive-examples/json-guide-format.md) — block-level schema reference
-- [CLI tools](./CLI_TOOLS.md) — `validate`, `build-repository`, `build-graph` command reference
+- [CLI tools](./CLI_TOOLS.md) — `validate`, `build-repository`, `build-stats`, `build-graph` command reference
 - [Authoring interactive guides](./interactive-examples/authoring-interactive-journeys.md) — starting point for all guide authoring
 - [Pathfinder package design](../design/PATHFINDER-PACKAGE-DESIGN.md) — the full design spec (for design review, not day-to-day authoring)
 - [Dependencies design](../design/package/dependencies.md) — deep dive on the dependency model

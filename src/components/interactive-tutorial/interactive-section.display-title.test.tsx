@@ -93,12 +93,8 @@ jest.mock('./interactive-conditional', () => {
 // ─── Imports after mocks ────────────────────────────────────────────────────
 
 import { InteractiveStep } from './interactive-step';
-import {
-  DEFAULT_INTERACTIVE_SECTION_TITLE,
-  InteractiveSection,
-  PASSIVE_SECTION_TITLE,
-  resetInteractiveCounters,
-} from './interactive-section';
+import { InteractiveSection, resetInteractiveCounters } from './interactive-section';
+import { DEFAULT_INTERACTIVE_SECTION_TITLE, PASSIVE_SECTION_TITLE } from './section-titles';
 import { resetSectionHarness, silenceSectionWarnings } from '../../test-utils/interactive-section-harness';
 
 let warnSpy: jest.SpyInstance;

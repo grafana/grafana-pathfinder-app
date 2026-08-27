@@ -1,6 +1,15 @@
 import { SCHEMA_REGISTRY, listSchemas, exportSchema, exportAllSchemas } from '../commands/schema';
 
-const EXPECTED_SCHEMA_NAMES = ['guide', 'block', 'content', 'manifest', 'repository', 'graph'];
+const EXPECTED_SCHEMA_NAMES = [
+  'guide',
+  'block',
+  'content',
+  'manifest',
+  'repository',
+  'graph',
+  'e2e-report',
+  'e2e-multi-report',
+];
 
 describe('schema command', () => {
   describe('SCHEMA_REGISTRY', () => {
@@ -56,6 +65,16 @@ describe('schema command', () => {
       expect(schema!['x-refinements']).toBeDefined();
       expect(Array.isArray(schema!['x-refinements'])).toBe(true);
       expect((schema!['x-refinements'] as string[]).length).toBeGreaterThan(0);
+    });
+
+    it('exports accurate challenge mode and snippet reference descriptions', () => {
+      const schema = exportSchema('block', false);
+      const serialized = JSON.stringify(schema);
+
+      expect(serialized).toContain('Upstream snippet ID, resolved after validation and before render');
+      expect(serialized).toContain("The schema has no default: JSON that omits mode resolves to 'coda' at runtime");
+      expect(serialized).not.toContain('Upstream snippet ID to resolve at parse time');
+      expect(serialized).not.toContain("'coda' (default)");
     });
 
     it('omits x-refinements for schemas without refinements', () => {

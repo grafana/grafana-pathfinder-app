@@ -37,7 +37,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, INTERACTIVE_ACTIONS } from '../constants';
+import { BLOCK_TYPE_METADATA, INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
 import type { BlockType, JsonBlock, JsonInteractiveAction, BlockFormProps } from '../types';
 import {
@@ -46,8 +46,31 @@ import {
   isImageBlock,
   isVideoBlock,
   isInputBlock,
+  isCalloutBlock,
+  type JsonInteractiveBlock,
 } from '../../../types/json-guide.types';
 import { getBlockPreview } from '../utils';
+
+/** Fields this form rebuilds on save; everything else is carried over. */
+const FORM_OWNED_INTERACTIVE_FIELDS = [
+  'type',
+  'action',
+  'targetAction',
+  'reftarget',
+  'refTarget',
+  'content',
+  'targetvalue',
+  'targetValue',
+  'requirements',
+] as const satisfies ReadonlyArray<keyof JsonInteractiveBlock>;
+
+function carriedOverInteractiveFields(block: JsonInteractiveBlock): Partial<JsonInteractiveBlock> {
+  const carried: Record<string, unknown> = { ...block };
+  for (const field of FORM_OWNED_INTERACTIVE_FIELDS) {
+    delete carried[field];
+  }
+  return carried as Partial<JsonInteractiveBlock>;
+}
 
 // ============================================================================
 // Styles
@@ -242,7 +265,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
 /**
  * Create a default block of a given type
  */
-function createDefaultBlock(type: BlockType): JsonBlock {
+export function createDefaultBlock(type: BlockType): JsonBlock {
   switch (type) {
     case 'markdown':
       return { type: 'markdown', content: '' };
@@ -267,17 +290,36 @@ function createDefaultBlock(type: BlockType): JsonBlock {
       return { type: 'multistep', content: '', steps: [] };
     case 'guided':
       return { type: 'guided', content: '', steps: [] };
+    case 'challenge':
+      return { type: 'challenge', title: '', brief: '', successCriteria: '' };
+    case 'callout':
+      return { type: 'callout', title: '', content: '' };
     default:
       return { type: 'markdown', content: '' };
   }
 }
 
-// Block types allowed in conditional branches (no sections or conditionals)
-const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BLOCK_TYPE_ORDER.filter((t) => t !== 'section' && t !== 'conditional');
+// Block types the inline branch editor can construct without falling through to an
+// empty markdown stub. Nested containers are excluded; types that need dedicated
+// forms (challenge, quiz, terminal, …) are also excluded so the combobox cannot
+// silently create the wrong block shape (see #1542).
+const BRANCH_INLINE_CREATABLE_TYPES: BlockType[] = [
+  'markdown',
+  'interactive',
+  'image',
+  'video',
+  'input',
+  'callout',
+  'quiz',
+  'multistep',
+  'guided',
+];
+
+export const ALLOWED_BRANCH_BLOCK_TYPES: BlockType[] = BRANCH_INLINE_CREATABLE_TYPES;
 
 // Block types that support inline form editing in BranchBlocksEditor
 // quiz, multistep, and guided require the dedicated editors and cannot be edited inline
-const INLINE_EDITABLE_TYPES: BlockType[] = ['markdown', 'interactive', 'image', 'video', 'input'];
+const INLINE_EDITABLE_TYPES: BlockType[] = ['markdown', 'interactive', 'image', 'video', 'input', 'callout'];
 
 const ACTION_OPTIONS: Array<ComboboxOption<JsonInteractiveAction>> = INTERACTIVE_ACTIONS.map((a) => ({
   value: a.value as JsonInteractiveAction,
@@ -334,11 +376,20 @@ export interface BranchBlocksEditorProps {
   blocks: JsonBlock[];
   /** Called when blocks change */
   onChange: (blocks: JsonBlock[]) => void;
+  /** Block types offered in the add menu. Defaults to ALLOWED_BRANCH_BLOCK_TYPES. */
+  addableBlockTypes?: BlockType[];
   /** Called to start/stop the element picker */
   onPickerModeChange?: BlockFormProps['onPickerModeChange'];
 }
 
-export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerModeChange }: BranchBlocksEditorProps) {
+export function BranchBlocksEditor({
+  label,
+  variant,
+  blocks,
+  onChange,
+  addableBlockTypes = ALLOWED_BRANCH_BLOCK_TYPES,
+  onPickerModeChange,
+}: BranchBlocksEditorProps) {
   const styles = useStyles2(getStyles);
 
   // Expansion state
@@ -361,6 +412,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
   const [formAlt, setFormAlt] = useState('');
   const [formPrompt, setFormPrompt] = useState('');
   const [formVariableName, setFormVariableName] = useState('');
+  const [formTitle, setFormTitle] = useState('');
 
   // DnD sensors
   const pointerSensor = useSensor(PointerSensor, {
@@ -385,6 +437,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
     setFormAlt('');
     setFormPrompt('');
     setFormVariableName('');
+    setFormTitle('');
   }, []);
 
   // Populate form fields from a block
@@ -407,6 +460,9 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
       } else if (isInputBlock(block)) {
         setFormPrompt(block.prompt);
         setFormVariableName(block.variableName);
+      } else if (isCalloutBlock(block)) {
+        setFormTitle(block.title);
+        setFormContent(block.content);
       }
     },
     [resetFormFields]
@@ -414,7 +470,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
 
   // Build block from form fields
   const buildBlockFromForm = useCallback(
-    (type: BlockType): JsonBlock => {
+    (type: BlockType, existing?: JsonBlock): JsonBlock => {
       switch (type) {
         case 'markdown':
           return { type: 'markdown', content: formContent };
@@ -424,6 +480,10 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
             .map((r) => r.trim())
             .filter((r) => r.length > 0);
           return {
+            // This reduced form edits five fields of an interactive block; the
+            // rest (targetstate, tooltip, objectives, …) are authored
+            // elsewhere and must survive a save here.
+            ...(existing && isInteractiveBlock(existing) ? carriedOverInteractiveFields(existing) : {}),
             type: 'interactive',
             action: formAction,
             reftarget: formReftarget,
@@ -447,6 +507,18 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
             inputType: 'text',
             variableName: formVariableName,
           };
+        case 'callout': {
+          // Mirrors the interactive case above: carry over fields this reduced
+          // form doesn't manage (id, authorNote) instead of dropping them.
+          const carried =
+            existing && isCalloutBlock(existing)
+              ? {
+                  ...(existing.id && { id: existing.id }),
+                  ...(existing.authorNote && { authorNote: existing.authorNote }),
+                }
+              : {};
+          return { ...carried, type: 'callout', title: formTitle, content: formContent };
+        }
         default:
           return createDefaultBlock(type);
       }
@@ -461,6 +533,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
       formAlt,
       formPrompt,
       formVariableName,
+      formTitle,
     ]
   );
 
@@ -526,7 +599,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
       return;
     }
 
-    const updatedBlock = buildBlockFromForm(blockType);
+    const updatedBlock = buildBlockFromForm(blockType, editingBlock);
     const newBlocks = [...blocks];
     newBlocks[editingIndex] = updatedBlock;
     onChange(newBlocks);
@@ -707,6 +780,23 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
           </>
         );
 
+      case 'callout':
+        return (
+          <>
+            <Field label="Label" required description="Shown at the top of the box, e.g. Objective">
+              <Input value={formTitle} onChange={(e) => setFormTitle(e.currentTarget.value)} placeholder="Objective" />
+            </Field>
+            <Field label="Content" required description="Markdown body shown inside the callout">
+              <TextArea
+                value={formContent}
+                onChange={(e) => setFormContent(e.currentTarget.value)}
+                rows={3}
+                placeholder="In this section you will learn..."
+              />
+            </Field>
+          </>
+        );
+
       default:
         return (
           <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
@@ -844,7 +934,7 @@ export function BranchBlocksEditor({ label, variant, blocks, onChange, onPickerM
               <div className={styles.addBlockForm}>
                 <Field label="Block type">
                   <Combobox
-                    options={ALLOWED_BRANCH_BLOCK_TYPES.map((t) => ({
+                    options={addableBlockTypes.map((t) => ({
                       value: t,
                       label: BLOCK_TYPE_METADATA[t]?.name ?? t,
                       description: BLOCK_TYPE_METADATA[t]?.description,

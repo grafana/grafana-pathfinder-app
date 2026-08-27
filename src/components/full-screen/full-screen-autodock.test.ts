@@ -15,6 +15,8 @@ jest.mock('../../global-state/panel-mode', () => ({
     getMode: jest.fn(),
     setMode: jest.fn(),
     setPendingGuide: jest.fn(),
+    isTransient: jest.fn(),
+    endTransientSession: jest.fn(),
   },
 }));
 
@@ -50,6 +52,9 @@ function defaultInputs(overrides: Partial<Parameters<typeof dockOnLeavingFullScr
     myPluginId: PLUGIN_ID,
     guideUrl: baseTab.baseUrl,
     title: baseTab.title,
+    // Default to PUSH (an interactive `navigate` step): exercises the dock
+    // branches. The transient-Back branch is opted into per-test.
+    action: 'PUSH' as const,
     ...overrides,
   };
 }
@@ -64,6 +69,7 @@ describe('dockOnLeavingFullScreen', () => {
     // side effects in the same test.
     jest.useFakeTimers();
     (panelModeManager.getMode as jest.Mock).mockReturnValue('fullscreen');
+    (panelModeManager.isTransient as jest.Mock).mockReturnValue(false);
     (isExtensionSidebarOwnedByOther as jest.Mock).mockReturnValue(false);
   });
 
@@ -165,6 +171,71 @@ describe('dockOnLeavingFullScreen', () => {
         guide_title: baseTab.title,
         reason: 'navigation_away_sidebar_occupied',
       });
+    });
+  });
+
+  describe('transient Back branch (browser Back out of a transient prose launch)', () => {
+    beforeEach(() => {
+      (panelModeManager.isTransient as jest.Mock).mockReturnValue(true);
+    });
+
+    it('quietly ends the transient session without opening the sidebar (deferred)', () => {
+      const outcome = dockOnLeavingFullScreen(defaultInputs({ action: 'POP' }));
+
+      // Session end is deferred so FullScreenPanel's unmount cleanup runs first
+      // (while mode is still fullscreen) and clears isSidebarMounted.
+      expect(panelModeManager.endTransientSession).not.toHaveBeenCalled();
+
+      jest.runAllTimers();
+
+      expect(outcome).toBe('transient_back');
+      expect(panelModeManager.endTransientSession).toHaveBeenCalledTimes(1);
+      // Never forces a surface open and never docks.
+      expect(panelModeManager.setMode).not.toHaveBeenCalled();
+      expect(sidebarState.openSidebar).not.toHaveBeenCalled();
+      expect(sidebarState.setPendingOpenSource).not.toHaveBeenCalled();
+    });
+
+    it('reports analytics with destination=none and reason=transient_back', () => {
+      dockOnLeavingFullScreen(defaultInputs({ action: 'POP' }));
+
+      expect(reportAppInteraction).toHaveBeenCalledWith('full_screen_exit', {
+        destination: 'none',
+        guide_url: baseTab.baseUrl,
+        guide_title: baseTab.title,
+        reason: 'transient_back',
+      });
+    });
+
+    it('leaves PUSH (interactive navigate step) on the docking path even mid-session', () => {
+      const outcome = dockOnLeavingFullScreen(defaultInputs({ action: 'PUSH' }));
+      jest.runAllTimers();
+
+      expect(outcome).toBe('sidebar');
+      expect(panelModeManager.endTransientSession).not.toHaveBeenCalled();
+      expect(panelModeManager.setMode).toHaveBeenCalledWith('sidebar');
+      expect(sidebarState.openSidebar).toHaveBeenCalledWith('Interactive learning');
+    });
+
+    it('leaves REPLACE on the docking path (POP-only rule)', () => {
+      const outcome = dockOnLeavingFullScreen(defaultInputs({ action: 'REPLACE' }));
+      jest.runAllTimers();
+
+      expect(outcome).toBe('sidebar');
+      expect(panelModeManager.endTransientSession).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Back branch does not fire for a deliberate (non-transient) full screen', () => {
+    it('a POP with no transient session docks as today (deliberate adoption exit)', () => {
+      // isTransient() defaults to false in beforeEach.
+      const outcome = dockOnLeavingFullScreen(defaultInputs({ action: 'POP' }));
+      jest.runAllTimers();
+
+      expect(outcome).toBe('sidebar');
+      expect(panelModeManager.endTransientSession).not.toHaveBeenCalled();
+      expect(panelModeManager.setMode).toHaveBeenCalledWith('sidebar');
+      expect(sidebarState.openSidebar).toHaveBeenCalledWith('Interactive learning');
     });
   });
 });

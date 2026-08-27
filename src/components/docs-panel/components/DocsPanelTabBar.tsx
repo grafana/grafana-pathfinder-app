@@ -1,6 +1,6 @@
 /**
- * Tab bar surface for the docs panel: permanent icon-only tabs (recommendations,
- * optional editor, optional devtools), divider, guide-tab list with close buttons,
+ * Tab bar surface for the docs panel: Interactive Learning wordmark,
+ * recommendations home icon, divider, guide-tab list with close buttons,
  * overflow chevron and dropdown, and the trailing TabBarActions slot.
  *
  * Extracted verbatim from `docs-panel.tsx`. Every `data-testid` is preserved
@@ -12,15 +12,15 @@
  * extraction moves the relevant references from docs-panel.tsx to this
  * file's entry in SOURCE_CONTRACT (updated in the same commit).
  */
-import React from 'react';
-import { Icon, IconButton } from '@grafana/ui';
+import React, { useSyncExternalStore } from 'react';
+import { Icon, IconButton, Badge } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
 import { testIds } from '../../../constants/testIds';
 
 type DocsPanelStyles = ReturnType<typeof getDocsPanelStyles>;
-import { PERMANENT_TAB_IDS, getTranslatedTitle } from '../utils';
+import { RECOMMENDATIONS_TAB_ID, getGuideStripTabs, getTranslatedTitle } from '../utils';
 import { TabBarActions } from './TabBarActions';
 import {
   reportAppInteraction,
@@ -29,6 +29,13 @@ import {
   tabTypeToContentType,
 } from '../../../lib/analytics';
 import { getJourneyProgress } from '../../../docs-retrieval';
+import {
+  getEditorChromeStatus,
+  getEditorChromeStatusVersion,
+  subscribeEditorChromeStatus,
+  editorTabStatusBadge,
+  type EditorChromeStatus,
+} from '../../block-editor/editor-chrome-status';
 
 export interface DocsPanelTabBarProps {
   styles: DocsPanelStyles;
@@ -41,14 +48,21 @@ export interface DocsPanelTabBarProps {
   isDevMode: boolean;
   isDropdownOpen: boolean;
   setIsDropdownOpen: (open: boolean) => void;
-  tabBarRef: React.RefObject<HTMLDivElement>;
-  tabListRef: React.RefObject<HTMLDivElement>;
-  dropdownRef: React.RefObject<HTMLDivElement>;
-  chevronButtonRef: React.RefObject<HTMLButtonElement>;
-  dropdownOpenTimeRef: React.MutableRefObject<number>;
+  tabBarRef: React.RefObject<HTMLDivElement | null>;
+  tabListRef: React.RefObject<HTMLDivElement | null>;
+  dropdownRef: React.RefObject<HTMLDivElement | null>;
+  chevronButtonRef: React.RefObject<HTMLButtonElement | null>;
+  dropdownOpenTimeRef: React.RefObject<number>;
   onSetActiveTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   reloadActiveTab: (tab: LearningJourneyTab) => void;
+  onOpenEditorTab: () => void;
+  onOpenDevToolsTab: () => void;
+}
+
+/** Italics alone can't carry meaning, so the native tooltip spells it out. */
+function editorTabTooltip(title: string, status: EditorChromeStatus): string {
+  return status.hasUnsyncedChanges ? t('docsPanel.editorTabModified', '{{title}} — modified', { title }) : title;
 }
 
 export function DocsPanelTabBar({
@@ -69,101 +83,101 @@ export function DocsPanelTabBar({
   onSetActiveTab,
   onCloseTab,
   reloadActiveTab,
+  onOpenEditorTab,
+  onOpenDevToolsTab,
 }: DocsPanelTabBarProps): React.ReactElement {
+  // visibleTabs may still include recommendations on computeTabVisibility early
+  // returns; keep that rail-only chrome out of the guide list.
+  const guideTabs = getGuideStripTabs(visibleTabs);
+
+  // One subscription for the whole strip: per-tab status is then a plain read,
+  // so an overflowed editor tab re-renders on draft/publish changes too.
+  useSyncExternalStore(subscribeEditorChromeStatus, getEditorChromeStatusVersion);
+
   return (
     <div className={styles.tabBar} ref={tabBarRef} data-testid={testIds.docsPanel.tabBar}>
-      {/* Permanent icon-only tabs */}
-      <div className={styles.permanentTabs}>
+      <div className={styles.recommendationsTab}>
+        <div className={styles.wordmarkGroup}>
+          <span className={styles.wordmark}>{t('docsPanel.wordmark', 'Interactive Learning')}</span>
+          <div className={styles.tabDivider} aria-hidden="true" />
+        </div>
         <button
-          className={`${styles.iconTab} ${activeTabId === 'recommendations' ? styles.iconTabActive : ''}`}
-          onClick={() => onSetActiveTab('recommendations')}
+          className={`${styles.iconTab} ${activeTab?.type === 'recommendations' ? styles.iconTabActive : ''}`}
+          onClick={() => onSetActiveTab(RECOMMENDATIONS_TAB_ID)}
           title={t('docsPanel.recommendations', 'Recommendations')}
           data-testid={testIds.docsPanel.recommendationsTab}
         >
           <Icon name="document-info" size="md" />
         </button>
-        {isEditorUser && (
-          <button
-            className={`${styles.iconTab} ${activeTabId === 'editor' ? styles.iconTabActive : ''}`}
-            onClick={() => onSetActiveTab('editor')}
-            title={t('docsPanel.guideEditor', 'Guide editor')}
-            data-testid={testIds.docsPanel.tab('editor')}
-          >
-            <Icon name="edit" size="md" />
-          </button>
-        )}
-        {isDevMode && (
-          <button
-            className={`${styles.iconTab} ${activeTabId === 'devtools' ? styles.iconTabActive : ''}`}
-            onClick={() => onSetActiveTab('devtools')}
-            title={t('docsPanel.devTools', 'Dev tools')}
-            data-testid={testIds.docsPanel.tab('devtools')}
-          >
-            <Icon name="bug" size="md" />
-          </button>
-        )}
       </div>
 
-      {/* Divider - only show when there are guide tabs */}
-      {visibleTabs.filter((tab) => !PERMANENT_TAB_IDS.has(tab.id)).length > 0 && <div className={styles.tabDivider} />}
+      {guideTabs.length > 0 && <div className={styles.tabDivider} />}
 
-      {/* Guide tabs with titles */}
       <div className={styles.tabList} ref={tabListRef} data-testid={testIds.docsPanel.tabList}>
-        {visibleTabs
-          .filter((tab) => !PERMANENT_TAB_IDS.has(tab.id))
-          .map((tab) => {
-            return (
-              <button
-                key={tab.id}
-                className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
-                onClick={() => onSetActiveTab(tab.id)}
-                title={getTranslatedTitle(tab.title)}
-                data-testid={testIds.docsPanel.tab(tab.id)}
-              >
-                <div className={styles.tabContent}>
-                  {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.tabIcon} />}
-                  <span className={styles.tabTitle}>
-                    {tab.isLoading ? (
-                      <>
-                        <Icon name="sync" size="xs" />
-                        <span>{t('docsPanel.loading', 'Loading...')}</span>
-                      </>
-                    ) : (
-                      getTranslatedTitle(tab.title)
-                    )}
-                  </span>
-                  <IconButton
-                    name="times"
-                    size="sm"
-                    aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
-                      title: getTranslatedTitle(tab.title),
-                    })}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      reportAppInteraction(UserInteraction.CloseTabClick, {
-                        content_type: getContentTypeForAnalytics(
-                          tab.currentUrl || tab.baseUrl,
-                          tabTypeToContentType(tab.type)
-                        ),
-                        tab_title: tab.title,
-                        content_url: tab.currentUrl || tab.baseUrl,
-                        interaction_location: 'tab_button',
-                        ...(tab.type === 'learning-journey' &&
-                          tab.content && {
-                            completion_percentage: getJourneyProgress(tab.content),
-                            current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
-                            total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
-                          }),
-                      });
-                      onCloseTab(tab.id);
-                    }}
-                    className={styles.closeButton}
-                    data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
-                  />
-                </div>
-              </button>
-            );
-          })}
+        {guideTabs.map((tab) => {
+          const editorStatus = tab.type === 'editor' ? getEditorChromeStatus() : null;
+          const editorBadge = editorStatus ? editorTabStatusBadge(editorStatus) : null;
+          const modified = editorStatus?.hasUnsyncedChanges ? ` ${styles.editorTabTitleModified}` : '';
+          return (
+            <button
+              key={tab.id}
+              className={`${styles.tab} ${tab.id === activeTabId ? styles.activeTab : ''}`}
+              onClick={() => onSetActiveTab(tab.id)}
+              title={
+                editorStatus
+                  ? editorTabTooltip(getTranslatedTitle(tab.title), editorStatus)
+                  : getTranslatedTitle(tab.title)
+              }
+              data-testid={testIds.docsPanel.tab(tab.id)}
+            >
+              <div className={styles.tabContent}>
+                {editorBadge && !tab.isLoading && (
+                  <Badge text={editorBadge.text} color={editorBadge.color} className={styles.editorTabStatusBadge} />
+                )}
+                <span
+                  className={`${styles.tabTitle}${tab.type === 'editor' ? ` ${styles.editorTabTitle}` : ''}${modified}`}
+                >
+                  {tab.isLoading ? (
+                    <>
+                      <Icon name="sync" size="xs" />
+                      <span>{t('docsPanel.loading', 'Loading...')}</span>
+                    </>
+                  ) : (
+                    getTranslatedTitle(tab.title)
+                  )}
+                </span>
+                <IconButton
+                  name="times"
+                  size="sm"
+                  aria-label={t('docsPanel.closeTab', 'Close {{title}}', {
+                    title: getTranslatedTitle(tab.title),
+                  })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    reportAppInteraction(UserInteraction.CloseTabClick, {
+                      content_type: getContentTypeForAnalytics(
+                        tab.currentUrl || tab.baseUrl,
+                        tabTypeToContentType(tab.type)
+                      ),
+                      tab_title: tab.title,
+                      content_url: tab.currentUrl || tab.baseUrl,
+                      interaction_location: 'tab_button',
+                      ...(tab.type === 'learning-journey' &&
+                        tab.content && {
+                          completion_percentage: getJourneyProgress(tab.content),
+                          current_milestone: tab.content.metadata?.learningJourney?.currentMilestone,
+                          total_milestones: tab.content.metadata?.learningJourney?.totalMilestones,
+                        }),
+                    });
+                    onCloseTab(tab.id);
+                  }}
+                  className={styles.closeButton}
+                  data-testid={testIds.docsPanel.tabCloseButton(tab.id)}
+                />
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {overflowGuideTabs.length > 0 && (
@@ -199,6 +213,9 @@ export function DocsPanelTabBar({
           data-testid={testIds.docsPanel.tabDropdown}
         >
           {overflowGuideTabs.map((tab) => {
+            const editorStatus = tab.type === 'editor' ? getEditorChromeStatus() : null;
+            const editorBadge = editorStatus ? editorTabStatusBadge(editorStatus) : null;
+            const modified = editorStatus?.hasUnsyncedChanges ? ` ${styles.editorTabTitleModified}` : '';
             return (
               <button
                 key={tab.id}
@@ -208,14 +225,21 @@ export function DocsPanelTabBar({
                   setIsDropdownOpen(false);
                 }}
                 role="menuitem"
+                title={editorStatus ? editorTabTooltip(getTranslatedTitle(tab.title), editorStatus) : undefined}
                 aria-label={t('docsPanel.switchToTab', 'Switch to {{title}}', {
                   title: getTranslatedTitle(tab.title),
                 })}
                 data-testid={testIds.docsPanel.tabDropdownItem(tab.id)}
               >
                 <div className={styles.dropdownItemContent}>
-                  {tab.type === 'devtools' && <Icon name="bug" size="xs" className={styles.dropdownItemIcon} />}
-                  <span className={styles.dropdownItemTitle}>
+                  {editorBadge && !tab.isLoading && (
+                    <Badge text={editorBadge.text} color={editorBadge.color} className={styles.editorTabStatusBadge} />
+                  )}
+                  <span
+                    className={`${styles.dropdownItemTitle}${
+                      tab.type === 'editor' ? ` ${styles.editorDropdownItemTitle}` : ''
+                    }${modified}`}
+                  >
                     {tab.isLoading ? (
                       <>
                         <Icon name="sync" size="xs" />
@@ -264,7 +288,10 @@ export function DocsPanelTabBar({
         className={styles.tabBarActions}
         activeTab={activeTab}
         isDevMode={isDevMode}
+        isEditorUser={isEditorUser}
         onReloadActiveTab={reloadActiveTab}
+        onOpenEditorTab={onOpenEditorTab}
+        onOpenDevToolsTab={onOpenDevToolsTab}
       />
     </div>
   );

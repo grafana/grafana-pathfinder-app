@@ -60,9 +60,13 @@ The **•••** menu provides the alternative action:
 - When published → the menu offers **Unpublish** (revert to draft, removing it from the docs panel).
 - When not saved → the menu offers **Publish** (save and go live in one step).
 
+Every save stamps a derived `spec.manifest`, so a guide authored here is a complete package rather than bare content. One consequence is worth knowing while authoring: when the first block that declares an `on-page:` requirement names an absolute path, and nothing navigates before it, that path is saved as the guide's starting location, and a reader who opens the guide somewhere else is prompted to navigate there first. Remove the requirement and the prompt goes with it. The prompt does not reach a guide opened from inside a learning path; [`EXTERNAL_API.md`](EXTERNAL_API.md#manifest) lists the launch routes it does reach. Which manifest fields the derivation owns, and which it inherits untouched, is under [external import](#external-import-ci--terraform--scripts).
+
 ### Collision detection
 
 When saving a new guide for the first time, if a guide with the same resource name already exists in the library, you are prompted to confirm an overwrite. The editor avoids known library names when it generates an ID, but a collision can still occur if the library changed after it was loaded. To keep both guides, cancel, start a new guide, and commit a distinct title so the editor generates a new ID before saving.
+
+Confirming an overwrite replaces the stored resource with your guide alone: it inherits neither the previous resource's `spec.manifest` nor its provenance annotations, so overwriting a learning path's cover page flattens that path and detaches it from the upload script. Nothing warns you at the prompt — cancel if the colliding name might belong to a path.
 
 ---
 
@@ -103,18 +107,29 @@ The library (**•••** → **Library**) lists all guides stored in the Pathf
 
 ## External import (CI / Terraform / scripts)
 
-Guides can also be pushed into a stack from outside the editor — useful for CI pipelines, Terraform, or one-off scripts. The Pathfinder backend's Kubernetes-style API at `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides` accepts the same `spec` shape the editor reads and writes, and exposes the full lifecycle (`list`/`get`/`create`/`update`/`delete`).
+Guides can also be pushed into a stack from outside the editor — useful for CI pipelines, Terraform, or one-off scripts. The Pathfinder backend's Kubernetes-style API at `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides` accepts the same `spec` shape the editor reads and writes, and exposes the full lifecycle (`list`/`get`/`create`/`update`/`delete`).
 
 Authentication is a Grafana service-account Bearer token; writes need the **Editor** or **Admin** role. The repo ships a small helper at [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) that handles the GET-then-create-or-update dance:
 
 ```bash
+export PATHFINDER_SA_TOKEN="$GRAFANA_SA_TOKEN"
+
 scripts/upsert-guide.sh \
   --stack learn.grafana.net \
-  --token "$GRAFANA_SA_TOKEN" \
   --spec ./my-guide.json
 ```
 
-See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, error codes, and curl recipes for each operation.
+To upload a whole learning path or journey — a `manifest.json` plus the milestone guides it sequences — use [`scripts/upsert-learning-path.sh`](../../scripts/upsert-learning-path.sh) instead. It walks a package directory, uploads each milestone, then the path's cover page, and attaches the package metadata as `spec.manifest`:
+
+```bash
+scripts/upsert-learning-path.sh \
+  --stack learn.grafana.net \
+  --package ./drilldown-logs-lj
+```
+
+Guides uploaded this way can be loaded and edited in the editor like any other, including a path's **cover page**. Save, publish, and unpublish each layer the editor-owned fields over the spec last read and carry `metadata.annotations` and `metadata.labels` through, so `spec.manifest` survives the write and a later `upsert-learning-path.sh` run still recognises the package as its own. The editor additionally _derives_ the manifest fields the content determines — `type` (only when there was none), `repository` (only when minting a fresh manifest), and `additionalFields.stats` / `additionalFields.startingLocation` — and leaves every other manifest field exactly as it read it. `startingLocation` is the one field the editor both writes and clears, so it only touches it when it can tell the value is its own: either nothing was inherited, or the inherited value is exactly what the blocks read alongside it derive. Removing the `on-page:` requirement therefore removes the prompt, while a `startingLocation` that arrived with an uploaded package survives a title-only edit rather than being erased by it. A cover page's `type` and `milestones` are never rewritten, and a path keeps its rolled-up stats rather than gaining the cover page's own counts. The exception is the overwrite-confirm prompt described under [collision detection](#collision-detection): confirming an overwrite writes a guide that did not come from the stored resource, so it deliberately inherits neither the manifest nor the provenance annotations.
+
+See [`EXTERNAL_API.md`](EXTERNAL_API.md) for the full reference, including the K8s envelope shape, the `spec.manifest` field table, error codes, and curl recipes for each operation.
 
 ---
 
@@ -124,10 +139,10 @@ The badge in the top-right of the header reflects the backend sync state:
 
 | Badge                             | Meaning                                                                      |
 | --------------------------------- | ---------------------------------------------------------------------------- |
-| **Draft** (purple, not yet saved) | Exists only in localStorage. Use **Save as draft** to add it to the library. |
-| **Draft** (purple)                | Saved to backend, in sync, not published.                                    |
+| **Draft** (blue, not yet saved)   | Exists only in localStorage. Use **Save as draft** to add it to the library. |
+| **Draft** (blue)                  | Saved to backend, in sync, not published.                                    |
 | **Draft (modified)** (orange)     | Local changes not yet saved to the draft.                                    |
-| **Published** (blue)              | Live and in sync with the backend.                                           |
+| **Published** (green)             | Live and in sync with the backend.                                           |
 | **Published (modified)** (orange) | Local changes not yet pushed to the live guide.                              |
 
 When the backend is unavailable the badge area instead shows a **Saved** / **Saving…** indicator reflecting the localStorage auto-save state.
@@ -137,7 +152,7 @@ When the backend is unavailable the badge area instead shows a **Saved** / **Sav
 ## Technical notes
 
 - Guide IDs are auto-generated as `<title-slug>-<4-char-random>` when a new title is first committed. Later title edits do not change the ID or backend resource name.
-- The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.com/v1alpha1` API group.
+- The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.app/v1alpha1` API group.
 - `resourceVersion` is used for optimistic concurrency control — the editor always fetches the latest version after a save before allowing a subsequent write.
 - Backend tracking state (`resourceName` and the last backend-synced guide JSON) is persisted to localStorage. Draft or published status is derived from the refreshed backend guide list, so the correct button state survives a page refresh.
 

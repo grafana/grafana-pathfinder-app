@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { GrafanaTheme2 } from '@grafana/data';
 import { safeEventHandler } from '../../utils/safe-event-handler.util';
 import {
@@ -11,7 +11,12 @@ import {
   AnalyticsLinkType,
 } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
-import { getJourneyProgress, getMilestoneSlug, markMilestoneDone } from '../../docs-retrieval';
+import {
+  getJourneyProgress,
+  getMilestoneSlug,
+  markMilestoneDone,
+  resolveExpectedMilestoneIds,
+} from '../../docs-retrieval';
 import {
   parseUrlSafely,
   isAllowedContentUrl,
@@ -23,8 +28,17 @@ import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { LearningJourneyTab } from '../../types/content-panel.types';
 import type { OpenDocsOptions, OpenLearningJourneyOptions } from './types';
 
+/**
+ * The only `data-interaction-location` values a trusted cover-page producer
+ * ever sets. `startElement` can be an element from rendered guide content, so
+ * an unrecognized value is treated as absent rather than forwarded verbatim —
+ * unbounded values from remote content must never reach an analytics
+ * dimension.
+ */
+const KNOWN_INTERACTION_LOCATIONS = new Set(['get_started_cta', 'resume_cta', 'module_row_click']);
+
 interface UseLinkClickHandlerProps {
-  contentRef: React.RefObject<HTMLDivElement>;
+  contentRef: React.RefObject<HTMLDivElement | null>;
   activeTab: LearningJourneyTab | null;
   theme: GrafanaTheme2;
   model: {
@@ -57,6 +71,14 @@ function isValidGrafanaContentUrl(url: string): boolean {
 }
 
 export function useLinkClickHandler({ contentRef, activeTab, theme, model }: UseLinkClickHandlerProps) {
+  // Synchronous re-entrancy guard for data-journey-start clicks: loadTab's own
+  // isLoading is React state (not readable until the next render), so a rapid
+  // double-click on the cover-page CTA or a module row could re-enter before
+  // the first call's loading state ever becomes visible. Both clicks target
+  // the same (tabId, url) pair, so this is a wasted-fetch/duplicate-analytics
+  // concern rather than a correctness one — a ref latch is enough.
+  const journeyStartInFlightRef = useRef(false);
+
   useEffect(() => {
     const handleLinkClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
@@ -70,22 +92,43 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           stopPropagation: true,
         });
 
+        if (journeyStartInFlightRef.current) {
+          return;
+        }
+
+        const loadJourneyTab = (tabId: string, url: string) => {
+          journeyStartInFlightRef.current = true;
+          model.loadTab(tabId, url).finally(() => {
+            journeyStartInFlightRef.current = false;
+          });
+        };
+
         // Get the milestone URL from the button's data attribute
         const milestoneUrl = startElement.getAttribute('data-milestone-url');
         const activeTab = model.getActiveTab();
 
         if (milestoneUrl && activeTab) {
+          // Cover-page producers (LearningPathTableOfContents, GuideList) tag
+          // their own trigger via data-interaction-location so a fresh start,
+          // a resume, and a direct module-row click stay distinguishable in
+          // analytics; the legacy injected HTML button carries none, so it
+          // keeps its original label.
+          const rawInteractionLocation = startElement.getAttribute('data-interaction-location');
+          const interactionLocation =
+            rawInteractionLocation && KNOWN_INTERACTION_LOCATIONS.has(rawInteractionLocation)
+              ? rawInteractionLocation
+              : 'ready_to_begin_button';
           // Track analytics for starting journey
           reportAppInteraction(UserInteraction.StartLearningJourneyClick, {
             content_title: activeTab.title,
             content_url: activeTab.baseUrl,
-            interaction_location: 'ready_to_begin_button',
+            interaction_location: interactionLocation,
             total_milestones: activeTab.content?.metadata?.learningJourney?.totalMilestones || 0,
           });
 
           // Navigate directly to the first milestone URL. Use the unified
           // dispatcher so package-backed journeys re-run their docs loader.
-          model.loadTab(activeTab.id, milestoneUrl);
+          loadJourneyTab(activeTab.id, milestoneUrl);
         } else if (
           activeTab?.content?.metadata?.learningJourney?.milestones &&
           activeTab.content.metadata.learningJourney.milestones.length > 0
@@ -100,7 +143,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
               total_milestones: activeTab.content.metadata.learningJourney.milestones.length,
             });
 
-            model.loadTab(activeTab.id, firstMilestone.url);
+            loadJourneyTab(activeTab.id, firstMilestone.url);
           }
         } else {
           logger.warn('No milestone URL found to navigate to');
@@ -525,15 +568,21 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           });
 
           // Mark current milestone done if it has no interactive steps
-          if (activeTab?.content?.type === 'learning-journey' && activeTab?.currentUrl && activeTab?.baseUrl) {
+          const journey = activeTab?.content?.metadata.learningJourney;
+          if (activeTab?.content?.type === 'learning-journey' && activeTab.currentUrl && journey) {
             const hasInteractiveSteps = (contentRef?.current?.querySelectorAll('[data-step-id]').length ?? 0) > 0;
             if (!hasInteractiveSteps) {
               const slug = getMilestoneSlug(activeTab.currentUrl);
               if (slug) {
                 markMilestoneDone(
-                  activeTab.baseUrl,
+                  journey.baseUrl,
                   slug,
-                  activeTab.content?.metadata?.learningJourney?.totalMilestones
+                  resolveExpectedMilestoneIds(activeTab.content?.metadata?.learningJourney),
+                  {
+                    packageManifest: activeTab.content?.metadata?.packageManifest,
+                    repository: activeTab.content?.metadata?.repository,
+                    guideTitle: activeTab.title,
+                  }
                 );
               }
             }

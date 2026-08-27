@@ -22,6 +22,13 @@ export class HoverHandler {
 
     try {
       const targetElement = await this.findTargetElement(data.refTarget);
+      if (!targetElement) {
+        if (data.skipCompletionOnEmptyTarget) {
+          data.completionSuppressed = true;
+          return;
+        }
+        throw new Error(`No elements found matching selector: ${data.refTarget}`);
+      }
       await this.prepareElement(targetElement);
 
       if (!performHover) {
@@ -37,11 +44,11 @@ export class HoverHandler {
     }
   }
 
-  private async findTargetElement(selector: string): Promise<HTMLElement> {
+  private async findTargetElement(selector: string): Promise<HTMLElement | null> {
     const resolved = await resolveWithRetry(selector, 'hover');
 
     if (!resolved) {
-      throw new Error(`No elements found matching selector: ${selector}`);
+      return null;
     }
 
     if (resolved.elements.length > 1) {

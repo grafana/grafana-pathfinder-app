@@ -9,10 +9,15 @@ import {
   JsonMultistepBlockSchema,
   JsonGuidedBlockSchema,
   JsonSectionBlockSchema,
+  JsonCollapsibleBlockSchema,
+  JsonCalloutBlockSchema,
+  PresentationalBlockSchema,
   JsonQuizBlockSchema,
   JsonAssistantBlockSchema,
   JsonInputBlockSchema,
   JsonGrotGuideBlockSchema,
+  JsonChallengeBlockSchema,
+  JsonStepSchema,
   KNOWN_FIELDS,
   type InferredJsonGuide,
 } from '../types/json-guide.schema';
@@ -92,17 +97,21 @@ describe('KNOWN_FIELDS sync', () => {
     expect(schemaKeys.sort()).toEqual(knownKeys.sort());
   };
 
-  // Helper for schemas with .refine() - access the inner schema via Zod 4 API
-
+  // Helper for schemas with .refine() - access the inner schema via Zod 4 API.
+  // Refinements chain, so unwrap until an object shape is reached, then assert
+  // one was found: a silent skip here would let this whole suite pass green
+  // while checking nothing.
   const verifyFieldsFromEffects = (schema: z.ZodType<any>, typeName: string) => {
-    // Zod 4: effects schemas expose innerType via _zod.def
-
-    const innerSchema = (schema as any)._zod?.def?.innerType;
-    if (innerSchema && 'shape' in innerSchema) {
-      const schemaKeys = Object.keys(innerSchema.shape);
-      const knownKeys = Array.from(KNOWN_FIELDS[typeName] || []);
-      expect(schemaKeys.sort()).toEqual(knownKeys.sort());
+    let inner: any = schema;
+    while (inner && !('shape' in inner)) {
+      inner = inner._zod?.def?.innerType;
     }
+    if (!inner) {
+      throw new Error(`could not unwrap an object shape from the ${typeName} schema`);
+    }
+    const schemaKeys = Object.keys(inner.shape);
+    const knownKeys = Array.from(KNOWN_FIELDS[typeName] || []);
+    expect(schemaKeys.sort()).toEqual(knownKeys.sort());
   };
 
   it('should match markdown schema fields', () => {
@@ -137,6 +146,46 @@ describe('KNOWN_FIELDS sync', () => {
     verifyFields(JsonSectionBlockSchema, 'section');
   });
 
+  it('should match collapsible schema fields', () => {
+    verifyFields(JsonCollapsibleBlockSchema, 'collapsible');
+  });
+
+  it('should match callout schema fields', () => {
+    verifyFields(JsonCalloutBlockSchema, 'callout');
+  });
+
+  // Drift guard: PresentationalBlockSchema (collapsible children) and the
+  // PresentationalBlock type must list the same block types. If the union
+  // gains/loses a member on one side only, one of these assertions fails.
+  describe('PresentationalBlockSchema membership', () => {
+    it('accepts the content block types', () => {
+      const accepted: unknown[] = [
+        { type: 'markdown', content: 'x' },
+        { type: 'html', content: '<p>x</p>' },
+        { type: 'image', src: 'https://example.com/x.png' },
+        { type: 'video', src: 'https://example.com/x.mp4', provider: 'native' },
+        { type: 'callout', title: 'Objective', content: 'x' },
+      ];
+      for (const block of accepted) {
+        expect(PresentationalBlockSchema.safeParse(block).success).toBe(true);
+      }
+    });
+
+    it('rejects interactive, step, and container types', () => {
+      const rejected: unknown[] = [
+        { type: 'interactive', action: 'highlight', reftarget: 'x', content: 'y' },
+        { type: 'code-block', reftarget: 'x', code: 'y' },
+        { type: 'quiz', question: 'q', choices: [{ id: 'a', text: 'a', correct: true }] },
+        { type: 'section', blocks: [] },
+        { type: 'collapsible', blocks: [] },
+        { type: 'conditional', conditions: ['is-admin'], whenTrue: [], whenFalse: [] },
+      ];
+      for (const block of rejected) {
+        expect(PresentationalBlockSchema.safeParse(block).success).toBe(false);
+      }
+    });
+  });
+
   it('should match quiz schema fields', () => {
     verifyFields(JsonQuizBlockSchema, 'quiz');
   });
@@ -151,5 +200,13 @@ describe('KNOWN_FIELDS sync', () => {
 
   it('should match grot-guide schema fields', () => {
     verifyFieldsFromEffects(JsonGrotGuideBlockSchema, 'grot-guide');
+  });
+
+  it('should match challenge schema fields', () => {
+    verifyFields(JsonChallengeBlockSchema, 'challenge');
+  });
+
+  it('should match step schema fields', () => {
+    verifyFieldsFromEffects(JsonStepSchema, '_step');
   });
 });

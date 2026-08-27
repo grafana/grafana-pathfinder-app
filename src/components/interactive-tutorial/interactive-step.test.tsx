@@ -5,6 +5,7 @@ import { InteractiveModeContext } from '../../global-state/interactive-mode-cont
 import { ControllerChannelProvider } from '../../global-state/controller-channel';
 import { TEST_PAIRING } from '../../test-utils/fake-cross-tab-transport';
 import { createPairingAcceptProof } from '../../lib/pairing-manager';
+import { testIds } from '../../constants/testIds';
 
 describe('executeWithLazyScroll: step outcome propagation', () => {
   afterEach(() => {
@@ -60,6 +61,28 @@ describe('InteractiveStep: showMeText label override', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Reveal' })).toBeInTheDocument();
+  });
+
+  it('keeps a show-only step incomplete when the action fails', async () => {
+    render(
+      <InteractiveStep
+        stepId="show-only-failure"
+        targetAction="highlight"
+        refTarget="#missing-show-target"
+        showMe
+        doIt={false}
+      >
+        Example
+      </InteractiveStep>
+    );
+
+    const showMeButton = await screen.findByRole('button', { name: /show me/i });
+    await waitFor(() => expect(showMeButton).toBeEnabled());
+    fireEvent.click(showMeButton);
+
+    const step = screen.getByTestId(testIds.interactive.step('show-only-failure'));
+    await waitFor(() => expect(step).toHaveAttribute('data-test-step-state', 'error'));
+    expect(screen.queryByTestId(testIds.interactive.stepCompleted('show-only-failure'))).not.toBeInTheDocument();
   });
 });
 

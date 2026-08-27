@@ -74,18 +74,19 @@ Before opening a pull request, run:
 npm run check
 ```
 
-This is the same set of checks CI runs:
+This is the local pre-merge gate. It announces each step as it starts and stops at the first failure. To
+see what it contains without running it:
 
-```text
-npm run typecheck       # tsc --noEmit
-npm run lint            # eslint --cache .
-npm run prettier-test   # prettier formatting check
-npm run lint:go         # mage -v lint (golangci-lint)
-npm run test:go         # mage -v test (Go tests)
-npm run test:ci         # jest --passWithNoTests --maxWorkers 4
+```bash
+npm run check -- --list
 ```
 
-Each step also runs as a separate npm script if you only want to re-run one of them.
+Each step is also a separate npm script, so you can re-run just one — `--list` names them, and
+[`COMMANDS.md`](COMMANDS.md) describes them.
+
+CI does not run `npm run check`, and the two are not the same set: CI additionally enforces manifest
+freshness and the production build. A green local gate is a good signal, not a guarantee that `CI Gate`
+will be green.
 
 ## Recommended IDE setup
 

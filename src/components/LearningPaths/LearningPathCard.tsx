@@ -4,13 +4,14 @@
  * Collapsible learning path card with balanced compact design.
  */
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useStyles2, Icon } from '@grafana/ui';
 import { cx } from '@emotion/css';
 
 import type { LearningPathCardProps } from '../../types/learning-paths.types';
 import { testIds } from '../../constants/testIds';
 import { getLearningPathCardStyles } from './learning-paths.styles';
+import { GuideList } from './GuideList';
 import { ProgressRing } from './ProgressRing';
 
 /**
@@ -24,10 +25,13 @@ export function LearningPathCard({
   onContinue,
   onReset,
   defaultExpanded = false,
+  isLaunching = false,
+  launchDisabled = false,
 }: LearningPathCardProps & { defaultExpanded?: boolean }) {
   const styles = useStyles2(getLearningPathCardStyles);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+  const detailsId = useId();
 
   // Whether this is a URL-based path (guides fetched dynamically)
   const isUrlBased = Boolean(path.url);
@@ -83,15 +87,13 @@ export function LearningPathCard({
       className={cx(styles.card, isCompleted && styles.cardCompleted)}
       data-testid={testIds.learningPaths.card(path.id)}
     >
-      {/* Header - clickable to expand */}
-      <div
-        className={styles.header}
-        onClick={handleToggleExpand}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && handleToggleExpand()}
-        aria-expanded={isExpanded}
-      >
+      {/*
+       * Deliberately not `role="button"`: that role is Children Presentational,
+       * so it would hide the nested Continue / Restart / chevron controls from
+       * assistive tech. The chevron owns the disclosure semantics; this click
+       * handler is only a mouse convenience.
+       */}
+      <div className={styles.header} onClick={handleToggleExpand}>
         <ProgressRing progress={progress} size={40} strokeWidth={3} isCompleted={isCompleted} showPercentage={true} />
 
         <div className={styles.content}>
@@ -125,10 +127,11 @@ export function LearningPathCard({
             <button
               className={styles.actionButton}
               onClick={handleContinue}
+              disabled={launchDisabled}
               data-testid={testIds.learningPaths.continueButton(path.id)}
             >
-              <Icon name="play" size="sm" />
-              {getButtonText()}
+              <Icon name={isLaunching ? 'fa fa-spinner' : 'play'} size="sm" />
+              {isLaunching ? 'Opening…' : getButtonText()}
             </button>
           )}
           {isCompleted && onReset && !isConfirmingReset && (
@@ -166,6 +169,8 @@ export function LearningPathCard({
               handleToggleExpand();
             }}
             aria-label={isExpanded ? 'Collapse' : 'Expand'}
+            aria-expanded={isExpanded}
+            aria-controls={detailsId}
             data-testid={testIds.learningPaths.expandButton(path.id)}
           >
             <Icon name="angle-down" size="lg" />
@@ -173,34 +178,16 @@ export function LearningPathCard({
         </div>
       </div>
 
-      {/* Expandable guide list */}
-      <div className={cx(styles.expandable, isExpanded && styles.expandableOpen)}>
+      {/* Only visually hidden when collapsed, so aria-hidden keeps a screen
+          reader from reading the guide list the toggle reports as collapsed. */}
+      <div
+        id={detailsId}
+        className={cx(styles.expandable, isExpanded && styles.expandableOpen)}
+        aria-hidden={!isExpanded}
+      >
         {path.description && <p className={styles.description}>{path.description}</p>}
 
-        <div className={styles.guideList}>
-          {isLoadingGuides ? (
-            <div className={styles.guideItem}>
-              <Icon name="fa fa-spinner" size="sm" />
-              <span className={styles.guideTitle}>Loading guides...</span>
-            </div>
-          ) : (
-            guides.map((guide) => (
-              <div key={guide.id} className={cx(styles.guideItem, guide.isCurrent && styles.guideItemCurrent)}>
-                <span
-                  className={cx(
-                    styles.guideIcon,
-                    guide.completed && styles.guideIconCompleted,
-                    guide.isCurrent && styles.guideIconCurrent,
-                    !guide.completed && !guide.isCurrent && styles.guideIconPending
-                  )}
-                >
-                  {guide.completed ? <Icon name="check" size="sm" /> : <Icon name="circle" size="sm" />}
-                </span>
-                <span className={styles.guideTitle}>{guide.title}</span>
-              </div>
-            ))
-          )}
-        </div>
+        <GuideList guides={guides} isLoading={isLoadingGuides} className={styles.guideList} />
       </div>
     </div>
   );

@@ -18,6 +18,7 @@ import {
   TERMINAL_STEP_SCHEMA,
   TERMINAL_CONNECT_STEP_SCHEMA,
   CODE_BLOCK_STEP_SCHEMA,
+  DATASOURCE_CHECK_STEP_SCHEMA,
   type EnhanceContext,
   type StepTypeSchema,
 } from './step-type-registry';
@@ -66,6 +67,7 @@ describe('step-type-registry', () => {
         'terminal-connect',
         'codeblock',
         'challenge',
+        'datasource-check',
       ]);
     });
 
@@ -272,6 +274,34 @@ describe('step-type-registry', () => {
     });
   });
 
+  describe('DATASOURCE_CHECK_STEP_SCHEMA', () => {
+    it('refTarget is "none" — the check owns its own pick-then-query lifecycle', () => {
+      expect(DATASOURCE_CHECK_STEP_SCHEMA.refTarget).toBe('none');
+    });
+
+    it('parses from the element type only an input block with a blocking check emits', () => {
+      expect(DATASOURCE_CHECK_STEP_SCHEMA.parseTypeKey).toBe('datasource-check-step');
+    });
+
+    it('pauses the section run, since only the user can pick a data source', () => {
+      const ext = DATASOURCE_CHECK_STEP_SCHEMA.toStepInfoExtension({ requirements: 'r', skippable: true });
+      expect(ext).toMatchObject({ isMultiStep: false, isGuided: false, pausesSectionRun: true });
+    });
+
+    it('declares no targetAction, so the runner never routes it through executeInteractiveAction', () => {
+      const ext = DATASOURCE_CHECK_STEP_SCHEMA.toStepInfoExtension({});
+      expect(ext.targetAction).toBeUndefined();
+    });
+
+    it('extends the quiz enhanced surface with onStepReset for Redo', () => {
+      const ctx = makeCtx();
+      expect(DATASOURCE_CHECK_STEP_SCHEMA.toEnhancedProps(ctx)).toEqual({
+        ...INTERACTIVE_QUIZ_SCHEMA.toEnhancedProps(ctx),
+        onStepReset: ctx.onStepReset,
+      });
+    });
+  });
+
   describe('idPrefix conventions match stepId numbering in symmetry tripwire', () => {
     it.each([
       [INTERACTIVE_STEP_SCHEMA, 'step'],
@@ -282,6 +312,7 @@ describe('step-type-registry', () => {
       [TERMINAL_CONNECT_STEP_SCHEMA, 'terminal-connect'],
       [CODE_BLOCK_STEP_SCHEMA, 'codeblock'],
       [CHALLENGE_BLOCK_SCHEMA, 'challenge'],
+      [DATASOURCE_CHECK_STEP_SCHEMA, 'datasource-check'],
     ])('%o uses prefix %s', (schema: StepTypeSchema, expected: string) => {
       expect(schema.idPrefix).toBe(expected);
     });

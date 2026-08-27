@@ -27,7 +27,7 @@ The current Pathfinder custom-guide storage target is an App Platform resource:
 
 ```json
 {
-  "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+  "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
   "kind": "InteractiveGuide",
   "metadata": {
     "name": "hello-world-x7q2k1"
@@ -37,7 +37,11 @@ The current Pathfinder custom-guide storage target is an App Platform resource:
     "title": "Hello world",
     "schemaVersion": "1.1.0",
     "blocks": [],
-    "status": "draft"
+    "status": "draft",
+    "manifest": {
+      "type": "guide",
+      "repository": "interactive-tutorials"
+    }
   }
 }
 ```
@@ -76,17 +80,17 @@ The tool returns structured fields, not only prose instructions:
     "warnings": []
   },
   "appPlatform": {
-    "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+    "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
     "kind": "InteractiveGuide",
     "resource": "interactiveguides",
     "namespacePlaceholder": "{namespace}",
-    "collectionPathTemplate": "/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides",
-    "itemPathTemplate": "/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/{namespace}/interactiveguides/hello-world-x7q2k1",
+    "collectionPathTemplate": "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides",
+    "itemPathTemplate": "/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/interactiveguides/hello-world-x7q2k1",
     "createMethod": "POST",
     "updateMethod": "PUT"
   },
   "resource": {
-    "apiVersion": "pathfinderbackend.ext.grafana.com/v1alpha1",
+    "apiVersion": "pathfinderbackend.ext.grafana.app/v1alpha1",
     "kind": "InteractiveGuide",
     "metadata": {
       "name": "hello-world-x7q2k1"
@@ -96,7 +100,11 @@ The tool returns structured fields, not only prose instructions:
       "title": "Hello world",
       "schemaVersion": "1.1.0",
       "blocks": [],
-      "status": "draft"
+      "status": "draft",
+      "manifest": {
+        "type": "guide",
+        "repository": "interactive-tutorials"
+      }
     }
   },
   "viewer": {
@@ -202,36 +210,27 @@ The MCP service must validate before returning `status: "ready"`. If validation 
 
 The Grafana-authorized client may also validate defensively before writing, but the MCP service is the primary authoring validation boundary.
 
-## Fields dropped at publish (MVP)
+## Manifest fields at publish
 
-**This is a CRD limitation that affects all custom guides — block-editor-authored and AI-authored alike — not an AI-authoring design choice.** The current `InteractiveGuide` CRD only persists content-shaped fields. The authoring artifact is package-shaped — it carries a fully-formed `manifest.json` alongside `content.json` (see [Authoring artifacts — Artifact shape](./AUTHORING-SESSION-ARTIFACTS.md#artifact-shape)) — but the MVP publish path projects only `artifact.content` into the resource `spec`.
+The authoring artifact is package-shaped — it carries a fully-formed `manifest.json` alongside `content.json` (see [Authoring artifacts — Artifact shape](./AUTHORING-SESSION-ARTIFACTS.md#artifact-shape)). The `InteractiveGuide` CRD now carries that manifest at `spec.manifest`, so the publish handoff projects it there rather than dropping it.
 
-Recommendation-engine parity for custom guides (so they can be surfaced contextually like the bundled guides) is downstream of CRD work, not of this design. AI authoring lands AI-generated guides at the same level of CRD support as block-editor guides; closing the gap is one CRD change away from lighting up for both paths simultaneously.
+The CRD types a subset of the manifest, so the handoff projects rather than copies. This mirrors `build_manifest` in `scripts/upsert-learning-path.sh` — the other writer of `spec.manifest` — so both entry points put the same bytes on the wire:
 
-The following manifest fields are present in the artifact, used for in-flight authoring, and **dropped on the way to the CRD**:
+- the CRD-typed keys verbatim: `type`, `repository`, `description`, `category`, `author` (`name` and `team` only), and `milestones` for the `path` and `journey` package types,
+- `depends` widened from bare package IDs to CNF singleton clauses (`"grafana-basics"` becomes `["grafana-basics"]`),
+- every remaining key — `language`, `startingLocation`, `targeting`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`, `schemaVersion`, and any author sub-key beyond `name`/`team` — swept into `additionalFields`, the CRD's escape hatch, so nothing authored is lost on the way in,
+- fields that are absent, `null`, or empty are omitted rather than emitted as empty values.
 
-- `description`
-- `language`
-- `category`
-- `author`
-- `startingLocation`
-- `depends`, `recommends`, `suggests`, `provides`, `conflicts`, `replaces`
-- `targeting`
-- `milestones` (for `path` and `journey` package types)
-- `repository`
+`id` is deliberately not emitted: `metadata.name` already carries it.
 
-This means a guide created by AI authoring and persisted to the CRD today carries only its content, title, and ID into Grafana. A user editing the published guide later through the block editor will not see the manifest data the AI generated.
+`spec.type` is likewise not emitted. `type` describes the package, not the guide content, and the CRD declares no `spec.type` — sending it earns a prune-with-`Warning` response from the API server.
 
-Authoring tools still produce correctly-shaped manifest data inside the artifact because:
+The projection lives in `src/cli/mcp/lib/crd-manifest.ts` and is exercised by `src/cli/mcp/lib/__tests__/crd-manifest.test.ts`.
 
-- The manifest is required input for future package export (`pathfinder_export_package`), independent of CRD persistence.
-- Round-tripping the manifest is a future improvement that requires extending the CRD; producing it correctly today means no schema migration of historical artifacts will be needed.
-- Clients that know the manifest is present can choose to export the package as a file rather than (or in addition to) publishing to the CRD.
-
-**Future improvement.** Extending the CRD to carry manifest fields — either as a peer of `spec` or as a sub-field — lights up persistence without changing the authoring tool surface or the artifact shape. This is out of scope for the MVP. See [open question 1](#open-questions).
+Recommendation-engine parity for custom guides (so they can be surfaced contextually like the bundled guides) reads this data but is otherwise downstream of this design.
 
 ## Open questions
 
-1. What is the smallest change to the `InteractiveGuide` CRD that round-trips `manifest.json` data — a peer field, a `spec.manifest` sub-field, or a separate paired resource? When this is decided, the publish handoff projects the artifact's manifest into that location instead of dropping it.
+1. ~~What is the smallest change to the `InteractiveGuide` CRD that round-trips `manifest.json` data?~~ Resolved: the CRD carries it at `spec.manifest`, and the handoff projects the artifact's manifest into that field. See [Manifest fields at publish](#manifest-fields-at-publish).
 2. Should clients always ask before overwriting an existing `InteractiveGuide` when the agent passes an explicit `--id`, or can some contexts opt into update-by-default?
 3. Should the handoff include a source/provenance annotation once the App Platform resource schema supports it?

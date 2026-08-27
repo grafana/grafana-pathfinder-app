@@ -31,12 +31,25 @@ export type {
 // ============================================
 // Constants
 // ============================================
-export { DEFAULT_STEP_TIMEOUT_MS, TIMEOUT_PER_MULTISTEP_ACTION_MS, TIMEOUT_PER_GUIDED_SUBSTEP_MS } from './constants';
+export {
+  DEFAULT_STEP_TIMEOUT_MS,
+  GUIDE_INITIAL_TIMEOUT_MS,
+  GUIDE_SETUP_TIMEOUT_MS,
+  STEP_OVERHEAD_TIMEOUT_MS,
+  TIMEOUT_PER_MULTISTEP_ACTION_MS,
+  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+  SCROLL_INTO_VIEW_TIMEOUT_MS,
+  LATE_COMPLETION_CHECK_TIMEOUT_MS,
+  GUIDED_RELOAD_LOAD_TIMEOUT_MS,
+  SKIP_SYNC_TIMEOUT_MS,
+} from './constants';
 
 // ============================================
 // Error Classification
 // ============================================
 export { classifyError } from './classification';
+export { createBrowserTerminationMonitor } from './termination-monitor';
+export type { BrowserTermination, BrowserTerminationMonitor } from './termination-monitor';
 
 // ============================================
 // Artifact Collection
@@ -51,7 +64,9 @@ export {
 // ============================================
 // Discovery
 // ============================================
-export { discoverStepsFromDOM, logDiscoveryResults } from './discovery';
+export { discoverStepsFromDOM, logDiscoveryResults, resolveEffectiveSkippable } from './discovery';
+export { ensureDocsPanelOpen } from './bootstrap';
+export { dismissBadgeCelebrations } from './badge-celebrations';
 
 // ============================================
 // Requirements
@@ -69,17 +84,28 @@ export {
 // ============================================
 // Execution
 // ============================================
+export type { GuidedCommentBoxWaitOutcome } from './execution';
+export type { BoundedSettlement } from './execution';
 export {
+  STEP_DEADLINE_CLEANUP_GRACE_MS,
   scrollStepIntoView,
-  waitForDoItButtonEnabled,
-  waitForDoItButtonToAppear,
+  calculateGuideTimeout,
+  calculateStepDeadline,
   calculateStepTimeout,
+  determineUnmetRequirementOutcome,
+  parseNthMatchSelector,
+  selectStepAction,
   waitForStepCompletion,
   checkObjectiveCompletion,
   waitForCompletionWithObjectivePolling,
+  waitForGuidedCommentBoxReady,
+  runGuidedSubstepLoop,
+  clickSkipButtonAndSync,
   executeStep,
   executeAllSteps,
   logStepResult,
   summarizeResults,
+  skippableFailuresAffectSuccess,
   logExecutionSummary,
+  settleWithin,
 } from './execution';

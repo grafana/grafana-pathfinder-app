@@ -16,12 +16,14 @@
 import { validateGuideFromString } from '../../validation';
 import type { RepositoryEntry, RepositoryJson, TestEnvironment } from '../../types/package.types';
 import { resolvePackageById } from './recommender-resolver';
-import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../mcp/lib/repository-client';
-import { planGuideExecution } from './guide-chains';
+import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../utils/repository-client';
+import { hydrateExecutionPlan, planGuideExecution, planPackageExecution, type ExecutionPlan } from './guide-chains';
 import type { LoadedGuide } from '../utils/file-loader';
 import { resolveTarget, type CloudTargetCapabilities } from './e2e-targets';
 import type { CurrentTier } from './manifest-preflight';
 import { classifyGuideSideEffectsFromString, type SideEffectClassification } from './side-effects';
+import { resolveStartingPath } from './starting-location';
+import type { ExecutionSelection } from './schemas/e2e-report.schema';
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -56,6 +58,7 @@ export interface ResolvedRemoteGuide {
   targetUrl: string;
   /** The content.json URL the guide was fetched from. */
   sourceUrl: string;
+  startingLocation?: string;
   /** Conservative side-effect classification for the fetched content. */
   sideEffects: SideEffectClassification;
   /** Plugin IDs required by this guide, from testEnvironment.plugins. */
@@ -83,6 +86,10 @@ export interface RemoteResolution {
   skipped: SkippedPackage[];
   /** Repository index for dependency chaining; empty when no index applies. */
   repository: RepositoryJson;
+  /** Precomputed leaf-guide plan for an explicitly selected path or journey. */
+  executionPlan?: ExecutionPlan;
+  /** Explicit metapackage root represented by a multi-guide report. */
+  selection?: ExecutionSelection;
   /** Set when the operation could not start at all (e.g. CDN index unreachable). */
   error?: string;
 }
@@ -127,16 +134,17 @@ async function buildGuideOrSkip(
   id: string,
   type: string | undefined,
   testEnvironment: TestEnvironment,
+  startingLocation: string | undefined,
   contentUrl: string,
   options: RemoteResolveOptions
 ): Promise<{ runnable?: ResolvedRemoteGuide; skipped?: SkippedPackage }> {
-  // Only single guides are testable; paths/journeys (milestone expansion) are deferred.
+  // Repository sweeps execute leaf guides only; explicit --package resolution expands metapackages first.
   if (type && type !== 'guide') {
     return {
       skipped: {
         id,
         reason: 'unsupported_type',
-        message: `Package type "${type}" is not yet testable`,
+        message: `Package type "${type}" is only testable through an explicit --package selection`,
         sourceUrl: contentUrl,
         tier: testEnvironment.tier,
       },
@@ -159,6 +167,23 @@ async function buildGuideOrSkip(
         tier: target.tier,
       },
     };
+  }
+
+  let resolvedStartingLocation: string | undefined;
+  if (startingLocation !== undefined) {
+    try {
+      resolvedStartingLocation = resolveStartingPath(target.targetUrl!, startingLocation);
+    } catch (error) {
+      return {
+        skipped: {
+          id,
+          reason: 'validation_failed',
+          message: `Invalid startingLocation: ${error instanceof Error ? error.message : 'unknown error'}`,
+          sourceUrl: contentUrl,
+          tier: target.tier,
+        },
+      };
+    }
   }
 
   const fetched = await fetchText(contentUrl);
@@ -186,6 +211,18 @@ async function buildGuideOrSkip(
       },
     };
   }
+  const parsedContent = JSON.parse(fetched.text) as { id?: unknown };
+  if (parsedContent.id !== id) {
+    return {
+      skipped: {
+        id,
+        reason: 'validation_failed',
+        message: `Fetched content.json id "${String(parsedContent.id)}" does not match package id "${id}"`,
+        sourceUrl: contentUrl,
+        tier: target.tier,
+      },
+    };
+  }
   const sideEffects = classifyGuideSideEffectsFromString(fetched.text);
 
   return {
@@ -196,6 +233,7 @@ async function buildGuideOrSkip(
       instance: target.instance,
       targetUrl: target.targetUrl!,
       sourceUrl: contentUrl,
+      ...(resolvedStartingLocation !== undefined ? { startingLocation: resolvedStartingLocation } : {}),
       sideEffects,
       ...(testEnvironment.plugins?.length ? { plugins: testEnvironment.plugins } : {}),
     },
@@ -230,7 +268,7 @@ async function resolveIndexEntry(
       },
     };
   }
-  return buildGuideOrSkip(id, entry.type, entry.testEnvironment ?? {}, contentUrl, options);
+  return buildGuideOrSkip(id, entry.type, entry.testEnvironment ?? {}, entry.startingLocation, contentUrl, options);
 }
 
 /**
@@ -271,8 +309,170 @@ function resolutionFailedSkip(target: ResolvedRemoteGuide, message: string): Ski
   };
 }
 
-function skippedResolution(skipped: SkippedPackage[], repository: RepositoryJson = {}): RemoteResolution {
-  return { runnable: [], prerequisites: [], skipped, repository };
+function skippedResolution(
+  skipped: SkippedPackage[],
+  repository: RepositoryJson = {},
+  selection?: ExecutionSelection
+): RemoteResolution {
+  return { runnable: [], prerequisites: [], skipped, repository, ...(selection ? { selection } : {}) };
+}
+
+function isMetapackageType(type: string | undefined): type is ExecutionSelection['type'] {
+  return type === 'path' || type === 'journey';
+}
+
+async function resolveRemoteMetapackage(
+  id: string,
+  type: ExecutionSelection['type'],
+  repository: RepositoryJson,
+  baseUrl: string,
+  options: RemoteResolveOptions
+): Promise<RemoteResolution> {
+  const selection: ExecutionSelection = { id, type };
+  const rootEntry = repository[id];
+  if (!rootEntry) {
+    return skippedResolution(
+      [{ id, reason: 'resolution_failed', message: `Root package "${id}" is missing from the repository index` }],
+      repository,
+      selection
+    );
+  }
+  if (rootEntry.type !== type) {
+    return skippedResolution(
+      [
+        {
+          id,
+          reason: 'resolution_failed',
+          message: `Root package type mismatch: recommender declared "${type}", repository declared "${rootEntry.type}"`,
+        },
+      ],
+      repository,
+      selection
+    );
+  }
+
+  const rootTarget = resolveTarget(rootEntry.testEnvironment ?? {}, {
+    grafanaUrl: options.grafanaUrl,
+    currentTier: options.currentTier,
+    cloudUrl: options.cloudUrl,
+    cloudTargetCapabilities: options.cloudTargetCapabilities,
+  });
+  if (!rootTarget.runnable) {
+    return skippedResolution(
+      [
+        {
+          id,
+          reason: rootTarget.skipReason!,
+          message: rootTarget.message ?? 'Package skipped',
+          tier: rootTarget.tier,
+        },
+      ],
+      repository,
+      selection
+    );
+  }
+
+  const packagePlan = planPackageExecution({ rootIds: [id], repository });
+  if (packagePlan.errors.length > 0) {
+    return skippedResolution(
+      [
+        {
+          id,
+          reason: 'prerequisite_failed',
+          message: `Could not expand ${type} package: ${packagePlan.errors.join('; ')}`,
+          tier: rootTarget.tier,
+        },
+      ],
+      repository,
+      selection
+    );
+  }
+
+  const leafIds = [...new Set(packagePlan.chains.flatMap((chain) => chain.map((planned) => planned.id)))];
+  const runnable: ResolvedRemoteGuide[] = [];
+  const skipped: SkippedPackage[] = [];
+  for (const leafId of leafIds) {
+    const entry = repository[leafId];
+    if (!entry) {
+      skipped.push({
+        id: leafId,
+        reason: 'resolution_failed',
+        message: 'Planned guide is missing from the repository index',
+      });
+      continue;
+    }
+    const built = await resolveIndexEntry(leafId, entry, baseUrl, options);
+    if (built.runnable) {
+      runnable.push(built.runnable);
+    }
+    if (built.skipped) {
+      skipped.push(built.skipped);
+    }
+  }
+  if (skipped.length > 0) {
+    return skippedResolution(
+      [
+        ...skipped,
+        {
+          id,
+          reason: 'prerequisite_failed',
+          message: `Required guide(s) did not resolve: ${skipped.map((item) => item.id).join(', ')}`,
+          tier: rootTarget.tier,
+        },
+      ],
+      repository,
+      selection
+    );
+  }
+
+  const incompatible = runnable.find(
+    (guide) =>
+      guide.tier !== rootTarget.tier ||
+      guide.instance !== rootTarget.instance ||
+      new URL(guide.targetUrl).origin !== new URL(rootTarget.targetUrl!).origin
+  );
+  if (incompatible) {
+    return skippedResolution(
+      [
+        {
+          id,
+          reason: 'resolution_failed',
+          message: `${type} package mixes incompatible targets at guide "${incompatible.id}"`,
+          tier: rootTarget.tier,
+        },
+      ],
+      repository,
+      selection
+    );
+  }
+
+  const executionPlan = hydrateExecutionPlan(
+    packagePlan,
+    new Map(runnable.map((guide) => [guide.id, guide.guide])),
+    repository
+  );
+  if (executionPlan.errors.length > 0) {
+    return skippedResolution(
+      [
+        {
+          id,
+          reason: 'resolution_failed',
+          message: `Could not hydrate ${type} package: ${executionPlan.errors.join('; ')}`,
+          tier: rootTarget.tier,
+        },
+      ],
+      repository,
+      selection
+    );
+  }
+  return {
+    runnable,
+    prerequisites: [],
+    skipped: [],
+    repository,
+    executionPlan,
+    selection,
+  };
 }
 
 /**
@@ -323,21 +523,46 @@ export async function resolveRemotePackage(id: string, options: RemoteResolveOpt
   if (!resolution.ok) {
     return skippedResolution([{ id, reason: 'resolution_failed', message: resolution.message }]);
   }
-
-  const built = await buildGuideOrSkip(
-    resolution.id || id,
-    resolution.manifest?.type,
-    resolution.manifest?.testEnvironment ?? {},
-    resolution.contentUrl,
-    options
-  );
-  if (!built.runnable) {
-    return skippedResolution(built.skipped ? [built.skipped] : []);
-  }
-  const target = built.runnable;
+  const targetId = resolution.id || id;
 
   const index = await fetchRepositoryIndex(options.repoUrl);
   if (!index.ok) {
+    if (!resolution.manifest) {
+      return skippedResolution([
+        {
+          id: targetId,
+          reason: 'resolution_failed',
+          message: `Manifest metadata and repository index are both unavailable (${index.message}); package type and prerequisites cannot be verified`,
+        },
+      ]);
+    }
+    if (isMetapackageType(resolution.manifest?.type)) {
+      const selection: ExecutionSelection = { id: targetId, type: resolution.manifest.type };
+      return skippedResolution(
+        [
+          {
+            id: targetId,
+            reason: 'resolution_failed',
+            message: `Repository index unreachable (${index.message}); ${selection.type} milestones cannot be resolved`,
+            tier: resolution.manifest.testEnvironment?.tier,
+          },
+        ],
+        {},
+        selection
+      );
+    }
+    const built = await buildGuideOrSkip(
+      targetId,
+      resolution.manifest?.type,
+      resolution.manifest?.testEnvironment ?? {},
+      resolution.manifest?.startingLocation,
+      resolution.contentUrl,
+      options
+    );
+    if (!built.runnable) {
+      return skippedResolution(built.skipped ? [built.skipped] : []);
+    }
+    const target = built.runnable;
     // Without an index we can only run safely if the manifest declares no prereqs.
     const declaredDepends = resolution.manifest?.depends ?? [];
     if (declaredDepends.length > 0) {
@@ -352,6 +577,45 @@ export async function resolveRemotePackage(id: string, options: RemoteResolveOpt
   }
 
   const repository = indexToRepository(index.packages);
+  const indexedEntry = repository[targetId];
+  if (
+    resolution.manifest?.type !== undefined &&
+    indexedEntry?.type !== undefined &&
+    resolution.manifest.type !== indexedEntry.type
+  ) {
+    if (isMetapackageType(resolution.manifest.type)) {
+      return resolveRemoteMetapackage(targetId, resolution.manifest.type, repository, index.baseUrl, options);
+    }
+    const metapackageType = isMetapackageType(indexedEntry.type) ? indexedEntry.type : undefined;
+    return skippedResolution(
+      [
+        {
+          id: targetId,
+          reason: 'resolution_failed',
+          message: `Package type mismatch: recommender declared "${resolution.manifest.type}", repository declared "${indexedEntry.type}"`,
+        },
+      ],
+      repository,
+      metapackageType ? { id: targetId, type: metapackageType } : undefined
+    );
+  }
+  const targetType = resolution.manifest?.type ?? indexedEntry?.type;
+  if (isMetapackageType(targetType)) {
+    return resolveRemoteMetapackage(targetId, targetType, repository, index.baseUrl, options);
+  }
+
+  const built = await buildGuideOrSkip(
+    targetId,
+    targetType,
+    resolution.manifest?.testEnvironment ?? indexedEntry?.testEnvironment ?? {},
+    resolution.manifest?.startingLocation ?? indexedEntry?.startingLocation,
+    resolution.contentUrl,
+    options
+  );
+  if (!built.runnable) {
+    return skippedResolution(built.skipped ? [built.skipped] : [], repository);
+  }
+  const target = built.runnable;
 
   // The recommender resolves across repos but this CLI checks deps against
   // one index. If the target's home repo isn't the one we fetched, its
@@ -414,6 +678,71 @@ export async function resolveRemoteRepository(options: RemoteResolveOptions): Pr
       skipped.push(built.skipped);
     }
   }
+  const structurallyUnavailable = new Set<string>();
+  for (const guide of runnable) {
+    const rootPlan = planPackageExecution({ rootIds: [guide.id], repository });
+    if (rootPlan.errors.length === 0) {
+      continue;
+    }
+    structurallyUnavailable.add(guide.id);
+    skipped.push({
+      id: guide.id,
+      reason: 'prerequisite_failed',
+      message: `Package planning failed: ${rootPlan.errors.join('; ')}`,
+      sourceUrl: guide.sourceUrl,
+      tier: guide.tier,
+      sideEffects: guide.sideEffects,
+    });
+  }
+  const plannable = runnable.filter((guide) => !structurallyUnavailable.has(guide.id));
+  const packagePlan = planPackageExecution({ rootIds: plannable.map((guide) => guide.id), repository });
+  if (packagePlan.errors.length > 0) {
+    return {
+      runnable: [],
+      prerequisites: [],
+      skipped,
+      repository,
+      error: `Could not build repository execution plan: ${packagePlan.errors.join('; ')}`,
+    };
+  }
 
-  return { runnable, prerequisites: [], skipped, repository };
+  const unavailable = new Set(skipped.map((item) => item.id));
+  const runnableById = new Map(plannable.map((guide) => [guide.id, guide]));
+  for (const planned of packagePlan.chains.flat()) {
+    const failedDependency = planned.dependencies.find((dependency) => unavailable.has(dependency));
+    if (!failedDependency || unavailable.has(planned.id) || !runnableById.has(planned.id)) {
+      continue;
+    }
+    unavailable.add(planned.id);
+    skipped.push({
+      id: planned.id,
+      reason: 'prerequisite_failed',
+      message: `Prerequisite "${failedDependency}" did not resolve`,
+      sourceUrl: runnableById.get(planned.id)?.sourceUrl,
+      tier: runnableById.get(planned.id)?.tier,
+      sideEffects: runnableById.get(planned.id)?.sideEffects,
+    });
+  }
+
+  const available = plannable.filter((guide) => !unavailable.has(guide.id));
+  const filteredPlan = {
+    chains: packagePlan.chains
+      .map((chain) =>
+        chain
+          .filter((planned) => !unavailable.has(planned.id))
+          .map((planned) => ({
+            ...planned,
+            dependencies: planned.dependencies.filter((dependency) => !unavailable.has(dependency)),
+          }))
+      )
+      .filter((chain) => chain.length > 0),
+    autoIncludedIds: packagePlan.autoIncludedIds.filter((id) => !unavailable.has(id)),
+    errors: [],
+  };
+  const executionPlan = hydrateExecutionPlan(
+    filteredPlan,
+    new Map(available.map((guide) => [guide.id, guide.guide])),
+    repository
+  );
+  return { runnable: available, prerequisites: [], skipped, repository, executionPlan };
 }

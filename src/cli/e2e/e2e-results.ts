@@ -17,7 +17,8 @@ import {
   type ResolvedRemoteGuide,
   type SkippedPackage,
 } from './e2e-package';
-import type { PreRunSkip, TestResultsData } from './e2e-reporter';
+import type { E2EErrorCode, E2EExecutionOutcome, PreRunSkip } from './schemas/e2e-report.schema';
+import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 import type { AbortReason } from './playwright-runner';
 import type { SideEffectClassification } from './side-effects';
@@ -32,6 +33,7 @@ export interface PackageMeta {
   instance?: string;
   targetUrl?: string;
   sourceUrl?: string;
+  startingLocation?: string;
   sideEffects?: SideEffectClassification;
   plugins?: string[];
 }
@@ -160,6 +162,7 @@ export function buildPackageMetaMap(runnable: ResolvedRemoteGuide[]): Map<string
         instance: g.instance,
         targetUrl: g.targetUrl,
         sourceUrl: g.sourceUrl,
+        startingLocation: g.startingLocation,
         sideEffects: g.sideEffects,
         ...(g.plugins?.length ? { plugins: g.plugins } : {}),
       },
@@ -175,27 +178,71 @@ export function applyPackageMeta(data: TestResultsData | undefined, meta: Packag
   if (!data || !meta) {
     return;
   }
+  const startingLocation = data.guide.startingLocation ?? meta.startingLocation;
   data.guide = {
     ...data.guide,
     packageId: meta.packageId,
     tier: meta.tier,
     instance: meta.instance,
     sourceUrl: meta.sourceUrl,
+    ...(startingLocation !== undefined ? { startingLocation } : {}),
     sideEffects: meta.sideEffects,
   };
 }
 
 interface PlannedGuideForResult {
   id: string;
-  guide: { path: string };
+  guide: { path: string; content?: string };
   autoIncluded: boolean;
+}
+
+export function runnerFailureResult(
+  planned: PlannedGuideForResult,
+  meta: PackageMeta | undefined,
+  fallbackTargetUrl: string,
+  error: unknown
+): GuideRunResult {
+  const message = `Runner setup failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  const resultsData = createMinimalResultsData({
+    guide: {
+      id: planned.id,
+      title: planned.id,
+      path: planned.guide.path,
+      targetUrl: fallbackTargetUrl,
+      ...(planned.guide.content ? { contentDigest: contentDigest(planned.guide.content) } : {}),
+    },
+    outcome: 'configuration_error',
+    errorCode: 'CONFIGURATION_ERROR',
+    errorMessage: message,
+  });
+  applyPackageMeta(resultsData, meta);
+  return {
+    guide: planned.guide.path,
+    id: planned.id,
+    status: 'failed',
+    exitCode: ExitCode.CONFIGURATION_ERROR,
+    autoIncluded: planned.autoIncluded,
+    abortMessage: message,
+    tier: meta?.tier,
+    sideEffects: meta?.sideEffects,
+    resultsData,
+  };
+}
+export function provisioningErrorCode(error: unknown): E2EErrorCode {
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code.toLowerCase()
+      : undefined;
+  return code === 'no_capacity' ? 'NO_CAPACITY' : 'PROVISIONING_FAILED';
 }
 
 export function provisioningFailureResults(
   chain: PlannedGuideForResult[],
   packageMetaById: Map<string, PackageMeta>,
   fallbackTargetUrl: string,
-  message: string
+  message: string,
+  errorCode: E2EErrorCode = 'PROVISIONING_FAILED',
+  outcome: E2EExecutionOutcome = 'infrastructure_error'
 ): GuideRunResult[] {
   return chain.map((planned) => {
     const meta = packageMetaById.get(planned.id);
@@ -205,8 +252,12 @@ export function provisioningFailureResults(
         title: planned.id,
         path: planned.guide.path,
         targetUrl: meta?.targetUrl ?? fallbackTargetUrl,
+        ...(planned.guide.content ? { contentDigest: contentDigest(planned.guide.content) } : {}),
       },
       timestamp: new Date().toISOString(),
+      outcome,
+      errorCode,
+      errorMessage: message,
       results: [],
       aborted: true,
       abortReason: 'PROVISIONING_FAILED',
@@ -244,11 +295,13 @@ export function preRunSkipsFromResults(results: GuideRunResult[]): PreRunSkip[] 
     }));
 }
 
-/**
- * Exit code implied by the final results: auth failure takes precedence over a
- * generic/validation test failure; a fully passing run yields SUCCESS.
- */
-export function exitCodeFromResults(results: GuideRunResult[]): number {
+export function exitCodeFromResults(results: GuideRunResult[], reportSchemaValid = true): number {
+  if (!reportSchemaValid) {
+    return ExitCode.CONFIGURATION_ERROR;
+  }
+  if (results.some((r) => r.exitCode === ExitCode.CONFIGURATION_ERROR)) {
+    return ExitCode.CONFIGURATION_ERROR;
+  }
   if (results.some((r) => r.status === 'auth_expired')) {
     return ExitCode.AUTH_FAILURE;
   }

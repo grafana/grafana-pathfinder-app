@@ -20,8 +20,9 @@ import { TIMEOUTS } from './constants';
  * Block Editor E2E Tests
  *
  * These tests verify the block editor functionality available to admin/editor users.
- * The block editor lives in its own "editor" tab, separate from the dev-mode-gated
- * devtools tab. Dev mode is still enabled here because the recording test needs it
+ * The guide editor opens from the overflow menu ("Create guide") as a strip tab,
+ * separate from the dev-mode-gated Dev tools view. Dev mode is still enabled here
+ * because the recording test needs it
  * for the recording overlay to function.
  *
  * Tests run serially to prevent race conditions from parallel execution
@@ -85,17 +86,19 @@ test.describe.serial('Block Editor', () => {
     const viewModeToggle = page.getByTestId(testIds.blockEditor.viewModeToggle);
     await expect(viewModeToggle).toBeVisible();
 
-    // Click preview mode button (eye icon) - Grafana Button uses tooltip which becomes aria-label
-    const previewButton = viewModeToggle.locator('button[aria-label="Preview"]');
-    await previewButton.click();
+    // The rocker is a RadioButtonGroup: each mode is a radio named by its label
+    // (or aria-label in the collapsed icon-only variant). The hidden variant is
+    // display:none, so only the visible group's radios are in the a11y tree.
+    const previewRadio = viewModeToggle.getByRole('radio', { name: 'Preview' });
+    await previewRadio.check();
 
     // Block palette should be hidden in preview mode
     const blockPalette = page.getByTestId(testIds.blockEditor.palette);
     await expect(blockPalette).not.toBeVisible();
 
-    // Click edit mode button (pen icon) to go back - tooltip is "Edit" not "Edit blocks"
-    const editButton = viewModeToggle.locator('button[aria-label="Edit"]');
-    await editButton.click();
+    // Switch back to edit mode.
+    const editRadio = viewModeToggle.getByRole('radio', { name: 'Edit' });
+    await editRadio.check();
 
     // Block palette should be visible again
     await expect(blockPalette).toBeVisible();

@@ -24,8 +24,8 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { InteractiveStep } from './interactive-step';
-import { InteractiveMultiStep } from './interactive-multi-step';
+import { deriveInteractiveStepState, InteractiveStep } from './interactive-step';
+import { deriveMultiStepUiState, InteractiveMultiStep } from './interactive-multi-step';
 import { InteractiveGuided } from './interactive-guided';
 import { testIds } from '../../constants/testIds';
 import type { InternalAction, GuidedAction } from '../../types';
@@ -80,6 +80,29 @@ const mockGuidedActions: GuidedAction[] = [
 // ============================================================================
 
 describe('E2E Contract: data-test-step-state', () => {
+  it('maps interactive action errors to the stable error state', () => {
+    expect(
+      deriveInteractiveStepState({
+        isCompleted: false,
+        isRunning: false,
+        hasError: true,
+        isChecking: false,
+        isEnabled: true,
+      })
+    ).toBe(STEP_STATES.ERROR);
+  });
+
+  it('reports completed when a stale error remains after objective completion', () => {
+    expect(
+      deriveInteractiveStepState({
+        isCompleted: true,
+        isRunning: false,
+        hasError: true,
+        isChecking: false,
+        isEnabled: true,
+      })
+    ).toBe(STEP_STATES.COMPLETED);
+  });
   describe('InteractiveStep', () => {
     it('has data-test-step-state attribute', () => {
       render(
@@ -114,6 +137,35 @@ describe('E2E Contract: data-test-step-state', () => {
   });
 
   describe('InteractiveMultiStep', () => {
+    const baseState: Parameters<typeof deriveMultiStepUiState>[0] = {
+      isCompleted: false,
+      isCompletedByObjectives: false,
+      isExecuting: false,
+      hasError: false,
+      isChecking: false,
+      isEnabled: true,
+    };
+
+    it.each([
+      [
+        'keeps execution observable after completeEarly completion',
+        { isCompleted: true, isExecuting: true },
+        'executing',
+      ],
+      ['keeps execution observable when an error is also present', { isExecuting: true, hasError: true }, 'executing'],
+      ['reports errors before settled completion', { isCompleted: true, hasError: true }, 'error'],
+      [
+        'reports objectives completion despite a stale error',
+        { isCompleted: true, isCompletedByObjectives: true, hasError: true },
+        'completed',
+      ],
+      ['reports settled completion', { isCompleted: true }, 'completed'],
+      ['reports requirement checks', { isChecking: true }, 'checking'],
+      ['reports idle when enabled', {}, 'idle'],
+      ['reports unmet requirements when disabled', { isEnabled: false }, 'requirements-unmet'],
+    ])('%s', (_name, overrides, expected) => {
+      expect(deriveMultiStepUiState({ ...baseState, ...overrides })).toBe(expected);
+    });
     it('has data-test-step-state attribute', () => {
       render(
         <InteractiveMultiStep

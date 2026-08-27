@@ -28,6 +28,29 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { testIds } from '../../constants/testIds';
+const moduleSource = fs.readFileSync(path.join(__dirname, '..', '..', 'module.tsx'), 'utf-8');
+const configHookSource = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'hooks', 'usePathfinderPluginConfig.ts'),
+  'utf-8'
+);
+
+describe('E2E Contract: Docs panel bootstrap signals', () => {
+  it('exposes Pathfinder plugin readiness', () => {
+    expect(configHookSource).toContain('__pathfinderPluginConfig');
+  });
+
+  // The runner waits for the readiness global before clicking Grafana's Help
+  // control, so `init` must publish it without awaiting anything.
+  it('publishes readiness synchronously from plugin.init', () => {
+    expect(moduleSource).toContain('plugin.init = function');
+    expect(moduleSource).toContain('publishPathfinderPluginConfig(meta?.jsonData || {})');
+  });
+
+  it('publishes the sidebar-mounted event', () => {
+    expect(moduleSource).toContain("new CustomEvent('pathfinder-sidebar-mounted'");
+    expect(moduleSource).toContain('window.dispatchEvent(mountEvent)');
+  });
+});
 
 // Test ID constants contract: values must match what e2e and docs-panel use
 describe('E2E Contract: Docs panel test IDs', () => {
@@ -152,9 +175,15 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
   {
     // Pop out / Full screen buttons were extracted from `docs-panel.tsx` to
     // de-duplicate two near-identical inline blocks. The test ids stay stable;
-    // their owning file moved.
+    // their owning file moved. LearningJourneyMilestoneToolbar.tsx's kebab
+    // menu also renders these same test ids for the same actions — the
+    // exhaustiveness check below only requires one canonical owner.
     file: 'components/PanelModeActionButtons.tsx',
     references: ['testIds.docsPanel.popOutButton', 'testIds.docsPanel.fullScreenButton'],
+  },
+  {
+    file: 'components/LearningJourneyMilestoneToolbar.tsx',
+    references: ['testIds.docsPanel.milestoneMoreActionsButton'],
   },
 ];
 
@@ -256,7 +285,7 @@ describe('E2E Contract: Scroll-restoration DOM id', () => {
  * update the owner path here in the same commit that moves the source.
  */
 const WINDOW_GLOBAL_OWNERS: Array<{ global: string; ownerFile: string }> = [
-  { global: '__pathfinderPluginConfig', ownerFile: 'docs-panel.tsx' },
+  { global: '__pathfinderPluginConfig', ownerFile: '../../hooks/usePathfinderPluginConfig.ts' },
   { global: '__DocsPluginActiveTabId', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
   { global: '__DocsPluginActiveTabUrl', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
 ];

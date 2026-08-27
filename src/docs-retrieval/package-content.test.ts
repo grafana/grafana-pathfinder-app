@@ -9,14 +9,22 @@
  * - Manifest metadata passthrough via fetchPackageContent
  * - setPackageResolver injection and resolver-not-configured error
  */
+import { config, getBackendSrv, setBackendSrv, type BackendSrv } from '@grafana/runtime';
+import { of } from 'rxjs';
 import {
   fetchPackageContent,
   fetchPackageById,
   setPackageResolver,
+  setPackageResolverFactory,
   resolvePackageMilestones,
   resolvePackageNavLinks,
+  ensureNonEmptyCoverContent,
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
+import {
+  fetchCustomGuideRepository,
+  invalidateCustomGuideRepositoryCache,
+} from '../lib/custom-guide-repository-client';
 import type { PackageResolver, PackageResolution } from '../types';
 
 // Mock AbortSignal.timeout for Node environments
@@ -172,6 +180,11 @@ describe('fetchPackageContent', () => {
 // ---------------------------------------------------------------------------
 
 describe('fetchPackageById', () => {
+  // setBackendSrv and config.namespace are module-level singletons, so the two
+  // reuse tests below would otherwise reach every later describe.
+  const originalBackendSrv = getBackendSrv();
+  const originalNamespace = (config as { namespace?: string }).namespace;
+
   afterEach(() => {
     // Reset injected resolver between tests
     setPackageResolver(
@@ -181,6 +194,8 @@ describe('fetchPackageById', () => {
         error: { code: 'not-found', message: 'reset' },
       })
     );
+    setBackendSrv(originalBackendSrv);
+    (config as { namespace?: string }).namespace = originalNamespace;
   });
 
   it('returns error when no resolver has been configured', async () => {
@@ -244,7 +259,58 @@ describe('fetchPackageById', () => {
     setPackageResolver(resolver);
 
     await fetchPackageById('alerting-101');
-    expect(resolver.resolve).toHaveBeenCalledWith('alerting-101', { loadContent: false });
+    expect(resolver.resolve).toHaveBeenCalledWith('alerting-101', { loadContent: false, verifyPublished: true });
+  });
+
+  // The publish-status probe already GET the resource. Building content from it
+  // is what keeps the gated path at one upstream request instead of two.
+  it('builds content from the probed resource without re-fetching it', async () => {
+    const fetchSpy = jest.fn();
+    setBackendSrv({ fetch: fetchSpy } as unknown as BackendSrv);
+    setPackageResolver(
+      makeResolver({
+        ok: true,
+        id: 'probed-guide',
+        contentUrl: 'backend-guide:probed-guide',
+        manifestUrl: 'app-platform:ns/probed-guide',
+        repository: 'app-platform',
+        probedResource: {
+          metadata: { name: 'probed-guide' },
+          spec: { id: 'probed-guide', title: 'Probed guide', schemaVersion: '1.0', blocks: [] },
+        },
+      })
+    );
+
+    const result = await fetchPackageById('probed-guide');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.content?.metadata.title).toBe('Probed guide');
+  });
+
+  it('still fetches when the resolution carries no probed resource', async () => {
+    (config as { namespace?: string }).namespace = 'stacks-123';
+    setPackageResolver(
+      makeResolver({
+        ok: true,
+        id: 'unprobed-guide',
+        contentUrl: 'backend-guide:unprobed-guide',
+        manifestUrl: 'app-platform:ns/unprobed-guide',
+        repository: 'app-platform',
+      })
+    );
+    const fetchSpy = jest.fn().mockReturnValue(
+      of({
+        data: {
+          metadata: { name: 'unprobed-guide' },
+          spec: { id: 'unprobed-guide', title: 'Unprobed guide', schemaVersion: '1.0', blocks: [] },
+        },
+      })
+    );
+    setBackendSrv({ fetch: fetchSpy } as unknown as BackendSrv);
+
+    await fetchPackageById('unprobed-guide');
+
+    expect(fetchSpy).toHaveBeenCalled();
   });
 });
 
@@ -273,6 +339,63 @@ describe('setPackageResolver', () => {
     setPackageResolver(secondResolver);
     await fetchPackageById('any-id');
     expect(secondResolver.resolve).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('setPackageResolverFactory', () => {
+  afterEach(() => {
+    setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
+  });
+
+  it('does not invoke the factory until the resolver is actually read', () => {
+    const factory = jest.fn().mockResolvedValue(makeResolver(makeSuccessResolution({ id: 'm1' })));
+
+    setPackageResolverFactory(factory);
+
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it('resolves milestones once the factory-registered resolver is available', async () => {
+    setPackageResolverFactory(() => Promise.resolve(makeResolver(makeSuccessResolution({ id: 'm1' }))));
+
+    const milestones = await resolvePackageMilestones(['m1']);
+
+    expect(milestones).not.toEqual([]);
+  });
+
+  it('invokes the factory only once across repeated reads', async () => {
+    const resolver = makeResolver(makeSuccessResolution({ id: 'm1' }));
+    const factory = jest.fn().mockResolvedValue(resolver);
+    setPackageResolverFactory(factory);
+
+    await resolvePackageMilestones(['m1']);
+    await resolvePackageMilestones(['m1']);
+
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it('a later setPackageResolver call overrides a pending factory registration', async () => {
+    setPackageResolverFactory(() =>
+      Promise.resolve(makeResolver({ ok: false, id: 'x', error: { code: 'not-found', message: 'factory' } }))
+    );
+    setPackageResolver(makeResolver(makeSuccessResolution({ id: 'm1' })));
+
+    const milestones = await resolvePackageMilestones(['m1']);
+
+    expect(milestones).not.toEqual([]);
+  });
+
+  it('a rejected factory does not poison later reads with a cached rejection', async () => {
+    setPackageResolverFactory(() => Promise.reject(new Error('dynamic import failed')));
+
+    // The rejection is caught internally — callers see "no resolver
+    // configured" (empty result), never a thrown exception, and that holds
+    // on every subsequent read since the promise is memoized.
+    const first = await resolvePackageMilestones(['m1']);
+    const second = await resolvePackageMilestones(['m1']);
+
+    expect(first).toEqual([]);
+    expect(second).toEqual([]);
   });
 });
 
@@ -334,7 +457,7 @@ describe('fetchPackageById with resolved content', () => {
 
     const result = await fetchPackageById('first-dashboard', manifest);
 
-    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false });
+    expect(resolver.resolve).toHaveBeenCalledWith('first-dashboard', { loadContent: false, verifyPublished: true });
     if (result.content) {
       expect(result.content.metadata.packageManifest).toEqual(manifest);
       expect(result.content.type).toBe('interactive');
@@ -358,7 +481,17 @@ describe('resolvePackageMilestones', () => {
   });
 
   it('returns empty array when no resolver is configured', async () => {
-    const result = await resolvePackageMilestones(['milestone-1', 'milestone-2']);
+    // _packageResolver is a module-level singleton that other describe
+    // blocks in this file have already set by this point — isolate a fresh
+    // module instance so this genuinely exercises the "never configured"
+    // guard clause rather than incidentally relying on a leftover
+    // always-fails resolver (which, before locked-milestone placeholders
+    // existed, happened to produce the same `[]` result either way).
+    let fresh: typeof import('./content-fetcher/package-content');
+    jest.isolateModules(() => {
+      fresh = require('./content-fetcher/package-content');
+    });
+    const result = await fresh!.resolvePackageMilestones(['milestone-1', 'milestone-2']);
     expect(result).toEqual([]);
   });
 
@@ -390,7 +523,6 @@ describe('resolvePackageMilestones', () => {
     expect(result[0]).toEqual({
       number: 1,
       title: 'Title for step-one',
-      duration: '5-10 min',
       url: 'bundled:step-one/content.json',
       isActive: false,
     });
@@ -398,7 +530,7 @@ describe('resolvePackageMilestones', () => {
     expect(result[2]!.number).toBe(3);
   });
 
-  it('skips unresolvable milestones and continues with remaining', async () => {
+  it('keeps unresolvable milestones as locked placeholders rather than dropping them (§6.5)', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockImplementation((id: string) => {
         if (id === 'missing') {
@@ -423,11 +555,81 @@ describe('resolvePackageMilestones', () => {
 
     const result = await resolvePackageMilestones(['first', 'missing', 'third']);
 
-    expect(result).toHaveLength(2);
-    expect(result[0]!.number).toBe(1);
-    expect(result[0]!.title).toBe('Title: first');
-    expect(result[1]!.number).toBe(2);
-    expect(result[1]!.title).toBe('Title: third');
+    // All three positions are preserved — the locked entry keeps numbering
+    // and the "N of total" count accurate to the path's real member count.
+    expect(result).toHaveLength(3);
+    expect(result[0]).toMatchObject({ number: 1, title: 'Title: first' });
+    expect(result[0]!.isLocked).toBeUndefined();
+    expect(result[1]).toMatchObject({ number: 2, title: 'missing', url: '', isLocked: true });
+    expect(result[2]).toMatchObject({ number: 3, title: 'Title: third' });
+    expect(result[2]!.isLocked).toBeUndefined();
+  });
+
+  it('surfaces the manifest description as a subtitle when content already has its own title', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'data-sources',
+        contentUrl: 'bundled:data-sources/content.json',
+        manifestUrl: 'bundled:data-sources/manifest.json',
+        repository: 'bundled',
+        content: { id: 'data-sources', title: 'Data sources', blocks: [] },
+        manifest: { id: 'data-sources', description: 'How connections and plugins work.', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['data-sources']);
+    expect(result[0]!.title).toBe('Data sources');
+    expect(result[0]!.description).toBe('How connections and plugins work.');
+  });
+
+  it("surfaces the manifest's author-provided estimatedMinutes, and omits it when absent", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title for ${id}`, blocks: [] },
+          manifest:
+            id === 'timed'
+              ? { id, type: 'guide', estimatedMinutes: 12 }
+              : { id, type: 'guide' /* no estimatedMinutes authored */ },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['timed', 'untimed']);
+    expect(result[0]!.estimatedMinutes).toBe(12);
+    expect(result[1]!.estimatedMinutes).toBeUndefined();
+  });
+
+  it("surfaces the manifest's author-provided startingLocation, and omits it when absent", async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Title for ${id}`, blocks: [] },
+          manifest:
+            id === 'located'
+              ? { id, type: 'guide', startingLocation: '/connections' }
+              : { id, type: 'guide' /* no startingLocation authored */ },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['located', 'unlocated']);
+    expect(result[0]!.startingLocation).toBe('/connections');
+    expect(result[1]!.startingLocation).toBeUndefined();
   });
 
   it('falls back to description then ID when content title is missing', async () => {
@@ -445,6 +647,28 @@ describe('resolvePackageMilestones', () => {
 
     const result = await resolvePackageMilestones(['no-title']);
     expect(result[0]!.title).toBe('A description');
+    // Title and description are the same string here (no separate short
+    // title exists) — showing it twice would just duplicate the heading.
+    expect(result[0]!.description).toBeUndefined();
+  });
+
+  it('prefers the CDN index entryTitle over the manifest description, and surfaces the description distinctly', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'install-datasources',
+        contentUrl: 'bundled:install-datasources/content.json',
+        manifestUrl: 'bundled:install-datasources/manifest.json',
+        repository: 'online-cdn',
+        entryTitle: 'Install data sources',
+        manifest: { id: 'install-datasources', description: 'Connect Prometheus and Loki.', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageMilestones(['install-datasources']);
+    expect(result[0]!.title).toBe('Install data sources');
+    expect(result[0]!.description).toBe('Connect Prometheus and Loki.');
   });
 
   it('falls back to package ID when manifest has no title or description', async () => {
@@ -464,7 +688,7 @@ describe('resolvePackageMilestones', () => {
     expect(result[0]!.title).toBe('bare-id');
   });
 
-  it('skips milestones that throw during resolution', async () => {
+  it('locks milestones that throw during resolution rather than dropping them', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockImplementation((id: string) => {
         if (id === 'exploder') {
@@ -485,9 +709,10 @@ describe('resolvePackageMilestones', () => {
 
     const result = await resolvePackageMilestones(['good', 'exploder', 'also-good']);
 
-    expect(result).toHaveLength(2);
-    expect(result[0]!.title).toBe('Title: good');
-    expect(result[1]!.title).toBe('Title: also-good');
+    expect(result).toHaveLength(3);
+    expect(result[0]).toMatchObject({ number: 1, title: 'Title: good' });
+    expect(result[1]).toMatchObject({ number: 2, title: 'exploder', url: '', isLocked: true });
+    expect(result[2]).toMatchObject({ number: 3, title: 'Title: also-good' });
   });
 });
 
@@ -540,6 +765,107 @@ describe('fetchPackageContent path-type enrichment', () => {
     }
   });
 
+  // `repository-identity-authority`: without the fallback, opening the same
+  // package from My Learning / Discover More (manifest inlined, no explicit
+  // repository) recorded under the manifest schema default while the nav-link
+  // path recorded under the resolved one — one guide, two durable guideSource keys.
+  it('stamps the resolved repository when the caller supplies none', async () => {
+    setPackageResolver(
+      makeResolver(
+        makeSuccessResolution({
+          id: 'discover-path',
+          contentUrl: 'bundled:first-dashboard/content.json',
+          repository: 'online-cdn',
+        })
+      )
+    );
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'discover-path',
+      type: 'path',
+      repository: 'interactive-tutorials',
+    });
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.repository).toBe('online-cdn');
+  });
+
+  // A failed resolution's `repository` is negative-caching policy, not an
+  // identity claim: app-platform is unconditionally the composite's last tier,
+  // so its probed-and-missed failure would otherwise key a public CDN path as
+  // ('app-platform', <id>).
+  it('does not stamp the repository off a failed resolution', async () => {
+    setPackageResolver(
+      makeResolver({
+        ok: false,
+        id: 'discover-path',
+        error: { code: 'not-found', message: 'all tiers missed' },
+        repository: 'app-platform',
+      })
+    );
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', {
+      id: 'discover-path',
+      type: 'path',
+    });
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.repository).toBeUndefined();
+  });
+
+  it('lets an explicit caller repository outrank the resolved one', async () => {
+    setPackageResolver(
+      makeResolver(
+        makeSuccessResolution({
+          id: 'explicit-path',
+          contentUrl: 'bundled:first-dashboard/content.json',
+          repository: 'online-cdn',
+        })
+      )
+    );
+
+    const result = await fetchPackageContent(
+      'bundled:first-dashboard/content.json',
+      { id: 'explicit-path', type: 'path' },
+      undefined,
+      'app-platform'
+    );
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.repository).toBe('app-platform');
+  });
+
+  it('suppresses the legacy Ready to Begin button on the cover, keeping the bottom nav', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+    };
+
+    // The React cover-page TOC (LearningPathTableOfContents) owns the
+    // Start/Resume affordance now; the legacy HTML button always said "Ready
+    // to Begin" and always targeted milestone 1, regardless of progress.
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content!.content).not.toContain('journey-ready-to-begin');
+    expect(result.content!.content).toContain('journey-bottom-navigation');
+  });
+
   it('does not add learningJourney for guide-type packages', async () => {
     const manifest = {
       id: 'test-guide',
@@ -568,6 +894,37 @@ describe('fetchPackageContent path-type enrichment', () => {
     }
   });
 
+  it('resolves the baseUrl hydration call as URL-only, without the verify-published probe (#1561 scope)', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'test-path',
+      type: 'path',
+      milestones: ['step-1', 'step-2'],
+    };
+
+    await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    // The baseUrl hydration resolve() runs on every milestone package-content
+    // fetch — a network round-trip probe here (like fetchPackageById's) would
+    // be a real perf regression, so it stays URL-only.
+    expect(resolver.resolve).toHaveBeenCalledWith('test-path', { loadContent: false });
+    expect(resolver.resolve).not.toHaveBeenCalledWith('test-path', expect.objectContaining({ verifyPublished: true }));
+  });
+
   it('preserves packageManifest alongside learningJourney', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockResolvedValue({
@@ -594,6 +951,148 @@ describe('fetchPackageContent path-type enrichment', () => {
       expect(result.content.metadata.packageManifest).toEqual(manifest);
       expect(result.content.metadata.learningJourney).toBeDefined();
     }
+  });
+
+  it('hydrates baseUrl by resolving manifest.id in URL-only mode, which never verifies (matches AppPlatformPackageResolver)', async () => {
+    // AppPlatformPackageResolver's URL-only mode (no verifyPublished) never
+    // probes the upstream resource — it just string-templates the id it's
+    // given into a contentUrl and returns ok: true unconditionally (see
+    // fetchPackageById's "its id is already known-good" comment). This mock
+    // matches that contract: it always succeeds, so correctness here depends
+    // entirely on manifest.id already being the resource-addressable one —
+    // which app-platform-resolver.ts's buildManifest guarantees for
+    // path/journey manifests regardless of a drifted spec.id (pinned in
+    // app-platform-resolver.test.ts). A resolver mock that returns `ok: false`
+    // for a "wrong" id would misrepresent that contract (Cursor Bugbot flagged
+    // exactly this on an earlier version of this test).
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'the-real-resource-name',
+      type: 'path',
+      milestones: ['first-dashboard'],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content).toBeTruthy();
+    expect(result.content?.metadata.learningJourney?.baseUrl).toBe('bundled:the-real-resource-name/content.json');
+    expect(resolver.resolve).toHaveBeenCalledWith('the-real-resource-name', { loadContent: false });
+  });
+});
+
+// The realistically-broken catalogue inputs: the CR manifest leaves
+// `repository` omitempty, and the CLI authoring tooling stamps the CDN default
+// `interactive-tutorials`. Both reach the launch surfaces through the catalogue
+// client, so the suppression gate is only sound if that client normalizes them.
+describe('fetchPackageContent — no public websiteUrl for catalogue-launched private paths', () => {
+  const GAP_TOGGLE = 'aggregation.pathfinderbackend-ext-grafana-app.enabled';
+  const featureToggles = config.featureToggles as Record<string, boolean>;
+  // setBackendSrv writes a module-level singleton, so the fake below outlives
+  // this block and reaches every later describe unless afterEach puts it back.
+  const originalBackendSrv = getBackendSrv();
+
+  async function launchManifestFromCatalogue(manifest: Record<string, unknown>): Promise<Record<string, unknown>> {
+    featureToggles[GAP_TOGGLE] = true;
+    invalidateCustomGuideRepositoryCache();
+    setBackendSrv({
+      get: async () => ({ capability: { available: true }, guides: [{ id: 'fe-alerting-path', manifest }] }),
+    } as unknown as BackendSrv);
+
+    const [entry] = await fetchCustomGuideRepository('stacks-123');
+    return { ...entry!.manifest, id: entry!.id };
+  }
+
+  beforeEach(() => {
+    setPackageResolver({
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'app-platform',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    });
+  });
+
+  afterEach(() => {
+    setBackendSrv(originalBackendSrv);
+    delete featureToggles[GAP_TOGGLE];
+    invalidateCustomGuideRepositoryCache();
+    setPackageResolver(makeResolver({ ok: false, id: 'reset', error: { code: 'not-found', message: 'reset' } }));
+  });
+
+  it.each([
+    ['omits repository entirely', undefined],
+    ["carries the CLI's interactive-tutorials default", 'interactive-tutorials'],
+  ])('synthesizes no learning-paths URL when the catalogue manifest %s', async (_label, repository) => {
+    const manifest = await launchManifestFromCatalogue({
+      type: 'path',
+      // Shares the derived path slug's prefix, so an un-suppressed slug WOULD
+      // build both the cover and the per-milestone URL.
+      milestones: ['fe-alerting-path-01'],
+      ...(repository != null && { repository }),
+    });
+    expect(manifest.repository).toBe('app-platform');
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    const learningJourney = result.content!.metadata.learningJourney!;
+    expect(learningJourney.milestones).toHaveLength(1);
+    expect(learningJourney.websiteUrl).toBeUndefined();
+    expect(learningJourney.milestones[0]!.websiteUrl).toBeUndefined();
+    // Catches the injected cover copy too, not just the metadata fields.
+    expect(JSON.stringify(result)).not.toContain('grafana.com/docs/learning-paths');
+  });
+});
+
+describe('ensureNonEmptyCoverContent (RFC Appendix A F15)', () => {
+  it('substitutes a friendly placeholder when blocks is empty', () => {
+    const result = ensureNonEmptyCoverContent(JSON.stringify({ id: 'fe-path', title: 'FE path', blocks: [] }));
+    const parsed = JSON.parse(result);
+
+    expect(parsed.id).toBe('fe-path');
+    expect(parsed.title).toBe('FE path');
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0].type).toBe('markdown');
+    expect(parsed.blocks[0].content).toContain('Cover content is missing');
+  });
+
+  it('leaves non-empty blocks unchanged', () => {
+    const original = JSON.stringify({
+      id: 'fe-path',
+      title: 'FE path',
+      blocks: [{ type: 'markdown', content: 'Real cover content' }],
+    });
+    expect(ensureNonEmptyCoverContent(original)).toBe(original);
+  });
+
+  it('leaves content unchanged when blocks is missing entirely', () => {
+    const original = JSON.stringify({ id: 'fe-path', title: 'FE path' });
+    expect(ensureNonEmptyCoverContent(original)).toBe(original);
+  });
+
+  it('returns the input unchanged on malformed JSON rather than throwing', () => {
+    const malformed = '{not json';
+    expect(() => ensureNonEmptyCoverContent(malformed)).not.toThrow();
+    expect(ensureNonEmptyCoverContent(malformed)).toBe(malformed);
   });
 });
 
@@ -666,8 +1165,27 @@ describe('resolvePackageNavLinks', () => {
       title: 'Title for alpha',
       contentUrl: 'bundled:alpha/content.json',
       manifest: { id: 'alpha', type: 'guide' },
+      repository: 'bundled',
     });
     expect(result[1]!.packageId).toBe('beta');
+  });
+
+  it('falls back to entryTitle when content has no title', async () => {
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockResolvedValue({
+        ok: true,
+        id: 'install-datasources',
+        contentUrl: 'bundled:install-datasources/content.json',
+        manifestUrl: 'bundled:install-datasources/manifest.json',
+        repository: 'online-cdn',
+        entryTitle: 'Install data sources',
+        manifest: { id: 'install-datasources', description: 'Connect Prometheus and Loki.', type: 'guide' },
+      }),
+    };
+    setPackageResolver(resolver);
+
+    const result = await resolvePackageNavLinks(['install-datasources']);
+    expect(result[0]!.title).toBe('Install data sources');
   });
 
   it('falls back to description then ID for the title, and skips unresolvable IDs', async () => {

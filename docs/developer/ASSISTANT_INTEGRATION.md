@@ -1,18 +1,21 @@
-# Customizable Content with `<assistant>` Tag
+# Customizable content with the `<assistant>` tag
 
 This guide shows you how to make tutorial content customizable using the `<assistant>` HTML tag. This allows users to adapt queries, configurations, and other code examples to their specific environment using Grafana Assistant.
 
-## Table of Contents
+AI auto-heal is a separate feature that repairs failing interactive steps at runtime. See [AI auto-heal](AI_FIX.md) for its enablement, event contract, and patch flow.
 
-- [Quick Start](#quick-start)
-- [Basic Usage](#basic-usage)
-- [Content Types](#content-types)
+## Table of contents
+
+- [Quick start](#quick-start)
+- [Basic usage](#basic-usage)
+- [Content types](#content-types)
 - [Examples](#examples)
-- [Known Limitations](#known-limitations)
-- [Best Practices](#best-practices)
+- [Availability and datasource context](#availability-and-datasource-context)
+- [Known limitations](#known-limitations)
+- [Best practices](#best-practices)
 - [Testing](#testing)
 
-## Quick Start
+## Quick start
 
 Wrap any query or configuration with an `<assistant>` tag to make it customizable:
 
@@ -24,25 +27,27 @@ Wrap any query or configuration with an `<assistant>` tag to make it customizabl
 
 **What users see:**
 
-- 🟣 Purple dotted indicator (inline) or purple left border (block)
-- ✨ "Customize" button on hover with gradient styling
-- 🤖 AI generates a customized version for their datasources
-- 💾 Customization saved to localStorage
-- 🔄 "Revert to original" to restore default
-- 🟢 Green border after customization
+- A purple dotted underline (inline) or purple dotted left border (block)
+- A "Customize" button on hover or after clicking the content
+- A customized version generated for the selected or fallback data source
+- Customization saved to localStorage
+- A "Revert to original" action that restores the default
+- A green solid border after customization
 
-## Content Types
+For JSON guides, use `assistantEnabled`, `assistantId`, and `assistantType` on a supported block, or use an `assistant` wrapper block. See [Assistant block](interactive-examples/json-guide-format.md#assistant-block) in the JSON guide format reference.
+
+## Content types
 
 The `data-assistant-type` attribute determines how the assistant customizes your content:
 
-| Type     | Use For                        | Example                         |
+| Type     | Use for                        | Example                         |
 | -------- | ------------------------------ | ------------------------------- |
 | `query`  | PromQL, LogQL, SQL, etc.       | `rate(http_requests_total[5m])` |
 | `config` | URLs, hostnames, settings      | `http://prometheus:9090`        |
 | `code`   | YAML, JSON, scripts            | Alert rules, recording rules    |
 | `text`   | Prose, explanations, templates | Descriptive text to personalize |
 
-### Type 1: `query` - Database Queries
+### Type 1: `query` - database queries
 
 **Best for**: PromQL, LogQL, SQL, TraceQL, and other query languages
 
@@ -61,7 +66,7 @@ The `data-assistant-type` attribute determines how the assistant customizes your
 - Query is a universal pattern (e.g., `up`, `1 + 1`)
 - Metric names are standard across all Grafana instances
 
-### Type 2: `config` - Configuration Values
+### Type 2: `config` - configuration values
 
 **Best for**: Configuration snippets, URLs, hostnames, and settings
 
@@ -80,7 +85,7 @@ The `data-assistant-type` attribute determines how the assistant customizes your
 - Default/standard values work for everyone
 - Configuration is hard-coded in Grafana
 
-### Type 3: `code` - Code Snippets
+### Type 3: `code` - code snippets
 
 **Best for**: YAML configs, JSON, scripts, and structured code
 
@@ -101,7 +106,7 @@ The `data-assistant-type` attribute determines how the assistant customizes your
 - Code is a generic example/template
 - No environment-specific values to customize
 
-### Type 4: `text` - Prose and Explanations
+### Type 4: `text` - prose and explanations
 
 **Best for**: Descriptive text, explanations, or templates that benefit from personalization
 
@@ -122,76 +127,80 @@ The `data-assistant-type` attribute determines how the assistant customizes your
 - Text is purely conceptual with no environment-specific references
 - The content is already universal
 
-## Basic Usage
+## Basic usage
 
-### Required Attributes
+### Attributes
 
 ```html
-<assistant
-  data-assistant-id="unique-id"      <!-- Required: Unique identifier -->
-  data-assistant-type="query">       <!-- Required: query|config|code -->
-  Your content here
-</assistant>
+<assistant data-assistant-id="unique-id" data-assistant-type="query"> Your content here </assistant>
 ```
 
-| Attribute             | Required | Values                               | Purpose                                             |
-| --------------------- | -------- | ------------------------------------ | --------------------------------------------------- |
-| `data-assistant-id`   | ✅ Yes   | Any unique string                    | Identifies this element (used for localStorage key) |
-| `data-assistant-type` | ✅ Yes   | `query`, `config`, `code`, or `text` | Tells assistant what type of content to customize   |
+| Attribute             | Required | Values                               | Purpose                                                             |
+| --------------------- | -------- | ------------------------------------ | ------------------------------------------------------------------- |
+| `data-assistant-id`   | No       | Any unique string                    | Stable identifier used in the localStorage key; generated if absent |
+| `data-assistant-type` | No       | `query`, `config`, `code`, or `text` | Controls the customization prompt; defaults to `query`              |
 
-### Inline vs Block Rendering
+Provide an explicit, stable ID for authored content even though the parser can generate one from the element path. Generated IDs can change when the surrounding document structure changes.
 
-The tag automatically renders inline or block based on content:
+### Inline vs block rendering
 
-**Inline** (single line, no newlines):
+A `<pre>` containing an `<assistant>` always renders as a block. A standalone `<assistant>` renders inline when it contains no `<pre>` or `<code>` descendant and its trimmed text is shorter than 100 characters; otherwise it renders as a block.
+
+**Inline** (short content with no nested code markup):
 
 ```html
-<pre><assistant data-assistant-id="simple" data-assistant-type="query">up</assistant></pre>
+<p>Check availability with <assistant data-assistant-id="simple" data-assistant-type="query">up</assistant>.</p>
 ```
 
 → Renders with 🟣 purple dotted underline
 
-**Block** (multi-line, contains newlines):
+**Block** (`<pre>` wrapper, nested code markup, or 100 or more characters):
 
 ```html
-<assistant data-assistant-id="complex" data-assistant-type="query">
-  histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le) )
-</assistant>
+<pre>
+  <assistant data-assistant-id="complex" data-assistant-type="query">
+    histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le) )
+  </assistant>
+</pre>
 ```
 
 → Renders with 🟣 purple dotted left border in a code block
 
-### Visual States
+### Visual states
 
-| State            | Border        | Indicator | Button                          |
-| ---------------- | ------------- | --------- | ------------------------------- |
-| **Uncustomized** | Purple dotted | 🟣        | "Customize" (on hover)          |
-| **Customized**   | Green solid   | 🟢        | "Revert to original" (on hover) |
-| **Generating**   | Purple dotted | 🟣        | "Generating..." (disabled)      |
+| State            | Border        | Button                          |
+| ---------------- | ------------- | ------------------------------- |
+| **Uncustomized** | Purple dotted | "Customize" (on hover or click) |
+| **Customized**   | Green solid   | "Revert to original"            |
+| **Generating**   | Purple dotted | "Generating..." (disabled)      |
 
 ## Examples
 
-### Example 1: Simple Inline Query
+### Example 1: Simple inline query
 
 ```html
 <p>Try this aggregation query:</p>
-<pre><assistant data-assistant-id="sum-query" data-assistant-type="query">sum(rate(http_requests_total[5m])) by (job)</assistant></pre>
+<assistant data-assistant-id="sum-query" data-assistant-type="query">
+  sum(rate(http_requests_total[5m])) by (job)
+</assistant>
 ```
 
-→ Shows purple dotted underline. User can click to customize.
+→ Shows a purple dotted underline. The user can hover over or click the query to reveal the "Customize" button.
 
-### Example 2: Multi-Line Query (Block)
+### Example 2: Multi-line query (block)
 
 ```html
 <p>Calculate the 95th percentile latency:</p>
-<assistant data-assistant-id="quantile-query" data-assistant-type="query">
-  histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job) )
-</assistant>
+<pre>
+  <assistant data-assistant-id="quantile-query" data-assistant-type="query">
+    histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job) )
+  </assistant>
+</pre>
 ```
 
 → Shows purple dotted left border. Displays as a code block.
 
-### Example 3: Query in Interactive Step
+### Example 3: Query in an interactive step
 
 Combine with interactive tutorial steps:
 
@@ -208,9 +217,9 @@ Combine with interactive tutorial steps:
 </li>
 ```
 
-→ Query can be customized AND auto-filled into Grafana's query editor.
+→ The query can be customized and auto-filled into Grafana's query editor.
 
-### Example 4: Configuration Value
+### Example 4: Configuration value
 
 ```html
 <p>Set your Prometheus datasource URL:</p>
@@ -219,7 +228,7 @@ Combine with interactive tutorial steps:
 
 → User can customize the URL to their environment.
 
-### Example 5: YAML Configuration
+### Example 5: YAML configuration
 
 ```html
 <p>Example recording rule configuration:</p>
@@ -231,30 +240,27 @@ Combine with interactive tutorial steps:
 
 → User can adapt metric names and labels to their setup.
 
-## Known Limitations
+## Availability and datasource context
 
-### ⚠️ No Datasource Context Support
+The "Customize" action appears only when Grafana Assistant is available. In assistant dev mode, Pathfinder substitutes a mock availability stream and mock generator so the UI can be tested without a live Assistant installation.
 
-**Issue:** The inline assistant cannot access datasource context.
+Before generation, Pathfinder reads the configured data sources and selects context in this order:
 
-**GitHub Issue:** [grafana/grafana-assistant-app#3267](https://github.com/grafana/grafana-assistant-app/issues/3267)
+1. The data source selected in the current Explore left-pane URL state
+2. The first configured Prometheus data source
 
-**What this means:**
+The selected data source is provided to Grafana Assistant as Explore page context. For Prometheus, Loki, Tempo, and Pyroscope, Pathfinder also offers a metadata tool so the Assistant can discover real metrics, labels, services, or profiling data. Other data source types use a generic prompt with realistic common values.
 
-- The assistant doesn't know which datasource the user has selected
-- It cannot query for available metrics or labels
-- Customizations are based on generic prompts and common patterns
-- Results may be less accurate than they could be
+## Known limitations
 
-**Recommendation:**
+- Customization does not start when no data source can be selected.
+- Outside Explore, the fallback is the first configured Prometheus data source rather than data source context from the surrounding guide.
+- Metadata-backed customization is limited to Prometheus, Loki, Tempo, and Pyroscope. Other data source types do not query their available metadata.
+- Assistant output may still require review even when metadata is available.
 
-- Use customizable queries for examples that need adaptation
-- Provide clear explanations of what metrics/labels to expect
-- Mention this is a preview feature that will improve over time
+## Best practices
 
-## Best Practices
-
-### 1. Choose Good Candidates
+### 1. Choose good candidates
 
 ✅ **DO use `<assistant>` for:**
 
@@ -270,23 +276,19 @@ Combine with interactive tutorial steps:
 - Conceptual explanations without executable code
 - Content that has only one correct answer
 
-### 2. Use Descriptive IDs
+### 2. Use descriptive IDs
 
 ```html
 <!-- ✅ Good: Descriptive and hierarchical -->
 <assistant data-assistant-id="query-error-rate" data-assistant-type="query">
-  <assistant data-assistant-id="config-loki-endpoint" data-assistant-type="config">
-    <assistant data-assistant-id="code-alert-rule-cpu" data-assistant-type="code">
-      <!-- ❌ Bad: Generic and non-descriptive -->
-      <assistant data-assistant-id="q1" data-assistant-type="query">
-        <assistant
-          data-assistant-id="example"
-          data-assistant-type="query"
-        ></assistant></assistant></assistant></assistant
-></assistant>
+  sum(rate(http_requests_total[5m])) by (job)
+</assistant>
+
+<!-- ❌ Bad: Generic and non-descriptive -->
+<assistant data-assistant-id="q1" data-assistant-type="query"> sum(rate(http_requests_total[5m])) by (job) </assistant>
 ```
 
-### 3. Provide Context
+### 3. Provide context
 
 Always explain what the customizable content does:
 
@@ -304,7 +306,7 @@ Always explain what the customizable content does:
 </assistant>
 ```
 
-### 4. One Per Tutorial Section
+### 4. Use one or two per tutorial section
 
 Avoid overwhelming users with too many customizable elements:
 
@@ -323,60 +325,54 @@ Avoid overwhelming users with too many customizable elements:
 
 ## Testing
 
-### Enable Dev Mode
+### Enable assistant dev mode
 
-Test without Grafana Cloud by enabling dev mode in browser console:
+Test without Grafana Cloud by enabling dev mode for your user in the plugin configuration, then selecting "Enable Assistant (Dev Mode)." Both the parent dev-mode access check and the `enableAssistantDevMode` setting must be enabled. Reload the page after changing the setting.
 
-```javascript
-window.__pathfinderPluginConfig = {
-  enableAssistantDevMode: true,
-};
-// Reload the page
-location.reload();
-```
-
-### Verification Checklist
+### Verification checklist
 
 After adding `<assistant>` tags to your tutorial:
 
-- [ ] 🟣 Purple indicators appear on uncustomized content
-- [ ] ✨ "Customize" button appears on hover
-- [ ] 🤖 Clicking "Customize" triggers generation (check console in dev mode)
-- [ ] 🟢 Green border appears after customization
-- [ ] 🔄 "Revert to original" button appears when customized
-- [ ] 💾 Customization persists after page reload
-- [ ] 🆔 Each `data-assistant-id` is unique within the tutorial
+- [ ] A purple dotted border appears on uncustomized content
+- [ ] The "Customize" button appears on hover or after clicking the content
+- [ ] Clicking "Customize" triggers generation (check the console in dev mode)
+- [ ] A green solid border appears after customization
+- [ ] The "Revert to original" button appears when customized
+- [ ] The customization persists after a page reload
+- [ ] Each explicit `data-assistant-id` is unique within the tutorial
 
-### Check Console Logs (Dev Mode)
+### Check console logs (dev mode)
 
 When customization triggers, you should see:
 
 ```
 === Inline Assistant Dev Mode ===
 Origin: grafana-pathfinder-app/assistant-customizable
-Prompt: Customize this query for a prometheus datasource...
-System Prompt: You are a Grafana prometheus query expert...
-=====================================
+Prompt { prompt: "Customize this query ..." }
+System Prompt { systemPrompt: "You are a Grafana prometheus expert. ..." }
+=======================================
 ```
 
-## Quick Reference
+## Quick reference
 
-### Anatomy of an `<assistant>` Tag
+### Anatomy of an `<assistant>` tag
 
 ```html
-<assistant data-assistant-id="query-error-rate" ← Unique ID (required) data-assistant-type="query">
-  ← Content type (required) sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100
+<assistant data-assistant-id="query-error-rate" data-assistant-type="query">
+  sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) * 100
 </assistant>
 ```
 
-### Common Patterns
+Use a stable `data-assistant-id` for persistence. Omit `data-assistant-type` only when the `query` default is appropriate.
+
+### Common patterns
 
 ```html
 <!-- Inline query in tutorial step -->
-<pre><assistant data-assistant-id="q1" data-assistant-type="query">metric_name</assistant></pre>
+<assistant data-assistant-id="q1" data-assistant-type="query">metric_name</assistant>
 
 <!-- Block query -->
-<assistant data-assistant-id="q2" data-assistant-type="query"> sum(metric) by (label) </assistant>
+<pre><assistant data-assistant-id="q2" data-assistant-type="query">sum(metric) by (label)</assistant></pre>
 
 <!-- Config value -->
 <code><assistant data-assistant-id="c1" data-assistant-type="config">http://localhost:9090</assistant></code>
@@ -387,9 +383,11 @@ System Prompt: You are a Grafana prometheus query expert...
 </assistant>
 ```
 
-## Related Documentation
+## Related documentation
 
-- [Prometheus Advanced Queries](../../src/bundled-interactives/prometheus-advanced-queries.json) - Real tutorial with customizable queries
-- [Authoring Interactive Journeys](./interactive-examples/authoring-interactive-journeys.md) - Creating interactive steps
-- [Dev Mode](./DEV_MODE.md) - Local development setup
-- [Assistant Integration Code](../../src/integrations/assistant-integration/) - Implementation details
+- [Prometheus advanced queries](../../src/bundled-interactives/prometheus-advanced-queries/content.json) - Real tutorial with customizable queries
+- [Authoring interactive journeys](./interactive-examples/authoring-interactive-journeys.md) - Creating interactive steps
+- [JSON guide format](./interactive-examples/json-guide-format.md#assistant-block) - JSON assistant blocks and per-block attributes
+- [Dev mode](./DEV_MODE.md) - Local development setup
+- [AI auto-heal](./AI_FIX.md) - Separate runtime repair flow for failing interactive steps
+- [Assistant integration code](../../src/integrations/assistant-integration/) - Implementation details

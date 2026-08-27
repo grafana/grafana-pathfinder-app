@@ -19,6 +19,8 @@ import {
   type JsonMarkdownBlock,
   type JsonHtmlBlock,
   type JsonSectionBlock,
+  type JsonCollapsibleBlock,
+  type JsonCalloutBlock,
   type JsonConditionalBlock,
   type JsonInteractiveBlock,
   type JsonMultistepBlock,
@@ -280,6 +282,10 @@ function convertBlockByType(
       return convertHtmlBlock(block, path, baseUrl);
     case 'section':
       return convertSectionBlock(block, path, baseUrl);
+    case 'collapsible':
+      return convertCollapsibleBlock(block, path, baseUrl);
+    case 'callout':
+      return convertCalloutBlock(block, path, baseUrl);
     case 'conditional':
       return convertConditionalBlock(block, path, baseUrl);
     case 'interactive':
@@ -295,7 +301,7 @@ function convertBlockByType(
     case 'quiz':
       return convertQuizBlock(block, path, stepContext);
     case 'input':
-      return convertInputBlock(block, path);
+      return convertInputBlock(block, path, stepContext);
     case 'terminal':
       return convertTerminalBlock(block, path, stepContext);
     case 'terminal-connect':
@@ -544,6 +550,56 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
 }
 
 /**
+ * Convert a collapsible block to a ParsedElement.
+ * Presentational container — children are content blocks (the schema forbids
+ * interactive/step and container types), so there is no completion state to
+ * track. `collapsed` defaults to true.
+ */
+function convertCollapsibleBlock(block: JsonCollapsibleBlock, path: string, baseUrl?: string): ConversionResult {
+  const children: ParsedElement[] = [];
+
+  for (let i = 0; i < block.blocks.length; i++) {
+    const childBlock = block.blocks[i]!;
+    const result = convertBlockToParsedElement(childBlock, `${path}.blocks[${i}]`, baseUrl);
+    if (result.element) {
+      children.push(result.element);
+    }
+  }
+
+  return {
+    element: {
+      type: 'collapsible',
+      props: {
+        title: block.title,
+        id: block.id,
+        collapsed: block.collapsed ?? true,
+      },
+      children,
+    },
+  };
+}
+
+/**
+ * Convert a callout block to a ParsedElement. Presentational only — the
+ * author-authored `title` is shown as the box's label; body content is
+ * parsed as markdown, same as other content-bearing blocks.
+ */
+function convertCalloutBlock(block: JsonCalloutBlock, path: string, baseUrl?: string): ConversionResult {
+  const children = parseMarkdownToElements(block.content, baseUrl);
+
+  return {
+    element: {
+      type: 'callout',
+      props: {
+        title: block.title,
+        id: block.id,
+      },
+      children,
+    },
+  };
+}
+
+/**
  * Convert a conditional block to a ParsedElement.
  * Conditional blocks show different content based on whether conditions pass or fail.
  */
@@ -606,6 +662,7 @@ function convertInteractiveBlock(
   const targetAction = block.action ?? block.targetAction;
   const refTargetValue = block.reftarget ?? block.refTarget;
   const targetValue = block.targetvalue ?? block.targetValue;
+  const targetState = block.targetstate ?? block.targetState;
   const stepId = resolveStepId(block.id, stepContext, targetAction, refTargetValue);
 
   // Parse content as markdown for children
@@ -635,6 +692,7 @@ function convertInteractiveBlock(
         targetAction,
         refTarget: refTargetValue,
         targetValue,
+        targetState,
         targetComment: block.tooltip ? markdownToHtml(block.tooltip) : undefined,
         ...(stepId ? { stepId } : {}),
         requirements,
@@ -668,6 +726,7 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepCont
     targetAction: step.action ?? step.targetAction,
     refTarget: step.reftarget ?? step.refTarget,
     targetValue: step.targetvalue ?? step.targetValue,
+    targetState: step.targetstate ?? step.targetState,
     requirements: step.requirements?.join(','),
     targetComment: step.tooltip ? markdownToHtml(step.tooltip) : undefined,
   }));
@@ -712,6 +771,7 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
     targetAction: step.action ?? step.targetAction,
     refTarget: step.reftarget ?? step.refTarget,
     targetValue: step.targetvalue ?? step.targetValue,
+    targetState: step.targetstate ?? step.targetState,
     requirements: step.requirements?.join(','),
     // For guided blocks, prefer description (shown in steps panel), fall back to tooltip for backward compatibility
     targetComment: step.description
@@ -863,12 +923,41 @@ function convertQuizBlock(block: JsonQuizBlock, path: string, stepContext?: Step
   };
 }
 
-function convertInputBlock(block: JsonInputBlock, path: string): ConversionResult {
+/**
+ * Emits two element types. A datasource picker whose author asked a failing
+ * check to block becomes a tracked step; everything else stays the passive
+ * `input-block`, so no existing guide starts counting toward completion.
+ */
+function convertInputBlock(block: JsonInputBlock, path: string, stepContext?: StepContext): ConversionResult {
   // Parse prompt as markdown for the content
   const promptElements = parseMarkdownToElements(block.prompt);
 
   // Convert requirements array to comma-separated string
   const requirements = block.requirements?.join(',') || undefined;
+
+  const hasDataCheck = block.inputType === 'datasource' && Boolean(block.dataCheckQuery?.trim());
+
+  if (hasDataCheck && block.dataCheckBlocking) {
+    return {
+      element: {
+        type: 'datasource-check-step',
+        props: {
+          stepId: resolveStepId(block.id, stepContext, 'datasource-check', block.variableName),
+          variableName: block.variableName,
+          query: block.dataCheckQuery,
+          datasourceFilter: block.datasourceFilter,
+          placeholder: block.placeholder,
+          failureMessage: block.dataCheckFailureMessage,
+          timeFrom: block.dataCheckTimeFrom,
+          timeTo: block.dataCheckTimeTo,
+          requirements,
+          skippable: block.skippable ?? false,
+        },
+        children: promptElements,
+      },
+      hasInteractive: true,
+    };
+  }
 
   return {
     element: {
@@ -886,6 +975,12 @@ function convertInputBlock(block: JsonInputBlock, path: string): ConversionResul
         requirements,
         skippable: block.skippable ?? false,
         datasourceFilter: block.datasourceFilter,
+        ...(hasDataCheck && {
+          dataCheckQuery: block.dataCheckQuery,
+          dataCheckFailureMessage: block.dataCheckFailureMessage,
+          dataCheckTimeFrom: block.dataCheckTimeFrom,
+          dataCheckTimeTo: block.dataCheckTimeTo,
+        }),
       },
       children: promptElements,
     },
@@ -1034,6 +1129,7 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
   switch (block.type) {
     case 'markdown':
     case 'html':
+    case 'callout':
       return block.content;
     case 'interactive':
       // Prefer targetvalue for queries, fall back to content

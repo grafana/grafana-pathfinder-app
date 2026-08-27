@@ -1,11 +1,15 @@
 import { getAppEvents } from '@grafana/runtime';
 import { StorageKeys } from '../lib/storage-keys';
-import { PANEL_MODE_CHANGE_EVENT } from '../lib/event-names';
-// Surgical import (not the ../lib/telemetry barrel): panel-mode is
+import { PANEL_MODE_CHANGE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
+// Surgical imports (not the ../lib/telemetry barrel): panel-mode is
 // entry-eager, and the barrel would pull the telemetry package into module.js.
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
+import { pushFaroUserAction } from '../lib/telemetry/bridge';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
+import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
 import type { PackageOpenInfo } from '../types/content-panel.types';
+import type { RawContent } from '../types/content.types';
+import type { LaunchSource } from '../recovery';
 
 export type PanelMode = 'sidebar' | 'floating' | 'fullscreen';
 
@@ -26,6 +30,12 @@ export interface PendingGuide {
    */
   type?: 'learning-journey' | 'docs' | 'interactive' | 'editor';
   /**
+   * Identity of an existing tab moving between surfaces. The receiving surface
+   * restores the whole strip before applying the handoff, so the guide is
+   * already present — focus it by id instead of opening a second copy.
+   */
+  tabId?: string;
+  /**
    * Carry the manifest + pre-resolved milestones across surface handoffs.
    *
    * Required for synthetic packages whose URL is not a recognised package
@@ -34,23 +44,79 @@ export interface PendingGuide {
    * milestone toolbar / Alt+arrow navigation never appear.
    */
   packageInfo?: PackageOpenInfo;
+  /**
+   * Content already fetched + snippet-expanded by `prepareGuideLaunch`, carried
+   * so the receiving surface renders it without a second fetch (one-fetch
+   * launch). One-shot memory state — consumed with the pending guide, never
+   * persisted to tab storage.
+   */
+  preparedContent?: RawContent;
+  /**
+   * Launch source of the ORIGINAL launch, carried so alignment semantics
+   * survive the surface handoff — a `home_page` launch needs the same
+   * starting-location check whether it lands in the sidebar (event path)
+   * or a floating overlay (this path). Consumers fall back to their legacy
+   * handoff source when absent.
+   */
+  source?: LaunchSource;
 }
 
 /**
- * Global state manager for the panel display mode.
+ * Global state manager for the panel display mode (sidebar / floating /
+ * fullscreen).
  *
- * Tracks whether Pathfinder guides render in the Grafana extension sidebar
- * or in a free-floating draggable panel. Persists the user's preference
- * to localStorage and coordinates mode transitions by dispatching events.
+ * PERSISTENCE CONTRACT
+ * --------------------
+ * Two things are tracked separately:
+ *   - the CURRENT surface (what the user sees right now), and
+ *   - the PERSISTED preference (localStorage — what a fresh page load restores).
+ *
+ * Three mutators, distinguished only by how they touch those two:
+ *   - `setModePersisted(mode)` — a DELIBERATE surface ADOPTION. Always writes
+ *     localStorage and ends any transient session. Use at explicit user
+ *     surface-switch controls: pop-out, switch-to-fullscreen, the floating
+ *     dock-to-sidebar pill, deep links.
+ *   - `setModeTransient(mode)` — an AUTOMATIC launch selection (a guide opened
+ *     from My Learning picks the surface that best fits its content). In-memory
+ *     only, never persists, so the user's stored preference survives.
+ *   - `setMode(mode)` — everything else: automatic teardown / auto-dock /
+ *     self-heal / cold-load sync, and deliberate RETURN-to-base gestures
+ *     (fullscreen back-arrow, floating close). CONDITIONAL — while a transient
+ *     session is active it does not persist (leaving an auto-launched surface
+ *     restores the stored preference); outside a session it persists (returning
+ *     from a surface the user chose themselves sticks).
+ *
+ * WHY this shape — decisions 2 and 3 and the rejected "setMode never persists"
+ * alternative — is recorded canonically in docs/design/PANEL-MODE-PERSISTENCE.md.
+ * The load-bearing invariant (decision 2): an automatic launch never overwrites
+ * the stored preference. The intentional asymmetry (decision 3, #1449): the
+ * dock-to-sidebar pill persists (an adoption) while the fullscreen
+ * return-to-sidebar exit does not (a return). The conditional `setMode` is
+ * deliberate — do not "simplify" it away; the doc explains what that regresses.
  */
 class PanelModeManager {
   private _pendingGuide: PendingGuide | null = null;
   private _priorPath: string | null = null;
   /**
-   * Get the current panel mode from localStorage.
-   * Defaults to 'sidebar' for backward compatibility.
+   * In-memory current surface, and the single source of truth for whether a
+   * transient auto-launch session is active (`_transientMode !== null`). When
+   * non-null it wins over the persisted preference for `getMode()` and mount
+   * decisions and is never written to localStorage. Set by an automatic launch
+   * (`setModeTransient`) and by each conditional `setMode` during the session;
+   * cleared by a deliberate `setModePersisted` (localStorage governs again) or
+   * a page reload. Does not survive a reload.
+   */
+  private _transientMode: PanelMode | null = null;
+
+  /**
+   * Get the current panel mode. The in-memory surface override wins over the
+   * persisted preference; otherwise read from localStorage. Defaults to
+   * 'sidebar' for backward compatibility.
    */
   public getMode(): PanelMode {
+    if (this._transientMode) {
+      return this._transientMode;
+    }
     const stored = localStorage.getItem(StorageKeys.PANEL_MODE);
     if (stored === 'floating') {
       return 'floating';
@@ -62,20 +128,100 @@ class PanelModeManager {
   }
 
   /**
-   * Switch panel mode. Persists to localStorage and dispatches a
-   * `pathfinder-panel-mode-change` event so both the sidebar and
-   * floating panel can react.
+   * Whether a transient auto-launch session is active (`_transientMode !== null`;
+   * see the persistence contract). Public accessor consulted by the full-screen
+   * auto-dock to tell a transient launch's return path apart from a deliberate
+   * full-screen adoption. Past the auto-dock's `getMode() === 'fullscreen'`
+   * guard a true value necessarily means a transient _fullscreen_ session.
+   */
+  public isTransient(): boolean {
+    return this._transientMode !== null;
+  }
+
+  /**
+   * End a transient auto-launch session WITHOUT persisting or forcing a surface
+   * open — drops the in-memory override so `getMode()` falls back to the stored
+   * preference. The quiet counterpart to `setModeTransient`, used when the user
+   * leaves a transient full-screen excursion via browser Back (#1448): we must
+   * neither reopen a surface nor overwrite the preference the launch never
+   * expressed. No-ops when no session is active.
    *
-   * When switching to 'floating', closes the extension sidebar.
-   * When switching to 'sidebar', notifies the floating panel to unmount.
+   * Reports `reportPathfinderSurfaceClosed('fullscreen')` for parity with the
+   * other full-screen exits. Deliberately does NOT dispatch
+   * `PANEL_MODE_CHANGE_EVENT`: the caller has already navigated away and
+   * unmounted the surface, so no live listener consumes the transition (unlike
+   * the three mutators, which drive a visible surface change).
+   */
+  public endTransientSession(): void {
+    if (this._transientMode === null) {
+      return;
+    }
+    this._transientMode = null;
+    reportPathfinderSurfaceClosed('fullscreen');
+  }
+
+  /**
+   * Conditional mode change — the default path for automatic transitions
+   * (teardown, auto-dock, self-heal, cold-load sync) and for deliberate
+   * RETURN-to-base gestures (fullscreen back-arrow, floating close). Persists
+   * to localStorage ONLY when no transient session is active; during a session
+   * it updates the in-memory surface without touching the stored preference
+   * (decision 2). Dispatches `pathfinder-panel-mode-change` and closes the
+   * extension sidebar when switching to floating/fullscreen. Deliberate surface
+   * ADOPTIONS must use `setModePersisted` — see the class-level contract.
    */
   public setMode(mode: PanelMode): void {
+    this.applyModeChange(mode, (next) => {
+      if (this._transientMode !== null) {
+        this._transientMode = next;
+      } else {
+        localStorage.setItem(StorageKeys.PANEL_MODE, next);
+      }
+    });
+  }
+
+  /**
+   * Deliberate surface ADOPTION (pop-out, switch-to-fullscreen, the floating
+   * dock-to-sidebar pill, deep links). Always persists to localStorage, ends
+   * any active transient session, and drops the in-memory override so
+   * localStorage governs again. Runs the same side effects as `setMode`. See
+   * decision 3 in the class-level contract for why the sidebar dock is an
+   * adoption but the fullscreen exit is not.
+   */
+  public setModePersisted(mode: PanelMode): void {
+    this.applyModeChange(mode, (next) => {
+      this._transientMode = null;
+      localStorage.setItem(StorageKeys.PANEL_MODE, next);
+    });
+  }
+
+  /**
+   * Automatic launch selection: a guide opened from My Learning chooses the
+   * surface that fits its content. Records the surface in memory only and opens
+   * a transient session; never persists, so the user's stored preference is
+   * untouched (decision 2). The session ends only when a deliberate
+   * `setModePersisted` runs or the page reloads. Runs the same side effects as
+   * `setMode`; does not survive a reload.
+   */
+  public setModeTransient(mode: PanelMode): void {
+    this.applyModeChange(mode, (next) => {
+      this._transientMode = next;
+    });
+  }
+
+  private applyModeChange(mode: PanelMode, commit: (mode: PanelMode) => void): void {
     const previous = this.getMode();
+
+    // Record the new state first (idempotent) so `setModeTransient` opens the
+    // session even when the surface does not visibly change — e.g. an auto-launch
+    // to the surface that already matches the stored preference. Without this, a
+    // later teardown would find no active session and persist over the user's
+    // preference.
+    commit(mode);
+
     if (mode === previous) {
       return;
     }
-
-    localStorage.setItem(StorageKeys.PANEL_MODE, mode);
 
     if (mode === 'floating' || mode === 'fullscreen') {
       // Close the Grafana extension sidebar to free the slot. Full screen
@@ -170,3 +316,96 @@ class PanelModeManager {
 }
 
 export const panelModeManager = new PanelModeManager();
+
+/**
+ * Full screen has no live Grafana UI behind it, so Grafana-driving content
+ * encountered there can't actually be acted on. Signal FullScreenPanel to
+ * hand off to the sidebar (reusing its existing handleExitToSidebar) instead.
+ *
+ * Called the moment the user clicks "Do it" on a step whose action drives the
+ * live Grafana UI while full screen is active — see the gate in
+ * `interactive-engine/interactive.hook.ts`, plus the same gate applied
+ * directly by `interactive-guided.tsx` and `code-block-step.tsx` for their
+ * own execution paths: surface is a property of what the user is about to
+ * do, decided at that click, not proactively when a milestone loads.
+ *
+ * `targetPath`, when resolved (step/milestone/course fallback chain), is
+ * forwarded to `handleExitToSidebar` so the user lands somewhere the clicked
+ * step can actually act on, instead of the page they were on before entering
+ * full screen.
+ *
+ * Returns a promise that resolves once the sidebar has actually mounted (or
+ * after a safety timeout), so the caller's subsequent DOM lookup runs against
+ * the destination page rather than racing the dock/navigate.
+ *
+ * No confirmation toast: the handoff is a direct result of the user's own
+ * click, not a surprise the app needs to explain.
+ *
+ * Reports a `pathfinder_fullscreen_handoff` Faro user action stamped with
+ * which branch resolved it (`mounted` vs `timeout`) — the safety timeout is a
+ * silent degradation (the destination never confirmed it mounted) that would
+ * otherwise be indistinguishable from a normal handoff in telemetry.
+ */
+export function requestSidebarHandoffAndWait(options?: { targetPath?: string }): Promise<void> {
+  // Mirrors GlobalSidebarState.openWithGuide's settle delay after the mount
+  // event — the sidebar's own docs-panel mount effect still needs a tick to
+  // register its listeners.
+  const SETTLE_DELAY_MS = 300;
+  // Safety net for cases where neither mount event below ever fires (the
+  // destination surface was already mounted, or the listener is gone in the
+  // mode/mount desync window) — covers the async save-then-dock work in
+  // handleExitToSidebar without blocking the click indefinitely.
+  const SAFETY_TIMEOUT_MS = 3000;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const finish = (outcome: 'mounted' | 'timeout') => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.removeEventListener('pathfinder-sidebar-mounted', onMounted);
+      document.removeEventListener('pathfinder-panel-mounted', onMounted);
+      clearTimeout(timeoutId);
+      pushFaroUserAction('pathfinder_fullscreen_handoff', { outcome });
+      resolve();
+    };
+    const onMounted = () => setTimeout(() => finish('mounted'), SETTLE_DELAY_MS);
+
+    // The destination isn't always the sidebar despite this function's name:
+    // handleExitToSidebar falls back to floating when another plugin owns the
+    // extension sidebar slot, and floating mounts dispatch
+    // 'pathfinder-panel-mounted' (document), never 'pathfinder-sidebar-mounted'
+    // (window) — listening for only the latter meant a floating fallback
+    // always burned the full safety timeout. Same dual-listener shape already
+    // used by sidebar.ts/pathfinder-deep-link-handler.ts for this exact
+    // sidebar-vs-floating race.
+    window.addEventListener('pathfinder-sidebar-mounted', onMounted, { once: true });
+    document.addEventListener('pathfinder-panel-mounted', onMounted, { once: true });
+    timeoutId = setTimeout(() => finish('timeout'), SAFETY_TIMEOUT_MS);
+
+    document.dispatchEvent(
+      new CustomEvent(REQUEST_SIDEBAR_HANDOFF_EVENT, { detail: { targetPath: options?.targetPath } })
+    );
+  });
+}
+
+/**
+ * Single source of truth for "does this click need the full-screen -> sidebar
+ * handoff": every caller of `requestSidebarHandoffAndWait` (the hook's own
+ * gate, `interactive-guided.tsx`, `code-block-step.tsx`) and every caller
+ * that needs to know the handoff is about to happen *before* it runs its own
+ * DOM-resolution attempt (`interactive-step.tsx`'s `executeWithLazyScroll`,
+ * which would otherwise fail fast against full screen's nonexistent Grafana
+ * DOM and never reach the gate at all) must agree on the same condition.
+ *
+ * Applies equally to "Show me" and "Do it": both need the live Grafana UI in
+ * place before they can find anything to preview or act on, so both dock and
+ * navigate to the resolved fallback location first. Callers that invoke a
+ * Grafana-driving action in "show" mode must also thread their own
+ * `fullScreenFallbackLocation` through so the navigation has a destination.
+ */
+export function isGrafanaDrivingHandoffNeeded(targetAction: string): boolean {
+  return panelModeManager.getMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction);
+}

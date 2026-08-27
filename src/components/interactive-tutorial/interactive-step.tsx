@@ -3,9 +3,9 @@ import { Button } from '@grafana/ui';
 
 import { waitForReactUpdates } from '../../lib/async-utils';
 import {
-  useStepChecker,
   getPostVerifyExplanation,
-  checkPostconditions,
+  useGuideRequirements,
+  useStepChecker,
   validateInteractiveRequirements,
 } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
@@ -26,7 +26,8 @@ import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai
 import { CodeBlock } from '../../docs-retrieval';
 import { scrollUntilElementFound } from '../../lib/dom';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
-import { STEP_STATES } from './step-states';
+import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
+import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
@@ -40,6 +41,30 @@ interface LazyScrollResult {
   outcome: StepOutcome;
   error?: string;
   elementFound: boolean;
+}
+
+interface InteractiveStepStateInput {
+  isCompleted: boolean;
+  isRunning: boolean;
+  hasError: boolean;
+  isChecking: boolean;
+  isEnabled: boolean;
+}
+
+export function deriveInteractiveStepState(input: InteractiveStepStateInput): StepStateValue {
+  if (input.isRunning) {
+    return STEP_STATES.EXECUTING;
+  }
+  if (input.isCompleted) {
+    return STEP_STATES.COMPLETED;
+  }
+  if (input.hasError) {
+    return STEP_STATES.ERROR;
+  }
+  if (input.isChecking) {
+    return STEP_STATES.CHECKING;
+  }
+  return input.isEnabled ? STEP_STATES.IDLE : STEP_STATES.REQUIREMENTS_UNMET;
 }
 
 /**
@@ -62,6 +87,18 @@ export async function executeWithLazyScroll(
 ): Promise<LazyScrollResult> {
   // Navigate, noop, and popout actions don't target DOM elements - execute immediately without element checking
   if (targetAction === 'navigate' || targetAction === 'noop' || targetAction === 'popout') {
+    return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
+  }
+
+  // A full-screen -> sidebar handoff is about to happen inside `action()`
+  // (executeInteractiveAction's own gate) — full screen has no live Grafana
+  // DOM yet for this action to target, so the precheck below would always
+  // fail fast and `action()` would never run, silently skipping the handoff
+  // gate entirely. Skip straight to the real action; its handler does its
+  // own full-retry DOM resolution against the destination page once the
+  // handoff completes. Applies to "Show me" as well as "Do it" — both need
+  // the live Grafana UI in place before they have anything to preview or act on.
+  if (targetAction && isGrafanaDrivingHandoffNeeded(targetAction)) {
     return { outcome: (await action()) ? 'ok' : 'error', elementFound: true };
   }
 
@@ -149,6 +186,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       targetValue,
+      targetState,
       targetComment,
       postVerify,
       doIt = true, // Default to true - show "Do it" button unless explicitly disabled
@@ -183,6 +221,7 @@ export const InteractiveStep = forwardRef<
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -271,6 +310,7 @@ export const InteractiveStep = forwardRef<
 
     // Get the interactive functions from the hook
     const { executeInteractiveAction, verifyStepResult } = useInteractiveElements();
+    const { checkPostconditions } = useGuideRequirements();
 
     // For section steps, use a simplified checker that respects section authority
     // For standalone steps, use the full global checker
@@ -456,13 +496,15 @@ export const InteractiveStep = forwardRef<
         }
 
         // Execute the action using existing interactive logic
-        const actionOutcome = await executeInteractiveAction(
+        const actionOutcome = await executeInteractiveAction({
           targetAction,
           refTarget,
-          currentTargetValue,
-          'do',
-          targetComment
-        );
+          targetValue: currentTargetValue,
+          targetState,
+          targetComment,
+          buttonType: 'do',
+          fullScreenFallbackLocation,
+        });
         if (actionOutcome === 'error') {
           setPostVerifyError('Action did not complete successfully.');
           return false;
@@ -508,8 +550,6 @@ export const InteractiveStep = forwardRef<
           if (onStepComplete && stepId) {
             onStepComplete(stepId);
           }
-
-          // Call the original onComplete callback if provided
           if (onComplete) {
             onComplete();
           }
@@ -530,6 +570,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       currentTargetValue,
+      targetState,
       targetComment,
       postVerify,
       verifyStepResult,
@@ -538,6 +579,7 @@ export const InteractiveStep = forwardRef<
       onComplete,
       renderedStepId,
       persistCompletion,
+      fullScreenFallbackLocation,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -639,6 +681,7 @@ export const InteractiveStep = forwardRef<
         onComplete,
         analyticsStepMeta,
         persistCompletion,
+        checkPostconditions,
       ]
     );
 
@@ -654,17 +697,14 @@ export const InteractiveStep = forwardRef<
       onMatch: handleAutoDetectedMatch,
     });
 
-    // Handle individual "Show me" action
     const handleShowAction = useCallback(async () => {
       if (disabled || isShowRunning || isCompletedWithObjectives || !finalIsEnabled) {
         return;
       }
-
-      // Clear any previous lazy scroll error and track this action for retry
+      setPostVerifyError(null);
       setLazyScrollError(null);
       setLastAttemptedAction('show');
 
-      // Track "Show me" button click analytics
       reportAppInteraction(
         UserInteraction.ShowMeButtonClick,
         buildInteractiveStepProperties(
@@ -680,15 +720,10 @@ export const InteractiveStep = forwardRef<
 
       if (mode === 'controller') {
         if (!stepId) {
-          // F-1063-3: a controller-mode step must carry an author/parser-assigned
-          // stepId. The anonymous fallback is mount-instance-derived and would
-          // mis-address the live tab, so fail loud rather than dispatch a guess.
           logger.warn('[Pathfinder] controller "show" skipped: step has no stepId');
           return;
         }
-        // Cross-tab state can be stale; re-verify against the live tab and gate.
-        // revalidate() fails OPEN when no live tab answers (§6.5), so a
-        // disconnected controller proceeds rather than being silently blocked.
+        // Revalidate against the live tab; disconnected controllers fail open by design.
         if (!(await revalidate())) {
           return;
         }
@@ -697,12 +732,10 @@ export const InteractiveStep = forwardRef<
           phase: 'show',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
         });
         if (!doIt) {
-          // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no
-          // live ack, and they complete even with no live tab connected. Accepted
-          // by design; composite steps are ack-gated separately (#1073).
+          // Simple controller steps complete optimistically because no live acknowledgement is available.
           persistCompletion();
           if (onStepComplete) {
             onStepComplete(stepId);
@@ -716,34 +749,35 @@ export const InteractiveStep = forwardRef<
 
       setIsShowRunning(true);
       try {
-        // Use lazy scroll wrapper to ensure element is found before executing
         const result = await executeWithLazyScroll(
           refTarget,
           lazyRender,
           scrollContainer,
           async () => {
-            await executeInteractiveAction(targetAction, refTarget, currentTargetValue, 'show', targetComment);
-            return true;
+            const outcome = await executeInteractiveAction({
+              targetAction,
+              refTarget,
+              targetValue: currentTargetValue,
+              targetState,
+              targetComment,
+              buttonType: 'show',
+              fullScreenFallbackLocation,
+            });
+            return outcome !== 'error';
           },
           targetAction
         );
 
-        if (!result.elementFound) {
-          // Lazy scroll failed to find element
-          setLazyScrollError(result.error || 'Element not found');
+        if (result.outcome === 'error') {
+          setLazyScrollError(result.error || 'Action did not complete successfully');
           return;
         }
 
-        // If doIt is false, mark as completed after showing (like the old highlight-only behavior)
         if (!doIt) {
           persistCompletion();
-
-          // Notify parent if we have the callback (section coordination)
           if (onStepComplete && stepId) {
             onStepComplete(stepId);
           }
-
-          // Call the original onComplete callback if provided
           if (onComplete) {
             onComplete();
           }
@@ -758,6 +792,7 @@ export const InteractiveStep = forwardRef<
       targetAction,
       refTarget,
       currentTargetValue,
+      targetState,
       targetComment,
       doIt,
       disabled,
@@ -766,6 +801,7 @@ export const InteractiveStep = forwardRef<
       finalIsEnabled,
       lazyRender,
       scrollContainer,
+      fullScreenFallbackLocation,
       executeInteractiveAction,
       onStepComplete,
       onComplete,
@@ -777,17 +813,13 @@ export const InteractiveStep = forwardRef<
       revalidate,
     ]);
 
-    // Handle individual "Do it" action (delegates to executeStep)
     const handleDoAction = useCallback(async () => {
       if (disabled || isDoRunning || isCompletedWithObjectives || !finalIsEnabled) {
         return;
       }
-
-      // Clear any previous lazy scroll error and track this action for retry
+      setPostVerifyError(null);
       setLazyScrollError(null);
       setLastAttemptedAction('do');
-
-      // Track "Do it" button click analytics
       reportAppInteraction(
         UserInteraction.DoItButtonClick,
         buildInteractiveStepProperties(
@@ -803,15 +835,10 @@ export const InteractiveStep = forwardRef<
 
       if (mode === 'controller') {
         if (!stepId) {
-          // F-1063-3: a controller-mode step must carry an author/parser-assigned
-          // stepId. The anonymous fallback is mount-instance-derived and would
-          // mis-address the live tab, so fail loud rather than dispatch a guess.
           logger.warn('[Pathfinder] controller "do" skipped: step has no stepId');
           return;
         }
-        // Cross-tab state can be stale; re-verify against the live tab and gate.
-        // revalidate() fails OPEN when no live tab answers (§6.5), so a
-        // disconnected controller proceeds rather than being silently blocked.
+        // Revalidate against the live tab; disconnected controllers fail open by design.
         if (!(await revalidate())) {
           return;
         }
@@ -820,11 +847,9 @@ export const InteractiveStep = forwardRef<
           phase: 'do',
           stepId,
           runId: crypto.randomUUID(),
-          action: { targetAction, refTarget, targetValue: currentTargetValue, targetComment },
+          action: { targetAction, refTarget, targetValue: currentTargetValue, targetState, targetComment },
         });
-        // F-1063-1 (fix-plan §6.2): simple steps complete optimistically — no live
-        // ack, and they complete even with no live tab connected. Accepted by
-        // design; composite steps are ack-gated separately (#1073).
+        // Simple controller steps complete optimistically because no live acknowledgement is available.
         persistCompletion();
         if (onStepComplete) {
           onStepComplete(stepId);
@@ -839,12 +864,10 @@ export const InteractiveStep = forwardRef<
       const stepExecStart = performance.now();
       let stepOutcome: 'ok' | 'error' = 'error';
       try {
-        // Use lazy scroll wrapper to ensure element is found before executing
         const result = await executeWithLazyScroll(refTarget, lazyRender, scrollContainer, executeStep, targetAction);
 
         stepOutcome = result.outcome;
         if (!result.elementFound) {
-          // Lazy scroll failed to find element
           setLazyScrollError(result.error || 'Element not found');
         }
       } catch (error) {
@@ -865,6 +888,7 @@ export const InteractiveStep = forwardRef<
       executeStep,
       targetAction,
       currentTargetValue,
+      targetState,
       analyticsStepMeta,
       mode,
       controllerChannel,
@@ -961,21 +985,18 @@ export const InteractiveStep = forwardRef<
         data-targetaction={targetAction}
         data-reftarget={refTarget}
         data-targetvalue={currentTargetValue}
+        data-targetstate={targetState === undefined ? undefined : String(targetState)}
         data-targetcomment={targetComment}
         data-openguide={openGuide}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
-        data-test-step-state={
-          isCompletedWithObjectives
-            ? 'completed'
-            : isShowRunning || isDoRunning
-              ? 'executing'
-              : checker.isChecking
-                ? 'checking'
-                : !finalIsEnabled
-                  ? STEP_STATES.REQUIREMENTS_UNMET
-                  : 'idle'
-        }
+        data-test-step-state={deriveInteractiveStepState({
+          isCompleted: isCompletedWithObjectives,
+          isRunning: isShowRunning || isDoRunning,
+          hasError: Boolean(postVerifyError || lazyScrollError),
+          isChecking: checker.isChecking,
+          isEnabled: finalIsEnabled,
+        })}
         data-test-fix-type={checker.fixType || 'none'}
         data-test-requirements-state={
           checker.isChecking ? 'checking' : finalIsEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
@@ -1151,7 +1172,7 @@ export const InteractiveStep = forwardRef<
 
         {/* Lazy scroll failure message with retry */}
         {!isCompletedWithObjectives && lazyScrollError && (
-          <div className="interactive-step-lazy-error">
+          <div className="interactive-step-lazy-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
             <span className="interactive-lazy-error-text">{lazyScrollError}</span>
             <button
               className="interactive-lazy-retry-btn"

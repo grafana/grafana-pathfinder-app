@@ -11,18 +11,19 @@ import {
 import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
+import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
-import { STEP_STATES } from './step-states';
+import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
-import type { CrossTabInternalAction } from '../../types/cross-tab.types';
+import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
 
 let anonymousMultiStepCounter = 0;
@@ -63,6 +64,37 @@ interface InteractiveMultiStepProps {
   // Timing configuration
   stepDelay?: number; // Delay between steps in milliseconds (default: 1800ms)
   resetTrigger?: number; // Signal from parent to reset local completion state
+
+  /** Resolved step/milestone/course location for the full-screen -> sidebar handoff. See interactive-engine/interactive.hook.ts. */
+  fullScreenFallbackLocation?: string;
+}
+
+interface MultiStepUiStateInput {
+  isCompleted: boolean;
+  isCompletedByObjectives: boolean;
+  isExecuting: boolean;
+  hasError: boolean;
+  isChecking: boolean;
+  isEnabled: boolean;
+}
+
+export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateValue {
+  if (input.isExecuting) {
+    return STEP_STATES.EXECUTING;
+  }
+  if (input.isCompletedByObjectives) {
+    return STEP_STATES.COMPLETED;
+  }
+  if (input.hasError) {
+    return STEP_STATES.ERROR;
+  }
+  if (input.isCompleted) {
+    return STEP_STATES.COMPLETED;
+  }
+  if (input.isChecking) {
+    return STEP_STATES.CHECKING;
+  }
+  return input.isEnabled ? STEP_STATES.IDLE : STEP_STATES.REQUIREMENTS_UNMET;
 }
 
 /**
@@ -147,6 +179,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       totalSteps,
       sectionId,
       sectionTitle,
+      fullScreenFallbackLocation,
     },
     ref
   ) => {
@@ -207,6 +240,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
     const controllerCancelledRef = React.useRef(false);
     const activeRunIdRef = React.useRef<string>('');
+    const allowCompletedRetryRef = React.useRef(false);
 
     // Handle reset trigger from parent section
     useEffect(() => {
@@ -283,7 +317,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     const executeStep = useCallback(async (): Promise<boolean> => {
       // When called via ref (section execution), ignore disabled prop to avoid race conditions
       // Only check if not enabled, completed, or already executing
-      if (!checker.isEnabled || isCompletedWithObjectives || isExecuting) {
+      if (!checker.isEnabled || (isCompletedWithObjectives && !allowCompletedRetryRef.current) || isExecuting) {
         return false;
       }
 
@@ -304,8 +338,13 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         return true;
       }
 
-      // NEW: If completeEarly flag is set, mark as completed BEFORE action execution
+      setIsExecuting(true);
+      setExecutionError(null);
+      setFailedStepIndex(-1); // Reset failed step tracking
+
+      isCancelledRef.current = false; // Reset ref as well
       if (completeEarly) {
+        await waitForReactUpdates();
         persistCompletion();
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
@@ -314,15 +353,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           onComplete();
         }
 
-        // Small delay to ensure localStorage write completes
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-
-      setIsExecuting(true);
-      setExecutionError(null);
-      setFailedStepIndex(-1); // Reset failed step tracking
-
-      isCancelledRef.current = false; // Reset ref as well
 
       // Clear any existing highlights before starting multi-step execution
       const { NavigationManager } = await import('../../interactive-engine');
@@ -375,13 +407,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           // Execute the action (show first, then do)
           try {
             // Show mode (highlight what will be acted upon, with comment if available)
-            await executeInteractiveAction(
-              action.targetAction,
-              action.refTarget || '',
-              action.targetValue,
-              'show',
-              action.targetComment
-            );
+            await executeInteractiveAction({ ...action, buttonType: 'show', fullScreenFallbackLocation });
 
             // Delay between show and do with cancellation check
             for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
@@ -395,13 +421,11 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             } // Skip to cancellation check at loop start
 
             // Do mode (actually perform the action)
-            const doOutcome = await executeInteractiveAction(
-              action.targetAction,
-              action.refTarget || '',
-              action.targetValue,
-              'do',
-              action.targetComment
-            );
+            const doOutcome = await executeInteractiveAction({
+              ...action,
+              buttonType: 'do',
+              fullScreenFallbackLocation,
+            });
             if (doOutcome === 'error') {
               setFailedStepIndex(i);
               setExecutionError(`Step ${i + 1} did not complete successfully.`);
@@ -487,6 +511,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       title,
       renderedStepId,
       persistCompletion,
+      fullScreenFallbackLocation,
     ]);
 
     // Expose execute method for parent (sequence execution)
@@ -648,12 +673,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           action: {
             targetAction: 'multistep',
             refTarget: '',
-            internalActions: internalActions.map((a): CrossTabInternalAction => ({
-              targetAction: a.targetAction,
-              refTarget: a.refTarget,
-              targetValue: a.targetValue,
-              targetComment: a.targetComment,
-            })),
+            internalActions: internalActions.map(toCrossTabInternalAction),
           },
         });
         try {
@@ -722,6 +742,14 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     // — neither needs to appear in the deps array.
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
+    const uiState = deriveMultiStepUiState({
+      isCompleted: isCompletedWithObjectives,
+      isCompletedByObjectives: checker.completionReason === 'objectives',
+      isExecuting,
+      hasError: Boolean(executionError),
+      isChecking: checker.isChecking,
+      isEnabled: checker.isEnabled,
+    });
 
     // Generate button title/tooltip based on current state
     const getButtonTitle = () => {
@@ -751,26 +779,14 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     return (
       <div
         className={`interactive-step${className ? ` ${className}` : ''}${
-          isCompletedWithObjectives ? ' completed' : ''
+          uiState === STEP_STATES.COMPLETED ? ' completed' : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
         data-targetaction="multistep"
         data-reftarget={renderedStepId}
         data-internal-actions={JSON.stringify(internalActions)}
         data-step-id={stepId || renderedStepId}
         data-testid={testIds.interactive.step(renderedStepId)}
-        data-test-step-state={
-          isCompletedWithObjectives
-            ? 'completed'
-            : executionError
-              ? 'error'
-              : isExecuting
-                ? 'executing'
-                : checker.isChecking
-                  ? 'checking'
-                  : !checker.isEnabled
-                    ? STEP_STATES.REQUIREMENTS_UNMET
-                    : 'idle'
-        }
+        data-test-step-state={uiState}
         data-test-substep-index={isExecuting ? currentActionIndex : undefined}
         data-test-substep-total={internalActions.length}
         data-test-requirements-state={
@@ -785,7 +801,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         {/* ═══════════════════════════════════════════════════════════════════
             IDLE STATE - Ready to start
         ═══════════════════════════════════════════════════════════════════ */}
-        {!isExecuting && !isCompletedWithObjectives && checker.isEnabled && !executionError && (
+        {uiState === STEP_STATES.IDLE && (
           <div className="interactive-guided-idle">
             <div className="interactive-guided-actions">
               <Button
@@ -829,7 +845,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         {/* ═══════════════════════════════════════════════════════════════════
             EXECUTING STATE - Running automated steps
         ═══════════════════════════════════════════════════════════════════ */}
-        {isExecuting && !executionError && (
+        {uiState === STEP_STATES.EXECUTING && (
           <div className="interactive-guided-executing">
             {/* Step indicator */}
             <div className="interactive-guided-step-indicator">
@@ -876,7 +892,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         {/* ═══════════════════════════════════════════════════════════════════
             COMPLETED STATE
         ═══════════════════════════════════════════════════════════════════ */}
-        {isCompletedWithObjectives && (
+        {uiState === STEP_STATES.COMPLETED && (
           <div className="interactive-guided-completed">
             <div className="interactive-guided-completed-badge">
               <span
@@ -903,24 +919,19 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         {/* ═══════════════════════════════════════════════════════════════════
             REQUIREMENTS NOT MET STATE
         ═══════════════════════════════════════════════════════════════════ */}
-        {checker.completionReason !== 'objectives' &&
-          !checker.isEnabled &&
-          !isCompletedWithObjectives &&
-          !checker.isChecking &&
-          !isExecuting &&
-          checker.explanation && (
-            <div
-              className="interactive-step-requirement-explanation"
-              data-testid={testIds.interactive.requirementCheck(renderedStepId)}
-            >
-              {checker.explanation}
-            </div>
-          )}
+        {uiState === STEP_STATES.REQUIREMENTS_UNMET && checker.explanation && (
+          <div
+            className="interactive-step-requirement-explanation"
+            data-testid={testIds.interactive.requirementCheck(renderedStepId)}
+          >
+            {checker.explanation}
+          </div>
+        )}
 
         {/* ═══════════════════════════════════════════════════════════════════
             ERROR STATE
         ═══════════════════════════════════════════════════════════════════ */}
-        {executionError && !checker.isChecking && (
+        {uiState === STEP_STATES.ERROR && executionError && (
           <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
             <div className="interactive-guided-error-box">
               <span className="interactive-guided-error-icon">!</span>
@@ -933,7 +944,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               <Button
                 onClick={async () => {
                   setExecutionError(null);
-                  await executeStep();
+                  allowCompletedRetryRef.current = true;
+                  try {
+                    await executeStep();
+                  } finally {
+                    allowCompletedRetryRef.current = false;
+                  }
                 }}
                 size="sm"
                 variant="primary"
@@ -966,6 +982,8 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
                   onClick={async () => {
                     if (checker.markSkipped) {
                       await checker.markSkipped();
+                      setExecutionError(null);
+                      setFailedStepIndex(-1);
                       persistCompletion('skipped');
                       if (onStepComplete && stepId) {
                         onStepComplete(stepId);

@@ -17,7 +17,7 @@
 
 import { reftargetExistsCheck, navmenuOpenCheck, formValidCheck } from '../lib/dom';
 import { sectionCompletedCheck } from './checks/section-completed-check';
-import { isValidRequirement } from '../types/requirements.types';
+import { isValidRequirement, type CheckResultError } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { logger } from '../lib/logging';
 import { TimeoutManager } from '../utils/timeout-manager';
@@ -42,28 +42,16 @@ import { guideVariableCheck } from './checks/vars';
 import { terminalActiveCheck } from './checks/terminal';
 import { codaExitZeroCheck } from './checks/coda';
 
-// Re-export types for convenience
 export interface RequirementsCheckResult {
   requirements: string;
   pass: boolean;
   error: CheckResultError[];
 }
 
-export interface CheckResultError {
-  requirement: string;
-  pass: boolean;
-  error?: string;
-  /** Diagnostic context for debugging. Should be included when available. */
-  context?: Record<string, unknown> | null;
-  canFix?: boolean;
-  fixType?: string;
-  targetHref?: string;
-  /** Scroll container selector for lazy-scroll fixes */
-  scrollContainer?: string;
-}
-
 export interface RequirementsCheckOptions {
   requirements: string;
+  /** Guide scope for var-* checks; omit only for compatibility callers outside a renderer tree. */
+  guideId?: string;
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
@@ -79,6 +67,7 @@ export interface RequirementsCheckOptions {
 type CheckMode = 'pre' | 'post';
 
 interface CheckContext {
+  guideId?: string;
   targetAction?: string;
   refTarget?: string;
   /** Enable progressive scroll discovery for virtualized containers */
@@ -135,7 +124,7 @@ const CHECK_HANDLERS: readonly CheckHandler[] = [
   { id: 'form-valid', match: (c) => c === 'form-valid', run: (c) => formValidCheck(c) },
   { id: 'is-terminal-active', match: (c) => c === 'is-terminal-active', run: (c) => terminalActiveCheck(c) },
   { id: 'coda-exit-zero:', match: (c) => c.startsWith('coda-exit-zero:'), run: (c) => codaExitZeroCheck(c) },
-  { id: 'var-', match: (c) => c.startsWith('var-'), run: (c) => guideVariableCheck(c) },
+  { id: 'var-', match: (c) => c.startsWith('var-'), run: (c, ctx) => guideVariableCheck(c, ctx.guideId) },
   { id: 'renderer:', match: (c) => c.startsWith('renderer:'), run: (c) => rendererCheck(c) },
 ];
 
@@ -203,6 +192,7 @@ async function executeChecksWithRetry(
 ): Promise<RequirementsCheckResult> {
   const {
     requirements,
+    guideId,
     targetAction = 'button',
     refTarget = '',
     retryCount = 0,
@@ -223,7 +213,13 @@ async function executeChecksWithRetry(
   const errorTimeoutKey = `${checkType}-retry-error-${requirements}-${retryCount}`;
 
   try {
-    const result = await runUnifiedChecks(requirements, mode, { targetAction, refTarget, lazyRender, scrollContainer });
+    const result = await runUnifiedChecks(requirements, mode, {
+      guideId,
+      targetAction,
+      refTarget,
+      lazyRender,
+      scrollContainer,
+    });
 
     // If the check passes, return success
     if (result.pass) {

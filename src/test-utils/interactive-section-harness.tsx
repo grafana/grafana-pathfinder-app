@@ -28,6 +28,8 @@
 
 import React from 'react';
 
+import { markSkipsSectionNumbering } from '../components/interactive-tutorial/skip-section-numbering';
+
 export const memoryStore = new Map<string, unknown>();
 
 /** Configurable return value for `checkRequirementsFromData`. Override per-test
@@ -51,6 +53,15 @@ let _executeInteractiveActionOutcome: 'ok' | 'error' = 'ok';
 export function setExecuteInteractiveActionOutcome(outcome: 'ok' | 'error') {
   _executeInteractiveActionOutcome = outcome;
 }
+
+/**
+ * `useInteractiveElements()` returns a fresh `executeInteractiveAction`
+ * `jest.fn()` on every call (matching production's per-render hook shape),
+ * so no single mock instance is stable enough to assert `.mock.calls` on
+ * directly. This module-level array captures every call's request object
+ * across all instances instead. Reset it in `resetSectionHarness()`.
+ */
+export const executeInteractiveActionCalls: unknown[] = [];
 
 // Module-level reference so resetSectionHarness can clear call history between
 // tests (the factory is only called once by jest.mock, so the fn is shared).
@@ -240,8 +251,12 @@ export function createTerminalConnectStepMock() {
 export function createCodeBlockStepMock() {
   return { CodeBlockStep: () => null, resetCodeBlockStepCounter: jest.fn() };
 }
+export function createDatasourceCheckStepMock() {
+  return { DatasourceCheckStep: () => null, resetDatasourceCheckStepCounter: jest.fn() };
+}
 export function createInteractiveConditionalMock() {
-  return { InteractiveConditional: () => null };
+  // Mirror production: the real component self-tags as skip-numbering.
+  return { InteractiveConditional: markSkipsSectionNumbering(() => null) };
 }
 
 /** Factory for `jest.mock('../../interactive-engine', ...)`. */
@@ -254,7 +269,10 @@ export function createInteractiveEngineMock() {
   const stableCheckRequirementsFromData = _stableCheckRequirementsFromData;
   return {
     useInteractiveElements: () => ({
-      executeInteractiveAction: jest.fn(async () => _executeInteractiveActionOutcome),
+      executeInteractiveAction: jest.fn(async (request: unknown) => {
+        executeInteractiveActionCalls.push(request);
+        return _executeInteractiveActionOutcome;
+      }),
       startSectionBlocking: jest.fn(),
       stopSectionBlocking: jest.fn(),
       verifyStepResult: jest.fn(async () => true),
@@ -389,7 +407,12 @@ export function createGrafanaUiMock() {
 
 /** Factory for `jest.mock('../../constants', ...)`. */
 export function createConstantsMock() {
+  // Partial, not total: `src/constants` is a barrel, and replacing it wholesale
+  // breaks any module the tree happens to reach that reads a different export
+  // from it — telemetry's tracked-hostname sets, for one. Only the config read
+  // needs stubbing.
   return {
+    ...jest.requireActual('../constants'),
     getConfigWithDefaults: jest.fn(() => ({})),
   };
 }
@@ -412,6 +435,7 @@ export function resetSectionHarness() {
   memoryStore.clear();
   _checkRequirementsResult = { pass: true, error: [] };
   _executeInteractiveActionOutcome = 'ok';
+  executeInteractiveActionCalls.length = 0;
   _stableCheckRequirementsFromData?.mockClear();
   // The completion store keeps its own module-scope cache + hydration
   // tracking. Clear both so tests don't bleed state across runs.

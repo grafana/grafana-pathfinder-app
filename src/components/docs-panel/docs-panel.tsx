@@ -21,13 +21,13 @@ const TerminalProviderLazy = lazy(() =>
 );
 // Lazy so @grafana/assistant stays out of the docs-panel init chain (see AiFixOrchestrator).
 const AiFixOrchestrator = lazy(() => import('./AiFixOrchestrator'));
-import { usePluginContext } from '@grafana/data';
-import { DocsPluginConfig, getConfigWithDefaults } from '../../constants';
+import { DocsPluginConfig } from '../../constants';
 
 import { useInteractiveElements, NavigationManager } from '../../interactive-engine';
 import { useKeyboardShortcuts } from './keyboard-shortcuts.hook';
 import { useLinkClickHandler } from './link-handler.hook';
 import { isDevModeEnabled } from '../../utils/dev-mode';
+import { useCodaPluginAvailable } from '../../integrations/coda/useCodaAvailability.hook';
 
 import {
   reportAppInteraction,
@@ -39,7 +39,12 @@ import { logger } from '../../lib/logging';
 import { withGuideOpenAction, type GuideLoadOutcome } from '../../lib/telemetry';
 import { usePanelReadyMeasurement } from './hooks/usePanelReadyMeasurement';
 import { tabStorage, useUserStorage } from '../../lib/user-storage';
-import { useGuideProgressState, useAutoLaunchTutorial, type AutoLaunchTutorialDetail } from '../../hooks';
+import {
+  useGuideProgressState,
+  useAutoLaunchTutorial,
+  usePathfinderPluginConfig,
+  type AutoLaunchTutorialDetail,
+} from '../../hooks';
 import {
   fetchContent,
   getNextMilestoneUrlFromContent,
@@ -62,7 +67,8 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
+import { coerceLaunchSource, evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
+import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
@@ -81,16 +87,27 @@ import {
   shouldUseDocsLoader,
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
+  mergeRestoredTabsWithExisting,
   loadDocsTabContentResult,
-  PERMANENT_TAB_IDS,
+  RECOMMENDATIONS_TAB_ID,
+  DEVTOOLS_TAB_ID,
+  EDITOR_TAB_ID,
+  getGuideStripTabs,
+  isNonContentTab,
   findCurrentMilestoneIndex,
+  isCurrentUserEditor,
+  resolveTabGates,
+  didGateClose,
+  type TabGates,
 } from './utils';
+import { DEFAULT_GUIDE_TITLE } from '../block-editor/editor-chrome-status';
 // Import extracted hooks
 import {
   useBadgeCelebrationQueue,
   useTabOverflow,
   useScrollPositionPreservation,
   useContentReset,
+  useCustomGuideCatalogueOnOpen,
   useDevModeLogger,
   usePanelMode,
   useSessionJoinUrlCheck,
@@ -100,7 +117,6 @@ import {
   useAutoOpenListener,
   usePopOutHandoff,
   useFullScreenHandoff,
-  usePermanentTabs,
   useTabRestoration,
 } from './hooks';
 
@@ -112,7 +128,19 @@ import {
   PackageOpenInfo,
 } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
+import type { RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
+
+/**
+ * Newest in-flight `saveTabsToStorage`, shared across panel models.
+ *
+ * Explicit handoffs await their own save before flipping mode. This barrier
+ * only covers the fire-and-forget return paths that cannot (sidebar
+ * "Return to sidebar" notice; auto-dock on navigation): restore waits for
+ * the newest write already pending when the await starts — not for a save
+ * issued after that.
+ */
+let pendingTabStorageWrite: Promise<void> | null = null;
 
 class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> implements DocsPanelModelOperations {
   public static Component = CombinedPanelRenderer;
@@ -127,21 +155,25 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   private _hasRestoredTabs = false;
 
   /**
+   * Last tab gates this instance observed, or null before the first
+   * observation. Only a null → open → closed transition justifies persisting
+   * a prune; see `didGateClose`.
+   */
+  private _tabGates: TabGates | null = null;
+
+  /**
    * Transient launch-source carrier for the implied-0th-step alignment check.
    *
    * Set immediately before a `loadDocsTabContent` call so the loader can read
    * it after content fetch and classify the launch. There are two ways to
    * populate it:
    *
-   *   1. Preferred: pass `{ source }` to `openDocsPage` /
-   *      `openLearningJourney`. The wrapper records the source for you,
+   *   1. Preferred: pass `{ source }` to `openDocsPage`,
+   *      `openLearningJourney`, or `loadTab`. Each records the source for you,
    *      keeping the contract visible at the call site.
    *   2. Legacy: call `_recordAutoLaunchSource(source)` directly, then call
-   *      `openDocsPage` / `openLearningJourney` / `loadDocsTabContent`. Used
-   *      where (a) a callback signature can't carry the source (e.g.
-   *      `ContextPanel`'s recommender callbacks), or (b) `loadDocsTabContent`
-   *      is called without going through the public open methods (e.g.
-   *      `useContentReset`'s reload path).
+   *      one of those. Only needed where a callback signature can't carry the
+   *      source (e.g. `ContextPanel`'s recommender callbacks).
    *
    * Mirrors the consume-once pattern in `sidebarState.consumePendingOpenSource`.
    */
@@ -162,10 +194,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public constructor(pluginConfig: DocsPluginConfig = {}) {
-    // Initialize with default tabs first
+    // Initialize with the recommendations home tab
     const defaultTabs: LearningJourneyTab[] = [
       {
-        id: 'recommendations',
+        id: RECOMMENDATIONS_TAB_ID,
+        type: 'recommendations',
         title: 'Recommendations',
         baseUrl: '',
         currentUrl: '',
@@ -185,51 +218,153 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         return this.openLearningJourney(url, title, { source: 'recommender' });
       },
       (url: string, title: string, packageInfo?: PackageOpenInfo) => {
-        return this.openDocsPage(url, title, { source: 'recommender', packageInfo });
+        // Sections other than the recommender declare their own source.
+        return this.openDocsPage(url, title, {
+          source: coerceLaunchSource(packageInfo?.launchSource) ?? 'recommender',
+          packageInfo,
+        });
       },
       () => this.openEditorTab()
     );
 
     super({
       tabs: defaultTabs,
-      activeTabId: 'recommendations',
+      activeTabId: RECOMMENDATIONS_TAB_ID,
       contextPanel,
       pluginConfig,
     });
 
     // Wire the composite PackageResolver into docs-retrieval so that
     // fetchPackageContent() and fetchPackageById() can resolve bundled and
-    // remote packages. This is the Tier 3/4 injection point described in Phase 4g.
-    setPackageResolver(createCompositeResolver(pluginConfig));
+    // remote packages — the Tier 3/4 injection point.
+    //
+    // Seed from the published global, not this surface's snapshot — the resolver is one app-wide singleton.
+    const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: DocsPluginConfig })
+      .__pathfinderPluginConfig;
+    setPackageResolver(createCompositeResolver(resolverConfig ?? pluginConfig));
 
     // Note: Tab restoration now happens from React component after storage is initialized
     // to avoid race condition with useUserStorage hook
   }
 
-  public async restoreTabsAsync(): Promise<void> {
+  public async restoreTabsAsync(options?: { force?: boolean }): Promise<void> {
     // Guard: only restore once per model lifetime to prevent double-restore race condition
     // where a second restore (triggered by component remount or React Strict Mode) replaces
-    // tabs that already had content loaded, leaving them in {content: null} blank state
-    if (this._hasRestoredTabs) {
+    // tabs that already had content loaded, leaving them in {content: null} blank state.
+    // `force` is reserved for a surface ownership handover: floating/fullscreen own
+    // separate models, so a returning sidebar must re-read the shared workspace.
+    if (this._hasRestoredTabs && !options?.force) {
       return;
     }
     this._hasRestoredTabs = true;
 
-    // Use extracted restore module with dev mode detection
-    const currentUserId = config.bootData.user?.id;
-    const pluginConfig = this.state.pluginConfig || {};
-    const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
+    // Newest write pending when this await starts (see pendingTabStorageWrite).
+    // Saves begun after that are not waited on.
+    await pendingTabStorageWrite;
 
-    const restoredTabs = await restoreTabsFromStorage(tabStorage, { isDevMode });
-    const activeTabId = await restoreActiveTabFromStorage(tabStorage, restoredTabs);
+    // `isDevMode` here only widens URL validation (localhost / GitHub raw).
+    // Tab-level gating is applied below, after the storage awaits.
+    const { allowDevTools: isDevMode } = resolveTabGates(this.state.pluginConfig);
+
+    let restoredTabs = await restoreTabsFromStorage(tabStorage, { isDevMode });
+    let activeTabId = await restoreActiveTabFromStorage(tabStorage, restoredTabs);
+
+    // Re-resolve: the renderer may have synced the live plugin config while
+    // storage I/O was in flight, and that config outranks the construction
+    // snapshot this model was built from.
+    const pruned = this.pruneUnauthorizedGatedTabs(restoredTabs, activeTabId);
+    restoredTabs = pruned.tabs;
+    activeTabId = pruned.activeTabId;
+    // Keep loaded snapshots for tabs storage still lists at the same id +
+    // currentUrl so a force restore does not refetch every guide.
+    restoredTabs = mergeRestoredTabsWithExisting(restoredTabs, this.state.tabs);
 
     this.setState({
       tabs: restoredTabs,
       activeTabId,
     });
 
-    // Initialize the active tab if needed
+    // Initialize the active tab if needed (no-op when merge kept content)
     this.initializeRestoredActiveTab();
+  }
+
+  /**
+   * Adopt the plugin config React resolved, then re-apply the tab gates.
+   *
+   * Pass `null` when the plugin context has not resolved. The model keeps its
+   * construction snapshot in that case, because an unresolved config is
+   * indistinguishable from "dev mode off" and would strip an authorized Dev
+   * Tools tab.
+   */
+  public syncPluginConfig(pluginConfig: DocsPluginConfig | null): void {
+    if (pluginConfig && pluginConfig !== this.state.pluginConfig) {
+      this.setState({ pluginConfig });
+    }
+    this.pruneGatedTabs();
+  }
+
+  /**
+   * Remove editor / devtools tabs when their gates are off, so stale tabs
+   * cannot linger in the strip after a role downgrade or a dev-mode flip.
+   *
+   * Gates are derived from this model's own `pluginConfig` — never from flags
+   * a caller computed against a second config source, which is how restore
+   * and the renderer used to disagree.
+   */
+  public pruneGatedTabs(): void {
+    const pruned = this.pruneUnauthorizedGatedTabs(this.state.tabs, this.state.activeTabId);
+    if (!pruned.didPrune) {
+      return;
+    }
+    this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
+    if (pruned.gateClosed) {
+      void this.saveTabsToStorage();
+    }
+  }
+
+  /**
+   * Apply the current gates and record them, so a later prune can tell an
+   * observed gate closure apart from a first read of an unresolved config.
+   * Storage is only rewritten for the former — see `didGateClose`.
+   */
+  private pruneUnauthorizedGatedTabs(
+    tabs: LearningJourneyTab[],
+    activeTabId: string
+  ): { tabs: LearningJourneyTab[]; activeTabId: string; didPrune: boolean; gateClosed: boolean } {
+    const gates = resolveTabGates(this.state.pluginConfig);
+    const gateClosed = didGateClose(this._tabGates, gates);
+    this._tabGates = gates;
+
+    const pruned = this.withoutUnauthorizedGatedTabs(tabs, activeTabId, gates.allowEditor, gates.allowDevTools);
+    return { ...pruned, gateClosed };
+  }
+
+  private withoutUnauthorizedGatedTabs(
+    tabs: LearningJourneyTab[],
+    activeTabId: string,
+    allowEditor: boolean,
+    allowDevTools: boolean
+  ): { tabs: LearningJourneyTab[]; activeTabId: string; didPrune: boolean } {
+    const nextTabs = tabs.filter((t) => {
+      if (t.type === 'editor' && !allowEditor) {
+        return false;
+      }
+      if (t.type === 'devtools' && !allowDevTools) {
+        return false;
+      }
+      return true;
+    });
+
+    if (nextTabs.length === tabs.length) {
+      return { tabs, activeTabId, didPrune: false };
+    }
+
+    const removedActive = !nextTabs.some((t) => t.id === activeTabId);
+    return {
+      tabs: nextTabs,
+      activeTabId: removedActive ? RECOMMENDATIONS_TAB_ID : activeTabId,
+      didPrune: true,
+    };
   }
 
   private generateTabId(): string {
@@ -238,30 +373,37 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   private initializeRestoredActiveTab(): void {
     const activeTab = this.state.tabs.find((t) => t.id === this.state.activeTabId);
-    if (!activeTab || PERMANENT_TAB_IDS.has(activeTab.id)) {
+    if (!activeTab || isNonContentTab(activeTab)) {
       return;
     }
 
     if (!activeTab.content && !activeTab.isLoading && !activeTab.error) {
-      // Tag the loader call so the implied-0th-step evaluator sees
-      // `browser_restore` (an aligned-by-construction source) instead of an
-      // undefined source. Without this, a restored tab whose path no longer
-      // matches its guide's `startingLocation` would incorrectly trigger the
-      // alignment prompt — second-guessing a user mid-tutorial, which is
-      // exactly what `browser_restore` is meant to suppress. The unified
-      // `loadTab` routes to the docs pipeline iff the tab needs it
-      // (matches the old `shouldUseDocsLoader` branch).
-      this._recordAutoLaunchSource('browser_restore');
-      this.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl);
+      // `browser_restore` is aligned-by-construction. Without it, a restored
+      // tab whose path no longer matches its guide's `startingLocation` would
+      // incorrectly trigger the alignment prompt — second-guessing a user
+      // mid-tutorial, which is exactly what `browser_restore` suppresses.
+      this.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl, { source: 'browser_restore' });
     }
   }
 
-  public async saveTabsToStorage(): Promise<void> {
+  public saveTabsToStorage(): Promise<void> {
+    const write = this.writeTabsToStorage();
+    pendingTabStorageWrite = write;
+    // Only the newest write clears the barrier; an older one settling late must
+    // not retire a save that is still in flight.
+    void write.finally(() => {
+      if (pendingTabStorageWrite === write) {
+        pendingTabStorageWrite = null;
+      }
+    });
+    return write;
+  }
+
+  private async writeTabsToStorage(): Promise<void> {
     try {
-      // Save user-opened tabs and devtools tab (devtools persists across refreshes)
-      // Recommendations is a permanent tab and doesn't need persistence
+      // Save user-opened tabs (recommendations home is always present and not persisted)
       const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.id !== 'recommendations')
+        .filter((tab) => tab.type !== 'recommendations')
         .map((tab) => ({
           id: tab.id,
           title: tab.title,
@@ -305,8 +447,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // legacy stash is overwritten and we have a single source of truth for
     // the drain below.
     if (options?.source) {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
-      this._recordAutoLaunchSource(options.source);
+      this._pendingLaunchSource = options.source;
     }
     // Drain any auto-launch source that the listener (or options.source above)
     // recorded before branching here. Learning journeys go through
@@ -342,7 +483,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Route through the unified dispatcher so future docs-like or
     // package-backed learning-journey openings pick the docs loader
     // without an extra branch here.
-    this.loadTab(tabId, url);
+    this.loadTab(tabId, url, { prefetched: options?.preparedContent });
 
     return tabId;
   }
@@ -380,21 +521,35 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   public async loadTab(
     tabId: string,
     url: string,
-    options?: { skipReadyToBegin?: boolean; packageInfo?: PackageOpenInfo }
+    options?: {
+      skipReadyToBegin?: boolean;
+      packageInfo?: PackageOpenInfo;
+      prefetched?: RawContent;
+      source?: LaunchSource;
+    }
   ): Promise<void> {
+    if (options?.source) {
+      this._pendingLaunchSource = options.source;
+    }
     // Loaders resolve on failure (failTab stores the error in tab state), so
     // their returned outcome — not promise settlement — stamps the action.
     await withGuideOpenAction(url, async () => {
       const tab = this.state.tabs.find((t) => t.id === tabId);
       const needsDocsLoader = options?.packageInfo != null || (tab ? shouldUseDocsLoader(tab) : false);
       if (needsDocsLoader) {
-        return this.loadDocsTabContent(tabId, url, options?.skipReadyToBegin, options?.packageInfo);
+        return this.loadDocsTabContent(
+          tabId,
+          url,
+          options?.skipReadyToBegin,
+          options?.packageInfo,
+          options?.prefetched
+        );
       }
-      return this.loadTabContent(tabId, url);
+      return this.loadTabContent(tabId, url, options?.prefetched);
     });
   }
 
-  private async loadTabContent(tabId: string, url: string): Promise<GuideLoadOutcome> {
+  private async loadTabContent(tabId: string, url: string, prefetched?: RawContent): Promise<GuideLoadOutcome> {
     // Empty/corrupted tab URL — nothing to load, and not a successful open.
     if (!url || url.trim() === '') {
       logger.error(`loadTabContent called with an empty URL for tab ${tabId}`);
@@ -406,7 +561,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     try {
       const tab = this.state.tabs.find((t) => t.id === tabId);
-      const result = await fetchContent(url);
+      // Prefetched content skips the network fetch (one-fetch launch) but runs
+      // the identical finalization below so journey/completion parity holds.
+      const result = prefetched ? { content: prefetched } : await fetchContent(url);
 
       if (result.content) {
         let content = result.content;
@@ -419,9 +576,12 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
           };
 
           if (currentMilestone === 0) {
+            // The cover-page component now owns the start/continue CTA, so skip
+            // the legacy injected "Ready to Begin" button here (matches the
+            // `skipReadyToBegin` default fetchContent's own callers already use).
             content = {
               ...content,
-              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney),
+              content: injectJourneyExtrasIntoJsonGuide(content.content, learningJourney, true),
             };
           }
 
@@ -433,6 +593,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
               learningJourney,
               ...(tab.packageInfo?.packageManifest != null && {
                 packageManifest: tab.packageInfo.packageManifest,
+              }),
+              ...(tab.packageInfo?.repository != null && {
+                repository: tab.packageInfo.repository,
               }),
             },
           };
@@ -446,7 +609,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
           const progress = getJourneyProgress(updatedTab.content);
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
-          setJourneyCompletionPercentage(completionKey, progress);
+          setJourneyCompletionPercentage(completionKey, progress, {
+            packageManifest: updatedTab.content.metadata.packageManifest,
+            repository: updatedTab.content.metadata.repository,
+            guideTitle: updatedTab.title,
+          });
         }
         return 'completed';
       } else {
@@ -507,28 +674,32 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public closeTab(tabId: string) {
-    if (tabId === 'recommendations') {
+    const currentTabs = this.state.tabs;
+    const closing = currentTabs.find((t) => t.id === tabId);
+    // Unclosable chrome is a kind rule (type), not an identity check.
+    if (!closing || closing.type === 'recommendations') {
       return;
     }
 
-    const currentTabs = this.state.tabs;
-    const tabIndex = currentTabs.findIndex((t) => t.id === tabId);
     const newTabs = currentTabs.filter((t) => t.id !== tabId);
     let newActiveTabId = this.state.activeTabId;
 
+    // Closing a background tab must not move focus — the user may be sitting on
+    // another tab and closing a guide from the overflow menu.
     if (this.state.activeTabId === tabId) {
-      if (tabIndex > 0 && tabIndex < currentTabs.length - 1) {
-        newActiveTabId = currentTabs[tabIndex + 1]!.id;
-      } else if (tabIndex > 0) {
-        newActiveTabId = currentTabs[tabIndex - 1]!.id;
-      } else {
-        newActiveTabId = 'recommendations';
-      }
-    }
-
-    const onlyDefaultTabsRemaining = newTabs.every((t) => PERMANENT_TAB_IDS.has(t.id));
-    if (onlyDefaultTabsRemaining && this.state.activeTabId !== 'editor') {
-      newActiveTabId = 'recommendations';
+      // Adjacency walks the rendered strip, not raw tab state: the
+      // recommendations rail holds no strip slot, so handing it focus would
+      // leave no visible tab marked active. A tab outside the strip closed via
+      // Ctrl+W has no neighbours of its own, so it inherits the last strip tab
+      // instead of sending the user home. Recommendations is the empty-strip
+      // fallback.
+      const stripTabs = getGuideStripTabs(currentTabs);
+      const closedIndex = stripTabs.findIndex((t) => t.id === tabId);
+      const replacement =
+        closedIndex === -1
+          ? stripTabs[stripTabs.length - 1]
+          : (stripTabs[closedIndex + 1] ?? stripTabs[closedIndex - 1]);
+      newActiveTabId = replacement?.id ?? RECOMMENDATIONS_TAB_ID;
     }
 
     this.setState({
@@ -545,9 +716,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save active tab to storage
     this.saveTabsToStorage();
 
-    // Permanent tabs (recommendations, devtools, editor) render their own
-    // content and have no URL to load — skip the content-loading path.
-    if (PERMANENT_TAB_IDS.has(tabId)) {
+    // Tabs without a content URL skip the fetch path.
+    const switchedTab = this.state.tabs.find((t) => t.id === tabId);
+    if (!switchedTab || isNonContentTab(switchedTab)) {
       return;
     }
 
@@ -595,23 +766,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   /**
-   * Open the Dev Tools tab (or switch to it if already open)
-   * The devtools tab is now persisted to storage to survive page refreshes.
+   * Open the Dev Tools view (or switch to it if already open).
+   * Singleton strip tab opened from the overflow menu when Dev Mode is on.
    */
   public openDevToolsTab(): void {
-    // Check if devtools tab already exists
-    const existingTab = this.state.tabs.find((t) => t.id === 'devtools');
+    const existingTab = this.state.tabs.find((t) => t.id === DEVTOOLS_TAB_ID);
     if (existingTab) {
-      // Just switch to it
-      this.setState({ activeTabId: 'devtools' });
-      // Still save to storage to persist the active tab change
+      this.setState({ activeTabId: DEVTOOLS_TAB_ID });
       this.saveTabsToStorage();
       return;
     }
 
-    // Create new devtools tab
     const newTab: LearningJourneyTab = {
-      id: 'devtools',
+      id: DEVTOOLS_TAB_ID,
       title: 'Dev Tools',
       baseUrl: '',
       currentUrl: '',
@@ -623,10 +790,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     this.setState({
       tabs: [...this.state.tabs, newTab],
-      activeTabId: 'devtools',
+      activeTabId: DEVTOOLS_TAB_ID,
     });
 
-    // Save tabs to storage so devtools tab persists across page refreshes
     this.saveTabsToStorage();
   }
 
@@ -634,16 +800,16 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * Open the Editor tab (or switch to it if already open)
    */
   public openEditorTab(): void {
-    const existingTab = this.state.tabs.find((t) => t.id === 'editor');
+    const existingTab = this.state.tabs.find((t) => t.id === EDITOR_TAB_ID);
     if (existingTab) {
-      this.setState({ activeTabId: 'editor' });
+      this.setState({ activeTabId: EDITOR_TAB_ID });
       this.saveTabsToStorage();
       return;
     }
 
     const newTab: LearningJourneyTab = {
-      id: 'editor',
-      title: 'Guide editor',
+      id: EDITOR_TAB_ID,
+      title: DEFAULT_GUIDE_TITLE,
       baseUrl: '',
       currentUrl: '',
       content: null,
@@ -654,14 +820,28 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     this.setState({
       tabs: [...this.state.tabs, newTab],
-      activeTabId: 'editor',
+      activeTabId: EDITOR_TAB_ID,
     });
 
     this.saveTabsToStorage();
   }
 
+  /** Update the editor tab's strip title from the working guide. */
+  public updateEditorTabTitle(title: string): void {
+    const trimmed = title.trim() || DEFAULT_GUIDE_TITLE;
+    const editorTab = this.state.tabs.find((t) => t.id === EDITOR_TAB_ID);
+    if (!editorTab || editorTab.title === trimmed) {
+      return;
+    }
+
+    this.setState({
+      tabs: this.state.tabs.map((t) => (t.id === EDITOR_TAB_ID ? { ...t, title: trimmed } : t)),
+    });
+    this.saveTabsToStorage();
+  }
+
   public async openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string> {
-    const { source, skipReadyToBegin, packageInfo } = options ?? {};
+    const { source, skipReadyToBegin, packageInfo, preparedContent } = options ?? {};
 
     // Make the launch source explicit at the call site if provided. This
     // narrows the surface area of the legacy `_recordAutoLaunchSource` flag —
@@ -669,8 +849,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // would now manifest as a missing `options.source` (visible in code
     // review) instead of a silent default-to-"needs-check".
     if (source) {
-      // eslint-disable-next-line @typescript-eslint/no-deprecated -- internal bridge to legacy flag (consume-once carrier)
-      this._recordAutoLaunchSource(source);
+      this._pendingLaunchSource = source;
     }
 
     const finalTitle = title || 'Documentation';
@@ -696,7 +875,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // Save tabs to storage immediately after creating
     this.saveTabsToStorage();
 
-    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo });
+    this.loadTab(tabId, url, { skipReadyToBegin, packageInfo, prefetched: preparedContent });
 
     return tabId;
   }
@@ -705,7 +884,8 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     tabId: string,
     url: string,
     skipReadyToBegin?: boolean,
-    packageInfoArg?: PackageOpenInfo
+    packageInfoArg?: PackageOpenInfo,
+    prefetched?: RawContent
   ): Promise<GuideLoadOutcome> {
     // No early return for empty URLs — loadDocsTabContentResult handles all
     // edge cases (empty URL with packageInfo falls back to fetchPackageById;
@@ -720,11 +900,23 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Auto-derive packageInfo when opening a package URL via deep-link or
       // handoff (no recommender). Without the manifest, downstream rendering
       // falls through to plain fetchContent and the milestone toolbar never
-      // appears. See package-info-from-url.ts for the URL pattern.
-      if (!packageInfo && isPackageContentUrl(url)) {
+      // appears. See package-info-from-url.ts for the URL pattern. Skipped for
+      // prefetched launches — `prepareGuideLaunch` already derived it.
+      if (!prefetched && !packageInfo && isPackageContentUrl(url)) {
         packageInfo = await fetchPackageInfoFromUrl(url);
       }
-      const result = await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
+      // Prefetched content skips the network fetch (one-fetch launch) but runs
+      // the identical finalization below so alignment / journey / package
+      // parity holds. skipReadyToBegin only exists inside that skipped fetch —
+      // prefetched content was built without it (prepareGuideLaunch doesn't
+      // pass it), so the combination cannot be honored; surface the conflict
+      // instead of silently rendering the wrong variant.
+      if (prefetched && skipReadyToBegin) {
+        logger.warn('[DocsPanel] skipReadyToBegin ignored for prefetched content', { url });
+      }
+      const result = prefetched
+        ? { content: prefetched }
+        : await loadDocsTabContentResult(url, { skipReadyToBegin, packageInfo });
 
       // Check if fetch succeeded or failed
       if (result.content) {
@@ -736,7 +928,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
         // Implied 0th step: decide whether to prompt the user to navigate to
         // the guide's declared starting location before step 1 begins.
-        const startingLocation = resolveStartingLocation(url, packageInfo?.packageManifest);
+        // Two manifests can describe this launch and they are not equally complete.
+        // `packageInfo` comes from the catalogue proxy, whose Go `customGuideManifest`
+        // declares no starting location, so the key is dropped at the wire boundary;
+        // the loader's manifest on the fetched content carries it intact. Passing both
+        // keeps `packageInfo` authoritative wherever it actually declares a value and
+        // only falls back where it previously resolved to null — so a guide opened
+        // from inside a learning path gets the same prompt as the same guide opened
+        // standalone.
+        const startingLocation = resolveStartingLocation(
+          url,
+          [packageInfo?.packageManifest, fetchedContent.metadata.packageManifest],
+          { isAdmin: currentUserIsAdmin() }
+        );
         const currentPath = locationService.getLocation().pathname;
         const evaluation = evaluateAlignment({
           currentPath,
@@ -796,28 +1000,24 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // This MUST be called before any storage operations to ensure Grafana user storage is used
   useUserStorage();
 
-  // Get plugin configuration for dev mode check
-  const pluginContext = usePluginContext();
-  const pluginConfig = React.useMemo(() => {
-    return getConfigWithDefaults(pluginContext?.meta?.jsonData || {});
-  }, [pluginContext?.meta?.jsonData]);
+  useCustomGuideCatalogueOnOpen();
+
+  // Get plugin configuration for dev mode check. `isResolved` distinguishes a
+  // known config from "not known yet"; without it an all-defaults config would
+  // read as an explicit "dev mode off" and prune authorized tabs.
+  const { config: pluginConfig, isResolved: isPluginConfigResolved } = usePathfinderPluginConfig();
 
   // SECURITY: Dev mode - hybrid approach (synchronous check with user ID scoping)
   const currentUserId = config.bootData.user?.id;
   const isDevMode = isDevModeEnabled(pluginConfig, currentUserId);
 
-  const currentUser = config.bootData?.user;
-  const isEditorUser =
-    currentUser?.orgRole === 'Editor' || currentUser?.orgRole === 'Admin' || currentUser?.isGrafanaAdmin === true;
+  const isEditorUser = isCurrentUserEditor();
+
+  const codaAvailable = useCodaPluginAvailable(isDevMode && pluginConfig.enableCodaTerminal);
 
   // SECURITY: Scoped logger that only emits in dev mode to prevent user data leaking to console.
   // Stable callback identity so effects depending on it do not re-run when isDevMode toggles.
   const logSession = useDevModeLogger(isDevMode);
-
-  // Set global config for utility functions that can't access React context
-  React.useEffect(() => {
-    (window as any).__pathfinderPluginConfig = pluginConfig;
-  }, [pluginConfig]);
 
   const { tabs, activeTabId, contextPanel } = model.useState();
   const { recommendationsReady = false } = contextPanel.useState();
@@ -928,16 +1128,21 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Restore tabs after storage is initialized (fixes race condition)
   useTabRestoration({ model, panelMode, tabs });
 
-  // Ensure permanent tabs (devtools, editor) exist when their gate is active.
-  usePermanentTabs({ model, isDevMode, isEditorUser, tabs });
+  // Hand the model the config React resolved and let it re-apply the tab
+  // gates. The model owns the derivation, so restore and this pass cannot
+  // disagree. `null` while the context is unresolved leaves the model's own
+  // config in place rather than stripping tabs on a default-shaped read.
+  React.useEffect(() => {
+    model.syncPluginConfig(isPluginConfigResolved ? pluginConfig : null);
+  }, [isPluginConfigResolved, pluginConfig, model, tabs]);
 
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
-  useAutoOpenListener(model);
+  useAutoOpenListener(model, 'sidebar');
   // removed — using restored custom overflow state below
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
-  const isRecommendationsTab = activeTabId === 'recommendations';
+  const isRecommendationsTab = activeTab?.type === 'recommendations';
   // Detect WYSIWYG preview tab to show "Return to editor" banner
   const isWysiwygPreview =
     activeTab?.baseUrl === 'bundled:wysiwyg-preview' || activeTab?.content?.url === 'bundled:wysiwyg-preview';
@@ -996,11 +1201,6 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     dropdownOpenTimeRef,
   } = useTabOverflow(tabs, activeTabId);
 
-  const overflowGuideTabs = React.useMemo(
-    () => overflowedTabs.filter((t) => !PERMANENT_TAB_IDS.has(t.id)),
-    [overflowedTabs]
-  );
-
   // Content styles are applied at the component level via CSS classes
 
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1024,12 +1224,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // `ALIGNED_BY_CONSTRUCTION_SOURCES` for the semantics.
   const reloadActiveTab = useCallback(
     (tab: LearningJourneyTab) => {
-      // The unified `loadTab` dispatches on `shouldUseDocsLoader` internally.
-      // `_recordAutoLaunchSource` only matters for the docs branch — the
-      // plain branch never consumes it, so an unconditional record is a
-      // no-op when not needed.
-      model._recordAutoLaunchSource('internal_reload');
-      model.loadTab(tab.id, tab.currentUrl || tab.baseUrl);
+      model.loadTab(tab.id, tab.currentUrl || tab.baseUrl, { source: 'internal_reload' });
     },
     [model]
   );
@@ -1262,7 +1457,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         activeTabId={activeTabId}
         activeTab={activeTab}
         visibleTabs={visibleTabs}
-        overflowGuideTabs={overflowGuideTabs}
+        overflowGuideTabs={overflowedTabs}
         isEditorUser={isEditorUser}
         isDevMode={isDevMode}
         isDropdownOpen={isDropdownOpen}
@@ -1275,6 +1470,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         onSetActiveTab={(tabId) => model.setActiveTab(tabId)}
         onCloseTab={(tabId) => model.closeTab(tabId)}
         reloadActiveTab={reloadActiveTab}
+        onOpenEditorTab={() => model.openEditorTab()}
+        onOpenDevToolsTab={() => model.openDevToolsTab()}
       />
 
       <DocsPanelContentArea
@@ -1288,8 +1485,8 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         isFullScreenActive={isFullScreenActive}
         isRecommendationsTab={isRecommendationsTab}
         isEditorUser={isEditorUser}
+        isDevMode={isDevMode}
         isWysiwygPreview={isWysiwygPreview}
-        activeTabId={activeTabId}
         activeTab={activeTab}
         stableContent={stableContent}
         hasInteractiveProgress={hasInteractiveProgress}
@@ -1301,8 +1498,9 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
         restoreScrollPosition={restoreScrollPosition}
       />
 
-      {/* Coda Terminal Panel - only shown in dev mode with terminal feature enabled */}
-      {isDevMode && pluginConfig.enableCodaTerminal && (
+      {/* Coda terminal panel — needs dev mode, Pathfinder's toggle, and the
+          separate Coda app plugin to be installed and enabled. */}
+      {isDevMode && pluginConfig.enableCodaTerminal && codaAvailable && (
         <Suspense fallback={null}>
           <TerminalPanel />
         </Suspense>

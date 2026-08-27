@@ -1,5 +1,5 @@
 /**
- * Debug surface for the highlighted-guide experiment (window.__pathfinderExperiment).
+ * Debug surface for the live experiments (window.__pathfinderExperiment).
  *
  * Exposes flag overrides (setOverride / removeOverride / clearOverrides /
  * showOverrides) and analytics exposure inspection (showExposures /
@@ -17,6 +17,7 @@ import {
   pathfinderFeatureFlags,
   type HighlightedGuideConfig,
 } from '../openfeature';
+import { getEnrolledInteractiveLearningBannerConfig } from './interactive-learning-banner';
 
 interface ExposureMarker {
   key: string;
@@ -48,6 +49,11 @@ export function createExperimentDebugger(config: HighlightedGuideConfig): void {
     config,
     variant: config.variant,
     loadedAt: new Date().toISOString(),
+
+    // A getter, not a snapshot: the banner arm is resolved lazily when a Pathfinder
+    // panel first opens, so a value captured here would always read 'not-enrolled'.
+    // Reads the memo only — calling this never enrolls anyone.
+    bannerVariant: () => getEnrolledInteractiveLearningBannerConfig()?.variant ?? 'not-enrolled',
 
     // --- Flag override methods (persist in localStorage, take effect on next page load) ---
 

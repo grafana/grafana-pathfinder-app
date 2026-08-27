@@ -170,18 +170,19 @@ The split is mechanical; the exit criterion above belongs to P1b.
 **Scope.**
 
 - Add a `mcp` subcommand to `pathfinder-cli` under `src/cli/mcp/`. Same compiled `dist/` tree, registered alongside the other subcommands in `src/cli/index.ts`.
-- Tool dispatchers map each MCP tool call to the corresponding imported CLI command function (`runCreate`, `runAddBlock`, …) — no shell-out, no temp directory, no `exec.Command`. The CLI test suite already exercises these functions directly without subprocess invocation; P3 composes against the same surface.
+- Tool dispatchers map each MCP tool call to the corresponding imported CLI command function (`runCreate`, `runAddBlock`, …) — no shell-out, no temp directory, no `exec.Command`. The CLI test suite already exercises these functions directly without subprocess invocation; P3 composes against the same surface. Help-derived `opts` bags and resource suites are in place; named-arg mapping onto those runners is a known follow-up (see [`HOSTED-AUTHORING-MCP.md` — Tool-surface design notes](./HOSTED-AUTHORING-MCP.md#tool-surface-design-notes)).
 - Stateless artifact model — every mutation tool takes the artifact in and returns the artifact out. No `sessionId`, no server-side cache.
 - Two transports from one codebase:
   - **stdio** — the default for local MCP clients (Cursor, Claude Desktop, MCP Inspector). Trust-the-local-user auth model.
   - **HTTP** — for centrally hosted deployment. **MVP ships without auth** (see [open question resolution](#does-the-hosted-http-mcp-need-auth-at-all)); abuse mitigations are edge rate-limiting, request size caps, and autoscaling ceilings. Auth is deferred to a later phase if usage patterns demand it.
 - Tools (per [`HOSTED-AUTHORING-MCP.md` — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)):
   - `pathfinder_authoring_start` — first tool, returns context + workflow + tutorial + discovery hints.
-  - `pathfinder_help` — composes the same `--help --format json` surface the CLI exposes, as a function call.
-  - `pathfinder_create_package`, `pathfinder_add_block`, `pathfinder_add_step`, `pathfinder_add_choice`, `pathfinder_edit_block`, `pathfinder_remove_block`, `pathfinder_set_manifest`.
+  - `pathfinder_help` — derives any command's interface from CLI Commander metadata, exposes Commander's own option attribute names, and withholds only the parameters an MCP tool already owns.
+  - `pathfinder_create_package`, `pathfinder_manage_block`, `pathfinder_manage_guide`.
   - `pathfinder_inspect`, `pathfinder_validate`.
   - `pathfinder_finalize_for_app_platform` — returns the handoff structure defined in [`APP-PLATFORM-PUBLISH-HANDOFF.md`](./APP-PLATFORM-PUBLISH-HANDOFF.md), including the `localExport` fallback.
-- `pathfinder_add_block` is intentionally permissive — the discriminator and arbitrary fields are forwarded; the CLI command function is the sole validator.
+- `pathfinder_manage_block` and `pathfinder_manage_guide` are intentionally permissive — the CLI-named operation and opaque opts are forwarded; the CLI command function is the sole content validator.
+- CLI-backed parameters for create, tree/guide mutations, inspect, and schema are carried in opaque `opts` bags discovered through `pathfinder_help`; transport and MCP-only orchestration remain top-level.
 - Failure-mode coverage: validation failure, finalization failure, schema mismatch, transport-level failures (stdio pipe closed, HTTP 5xx).
 - Documentation pass for the new tools (developer docs + agent context update in `AGENTS.md`).
 
@@ -194,7 +195,7 @@ The split is mechanical; the exit criterion above belongs to P1b.
 - A non-Grafana-aware MCP client (Cursor, Claude Desktop) can connect to `npx pathfinder-cli mcp` over stdio, call `pathfinder_authoring_start`, build a multi-block guide via tool calls, validate, and call `pathfinder_finalize_for_app_platform` to receive a handoff containing both `appPlatform` instructions and a `localExport` fallback.
 - The same code, run with the HTTP transport behind the Grafana token verifier, accepts authenticated requests with the same tool surface.
 - Following `localExport`, the client can write `content.json` and `manifest.json` to the user's workspace and the resulting package round-trips through `pathfinder-cli validate`.
-- The MCP server performs no schema validation of its own — confirmed by code review (the only validator entry points are the imported CLI command functions) and by an integration test that introduces a CLI-detectable schema violation and asserts the MCP surfaces the CLI's structured error verbatim.
+- The MCP server performs no guide-content validation of its own — confirmed by code review (the only content-validator entry points are the imported CLI command functions) and by an integration test that introduces a CLI-detectable schema violation and asserts the MCP surfaces the CLI's structured error verbatim. (Since #1639 the MCP does preflight argument shape via `validateCommandArgs` against the interface `pathfinder_help` publishes; guide content still never gets validated outside the CLI.)
 - `pkg/plugin/mcp.go` is unchanged from `main` (apart from the spike/stub status comment added on this branch).
 
 ---
@@ -274,11 +275,11 @@ Tracked here so they don't get lost; not scoped for the MVP.
     add_block({ sessionToken, block }) -> { sessionToken, generation, added: { kind, id } }
     ```
 
-    The full artifact does not return to the agent's context. This is what removes both the token cost and the confabulation surface — the agent cannot drift on an artifact it does not have. **If the CLI command function errors (validation failure, schema violation), GCS is not updated** — the failed mutation leaves the session in its prior valid state and the agent receives the CLI's structured error verbatim, preserving the P3 "MCP performs no schema validation" contract. Reads become explicit, fine-grained, on-demand:
-    - `pathfinder_get_manifest({ sessionToken })` — manifest only
-    - `pathfinder_list_blocks({ sessionToken })` — block IDs and types, no content
-    - `pathfinder_get_block({ sessionToken, blockId })` — one block
-    - `pathfinder_inspect({ sessionToken })` — full artifact (escape hatch)
+    The full artifact does not return to the agent's context. This is what removes both the token cost and the confabulation surface — the agent cannot drift on an artifact it does not have. **If the CLI command function errors (validation failure, schema violation), GCS is not updated** — the failed mutation leaves the session in its prior valid state and the agent receives the CLI's structured error verbatim, preserving the P3 "CLI is the sole content validator" contract. Reads become explicit, fine-grained, on-demand (tool names below are the current consolidated surface — the per-read tools this phase shipped were later folded into `pathfinder_read_session`, see #1639):
+    - `pathfinder_read_session({ sessionToken, operation: "get-manifest" })` — manifest only
+    - `pathfinder_read_session({ sessionToken, operation: "list-blocks" })` — block IDs and types, no content
+    - `pathfinder_read_session({ sessionToken, operation: "get-block", blockId })` — one block
+    - `pathfinder_inspect({ sessionToken, opts: {} })` — full artifact (escape hatch)
     - `pathfinder_validate({ sessionToken })` — structured errors only
     - `pathfinder_finalize_for_app_platform({ sessionToken })` — handoff payload, **the one place the full artifact returns to context**, because the agent's job there is to forward bytes to App Platform.
 
@@ -295,7 +296,7 @@ Tracked here so they don't get lost; not scoped for the MVP.
   - **Confidentiality.** The token is the bearer capability:
     - **Bucket is private.** Uniform bucket-level access on, no public ACLs, IAM-only. Service account scoped to this one bucket.
     - **No GCS URLs cross the trust boundary.** Clients only ever see `<SESSION_TOKEN>`. All reads/writes flow through the MCP server, which holds the bucket credential.
-    - **No enumeration tool.** The MCP exposes no "list sessions" surface. P6's `pathfinder_list_packages` reads the public CDN repository, not this bucket.
+    - **No enumeration tool.** The MCP exposes no "list sessions" surface. P6's repository read surface (now `pathfinder_read_repository` with `operation: "list-packages"`) reads the public CDN repository, not this bucket.
     - **Optional bind-to-`Mcp-Session-Id` on first write.** First mutation pins `<SESSION_TOKEN>` to the client's transport-layer `Mcp-Session-Id`. Subsequent mismatched calls return `404 not_found` (not `403`, to avoid confirming existence). Falls back gracefully when no `Mcp-Session-Id` is present (stdio transport).
     - **Don't log content. Ever.** Log `sessionToken` _prefix_ (12 chars) or hash, `generation`, `artifactBytes`, `gcsLatencyMs`. Cloud Run access logs are queryable by support; raw tokens in logs would re-introduce the leak surface we just closed.
 
@@ -319,12 +320,12 @@ The "long-lived Node sidecar" item from earlier drafts of this design is no long
 
 **Scope.**
 
-- New CDN client `src/cli/mcp/lib/repository-client.ts` — Node `fetch` against `repository.json` and per-package `content.json` / `manifest.json`. 60-second in-process TTL on `repository.json` only; per-package fetches are uncached. Repository base URL is read from `PATHFINDER_REPOSITORY_URL` (env var) with the CDN URL above as the default. Slash-normalization mirrors `buildPackageFileUrl` in `src/lib/package-recommendations-client.ts`.
+- New CDN client `src/cli/utils/repository-client.ts` (moved from `src/cli/mcp/lib/repository-client.ts` since #1639, now shared by the CLI and MCP surfaces) — Node `fetch` against `repository.json` and per-package `content.json` / `manifest.json`. 60-second in-process TTL on `repository.json` only; per-package fetches are uncached. Repository base URL is read from `PATHFINDER_REPOSITORY_URL` (env var) with the CDN URL above as the default. Slash-normalization mirrors `buildPackageFileUrl` in `src/lib/package-recommendations-client.ts`.
 - New tool group `src/cli/mcp/tools/repository-tools.ts`, registered alongside the existing groups in `src/cli/mcp/tools/index.ts`. Stateless; no artifact in/out.
-- Tools:
-  - `pathfinder_list_packages` — list packages from `repository.json`. Optional filters: `type` (`guide`/`path`/`journey`), `category`, `q` (substring on title and description). Returns `{ baseUrl, packages: [...] }`.
-  - `pathfinder_get_package` — fetch full `content.json` + `manifest.json` for one package by `id`. Returns the raw JSON plus a non-fatal `validation` field (Zod parse result via `ContentJsonSchema` and `ManifestJsonObjectSchema.loose()`); schema drift does not hard-fail the tool.
-  - `pathfinder_get_manifest` — manifest-only fetch for one package by `id`. Cheaper variant for dependency / composition exploration.
+- Tools (the three read tools were later consolidated into `pathfinder_read_repository` with an `operation` flag — see #1639; capabilities unchanged):
+  - `pathfinder_read_repository` `operation: "list-packages"` — list packages from `repository.json`. Optional filters: `type` (`guide`/`path`/`journey`), `category`, `q` (substring on title and description). Returns `{ baseUrl, packages: [...] }`.
+  - `pathfinder_read_repository` `operation: "get-package"` — fetch full `content.json` + `manifest.json` for one package by `id`. Returns the raw JSON plus a non-fatal `validation` field (Zod parse result via `ContentJsonSchema` and `ManifestJsonObjectSchema.loose()`); schema drift does not hard-fail the tool.
+  - `pathfinder_read_repository` `operation: "get-manifest"` — manifest-only fetch for one package by `id`. Cheaper variant for dependency / composition exploration.
   - `pathfinder_launch_package` — construct the existing `?doc=<cdn-content-url>` deep link the Pathfinder app already understands (see `src/utils/find-doc-page.ts` case 2 — `interactive-learning.grafana.net` URLs are already accepted via `isInteractiveLearningUrl`). Returns a relative `launchPath` (`/a/grafana-pathfinder-app?doc=...`) plus an absolute `launchUrl` when the caller passes `instanceUrl`. Optional `panelMode: "floating"` matches `finalize.ts`.
 - Tests follow the pattern in `src/package-engine/online-cdn-resolver.test.ts` — mock `fetch` and exercise: filtered list, unknown id, malformed JSON (validation fallback), CDN 5xx, env var override, launch URL construction with and without `instanceUrl`, slash-normalization edges.
 - Docker image passes `PATHFINDER_REPOSITORY_URL` through unchanged (env vars flow through; no Dockerfile changes needed).
@@ -340,15 +341,15 @@ The "long-lived Node sidecar" item from earlier drafts of this design is no long
 
 **Exit criteria.**
 
-- An MCP client can call `pathfinder_list_packages`, `pathfinder_get_package`, `pathfinder_get_manifest`, and `pathfinder_launch_package` against the default CDN with no configuration.
+- An MCP client can call `pathfinder_read_repository` (operations `list-packages` / `get-package` / `get-manifest`) and `pathfinder_launch_package` against the default CDN with no configuration.
 - Setting `PATHFINDER_REPOSITORY_URL` overrides the default, end-to-end (process env → tool → fetch URL).
 - `pathfinder_launch_package` returns a `launchPath` that, when appended to a Grafana instance origin, opens the targeted CDN guide in Pathfinder.
-- Schema drift in a CDN-hosted manifest does not hard-fail `pathfinder_get_package` or `pathfinder_get_manifest` — raw JSON is still returned alongside the validation issues.
+- Schema drift in a CDN-hosted manifest does not hard-fail `get-package` or `get-manifest` — raw JSON is still returned alongside the validation issues.
 - `pkg/plugin/mcp.go` is unchanged.
 
 ## Cross-cutting concerns
 
-- **Schema is owned by the CLI, end to end.** Every phase preserves boundary decision 1: the MCP performs no schema validation of its own. With the MCP and CLI sharing one TypeScript runtime and one Zod schema instance, this is structurally enforced — not just a code-review check.
+- **Guide schema is owned by the CLI, end to end.** Every phase preserves boundary decision 1: the MCP performs no guide-content validation of its own (since #1639 it preflights argument shape against the `pathfinder_help` interface, which never inspects content). With the MCP and CLI sharing one TypeScript runtime and one Zod schema instance, content ownership is structurally enforced — not just a code-review check.
 - **One canonical ID.** P1 tightens the regex; P3's finalize tool and P4's Assistant handoff must use the same string verbatim — no transformation. Cross-checked at exit of P4.
 - **Stateless artifact model.** P3 must not introduce server-side session state. If a future need emerges, the trigger is documented in [`AUTHORING-SESSION-ARTIFACTS.md` — Open questions](./AUTHORING-SESSION-ARTIFACTS.md#open-questions). A concrete deferred-work entry exists in [P5 — Deferred follow-ups](#p5--deferred-follow-ups) with sizing data from the 2026-05-01 Cloud Run telemetry run.
 - **CLI and MCP ship in lockstep as one npm package.** Schema version is pinned to `CURRENT_SCHEMA_VERSION` via the P2 prepublish script, so the CLI and MCP entrypoints cannot publish at different versions. Plugin and MCP package releases are coordinated through CI but published independently — the plugin no longer carries the CLI binary, so plugin and CLI release cadences are decoupled.

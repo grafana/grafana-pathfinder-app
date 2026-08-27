@@ -7,23 +7,91 @@ import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import type { JsonGuide } from '../types';
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
+import { APP_PLATFORM_API_VERSION, collectionUrl, itemUrl } from '../../../utils/interactive-guides-api';
 import { stripAuthorNotes } from '../utils/block-export';
+import { deriveManifest } from '../utils/derive-manifest';
+import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { logger } from '../../../lib/logging';
 
+export type BackendGuideMetadata = {
+  name: string;
+  namespace: string;
+  creationTimestamp?: string;
+  uid?: string;
+  resourceVersion?: string;
+  annotations?: Record<string, string>;
+  labels?: Record<string, string>;
+};
+
+export interface BackendGuideSpec {
+  id: string;
+  title: string;
+  schemaVersion?: string;
+  blocks: any[];
+  status?: 'draft' | 'published';
+  /** Package metadata. Absent on legacy content-only guides; derived on every editor save. */
+  manifest?: Record<string, unknown>;
+  [unownedField: string]: unknown;
+}
+
 interface BackendGuide {
-  metadata: {
-    name: string;
-    namespace: string;
-    creationTimestamp?: string;
-    uid?: string;
-    resourceVersion?: string;
-  };
-  spec: {
-    id: string;
-    title: string;
-    schemaVersion?: string;
-    blocks: any[];
-    status?: 'draft' | 'published';
+  metadata: BackendGuideMetadata;
+  spec: BackendGuideSpec;
+}
+
+/**
+ * A PUT replaces the whole object, so metadata the editor does not own must be carried through.
+ * `inheritUnowned: false` keeps the resourceVersion guard but drops annotations and labels — see
+ * `preservedSpec`.
+ */
+export function preservedMetadata(
+  resourceName: string,
+  namespace: string,
+  existingMetadata?: Partial<BackendGuideMetadata> | null,
+  inheritUnowned = true
+): Record<string, unknown> {
+  const metadata: Record<string, unknown> = { name: resourceName, namespace };
+  if (!existingMetadata) {
+    return metadata;
+  }
+  if (existingMetadata.resourceVersion !== undefined) {
+    metadata.resourceVersion = existingMetadata.resourceVersion;
+  }
+  if (!inheritUnowned) {
+    return metadata;
+  }
+  if (existingMetadata.annotations) {
+    metadata.annotations = existingMetadata.annotations;
+  }
+  if (existingMetadata.labels) {
+    metadata.labels = existingMetadata.labels;
+  }
+  return metadata;
+}
+
+/**
+ * Editor-owned fields layered over the spec last read, so `spec.manifest` survives the replace.
+ *
+ * `manifest` is derived rather than passed through untouched: an editor-authored guide has to be a
+ * complete package, not manifest-less content. `deriveManifest` merges over the inherited manifest and
+ * owns only what it can compute from the blocks, so a path cover page keeps its `type` and
+ * `milestones`. It gets the previously-read BLOCKS as well as the previously-read manifest, because
+ * deciding whether the editor owns `startingLocation` means asking what that content derived.
+ */
+export function preservedSpec(
+  guide: JsonGuide,
+  status: 'draft' | 'published',
+  existingSpec?: BackendGuideSpec | null
+): BackendGuideSpec {
+  return {
+    ...(existingSpec ?? {}),
+    id: guide.id,
+    title: guide.title,
+    // Normalised deliberately: the editor writes the schema version it emits, not the stored one.
+    schemaVersion: guide.schemaVersion || CURRENT_SCHEMA_VERSION,
+    blocks: guide.blocks,
+    status,
+    manifest: deriveManifest(guide, existingSpec?.manifest, existingSpec?.blocks),
   };
 }
 
@@ -37,11 +105,12 @@ export interface UseBackendGuidesReturn {
   saveGuide: (
     guide: JsonGuide,
     existingResourceName?: string,
-    existingMetadata?: any,
-    status?: 'draft' | 'published'
+    existingMetadata?: Partial<BackendGuideMetadata> | null,
+    status?: 'draft' | 'published',
+    replacesForeignResource?: boolean
   ) => Promise<void>;
-  publishGuide: (resourceName: string, currentMetadata: any) => Promise<void>;
-  unpublishGuide: (resourceName: string, currentMetadata: any) => Promise<void>;
+  publishGuide: (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => Promise<void>;
+  unpublishGuide: (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => Promise<void>;
   deleteGuide: (resourceName: string) => Promise<void>;
   isSaving: boolean;
 }
@@ -116,8 +185,9 @@ export function useBackendGuides(): UseBackendGuidesReturn {
     async (
       guide: JsonGuide,
       existingResourceName?: string,
-      existingMetadata?: any,
-      status: 'draft' | 'published' = 'draft'
+      existingMetadata?: Partial<BackendGuideMetadata> | null,
+      status: 'draft' | 'published' = 'draft',
+      replacesForeignResource = false
     ) => {
       if (!namespace) {
         throw new Error('No namespace available');
@@ -125,7 +195,6 @@ export function useBackendGuides(): UseBackendGuidesReturn {
 
       setIsSaving(true);
       try {
-        // Generate a resource name from the guide ID or title
         const resourceName =
           existingResourceName ||
           (guide.id || guide.title)
@@ -134,81 +203,70 @@ export function useBackendGuides(): UseBackendGuidesReturn {
             .replace(/-+/g, '-')
             .replace(/^-|-$/g, '');
 
-        // Validate resource name is not empty
         if (!resourceName || resourceName.length === 0) {
           throw new Error('Guide title or ID must contain at least one alphanumeric character');
         }
 
-        // Build metadata - preserve existing metadata for updates
-        const metadata: any = {
-          name: resourceName,
-          namespace: namespace,
-        };
-
-        // For updates, include resourceVersion from existing metadata
-        if (existingResourceName && existingMetadata) {
-          metadata.resourceVersion = existingMetadata.resourceVersion;
+        let existing = existingResourceName ? guides.find((g) => g.metadata.name === existingResourceName) : undefined;
+        // An absent entry does not mean an absent resource: a transient LIST failure resolves to an
+        // empty list rather than an error, so confirm with the server before refusing. Without this
+        // one failed refresh would make the guide permanently unsaveable. Probed rather than
+        // refreshed: committing the result would clear a live error and store an empty catalogue,
+        // hiding the guide-library entry that is the only way back.
+        if (existingResourceName && !existing) {
+          const probed = await fetchBackendGuides(namespace);
+          existing = probed.find((g) => g.metadata.name === existingResourceName);
+        }
+        // Fail closed rather than replace a resource whose current spec is not in hand: the write
+        // would drop spec.manifest and the provenance annotations, and with no resourceVersion it
+        // would not even 409 against a concurrent writer.
+        if (existingResourceName && !existing) {
+          throw new Error(`Could not read the saved guide "${existingResourceName}" — try saving again.`);
         }
 
-        // Strip editor-only `authorNote` fields from every block before
-        // sending to the backend — author notes are private to the
-        // editor session and must never be persisted in the published
-        // resource.
+        // Caller metadata wins per field, not wholesale — partial metadata must not suppress the
+        // snapshot's resourceVersion and take the conflict check with it.
+        const priorMetadata = existing ? { ...existing.metadata, ...(existingMetadata ?? {}) } : undefined;
+
+        // A name-collision overwrite writes a guide that did not come from the stored resource, so
+        // inheriting its manifest would render this guide as that path, and inheriting its
+        // provenance annotations would let the upload script's ownership guard pass on content it
+        // never wrote.
+        const inheritUnowned = !replacesForeignResource;
+        const metadata = preservedMetadata(resourceName, namespace, priorMetadata, inheritUnowned);
+
+        // Author notes are private to the editor session and must never be persisted.
         const exportable = stripAuthorNotes(guide);
 
-        // Wrap guide in Kubernetes resource format
         const k8sResource = {
-          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
+          apiVersion: APP_PLATFORM_API_VERSION,
           kind: 'InteractiveGuide',
           metadata,
-          spec: {
-            id: exportable.id,
-            title: exportable.title,
-            schemaVersion: exportable.schemaVersion || '1.0',
-            blocks: exportable.blocks,
-            status,
-          },
+          spec: preservedSpec(exportable, status, inheritUnowned ? existing?.spec : undefined),
         };
 
-        const baseUrl = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides`;
+        await lastValueFrom(
+          getBackendSrv().fetch({
+            url: existingResourceName ? itemUrl(namespace, existingResourceName) : collectionUrl(namespace),
+            method: existingResourceName ? 'PUT' : 'POST',
+            data: k8sResource,
+            showErrorAlert: false,
+          })
+        );
 
-        if (existingResourceName) {
-          // Update existing guide (PUT)
-          const url = `${baseUrl}/${existingResourceName}`;
-          await lastValueFrom(
-            getBackendSrv().fetch({
-              url,
-              method: 'PUT',
-              data: k8sResource,
-              showErrorAlert: false,
-            })
-          );
-        } else {
-          // Create new guide (POST)
-          await lastValueFrom(
-            getBackendSrv().fetch({
-              url: baseUrl,
-              method: 'POST',
-              data: k8sResource,
-              showErrorAlert: false,
-            })
-          );
-        }
-
-        // Refresh the list after saving
         await refreshGuides();
       } finally {
         setIsSaving(false);
       }
     },
-    [namespace, refreshGuides]
+    [namespace, guides, refreshGuides]
   );
 
   /**
    * Publish an existing guide — sets spec.status to 'published' without changing content.
    */
   const publishGuide = useCallback(
-    async (resourceName: string, currentMetadata: any) => {
+    async (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => {
       if (!namespace) {
         throw new Error('No namespace available');
       }
@@ -220,28 +278,21 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           throw new Error(`Guide "${resourceName}" not found in local list`);
         }
 
-        const metadata: any = {
-          name: resourceName,
-          namespace,
-          resourceVersion: currentMetadata.resourceVersion,
-        };
+        const metadata = preservedMetadata(resourceName, namespace, {
+          ...existing.metadata,
+          ...(currentMetadata ?? {}),
+        });
 
-        const k8sResource = {
-          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
-          kind: 'InteractiveGuide',
-          metadata,
-          spec: {
-            ...existing.spec,
-            status: 'published' as const,
-          },
-        };
-
-        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
         await lastValueFrom(
           getBackendSrv().fetch({
-            url,
+            url: itemUrl(namespace, resourceName),
             method: 'PUT',
-            data: k8sResource,
+            data: {
+              apiVersion: APP_PLATFORM_API_VERSION,
+              kind: 'InteractiveGuide',
+              metadata,
+              spec: { ...existing.spec, status: 'published' as const },
+            },
             showErrorAlert: false,
           })
         );
@@ -258,7 +309,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
    * Unpublish a guide — sets spec.status to 'draft', removing it from the docs panel.
    */
   const unpublishGuide = useCallback(
-    async (resourceName: string, currentMetadata: any) => {
+    async (resourceName: string, currentMetadata: Partial<BackendGuideMetadata> | null) => {
       if (!namespace) {
         throw new Error('No namespace available');
       }
@@ -270,28 +321,21 @@ export function useBackendGuides(): UseBackendGuidesReturn {
           throw new Error(`Guide "${resourceName}" not found in local list`);
         }
 
-        const metadata: any = {
-          name: resourceName,
-          namespace,
-          resourceVersion: currentMetadata.resourceVersion,
-        };
+        const metadata = preservedMetadata(resourceName, namespace, {
+          ...existing.metadata,
+          ...(currentMetadata ?? {}),
+        });
 
-        const k8sResource = {
-          apiVersion: 'pathfinderbackend.ext.grafana.com/v1alpha1',
-          kind: 'InteractiveGuide',
-          metadata,
-          spec: {
-            ...existing.spec,
-            status: 'draft' as const,
-          },
-        };
-
-        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
         await lastValueFrom(
           getBackendSrv().fetch({
-            url,
+            url: itemUrl(namespace, resourceName),
             method: 'PUT',
-            data: k8sResource,
+            data: {
+              apiVersion: APP_PLATFORM_API_VERSION,
+              kind: 'InteractiveGuide',
+              metadata,
+              spec: { ...existing.spec, status: 'draft' as const },
+            },
             showErrorAlert: false,
           })
         );
@@ -314,11 +358,9 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       }
 
       try {
-        const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides/${resourceName}`;
-
         await lastValueFrom(
           getBackendSrv().fetch({
-            url,
+            url: itemUrl(namespace, resourceName),
             method: 'DELETE',
             showErrorAlert: false,
           })

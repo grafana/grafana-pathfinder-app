@@ -59,6 +59,7 @@ describe('resolvePackageById', () => {
     });
     expect(res.ok && res.manifest?.type).toBe('guide');
     expect(res.ok && res.manifest?.testEnvironment?.tier).toBe('local');
+    expect(res.ok && res.manifest?.startingLocation).toBeUndefined();
   });
 
   it('maps a 404 from the resolver to a failure', async () => {

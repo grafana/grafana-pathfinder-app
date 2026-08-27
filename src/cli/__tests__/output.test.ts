@@ -1,16 +1,8 @@
 import { Command, Option } from 'commander';
+import { z } from 'zod';
 
-import { JsonInteractiveBlockSchema } from '../../types/json-guide.schema';
-import {
-  formatHelpAsJson,
-  issueToOutcome,
-  printOutcome,
-  readOutputOptions,
-  renderMachineJson,
-  type CommandOutcome,
-  type HelpJson,
-} from '../utils/output';
-import { registerSchemaOptions } from '../utils/schema-options';
+import { CLI_VIEW, defineCommand, readOutputOptions, renderInterface } from '../contracts';
+import { issueToOutcome, printOutcome, renderMachineJson, type CommandOutcome, type HelpJson } from '../utils/output';
 
 // `printOutcome` writes to process stdout/stderr; we capture both so the
 // tests can assert on the rendered bytes for each output mode without
@@ -189,6 +181,36 @@ describe('printOutcome', () => {
       expect(stdout).not.toContain('Warnings:');
     });
   });
+
+  describe('dialect spelling', () => {
+    // `spellOutcome` itself is unit-tested in `param-spelling.test.ts`; this
+    // exercises the call `printOutcome` makes internally (CR-4), so a runner
+    // that leaves a `{@name}` reference unspelled is caught at the boundary
+    // callers actually go through, not just at the helper underneath it.
+    const unspelled: CommandOutcome = {
+      status: 'error',
+      code: 'SCHEMA_VALIDATION',
+      message: 'use at most one of {@before}/{@after}/{@position}',
+    };
+
+    it('spells a parameter reference into a CLI flag in text mode', () => {
+      const { stderr } = captureOutput(() => printOutcome(unspelled, { format: 'text', quiet: false }));
+      expect(stderr).toContain('use at most one of --before/--after/--position');
+      expect(stderr).not.toContain('{@');
+    });
+
+    it('spells a parameter reference into a CLI flag in --format json', () => {
+      const { stderr } = captureOutput(() => printOutcome(unspelled, { format: 'json', quiet: false }));
+      const parsed = JSON.parse(stderr);
+      expect(parsed.message).toBe('use at most one of --before/--after/--position');
+    });
+
+    it('is idempotent for an outcome an adapter already spelled', () => {
+      const spelled: CommandOutcome = { ...unspelled, message: 'use at most one of before/after/position' };
+      const { stderr } = captureOutput(() => printOutcome(spelled, { format: 'text', quiet: false }));
+      expect(stderr).toContain('use at most one of before/after/position');
+    });
+  });
 });
 
 describe('issueToOutcome', () => {
@@ -212,78 +234,60 @@ describe('issueToOutcome', () => {
   });
 });
 
-describe('formatHelpAsJson — stability contract', () => {
-  it('emits the documented top-level keys for an authoring command', () => {
-    const cmd = new Command('interactive')
-      .description('Append an interactive block')
-      .argument('<dir>')
-      .addOption(new Option('--parent <id>'))
-      .addOption(new Option('--branch <branch>').choices(['true', 'false']))
-      .addOption(new Option('--if-absent'));
-    // The bridge contributes `--id` from the schema; addressing flags shared
-    // with addressing-set members (parent/branch/if-absent) are already
-    // pre-registered above. `skipExisting` keeps the bridge from colliding.
-    registerSchemaOptions(cmd, JsonInteractiveBlockSchema, { skipExisting: true });
+describe('--help --format json — stability contract', () => {
+  // The published shape is now rendered from a schema. These pin the claims
+  // `docs/design/AGENT-AUTHORING.md` makes about it, at the level where value types are
+  // decided; `help-json.test.ts` covers the per-command and root-listing wrapper.
+  const spec = defineCommand({
+    name: 'interactive',
+    summary: 'Append an interactive block',
+    schema: z.object({
+      dir: z.string().describe('package directory').meta({ role: 'io' }),
+      action: z.enum(['highlight', 'navigate']).describe('Action').meta({ role: 'content' }),
+      tooltip: z.string().optional().describe('Tooltip').meta({ role: 'content' }),
+      start: z.number().optional().describe('Start time in seconds').meta({ role: 'content' }),
+      showMe: z.boolean().default(false).describe('Show me').meta({ role: 'control' }),
+      targetPlatform: z
+        .array(z.enum(['oss', 'cloud', 'enterprise']))
+        .default([])
+        .describe('Platforms')
+        .meta({ role: 'content' }),
+    }),
+    run: async () => ({ status: 'ok', summary: 'ok' }),
+  });
+  const help = renderInterface(spec, CLI_VIEW);
+  const all = [...help.required, ...help.optional, ...(help.addressing ?? [])];
+  const flag = (name: string) => all.find((entry) => entry.name === name);
 
-    const help = formatHelpAsJson(cmd);
-    expect(Object.keys(help).sort()).toEqual(
-      expect.arrayContaining(['command', 'summary', 'required', 'optional', 'addressing'])
-    );
+  it('emits the documented top-level keys', () => {
+    expect(Object.keys(help).sort()).toEqual(['command', 'optional', 'required', 'summary']);
     expect(help.command).toBe('interactive');
     expect(help.summary).toBe('Append an interactive block');
   });
 
-  it('separates required, optional, and addressing flags', () => {
-    const cmd = new Command('interactive')
-      .description('Append an interactive block')
-      .addOption(new Option('--parent <id>'));
-    registerSchemaOptions(cmd, JsonInteractiveBlockSchema);
-
-    const help = formatHelpAsJson(cmd);
-
-    // `parent` and `id` always live in addressing.
-    const addressingNames = (help.addressing ?? []).map((f) => f.name);
-    expect(addressingNames).toContain('parent');
-    expect(addressingNames).toContain('id');
-
-    // Interactive's required fields: action and content. Discriminator
-    // (`type`) is filtered out.
-    const requiredNames = help.required.map((f) => f.name).sort();
-    expect(requiredNames).toEqual(['action', 'content']);
+  it('splits required from optional on schema optionality', () => {
+    expect(help.required.map((entry) => entry.name)).toEqual(['dir', 'action']);
+    expect(help.optional.map((entry) => entry.name)).toContain('tooltip');
   });
 
-  it('declares per-flag valueType, enum, and repeatable as part of the contract', () => {
-    const cmd = new Command('interactive');
-    registerSchemaOptions(cmd, JsonInteractiveBlockSchema);
-    const help = formatHelpAsJson(cmd);
-    const all = [...help.required, ...help.optional, ...(help.addressing ?? [])];
-
-    const action = all.find((f) => f.name === 'action');
-    expect(action?.valueType).toBe('enum');
-    expect(action?.enum).toEqual(['highlight', 'button', 'formfill', 'navigate', 'hover', 'noop', 'popout']);
-
-    const requirements = all.find((f) => f.name === 'requirements');
-    expect(requirements?.valueType).toBe('array');
-    expect(requirements?.repeatable).toBe(true);
-
-    const showMe = all.find((f) => f.name === 'show-me');
-    expect(showMe?.valueType).toBe('boolean');
+  it('declares per-flag valueType, enum, and repeatable', () => {
+    expect(flag('action')).toMatchObject({ valueType: 'enum', enum: ['highlight', 'navigate'] });
+    expect(flag('start')?.valueType).toBe('number');
+    expect(flag('show-me')?.valueType).toBe('boolean');
   });
 
-  it('lists subcommand names when the command has children', () => {
-    const parent = new Command('add-block').description('Append a block');
-    parent.addCommand(new Command('markdown'));
-    parent.addCommand(new Command('interactive'));
-    const help = formatHelpAsJson(parent);
-    expect(help.subcommands).toEqual(['markdown', 'interactive']);
+  // A repeatable enum publishes as an enum-constrained array. Pinned since 1.1.0, when
+  // reporting `--target-platform` as a plain enum made consumers reject list values.
+  it('publishes repeatable enums as enum-constrained arrays', () => {
+    expect(flag('target-platform')).toMatchObject({
+      valueType: 'array',
+      enum: ['oss', 'cloud', 'enterprise'],
+      repeatable: true,
+    });
   });
 
   it('produces a JSON-serializable shape', () => {
-    const cmd = new Command('test').description('demo');
-    cmd.addOption(new Option('--name <string>'));
-    const help: HelpJson = formatHelpAsJson(cmd);
-    expect(() => JSON.stringify(help)).not.toThrow();
     const round = JSON.parse(JSON.stringify(help)) as HelpJson;
-    expect(round.command).toBe('test');
+    expect(round.command).toBe('interactive');
   });
 });

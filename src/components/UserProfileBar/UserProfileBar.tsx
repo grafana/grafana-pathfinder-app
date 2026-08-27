@@ -1,11 +1,3 @@
-/**
- * UserProfileBar Component
- *
- * A compact, single-row component showing badge progress, guide count,
- * streak info, and a CTA to open the next recommended guide.
- * Replaces the old "Recommended learning" header in the context panel.
- */
-
 import React from 'react';
 import { useStyles2, Icon, Tooltip } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -21,6 +13,27 @@ interface UserProfileBarProps {
 export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
   const styles = useStyles2(getUserProfileBarStyles);
   const { badgesEarned, badgesTotal, guidesCompleted, streakDays, nextAction, isLoading } = useNextLearningAction();
+  const badgesTooltip = t('userProfileBar.badgesTooltip', '{{- earned}} of {{- total}} badges earned', {
+    earned: badgesEarned,
+    total: badgesTotal,
+  });
+  const guidesTooltip = t(
+    'userProfileBar.guidesTooltip',
+    guidesCompleted === 1 ? '{{- count}} learning guide completed' : '{{- count}} learning guides completed',
+    {
+      count: guidesCompleted,
+    }
+  );
+  const guidesLabel = t('userProfileBar.guides', guidesCompleted === 1 ? 'guide' : 'guides', {
+    count: guidesCompleted,
+  });
+  const streakTooltip = t('userProfileBar.streakTooltip', '{{- days}}-day learning streak — keep it going!', {
+    count: streakDays,
+    days: streakDays,
+  });
+  const daysLabel = t('userProfileBar.days', streakDays === 1 ? 'day' : 'days', {
+    count: streakDays,
+  });
 
   if (isLoading) {
     return (
@@ -34,20 +47,8 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
 
   return (
     <div className={styles.container} data-testid={testIds.contextPanel.userProfileBar}>
-      {/* Badge count */}
-      <Tooltip
-        content={t('userProfileBar.badgesTooltip', '{{- earned}} of {{- total}} badges earned', {
-          earned: badgesEarned,
-          total: badgesTotal,
-        })}
-      >
-        <span
-          className={styles.stat}
-          aria-label={t('userProfileBar.badgesTooltip', '{{- earned}} of {{- total}} badges earned', {
-            earned: badgesEarned,
-            total: badgesTotal,
-          })}
-        >
+      <Tooltip content={badgesTooltip}>
+        <span className={styles.stat} aria-label={badgesTooltip}>
           <span className={styles.starEmoji} aria-hidden="true">
             🏆
           </span>
@@ -57,45 +58,24 @@ export function UserProfileBar({ onOpenGuide }: UserProfileBarProps) {
         </span>
       </Tooltip>
 
-      {/* Guides completed */}
-      <Tooltip
-        content={t('userProfileBar.guidesTooltip', '{{- count}} learning guides completed', {
-          count: guidesCompleted,
-        })}
-      >
-        <span
-          className={styles.stat}
-          aria-label={t('userProfileBar.guidesTooltip', '{{- count}} learning guides completed', {
-            count: guidesCompleted,
-          })}
-        >
+      <Tooltip content={guidesTooltip}>
+        <span className={styles.stat} aria-label={guidesTooltip}>
           <Icon name="book" size="sm" className={styles.bookIcon} />
-          <span className={styles.statValue}>{guidesCompleted}</span> {t('userProfileBar.guides', 'guides')}
+          <span className={styles.statValue}>{guidesCompleted}</span> {guidesLabel}
         </span>
       </Tooltip>
 
-      {/* Streak (only when > 0) */}
       {streakDays > 0 && (
-        <Tooltip
-          content={t('userProfileBar.streakTooltip', '{{- days}}-day learning streak — keep it going!', {
-            days: streakDays,
-          })}
-        >
-          <span
-            className={styles.stat}
-            aria-label={t('userProfileBar.streakTooltip', '{{- days}}-day learning streak — keep it going!', {
-              days: streakDays,
-            })}
-          >
+        <Tooltip content={streakTooltip}>
+          <span className={styles.stat} aria-label={streakTooltip}>
             <span className={styles.fireEmoji} aria-hidden="true">
               🔥
             </span>
-            <span className={styles.statValue}>{streakDays}</span> {t('userProfileBar.days', 'days')}
+            <span className={styles.statValue}>{streakDays}</span> {daysLabel}
           </span>
         </Tooltip>
       )}
 
-      {/* Next action CTA or all-complete message */}
       {nextAction ? (
         <Tooltip
           content={t('userProfileBar.nextTooltip', 'Continue "{{- pathTitle}}" — {{- percent}}% done', {

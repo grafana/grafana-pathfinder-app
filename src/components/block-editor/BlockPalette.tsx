@@ -7,14 +7,12 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Icon, Portal, useStyles2 } from '@grafana/ui';
-import { GrafanaTheme2, usePluginContext } from '@grafana/data';
+import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { BLOCK_TYPE_METADATA, BLOCK_TYPE_ORDER, BLOCK_TYPE_GROUPS } from './constants';
-import { getConfigWithDefaults } from '../../constants';
 import { testIds } from '../../constants/testIds';
+import { CODA_BLOCK_TYPES, useCodaBlockTypesAvailable } from './coda-block-types';
 import type { BlockType, OnBlockTypeSelect } from './types';
-
-const CODA_BLOCK_TYPES: BlockType[] = ['terminal', 'terminal-connect'];
 
 // Styles for the palette modal
 const getPaletteModalStyles = (theme: GrafanaTheme2) => ({
@@ -258,12 +256,6 @@ export function BlockPalette({
   const styles = useStyles2(getPaletteModalStyles);
   const [isOpen, setIsOpen] = useState(false);
 
-  const pluginContext = usePluginContext();
-  const pluginConfig = useMemo(
-    () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}),
-    [pluginContext?.meta?.jsonData]
-  );
-
   // Determine which trigger style to use
   const getTriggerClassName = () => {
     if (embedded) {
@@ -272,12 +264,13 @@ export function BlockPalette({
     return compact ? styles.triggerCompact : styles.trigger;
   };
 
-  const effectiveExcludeTypes = useMemo(() => {
-    if (pluginConfig.enableCodaTerminal) {
-      return excludeTypes;
-    }
-    return [...excludeTypes, ...CODA_BLOCK_TYPES];
-  }, [excludeTypes, pluginConfig.enableCodaTerminal]);
+  // Terminal blocks need both Pathfinder's own toggle and the separate Coda app
+  // plugin; offering them when the backend is absent would author broken guides.
+  const codaBlocksAvailable = useCodaBlockTypesAvailable();
+  const effectiveExcludeTypes = useMemo(
+    () => (codaBlocksAvailable ? excludeTypes : [...excludeTypes, ...CODA_BLOCK_TYPES]),
+    [excludeTypes, codaBlocksAvailable]
+  );
 
   const availableTypes = BLOCK_TYPE_ORDER.filter((type) => !effectiveExcludeTypes.includes(type));
 
@@ -293,9 +286,8 @@ export function BlockPalette({
     setPaletteWasOpen(isOpen);
   }
 
-  // Filtered + grouped views derived from `availableTypes`. We keep
-  // the original group order; types within a group keep their
-  // BLOCK_TYPE_ORDER relative ordering.
+  // Filtered + grouped views derived from `availableTypes`. Group order and
+  // intra-group order both come from BLOCK_TYPE_GROUPS.
   const filteredGroups = useMemo(() => {
     const q = filter.trim().toLowerCase();
     const match = (type: BlockType): boolean => {
@@ -407,7 +399,11 @@ export function BlockPalette({
                   <div className={styles.emptyFilter}>No block types match &quot;{filter}&quot;</div>
                 ) : (
                   filteredGroups.map((group) => (
-                    <div key={group.id} className={styles.group}>
+                    <div
+                      key={group.id}
+                      className={styles.group}
+                      data-testid={testIds.blockEditor.paletteGroup(group.id)}
+                    >
                       <div className={styles.groupHeader}>{group.label}</div>
                       <div className={styles.grid}>
                         {group.types.map((type) => {

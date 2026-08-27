@@ -7,7 +7,16 @@
 
 import type { ContentJson, ManifestJson } from '../types/package.types';
 
+jest.mock('../lib/package-recommendations-client', () => ({
+  fetchOnlinePackageRecommendations: jest.fn(),
+}));
+
+import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
 import { RecommenderPackageResolver } from './recommender-resolver';
+
+const fetchOnlinePackageRecommendationsMock = fetchOnlinePackageRecommendations as jest.MockedFunction<
+  typeof fetchOnlinePackageRecommendations
+>;
 
 const BASE_URL = 'https://recommender.example.com';
 
@@ -40,6 +49,7 @@ describe('RecommenderPackageResolver', () => {
   beforeEach(() => {
     resolver = new RecommenderPackageResolver(BASE_URL);
     jest.clearAllMocks();
+    fetchOnlinePackageRecommendationsMock.mockResolvedValue({ baseUrl: '', packages: [] });
   });
 
   describe('resolve (metadata only)', () => {
@@ -145,6 +155,66 @@ describe('RecommenderPackageResolver', () => {
         expect(result.error.code).toBe('network-error');
         expect(result.error.message).toBe('Unknown network error');
       }
+    });
+  });
+
+  describe('entryTitle cross-reference (recommender endpoint carries no title field)', () => {
+    // manifestUrl omitted so loadFromCdn's optional manifest fetch is skipped —
+    // these tests are scoped to entryTitle, not manifest loading.
+    const RESOLUTION_NO_MANIFEST = { ...FIXTURE_RESOLUTION, manifestUrl: '' };
+
+    it('sets entryTitle from the CDN index when loadContent is requested and the id has a matching entry', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(RESOLUTION_NO_MANIFEST),
+      });
+      fetchOnlinePackageRecommendationsMock.mockResolvedValue({
+        baseUrl: 'https://interactive-learning.grafana.net/packages/',
+        packages: [{ id: 'alerting-101', path: 'alerting-101/', title: 'Grafana Alerting 101' }],
+      });
+
+      const result = await resolver.resolve('alerting-101', { loadContent: 'metadata-only' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.entryTitle).toBe('Grafana Alerting 101');
+      }
+    });
+
+    it('leaves entryTitle unset when the index has no matching entry', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(RESOLUTION_NO_MANIFEST),
+      });
+      fetchOnlinePackageRecommendationsMock.mockResolvedValue({ baseUrl: '', packages: [] });
+
+      const result = await resolver.resolve('alerting-101', { loadContent: 'metadata-only' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.entryTitle).toBeUndefined();
+      }
+    });
+
+    // Regression guard for a real latency issue: this fetch used to run
+    // unconditionally, blocking fast/no-content callers (e.g. fetchPackageById's
+    // verifyPublished probe) on a CDN index fetch they had no use for.
+    it('does not fetch the CDN index — or set entryTitle — when loadContent is not requested', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(RESOLUTION_NO_MANIFEST),
+      });
+
+      const result = await resolver.resolve('alerting-101');
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.entryTitle).toBeUndefined();
+      }
+      expect(fetchOnlinePackageRecommendationsMock).not.toHaveBeenCalled();
     });
   });
 

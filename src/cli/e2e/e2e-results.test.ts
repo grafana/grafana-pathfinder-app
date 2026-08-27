@@ -23,7 +23,9 @@ import {
   exitCodeFromResults,
   guideResultReason,
   preRunSkipsFromResults,
+  provisioningErrorCode,
   provisioningFailureResults,
+  runnerFailureResult,
   resolveRunMode,
   skipToResult,
   summarizeSteps,
@@ -32,7 +34,7 @@ import {
   type GuideRunResult,
 } from './e2e-results';
 import type { ResolvedRemoteGuide, SkippedPackage } from './e2e-package';
-import type { TestResultsData } from './e2e-reporter';
+import { generateReport, type TestResultsData } from './e2e-reporter';
 import { ExitCode } from './exit-codes';
 
 const READONLY_SIDE_EFFECTS = { level: 'readonly' as const, reasons: [] };
@@ -121,6 +123,7 @@ describe('buildPackageMetaMap', () => {
         instance: 'play.grafana.org',
         targetUrl: 'http://localhost:3000',
         sourceUrl: 'https://cdn.test/a/content.json',
+        startingLocation: '/d/example/example',
         sideEffects: READONLY_SIDE_EFFECTS,
       },
     ];
@@ -131,6 +134,7 @@ describe('buildPackageMetaMap', () => {
       instance: 'play.grafana.org',
       targetUrl: 'http://localhost:3000',
       sourceUrl: 'https://cdn.test/a/content.json',
+      startingLocation: '/d/example/example',
       sideEffects: READONLY_SIDE_EFFECTS,
     });
   });
@@ -155,6 +159,7 @@ describe('applyPackageMeta', () => {
       instance: 'play.grafana.org',
       targetUrl: 'http://should-not-overwrite:3000',
       sourceUrl: 'https://cdn.test/a/content.json',
+      startingLocation: '/d/example/example',
       sideEffects: READONLY_SIDE_EFFECTS,
     });
 
@@ -166,6 +171,7 @@ describe('applyPackageMeta', () => {
       tier: 'local',
       instance: 'play.grafana.org',
       sourceUrl: 'https://cdn.test/a/content.json',
+      startingLocation: '/d/example/example',
       sideEffects: READONLY_SIDE_EFFECTS,
     });
   });
@@ -179,9 +185,55 @@ describe('applyPackageMeta', () => {
 
     expect(() => applyPackageMeta(undefined, { packageId: 'a' })).not.toThrow();
   });
+
+  it('preserves the effective report starting location when package metadata omits it', () => {
+    const data = reportData();
+    data.guide.startingLocation = '/connections/datasources/edit/uid?tab=settings#details';
+
+    applyPackageMeta(data, {
+      packageId: 'a',
+      tier: 'local',
+      sourceUrl: 'https://cdn.test/a/content.json',
+    });
+
+    expect(data.guide.startingLocation).toBe('/connections/datasources/edit/uid?tab=settings#details');
+  });
+
+  it.each([
+    ['connections?tab=x#details', '/connections?tab=x#details'],
+    ['http://localhost:3000/connections?tab=x#details', '/connections?tab=x#details'],
+  ])('preserves the normalized runner path for authored location %s', (authored, normalized) => {
+    const data = reportData();
+    data.guide.startingLocation = normalized;
+
+    applyPackageMeta(data, {
+      packageId: 'a',
+      tier: 'local',
+      sourceUrl: 'https://cdn.test/a/content.json',
+      startingLocation: authored,
+    });
+
+    expect(data.guide.startingLocation).toBe(normalized);
+  });
 });
 
 describe('provisioningFailureResults', () => {
+  it('normalizes pool-manager capacity errors to the report contract', () => {
+    const results = provisioningFailureResults(
+      [{ id: 'capacity-guide', guide: { path: 'capacity/content.json' }, autoIncluded: false }],
+      new Map(),
+      'https://learn.grafana.net/',
+      'Cloud target provisioning failed: no_capacity',
+      provisioningErrorCode({ code: 'no_capacity' })
+    );
+
+    const report = generateReport(results[0]!.resultsData!);
+    expect(report).toMatchObject({
+      outcome: 'infrastructure_error',
+      errorCode: 'NO_CAPACITY',
+      abortReason: 'PROVISIONING_FAILED',
+    });
+  });
   it('builds failed aborted guide results with package metadata', () => {
     const results = provisioningFailureResults(
       [{ id: 'cloud-guide', guide: { path: 'https://cdn.test/cloud-guide/content.json' }, autoIncluded: true }],
@@ -230,6 +282,46 @@ describe('provisioningFailureResults', () => {
       aborted: true,
       abortReason: 'PROVISIONING_FAILED',
       abortMessage: 'Cloud target provisioning failed: terraform apply failed',
+    });
+
+    const report = generateReport(results[0]!.resultsData!);
+    expect(report).toMatchObject({
+      outcome: 'infrastructure_error',
+      errorCode: 'PROVISIONING_FAILED',
+    });
+  });
+});
+
+describe('runnerFailureResult', () => {
+  it('converts a thrown runner error into a retained per-guide configuration failure', () => {
+    const result = runnerFailureResult(
+      {
+        id: 'bad-guide',
+        guide: { path: 'https://cdn.test/bad-guide/content.json', content: '{"id":"bad-guide"}' },
+        autoIncluded: false,
+      },
+      {
+        packageId: 'bad-guide',
+        tier: 'cloud',
+        targetUrl: 'https://play.grafana.org/',
+        sourceUrl: 'https://cdn.test/bad-guide/content.json',
+      },
+      'http://localhost:3000',
+      new Error('Invalid starting location')
+    );
+
+    expect(result).toMatchObject({
+      id: 'bad-guide',
+      status: 'failed',
+      exitCode: ExitCode.CONFIGURATION_ERROR,
+      abortMessage: 'Runner setup failed: Invalid starting location',
+      resultsData: {
+        outcome: 'configuration_error',
+        errorCode: 'CONFIGURATION_ERROR',
+        errorMessage: 'Runner setup failed: Invalid starting location',
+        guide: { targetUrl: 'http://localhost:3000' },
+        results: [],
+      },
     });
   });
 });
@@ -322,6 +414,20 @@ describe('exitCodeFromResults', () => {
 
   it('prioritizes AUTH_FAILURE over a generic test failure', () => {
     expect(exitCodeFromResults([result('failed'), result('auth_expired')])).toBe(ExitCode.AUTH_FAILURE);
+  });
+  it('prioritizes a guide setup error over authentication and test failures', () => {
+    expect(
+      exitCodeFromResults([
+        { ...result('failed'), exitCode: ExitCode.CONFIGURATION_ERROR },
+        result('auth_expired'),
+        result('failed'),
+      ])
+    ).toBe(ExitCode.CONFIGURATION_ERROR);
+  });
+
+  it('prioritizes CONFIGURATION_ERROR when the report schema is invalid', () => {
+    expect(exitCodeFromResults([result('passed')], false)).toBe(ExitCode.CONFIGURATION_ERROR);
+    expect(exitCodeFromResults([result('failed'), result('auth_expired')], false)).toBe(ExitCode.CONFIGURATION_ERROR);
   });
 });
 

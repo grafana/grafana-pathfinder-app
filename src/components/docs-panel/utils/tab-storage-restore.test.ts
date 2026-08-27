@@ -5,10 +5,17 @@
 import {
   restoreTabsFromStorage,
   restoreActiveTabFromStorage,
+  mergeRestoredTabsWithExisting,
   createUrlValidator,
   TabStorage,
 } from './tab-storage-restore';
-import { PersistedTabData } from '../../../types/content-panel.types';
+import {
+  LearningJourneyTab,
+  PathContext,
+  PendingAlignment,
+  PersistedTabData,
+} from '../../../types/content-panel.types';
+import type { RawContent } from '../../../types/content.types';
 
 // Mock TabStorage
 const createMockTabStorage = (tabs: PersistedTabData[] | null = null, activeTab: string | null = null): TabStorage => ({
@@ -110,6 +117,94 @@ describe('tab-storage-restore', () => {
       expect(tabs).toHaveLength(2); // recommendations + devtools
       expect(tabs[1]!.id).toBe('devtools');
       expect(tabs[1]!.type).toBe('devtools');
+    });
+
+    it('rejects noncanonical reserved IDs and unknown persisted types', async () => {
+      const persistedTabs: PersistedTabData[] = [
+        {
+          id: 'devtools',
+          title: 'Disguised Dev Tools',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'docs',
+        },
+        {
+          id: 'tab-1',
+          title: 'Disguised docs tab',
+          baseUrl: '',
+          type: 'devtools',
+        },
+        {
+          id: 'editor',
+          title: 'Disguised editor',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'docs',
+        },
+        {
+          id: 'tab-1',
+          title: 'Content claiming editor privileges',
+          baseUrl: '',
+          type: 'editor',
+        },
+        {
+          id: 'tab-2',
+          title: 'Garbage kind',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'not-a-real-kind' as PersistedTabData['type'],
+        },
+        {
+          id: 'tab-3',
+          title: 'Numeric kind',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          // Simulate tampered storage that bypassed TypeScript.
+          type: 42 as unknown as PersistedTabData['type'],
+        },
+        {
+          id: 'recommendations',
+          title: 'Disguised home',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'docs',
+        },
+        {
+          id: 'tab-4',
+          title: 'Content claiming home',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          type: 'recommendations',
+        },
+      ];
+
+      const storage = createMockTabStorage(persistedTabs);
+      const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
+
+      expect(tabs).toEqual([expect.objectContaining({ id: 'recommendations', type: 'recommendations' })]);
+    });
+
+    it('keeps the first record when persisted tab IDs are duplicated', async () => {
+      const persistedTabs: PersistedTabData[] = [
+        { id: 'devtools', title: 'Dev Tools', baseUrl: '', currentUrl: '', type: 'devtools' },
+        { id: 'devtools', title: 'Dev Tools again', baseUrl: '', currentUrl: '', type: 'devtools' },
+        { id: 'editor', title: 'First guide', baseUrl: '', currentUrl: '', type: 'editor' },
+        { id: 'editor', title: 'Second guide', baseUrl: '', currentUrl: '', type: 'editor' },
+        {
+          id: 'tab-1',
+          title: 'First',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/test/',
+          currentUrl: '',
+          type: 'learning-journey',
+        },
+        {
+          id: 'tab-1',
+          title: 'Impostor reusing the same ID',
+          baseUrl: 'https://grafana.com/docs/grafana/latest/other/',
+          currentUrl: '',
+          type: 'learning-journey',
+        },
+      ];
+
+      const storage = createMockTabStorage(persistedTabs);
+      const tabs = await restoreTabsFromStorage(storage, { isDevMode: false });
+
+      expect(tabs.map((t) => t.id)).toEqual(['recommendations', 'devtools', 'editor', 'tab-1']);
+      expect(tabs.map((t) => t.title)).toEqual(['Recommendations', 'Dev Tools', 'First guide', 'First']);
     });
 
     it('should reject tabs with invalid base URL', async () => {
@@ -275,6 +370,7 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
@@ -293,13 +389,13 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
           content: null,
           isLoading: false,
           error: null,
-          type: undefined,
         },
         {
           id: 'tab-1',
@@ -322,6 +418,7 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
@@ -350,13 +447,13 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
           content: null,
           isLoading: false,
           error: null,
-          type: undefined,
         },
       ];
 
@@ -375,6 +472,7 @@ describe('tab-storage-restore', () => {
       const tabs = [
         {
           id: 'recommendations',
+          type: 'recommendations' as const,
           title: 'Recommendations',
           baseUrl: '',
           currentUrl: '',
@@ -386,6 +484,117 @@ describe('tab-storage-restore', () => {
 
       const activeTabId = await restoreActiveTabFromStorage(storage, tabs);
       expect(activeTabId).toBe('recommendations');
+    });
+  });
+
+  describe('mergeRestoredTabsWithExisting', () => {
+    const blank = (overrides: Partial<LearningJourneyTab> = {}): LearningJourneyTab => ({
+      id: 'tab-1',
+      type: 'docs',
+      title: 'From storage',
+      baseUrl: 'https://grafana.com/docs/a/',
+      currentUrl: 'https://grafana.com/docs/a/page/',
+      content: null,
+      isLoading: false,
+      error: null,
+      ...overrides,
+    });
+
+    it('returns restored tabs unchanged when nothing is loaded in memory', () => {
+      const restored = [blank()];
+      expect(mergeRestoredTabsWithExisting(restored, [])).toBe(restored);
+      expect(mergeRestoredTabsWithExisting(restored, [blank({ title: 'Old' })])).toEqual(restored);
+    });
+
+    it('keeps content and pathContext when id and currentUrl match', () => {
+      const content: RawContent = {
+        content: '# guide',
+        metadata: { title: 'guide' },
+        type: 'single-doc',
+        url: 'https://grafana.com/docs/a/page/',
+        lastFetched: '2026-01-01T00:00:00.000Z',
+      };
+      const pathContext: PathContext = {
+        learningJourney: {
+          currentMilestone: 1,
+          totalMilestones: 1,
+          baseUrl: 'https://grafana.com/docs/a/',
+          milestones: [
+            {
+              number: 1,
+              title: 'Page',
+              url: 'https://grafana.com/docs/a/page/',
+              isActive: true,
+            },
+          ],
+        },
+      };
+      const pendingAlignment: PendingAlignment = {
+        startingLocation: '/old',
+        currentPath: '/old',
+        launchSource: 'test',
+        decidedAt: 0,
+      };
+      const existing = [
+        blank({
+          title: 'Old title',
+          content,
+          pathContext,
+          pendingAlignment,
+          error: 'stale',
+          isLoading: true,
+        }),
+      ];
+      const restored = [blank({ title: 'Renamed elsewhere' })];
+
+      const merged = mergeRestoredTabsWithExisting(restored, existing);
+
+      expect(merged[0]).toMatchObject({
+        title: 'Renamed elsewhere',
+        content,
+        pathContext,
+        isLoading: false,
+        error: null,
+      });
+      expect(merged[0]!.pendingAlignment).toBeUndefined();
+    });
+
+    it('does not keep error or pendingAlignment without content', () => {
+      const existing = [
+        blank({
+          error: 'load failed',
+          pendingAlignment: {
+            startingLocation: '/x',
+            currentPath: '/x',
+            launchSource: 'test',
+            decidedAt: 0,
+          },
+        }),
+      ];
+      const restored = [blank()];
+
+      expect(mergeRestoredTabsWithExisting(restored, existing)[0]).toEqual(restored[0]);
+    });
+
+    it('does not keep content when currentUrl diverged', () => {
+      const existing = [
+        blank({
+          content: {
+            content: '# old page',
+            metadata: { title: 'old' },
+            type: 'single-doc',
+            url: 'https://grafana.com/docs/a/page/',
+            lastFetched: '2026-01-01T00:00:00.000Z',
+          },
+          currentUrl: 'https://grafana.com/docs/a/page/',
+        }),
+      ];
+      const restored = [blank({ currentUrl: 'https://grafana.com/docs/a/other/' })];
+
+      expect(mergeRestoredTabsWithExisting(restored, existing)[0]!.content).toBeNull();
+      expect(mergeRestoredTabsWithExisting(restored, existing)[0]!.currentUrl).toBe(
+        'https://grafana.com/docs/a/other/'
+      );
     });
   });
 });

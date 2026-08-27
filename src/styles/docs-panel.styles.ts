@@ -220,6 +220,15 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     overflow: 'visible', // Allow dropdown to extend below tab bar
     position: 'relative', // Positioning context for absolute dropdown
     flexShrink: 0, // Don't shrink, stay compact
+    // container-type makes this a query container for the wordmark's narrow-width
+    // hide — which also makes it a stacking context. That traps the overflow
+    // dropdown: its own z-index only orders it *within* the bar, so the bar's
+    // level is what competes with the content below. Panel content pins its own
+    // chrome (block editor header, health bar) at `navbarFixed`, and those come
+    // later in the DOM — a tie there hid the dropdown behind the editor header.
+    // Outrank them here, while staying below tooltips, modals, and portals.
+    containerType: 'inline-size',
+    zIndex: theme.zIndex.dropdown,
   }),
   tabList: css({
     label: 'combined-journey-tab-list',
@@ -231,13 +240,33 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     flex: 1,
     minWidth: 0, // Allow flex shrinking
   }),
-  // Permanent icon-only tabs (Recommendations, My Learning)
-  permanentTabs: css({
-    label: 'combined-journey-permanent-tabs',
+  // Recommendations home icon (left rail)
+  recommendationsTab: css({
+    label: 'combined-journey-recommendations-tab',
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(0.5),
     flexShrink: 0,
+  }),
+  // "Interactive Learning" wordmark + divider — the plugin's external name.
+  // Branding is the first thing to drop when the bar is narrow.
+  wordmarkGroup: css({
+    label: 'combined-journey-wordmark-group',
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: theme.spacing(1),
+    '@container (max-width: 360px)': {
+      display: 'none',
+    },
+  }),
+  wordmark: css({
+    label: 'combined-journey-wordmark',
+    paddingLeft: theme.spacing(0.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.secondary,
+    whiteSpace: 'nowrap',
   }),
   iconTab: css({
     label: 'combined-journey-icon-tab',
@@ -372,6 +401,27 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     minWidth: 0, // Critical for allowing text truncation in flex containers
     maxWidth: '100%', // Ensure it doesn't exceed parent
   }),
+  editorTabTitle: css({
+    label: 'combined-journey-editor-tab-title',
+    fontWeight: theme.typography.fontWeightLight,
+  }),
+  // Italics mark a tab whose content has diverged from its saved remote entry.
+  editorTabTitleModified: css({
+    label: 'combined-journey-editor-tab-title-modified',
+    fontStyle: 'italic',
+  }),
+  editorTabStatusBadge: css({
+    label: 'combined-journey-editor-tab-status-badge',
+    // Shrink/clip under pressure so the close control stays in frame.
+    flexShrink: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    // Compact so the badge fits tab chrome without dominating the title.
+    fontSize: '10px',
+    padding: `0 ${theme.spacing(0.5)}`,
+    lineHeight: '16px',
+    height: 16,
+  }),
   loadingText: css({
     marginLeft: theme.spacing(0.5),
   }),
@@ -419,7 +469,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     position: 'absolute',
     top: '100%',
     right: 0, // Align with the right edge of the chevron button
-    zIndex: 9999, // High z-index to appear above content
+    zIndex: 9999, // Stack above other tab-bar items (the bar's z-index lifts the dropdown above page content)
     minWidth: '220px',
     maxWidth: '320px',
     backgroundColor: theme.colors.background.primary,
@@ -500,6 +550,10 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     fontWeight: 'inherit',
+  }),
+  editorDropdownItemTitle: css({
+    label: 'combined-journey-editor-dropdown-item-title',
+    fontWeight: theme.typography.fontWeightLight,
   }),
   dropdownItemClose: css({
     label: 'combined-journey-dropdown-item-close',
@@ -713,6 +767,31 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     alignItems: 'center',
     gap: theme.spacing(1),
   }),
+  titleBlock: css({
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    textAlign: 'left',
+  }),
+  milestoneTitle: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    fontWeight: theme.typography.fontWeightMedium,
+    color: theme.colors.text.primary,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '100%',
+  }),
+  milestoneSubtitle: css({
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+    whiteSpace: 'nowrap',
+  }),
+  // Used by the loading-skeleton milestone header in DocsPanelContentArea.tsx
+  // (rendered while a journey tab's content is still fetching), not by the
+  // loaded LearningJourneyMilestoneToolbar below.
   milestoneText: css({
     fontSize: theme.typography.bodySmall.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
@@ -720,19 +799,6 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'nowrap',
     flex: 1,
     textAlign: 'center',
-  }),
-  milestoneActions: css({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: theme.spacing(0.75),
-    padding: theme.spacing(1, 0, 0),
-    borderTop: `1px solid ${theme.colors.border.weak}`,
-    // Same container-query trick as `contentMeta` — when the journey's
-    // bottom action row (Open / Reset / Pop out / Full screen) outgrows
-    // the panel width, `secondaryActionButton`'s rule collapses the
-    // labels and only the icons remain.
-    containerType: 'inline-size',
   }),
   navButton: css({
     display: 'flex',
@@ -776,6 +842,9 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
       flexShrink: 0,
     },
   }),
+  // Continuous fill bar used by the loading-skeleton milestone header (see
+  // `milestoneText` above) — pre-existing, unrelated to the segmented bar
+  // below.
   progressBar: css({
     width: '100%',
     height: '3px',
@@ -788,6 +857,26 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     height: '100%',
     backgroundColor: theme.colors.success.main,
     transition: 'width 0.3s ease',
+  }),
+  progressSegments: css({
+    display: 'flex',
+    gap: theme.spacing(0.5),
+    width: '100%',
+    marginTop: theme.spacing(1),
+  }),
+  progressSegment: css({
+    flex: 1,
+    height: '3px',
+    borderRadius: '2px',
+    backgroundColor: theme.colors.background.secondary,
+    transition: 'background-color 0.2s ease',
+
+    '&[data-segment-state="done"]': {
+      backgroundColor: theme.colors.success.main,
+    },
+    '&[data-segment-state="current"]': {
+      backgroundColor: theme.colors.warning.main,
+    },
   }),
 });
 

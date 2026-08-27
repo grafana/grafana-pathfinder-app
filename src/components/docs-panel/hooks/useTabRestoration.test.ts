@@ -9,7 +9,7 @@ function makeModel() {
   } as any;
 }
 
-const tab = (id: string) =>
+const tab = (id: string, type: 'recommendations' | 'docs' | 'editor' = 'docs') =>
   ({
     id,
     title: id,
@@ -18,26 +18,28 @@ const tab = (id: string) =>
     content: null,
     isLoading: false,
     error: null,
-    type: 'docs',
+    type,
   }) as any;
 
 describe('useTabRestoration', () => {
-  it('calls restoreTabsAsync on initial mount when only permanent tabs exist', () => {
+  it('calls restoreTabsAsync on initial mount when no guide-strip tabs exist', () => {
     const model = makeModel();
-    renderHook(() => useTabRestoration({ model, panelMode: 'sidebar', tabs: [tab('recommendations')] }));
+    renderHook(() =>
+      useTabRestoration({ model, panelMode: 'sidebar', tabs: [tab('recommendations', 'recommendations')] })
+    );
     expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
   });
 
-  it('treats devtools and editor as permanent (still restores)', () => {
+  it('does NOT restore when an editor tab is already in the strip', () => {
     const model = makeModel();
     renderHook(() =>
       useTabRestoration({
         model,
         panelMode: 'sidebar',
-        tabs: [tab('recommendations'), tab('devtools'), tab('editor')],
+        tabs: [tab('recommendations', 'recommendations'), tab('editor', 'editor')],
       })
     );
-    expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
+    expect(model.restoreTabsAsync).not.toHaveBeenCalled();
   });
 
   it('does NOT restore when a user-opened guide tab is present', () => {
@@ -46,7 +48,7 @@ describe('useTabRestoration', () => {
       useTabRestoration({
         model,
         panelMode: 'sidebar',
-        tabs: [tab('recommendations'), tab('user-guide-1')],
+        tabs: [tab('recommendations', 'recommendations'), tab('user-guide-1')],
       })
     );
     expect(model.restoreTabsAsync).not.toHaveBeenCalled();
@@ -54,21 +56,48 @@ describe('useTabRestoration', () => {
 
   it('skips restoration when panelMode is "fullscreen"', () => {
     const model = makeModel();
-    renderHook(() => useTabRestoration({ model, panelMode: 'fullscreen', tabs: [tab('recommendations')] }));
+    renderHook(() =>
+      useTabRestoration({ model, panelMode: 'fullscreen', tabs: [tab('recommendations', 'recommendations')] })
+    );
     expect(model.restoreTabsAsync).not.toHaveBeenCalled();
   });
 
-  it('re-fires when panelMode transitions away from fullscreen', () => {
+  it('force-refreshes the sidebar model when returning from fullscreen', () => {
     const model = makeModel();
     const { rerender } = renderHook(
       (props: { panelMode: PanelMode; tabs: any[] }) =>
         useTabRestoration({ model, panelMode: props.panelMode, tabs: props.tabs }),
-      { initialProps: { panelMode: 'fullscreen' as PanelMode, tabs: [tab('recommendations')] } }
+      { initialProps: { panelMode: 'fullscreen' as PanelMode, tabs: [tab('recommendations', 'recommendations')] } }
     );
     expect(model.restoreTabsAsync).not.toHaveBeenCalled();
 
-    rerender({ panelMode: 'sidebar', tabs: [tab('recommendations')] });
-    expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
+    rerender({ panelMode: 'sidebar', tabs: [tab('recommendations', 'recommendations')] });
+    expect(model.restoreTabsAsync).toHaveBeenCalledWith({ force: true });
+  });
+
+  it('force-refreshes over a populated strip, so fullscreen tab work is not dropped', () => {
+    const model = makeModel();
+    const tabs = [tab('recommendations', 'recommendations'), tab('user-guide-1')];
+    const { rerender } = renderHook(
+      ({ panelMode }: { panelMode: PanelMode }) => useTabRestoration({ model, panelMode, tabs }),
+      { initialProps: { panelMode: 'fullscreen' as PanelMode } }
+    );
+
+    rerender({ panelMode: 'sidebar' });
+    expect(model.restoreTabsAsync).toHaveBeenCalledWith({ force: true });
+  });
+
+  it('force-refreshes the sidebar model when returning from floating mode', () => {
+    const model = makeModel();
+    const tabs = [tab('recommendations', 'recommendations'), tab('editor', 'editor')];
+    const { rerender } = renderHook(
+      ({ panelMode }: { panelMode: PanelMode }) => useTabRestoration({ model, panelMode, tabs }),
+      { initialProps: { panelMode: 'floating' as PanelMode } }
+    );
+    expect(model.restoreTabsAsync).not.toHaveBeenCalled();
+
+    rerender({ panelMode: 'sidebar' });
+    expect(model.restoreTabsAsync).toHaveBeenCalledWith({ force: true });
   });
 
   it('does NOT re-fire on tab or model changes when panelMode is unchanged (preserves [panelMode]-only dep array)', () => {
@@ -76,12 +105,15 @@ describe('useTabRestoration', () => {
     const { rerender } = renderHook(
       (props: { panelMode: PanelMode; tabs: any[] }) =>
         useTabRestoration({ model, panelMode: props.panelMode, tabs: props.tabs }),
-      { initialProps: { panelMode: 'sidebar' as PanelMode, tabs: [tab('recommendations')] } }
+      { initialProps: { panelMode: 'sidebar' as PanelMode, tabs: [tab('recommendations', 'recommendations')] } }
     );
     expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
 
-    rerender({ panelMode: 'sidebar', tabs: [tab('recommendations'), tab('opened-guide')] });
-    rerender({ panelMode: 'sidebar', tabs: [tab('recommendations')] });
+    rerender({
+      panelMode: 'sidebar',
+      tabs: [tab('recommendations', 'recommendations'), tab('opened-guide')],
+    });
+    rerender({ panelMode: 'sidebar', tabs: [tab('recommendations', 'recommendations')] });
     expect(model.restoreTabsAsync).toHaveBeenCalledTimes(1);
   });
 });

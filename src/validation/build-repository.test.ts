@@ -9,6 +9,15 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { buildRepository } from '../cli/commands/build-repository';
+import { COMMANDER_COMMANDS } from '../cli/cli-commands';
+import { RepositoryEntrySchema, RepositoryJsonSchema } from '../types/package.schema';
+
+const buildRepositoryCommand = COMMANDER_COMMANDS.get('build-repository')!;
+
+jest.mock('prettier', () => ({
+  resolveConfig: async () => ({}),
+  format: async (source: string) => source,
+}));
 
 function createTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'pathfinder-build-repo-'));
@@ -123,6 +132,31 @@ describe('buildRepository', () => {
     expect(entry!.provides).toEqual(['test-capability']);
     expect(entry!.conflicts).toEqual(['old-test']);
     expect(entry!.replaces).toEqual(['legacy-test']);
+  });
+
+  it('preserves omitted and explicit root starting locations', () => {
+    for (const id of ['omitted-location', 'explicit-root']) {
+      writeJson(path.join(tmpDir, id, 'content.json'), {
+        id,
+        title: id,
+        blocks: [],
+      });
+    }
+    writeJson(path.join(tmpDir, 'omitted-location', 'manifest.json'), {
+      id: 'omitted-location',
+      type: 'guide',
+    });
+    writeJson(path.join(tmpDir, 'explicit-root', 'manifest.json'), {
+      id: 'explicit-root',
+      type: 'guide',
+      startingLocation: '/',
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+
+    expect(errors).toHaveLength(0);
+    expect(repository['omitted-location']).not.toHaveProperty('startingLocation');
+    expect(repository['explicit-root']?.startingLocation).toBe('/');
   });
 
   it('should error on ID mismatch between content and manifest', () => {
@@ -320,6 +354,298 @@ describe('buildRepository', () => {
     expect(entry!.recommends).toBeUndefined();
   });
 
+  it('should forward unknown top-level manifest keys into the repository entry', () => {
+    writeJson(path.join(tmpDir, 'guide-with-extensions', 'content.json'), {
+      id: 'guide-with-extensions',
+      title: 'Guide with extensions',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-extensions', 'manifest.json'), {
+      id: 'guide-with-extensions',
+      type: 'guide',
+      priority: 15,
+      owningTeam: 'enablement',
+      flags: ['beta', 'internal'],
+    });
+
+    const { repository, warnings, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+
+    const entry = repository['guide-with-extensions'];
+    expect(entry).toBeDefined();
+    expect(entry!.priority).toBe(15);
+    expect(entry!.owningTeam).toBe('enablement');
+    expect(entry!.flags).toEqual(['beta', 'internal']);
+    expect(warnings).toHaveLength(0);
+  });
+
+  // `stats` and `estimatedMinutes` were this suite's examples of unknown keys
+  // until #1682 and this branch's own manifest-schema change respectively
+  // declared them on the manifest schema. They are now NAMED fields, so the
+  // extension forwarding skips them and `build-repository` has to carry them
+  // deliberately — the case that silently dropped the stamp from
+  // repository.json when only half of that landed.
+  it('should carry a well-formed estimatedMinutes value onto the entry as a named field', () => {
+    writeJson(path.join(tmpDir, 'guide-with-estimate', 'content.json'), {
+      id: 'guide-with-estimate',
+      title: 'Guide with an estimate',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-estimate', 'manifest.json'), {
+      id: 'guide-with-estimate',
+      type: 'guide',
+      estimatedMinutes: 15,
+    });
+
+    const { repository, info, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-with-estimate']?.estimatedMinutes).toBe(15);
+    // Named, so it is not announced as a forwarded extension field.
+    expect(info).toEqual([]);
+  });
+  it('should carry a well-formed stats stamp onto the entry as a named field', () => {
+    const stamp = {
+      version: 1,
+      blockCount: 12,
+      sectionCount: 3,
+      completableBlockCount: 7,
+      finalCompletablePosition: 11,
+    };
+    writeJson(path.join(tmpDir, 'guide-with-stats-stamp', 'content.json'), {
+      id: 'guide-with-stats-stamp',
+      title: 'Guide with a stats stamp',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-stats-stamp', 'manifest.json'), {
+      id: 'guide-with-stats-stamp',
+      type: 'guide',
+      stats: stamp,
+    });
+
+    const { repository, info, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-with-stats-stamp']?.stats).toEqual(stamp);
+    // Named, so it is not announced as a forwarded extension field.
+    expect(info).toEqual([]);
+  });
+
+  // The manifest schema catches a malformed stamp, so a wrong denominator never
+  // reaches repository.json in the first place.
+  it('should drop a malformed stats stamp rather than publishing a wrong denominator', () => {
+    writeJson(path.join(tmpDir, 'guide-with-bad-stats', 'content.json'), {
+      id: 'guide-with-bad-stats',
+      title: 'Guide with a bad stats stamp',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-bad-stats', 'manifest.json'), {
+      id: 'guide-with-bad-stats',
+      type: 'guide',
+      stats: { steps: 4, blocks: 12, sections: 3 },
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-with-bad-stats']?.stats).toBeUndefined();
+  });
+
+  it('should survive a repository.json serialization round-trip with unknown keys intact', () => {
+    writeJson(path.join(tmpDir, 'guide-with-stats', 'content.json'), {
+      id: 'guide-with-stats',
+      title: 'Guide with stats',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-stats', 'manifest.json'), {
+      id: 'guide-with-stats',
+      type: 'guide',
+      owningTeam: 'enablement',
+    });
+
+    writeJson(path.join(tmpDir, 'journey-with-stats', 'content.json'), {
+      id: 'journey-with-stats',
+      title: 'Journey with stats',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'journey-with-stats', 'manifest.json'), {
+      id: 'journey-with-stats',
+      type: 'journey',
+      milestones: ['guide-with-stats'],
+      owningTeam: { name: 'enablement', slack: '#enablement' },
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+
+    const roundTripped = RepositoryJsonSchema.parse(JSON.parse(JSON.stringify(repository)));
+    expect(roundTripped['guide-with-stats']?.owningTeam).toBe('enablement');
+    expect(roundTripped['journey-with-stats']?.owningTeam).toEqual({ name: 'enablement', slack: '#enablement' });
+  });
+
+  it('should leave the entry free of extension keys when the manifest has none', () => {
+    writeJson(path.join(tmpDir, 'no-extensions', 'content.json'), {
+      id: 'no-extensions',
+      title: 'No extensions',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'no-extensions', 'manifest.json'), {
+      id: 'no-extensions',
+      type: 'guide',
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+
+    const entry = repository['no-extensions'];
+    expect(entry).toBeDefined();
+    expect(entry!.stats).toBeUndefined();
+
+    const declaredEntryFields = new Set(Object.keys(RepositoryEntrySchema.shape));
+    expect(Object.keys(entry!).filter((key) => !declaredEntryFields.has(key))).toEqual([]);
+  });
+
+  it('should report the extension fields it forwarded so a typo is visible in the build log', () => {
+    writeJson(path.join(tmpDir, 'noisy', 'content.json'), {
+      id: 'noisy',
+      title: 'Noisy',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'noisy', 'manifest.json'), {
+      id: 'noisy',
+      type: 'guide',
+      owningTeam: 'enablement',
+      priority: 15,
+    });
+
+    const { info, warnings, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(warnings).toHaveLength(0);
+    expect(info).toEqual(['noisy: forwarding 2 extension field(s): owningTeam, priority']);
+  });
+
+  it('should surface a misspelled known field as a forwarded extension field', () => {
+    writeJson(path.join(tmpDir, 'typo', 'content.json'), {
+      id: 'typo',
+      title: 'Typo',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'typo', 'manifest.json'), {
+      id: 'typo',
+      type: 'guide',
+      startingLocaton: '/a/grafana-pathfinder-app/foo',
+    });
+
+    const { repository, info } = buildRepository(tmpDir);
+
+    // The typo'd key ships as plausible-looking metadata while the real field
+    // never lands at all, which is exactly why the info line matters.
+    expect(repository['typo']?.startingLocaton).toBe('/a/grafana-pathfinder-app/foo');
+    expect(repository['typo']?.startingLocation).toBeUndefined();
+    expect(info).toEqual(['typo: forwarding 1 extension field(s): startingLocaton']);
+  });
+
+  it('should report no info line when the manifest carries no extension fields', () => {
+    writeJson(path.join(tmpDir, 'plain', 'content.json'), {
+      id: 'plain',
+      title: 'Plain',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'plain', 'manifest.json'), {
+      id: 'plain',
+      type: 'guide',
+    });
+
+    const { info } = buildRepository(tmpDir);
+    expect(info).toEqual([]);
+  });
+
+  it('should not let manifest keys named after computed entry fields overwrite them', () => {
+    writeJson(path.join(tmpDir, 'collider', 'content.json'), {
+      id: 'collider',
+      title: 'Title from content.json',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'collider', 'manifest.json'), {
+      id: 'collider',
+      type: 'guide',
+      path: '../../../etc/passwd',
+      title: 'Title from manifest.json',
+      safeExtension: 'kept',
+    });
+
+    const { repository, warnings, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+
+    const entry = repository['collider'];
+    expect(entry).toBeDefined();
+    expect(entry!.path).toBe('collider/');
+    expect(entry!.title).toBe('Title from content.json');
+    expect(entry!.safeExtension).toBe('kept');
+    expect(warnings.filter((w) => w.includes('"path"'))).toHaveLength(1);
+    expect(warnings.filter((w) => w.includes('"title"'))).toHaveLength(1);
+  });
+
+  it('should not let a manifest __proto__ key pollute the entry prototype', () => {
+    writeJson(path.join(tmpDir, 'proto-manifest', 'content.json'), {
+      id: 'proto-manifest',
+      title: 'Proto manifest',
+      blocks: [],
+    });
+    fs.writeFileSync(
+      path.join(tmpDir, 'proto-manifest', 'manifest.json'),
+      '{"id":"proto-manifest","type":"guide","__proto__":{"polluted":true},"safeExtension":"kept"}',
+      'utf-8'
+    );
+
+    const { repository, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+
+    const entry = repository['proto-manifest'];
+    expect(entry).toBeDefined();
+    expect(entry!.safeExtension).toBe('kept');
+    // zod's loose parse drops the __proto__ own-key before forwarding, so the
+    // reserved-field refusal never has to fire and nothing is polluted.
+    expect(Object.getPrototypeOf(entry!)).toBe(Object.prototype);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('should keep known manifest fields validated and their entry mapping unchanged', () => {
+    writeJson(path.join(tmpDir, 'bad-type', 'content.json'), {
+      id: 'bad-type',
+      title: 'Bad type',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'bad-type', 'manifest.json'), {
+      id: 'bad-type',
+      type: 'not-a-package-type',
+      anythingGoes: 'here',
+    });
+
+    const { repository, warnings } = buildRepository(tmpDir);
+
+    // A known field that fails validation still degrades to content.json only —
+    // the loose top level does not make `type` unvalidated.
+    expect(repository['bad-type']?.type).toBe('guide');
+    expect(repository['bad-type']?.anythingGoes).toBeUndefined();
+    expect(warnings.some((w) => w.includes('manifest.json validation failed'))).toBe(true);
+  });
+
+  it('should still reject invalid nested guide content', () => {
+    writeJson(path.join(tmpDir, 'bad-blocks', 'content.json'), {
+      id: 'bad-blocks',
+      title: 'Bad blocks',
+      blocks: [{ type: 'markdown' }],
+    });
+    writeJson(path.join(tmpDir, 'bad-blocks', 'manifest.json'), {
+      id: 'bad-blocks',
+      type: 'guide',
+      stats: { steps: 1 },
+    });
+
+    const { repository, errors } = buildRepository(tmpDir);
+
+    expect(errors.some((e) => e.includes('content.json validation failed'))).toBe(true);
+    expect(repository['bad-blocks']).toBeUndefined();
+  });
+
   it('should handle non-existent root directory', () => {
     const { repository, warnings } = buildRepository('/nonexistent/path');
     expect(Object.keys(repository)).toHaveLength(0);
@@ -449,5 +775,52 @@ describe('buildRepository', () => {
       expect(repository['sibling-b']).toBeDefined();
       expect(repository['deep-pkg']).toBeUndefined();
     });
+  });
+});
+
+describe('buildRepositoryCommand streams', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = createTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should keep stdout parseable JSON and put the forwarded-keys line on stderr', async () => {
+    writeJson(path.join(tmpDir, 'noisy', 'content.json'), { id: 'noisy', title: 'Noisy', blocks: [] });
+    writeJson(path.join(tmpDir, 'noisy', 'manifest.json'), {
+      id: 'noisy',
+      type: 'guide',
+      owningTeam: 'enablement',
+    });
+
+    const stdoutChunks: string[] = [];
+    const stdoutLines: string[] = [];
+    const stderrLines: string[] = [];
+    const stdoutSpy = jest.spyOn(process.stdout, 'write').mockImplementation(((chunk: unknown) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    }) as unknown as typeof process.stdout.write);
+    const logSpy = jest.spyOn(console, 'log').mockImplementation((line: unknown) => {
+      stdoutLines.push(String(line));
+    });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation((line: unknown) => {
+      stderrLines.push(String(line));
+    });
+
+    try {
+      await buildRepositoryCommand.parseAsync([tmpDir], { from: 'user' });
+    } finally {
+      stdoutSpy.mockRestore();
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+
+    expect(JSON.parse(stdoutChunks.join(''))).toHaveProperty('noisy');
+    expect(stdoutLines).toEqual([]);
+    expect(stderrLines.join('\n')).toContain('noisy: forwarding 1 extension field(s): owningTeam');
   });
 });

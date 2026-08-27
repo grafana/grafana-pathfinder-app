@@ -1,4 +1,3 @@
-import { Command } from 'commander';
 import type { z } from 'zod';
 
 import {
@@ -25,7 +24,7 @@ import {
   VALID_BLOCK_TYPES,
 } from '../../types/json-guide.schema';
 import { ManifestJsonObjectSchema } from '../../types/package.schema';
-import { registerSchemaOptions } from '../utils/schema-options';
+import { buildOptionForField } from '../contracts/commander-options';
 
 // Some authoring schemas wrap a `z.object({...})` with `.refine()` /
 // `.superRefine()`; the `.shape` accessor still resolves at runtime in Zod v4.
@@ -135,21 +134,22 @@ describe('isBlockType', () => {
   });
 });
 
-describe('integration: every registered schema is bridge-compatible', () => {
-  // The contract the bridge depends on: every entry in the registry exposes a
-  // walkable `.shape` so `registerSchemaOptions` can produce flags for it.
-  // This protects against a future block type being added with a non-object
-  // root shape (e.g., a discriminated union at the top level), which would
+describe('integration: every registered schema can be given a flag surface', () => {
+  // The contract `add-block` depends on: every entry in the registry exposes a
+  // walkable `.shape` whose fields each have a flag spelling or a stated reason
+  // for having none. This protects against a future block type being added with
+  // a non-object root shape (e.g., a top-level discriminated union), which would
   // silently break `add-block <type> --help`.
-  it.each(Object.entries(BLOCK_SCHEMA_MAP))('registers options for %s', (typeName, schema) => {
-    const cmd = new Command(typeName);
-    expect(() => registerSchemaOptions(cmd, schema)).not.toThrow();
-    // Every block has either some flag-emitting field or is a pure-structural
-    // container. We at least expect the bridge to walk without error.
-    // Additionally, every CLI-creatable block schema has a `type` literal, so
-    // the bridge must skip it — assert no `--type` flag is registered.
-    const typeFlag = cmd.options.find((o) => o.long === '--type');
-    expect(typeFlag).toBeUndefined();
+  it.each(Object.entries(BLOCK_SCHEMA_MAP))('describes every field of %s', (_typeName, schema) => {
+    const shape = shapeOf(schema);
+    expect(Object.keys(shape).length).toBeGreaterThan(0);
+    for (const [name, field] of Object.entries(shape)) {
+      expect(() => buildOptionForField(name, field)).not.toThrow();
+    }
+    // `type` is the discriminator, and it is a literal — a literal has no flag
+    // spelling, so it cannot reach the surface even though nothing filters it
+    // by name any more.
+    expect(buildOptionForField('type', shape.type!)).toBeNull();
   });
 });
 

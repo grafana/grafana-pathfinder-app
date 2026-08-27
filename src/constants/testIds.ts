@@ -42,6 +42,7 @@ export const testIds = {
     popOutButton: 'docs-panel-pop-out-button',
     fullScreenButton: 'docs-panel-full-screen-button',
     openControllerTabButton: 'docs-panel-open-controller-tab-button',
+    milestoneMoreActionsButton: 'docs-panel-milestone-more-actions-button',
   },
 
   // Full screen mode page (sibling of the sidebar / floating panel)
@@ -85,6 +86,13 @@ export const testIds = {
     customGuidesList: 'context-panel-custom-guides-list',
     customGuideItem: (index: number) => `context-panel-custom-guide-item-${index}`,
     customGuideStartButton: (index: number) => `context-panel-custom-guide-start-${index}`,
+    customGuidePathCard: (index: number) => `context-panel-custom-guide-path-card-${index}`,
+    customGuidePathStartButton: (index: number) => `context-panel-custom-guide-path-start-${index}`,
+    customGuidePathDrillInButton: (index: number) => `context-panel-custom-guide-path-drillin-${index}`,
+    customGuidePathMembers: (index: number) => `context-panel-custom-guide-path-members-${index}`,
+    customGuidePathMemberItem: (index: number, memberIndex: number) =>
+      `context-panel-custom-guide-path-member-${index}-${memberIndex}`,
+    customGuideOrphanSection: 'context-panel-custom-guide-orphan-section',
     suggestedGuidesToggle: 'context-panel-suggested-guides-toggle',
     otherDocsSection: 'context-panel-other-docs-section',
     otherDocsToggle: 'context-panel-other-docs-toggle',
@@ -97,6 +105,7 @@ export const testIds = {
     featuredCard: (index: number) => `context-panel-featured-card-${index}`,
     featuredStartButton: (index: number) => `context-panel-featured-start-${index}`,
     featuredSummaryButton: (index: number) => `context-panel-featured-summary-${index}`,
+    interactiveLearningBanner: 'context-panel-interactive-learning-banner',
   },
 
   // Dev Tools / Block Editor
@@ -158,11 +167,30 @@ export const testIds = {
     inputSaveButton: (stepId: string) => `interactive-input-save-${stepId}`,
     inputResetButton: (stepId: string) => `interactive-input-reset-${stepId}`,
     inputSkipButton: (stepId: string) => `interactive-input-skip-${stepId}`,
+    datasourcePicker: (variableName: string) => `interactive-datasource-picker-${variableName}`,
     terminalStep: (stepId: string) => `interactive-terminal-${stepId}`,
     terminalConnectStep: (stepId: string) => `interactive-terminal-connect-${stepId}`,
     terminalSkipButton: (stepId: string) => `interactive-terminal-skip-${stepId}`,
     terminalCopyButton: (stepId: string) => `interactive-terminal-copy-${stepId}`,
     lazyScrollRetryButton: (stepId: string) => `interactive-lazy-retry-${stepId}`,
+  },
+
+  // The blocking data check — a tracked step, so keyed by stepId.
+  dataCheck: {
+    step: (stepId: string) => `datasource-check-step-${stepId}`,
+    datasourcePicker: (stepId: string) => `datasource-check-picker-${stepId}`,
+    runQueryButton: (stepId: string) => `datasource-check-run-${stepId}`,
+    skipButton: (stepId: string) => `datasource-check-skip-${stepId}`,
+    failure: (stepId: string) => `datasource-check-failure-${stepId}`,
+  },
+
+  // The advisory data check on a passive input block. That host has no stepId,
+  // so these are keyed by variableName and kept in their own id space — one
+  // factory serving both would collide whenever a variable name matched a
+  // step's rendered id.
+  advisoryDataCheck: {
+    runQueryButton: (variableName: string) => `input-data-check-run-${variableName}`,
+    failure: (variableName: string) => `input-data-check-failure-${variableName}`,
   },
 
   // Code Block Step - for inserting code into Monaco editors
@@ -182,6 +210,8 @@ export const testIds = {
     apiKey: 'config-api-key',
     apiUrl: 'config-api-url',
     devModeToggle: 'config-dev-mode-toggle',
+    /** Pathfinder tutorial anchor for #dev-mode (do not rename without Pathfinder squad). */
+    pathfinderDevMode: 'pathfinder-dev-mode',
     assistantDevModeToggle: 'config-assistant-dev-mode-toggle',
     globalLinkInterception: 'config-global-link-interception',
     openPanelOnLaunch: 'config-open-panel-on-launch',
@@ -190,9 +220,6 @@ export const testIds = {
     peerjsPort: 'config-peerjs-port',
     peerjsKey: 'config-peerjs-key',
     codaTerminalToggle: 'config-coda-terminal-toggle',
-    codaApiUrl: 'config-coda-api-url',
-    codaRelayUrl: 'config-coda-relay-url',
-    codaEnrollmentKey: 'config-coda-enrollment-key',
     // Interactive Features
     interactiveFeatures: {
       toggle: 'config-interactive-auto-detection-toggle',
@@ -218,6 +245,8 @@ export const testIds = {
   blockEditor: {
     container: 'block-editor-container',
     content: 'block-editor-content',
+    titleRow: 'block-editor-title-row',
+    toolbarRow: 'block-editor-toolbar-row',
     palette: 'block-editor-palette',
     jsonEditor: 'block-editor-json-editor',
     // Modals
@@ -228,6 +257,7 @@ export const testIds = {
     // Form controls
     submitButton: 'block-editor-submit-button',
     blockTypeButton: (type: string) => `block-editor-type-${type}`,
+    paletteGroup: (id: string) => `block-editor-palette-group-${id}`,
     // Markdown form
     rawMarkdownTab: 'block-editor-raw-markdown-tab',
     richMarkdownTab: 'block-editor-rich-markdown-tab',
@@ -236,6 +266,12 @@ export const testIds = {
     sectionTitleInput: 'block-editor-section-title-input',
     sectionIdInput: 'block-editor-section-id-input',
     sectionAutoCollapseToggle: 'block-editor-section-auto-collapse-toggle',
+    // Collapsible form
+    collapsibleTitleInput: 'block-editor-collapsible-title-input',
+    collapsibleCollapsedToggle: 'block-editor-collapsible-collapsed-toggle',
+    // Callout form
+    calloutTitleInput: 'block-editor-callout-title-input',
+    calloutContentInput: 'block-editor-callout-content-input',
     addAndRecordButton: 'block-editor-add-and-record-button',
     // Section empty state and nested add button
     sectionEmptyState: 'block-editor-section-empty-state',
@@ -285,11 +321,20 @@ export const testIds = {
     badgesModal: 'learning-paths-badges-modal',
     badgesModalClose: 'learning-paths-badges-modal-close',
     badgeItem: (badgeId: string) => `learning-paths-badge-${badgeId}`,
-    showAllPathsButton: 'learning-paths-show-all',
-    showAllBadgesButton: 'learning-paths-show-all-badges',
     resetProgressButton: 'learning-paths-reset-progress',
     badgeToast: 'learning-paths-badge-toast',
     badgeToastDismiss: 'learning-paths-badge-toast-dismiss',
+    myCoursesSection: 'my-learning-courses-section',
+    privatePathsSection: 'my-learning-private-paths-section',
+    badgesSection: 'my-learning-badges-section',
+    discoverMoreSection: 'my-learning-discover-section',
+    completedSection: 'my-learning-completed-section',
+    discoverMoreCard: (id: string) => `discover-more-card-${id}`,
+    discoverMoreStart: (id: string) => `discover-more-start-${id}`,
+    discoverMoreExpand: (id: string) => `discover-more-expand-${id}`,
+    tableOfContents: 'learning-paths-toc',
+    tableOfContentsCta: 'learning-paths-toc-cta',
+    coverHero: 'learning-paths-cover-hero',
   },
 
   // Live Session
@@ -334,6 +379,8 @@ export const testIds = {
     panel: 'coda-terminal-panel',
     collapsedBar: 'coda-terminal-collapsed-bar',
     expandButton: 'coda-terminal-expand',
+    /** Pathfinder tutorial anchor for Expand terminal (do not rename without Pathfinder squad). */
+    pathfinderExpand: 'pathfinder-expand-terminal',
     collapseButton: 'coda-terminal-collapse',
     closeButton: 'coda-terminal-close',
     resizeHandle: 'coda-terminal-resize-handle',

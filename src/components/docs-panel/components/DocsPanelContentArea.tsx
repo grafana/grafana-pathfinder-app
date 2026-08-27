@@ -12,14 +12,8 @@
  *   6. Error state with retry
  *   7. ContentRenderer + content meta + milestone toolbar + footer
  *
- * Behavior preserved verbatim. Lazy imports are kept INSIDE this file
- * (pre-mortem H8): the same module paths are used so webpack chunk
- * resolution remains stable.
- *
- * The wrapping `<div className={styles.content} data-testid={testIds.docsPanel.content}>`
- * is the outer surface. testIds.docsPanel.content moves with this component
- * — SOURCE_CONTRACT in docs-panel.contract.test.tsx is updated in the same
- * commit.
+ * Lazy imports are kept INSIDE this file so webpack sees the same dynamic-import
+ * module specifiers and chunk resolution stays stable.
  */
 import React, { Suspense, lazy } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
@@ -29,7 +23,12 @@ import { getConfigWithDefaults } from '../../../constants';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
 import type { getStyles as getDocsPanelStyles } from '../../../styles/docs-panel.styles';
-import { isDocsLikeTab, pickGrafanaDocsOpenAction, pickControllerTabOpenAction } from '../utils';
+import {
+  isDocsLikeTab,
+  pickGrafanaDocsOpenAction,
+  pickControllerTabOpenAction,
+  RECOMMENDATIONS_TAB_ID,
+} from '../utils';
 import {
   reportAppInteraction,
   UserInteraction,
@@ -37,8 +36,9 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getMilestoneSlug, markMilestoneDone, setJourneyCompletionPercentage } from '../../../docs-retrieval';
+import { recordGuideCompletionForSurface } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
+import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
 import { SkeletonLoader } from '../../SkeletonLoader';
 import { AlignmentPrompt } from './AlignmentPrompt';
@@ -48,11 +48,8 @@ import { LoadingIndicator } from './LoadingIndicator';
 import { LearningJourneyMilestoneToolbar } from './LearningJourneyMilestoneToolbar';
 import { PanelModeActionButtons } from './PanelModeActionButtons';
 import type { SceneObject } from '@grafana/scenes';
-import type { OpenDocsOptions } from '../types';
-import type { CombinedLearningJourneyPanel } from '../docs-panel';
+import type { DocsPanelModelOperations, OpenDocsOptions } from '../types';
 
-// Kept inside the component file so webpack sees the same dynamic-import
-// module specifiers used pre-refactor. See pre-mortem H8.
 const SelectorDebugPanel = lazy(() =>
   import('../../SelectorDebugPanel').then((module) => ({
     default: module.SelectorDebugPanel,
@@ -74,15 +71,15 @@ export interface DocsPanelContentAreaProps {
   interactiveStyles: string;
   prismStyles: string;
 
-  model: CombinedLearningJourneyPanel;
+  model: DocsPanelModelOperations;
   contextPanel: SceneObject<ContextPanelState>;
 
   isFullScreenActive: boolean;
   isRecommendationsTab: boolean;
   isEditorUser: boolean;
+  isDevMode: boolean;
   isWysiwygPreview: boolean;
 
-  activeTabId: string;
   activeTab: LearningJourneyTab | null;
   stableContent: LearningJourneyTab['content'] | undefined;
 
@@ -90,7 +87,7 @@ export interface DocsPanelContentAreaProps {
   progressKey: string | null;
   alignmentPendingValue: { isPending: boolean; startingLocation: string | null };
 
-  contentRef: React.RefObject<HTMLDivElement>;
+  contentRef: React.RefObject<HTMLDivElement | null>;
   handleResetGuide: (progressKey: string, activeTab: LearningJourneyTab) => Promise<void>;
   reloadActiveTab: (tab: LearningJourneyTab) => void;
   restoreScrollPosition: () => void;
@@ -108,8 +105,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
     isFullScreenActive,
     isRecommendationsTab,
     isEditorUser,
+    isDevMode,
     isWysiwygPreview,
-    activeTabId,
     activeTab,
     stableContent,
     hasInteractiveProgress,
@@ -124,6 +121,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
   const pluginContext = usePluginContext();
   const twoTabControllerEnabled = getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableTwoTabController;
 
+  const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
+
   return (
     <div className={styles.content} data-testid={testIds.docsPanel.content}>
       {(() => {
@@ -135,7 +134,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           return <contextPanel.Component model={contextPanel} />;
         }
 
-        if (activeTabId === 'devtools') {
+        // Defense in depth: authorization is checked again at the render
+        // boundary even though unauthorized tabs are pruned from model state.
+        if (activeTab?.type === 'devtools' && isDevMode) {
           return (
             <div className={styles.devToolsContent} data-testid="devtools-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
@@ -157,14 +158,22 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           );
         }
 
-        if (activeTabId === 'editor' && isEditorUser) {
+        if (activeTab?.type === 'editor' && isEditorUser) {
           return (
             <div className={styles.devToolsContent} data-testid="editor-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                <BlockEditor />
+                <BlockEditor onGuideTitleChange={handleGuideTitleChange} />
               </Suspense>
             </div>
           );
+        }
+
+        // Reaching here with gated chrome means its authorization check above
+        // failed. Pruning removes the tab from state, but until that commits,
+        // render home rather than the content paths below, which assume a tab
+        // with a URL to fetch.
+        if (activeTab?.type === 'devtools' || activeTab?.type === 'editor') {
+          return <contextPanel.Component model={contextPanel} />;
         }
 
         if (activeTab?.isLoading) {
@@ -269,29 +278,21 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
               {isLearningJourneyTab && !showMilestoneProgress && (
                 <div className={styles.contentMeta}>
                   <div className={styles.metaInfo}>
-                    <span>{t('docsPanel.learningJourney', 'Learning path')}</span>
+                    <small>
+                      {(activeTab.content?.metadata.learningJourney?.totalMilestones || 0) > 0
+                        ? t('docsPanel.milestonesCount', '{{count}} milestones', {
+                            count: activeTab.content?.metadata.learningJourney?.totalMilestones,
+                          })
+                        : t('docsPanel.interactiveJourney', 'Interactive journey')}
+                    </small>
                   </div>
-                  <small>
-                    {(activeTab.content?.metadata.learningJourney?.totalMilestones || 0) > 0
-                      ? t('docsPanel.milestonesCount', '{{count}} milestones', {
-                          count: activeTab.content?.metadata.learningJourney?.totalMilestones,
-                        })
-                      : t('docsPanel.interactiveJourney', 'Interactive journey')}
-                  </small>
                 </div>
               )}
 
-              {/* Content Meta for docs/interactive - label left, primary actions + kebab right */}
+              {/* Content Meta for docs/interactive — actions right-aligned */}
               {isDocsLikeTab(activeTab.type) && (
                 <div className={styles.contentMeta}>
-                  <div className={styles.metaInfo}>
-                    <span>
-                      {activeTab.type === 'interactive'
-                        ? t('docsPanel.interactiveGuide', 'Interactive guide')
-                        : t('docsPanel.documentation', 'Documentation')}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
                     {(() => {
                       const action = pickGrafanaDocsOpenAction(activeTab.content?.url || activeTab.baseUrl);
                       if (!action.shouldShow || !action.cleanUrl) {
@@ -383,11 +384,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 activeTab={activeTab}
                 surface="sidebar"
                 contentRoot={contentRef}
-                actionButtonClassName={styles.secondaryActionButton}
                 hasInteractiveProgress={hasInteractiveProgress}
                 progressKey={progressKey}
                 onResetGuide={handleResetGuide}
-                trailingActions={<PanelModeActionButtons className={styles.secondaryActionButton} />}
               />
 
               {/* Unified Content Renderer - works for both learning journeys and docs! */}
@@ -405,6 +404,11 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         }}
                       />
                     )}
+                    {/* Treatment arm of the interactive-learning banner experiment; renders
+                        null otherwise. The context page carries the same banner, but a
+                        guide opened by ?doc= or auto-open never passes through it. */}
+                    <InteractiveLearningBanner placement="guide" />
+
                     <ContentRenderer
                       key={activeTab?.currentUrl || stableContent.url}
                       content={stableContent}
@@ -415,23 +419,16 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                       onContentReady={() => {
                         restoreScrollPosition();
                       }}
-                      onGuideComplete={() => {
-                        const baseUrl = activeTab?.baseUrl || stableContent.url;
-                        if (baseUrl?.startsWith('bundled:')) {
-                          setJourneyCompletionPercentage(baseUrl, 100);
-                        }
-                        if (stableContent.type === 'learning-journey' && activeTab?.currentUrl) {
-                          const slug = getMilestoneSlug(activeTab.currentUrl);
-                          const journeyBase = activeTab.baseUrl;
-                          if (slug && journeyBase) {
-                            markMilestoneDone(
-                              journeyBase,
-                              slug,
-                              stableContent.metadata?.learningJourney?.totalMilestones
-                            );
-                          }
-                        }
-                      }}
+                      onGuideComplete={() =>
+                        recordGuideCompletionForSurface({
+                          baseUrl: activeTab?.baseUrl,
+                          contentUrl: stableContent.url,
+                          currentUrl: activeTab?.currentUrl,
+                          contentType: stableContent.type,
+                          metadata: stableContent.metadata,
+                          guideTitle: activeTab?.title,
+                        })
+                      }
                     />
                   </AlignmentPendingContext.Provider>
                 )}
@@ -447,7 +444,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         action: 'navigate_to_recommendations',
                         source: 'content_footer',
                       });
-                      model.setActiveTab('recommendations');
+                      model.setActiveTab(RECOMMENDATIONS_TAB_ID);
                     }}
                   >
                     {t('docsPanel.returnToMyLearning', 'Return to my learning')}

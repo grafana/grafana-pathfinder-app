@@ -5,10 +5,9 @@ export {
   initFaro,
   pauseFaroBeforeReload,
   pushFaroError,
-  pushFaroEvent,
   pushFaroLog,
-  pushFaroMeasurement,
   pushFaroUserAction,
+  resolveSessionReplayOptions,
   setFaroSessionAttributes,
   setFaroUserActionAttributes,
   setFaroView,
@@ -25,4 +24,5 @@ export {
   getEnvironment,
   isGrafanaCloud,
   passesActivityGate,
+  redactPageUrl,
 } from './telemetry/filtering';

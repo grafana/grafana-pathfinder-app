@@ -22,7 +22,25 @@ import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 
-export type AutoDockOutcome = 'sidebar' | 'floating' | 'noop';
+export type AutoDockOutcome = 'sidebar' | 'floating' | 'noop' | 'transient_back';
+
+/**
+ * Every `reason` value reported on `UserInteraction.FullScreenExit`, across
+ * both this module's automatic auto-dock decisions and `FullScreenPanel.tsx`'s
+ * manual/handoff exit paths — one shared union so the two files can't drift
+ * into colliding or undocumented values for the same analytics dimension.
+ */
+export type FullScreenExitReason =
+  | 'transient_back'
+  | 'navigation_away_sidebar_occupied'
+  | 'navigation_away'
+  | 'manual_exit'
+  | 'empty_state_fallback'
+  | 'dock_request'
+  | 'content_requires_grafana_ui';
+
+/** history@4 navigation actions (`history.listen`'s second argument). */
+export type HistoryAction = 'PUSH' | 'REPLACE' | 'POP';
 
 export interface AutoDockInputs {
   /** New pathname after the navigation. */
@@ -34,6 +52,8 @@ export interface AutoDockInputs {
   /** Captured from `FullScreenPanel`'s active tab — reported as analytics context. */
   guideUrl: string | undefined;
   title: string;
+  /** history action driving the navigation — `'POP'` is the browser Back path. */
+  action: HistoryAction;
 }
 
 /**
@@ -57,7 +77,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
     return 'noop';
   }
 
-  const { guideUrl, title, myPluginId } = inputs;
+  const { guideUrl, title, myPluginId, action } = inputs;
 
   // Defer the actual mode/sidebar side effects to the next macrotask.
   // The history listener fires synchronously on `locationService.push`,
@@ -66,8 +86,35 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
   // the FullScreenPanel React tree here, `markAsCompleted` is racing
   // against unmount and the step's persistence write may never happen.
   // A `setTimeout(0)` delay yields the microtask queue so the handler's
-  // pending `await markAsCompleted()` chain can settle first.
+  // pending `await markAsCompleted()` chain can settle first. The Back
+  // branch below relies on the same deferral for a second reason (see there).
   const deferred = (fn: () => void) => setTimeout(fn, 0);
+
+  // Guard 3: browser Back (history POP) out of a transient prose full-screen
+  // launch. The launch picked full screen automatically and never expressed a
+  // durable surface preference, so the return gesture must not force the
+  // extension sidebar open with the prose squeezed in (#1448) — quietly end
+  // the transient session so `getMode()` falls back to the stored preference.
+  // PUSH/REPLACE keep today's dock (an interactive `navigate` step leaving full
+  // screen still needs a panel to continue in); a non-transient POP (a
+  // deliberately-adopted full screen) docks too. history v4 can't tell Back
+  // from Forward — both are POP — which is acceptable for this quiet exit.
+  //
+  // Deferring `endTransientSession` is load-bearing: `FullScreenPanel`'s unmount
+  // cleanup must run first, while `getMode()` is still `'fullscreen'`, so it
+  // clears `isSidebarMounted`. Ending the session synchronously would flip
+  // `getMode()` to the stored preference before the cleanup's mode check and
+  // strand the mount flag stale-true with no surface.
+  if (action === 'POP' && panelModeManager.isTransient()) {
+    reportAppInteraction(UserInteraction.FullScreenExit, {
+      destination: 'none',
+      guide_url: guideUrl || '',
+      guide_title: title,
+      reason: 'transient_back' satisfies FullScreenExitReason,
+    });
+    deferred(() => panelModeManager.endTransientSession());
+    return 'transient_back';
+  }
 
   if (isExtensionSidebarOwnedByOther(myPluginId)) {
     // Sidebar is taken — pop out as a floating overlay so we co-exist
@@ -76,7 +123,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
       destination: 'floating',
       guide_url: guideUrl || '',
       guide_title: title,
-      reason: 'navigation_away_sidebar_occupied',
+      reason: 'navigation_away_sidebar_occupied' satisfies FullScreenExitReason,
     });
     deferred(() => panelModeManager.setMode('floating'));
     return 'floating';
@@ -86,7 +133,7 @@ export function dockOnLeavingFullScreen(inputs: AutoDockInputs): AutoDockOutcome
     destination: 'sidebar',
     guide_url: guideUrl || '',
     guide_title: title,
-    reason: 'navigation_away',
+    reason: 'navigation_away' satisfies FullScreenExitReason,
   });
 
   // All surfaces share `tabStorage` — the docking sidebar restores the

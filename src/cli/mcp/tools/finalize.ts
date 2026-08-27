@@ -1,4 +1,6 @@
 /**
+ * Contract: mcp-native
+ *
  * `pathfinder_finalize_for_app_platform` — produces the publish handoff
  * payload defined in `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md`.
  *
@@ -17,11 +19,10 @@
  * Platform write payload — clients must not be tempted to publish an
  * invalid artifact.
  *
- * P7 session-mode: accepts `{sessionToken}` in place of `{artifact}` using
- * the shared `resolveReadOnlyInput` helper. On a successful finalize the
- * server deletes the session — the token is single-use through here. A
- * failed delete logs but does not fail the response: the sliding session
- * TTL is the safety net so we cannot strand a session.
+ * Accepts `{sessionToken}` in place of `{artifact}` using
+ * `resolveReadOnlyInput`. On a successful finalize the server deletes the
+ * session — the token is single-use through here. A failed delete logs but
+ * does not fail the response: the sliding session TTL is the safety net.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -29,15 +30,16 @@ import { z } from 'zod';
 
 import { runValidate } from '../../commands/validate';
 import { renderMachineJson } from '../../utils/output';
+import { projectManifestForCrd } from '../lib/crd-manifest';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
 import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
-import { textResult, withToolErrorEnvelope } from './result';
+import { textResult, withToolErrorEnvelope, type ToolResult } from './result';
 import { ArtifactInputBase, SessionTokenBase } from './two-mode-input';
 
-const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.com/v1alpha1';
+const APP_PLATFORM_API_VERSION = 'pathfinderbackend.ext.grafana.app/v1alpha1';
 const APP_PLATFORM_KIND = 'InteractiveGuide';
 const APP_PLATFORM_RESOURCE = 'interactiveguides';
 const NAMESPACE_PLACEHOLDER = '{namespace}';
@@ -85,7 +87,7 @@ async function finalizeImpl(args: {
   status: 'draft' | 'published';
   sessionStore: AuthoringSessionStore;
   mcpSessionId: string | undefined;
-}): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+}): Promise<ToolResult> {
   const { artifact, sessionToken, status, sessionStore, mcpSessionId } = args;
   const resolved = await resolveReadOnlyInput(sessionStore, { artifact, sessionToken }, mcpSessionId);
   if (!resolved.ok) {
@@ -126,6 +128,15 @@ async function finalizeImpl(args: {
 
   const confirmationPrompt = `Publish guide "${title}" to <namespace> as <status>?`;
 
+  // The artifact was authored as a package, so it still carries manifest-level
+  // fields. Emit the manifest the CRD understands rather than dropping it: a
+  // package authored as a `path` must not publish as a flat guide.
+  //
+  // `type` is not declared on `ContentJson`, but clients send it alongside the
+  // typed fields, so it has to be stripped through a widened view.
+  const { type: _packageType, ...specContent } = content as unknown as Record<string, unknown>;
+  const crdManifest = projectManifestForCrd(manifest);
+
   const handoff = {
     status: 'ready',
     id,
@@ -151,9 +162,13 @@ async function finalizeImpl(args: {
       metadata: {
         name: id,
       },
+      // `type` belongs to the package manifest, not the guide spec — the CRD
+      // declares no `spec.type`, so leaving it in earns a pruning warning on
+      // every write. `manifest` carries it, projected onto the CRD's shape.
       spec: {
-        ...content,
+        ...specContent,
         status,
+        ...(crdManifest ? { manifest: crdManifest } : {}),
       },
     },
     viewer: {
@@ -164,7 +179,7 @@ async function finalizeImpl(args: {
     clientGuidance: {
       grafanaAppPlatform: {
         appliesWhen:
-          'You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-com.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.',
+          'You are a Grafana-aware client (e.g., Grafana Assistant) running inside a Grafana instance that has the Pathfinder backend aggregator enabled (featureToggles["aggregation.pathfinderbackend-ext-grafana-app.enabled"] === true). If you are unsure, try this branch first; on a 404 from the collection POST or from pathfinder_manage_guide_drafts, switch to grafanaOss.',
         confirmationPrompt,
         preferredTools: {
           drafts: {

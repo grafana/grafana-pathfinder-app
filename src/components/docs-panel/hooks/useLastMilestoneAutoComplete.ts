@@ -16,7 +16,12 @@
  * The setTimeout is cleared on dep change / unmount.
  */
 import * as React from 'react';
-import { getMilestoneSlug, isLastMilestone, markMilestoneDone } from '../../../docs-retrieval';
+import {
+  getMilestoneSlug,
+  isLastMilestone,
+  markMilestoneDone,
+  resolveExpectedMilestoneIds,
+} from '../../../docs-retrieval';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 
 export interface UseLastMilestoneAutoCompleteParams {
@@ -34,7 +39,8 @@ export function useLastMilestoneAutoComplete({
   contentRef,
 }: UseLastMilestoneAutoCompleteParams): void {
   React.useEffect(() => {
-    if (!stableContent || stableContent.type !== 'learning-journey' || !activeTab?.currentUrl || !activeTab?.baseUrl) {
+    const journey = stableContent?.metadata.learningJourney;
+    if (!stableContent || stableContent.type !== 'learning-journey' || !journey || !activeTab?.currentUrl) {
       return;
     }
 
@@ -52,14 +58,19 @@ export function useLastMilestoneAutoComplete({
       if (!hasInteractiveSteps) {
         const slug = getMilestoneSlug(activeTab.currentUrl!);
         if (slug) {
-          void markMilestoneDone(activeTab.baseUrl!, slug, stableContent.metadata?.learningJourney?.totalMilestones);
+          void markMilestoneDone(journey.baseUrl, slug, resolveExpectedMilestoneIds(journey), {
+            packageManifest: stableContent.metadata.packageManifest,
+            repository: stableContent.metadata.repository,
+            guideTitle: activeTab.title,
+          });
         }
       }
     }, 500);
 
     return () => clearTimeout(timer);
-    // Deps mirror the original inline effect exactly. `activeTab.type` is
-    // intentionally not in the deps — re-running on milestone-by-milestone
-    // `currentUrl` changes is the load-bearing trigger.
-  }, [stableContent, activeTab?.currentUrl, activeTab?.baseUrl, contentRef]);
+    // `activeTab.type` is intentionally not in the deps — re-running on
+    // milestone-by-milestone `currentUrl` changes is the load-bearing trigger.
+    // `activeTab.title` is only read to label the completion fact; re-arming
+    // the timer on a title change is harmless.
+  }, [stableContent, activeTab?.currentUrl, activeTab?.title, contentRef]);
 }

@@ -257,6 +257,8 @@ describe('HTTP transport', () => {
       const entry = h.logs.at(-1)!;
       expect(entry.rpcMethod).toBe('tools/call');
       expect(entry.rpcToolName).toBe('pathfinder_authoring_start');
+      // No `operation` arg on this tool — the bounded field stays absent.
+      expect(entry.rpcToolOperation).toBeUndefined();
       expect(entry.rpcId).toBe('abc');
     } finally {
       await h.close();
@@ -329,11 +331,17 @@ describe('HTTP transport', () => {
           jsonrpc: '2.0',
           id: 'call',
           method: 'tools/call',
-          params: { name: 'pathfinder_list_blocks', arguments: { sessionToken: token } },
+          params: {
+            name: 'pathfinder_read_session',
+            arguments: { sessionToken: token, operation: 'list-blocks' },
+          },
         }),
       });
       const entry = h.logs.at(-1)!;
-      expect(entry.rpcToolName).toBe('pathfinder_list_blocks');
+      expect(entry.rpcToolName).toBe('pathfinder_read_session');
+      // Suite tools collapse many verbs into one rpcToolName; the operation
+      // dimension keeps reads/appends/deletes distinguishable in the log.
+      expect(entry.rpcToolOperation).toBe('list-blocks');
       expect(entry.sessionTokenPrefix).toBe('abcdefghjkmn');
       expect(typeof entry.sessionTokenHash).toBe('string');
       // Raw token never appears anywhere in the log entry.

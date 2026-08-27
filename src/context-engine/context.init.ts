@@ -1,6 +1,8 @@
 import { getBackendSrv, config } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { initializeEchoLogging, initializeFromRecentEvents } from './context-event-bus';
+import { collectionUrl } from '../utils/interactive-guides-api';
+import { extractFetchErrorStatus } from '../lib/fetch-error';
 import { logger } from '../lib/logging';
 
 /**
@@ -14,20 +16,16 @@ export async function fetchInteractiveGuidesFromBackend(): Promise<void> {
   }
 
   try {
-    const url = `/apis/pathfinderbackend.ext.grafana.com/v1alpha1/namespaces/${namespace}/interactiveguides`;
     await lastValueFrom(
       getBackendSrv().fetch({
-        url,
+        url: collectionUrl(namespace),
         method: 'GET',
         // Optional rollout endpoint: don't show global toast when absent.
         showErrorAlert: false,
       })
     );
   } catch (error) {
-    const status =
-      (error as { status?: number; statusCode?: number; data?: { statusCode?: number } })?.status ??
-      (error as { statusCode?: number })?.statusCode ??
-      (error as { data?: { statusCode?: number } })?.data?.statusCode;
+    const status = extractFetchErrorStatus(error);
     const unavailableStatuses = new Set([400, 403, 404, 405, 501, 503]);
 
     if (status && unavailableStatuses.has(status)) {
@@ -59,7 +57,9 @@ export function initializeContextServices(): void {
  * SECURITY: Dev mode is now lazily initialized when user visits config with ?dev=true
  */
 export function onPluginStart(): void {
-  // Initialize context services only
   // Dev mode is lazily initialized to avoid unnecessary API calls for anonymous users
   initializeContextServices();
+  // The durable completion-write hook is armed from the universal plugin
+  // bootstrap (plugin.init in module.tsx), not here — the root App page is only
+  // one of several entry surfaces, so arming here would miss the others.
 }

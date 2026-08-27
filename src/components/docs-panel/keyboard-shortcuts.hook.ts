@@ -27,7 +27,7 @@ export function useKeyboardShortcuts({
       // Ctrl/Cmd + W to close current tab (except recommendations)
       if ((event.ctrlKey || event.metaKey) && event.key === 'w') {
         safeEventHandler(event, { preventDefault: true });
-        if (activeTab && activeTab.id !== 'recommendations') {
+        if (activeTab && activeTab.type !== 'recommendations') {
           model.closeTab(activeTab.id);
         }
       }
@@ -35,9 +35,12 @@ export function useKeyboardShortcuts({
       // Ctrl/Cmd + Tab to switch between tabs
       if ((event.ctrlKey || event.metaKey) && event.key === 'Tab') {
         safeEventHandler(event, { preventDefault: true });
+        if (tabs.length === 0) {
+          return;
+        }
         const currentIndex = tabs.findIndex((tab) => tab.id === activeTabId);
         const nextIndex = event.shiftKey
-          ? (currentIndex - 1 + tabs.length) % tabs.length
+          ? ((currentIndex === -1 ? 0 : currentIndex) - 1 + tabs.length) % tabs.length
           : (currentIndex + 1) % tabs.length;
         model.setActiveTab(tabs[nextIndex]!.id);
       }

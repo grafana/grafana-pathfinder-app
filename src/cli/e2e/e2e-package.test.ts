@@ -11,7 +11,7 @@ jest.mock('../../validation', () => ({
 jest.mock('./recommender-resolver', () => ({
   resolvePackageById: jest.fn(),
 }));
-jest.mock('../mcp/lib/repository-client', () => ({
+jest.mock('../utils/repository-client', () => ({
   fetchRepositoryIndex: jest.fn(),
   buildPackageFileUrl: jest.fn((base: string, path: string, file: string) => `${base}${path}/${file}`),
 }));
@@ -19,7 +19,7 @@ jest.mock('../mcp/lib/repository-client', () => ({
 import { resolveRemotePackage, resolveRemoteRepository } from './e2e-package';
 import { validateGuideFromString } from '../../validation';
 import { resolvePackageById } from './recommender-resolver';
-import { fetchRepositoryIndex } from '../mcp/lib/repository-client';
+import { fetchRepositoryIndex } from '../utils/repository-client';
 
 const OPTIONS = {
   grafanaUrl: 'http://localhost:3000',
@@ -49,6 +49,15 @@ function mockFetch(body: { ok: true; text: string } | { ok: false; status: numbe
     ) as unknown as typeof fetch;
 }
 
+function mockGuideFetch(aliases: Record<string, string> = {}): void {
+  global.fetch = jest.fn((url: string) => {
+    const segments = new URL(url).pathname.split('/').filter(Boolean);
+    const packagePath = segments[segments.length - 2]!;
+    const id = aliases[packagePath] ?? packagePath;
+    return Promise.resolve({ ok: true, text: async () => JSON.stringify({ id }) } as Response);
+  }) as unknown as typeof fetch;
+}
+
 /** Configure the CDN index mock with the given packages. */
 function mockIndex(packages: unknown[]): void {
   (fetchRepositoryIndex as jest.Mock).mockResolvedValue({
@@ -76,9 +85,22 @@ describe('resolveRemotePackage (single, recommender)', () => {
       contentUrl: 'https://cdn.test/alerting-101/content.json',
       manifestUrl: 'https://cdn.test/alerting-101/manifest.json',
       repository: 'r',
-      manifest: { id: 'alerting-101', type: 'guide', testEnvironment: { tier: 'local' } },
+      manifest: {
+        id: 'alerting-101',
+        type: 'guide',
+        startingLocation: '/alerting',
+        testEnvironment: { tier: 'local' },
+      },
     });
-    mockIndex([{ id: 'alerting-101', path: 'alerting-101/', type: 'guide', testEnvironment: { tier: 'local' } }]);
+    mockIndex([
+      {
+        id: 'alerting-101',
+        path: 'alerting-101/',
+        type: 'guide',
+        startingLocation: '/repository-location',
+        testEnvironment: { tier: 'local' },
+      },
+    ]);
     mockFetch({
       ok: true,
       text: '{"id":"alerting-101","title":"Alerting","blocks":[{"type":"markdown","content":"Read this"}]}',
@@ -93,11 +115,41 @@ describe('resolveRemotePackage (single, recommender)', () => {
       tier: 'local',
       targetUrl: 'http://localhost:3000',
       sourceUrl: 'https://cdn.test/alerting-101/content.json',
+      startingLocation: '/alerting',
       sideEffects: { level: 'readonly', reasons: [] },
     });
     expect(result.runnable[0]!.guide.content).toBe(
       '{"id":"alerting-101","title":"Alerting","blocks":[{"type":"markdown","content":"Read this"}]}'
     );
+  });
+
+  it('preserves an omitted starting location for chain handoff', async () => {
+    mockResolve({
+      ok: true,
+      id: 'chain-guide',
+      contentUrl: 'https://cdn.test/chain-guide/content.json',
+      manifestUrl: 'https://cdn.test/chain-guide/manifest.json',
+      repository: 'r',
+      manifest: {
+        id: 'chain-guide',
+        type: 'guide',
+        testEnvironment: { tier: 'local' },
+      },
+    });
+    mockIndex([
+      {
+        id: 'chain-guide',
+        path: 'chain-guide/',
+        type: 'guide',
+        testEnvironment: { tier: 'local' },
+      },
+    ]);
+    mockFetch({ ok: true, text: '{"id":"chain-guide"}' });
+
+    const result = await resolveRemotePackage('chain-guide', OPTIONS);
+
+    expect(result.skipped).toHaveLength(0);
+    expect(result.runnable[0]?.startingLocation).toBeUndefined();
   });
 
   it('maps a recommender failure to resolution_failed', async () => {
@@ -109,20 +161,219 @@ describe('resolveRemotePackage (single, recommender)', () => {
     expect(result.skipped[0]).toMatchObject({ id: 'missing', reason: 'resolution_failed' });
   });
 
-  it('skips a non-guide package as unsupported_type', async () => {
+  it('expands a path package into an ordered leaf-guide execution plan', async () => {
     mockResolve({
       ok: true,
       id: 'prometheus-lj',
       contentUrl: 'https://cdn.test/prometheus-lj/content.json',
       manifestUrl: '',
       repository: 'r',
-      manifest: { id: 'prometheus-lj', type: 'path', milestones: ['a', 'b'] },
+      manifest: {
+        id: 'prometheus-lj',
+        type: 'path',
+        milestones: ['prometheus-a', 'prometheus-b'],
+        testEnvironment: { tier: 'local' },
+      },
     });
+    mockIndex([
+      {
+        id: 'prometheus-lj',
+        path: 'prometheus-lj/',
+        type: 'path',
+        milestones: ['prometheus-a', 'prometheus-b'],
+        testEnvironment: { tier: 'local' },
+      },
+      {
+        id: 'prometheus-a',
+        path: 'prometheus-lj/a/',
+        type: 'guide',
+        testEnvironment: { tier: 'local' },
+      },
+      {
+        id: 'prometheus-b',
+        path: 'prometheus-lj/b/',
+        type: 'guide',
+        depends: ['prometheus-a'],
+        testEnvironment: { tier: 'local' },
+      },
+    ]);
+    global.fetch = jest.fn((url: string) =>
+      Promise.resolve({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            id: url.includes('/a/') ? 'prometheus-a' : 'prometheus-b',
+            title: 'Guide',
+            blocks: [],
+          }),
+      } as Response)
+    ) as unknown as typeof fetch;
 
     const result = await resolveRemotePackage('prometheus-lj', OPTIONS);
 
-    expect(result.runnable).toHaveLength(0);
-    expect(result.skipped[0]).toMatchObject({ id: 'prometheus-lj', reason: 'unsupported_type' });
+    expect(result.skipped).toEqual([]);
+    expect(result.selection).toEqual({ id: 'prometheus-lj', type: 'path' });
+    expect(result.runnable.map((guide) => guide.id)).toEqual(['prometheus-a', 'prometheus-b']);
+    expect(result.executionPlan?.chains[0]?.map((guide) => guide.id)).toEqual(['prometheus-a', 'prometheus-b']);
+    expect(result.executionPlan?.chains[0]?.[1]?.dependencies).toEqual(['prometheus-a']);
+    expect(global.fetch).not.toHaveBeenCalledWith('https://cdn.test/prometheus-lj/content.json', expect.anything());
+  });
+
+  it('rejects a path whose repository root is declared as a journey', async () => {
+    mockResolve({
+      ok: true,
+      id: 'mismatched-path',
+      contentUrl: 'https://cdn.test/mismatched-path/content.json',
+      manifestUrl: 'https://cdn.test/mismatched-path/manifest.json',
+      repository: 'r',
+      manifest: {
+        id: 'mismatched-path',
+        type: 'path',
+        milestones: ['leaf'],
+        testEnvironment: { tier: 'local' },
+      },
+    });
+    mockIndex([
+      {
+        id: 'mismatched-path',
+        path: 'mismatched-path/',
+        type: 'journey',
+        milestones: ['leaf'],
+        testEnvironment: { tier: 'local' },
+      },
+      { id: 'leaf', path: 'mismatched-path/leaf/', type: 'guide', testEnvironment: { tier: 'local' } },
+    ]);
+
+    const result = await resolveRemotePackage('mismatched-path', OPTIONS);
+
+    expect(result.runnable).toEqual([]);
+    expect(result.selection).toEqual({ id: 'mismatched-path', type: 'path' });
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        id: 'mismatched-path',
+        reason: 'resolution_failed',
+        message: expect.stringContaining(
+          'Root package type mismatch: recommender declared "path", repository declared "journey"'
+        ),
+      }),
+    ]);
+  });
+
+  it('preserves repository metapackage selection when recommender metadata declares a guide', async () => {
+    mockResolve({
+      ok: true,
+      id: 'repository-path',
+      contentUrl: 'https://cdn.test/repository-path/content.json',
+      manifestUrl: 'https://cdn.test/repository-path/manifest.json',
+      repository: 'r',
+      manifest: { id: 'repository-path', type: 'guide', testEnvironment: { tier: 'local' } },
+    });
+    mockIndex([
+      {
+        id: 'repository-path',
+        path: 'repository-path/',
+        type: 'path',
+        milestones: ['leaf'],
+        testEnvironment: { tier: 'local' },
+      },
+      { id: 'leaf', path: 'repository-path/leaf/', type: 'guide', testEnvironment: { tier: 'local' } },
+    ]);
+
+    const result = await resolveRemotePackage('repository-path', OPTIONS);
+
+    expect(result.runnable).toEqual([]);
+    expect(result.selection).toEqual({ id: 'repository-path', type: 'path' });
+    expect(result.skipped[0]).toMatchObject({
+      id: 'repository-path',
+      reason: 'resolution_failed',
+      message: expect.stringContaining('recommender declared "guide", repository declared "path"'),
+    });
+  });
+
+  it('skips an entire path before execution when a required leaf cannot be fetched', async () => {
+    mockResolve({
+      ok: true,
+      id: 'broken-path',
+      contentUrl: 'https://cdn.test/broken-path/content.json',
+      manifestUrl: '',
+      repository: 'r',
+      manifest: {
+        id: 'broken-path',
+        type: 'path',
+        milestones: ['good-leaf', 'broken-leaf'],
+        testEnvironment: { tier: 'local' },
+      },
+    });
+    mockIndex([
+      {
+        id: 'broken-path',
+        path: 'broken-path/',
+        type: 'path',
+        milestones: ['good-leaf', 'broken-leaf'],
+        testEnvironment: { tier: 'local' },
+      },
+      { id: 'good-leaf', path: 'broken-path/good/', type: 'guide', testEnvironment: { tier: 'local' } },
+      { id: 'broken-leaf', path: 'broken-path/broken/', type: 'guide', testEnvironment: { tier: 'local' } },
+    ]);
+    global.fetch = jest.fn((url: string) =>
+      Promise.resolve(
+        url.includes('/broken/')
+          ? ({ ok: false, status: 503, statusText: 'Error' } as Response)
+          : ({ ok: true, text: async () => '{"id":"good-leaf","title":"Good","blocks":[]}' } as unknown as Response)
+      )
+    ) as unknown as typeof fetch;
+
+    const result = await resolveRemotePackage('broken-path', OPTIONS);
+
+    expect(result.runnable).toEqual([]);
+    expect(result.executionPlan).toBeUndefined();
+    expect(result.selection).toEqual({ id: 'broken-path', type: 'path' });
+    expect(Object.fromEntries(result.skipped.map((skip) => [skip.id, skip.reason]))).toEqual({
+      'broken-leaf': 'fetch_failed',
+      'broken-path': 'prerequisite_failed',
+    });
+  });
+
+  it('makes a mixed-tier remote path non-runnable instead of partially executing it', async () => {
+    mockResolve({
+      ok: true,
+      id: 'mixed-path',
+      contentUrl: 'https://cdn.test/mixed-path/content.json',
+      manifestUrl: '',
+      repository: 'r',
+      manifest: {
+        id: 'mixed-path',
+        type: 'path',
+        milestones: ['local-leaf', 'cloud-leaf'],
+        testEnvironment: { tier: 'local' },
+      },
+    });
+    mockIndex([
+      {
+        id: 'mixed-path',
+        path: 'mixed-path/',
+        type: 'path',
+        milestones: ['local-leaf', 'cloud-leaf'],
+        testEnvironment: { tier: 'local' },
+      },
+      { id: 'local-leaf', path: 'mixed-path/local/', type: 'guide', testEnvironment: { tier: 'local' } },
+      { id: 'cloud-leaf', path: 'mixed-path/cloud/', type: 'guide', testEnvironment: { tier: 'cloud' } },
+    ]);
+    mockGuideFetch({ local: 'local-leaf' });
+
+    const result = await resolveRemotePackage('mixed-path', OPTIONS);
+
+    expect(result.runnable).toEqual([]);
+    expect(result.executionPlan).toBeUndefined();
+    expect(result.selection).toEqual({ id: 'mixed-path', type: 'path' });
+    expect(result.skipped).toEqual([
+      expect.objectContaining({ id: 'cloud-leaf', reason: 'skipped_tier_mismatch' }),
+      expect.objectContaining({
+        id: 'mixed-path',
+        reason: 'prerequisite_failed',
+        message: expect.stringContaining('cloud-leaf'),
+      }),
+    ]);
   });
 
   it('skips a cloud-tier package on a local environment', async () => {
@@ -172,6 +423,74 @@ describe('resolveRemotePackage (single, recommender)', () => {
     const result = await resolveRemotePackage('g', OPTIONS);
 
     expect(result.skipped[0]).toMatchObject({ id: 'g', reason: 'validation_failed' });
+  });
+
+  it('rejects fetched content whose id does not match the repository package', async () => {
+    mockResolve({
+      ok: true,
+      id: 'expected-id',
+      contentUrl: 'https://cdn.test/expected-id/content.json',
+      manifestUrl: '',
+      repository: 'r',
+      manifest: { id: 'expected-id', type: 'guide', testEnvironment: { tier: 'local' } },
+    });
+    mockIndex([{ id: 'expected-id', path: 'expected-id/', type: 'guide', testEnvironment: { tier: 'local' } }]);
+    mockFetch({ ok: true, text: '{"id":"different-id"}' });
+
+    const result = await resolveRemotePackage('expected-id', OPTIONS);
+
+    expect(result.runnable).toEqual([]);
+    expect(result.skipped[0]).toMatchObject({
+      id: 'expected-id',
+      reason: 'validation_failed',
+      message: expect.stringContaining('does not match package id'),
+    });
+  });
+
+  it('fails closed when both manifest metadata and the repository index are unavailable', async () => {
+    mockResolve({
+      ok: true,
+      id: 'unknown-type',
+      contentUrl: 'https://cdn.test/unknown-type/content.json',
+      manifestUrl: '',
+      repository: 'r',
+      manifest: undefined,
+    });
+    (fetchRepositoryIndex as jest.Mock).mockResolvedValue({ ok: false, code: 'NETWORK_ERROR', message: 'offline' });
+
+    const result = await resolveRemotePackage('unknown-type', OPTIONS);
+
+    expect(result.runnable).toEqual([]);
+    expect(result.skipped[0]).toMatchObject({
+      id: 'unknown-type',
+      reason: 'resolution_failed',
+      message: expect.stringContaining('both unavailable'),
+    });
+  });
+
+  it('maps an invalid starting location to validation_failed before execution', async () => {
+    mockResolve({
+      ok: true,
+      id: 'invalid-start',
+      contentUrl: 'https://cdn.test/invalid-start/content.json',
+      manifestUrl: 'https://cdn.test/invalid-start/manifest.json',
+      repository: 'r',
+      manifest: {
+        id: 'invalid-start',
+        type: 'guide',
+        startingLocation: 'https://example.com/dashboard',
+        testEnvironment: { tier: 'local' },
+      },
+    });
+
+    const result = await resolveRemotePackage('invalid-start', OPTIONS);
+
+    expect(result.runnable).toHaveLength(0);
+    expect(result.skipped[0]).toMatchObject({
+      id: 'invalid-start',
+      reason: 'validation_failed',
+      message: expect.stringMatching(/startingLocation.*same origin/i),
+    });
   });
 
   it('resolves a runnable cloud guide against the cloud target URL when credentials are present', async () => {
@@ -383,7 +702,7 @@ describe('resolveRemoteRepository (batch, CDN index)', () => {
       rawIndex: {},
       validation: { isValid: true, issues: [] },
     });
-    mockFetch({ ok: true, text: '{"id":"x"}' });
+    mockGuideFetch();
 
     const result = await resolveRemoteRepository(OPTIONS);
 
@@ -404,6 +723,108 @@ describe('resolveRemoteRepository (batch, CDN index)', () => {
 
     expect(result.error).toMatch(/repository index/i);
     expect(result.runnable).toHaveLength(0);
+  });
+
+  it('skips only dependents of an unavailable prerequisite and keeps independent guides runnable', async () => {
+    mockIndex([
+      {
+        id: 'dependent',
+        path: 'dependent/',
+        type: 'guide',
+        depends: ['cloud-prerequisite'],
+        testEnvironment: { tier: 'local' },
+      },
+      {
+        id: 'cloud-prerequisite',
+        path: 'cloud-prerequisite/',
+        type: 'guide',
+        testEnvironment: { tier: 'cloud' },
+      },
+      {
+        id: 'independent',
+        path: 'independent/',
+        type: 'guide',
+        testEnvironment: { tier: 'local' },
+      },
+    ]);
+    mockGuideFetch();
+
+    const result = await resolveRemoteRepository(OPTIONS);
+
+    expect(result.runnable.map((guide) => guide.id)).toEqual(['independent']);
+    expect(Object.fromEntries(result.skipped.map((skip) => [skip.id, skip.reason]))).toEqual({
+      'cloud-prerequisite': 'skipped_tier_mismatch',
+      dependent: 'prerequisite_failed',
+    });
+    expect(result.executionPlan?.chains.flat().map((guide) => guide.id)).toEqual(['independent']);
+  });
+
+  it('skips a root with a missing dependency while preserving an independent guide', async () => {
+    mockIndex([
+      {
+        id: 'broken-root',
+        path: 'broken-root/',
+        type: 'guide',
+        depends: ['ghost'],
+        testEnvironment: { tier: 'local' },
+      },
+      {
+        id: 'independent',
+        path: 'independent/',
+        type: 'guide',
+        testEnvironment: { tier: 'local' },
+      },
+    ]);
+    mockGuideFetch();
+
+    const result = await resolveRemoteRepository(OPTIONS);
+
+    expect(result.error).toBeUndefined();
+    expect(result.runnable.map((guide) => guide.id)).toEqual(['independent']);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        id: 'broken-root',
+        reason: 'prerequisite_failed',
+        message: expect.stringContaining('ghost'),
+      }),
+    ]);
+    expect(result.executionPlan?.chains.flat().map((guide) => guide.id)).toEqual(['independent']);
+  });
+
+  it('keeps independently valid roots runnable when their OR-provider closures are planned together', async () => {
+    mockIndex([
+      {
+        id: 'pkgx',
+        path: 'pkgx/',
+        type: 'guide',
+        depends: [['pkgp', 'pkgq']],
+        testEnvironment: { tier: 'local' },
+      },
+      { id: 'pkgp', path: 'pkgp/', type: 'guide', testEnvironment: { tier: 'local' } },
+      {
+        id: 'pkgq',
+        path: 'pkgq/',
+        type: 'guide',
+        depends: [['pkgz', 'pkgx']],
+        testEnvironment: { tier: 'local' },
+      },
+      { id: 'pkgz', path: 'pkgz/', type: 'guide', testEnvironment: { tier: 'local' } },
+      { id: 'pkgy2', path: 'pkgy2/', type: 'guide', depends: ['pkgq'], testEnvironment: { tier: 'local' } },
+    ]);
+    mockGuideFetch();
+
+    const result = await resolveRemoteRepository(OPTIONS);
+
+    expect(result.error).toBeUndefined();
+    expect(result.skipped).toEqual([]);
+    expect(result.runnable.map((guide) => guide.id)).toEqual(['pkgx', 'pkgp', 'pkgq', 'pkgz', 'pkgy2']);
+    expect(result.executionPlan?.chains.flat().map((guide) => guide.id)).toEqual([
+      'pkgp',
+      'pkgx',
+      'pkgz',
+      'pkgq',
+      'pkgy2',
+    ]);
   });
 });
 
@@ -426,7 +847,7 @@ describe('resolveRemotePackage (dependency resolution)', () => {
       { id: 'loki-101', path: 'loki-101/', type: 'guide', depends: ['prom-101'], testEnvironment: { tier: 'local' } },
       { id: 'prom-101', path: 'prom-101/', type: 'guide', testEnvironment: { tier: 'local' } },
     ]);
-    mockFetch({ ok: true, text: '{"id":"loki-101"}' });
+    mockGuideFetch();
 
     const result = await resolveRemotePackage('loki-101', OPTIONS);
 
@@ -443,7 +864,7 @@ describe('resolveRemotePackage (dependency resolution)', () => {
       { id: 'b-guide', path: 'b/', type: 'guide', depends: ['a-guide'], testEnvironment: { tier: 'local' } },
       { id: 'a-guide', path: 'a/', type: 'guide', testEnvironment: { tier: 'local' } },
     ]);
-    mockFetch({ ok: true, text: '{"id":"c-guide"}' });
+    mockGuideFetch({ a: 'a-guide', b: 'b-guide' });
 
     const result = await resolveRemotePackage('c-guide', OPTIONS);
 
@@ -457,7 +878,7 @@ describe('resolveRemotePackage (dependency resolution)', () => {
       { id: 'dependent', path: 'dependent/', type: 'guide', depends: ['db-ready'], testEnvironment: { tier: 'local' } },
       { id: 'provider', path: 'provider/', type: 'guide', provides: ['db-ready'], testEnvironment: { tier: 'local' } },
     ]);
-    mockFetch({ ok: true, text: '{"id":"dependent"}' });
+    mockGuideFetch();
 
     const result = await resolveRemotePackage('dependent', OPTIONS);
 
@@ -509,6 +930,35 @@ describe('resolveRemotePackage (dependency resolution)', () => {
     expect(result.skipped).toHaveLength(1);
     expect(result.skipped[0]).toMatchObject({ id: 'loki-101', reason: 'resolution_failed' });
     expect(result.skipped[0]!.message).toMatch(/unreachable/i);
+  });
+
+  it('preserves path selection when an unreachable index prevents milestone resolution', async () => {
+    mockResolve({
+      ok: true,
+      id: 'offline-path',
+      contentUrl: 'https://cdn.test/offline-path/content.json',
+      manifestUrl: 'https://cdn.test/offline-path/manifest.json',
+      repository: 'r',
+      manifest: {
+        id: 'offline-path',
+        type: 'path',
+        milestones: ['leaf'],
+        testEnvironment: { tier: 'local' },
+      },
+    });
+    (fetchRepositoryIndex as jest.Mock).mockResolvedValue({ ok: false, code: 'NETWORK_ERROR', message: 'offline' });
+
+    const result = await resolveRemotePackage('offline-path', OPTIONS);
+
+    expect(result.runnable).toEqual([]);
+    expect(result.selection).toEqual({ id: 'offline-path', type: 'path' });
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        id: 'offline-path',
+        reason: 'resolution_failed',
+        message: expect.stringMatching(/unreachable.*milestones/i),
+      }),
+    ]);
   });
 
   it('cascades the skip to the target when a prerequisite cannot be fetched', async () => {

@@ -4,11 +4,25 @@
 
 export { isDocsLikeTab, shouldUseDocsLoader } from './tab-validation';
 export { getTranslatedTitle } from './tab-translations';
-export { computeTabVisibility, PERMANENT_TAB_IDS } from './tab-visibility';
+export { computeTabVisibility } from './tab-visibility';
 export type { TabVisibilityResult } from './tab-visibility';
-export { restoreTabsFromStorage, restoreActiveTabFromStorage, createUrlValidator } from './tab-storage-restore';
+export {
+  RECOMMENDATIONS_TAB_ID,
+  DEVTOOLS_TAB_ID,
+  EDITOR_TAB_ID,
+  getGuideStripTabs,
+  isNonContentTab,
+} from './tab-kinds';
+export { isCurrentUserEditor, resolveTabGates, didGateClose } from './tab-gates';
+export type { TabGates } from './tab-gates';
+export {
+  restoreTabsFromStorage,
+  restoreActiveTabFromStorage,
+  mergeRestoredTabsWithExisting,
+  createUrlValidator,
+} from './tab-storage-restore';
 export type { UrlValidator, TabRestoreOptions } from './tab-storage-restore';
-export { isGrafanaDocsUrl, cleanDocsUrl } from './url-validation';
+export { isGrafanaDocsUrl, cleanDocsUrl, isLearningJourneyUrl } from './url-validation';
 export { loadDocsTabContentResult, UNRESOLVED_PACKAGE_ERROR } from './docs-tab-loader';
 export { findCurrentMilestoneIndex } from './milestone-index';
 export { pickGrafanaDocsOpenAction } from './grafana-docs-open-action';

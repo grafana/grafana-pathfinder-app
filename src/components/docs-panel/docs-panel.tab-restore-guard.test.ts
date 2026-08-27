@@ -189,10 +189,12 @@ jest.mock('./utils', () => ({
   getTranslatedTitle: jest.fn((t: string) => t),
   restoreTabsFromStorage: (...args: unknown[]) => mockRestoreTabsFromStorage(...args),
   restoreActiveTabFromStorage: (...args: unknown[]) => mockRestoreActiveTabFromStorage(...args),
+  mergeRestoredTabsWithExisting: jest.requireActual('./utils/tab-storage-restore').mergeRestoredTabsWithExisting,
   isGrafanaDocsUrl: jest.fn(),
   cleanDocsUrl: jest.fn((url: string) => url),
   loadDocsTabContentResult: jest.fn(),
-  PERMANENT_TAB_IDS: new Set(['recommendations', 'devtools', 'editor']),
+  ...jest.requireActual('./utils/tab-kinds'),
+  ...jest.requireActual('./utils/tab-gates'),
 }));
 
 jest.mock('./hooks', () => ({
@@ -224,8 +226,9 @@ jest.mock('../../hooks', () => ({}));
 // Import under test
 // ---------------------------------------------------------------------------
 
+import { isDevModeEnabled } from '../../utils/dev-mode';
+import { tabStorage } from '../../lib/user-storage';
 import { CombinedLearningJourneyPanel } from './docs-panel';
-import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -234,6 +237,7 @@ import type { LearningJourneyTab } from '../../types/content-panel.types';
 const RESTORED_TABS = [
   {
     id: 'recommendations',
+    type: 'recommendations' as const,
     title: 'Recommendations',
     baseUrl: '',
     currentUrl: '',
@@ -253,17 +257,6 @@ const RESTORED_TABS = [
   },
 ];
 
-const makeTab = (id: string, type?: LearningJourneyTab['type']) => ({
-  id,
-  title: id,
-  baseUrl: '',
-  currentUrl: '',
-  content: null,
-  isLoading: false,
-  error: null,
-  type,
-});
-
 function setupRestoreMocks() {
   mockRestoreTabsFromStorage.mockResolvedValue(RESTORED_TABS);
   mockRestoreActiveTabFromStorage.mockResolvedValue('tab-guide-1');
@@ -276,6 +269,7 @@ function setupRestoreMocks() {
 describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
   });
 
@@ -297,6 +291,118 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     await panel.restoreTabsAsync();
 
     expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(1);
+  });
+
+  it('force-refreshes an existing model after another surface updates storage', async () => {
+    // Fullscreen/floating own separate models. Without the force escape hatch
+    // the returning sidebar keeps its pre-handoff snapshot and their tab work
+    // looks discarded.
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([
+      RESTORED_TABS[0],
+      { ...RESTORED_TABS[1], id: 'tab-guide-2', title: 'Opened in full screen' },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValueOnce('tab-guide-2');
+
+    await panel.restoreTabsAsync({ force: true });
+
+    expect(mockRestoreTabsFromStorage).toHaveBeenCalledTimes(2);
+    expect((panel as any).state.activeTabId).toBe('tab-guide-2');
+    expect((panel as any).state.tabs.map((tab: { id: string }) => tab.id)).toContain('tab-guide-2');
+  });
+
+  it('keeps loaded content on force restore when id and currentUrl still match', async () => {
+    // Storage never persists content. Without a merge, every fullscreen/floating
+    // round trip would blank the strip and refetch — same cost as a reload.
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+
+    const loadedContent = { content: '# still here', meta: {}, type: 'html' as const };
+    (panel as any).setState({
+      tabs: (panel as any).state.tabs.map((tab: { id: string }) =>
+        tab.id === 'tab-guide-1'
+          ? {
+              ...tab,
+              content: loadedContent,
+              pathContext: { learningJourney: { milestones: [] } },
+            }
+          : tab
+      ),
+    });
+
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([
+      RESTORED_TABS[0],
+      { ...RESTORED_TABS[1], title: 'Renamed in full screen' },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValueOnce('tab-guide-1');
+
+    await panel.restoreTabsAsync({ force: true });
+
+    const guide = (panel as any).state.tabs.find((tab: { id: string }) => tab.id === 'tab-guide-1');
+    expect(guide.title).toBe('Renamed in full screen');
+    expect(guide.content).toBe(loadedContent);
+    expect(guide.pathContext).toEqual({ learningJourney: { milestones: [] } });
+  });
+
+  it('drops in-memory content on force restore when currentUrl changed in storage', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+
+    (panel as any).setState({
+      tabs: (panel as any).state.tabs.map((tab: { id: string }) =>
+        tab.id === 'tab-guide-1' ? { ...tab, content: { content: '# stale page', meta: {}, type: 'html' } } : tab
+      ),
+    });
+
+    mockRestoreTabsFromStorage.mockResolvedValueOnce([
+      RESTORED_TABS[0],
+      {
+        ...RESTORED_TABS[1],
+        currentUrl: 'https://grafana.com/docs/grafana/latest/test/other-page/',
+      },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValueOnce('tab-guide-1');
+
+    await panel.restoreTabsAsync({ force: true });
+
+    const guide = (panel as any).state.tabs.find((tab: { id: string }) => tab.id === 'tab-guide-1');
+    expect(guide.content).toBeNull();
+    expect(guide.currentUrl).toBe('https://grafana.com/docs/grafana/latest/test/other-page/');
+  });
+
+  it('waits for an in-flight save before restoring, so return paths that cannot flush still see the latest strip', async () => {
+    // Covers fire-and-forget returns (Return to sidebar notice; auto-dock):
+    // restore waits for the newest write already pending when the await
+    // starts, not for a save issued after that.
+    let writeLanded = false;
+    let resolveWrite!: () => void;
+    (tabStorage.setTabs as jest.Mock).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveWrite = () => {
+          writeLanded = true;
+          resolve();
+        };
+      })
+    );
+    mockRestoreTabsFromStorage.mockImplementation(async () =>
+      writeLanded ? [RESTORED_TABS[0], { ...RESTORED_TABS[1], id: 'tab-from-fullscreen' }] : [RESTORED_TABS[0]]
+    );
+    mockRestoreActiveTabFromStorage.mockImplementation(async () =>
+      writeLanded ? 'tab-from-fullscreen' : 'recommendations'
+    );
+
+    const outgoing = new CombinedLearningJourneyPanel();
+    void outgoing.saveTabsToStorage();
+
+    const sidebar = new CombinedLearningJourneyPanel();
+    // Land the write a macrotask later so restore's own microtask-resolved
+    // storage reads would win the race if the barrier were removed.
+    const restore = sidebar.restoreTabsAsync({ force: true });
+    setTimeout(resolveWrite, 0);
+    await restore;
+
+    expect((sidebar as any).state.tabs.map((tab: { id: string }) => tab.id)).toContain('tab-from-fullscreen');
   });
 
   it('should allow a NEW instance to restore tabs after the first instance already restored', async () => {
@@ -338,35 +444,129 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     expect(panelBActiveTab).not.toBe('recommendations');
     expect(panelBTabs.length).toBeGreaterThan(1);
   });
+
+  it('strips restored gated tabs when the user lacks access, without rewriting storage', async () => {
+    mockRestoreTabsFromStorage.mockResolvedValue([
+      ...RESTORED_TABS,
+      {
+        id: 'editor',
+        title: 'New Guide',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'editor',
+      },
+      {
+        id: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'devtools',
+      },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('editor');
+
+    const { tabStorage } = require('../../lib/user-storage');
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.restoreTabsAsync();
+
+    const tabs = (panel as any).state.tabs;
+    expect(tabs.some((t: { type?: string }) => t.type === 'editor')).toBe(false);
+    expect(tabs.some((t: { type?: string }) => t.type === 'devtools')).toBe(false);
+    expect((panel as any).state.activeTabId).toBe('recommendations');
+    // Rendering fails closed, but the first gate read cannot tell "denied"
+    // from "config not resolved yet", so it must not delete from storage.
+    expect(tabStorage.setTabs).not.toHaveBeenCalled();
+  });
+
+  it('keeps restored Dev Tools when pluginConfig enables pathfinder-dev-mode', async () => {
+    // Pins finding 3: empty construction config used to make prune drop an
+    // authorized Dev Tools tab and persist the loss. Construction with real
+    // config + isDevModeEnabled true must keep the tab.
+    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    mockRestoreTabsFromStorage.mockResolvedValue([
+      ...RESTORED_TABS,
+      {
+        id: 'devtools',
+        title: 'Dev Tools',
+        baseUrl: '',
+        currentUrl: '',
+        content: null,
+        isLoading: false,
+        error: null,
+        type: 'devtools',
+      },
+    ]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('devtools');
+
+    const { tabStorage } = require('../../lib/user-storage');
+    const panel = new CombinedLearningJourneyPanel({ devMode: true });
+    await panel.restoreTabsAsync();
+
+    const tabs = (panel as any).state.tabs as Array<{ type?: string }>;
+    expect(tabs.some((t) => t.type === 'devtools')).toBe(true);
+    expect((panel as any).state.activeTabId).toBe('devtools');
+    expect(tabStorage.setTabs).not.toHaveBeenCalled();
+  });
 });
 
-describe('CombinedLearningJourneyPanel — closeTab', () => {
+describe('CombinedLearningJourneyPanel — tab gate sync', () => {
+  const DEVTOOLS_TAB = {
+    id: 'devtools',
+    title: 'Dev Tools',
+    baseUrl: '',
+    currentUrl: '',
+    content: null,
+    isLoading: false,
+    error: null,
+    type: 'devtools',
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
+    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
   });
 
-  it('returns to recommendations when closing the final active guide with the editor tab present', () => {
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({
-      tabs: [makeTab('recommendations'), makeTab('editor', 'editor'), makeTab('tab-guide-1', 'learning-journey')],
-      activeTabId: 'tab-guide-1',
-    });
+  it('keeps Dev Tools when the renderer reports an unresolved plugin context', async () => {
+    // The regression: an unresolved context produced getConfigWithDefaults({}),
+    // which reads as "dev mode off" and stripped an authorized Dev Tools tab.
+    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    mockRestoreTabsFromStorage.mockResolvedValue([...RESTORED_TABS, DEVTOOLS_TAB]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('devtools');
 
-    panel.closeTab('tab-guide-1');
+    const panel = new CombinedLearningJourneyPanel({ devMode: true, devModeUserIds: [1] });
+    await panel.restoreTabsAsync();
 
-    expect((panel as any).state.activeTabId).toBe('recommendations');
+    panel.syncPluginConfig(null);
+
+    const tabs = (panel as any).state.tabs as Array<{ type?: string }>;
+    expect(tabs.some((t) => t.type === 'devtools')).toBe(true);
+    expect((panel as any).state.pluginConfig).toEqual({ devMode: true, devModeUserIds: [1] });
   });
 
-  it('keeps the current editor tab active when closing an inactive guide', () => {
-    const panel = new CombinedLearningJourneyPanel();
-    panel.setState({
-      tabs: [makeTab('recommendations'), makeTab('editor', 'editor'), makeTab('tab-guide-1', 'learning-journey')],
-      activeTabId: 'editor',
-    });
+  it('persists the prune when a gate the model already observed as open closes', async () => {
+    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    mockRestoreTabsFromStorage.mockResolvedValue([...RESTORED_TABS, DEVTOOLS_TAB]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('devtools');
 
-    panel.closeTab('tab-guide-1');
+    const { tabStorage } = require('../../lib/user-storage');
+    const panel = new CombinedLearningJourneyPanel({ devMode: true, devModeUserIds: [1] });
+    await panel.restoreTabsAsync();
+    expect((panel as any).state.tabs.some((t: { type?: string }) => t.type === 'devtools')).toBe(true);
 
-    expect((panel as any).state.activeTabId).toBe('editor');
+    // Admin revokes dev mode mid-session; plugin meta refreshes.
+    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    panel.syncPluginConfig({ devMode: false });
+
+    const tabs = (panel as any).state.tabs as Array<{ type?: string }>;
+    expect(tabs.some((t) => t.type === 'devtools')).toBe(false);
+    expect((panel as any).state.activeTabId).toBe('recommendations');
+    expect(tabStorage.setTabs).toHaveBeenCalled();
   });
 });

@@ -1,0 +1,521 @@
+package plugin
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
+)
+
+// Completion Records durable write proxy (docs/design/BACKEND_PROXY_PATTERN.md).
+//
+// POST /completion-records persists one terminal completion as a CompletionRecord
+// in the stack's aggregated App Platform store. The outbound call carries a
+// short-lived on-behalf-of access token minted from the caller's inbound ID token
+// (pkg/plugin/auth), so authorization is still delegated to App Platform RBAC as
+// the calling user — on the served group the basic viewer role grants write on
+// CompletionRecord, so the proxy adds no privilege beyond what that user already
+// gets upstream.
+//
+// These are lightweight self-reported records, not attested facts: because a
+// Viewer can create the same CRD directly, the proxy's server-side stamping is a
+// best-effort convenience, not an enforced identity boundary. That is a current,
+// time-bounded limitation — a platform-side operator to close the forgery gap is
+// under discussion with the App Platform team — not a permanent design property.
+// What the proxy adds over a direct write is server-stamped identity/org/stack
+// fields (the CRD validates field PRESENCE, not truth), per-user rate limiting
+// (completion_records_write_ratelimit.go), read-cache invalidation on a
+// successful create, and the transient/terminal retry taxonomy the front-end
+// queue depends on.
+//
+// Response contract for the front-end retry queue (RFC §6.9). Owned by
+// docs/design/BACKEND_PROXY_PATTERN.md §11; restated here because it is what this
+// handler implements:
+//   - 201  created (durable).
+//   - 401  transient: an expired session or forwarded token recovers after
+//          re-auth, so the client retries it with backoff.
+//   - 404  structural "route not served on this stack" signal; the front end
+//          disarms writes for the session (pending items persist for the next
+//          load) rather than dropping. Four ways in: an upstream 404 (the create
+//          POSTs to the completionrecords COLLECTION, so it means the whole
+//          group/route is absent, never a per-record miss), a stack with no
+//          provisioned on-behalf-of credential (reasonOBOUnavailable) — the
+//          production case in ops/prod today (#1503) — an inbound identity this
+//          stack can never verify (reasonIdentityUnverifiable: no app URL, so no
+//          verifier can be built for this stack, or no server-derived namespace
+//          to bind one to), and no reachable signing-keys endpoint at all
+//          (reasonSigningKeysUnreachable).
+//   - 403  the caller's identity holds no grant for this route. Echoed verbatim
+//          from upstream. Like 404 it disarms writes for the session and KEEPS
+//          the pending records for a later drain — a grant can be added without
+//          the completion ever having happened again, so dropping would lose
+//          data the user earned.
+//   - 408 / 429 / 5xx / 3xx / network / token-exchange failure — transient; the client retries with
+//          exponential backoff. Retry-After is set as a standard backpressure
+//          hint, though Grafana's backendSrv does not expose response headers to
+//          the front-end client.
+//   - other 4xx  terminal — validation / schema; the write will never succeed
+//          as posted, so the client drops it (no retry). 401/403/408/429 are
+//          each carved out above and are NOT in this class.
+//
+// Idempotency: a non-blank idempotencyKey (#1434) is REQUIRED — a blank/missing
+// key is a terminal 400. The record name is hash(userID || sep || key) over the
+// trusted userID, so a retried POST targets the same object (409 → idempotent
+// success) and two users' identical keys can never collide. See
+// completionRecordName for the full invariant.
+
+const (
+	// completionWriteSchemaVersion is the CompletionRecord spec schemaVersion this
+	// writer emits (the CRD requires >= 1).
+	completionWriteSchemaVersion = 1
+
+	// completionWriteRetryAfterSeconds is the default Retry-After hint on a
+	// transient failure when the upstream provides none.
+	completionWriteRetryAfterSeconds = 30
+
+	// completionMaxClockSkew tolerates a client clock running slightly ahead of
+	// the server when validating completedAt.
+	completionMaxClockSkew = 5 * time.Minute
+
+	// completionMaxBackdate is the oldest a client-supplied completedAt may be.
+	// Deliberately generous: an offline/queued write may legitimately land days
+	// after the user completed (RFC §6.9 durability boundary), but a value older
+	// than this window is rejected as gross backdating or a bad client clock.
+	completionMaxBackdate = 30 * 24 * time.Hour
+
+	// completionWriteMaxBodyBytes bounds the decoded request body.
+	completionWriteMaxBodyBytes = 64 * 1024
+
+	// completionMaxDurationMs bounds a client-supplied guide duration (24h). A
+	// single guide completion cannot realistically span longer; a larger value —
+	// or any negative — is a producer bug or bad client clock, not durable data.
+	// Out-of-range values are CLAMPED into range and logged, not rejected: the
+	// duration is one denormalized convenience field on an otherwise valid
+	// completion the user really earned, and failing the write would discard the
+	// whole record over it. Clamping is lossy but visible; dropping is not.
+	completionMaxDurationMs = 24 * 60 * 60 * 1000
+
+	// Per-field byte caps on client-supplied free text. The CRD enforces field
+	// presence, not content, so this writer is the only bound between a hostile
+	// body and a durable record — and oversized stored strings can push read-path
+	// LIST pages past their byte cap, wedging reads for the whole namespace.
+	completionMaxIDLen    = 256
+	completionMaxTitleLen = 1024
+
+	// completionMaxDisplayLen bounds the server-derived login/display-name
+	// snapshots before persistence. They are trusted for attribution, not
+	// storage-bounded: an external identity-provider profile value can be
+	// unusually large, and an oversized stored string pushes read-path LIST
+	// pages past their byte cap (same hazard the client-fact caps guard).
+	completionMaxDisplayLen = 256
+)
+
+var (
+	completionValidSources    = map[string]bool{"objectives": true, "manual": true, "skipped": true}
+	completionValidCategories = map[string]bool{"interactive": true, "documentation": true, "learning-journey": true}
+	completionValidPlatforms  = map[string]bool{"oss": true, "cloud": true}
+)
+
+// completionWriteRequest is the client-supplied fact for a durable write. It
+// mirrors the front-end CompletionFact (src/completion-records/types.ts) plus
+// `platform` — a required client-supplied CRD field the fact derives from the
+// Grafana build info at send time.
+//
+// IDENTITY IS NEVER READ FROM THE BODY: this struct has no
+// userId/userLogin/orgId/... fields, so any identity value a client smuggles in
+// is dropped on decode and cannot influence the written record.
+type completionWriteRequest struct {
+	GuideSource       string `json:"guideSource"`
+	GuideID           string `json:"guideId"`
+	GuideTitle        string `json:"guideTitle"`
+	GuideCategory     string `json:"guideCategory"`
+	PathID            string `json:"pathId"`
+	CompletionPercent int64  `json:"completionPercent"`
+	Source            string `json:"source"`
+	CompletedAt       string `json:"completedAt"`
+	DurationMs        *int64 `json:"durationMs"`
+	Platform          string `json:"platform"`
+
+	// IdempotencyKey is the completion event's stable client id (#1434). Required
+	// and non-blank; never persisted. See completionRecordName for how it derives
+	// the record name.
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+// handleCreateCompletionRecord serves POST /completion-records.
+func (a *App) handleCreateCompletionRecord(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Identity is REQUIRED for a write and fails closed: unlike the soft-200 read
+	// routes, a write with no verifiable caller serves no data. The failing
+	// statuses are NOT interchangeable, because 401 is defined below as TRANSIENT —
+	// the client retries it to the 30-day horizon — so only a time-recoverable
+	// verdict may take it:
+	//   - identityRejected: an expired/absent/foreign forwarded token recovers
+	//     after re-auth, so it is the 401.
+	//   - identityUnverifiable (no app URL, or no server-derived namespace) and
+	//     identitySigningKeysDown (no signing-keys endpoint reachable at all) are
+	//     both standing conditions no re-auth resolves, so both take the
+	//     structural 404 carrying their own reason token. A 401 would make every
+	//     queued write retry to the horizon and never disarm; the 404 disarms the
+	//     session while RETAINING the records, matching how the read path serves
+	//     the same two statuses.
+	// //exhaustive:enforce makes a newly added status a lint failure here rather
+	// than a silent 401. The default arm stays as the fail-closed catch-all.
+	userID, userLogin, userDisplayName, status := a.completionWriterIdentity(r)
+	//exhaustive:enforce
+	switch status {
+	case identityVerified:
+	case identityUnverifiable, identitySigningKeysDown:
+		reason := status.capabilityReason()
+		a.ctxLogger(r.Context()).Info("completion write route unavailable (structural)", "reason", reason)
+		a.writeError(w, reason, http.StatusNotFound)
+		return
+	case identityUnknown, identityRejected:
+		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
+		return
+	default:
+		a.writeError(w, "unauthenticated", http.StatusUnauthorized)
+		return
+	}
+	if userLogin == "" {
+		// The record is still written — the login snapshot is display convenience,
+		// not the identity of record. Logged so a token issuer that stops emitting
+		// the claim is discoverable rather than silently degrading every record.
+		a.ctxLogger(r.Context()).Info("completion write: ID token carried no username claim, omitting userLogin")
+	}
+
+	// Per-user flood guard (RFC §9) before any upstream work.
+	if a.completionWriteRateLimiter != nil {
+		if allow, retryAfter := a.completionWriteRateLimiter.allow(userID); !allow {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
+			a.ctxLogger(r.Context()).Debug("completion write rate-limited (local)")
+			a.writeError(w, "rate-limited", http.StatusTooManyRequests)
+			return
+		}
+	}
+
+	creator, namespace, available, reason := a.resolveCompletionWriteBackend(r)
+	if !available {
+		// Structurally can't write here ("never works here"). Disarms the client
+		// for this session; the front end re-arms on a later app load and
+		// re-attempts, so a stack that gains the backend later starts recording then.
+		a.ctxLogger(r.Context()).Info("completion write route unavailable (structural)", "namespace", namespace, "reason", reason)
+		a.writeError(w, reason, http.StatusNotFound)
+		return
+	}
+
+	req, err := decodeCompletionWriteRequest(w, r)
+	if err != nil {
+		a.writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	spec, err := a.buildCompletionSpec(r, req, userID, userLogin, userDisplayName, namespace)
+	if err != nil {
+		a.writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Identity-scoped deterministic name: userID is verified above, and the key is
+	// validated non-blank in buildCompletionSpec. Every create carries this name,
+	// which is the invariant that makes an upstream 409 provably our own record.
+	name := completionRecordName(userID, req.IdempotencyKey)
+
+	obj := completionRecordObject{
+		APIVersion: completionRecordsGroupVersion,
+		Kind:       "CompletionRecord",
+		Metadata:   completionRecordObjectMeta{Name: name, Namespace: namespace},
+		Spec:       spec,
+	}
+
+	// An "already exists" (409) on the identity-scoped deterministic name means
+	// this caller's own write already committed — treat it as idempotent success,
+	// never a duplicate or a failure.
+	if err := creator.Create(r.Context(), namespace, obj); err != nil && !isAlreadyExistsUpstream(err) {
+		a.writeCompletionUpstreamError(w, r, err)
+		return
+	}
+
+	// Surface the new record promptly on the next GET /completion-records/my.
+	invalidateCompletionIndex(namespace)
+	a.ctxLogger(r.Context()).Debug("completion record created",
+		"namespace", namespace, "guideSource", spec.GuideSource, "guideId", spec.GuideID, "name", name)
+	a.writeJSON(w, map[string]string{"name": name}, http.StatusCreated)
+}
+
+// decodeCompletionWriteRequest reads the bounded JSON body into the client-fact
+// struct. Unknown fields (including any smuggled identity) are ignored rather
+// than rejected — the typed struct simply has nowhere to put them, which is how
+// "never trust client identity" is enforced without brittle skew failures.
+func decodeCompletionWriteRequest(w http.ResponseWriter, r *http.Request) (completionWriteRequest, error) {
+	var req completionWriteRequest
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, completionWriteMaxBodyBytes))
+	if err := dec.Decode(&req); err != nil {
+		return req, fmt.Errorf("invalid request body")
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return req, fmt.Errorf("invalid request body")
+	}
+	return req, nil
+}
+
+// buildCompletionSpec validates the client fact against the CRD's value domains
+// and assembles the FULL spec, stamping every writer-owned field from the
+// verified request context. Returns a validation error (→ terminal 400) when any
+// client field violates the schema.
+func (a *App) buildCompletionSpec(r *http.Request, req completionWriteRequest, userID, userLogin, userDisplayName, namespace string) (completionRecordWriteSpec, error) {
+	if req.GuideID == "" || req.GuideSource == "" {
+		return completionRecordWriteSpec{}, fmt.Errorf("guideId and guideSource are required")
+	}
+	// A non-blank idempotency key is REQUIRED: the record name is derived from it
+	// (with the trusted userID), so a blank key has no safe deterministic identity
+	// and must not fall back to a random name. Reject before any upstream work.
+	if strings.TrimSpace(req.IdempotencyKey) == "" {
+		return completionRecordWriteSpec{}, fmt.Errorf("idempotencyKey is required")
+	}
+	for _, f := range []struct {
+		name  string
+		value string
+		max   int
+	}{
+		{"guideId", req.GuideID, completionMaxIDLen},
+		{"guideSource", req.GuideSource, completionMaxIDLen},
+		{"pathId", req.PathID, completionMaxIDLen},
+		{"guideTitle", req.GuideTitle, completionMaxTitleLen},
+		{"idempotencyKey", req.IdempotencyKey, completionMaxIDLen},
+	} {
+		if err := validateBoundedText(f.name, f.value, f.max); err != nil {
+			return completionRecordWriteSpec{}, err
+		}
+	}
+	if !completionValidSources[req.Source] {
+		return completionRecordWriteSpec{}, fmt.Errorf("invalid source")
+	}
+	if !completionValidCategories[req.GuideCategory] {
+		return completionRecordWriteSpec{}, fmt.Errorf("invalid guideCategory")
+	}
+	if !completionValidPlatforms[req.Platform] {
+		return completionRecordWriteSpec{}, fmt.Errorf("invalid platform")
+	}
+	if req.CompletionPercent < 0 || req.CompletionPercent > 100 {
+		return completionRecordWriteSpec{}, fmt.Errorf("completionPercent out of range")
+	}
+	if err := validateCompletedAt(req.CompletedAt); err != nil {
+		return completionRecordWriteSpec{}, err
+	}
+
+	durationSeconds := int64(0)
+	if req.DurationMs != nil {
+		durationMs := *req.DurationMs
+		if clamped := min(max(durationMs, 0), int64(completionMaxDurationMs)); clamped != durationMs {
+			a.ctxLogger(r.Context()).Info("completion write: durationMs out of range, clamped",
+				"received", durationMs, "clamped", clamped)
+			durationMs = clamped
+		}
+		durationSeconds = durationMs / 1000
+	}
+
+	return completionRecordWriteSpec{
+		GuideID:           req.GuideID,
+		GuideSource:       req.GuideSource,
+		GuideTitle:        req.GuideTitle,
+		PathID:            req.PathID,
+		Source:            req.Source,
+		CompletedAt:       req.CompletedAt,
+		DurationSeconds:   durationSeconds,
+		CompletionPercent: req.CompletionPercent,
+		GuideCategory:     req.GuideCategory,
+		Platform:          req.Platform,
+
+		UserID:          userID,
+		UserLogin:       boundedIdentityField(userLogin, completionMaxDisplayLen),
+		UserDisplayName: boundedIdentityField(userDisplayName, completionMaxDisplayLen),
+		RecordedAt:      timeNow().UTC().Format(time.RFC3339),
+		// The CRD requires a numeric orgId (RFC §7.1); PluginContext.OrgID is the
+		// only source of it. The SDK deprecates OrgID for request *scoping* (use
+		// Namespace, which we also record as stackNamespace), not for reading the
+		// numeric org — so this remains the correct field for the value itself.
+		OrgID:          backend.PluginConfigFromContext(r.Context()).OrgID, //nolint:staticcheck // numeric orgId required by CRD; Namespace is the string scope, not a number
+		StackNamespace: namespace,
+		SchemaVersion:  completionWriteSchemaVersion,
+	}, nil
+}
+
+// validateBoundedText rejects oversized, invalid-UTF-8, or control-character
+// content in a client-supplied free-text field (→ terminal 400).
+func validateBoundedText(field, value string, maxBytes int) error {
+	if len(value) > maxBytes {
+		return fmt.Errorf("%s exceeds %d bytes", field, maxBytes)
+	}
+	// BELT-AND-BRACES, not a live defect fix: unreachable from every caller today.
+	// All current callers pass JSON-decoded values, and encoding/json replaces
+	// invalid UTF-8 at DECODE time, so `value` is always already valid here (a
+	// hostile 1024-byte field arrives as 3072 valid bytes and the cap above
+	// rejects it). This exists so the validator's contract still holds if a
+	// non-JSON caller is ever added; do not read it as guarding a reachable bug.
+	if !utf8.ValidString(value) {
+		return fmt.Errorf("%s contains invalid UTF-8", field)
+	}
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("%s contains control characters", field)
+		}
+	}
+	return nil
+}
+
+// validateCompletedAt enforces the client-observed completion time is a valid
+// RFC 3339 timestamp within [now-completionMaxBackdate, now+completionMaxClockSkew].
+func validateCompletedAt(s string) error {
+	t, ok := parseCompletionTime(s)
+	if !ok {
+		return fmt.Errorf("completedAt is not a valid RFC 3339 timestamp")
+	}
+	now := timeNow()
+	if t.After(now.Add(completionMaxClockSkew)) {
+		return fmt.Errorf("completedAt is in the future")
+	}
+	if t.Before(now.Add(-completionMaxBackdate)) {
+		return fmt.Errorf("completedAt is too far in the past")
+	}
+	return nil
+}
+
+// writeCompletionUpstreamError maps an upstream create failure onto the front-end
+// contract: transient (429/5xx/network → retryable, echoing Retry-After) vs
+// terminal (other 4xx → drop; an echoed 401 is retried client-side as transient).
+func (a *App) writeCompletionUpstreamError(w http.ResponseWriter, r *http.Request, err error) {
+	logger := a.ctxLogger(r.Context())
+	status, hasStatus := upstreamStatusOf(err)
+	if !hasStatus {
+		// Network / timeout / decode / token exchange — no HTTP status, treat as
+		// transient.
+		w.Header().Set("Retry-After", strconv.Itoa(completionWriteRetryAfterSeconds))
+		if isTokenExchangeError(err) {
+			// Retryable, but never routine: the credential IS provisioned (a stack
+			// without one never reaches here — see resolveCompletionWriteBackend), so
+			// a persistent failure means the environment is missing its delegated-
+			// permissions grant and every queued write will retry until the 30-day
+			// horizon. Log at the same Faro-visible level as the 403 decision so that
+			// is loud rather than silent.
+			logger.Warn("completion write token exchange failed (transient, retried)", "error", err)
+		} else {
+			logger.Debug("completion write transient (no upstream status)", "error", err)
+		}
+		a.writeError(w, "completion-write-unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if isTransientUpstreamStatus(status) {
+		retryAfter := upstreamRetryAfterOf(err)
+		if retryAfter == "" {
+			retryAfter = strconv.Itoa(completionWriteRetryAfterSeconds)
+		}
+		w.Header().Set("Retry-After", retryAfter)
+		logger.Debug("completion write transient upstream failure", "status", status, "error", err)
+		responseStatus := status
+		// An unexpected 2xx/3xx (including an unfollowed redirect) is not a real
+		// contract status to echo — normalize it to a retryable 502.
+		if status >= 200 && status < 400 {
+			responseStatus = http.StatusBadGateway
+		}
+		a.writeError(w, "completion-write-unavailable", responseStatus)
+		return
+	}
+	// Terminal 4xx: schema/validation rejected upstream, or identity-scoped
+	// 401/403. Echo the upstream status VERBATIM. The client drops only the
+	// genuine validation failures; 401 it retries as transient, and 403 and 404
+	// both disarm writes for the session while KEEPING the queued items. A 404 is
+	// preserved, not remapped: the create POSTs to the completionrecords
+	// COLLECTION, so an upstream 404 means the group/route is not served on this
+	// stack. That is the structural "route not deployed here" signal — never a
+	// per-record drop.
+	switch status {
+	case http.StatusUnauthorized:
+		// The handler's own 401 gate already rejected a missing/expired inbound ID
+		// token, so an upstream 401 means the MINTED access token was rejected —
+		// wrong audience, bad access policy, or scopes the CAP token does not carry —
+		// which does not self-heal while the client keeps retrying it as transient.
+		// Same retry-until-the-30-day-horizon shape the 403 and token-exchange warns
+		// exist for, so log at the same Faro-visible level.
+		logger.Warn("completion write unauthorized upstream (minted credential rejected, retried)", "status", status, "error", err)
+	case http.StatusForbidden:
+		// A 403 disarms the client for the session and retains the queued records,
+		// so nothing is lost — but it signals a systemic RBAC/grant-rollout denial
+		// that will not clear on its own, so log at a level the Faro telemetry
+		// layer surfaces rather than Debug/Info.
+		logger.Warn("completion write forbidden upstream (disarms client, records retained)", "status", status, "error", err)
+	default:
+		logger.Info("completion write terminal upstream failure", "status", status, "error", err)
+	}
+	a.writeError(w, "completion-write-rejected", status)
+}
+
+// completionRecordName mints the DNS-safe object name for a create. The name is
+// DETERMINISTIC and IDENTITY-SCOPED: a SHA-256 over the trusted server-stamped
+// userID and the exact (validated, non-blank) idempotencyKey, domain-separated
+// so the two components cannot run together ambiguously. Scoping to userID means
+// two users submitting the same key target DIFFERENT objects — one caller's key
+// can never collide with another's in the shared namespace, so an upstream 409
+// is provably the caller's own committed record and is treated as idempotent
+// success. Hashing keeps the name DNS-safe for any key content, sidestepping CRD
+// naming constraints. The caller guarantees a non-blank key (buildCompletionSpec
+// rejects a blank one with a 400); client-supplied names are never accepted.
+func completionRecordName(userID, idempotencyKey string) string {
+	h := sha256.New()
+	// CORRECTNESS: userID MUST remain in this derivation. Dropping it collapses
+	// the name back to the client key alone in a namespace shared across users,
+	// re-opening the cross-user collision where one caller's 409 falsely
+	// acknowledges another's write (pinned by TestCompletionWrite_CrossUserSameKeyDistinctRecords).
+	h.Write([]byte(userID))
+	// A zero byte separates the trusted identity from the client key. The key is
+	// validated to contain no control characters (validateBoundedText), so it can
+	// never contain this separator — the boundary is unambiguous regardless of
+	// key content, defeating a (userID, key) ambiguity across callers.
+	h.Write([]byte{0})
+	h.Write([]byte(idempotencyKey))
+	sum := h.Sum(nil)
+	return "completion-" + hex.EncodeToString(sum[:16])
+}
+
+// isAlreadyExistsUpstream reports whether an upstream create failed only because
+// the record already exists (409). Because every create supplies the identity-
+// scoped deterministic completionRecordName, a 409 is unambiguously the caller's
+// own prior committed record — an idempotent success, not a duplicate or error.
+// Returns false for a nil error.
+func isAlreadyExistsUpstream(err error) bool {
+	status, ok := upstreamStatusOf(err)
+	return ok && status == http.StatusConflict
+}
+
+// boundedIdentityField normalizes a server-derived login/display-name snapshot
+// for durable storage: it strips control characters (which have no place in an
+// identity value and could corrupt read-path rendering) and truncates to
+// maxBytes on a rune boundary. Unlike client-fact fields these are trusted for
+// attribution, so an unusual identity-provider value is sanitized rather than
+// rejected — a write must never fail on an oversized or odd profile string.
+func boundedIdentityField(s string, maxBytes int) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			continue
+		}
+		if b.Len()+utf8.RuneLen(r) > maxBytes {
+			break
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}

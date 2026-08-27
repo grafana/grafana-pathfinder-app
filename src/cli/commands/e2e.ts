@@ -6,21 +6,32 @@
  */
 
 import { existsSync } from 'fs';
-import { dirname, isAbsolute, join, resolve } from 'path';
+import { join } from 'path';
 
-import { Command, Option } from 'commander';
+import { z } from 'zod';
 
 import { validateGuideFromString, toLegacyResult } from '../../validation';
-import {
-  loadGuideFiles,
-  loadBundledGuides,
-  loadRepositoryIndex,
-  bundledRepositoryPath,
-  type LoadedGuide,
-} from '../utils/file-loader';
+import { defineCommand } from '../contracts';
+import { loadGuideFiles, loadBundledGuides, type LoadedGuide } from '../utils/file-loader';
+import type { CommandOutcome } from '../utils/output';
 import { planGuideExecution, type ExecutionPlan } from '../e2e/guide-chains';
-import type { TestResultsData } from '../e2e/e2e-reporter';
-import { checkTier, loadManifestFromDir, runManifestPreflight, type CurrentTier } from '../e2e/manifest-preflight';
+import { type E2EErrorCode, type E2EExecutionOutcome, type ExecutionSelection } from '../e2e/schemas/e2e-report.schema';
+import {
+  contentDigest,
+  createMinimalResultsData,
+  generateMultiGuideReport,
+  generateReport,
+  writeMultiGuideReport,
+  writeReport,
+  type TestResultsData,
+} from '../e2e/e2e-reporter';
+import { checkTier, loadManifestFromDir, runManifestPreflight } from '../e2e/manifest-preflight';
+import {
+  loadLocalRepositorySource,
+  LocalMetapackageResolutionError,
+  resolveLocalMetapackage,
+  type LocalRepositorySource,
+} from '../e2e/e2e-local-package';
 import {
   resolveRemotePackage,
   resolveRemoteRepository,
@@ -35,8 +46,10 @@ import {
   applyPackageMeta,
   buildPackageMetaMap,
   exitCodeFromResults,
+  provisioningErrorCode,
   provisioningFailureResults,
   resolveRunMode,
+  runnerFailureResult,
   skipToResult,
   type GuideRunResult,
   type GuideStatus,
@@ -50,7 +63,7 @@ import {
   printSummary,
   writeJsonReport,
 } from '../e2e/e2e-console-reporter';
-import type { ManifestJson, RepositoryEntry, RepositoryJson } from '../../types/package.types';
+import type { ManifestJson, RepositoryEntry } from '../../types/package.types';
 
 import { randomUUID } from 'crypto';
 import { createCloudAuthPolicy, type CloudAuthPolicy } from '../e2e/cloud-auth';
@@ -64,53 +77,120 @@ import {
   type CloudStackPoolManagerConfig,
 } from '../e2e/cloud-stack-pool-manager';
 import { assertTierHomogeneousChains, preflightTargetUrlsForPlan } from '../e2e/preflight-targets';
-
-/**
- * CLI options for the e2e command
- */
-interface E2ECommandOptions {
-  grafanaUrl: string;
-  output?: string;
-  artifacts: string;
-  verbose: boolean;
-  bundled: boolean;
-  package?: string;
-  tier: CurrentTier;
-  trace: boolean;
-  headed: boolean;
-  alwaysScreenshot: boolean;
-  clean: boolean;
-  cleanReadyTimeoutMs: number;
-  repository?: string;
-  /** Resolve and test every package in the CDN repository index. */
-  remote: boolean;
-  /** CDN base URL override for --remote. */
-  repoUrl?: string;
-  /** Recommender base URL for --package <id> resolution. */
-  resolverUrl: string;
-  /** Host-to-env-var mappings for cloud instance admin tokens. */
-  cloudInstanceAdminToken: string[];
-  /** Default cloud instance URL for cloud-tier guides without an `instance`. */
-  cloudUrl: string;
-  cloudStackPoolManagerUrl?: string;
-  cloudStackPoolManagerToken?: string;
-  cloudStackPoolId: string;
-  cloudStackMaxWaitSeconds?: number;
-}
-
-function collectOption(value: string, previous: string[]): string[] {
-  return [...previous, value];
-}
+import { createStartingLocationTracker } from '../e2e/starting-location';
+import {
+  applyLocalManifestStartingLocation,
+  applyLocalRepositoryStartingLocations,
+} from '../e2e/local-starting-location';
 
 const DEFAULT_GRAFANA_URL = 'http://localhost:3000';
 const DEFAULT_RESOLVER_URL = 'https://recommender.grafana.com';
 const DEFAULT_CLOUD_URL = 'https://learn.grafana.net/';
 
-/** Repository source for dependency-aware planning (local index or remote CDN index). */
-interface RepoSource {
-  repository: RepositoryJson;
-  loadGuideById: (id: string, entry: RepositoryEntry) => LoadedGuide | null;
-}
+// Unique per process so concurrent runs cannot overwrite each other's artifacts.
+const defaultArtifactsDir = `/tmp/pathfinder-e2e-${randomUUID().slice(0, 8)}`;
+
+const io = { role: 'io' } as const;
+const control = { role: 'control' } as const;
+
+/**
+ * The e2e command's input. Declaration order is help order.
+ */
+export const E2eCommand = z.object({
+  files: z.array(z.string()).default([]).describe('Guide files to test').meta(io),
+  grafanaUrl: z
+    .string()
+    .default(DEFAULT_GRAFANA_URL)
+    .describe(
+      `Grafana instance URL (default ${DEFAULT_GRAFANA_URL}; ${CLEAN_GRAFANA_URL} when --clean is set and this flag is not passed)`
+    )
+    .meta(io),
+  output: z.string().optional().describe('Path for JSON report output').meta(io),
+  artifacts: z.string().default(defaultArtifactsDir).describe('Directory for artifacts').meta(io),
+  verbose: z.boolean().default(false).describe('Enable verbose logging').meta(control),
+  bundled: z.boolean().default(false).describe('Test all bundled guides').meta(io),
+  package: z
+    .string()
+    .optional()
+    .describe(
+      'Test a guide, path, or journey package: a local directory, or a bare package ID resolved via the recommender'
+    )
+    .meta(io),
+  tier: z.enum(['local', 'cloud']).default('local').describe('Current test environment tier').meta(control),
+  trace: z.boolean().default(false).describe('Generate Playwright trace file').meta(control),
+  headed: z.boolean().default(false).describe('Run browser in headed mode (visible)').meta(control),
+  alwaysScreenshot: z.boolean().default(false).describe('Capture screenshots on success and failure').meta(control),
+  clean: z
+    .boolean()
+    .default(false)
+    .describe(
+      `Run tests against an isolated docker-compose stack (project "${CLEAN_COMPOSE_PROJECT}", Grafana on ${CLEAN_GRAFANA_URL}). Resets between dependency chains (not between guides in the same chain) and tears down at the end.`
+    )
+    .meta(control),
+  cleanReadyTimeoutMs: z
+    .number()
+    .default(120000)
+    .describe('How long to wait for the isolated Grafana to become healthy after a --clean reset')
+    .meta(control),
+  repository: z
+    .string()
+    .optional()
+    .describe(
+      'Path to repository.json (default: bundled index for guide dependencies; required for local path/journey milestones)'
+    )
+    .meta(io),
+  remote: z
+    .boolean()
+    .default(false)
+    .describe('Resolve and test every package from the CDN repository index')
+    .meta(control),
+  repoUrl: z
+    .string()
+    .optional()
+    .describe('CDN base URL for --remote (default: the public Pathfinder package repository)')
+    .meta(io),
+  resolverUrl: z
+    .string()
+    .default(DEFAULT_RESOLVER_URL)
+    .describe('Recommender base URL for --package <id> resolution')
+    .meta(io),
+  cloudInstanceAdminToken: z
+    .array(z.string())
+    .default([])
+    .describe('Admin service-account token env var for a cloud target; repeat for multiple cloud instances')
+    .meta(io),
+  cloudUrl: z
+    .string()
+    .default(DEFAULT_CLOUD_URL)
+    .describe(`Default cloud instance URL for cloud-tier guides without an instance (default ${DEFAULT_CLOUD_URL})`)
+    .meta(io),
+  cloudStackPoolManagerUrl: z
+    .string()
+    .optional()
+    .describe('Pool manager base URL for isolated Grafana Cloud stack leasing')
+    .meta(io),
+  cloudStackPoolManagerToken: z
+    .string()
+    .optional()
+    .describe('Pool manager bearer token env var for isolated Grafana Cloud stack leasing')
+    .meta(io),
+  cloudStackPoolId: z
+    .string()
+    .default(DEFAULT_CLOUD_STACK_POOL_ID)
+    .describe('Pool manager pool id for isolated Grafana Cloud stack leasing')
+    .meta(io),
+  cloudStackMaxWaitSeconds: z
+    .number()
+    .optional()
+    .describe('Maximum wait budget for pool-manager lease requests')
+    .meta(control),
+});
+
+export type E2eInput = z.output<typeof E2eCommand>;
+
+// The run pipeline reads the parsed input under its historical name. `tier` narrows
+// to `CurrentTier` by construction — the enum members are that union.
+type E2ECommandOptions = E2eInput;
 
 /**
  * Everything the run pipeline needs, resolved from CLI inputs regardless of
@@ -122,8 +202,12 @@ interface RunInputs {
   mode: RunMode;
   /** Guides to validate, plan, and run. */
   guides: LoadedGuide[];
+  /** Hydrated package plan for an explicitly selected path or journey. */
+  executionPlan?: ExecutionPlan;
+  /** Explicit metapackage root represented by the multi-guide report. */
+  selection?: ExecutionSelection;
   /** Dependency-planning source; undefined falls back to the local/bundled index. */
-  repoSource?: RepoSource;
+  repoSource?: LocalRepositorySource;
   /** Packages skipped before execution (remote modes). */
   preRunSkipped: GuideRunResult[];
   /** Per-guide package metadata for report enrichment (remote modes). */
@@ -137,6 +221,88 @@ interface RunInputs {
 }
 
 type GuideValidationError = { file: string; errors: string[] };
+
+class E2ECommandError extends Error {
+  constructor(
+    message: string,
+    readonly exitCode: number,
+    readonly errorCode: E2EErrorCode = 'CONFIGURATION_ERROR',
+    readonly selection?: ExecutionSelection
+  ) {
+    super(message);
+    this.name = 'E2ECommandError';
+  }
+}
+
+function failCommand(
+  message: string,
+  exitCode: number = ExitCode.CONFIGURATION_ERROR,
+  errorCode: E2EErrorCode = 'CONFIGURATION_ERROR',
+  selection?: ExecutionSelection
+): never {
+  throw new E2ECommandError(message, exitCode, errorCode, selection);
+}
+
+function writeCommandFailureReport(
+  options: E2ECommandOptions,
+  error: unknown,
+  guide?: LoadedGuide,
+  selection?: ExecutionSelection
+): number {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  const commandError = error instanceof E2ECommandError ? error : undefined;
+  const exitCode = commandError?.exitCode ?? ExitCode.CONFIGURATION_ERROR;
+  const errorCode = commandError?.errorCode ?? 'CONFIGURATION_ERROR';
+  const outputPath = options.output ?? join(options.artifacts, 'report.json');
+  const outcomeByCode: Partial<Record<E2EErrorCode, E2EExecutionOutcome>> = {
+    GRAFANA_UNREACHABLE: 'infrastructure_error',
+    PLAYWRIGHT_SPAWN_FAILED: 'infrastructure_error',
+    NO_CAPACITY: 'infrastructure_error',
+    REPORT_MISSING: 'infrastructure_error',
+    SKIPPED_PREREQ: 'skipped',
+    TIER_MISMATCH: 'skipped',
+  };
+  let guideId =
+    selection?.id ??
+    guide?.path
+      .split('/')
+      .pop()
+      ?.replace(/\.json$/, '') ??
+    'pathfinder-cli';
+  let guideTitle = guideId;
+  if (guide) {
+    try {
+      const parsed = JSON.parse(guide.content) as { id?: unknown; title?: unknown };
+      if (typeof parsed.id === 'string' && parsed.id) {
+        guideId = parsed.id;
+      }
+      if (typeof parsed.title === 'string' && parsed.title) {
+        guideTitle = parsed.title;
+      }
+    } catch {
+      // The generic metadata remains valid when the selected guide is malformed.
+    }
+  }
+  const data = createMinimalResultsData({
+    guide: {
+      id: guideId,
+      title: guideTitle,
+      path: guide?.path ?? selection?.id ?? 'unknown',
+      targetUrl: options.grafanaUrl,
+      ...(guide ? { contentDigest: contentDigest(guide.content) } : {}),
+    },
+    outcome: outcomeByCode[errorCode] ?? 'configuration_error',
+    errorCode,
+    errorMessage: message,
+  });
+  const reportSchemaValid = selection
+    ? writeMultiGuideReport(generateMultiGuideReport([data], undefined, selection), outputPath)
+    : writeReport(generateReport(data), outputPath);
+  if (!options.output) {
+    console.error(`📄 JSON report written to: ${outputPath}`);
+  }
+  return reportSchemaValid ? exitCode : ExitCode.CONFIGURATION_ERROR;
+}
 
 /** Format guide validation errors as an indented, file-grouped report. */
 function formatGuideValidationErrors(errors: GuideValidationError[]): string {
@@ -317,7 +483,7 @@ function resolveValidGuides(files: string[], options: E2ECommandOptions): Loaded
     } else {
       console.error('❌ No valid guide files found in the specified paths');
     }
-    process.exit(ExitCode.CONFIGURATION_ERROR);
+    failCommand('No guide files were selected.');
   }
 
   if (options.verbose) {
@@ -332,10 +498,51 @@ function resolveValidGuides(files: string[], options: E2ECommandOptions): Loaded
   if (hasErrors) {
     console.error('\n❌ Guide validation failed:\n');
     console.error(formatGuideValidationErrors(errors));
-    process.exit(ExitCode.CONFIGURATION_ERROR);
+    failCommand('Guide validation failed.');
   }
 
   return valid;
+}
+
+function finalizeExecutionPlan(
+  plan: ExecutionPlan,
+  options: E2ECommandOptions,
+  validateAllGuidesInPlan = false,
+  selection?: ExecutionSelection
+): ExecutionPlan {
+  if (plan.errors.length > 0) {
+    console.error('\n❌ Failed to plan guide execution:');
+    for (const planError of plan.errors) {
+      console.error(`   • ${planError}`);
+    }
+    failCommand('Failed to plan guide execution.', ExitCode.CONFIGURATION_ERROR, 'CONFIGURATION_ERROR', selection);
+  }
+
+  const plannedGuides = plan.chains
+    .flat()
+    .filter((planned) => validateAllGuidesInPlan || planned.autoIncluded)
+    .map((planned) => planned.guide);
+  const validation = validateAllGuides(plannedGuides, options);
+  if (validation.hasErrors) {
+    const label = validateAllGuidesInPlan ? 'Planned guide' : 'Auto-included prerequisite';
+    console.error(`\n❌ ${label} validation failed:\n`);
+    console.error(formatGuideValidationErrors(validation.errors));
+    failCommand(`${label} validation failed.`, ExitCode.CONFIGURATION_ERROR, 'CONFIGURATION_ERROR', selection);
+  }
+  if (plan.autoIncludedIds.length > 0) {
+    console.log(
+      `\n➕ Auto-included ${plan.autoIncludedIds.length} prerequisite guide(s): ${plan.autoIncludedIds.join(', ')}`
+    );
+  }
+
+  if (options.verbose) {
+    console.log(`\n🔗 Execution plan: ${plan.chains.length} chain(s)`);
+    plan.chains.forEach((chain, idx) => {
+      const names = chain.map((planned) => `${planned.id}${planned.autoIncluded ? ' (auto)' : ''}`).join(' → ');
+      console.log(`   Chain ${idx + 1}: ${names}`);
+    });
+  }
+  return plan;
 }
 
 /**
@@ -344,8 +551,12 @@ function resolveValidGuides(files: string[], options: E2ECommandOptions): Loaded
  * the repository index, validates any auto-included prerequisites, and prints
  * the plan in verbose mode. Exits on configuration errors.
  */
-function buildExecutionPlan(valid: LoadedGuide[], options: E2ECommandOptions, repoSource?: RepoSource): ExecutionPlan {
-  let repository: RepositoryJson;
+function buildExecutionPlan(
+  valid: LoadedGuide[],
+  options: E2ECommandOptions,
+  repoSource?: LocalRepositorySource
+): ExecutionPlan {
+  let repository: LocalRepositorySource['repository'];
   let loadGuideById: (id: string, entry: RepositoryEntry) => LoadedGuide | null;
 
   if (repoSource) {
@@ -354,76 +565,18 @@ function buildExecutionPlan(valid: LoadedGuide[], options: E2ECommandOptions, re
     repository = repoSource.repository;
     loadGuideById = repoSource.loadGuideById;
   } else {
-    const repositoryPath = options.repository
-      ? isAbsolute(options.repository)
-        ? options.repository
-        : resolve(process.cwd(), options.repository)
-      : bundledRepositoryPath();
-
-    if (options.repository && !existsSync(repositoryPath)) {
-      console.error(`\n❌ Repository index not found: ${repositoryPath}`);
-      process.exit(ExitCode.CONFIGURATION_ERROR);
+    let localSource: LocalRepositorySource;
+    try {
+      localSource = loadLocalRepositorySource(options.repository);
+    } catch (error) {
+      failCommand(error instanceof Error ? error.message : 'Failed to load repository index.');
     }
-
-    repository = {};
-    if (existsSync(repositoryPath)) {
-      const loaded = loadRepositoryIndex(repositoryPath);
-      if (loaded.error) {
-        // An explicitly requested index that fails to load is a configuration
-        // error; a malformed default (bundled) index degrades to no planning.
-        if (options.repository) {
-          console.error(`\n❌ Failed to load repository index (${repositoryPath}): ${loaded.error}`);
-          process.exit(ExitCode.CONFIGURATION_ERROR);
-        }
-        console.warn(`⚠️  Ignoring default repository index (${repositoryPath}): ${loaded.error}`);
-      }
-      repository = loaded.repository ?? {};
-    }
-
-    const repoBaseDir = dirname(repositoryPath);
-    loadGuideById = (id: string, entry: RepositoryEntry): LoadedGuide | null => {
-      const rel = entry.path || `${id}/`;
-      const contentPath = rel.endsWith('.json') ? join(repoBaseDir, rel) : join(repoBaseDir, rel, 'content.json');
-      return loadGuideFiles([contentPath])[0] ?? null;
-    };
+    repository = localSource.repository;
+    loadGuideById = localSource.loadGuideById;
   }
 
   const plan = planGuideExecution({ guides: valid, repository, loadGuideById });
-
-  if (plan.errors.length > 0) {
-    console.error('\n❌ Failed to plan guide execution:');
-    for (const planError of plan.errors) {
-      console.error(`   • ${planError}`);
-    }
-    process.exit(ExitCode.CONFIGURATION_ERROR);
-  }
-
-  // Validate prerequisites that were auto-included to satisfy dependencies.
-  const autoIncludedGuides = plan.chains
-    .flat()
-    .filter((p) => p.autoIncluded)
-    .map((p) => p.guide);
-  const { hasErrors: autoHasErrors, errors: autoErrors } = validateAllGuides(autoIncludedGuides, options);
-  if (autoHasErrors) {
-    console.error('\n❌ Auto-included prerequisite validation failed:\n');
-    console.error(formatGuideValidationErrors(autoErrors));
-    process.exit(ExitCode.CONFIGURATION_ERROR);
-  }
-  if (autoIncludedGuides.length > 0) {
-    console.log(
-      `\n➕ Auto-included ${autoIncludedGuides.length} prerequisite guide(s): ${plan.autoIncludedIds.join(', ')}`
-    );
-  }
-
-  if (options.verbose) {
-    console.log(`\n🔗 Execution plan: ${plan.chains.length} chain(s)`);
-    plan.chains.forEach((chain, idx) => {
-      const names = chain.map((p) => `${p.id}${p.autoIncluded ? ' (auto)' : ''}`).join(' → ');
-      console.log(`   Chain ${idx + 1}: ${names}`);
-    });
-  }
-
-  return plan;
+  return finalizeExecutionPlan(plan, options);
 }
 
 /**
@@ -439,7 +592,7 @@ async function maybeCleanStart(cleanEnv: CleanEnvironment, options: E2ECommandOp
     await cleanEnv.reset(options.grafanaUrl, options.cleanReadyTimeoutMs);
   } catch (err) {
     console.error(`\n❌ Failed to reset docker compose: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    process.exit(ExitCode.CONFIGURATION_ERROR);
+    failCommand(`Failed to reset docker compose: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
 }
 
@@ -453,7 +606,7 @@ async function runPreflightChecks(
   options: E2ECommandOptions,
   targetUrls: string[],
   packageDir?: string
-): Promise<void> {
+): Promise<ManifestJson | null> {
   console.log('\n🔍 Running pre-flight checks...');
 
   // Manifest pre-flight applies to a local package directory only. Remote modes
@@ -468,7 +621,7 @@ async function runPreflightChecks(
       packageManifest = loadManifestFromDir(packageDir);
     } catch (err) {
       console.error(`\n❌ Failed to load manifest.json: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      process.exit(ExitCode.CONFIGURATION_ERROR);
+      failCommand(`Failed to load manifest.json: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
 
     if (packageManifest) {
@@ -477,7 +630,11 @@ async function runPreflightChecks(
         const tierMsg = packageManifest.testEnvironment?.tier ?? 'unknown';
         console.log(`\n⊘ Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`);
         console.log(`   Use --tier ${tierMsg} to run this guide against a matching environment.`);
-        process.exit(ExitCode.SUCCESS);
+        failCommand(
+          `Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`,
+          ExitCode.SUCCESS,
+          'TIER_MISMATCH'
+        );
       }
     }
   }
@@ -499,7 +656,11 @@ async function runPreflightChecks(
     if (!healthCheck.passed) {
       console.error(`\n❌ Pre-flight check failed for ${targetUrl}: ${healthCheck.error}`);
       console.error('   Ensure Grafana is running and accessible at the target URL.');
-      process.exit(ExitCode.GRAFANA_UNREACHABLE);
+      failCommand(
+        `Pre-flight check failed for ${targetUrl}: ${healthCheck.error}`,
+        ExitCode.GRAFANA_UNREACHABLE,
+        'GRAFANA_UNREACHABLE'
+      );
     }
   }
 
@@ -527,7 +688,11 @@ async function runPreflightChecks(
         const tierMsg = packageManifest.testEnvironment?.tier ?? 'unknown';
         console.log(`\n⊘ Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`);
         console.log(`   Use --tier ${tierMsg} to run this guide against a matching environment.`);
-        process.exit(ExitCode.SUCCESS);
+        failCommand(
+          `Guide skipped: requires tier "${tierMsg}" but current environment is "${options.tier}".`,
+          ExitCode.SUCCESS,
+          'TIER_MISMATCH'
+        );
       }
 
       if (!outcome.canRun) {
@@ -537,7 +702,7 @@ async function runPreflightChecks(
             console.error(`   • ${result.check}: ${result.message}`);
           }
         }
-        process.exit(ExitCode.CONFIGURATION_ERROR);
+        failCommand('Manifest pre-flight failed — guide cannot run in this environment.');
       }
 
       console.log('   ✓ Manifest pre-flight passed');
@@ -550,6 +715,7 @@ async function runPreflightChecks(
   } else {
     console.log('   → Auth and plugin checks will run in Playwright context');
   }
+  return packageManifest;
 }
 
 /**
@@ -599,6 +765,7 @@ async function runChains(
     }
     let provisionedTargets: Awaited<ReturnType<typeof provisionCloudTargetsForChain>>;
     let chainHadFailure = false;
+    const startingLocations = createStartingLocationTracker();
     try {
       provisionedTargets = await provisionCloudTargetsForChain({
         targetUrls: cloudTargetsInChain(chain, packageMetaById, cloudAuth),
@@ -612,7 +779,9 @@ async function runChains(
     } catch (err) {
       const message = `Cloud target provisioning failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
       console.error(`\n❌ ${message}`);
-      results.push(...provisioningFailureResults(chain, packageMetaById, options.grafanaUrl, message));
+      results.push(
+        ...provisioningFailureResults(chain, packageMetaById, options.grafanaUrl, message, provisioningErrorCode(err))
+      );
       allPassed = false;
       continue;
     }
@@ -639,6 +808,7 @@ async function runChains(
               title: planned.id,
               path: planned.guide.path,
               targetUrl: skippedTargetUrl,
+              contentDigest: contentDigest(planned.guide.content),
             },
             timestamp: new Date().toISOString(),
             results: [],
@@ -669,6 +839,7 @@ async function runChains(
         const targetUrl = provisionedTargets.targetUrlForGuide(planned.id, meta?.targetUrl ?? options.grafanaUrl);
         const runGuideOptions: RunGuideOptions = {
           targetUrl,
+          startingLocation: startingLocations.select(meta?.startingLocation),
           verbose: options.verbose,
           trace: options.trace,
           headed: options.headed,
@@ -677,7 +848,18 @@ async function runChains(
           token: isCloudTarget ? provisionedTargets.tokenForGuide(planned.id, meta?.targetUrl) : undefined,
         };
 
-        const result = await runPlaywrightTests(planned.guide, runGuideOptions);
+        let result: Awaited<ReturnType<typeof runPlaywrightTests>>;
+        try {
+          result = await runPlaywrightTests(planned.guide, runGuideOptions);
+        } catch (error) {
+          const failure = runnerFailureResult(planned, meta, targetUrl, error);
+          results.push(failure);
+          allPassed = false;
+          chainHadFailure = true;
+          blocked.add(planned.id);
+          console.error(`   ❌ ${failure.abortMessage}`);
+          continue;
+        }
         applyPackageMeta(result.resultsData, meta);
         const status: GuideStatus = result.success
           ? 'passed'
@@ -711,6 +893,7 @@ async function runChains(
         } else {
           console.log(`   ✅ Test passed`);
         }
+        startingLocations.record(result.success, result.resultsData, targetUrl);
 
         if (result.traceFile && options.trace) {
           console.log(`   📊 Trace file: ${result.traceFile}`);
@@ -734,8 +917,8 @@ async function runChains(
  * Exit with the code implied by the final results. A fully passing run returns
  * to the caller without exiting; any other outcome exits the process.
  */
-function exitFromResults(results: GuideRunResult[]): void {
-  const code = exitCodeFromResults(results);
+function exitFromResults(results: GuideRunResult[], reportSchemaValid: boolean): void {
+  const code = exitCodeFromResults(results, reportSchemaValid);
   if (code !== ExitCode.SUCCESS) {
     process.exit(code);
   }
@@ -746,10 +929,17 @@ function exitFromResults(results: GuideRunResult[]): void {
  * exit per the results' statuses. Shared by the normal path and the
  * nothing-to-run path so both report identically.
  */
-function reportResults(results: GuideRunResult[], options: E2ECommandOptions, cleanupWarnings: string[] = []): void {
+function reportResults(
+  results: GuideRunResult[],
+  options: E2ECommandOptions,
+  cleanupWarnings: string[] = [],
+  selection?: ExecutionSelection
+): void {
   printSummary(results, cleanupWarnings);
-  writeJsonReport(results, options.output, cleanupWarnings);
-  exitFromResults(results);
+  const hasNonPassOutcome = results.length === 0 || results.some((result) => result.status !== 'passed');
+  const outputPath = options.output ?? (hasNonPassOutcome ? join(options.artifacts, 'report.json') : undefined);
+  const reportSchemaValid = writeJsonReport(results, outputPath, cleanupWarnings, selection);
+  exitFromResults(results, reportSchemaValid);
 }
 
 /**
@@ -764,6 +954,47 @@ function remoteLoadGuideById(
   return (id: string) => byId.get(id) ?? null;
 }
 
+function resolveLocalRunInputs(files: string[], options: E2ECommandOptions): RunInputs {
+  if (options.package) {
+    try {
+      const metapackage = resolveLocalMetapackage({
+        packageDir: options.package,
+        repositoryPath: options.repository,
+        grafanaUrl: options.grafanaUrl,
+        currentTier: options.tier,
+        cloudUrl: options.cloudUrl,
+        verbose: options.verbose,
+      });
+      if (metapackage) {
+        return { mode: 'local', ...metapackage };
+      }
+    } catch (error) {
+      if (error instanceof LocalMetapackageResolutionError) {
+        throw new E2ECommandError(error.message, ExitCode.CONFIGURATION_ERROR, 'CONFIGURATION_ERROR', error.selection);
+      }
+      throw error;
+    }
+  }
+  let repoSource: LocalRepositorySource;
+  try {
+    repoSource = loadLocalRepositorySource(options.repository);
+  } catch (error) {
+    throw new E2ECommandError(
+      error instanceof Error ? error.message : 'Failed to load repository index.',
+      ExitCode.CONFIGURATION_ERROR
+    );
+  }
+
+  return {
+    mode: 'local',
+    guides: resolveValidGuides(files, options),
+    repoSource,
+    preRunSkipped: [],
+    packageMetaById: new Map(),
+    localPackageDir: options.package,
+  };
+}
+
 /**
  * Resolve CLI inputs into a uniform, runnable set, hiding whether guides come
  * from local files/bundled content, a remote package ID, or the remote
@@ -774,13 +1005,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
   const mode = resolveRunMode(options);
 
   if (mode === 'local') {
-    return {
-      mode,
-      guides: resolveValidGuides(files, options),
-      preRunSkipped: [],
-      packageMetaById: new Map(),
-      localPackageDir: options.package,
-    };
+    return resolveLocalRunInputs(files, options);
   }
 
   const cloudAuth = createCloudAuthPolicy({
@@ -807,7 +1032,7 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
 
   if (resolution.error) {
     console.error(`\n❌ ${resolution.error}`);
-    process.exit(ExitCode.CONFIGURATION_ERROR);
+    failCommand(resolution.error);
   }
 
   printRemoteResolution(resolution, mode, options.package, options.verbose);
@@ -827,130 +1052,108 @@ async function resolveRunInputs(files: string[], options: E2ECommandOptions): Pr
     packageMetaById: buildPackageMetaMap(loadable),
     cloudAuth,
     cloudStackPoolManagerConfig,
+    executionPlan: resolution.executionPlan,
+    selection: resolution.selection,
   };
 }
 
-// Generate unique run ID for default artifacts path
-const defaultArtifactsDir = `/tmp/pathfinder-e2e-${randomUUID().slice(0, 8)}`;
+/**
+ * Run the suite. Every terminal path exits with an `ExitCode` — `reportResults` for a
+ * completed run, the catch block for a failure — so the returned outcome is a
+ * formality the type system asks for.
+ */
+export async function runE2e(options: E2eInput): Promise<CommandOutcome> {
+  const files = options.files;
+  const cleanEnv = new CleanEnvironment(options.verbose);
+  const cloudChainCleanup = new CloudChainCleanupRegistry();
+  let reportGuide: LoadedGuide | undefined;
+  let reportSelection: ExecutionSelection | undefined;
 
-export const e2eCommand = new Command('e2e')
-  .description('Run E2E tests on JSON guide files')
-  .arguments('[files...]')
-  .option(
-    '--grafana-url <url>',
-    `Grafana instance URL (default ${DEFAULT_GRAFANA_URL}; ${CLEAN_GRAFANA_URL} when --clean is set and this flag is not passed)`,
-    DEFAULT_GRAFANA_URL
-  )
-  .option('--output <path>', 'Path for JSON report output')
-  .option('--artifacts <dir>', 'Directory for artifacts', defaultArtifactsDir)
-  .option('--verbose', 'Enable verbose logging', false)
-  .option('--bundled', 'Test all bundled guides')
-  .option(
-    '--package <dirOrId>',
-    'Test a package: a local directory (content.json + manifest.json), or — when not an existing directory — a bare package ID resolved via the recommender'
-  )
-  .addOption(new Option('--tier <tier>', 'Current test environment tier').choices(['local', 'cloud']).default('local'))
-  .option('--trace', 'Generate Playwright trace file', false)
-  .option('--headed', 'Run browser in headed mode (visible)', false)
-  .option('--always-screenshot', 'Capture screenshots on success and failure', false)
-  .option(
-    '--clean',
-    `Run tests against an isolated docker-compose stack (project "${CLEAN_COMPOSE_PROJECT}", Grafana on ${CLEAN_GRAFANA_URL}). Resets between dependency chains (not between guides in the same chain) and tears down at the end.`,
-    false
-  )
-  .option(
-    '--clean-ready-timeout-ms <ms>',
-    'How long to wait for the isolated Grafana to become healthy after a --clean reset',
-    (v) => parseInt(v, 10),
-    120000
-  )
-  .option(
-    '--repository <path>',
-    'Path to a repository.json used for dependency-aware ordering (default: the bundled index when present)'
-  )
-  .option('--remote', 'Resolve and test every package from the CDN repository index', false)
-  .option('--repo-url <url>', 'CDN base URL for --remote (default: the public Pathfinder package repository)')
-  .option('--resolver-url <url>', 'Recommender base URL for --package <id> resolution', DEFAULT_RESOLVER_URL)
-  .option(
-    '--cloud-instance-admin-token <host=envVar>',
-    'Admin service-account token env var for a cloud target; repeat for multiple cloud instances',
-    collectOption,
-    []
-  )
-  .option(
-    '--cloud-url <url>',
-    `Default cloud instance URL for cloud-tier guides without an instance (default ${DEFAULT_CLOUD_URL})`,
-    DEFAULT_CLOUD_URL
-  )
-  .option('--cloud-stack-pool-manager-url <url>', 'Pool manager base URL for isolated Grafana Cloud stack leasing')
-  .option(
-    '--cloud-stack-pool-manager-token <envVar>',
-    'Pool manager bearer token env var for isolated Grafana Cloud stack leasing'
-  )
-  .option(
-    '--cloud-stack-pool-id <id>',
-    'Pool manager pool id for isolated Grafana Cloud stack leasing',
-    DEFAULT_CLOUD_STACK_POOL_ID
-  )
-  .option('--cloud-stack-max-wait-seconds <seconds>', 'Maximum wait budget for pool-manager lease requests', (v) =>
-    parseInt(v, 10)
-  )
-  .action(async (files: string[], options: E2ECommandOptions) => {
-    const cleanEnv = new CleanEnvironment(options.verbose);
-    const cloudChainCleanup = new CloudChainCleanupRegistry();
+  installTeardownHandlers(cleanEnv, cloudChainCleanup);
+  if (options.clean && options.grafanaUrl === DEFAULT_GRAFANA_URL) {
+    options.grafanaUrl = CLEAN_GRAFANA_URL;
+  }
 
-    installTeardownHandlers(cleanEnv, cloudChainCleanup);
-    if (options.clean && options.grafanaUrl === DEFAULT_GRAFANA_URL) {
-      options.grafanaUrl = CLEAN_GRAFANA_URL;
+  try {
+    const inputs = await resolveRunInputs(files, options);
+    reportGuide = inputs.guides.length === 1 ? inputs.guides[0] : undefined;
+    reportSelection = inputs.selection;
+
+    // Remote runs can resolve to nothing runnable (e.g. all cloud-tier guides):
+    // report the skips and exit without booting Grafana or Playwright.
+    if (inputs.guides.length === 0) {
+      reportResults(inputs.preRunSkipped, options, [], inputs.selection);
+      return { status: 'ok', summary: 'Nothing to run' };
     }
 
-    try {
-      const inputs = await resolveRunInputs(files, options);
+    printRunConfiguration(inputs.guides, options, inputs.mode);
 
-      // Remote runs can resolve to nothing runnable (e.g. all cloud-tier guides):
-      // report the skips and exit without booting Grafana or Playwright.
-      if (inputs.guides.length === 0) {
-        reportResults(inputs.preRunSkipped, options);
-        return;
-      }
+    const plan = inputs.executionPlan ?? buildExecutionPlan(inputs.guides, options, inputs.repoSource);
+    if (inputs.mode === 'local' && inputs.repoSource) {
+      applyLocalRepositoryStartingLocations(plan, inputs.repoSource, inputs.packageMetaById);
+    }
+    assertTierHomogeneousChains(plan, inputs.packageMetaById);
 
-      printRunConfiguration(inputs.guides, options, inputs.mode);
+    await maybeCleanStart(cleanEnv, options);
 
-      const plan = buildExecutionPlan(inputs.guides, options, inputs.repoSource);
-      assertTierHomogeneousChains(plan, inputs.packageMetaById);
-
-      await maybeCleanStart(cleanEnv, options);
-
-      await sweepCloudTargets({
-        targetUrls: inputs.cloudAuth?.targets.sharedStackUrls ?? [],
-        cloudAuth: inputs.cloudAuth,
-        verbose: options.verbose,
-      });
-      await runPreflightChecks(
-        options,
-        preflightTargetUrlsForPlan({
-          plan,
-          packageMetaById: inputs.packageMetaById,
-          cloudAuth: inputs.cloudAuth,
-          cloudStackPoolManagerConfig: inputs.cloudStackPoolManagerConfig,
-          globalUrl: options.grafanaUrl,
-        }),
-        inputs.localPackageDir
-      );
-
-      const outcome = await runChains(
+    await sweepCloudTargets({
+      targetUrls: inputs.cloudAuth?.targets.sharedStackUrls ?? [],
+      cloudAuth: inputs.cloudAuth,
+      verbose: options.verbose,
+    });
+    const localManifest = await runPreflightChecks(
+      options,
+      preflightTargetUrlsForPlan({
         plan,
-        options,
-        cleanEnv,
-        inputs.packageMetaById,
-        inputs.cloudAuth,
-        inputs.cloudStackPoolManagerConfig,
-        cloudChainCleanup
-      );
-
-      reportResults([...inputs.preRunSkipped, ...outcome.results], options, outcome.cleanupWarnings);
-    } catch (error) {
-      console.error('❌ Error:', error instanceof Error ? error.message : 'Unknown error');
-      process.exit(ExitCode.CONFIGURATION_ERROR);
+        packageMetaById: inputs.packageMetaById,
+        cloudAuth: inputs.cloudAuth,
+        cloudStackPoolManagerConfig: inputs.cloudStackPoolManagerConfig,
+        globalUrl: options.grafanaUrl,
+      }),
+      inputs.localPackageDir
+    );
+    if (localManifest) {
+      applyLocalManifestStartingLocation(localManifest, inputs.packageMetaById);
     }
-  });
+
+    const outcome = await runChains(
+      plan,
+      options,
+      cleanEnv,
+      inputs.packageMetaById,
+      inputs.cloudAuth,
+      inputs.cloudStackPoolManagerConfig,
+      cloudChainCleanup
+    );
+
+    reportResults([...inputs.preRunSkipped, ...outcome.results], options, outcome.cleanupWarnings, inputs.selection);
+    return { status: 'ok', summary: `${outcome.results.length} guide(s) run` };
+  } catch (error) {
+    const isSuccessExit = error instanceof E2ECommandError && error.exitCode === ExitCode.SUCCESS;
+    if (!isSuccessExit) {
+      console.error('❌ Error:', error instanceof Error ? error.message : 'Unknown error');
+    }
+    let exitCode: number;
+    try {
+      exitCode = writeCommandFailureReport(
+        options,
+        error,
+        reportGuide,
+        reportSelection ?? (error instanceof E2ECommandError ? error.selection : undefined)
+      );
+    } catch {
+      exitCode = error instanceof E2ECommandError ? error.exitCode : ExitCode.CONFIGURATION_ERROR;
+    }
+    process.exit(exitCode);
+  }
+}
+
+export const e2eSpec = defineCommand({
+  name: 'e2e',
+  summary: 'Run E2E tests on JSON guide files',
+  schema: E2eCommand,
+  // Progress, the run summary, and the JSON report are all written by the runner,
+  // which also owns the exit code — `ExitCode` distinguishes eight failure kinds.
+  emits: 'stream',
+  run: runE2e,
+});

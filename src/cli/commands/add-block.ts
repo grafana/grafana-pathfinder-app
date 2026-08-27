@@ -1,27 +1,33 @@
 /**
  * `pathfinder-cli add-block <dir> <type> [flags]` — append a block to a guide.
  *
- * One subcommand is registered per block type at startup, with its flag
- * surface generated from the block's Zod schema by `registerSchemaOptions`.
- * Adding a new block type means adding it to `BLOCK_SCHEMA_MAP` in the
- * registry; this command picks it up automatically.
+ * A command group: one variant per block type, each variant's parameters taken
+ * from that block's Zod schema. Adding a new block type means adding it to
+ * `BLOCK_SCHEMA_MAP` in the registry; the CLI subcommand and the agent-facing
+ * variant both follow from that.
  */
 
-import { Command, InvalidArgumentError, Option } from 'commander';
+import { z } from 'zod';
 
+import {
+  defineCommand,
+  defineCommandGroup,
+  pickContent,
+  required,
+  withPolicy,
+  type CommandShape,
+  type CommandSpec,
+} from '../contracts';
 import { BLOCK_SCHEMA_MAP, isContainerBlockType, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
 import { appendBlock, mutateAndValidate, PackageIOError, type AppendBlockOptions } from '../utils/package-io';
 import {
   issueToOutcome,
   manyIssuesOutcome,
-  printOutcome,
-  readOutputOptions,
   renderError,
   type CommandOutcome,
   type OutcomeWarning,
 } from '../utils/output';
-import { getSchemaRequiredFlagNames, parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 import { normalizeBlockInput } from '../utils/input-normalizers';
 import { isNonEmptySelector, multistepCompositionHint, unverifiedSelectorWarning } from '../utils/warnings';
 import {
@@ -32,147 +38,152 @@ import {
 } from '../../types/json-guide.schema';
 import type { JsonBlock } from '../../types/json-guide.types';
 
-export const addBlockCommand = new Command('add-block').description(
-  'Append a block to a guide. One subcommand per block type. Usage: add-block <type> <dir> [flags]'
-);
+/**
+ * Child collections a block schema owns that `add-block` must not expose: they are
+ * filled by sibling commands (`add-block --parent`, `add-step`, `add-choice`) rather
+ * than at creation time. An omission from this command rather than a global list of
+ * names to skip — that list also caught fields that merely shared a name, which is
+ * how `create --type` lost its flag (§3.4 i).
+ */
+const CHILD_COLLECTION_FIELDS = ['blocks', 'whenTrue', 'whenFalse', 'steps', 'choices'] as const;
+
+/** Addressing, placement, and control parameters every block type accepts. */
+function structuralShape(type: BlockType) {
+  return {
+    dir: z.string().describe('package directory containing content.json + manifest.json').meta({ role: 'io' }),
+    parent: z
+      .string()
+      .optional()
+      .describe('Append inside the container with this id (default: top level)')
+      .meta({ role: 'addressing' }),
+    branch: z
+      .enum(['true', 'false'])
+      .optional()
+      .describe('Target branch when {@parent} is a conditional')
+      .meta({ role: 'addressing' }),
+    ifAbsent: z
+      .boolean()
+      .optional()
+      .describe('Idempotent create: no-op when a matching container with {@id} already exists')
+      .meta({ role: 'control' }),
+    before: z
+      .string()
+      .optional()
+      .describe(
+        'Insert before this sibling id within the resolved parent (use at most one of {@before}/{@after}/{@position})'
+      )
+      .meta({ role: 'placement' }),
+    after: z
+      .string()
+      .optional()
+      .describe(
+        'Insert after this sibling id within the resolved parent (use at most one of {@before}/{@after}/{@position})'
+      )
+      .meta({ role: 'placement' }),
+    position: z
+      .number()
+      .int('{@position} must be a non-negative integer')
+      .nonnegative('{@position} must be a non-negative integer')
+      .optional()
+      .describe(
+        "0-based index in the parent's child array; 0 is first, length is append (use at most one of {@before}/{@after}/{@position})"
+      )
+      .meta({ role: 'placement' }),
+    // A container is unreachable without an id, so the CLI requires one even though
+    // the block schemas mark `id` optional (existing content predates the rule).
+    // Declaring it lets `requiredByType` be derived rather than hand-patched, and
+    // `missingCode`/`missingMessage` keep the published `CONTAINER_REQUIRES_ID` and
+    // the reason for it.
+    ...(isContainerBlockType(type)
+      ? {
+          id: z
+            .string()
+            .describe(`Stable identifier for the ${type} block (required for container blocks via CLI)`)
+            .meta({
+              role: 'addressing',
+              missingCode: 'CONTAINER_REQUIRES_ID',
+              missingMessage: `Block type "${type}" requires {@id} (container blocks must be addressable)`,
+            }),
+        }
+      : {}),
+  };
+}
+
+/** The one command shape for one block type. */
+function addBlockVariant(type: BlockType): CommandSpec {
+  const variantSchema = BLOCK_SCHEMA_MAP[type];
+  const baseSchema = structuralShape(type);
+
+  // Filter out the base shape parameters from the variant specific schema so we can tag content
+  const remove = new Set(['type', ...CHILD_COLLECTION_FIELDS, ...Object.keys(baseSchema)]);
+  const variantDelta = Object.fromEntries(Object.entries(variantSchema.shape).filter(([name]) => !remove.has(name)));
+
+  let contentSchema: CommandShape = withPolicy(variantDelta, { role: 'content' });
+
+  // A conditional with no conditions is structurally meaningless, so we manually append the required condition
+  contentSchema =
+    type === 'conditional' && contentSchema.conditions
+      ? { ...contentSchema, conditions: required(contentSchema.conditions).meta({ role: 'content' }) }
+      : contentSchema;
+
+  const contentKeys = Object.keys(contentSchema);
+
+  return defineCommand({
+    name: type,
+    summary: `Append a ${type} block`,
+    schema: z.object({ ...baseSchema, ...contentSchema }),
+    // The group supplies `type`; the block's own fields are gathered into `fields`
+    // because the runner builds a block object out of them. Nothing is renamed on the
+    // way through. `id` is narrowed because a non-container inherits it from its block
+    // schema through a `Record<string, z.ZodType>` copy, so statically it is `unknown`.
+    run: (input) =>
+      runAddBlock({
+        ...input,
+        type,
+        id: typeof input.id === 'string' ? input.id : undefined,
+        // `id` is both the assigned identity and, under `--if-absent`, the
+        // idempotency key, so it travels as content *and* as an address.
+        fields: pickContent(input, [...contentKeys, 'id']),
+      }),
+  });
+}
+
+export const addBlockGroup = defineCommandGroup({
+  name: 'add-block',
+  summary: 'Append a block to a guide. One variant per block type.',
+  discriminator: 'type',
+  discriminatorDescription: 'Selects the add-block subcommand.',
+  variants: new Map((Object.keys(BLOCK_SCHEMA_MAP) as BlockType[]).map((type) => [type, addBlockVariant(type)])),
+});
 
 /**
- * Map of block type → array of logically-required flag names. Populated as
- * subcommands register; surfaced via `add-block --help` so authors can see
- * what each type needs without drilling into per-type help. Help-shape JSON
- * exposes this as `requiredByType` (additive key in the stability contract).
+ * Named exactly as the command schema publishes its parameters. The mutators speak
+ * a different vocabulary (`parentId`, `AppendBlockOptions`); translating inside the
+ * body keeps the signature from disagreeing with the published interface.
  */
-export const REQUIRED_BY_BLOCK_TYPE: Record<string, string[]> = {};
-
-for (const [type, schema] of Object.entries(BLOCK_SCHEMA_MAP) as Array<
-  [BlockType, (typeof BLOCK_SCHEMA_MAP)[BlockType]]
->) {
-  const sub = new Command(type)
-    .description(`Append a ${type} block`)
-    .argument('<dir>', 'package directory containing content.json + manifest.json')
-    .addOption(new Option('--parent <id>', 'Append inside the container with this id (default: top level)'))
-    .addOption(
-      new Option('--branch <branch>', 'Target branch when --parent is a conditional').choices(['true', 'false'])
-    )
-    .addOption(new Option('--if-absent', 'Idempotent create: no-op when a matching container with --id already exists'))
-    .addOption(
-      new Option(
-        '--before <id>',
-        'Insert before this sibling id within the resolved parent (use at most one of --before/--after/--position)'
-      )
-    )
-    .addOption(
-      new Option(
-        '--after <id>',
-        'Insert after this sibling id within the resolved parent (use at most one of --before/--after/--position)'
-      )
-    )
-    .addOption(
-      new Option(
-        '--position <n>',
-        "0-based index in the parent's child array; 0 is first, length is append (use at most one of --before/--after/--position)"
-      ).argParser((value: string) => {
-        const n = Number(value);
-        if (!Number.isInteger(n) || n < 0) {
-          throw new InvalidArgumentError(`--position must be a non-negative integer, got "${value}"`);
-        }
-        return n;
-      })
-    );
-
-  // Bridge: derive flags from the block's schema. The bridge skips `type`
-  // (it's the subcommand name), `blocks`, `whenTrue`, `whenFalse`, `steps`,
-  // and `choices` (managed by sibling commands).
-  //
-  // `forceOptional: true` defers required-field checking to the schema's
-  // `safeParse` in `runAddBlock`. Commander otherwise short-circuits on the
-  // first missing required option, forcing the agent to retry once per
-  // missing flag; with all schema-required flags collected at parse time,
-  // every missing field surfaces in a single error response. The set of
-  // logically-required flags is recorded on the command for help output.
-  registerSchemaOptions(sub, schema, { forceOptional: true });
-
-  // Populate the per-type required-flags table. Container types (section,
-  // multistep, guided, quiz, conditional, assistant) also require --id at the
-  // CLI level even though the schema marks `id` optional, so authors see
-  // every author-required flag in one glance. Mutate the subcommand's
-  // schema-required set in place so help-shape JSON picks them up too.
-  const requiredSet = getSchemaRequiredFlagNames(sub) as Set<string> | undefined;
-  if (requiredSet) {
-    if (isContainerBlockType(type as BlockType)) {
-      requiredSet.add('id');
-    }
-    if (type === 'conditional') {
-      requiredSet.add('conditions');
-    }
-  }
-  REQUIRED_BY_BLOCK_TYPE[type] = [...(requiredSet ?? new Set<string>())];
-
-  sub.action(async function (this: Command, dir: string) {
-    const opts = this.opts() as Record<string, unknown>;
-    const output = readOutputOptions(this);
-    const outcome = await runAddBlock({
-      dir,
-      type: type as BlockType,
-      parentId: typeof opts.parent === 'string' ? opts.parent : undefined,
-      branch: opts.branch === 'true' || opts.branch === 'false' ? (opts.branch as 'true' | 'false') : undefined,
-      ifAbsent: opts.ifAbsent === true,
-      explicitId: typeof opts.id === 'string' ? opts.id : undefined,
-      before: typeof opts.before === 'string' ? opts.before : undefined,
-      after: typeof opts.after === 'string' ? opts.after : undefined,
-      position: typeof opts.position === 'number' ? opts.position : undefined,
-      flagValues: opts,
-    });
-
-    process.exit(printOutcome(outcome, output));
-  });
-
-  addBlockCommand.addCommand(sub);
-}
-
-// Append a "required by type" summary so a single `add-block --help` is
-// enough to author any block type. Without this, authors run the parent
-// help, then a per-type help, then begin authoring — paying two help
-// round-trips per block type.
-{
-  const lines = ['', 'Required flags by type (run `add-block <type> --help` for the full surface):'];
-  const padding = Math.max(...Object.keys(REQUIRED_BY_BLOCK_TYPE).map((k) => k.length));
-  for (const type of Object.keys(REQUIRED_BY_BLOCK_TYPE).sort()) {
-    const flags = REQUIRED_BY_BLOCK_TYPE[type] ?? [];
-    const formatted = flags.length === 0 ? '(none)' : flags.map((f) => `--${f}`).join(' ');
-    lines.push(`  ${type.padEnd(padding)}  ${formatted}`);
-  }
-  addBlockCommand.description(`${addBlockCommand.description() ?? ''}\n${lines.join('\n')}`);
-}
-
 interface AddBlockArgs {
   dir: string;
   type: BlockType;
-  parentId?: string;
+  parent?: string;
   branch?: 'true' | 'false';
   ifAbsent?: boolean;
-  explicitId?: string;
+  id?: string;
   before?: string;
   after?: string;
   position?: number;
-  flagValues: Record<string, unknown>;
+  fields: Record<string, unknown>;
 }
 
 /**
- * Pure command body. Composes the bridge's `parseOptionValues` projection
- * with `mutateAndValidate` so the block is constructed from the flag values,
- * appended via `appendBlock`, and persisted only if validation passes.
+ * Pure command body: builds the block from the supplied fields, appends it via
+ * `appendBlock`, and persists only if the whole guide still validates.
  */
 export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   const schema = BLOCK_SCHEMA_MAP[args.type];
 
-  // Project Commander's parsed opts back into a schema-shaped object, drop
-  // structural and addressing keys (the bridge already skips most), then
-  // stamp the discriminator and any explicit `--id`.
-  const rawProjected = parseOptionValues(schema, args.flagValues) as Record<string, unknown>;
-  delete rawProjected.parent;
-  delete rawProjected.branch;
-  delete rawProjected.ifAbsent;
+  // Already selected and type-correct on both paths — the variant schema parsed it —
+  // and carries content plus `id`, with no structural keys to strip.
+  const rawProjected: Record<string, unknown> = { ...args.fields };
 
   // M3 — CLI-side input normalization. Rewrite known-canonical-form fields
   // (e.g., YouTube watch/short URLs → embed) before any validator runs, so
@@ -200,12 +211,12 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   // - `--branch` only makes sense when --parent is a conditional block.
   //   We can't fully verify the parent kind until the package is read, but
   //   we can refuse the case where no --parent was supplied at all.
-  if (args.branch !== undefined && !args.parentId) {
+  if (args.branch !== undefined && !args.parent) {
     return {
       status: 'error',
       code: 'SCHEMA_VALIDATION',
       message:
-        '--branch can only be set when --parent points at a conditional block; pass --parent <conditional-id> or drop --branch.',
+        '{@branch} can only be set when {@parent} points at a conditional block; either point {@parent} at a conditional, or drop {@branch}.',
     };
   }
   // - `conditional` blocks must declare at least one condition at creation
@@ -216,14 +227,14 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       return {
         status: 'error',
         code: 'SCHEMA_VALIDATION',
-        message: 'conditional: at least one --conditions value is required when adding a conditional block.',
+        message: 'conditional: at least one {@conditions} value is required when adding a conditional block.',
       };
     }
   }
 
   const block: Record<string, unknown> = { type: args.type, ...projected };
-  if (args.explicitId) {
-    block.id = args.explicitId;
+  if (args.id) {
+    block.id = args.id;
   }
 
   // Containers start out empty — the agent fills them via subsequent
@@ -258,7 +269,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   }
 
   const appendOptions: AppendBlockOptions = {
-    parentId: args.parentId,
+    parentId: args.parent,
     branch: args.branch,
     ifAbsent: args.ifAbsent,
     before: args.before,
@@ -336,7 +347,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
     },
     ...(warnings.length > 0 ? { warnings } : {}),
-    hints: appended ? hintsFor(args.type, args.parentId, assignedId) : undefined,
+    hints: appended ? hintsFor(args.type, args.parent, assignedId) : undefined,
     data: {
       type: args.type,
       id: assignedId,

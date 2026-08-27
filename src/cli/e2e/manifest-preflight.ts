@@ -14,6 +14,7 @@ import { join } from 'path';
 
 import { ManifestJsonSchema } from '../../types/package.schema';
 import type { ManifestJson, TestEnvironment } from '../../types/package.types';
+import { preserveAuthoredStartingLocation } from './starting-location';
 
 // ============ RESULT TYPES ============
 
@@ -330,7 +331,7 @@ export function loadManifestFromDir(packageDir: string): ManifestJson | null {
   if (!result.success) {
     throw new Error(`Invalid manifest.json in ${packageDir}: ${result.error.issues.map((i) => i.message).join('; ')}`);
   }
-  return result.data as ManifestJson;
+  return preserveAuthoredStartingLocation(parsed, result.data) as ManifestJson;
 }
 
 // ============ ORCHESTRATION ============

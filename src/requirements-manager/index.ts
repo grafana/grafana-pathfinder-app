@@ -18,6 +18,8 @@ export {
   useRequirementsManager,
   useIsInsideRequirementsProvider,
 } from './requirements-context';
+export { GuideRequirementsProvider, useGuideRequirements } from './guide-requirements-context';
+export type { GuideRequirementsCheckOptions } from './guide-requirements-context';
 
 // Step checker hook (unified requirements + objectives)
 export { useStepChecker } from './step-checker.hook';
@@ -28,7 +30,8 @@ export type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.t
 // Pure requirements checking utilities
 export { checkRequirements, checkPostconditions, validateInteractiveRequirements } from './requirements-checker.utils';
 
-export type { RequirementsCheckResult, CheckResultError, RequirementsCheckOptions } from './requirements-checker.utils';
+export type { RequirementsCheckResult, RequirementsCheckOptions } from './requirements-checker.utils';
+export type { CheckResultError } from '../types/requirements.types';
 
 // Requirement explanations and messages
 export {

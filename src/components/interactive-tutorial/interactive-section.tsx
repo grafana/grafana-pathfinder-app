@@ -21,9 +21,11 @@ import { TerminalStep, resetTerminalStepCounter } from './terminal-step';
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
 import { CodeBlockStep, resetCodeBlockStepCounter } from './code-block-step';
 import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import { DatasourceCheckStep, resetDatasourceCheckStepCounter } from './datasource-check-step';
 import {
   CHALLENGE_BLOCK_SCHEMA,
   CODE_BLOCK_STEP_SCHEMA,
+  DATASOURCE_CHECK_STEP_SCHEMA,
   type EnhanceContext,
   INTERACTIVE_GUIDED_SCHEMA,
   INTERACTIVE_MULTISTEP_SCHEMA,
@@ -56,6 +58,7 @@ export const STEP_TYPE_LOOKUP: ReadonlyMap<React.ComponentType<any>, StepTypeSch
   [TerminalConnectStep, TERMINAL_CONNECT_STEP_SCHEMA],
   [CodeBlockStep, CODE_BLOCK_STEP_SCHEMA],
   [ChallengeBlock, CHALLENGE_BLOCK_SCHEMA],
+  [DatasourceCheckStep, DATASOURCE_CHECK_STEP_SCHEMA],
 ]);
 
 /** Resolve the schema for a child element, or `undefined` if the child
@@ -105,6 +108,7 @@ import {
 } from '../../global-state/completion-store';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { computeCursor, deriveSectionState, initialSectionState, sectionReducer } from './section-state';
+import { DEFAULT_INTERACTIVE_SECTION_TITLE, PASSIVE_SECTION_TITLE } from './section-titles';
 import {
   getDocumentStepPosition,
   nextSectionCounter,
@@ -118,12 +122,6 @@ export {
   getTotalDocumentSteps,
   getDocumentStepPosition,
 } from '../../global-state/section-registry';
-
-// Interactive Section title fallback
-export const DEFAULT_INTERACTIVE_SECTION_TITLE = 'Interactive section';
-
-// Interactive Section title fallback for sections with no interactive steps (passive content only)
-export const PASSIVE_SECTION_TITLE = 'Steps';
 
 // Reset every counter (registry + offsets + per-step-type anonymous-ID
 // counters). Called when new content loads. The registry's own state
@@ -140,6 +138,7 @@ export function resetInteractiveCounters() {
   resetTerminalConnectStepCounter();
   resetCodeBlockStepCounter();
   resetChallengeCounter();
+  resetDatasourceCheckStepCounter();
 }
 
 export function InteractiveSection({
@@ -629,13 +628,11 @@ export function InteractiveSection({
 
       try {
         // Execute the action using existing interactive logic
-        const actionOutcome = await executeInteractiveAction(
-          stepInfo.targetAction!,
-          stepInfo.refTarget!,
-          stepInfo.targetValue,
-          'do',
-          stepInfo.targetComment
-        );
+        const actionOutcome = await executeInteractiveAction({
+          ...stepInfo,
+          targetAction: stepInfo.targetAction!,
+          buttonType: 'do',
+        });
         if (actionOutcome === 'error') {
           logger.warn(`Sequence action did not complete for ${stepInfo.stepId}`);
           return false;
@@ -811,10 +808,9 @@ export function InteractiveSection({
 
             const stepInfo = stepComponents[i]!;
 
-            // PAUSE: If this is a guided step, stop automated execution
-            // User must manually click the guided step's "Do it" button
-            // Once complete, they can click "Resume" to continue
-            if (stepInfo.isGuided) {
+            // PAUSE: this step is one only the user can perform, so stop
+            // automated execution. They click its own button, then "Resume".
+            if (stepInfo.isGuided || stepInfo.pausesSectionRun) {
               ActionMonitor.getInstance().forceEnable(); // Re-enable monitor for guided mode
               // (cursor is already at `i` via the prior COMPLETE_STEP dispatches)
               setIsRunning(false); // Stop the automated loop
@@ -928,13 +924,7 @@ export function InteractiveSection({
 
             // First, show the step (highlight it) - skip for multi-step components OR if showMe is false
             if (!stepInfo.isMultiStep && stepInfo.showMe !== false) {
-              await executeInteractiveAction(
-                stepInfo.targetAction!,
-                stepInfo.refTarget!,
-                stepInfo.targetValue,
-                'show',
-                stepInfo.targetComment
-              );
+              await executeInteractiveAction({ ...stepInfo, targetAction: stepInfo.targetAction!, buttonType: 'show' });
 
               // Wait for highlight to be visible and animation to complete
               // Check cancellation during wait

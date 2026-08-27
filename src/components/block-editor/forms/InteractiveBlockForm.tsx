@@ -18,7 +18,7 @@ import {
   type ComboboxOption,
 } from '@grafana/ui';
 import { getBlockFormStyles } from '../block-editor.styles';
-import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES } from '../constants';
+import { INTERACTIVE_ACTIONS, POPOUT_TARGET_MODES, TARGET_STATE_OPTIONS, parseAuthoredTargetState } from '../constants';
 import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import { suggestDefaultRequirements, mergeRequirements } from './requirements-suggester';
 import { ConditionChipsField } from './ConditionChipsField';
@@ -87,6 +87,7 @@ export function InteractiveBlockForm({
   const [action, setAction] = useState<JsonInteractiveAction>(initial?.action ?? 'highlight');
   const [reftarget, setReftarget] = useState(initial?.reftarget ?? '');
   const [targetvalue, setTargetvalue] = useState(initial?.targetvalue ?? '');
+  const [targetstate, setTargetstate] = useState(initial?.targetstate === undefined ? '' : String(initial.targetstate));
   const [content, setContent] = useState(initial?.content ?? '');
   const [tooltip, setTooltip] = useState(initial?.tooltip ?? '');
   const [requirements, setRequirements] = useState(initial?.requirements?.join(', ') ?? '');
@@ -129,7 +130,7 @@ export function InteractiveBlockForm({
   }, [onPickerModeChange, action]);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
 
       // Parse requirements and objectives from comma-separated strings
@@ -151,6 +152,7 @@ export function InteractiveBlockForm({
       const isPopoutAction = action === 'popout';
       // Treat both actions like noop for the bulk of the optional-field gating below.
       const isStateOnlyAction = isNoopAction || isPopoutAction;
+      const authoredTargetState = parseAuthoredTargetState(targetstate);
 
       const block: JsonInteractiveBlock = {
         type: 'interactive',
@@ -162,6 +164,8 @@ export function InteractiveBlockForm({
         ...(!isStateOnlyAction && targetvalue.trim() && { targetvalue: targetvalue.trim() }),
         ...(isPopoutAction &&
           isPopoutTargetMode(targetvalue.trim()) && { targetvalue: targetvalue.trim() as PopoutTargetMode }),
+        ...((action === 'highlight' || action === 'button') &&
+          authoredTargetState !== undefined && { targetstate: authoredTargetState }),
         ...(!isNoopAction && tooltip.trim() && { tooltip: tooltip.trim() }),
         ...(!isNoopAction && reqArray.length > 0 && { requirements: reqArray }),
         ...(!isNoopAction && objArray.length > 0 && { objectives: objArray }),
@@ -188,6 +192,7 @@ export function InteractiveBlockForm({
       action,
       reftarget,
       targetvalue,
+      targetstate,
       content,
       tooltip,
       requirements,
@@ -293,6 +298,7 @@ export function InteractiveBlockForm({
     content.trim().length > 0 &&
     (!isPopout || isPopoutTargetMode(targetvalue.trim()));
   const showTargetValue = action === 'formfill';
+  const showTargetState = action === 'highlight' || action === 'button';
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -377,7 +383,9 @@ export function InteractiveBlockForm({
           </Field>
 
           {/* Selector health badge */}
-          {reftarget && <SelectorHealthBadge reftarget={reftarget} />}
+          {reftarget && (
+            <SelectorHealthBadge reftarget={reftarget} checkTargetState={showTargetState} targetstate={targetstate} />
+          )}
 
           {/* Test result overlay */}
           {testResult && <SelectorTestOverlay elements={testResult.elements} onDismiss={clearTest} />}
@@ -427,6 +435,22 @@ export function InteractiveBlockForm({
             <span style={{ fontSize: 12, color: '#8e8e8e' }}>No alternative selectors found for this element.</span>
           )}
         </>
+      )}
+
+      {/* Desired end state (for toggle targets) */}
+      {showTargetState && (
+        <Field
+          label="Target state"
+          description="For toggles, switches and expanders. The step reads the control and only clicks when the state differs, so it is safe to re-run. Leave blank to click unconditionally."
+        >
+          <Combobox
+            options={TARGET_STATE_OPTIONS}
+            value={targetstate}
+            onChange={(option) => setTargetstate(option?.value ?? '')}
+            placeholder="Click unconditionally"
+            createCustomValue
+          />
+        </Field>
       )}
 
       {/* Target Value (for formfill) */}

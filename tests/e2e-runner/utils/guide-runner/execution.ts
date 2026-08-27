@@ -13,11 +13,15 @@ import { Page, expect } from '@playwright/test';
 import { testIds } from '../../../../src/constants/testIds';
 import {
   DEFAULT_STEP_TIMEOUT_MS,
+  GUIDE_INITIAL_TIMEOUT_MS,
+  STEP_OVERHEAD_TIMEOUT_MS,
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
   TIMEOUT_PER_GUIDED_SUBSTEP_MS,
   BUTTON_ENABLE_TIMEOUT_MS,
   BUTTON_APPEAR_TIMEOUT_MS,
   SCROLL_SETTLE_DELAY_MS,
+  SCROLL_INTO_VIEW_TIMEOUT_MS,
+  LATE_COMPLETION_CHECK_TIMEOUT_MS,
   POST_CLICK_SETTLE_DELAY_MS,
   COMPLETION_POLL_INTERVAL_MS,
   DEFAULT_SESSION_CHECK_INTERVAL,
@@ -31,6 +35,8 @@ import {
   GUIDED_FORMFILL_INVALID_PERSIST_MS,
   GUIDED_HOVER_DWELL_MS,
   GUIDED_SKIP_AFTER_TIMEOUT_FRACTION,
+  GUIDED_RELOAD_LOAD_TIMEOUT_MS,
+  SKIP_SYNC_TIMEOUT_MS,
 } from './constants';
 import { classifyError } from './classification';
 import {
@@ -40,6 +46,7 @@ import {
   captureFinalScreenshot,
 } from './artifacts';
 import { validateSession, handleRequirementsWithFix } from './requirements';
+import { dismissBadgeCelebrations } from './badge-celebrations';
 import type {
   TestableStep,
   SkipReason,
@@ -51,6 +58,9 @@ import type {
 } from './types';
 import { resolveSelector } from '../selector-resolver';
 import type { Locator } from '@playwright/test';
+const STEP_CLOSE_TIMEOUT_MS = 1000;
+const STEP_WORK_DRAIN_TIMEOUT_MS = 1000;
+export const STEP_DEADLINE_CLEANUP_GRACE_MS = STEP_CLOSE_TIMEOUT_MS + STEP_WORK_DRAIN_TIMEOUT_MS + 1000;
 
 // ============================================
 // Utility Functions
@@ -69,66 +79,18 @@ import type { Locator } from '@playwright/test';
 export async function scrollStepIntoView(
   page: Page,
   stepId: string,
-  scrollDelay = SCROLL_SETTLE_DELAY_MS
+  scrollDelay = SCROLL_SETTLE_DELAY_MS,
+  scrollTimeout = SCROLL_INTO_VIEW_TIMEOUT_MS
 ): Promise<void> {
   const stepElement = page.getByTestId(testIds.interactive.step(stepId));
 
-  // Scroll within the docs panel container
-  await stepElement.scrollIntoViewIfNeeded();
+  // Scroll within the docs panel container. Bounded: a step that is completing
+  // or detaching around this point should not block on an unbounded wait.
+  await stepElement.scrollIntoViewIfNeeded({ timeout: scrollTimeout });
 
   // Wait for scroll animation to complete
   if (scrollDelay > 0) {
     await page.waitForTimeout(scrollDelay);
-  }
-}
-
-/**
- * Wait for a step's "Do it" button to become enabled (L3-3C).
- *
- * Per U3 findings: Steps may not be clickable immediately when discovered.
- * Sequential dependencies enforced by isEligibleForChecking mean buttons
- * can be disabled until previous steps complete.
- *
- * This function respects sequential dependencies by waiting for the button
- * to become enabled, not just visible.
- *
- * @param page - Playwright Page object
- * @param stepId - The step identifier
- * @param timeout - Maximum time to wait (ms), default 10s
- */
-export async function waitForDoItButtonEnabled(
-  page: Page,
-  stepId: string,
-  timeout = BUTTON_ENABLE_TIMEOUT_MS
-): Promise<void> {
-  const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
-  await expect(doItButton).toBeEnabled({ timeout });
-}
-
-/**
- * Wait for a "Do it" button to appear in the DOM.
- *
- * For steps in sections with sequential dependencies, the button
- * only appears after the previous step completes. This function
- * waits for the button to be present (not necessarily enabled).
- *
- * @param page - Playwright Page object
- * @param stepId - The step identifier
- * @param timeout - Maximum time to wait (ms), default 15s
- * @returns true if button appeared, false if timeout
- */
-export async function waitForDoItButtonToAppear(
-  page: Page,
-  stepId: string,
-  timeout = BUTTON_APPEAR_TIMEOUT_MS
-): Promise<boolean> {
-  const doItButton = page.getByTestId(testIds.interactive.doItButton(stepId));
-  try {
-    await doItButton.waitFor({ state: 'attached', timeout });
-    return true;
-  } catch {
-    // Intentionally silent - button may not exist for this step type
-    return false;
   }
 }
 
@@ -150,6 +112,73 @@ export function calculateStepTimeout(step: TestableStep): number {
     return DEFAULT_STEP_TIMEOUT_MS + step.internalActionCount * TIMEOUT_PER_MULTISTEP_ACTION_MS;
   }
   return DEFAULT_STEP_TIMEOUT_MS;
+}
+
+export function calculateStepDeadline(step: TestableStep, stepTimeout = calculateStepTimeout(step)): number {
+  return stepTimeout * 2 + STEP_OVERHEAD_TIMEOUT_MS;
+}
+
+export function calculateGuideTimeout(steps: TestableStep[]): number {
+  return (
+    GUIDE_INITIAL_TIMEOUT_MS +
+    steps.reduce((total, step) => total + calculateStepDeadline(step), 0) +
+    (steps.length > 0 ? STEP_DEADLINE_CLEANUP_GRACE_MS : 0)
+  );
+}
+
+export type StepAction = 'do-it' | 'show-me';
+
+export function selectStepAction(
+  step: Pick<TestableStep, 'hasDoItButton' | 'hasShowMeButton'>
+): StepAction | undefined {
+  if (step.hasDoItButton) {
+    return 'do-it';
+  }
+  if (step.hasShowMeButton) {
+    return 'show-me';
+  }
+  return undefined;
+}
+
+export function determineUnmetRequirementOutcome(skippable: boolean): 'skip' | 'fail' {
+  return skippable ? 'skip' : 'fail';
+}
+
+function stepActionButton(page: Page, stepId: string, action: StepAction): Locator {
+  const testId = action === 'do-it' ? testIds.interactive.doItButton(stepId) : testIds.interactive.showMeButton(stepId);
+  return page.getByTestId(testId);
+}
+
+async function currentStepAction(page: Page, stepId: string): Promise<StepAction | undefined> {
+  return selectStepAction({
+    hasDoItButton: (await stepActionButton(page, stepId, 'do-it').count()) > 0,
+    hasShowMeButton: (await stepActionButton(page, stepId, 'show-me').count()) > 0,
+  });
+}
+
+async function waitForStepActionToAppear(
+  page: Page,
+  stepId: string,
+  timeout = BUTTON_APPEAR_TIMEOUT_MS
+): Promise<StepAction | undefined> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const action = await currentStepAction(page, stepId);
+    if (action) {
+      return action;
+    }
+    await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
+  }
+  return undefined;
+}
+
+async function waitForStepActionEnabled(
+  page: Page,
+  stepId: string,
+  action: StepAction,
+  timeout = BUTTON_ENABLE_TIMEOUT_MS
+): Promise<void> {
+  await expect(stepActionButton(page, stepId, action)).toBeEnabled({ timeout });
 }
 
 /**
@@ -184,6 +213,68 @@ export async function checkObjectiveCompletion(page: Page, stepId: string): Prom
   const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
   const state = await stepLocator.getAttribute('data-test-step-state');
   return state === 'completed';
+}
+
+/**
+ * Outcome of the late completion/detachment precheck:
+ * - `completed`: the step's element is attached and already `completed`.
+ * - `detached`: the step's element is confirmed gone (a successful query
+ *   returned zero matches), which this file treats as a completion signal
+ *   the same way `waitForCompletionWithObjectivePolling` and the guided
+ *   substep loop do.
+ * - `not-complete`: proceed with normal execution.
+ */
+type LateCompletionOutcome = 'completed' | 'detached' | 'not-complete';
+
+/**
+ * Recheck completion/detachment immediately before the scroll call in
+ * executeStep. Bounded so a step that's mid-detach can't hang the run on an
+ * otherwise-unbounded attribute read (Playwright auto-waits on a missing
+ * element up to its own timeout by default).
+ *
+ * A `count()` error, or an attached element whose read failed for an
+ * unrelated reason, is a genuine fault and propagates instead of being
+ * reported as "already done".
+ *
+ * @param page - Playwright Page object
+ * @param stepId - The step identifier
+ * @param timeout - Bound for the attribute read (ms)
+ */
+async function checkLateCompletionOrDetachment(
+  page: Page,
+  stepId: string,
+  timeout = LATE_COMPLETION_CHECK_TIMEOUT_MS
+): Promise<LateCompletionOutcome> {
+  const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
+  if ((await stepLocator.count()) === 0) {
+    return 'detached';
+  }
+
+  let state: string | null;
+  try {
+    state = await stepLocator.getAttribute('data-test-step-state', { timeout });
+  } catch (err) {
+    // The bounded read didn't complete (e.g. the element detached mid-read).
+    // Re-count: a successful zero confirms late detachment; an attached
+    // element (or a failing re-count) is a genuine fault and must propagate.
+    if ((await stepLocator.count()) === 0) {
+      return 'detached';
+    }
+    throw err;
+  }
+  return state === 'completed' ? 'completed' : 'not-complete';
+}
+
+async function readStepError(page: Page, stepId: string): Promise<string | undefined> {
+  const errorElement = page.getByTestId(testIds.interactive.errorMessage(stepId));
+  if ((await errorElement.count()) > 0) {
+    return (await errorElement.first().textContent())?.trim() || undefined;
+  }
+  const deployedError = page
+    .getByTestId(testIds.interactive.step(stepId))
+    .locator('.interactive-lazy-error-text, .interactive-step-execution-error')
+    .first();
+  return (await deployedError.count()) > 0 ? (await deployedError.textContent())?.trim() || undefined : undefined;
 }
 
 /**
@@ -223,10 +314,20 @@ export async function waitForCompletionWithObjectivePolling(
         return { completedViaObjectives: false };
       }
     }
+    const errorMessage = await readStepError(page, stepId);
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
     if (state === 'completed') {
       const elapsed = Date.now() - startTime;
       const likelyObjectiveCompletion = elapsed < COMPLETION_POLL_INTERVAL_MS * 2;
       return { completedViaObjectives: likelyObjectiveCompletion };
+    }
+    if (state === 'error') {
+      throw new Error((await readStepError(page, stepId)) ?? `Step ${stepId} entered error state`);
+    }
+    if (state === 'cancelled' || state === 'requirements-unmet') {
+      throw new Error(`Step ${stepId} entered ${state} state`);
     }
     await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
   }
@@ -241,12 +342,82 @@ export async function waitForCompletionWithObjectivePolling(
 
 const GUIDED_WAIT_EXECUTING_MS = 5000;
 
+async function waitForGuidedExecutionStart(page: Page, stepLocator: Locator, timeout: number): Promise<void> {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const state = await stepLocator.getAttribute('data-test-step-state');
+    if (state === 'executing' || state === 'completed') {
+      return;
+    }
+    if (state === 'error' || state === 'cancelled') {
+      throw new Error(`Guided step entered ${state} state before execution`);
+    }
+    await page.waitForTimeout(COMPLETION_POLL_INTERVAL_MS);
+  }
+  throw new Error('Guided step did not enter executing state');
+}
+
+interface ParsedNthMatchSelector {
+  baseSelector: string;
+  index: number;
+  trailingSelector: string;
+}
+
+export function parseNthMatchSelector(selector: string): ParsedNthMatchSelector | undefined {
+  const match = selector.match(/^(.+?):nth-match\((\d+)\)(.*)$/);
+  if (!match) {
+    return undefined;
+  }
+  const oneBasedIndex = Number.parseInt(match[2]!, 10);
+  if (oneBasedIndex < 1) {
+    return undefined;
+  }
+  return {
+    baseSelector: match[1]!,
+    index: oneBasedIndex - 1,
+    trailingSelector: match[3]!.trim(),
+  };
+}
+
+function guidedSelectorLocator(page: Page, selector: string): Locator {
+  const parsed = parseNthMatchSelector(selector);
+  if (!parsed) {
+    return page.locator(selector).first();
+  }
+  const matched = page.locator(parsed.baseSelector).nth(parsed.index);
+  return parsed.trailingSelector ? matched.locator(parsed.trailingSelector).first() : matched;
+}
+
+async function revealGuidedTarget(page: Page, target: Locator, timeout: number): Promise<Locator> {
+  if (await target.isVisible()) {
+    return target;
+  }
+  if ((await target.count()) > 0) {
+    const panel = target.locator('xpath=ancestor::section[1]');
+    if ((await panel.count()) > 0) {
+      await panel.scrollIntoViewIfNeeded().catch(() => {});
+      await dismissBadgeCelebrations(page);
+      await panel.hover({ timeout }).catch(() => {});
+      if (await target.isVisible()) {
+        return target;
+      }
+      const menuButton = panel.locator('button[data-testid^="data-testid Panel menu "]').first();
+      if ((await menuButton.count()) > 0 && (await menuButton.isVisible())) {
+        return menuButton;
+      }
+    }
+  }
+  await target.waitFor({ state: 'visible', timeout });
+  return target;
+}
+
 /**
  * Resolve data-test-reftarget to a Playwright locator for the current substep.
  * Button: try getByRole('button', { name }) then locator(selector); others use locator(selector).
  * Handles grafana: prefix through the Node-safe E2E resolver.
  */
 async function resolveGuidedTarget(page: Page, reftarget: string, actionType: string): Promise<Locator> {
+  await dismissBadgeCelebrations(page);
   const timeout = GUIDED_TARGET_RESOLUTION_TIMEOUT_MS;
   const selector = reftarget.startsWith('grafana:') ? resolveSelector(reftarget) : reftarget;
 
@@ -254,20 +425,18 @@ async function resolveGuidedTarget(page: Page, reftarget: string, actionType: st
     const byRole = page.getByRole('button', { name: reftarget });
     const n = await byRole.count();
     if (n > 0) {
-      return byRole.first();
+      return revealGuidedTarget(page, byRole.first(), timeout);
     }
-    const bySelector = page.locator(selector);
+    const bySelector = guidedSelectorLocator(page, selector);
     const hasButton = bySelector.filter({ has: page.getByRole('button') });
     const hasCount = await hasButton.count();
     if (hasCount > 0) {
-      return hasButton.first();
+      return revealGuidedTarget(page, hasButton.first(), timeout);
     }
-    return bySelector.first();
+    return revealGuidedTarget(page, bySelector.first(), timeout);
   }
 
-  const loc = page.locator(selector).first();
-  await loc.waitFor({ state: 'visible', timeout });
-  return loc;
+  return revealGuidedTarget(page, guidedSelectorLocator(page, selector), timeout);
 }
 
 /**
@@ -313,11 +482,11 @@ async function waitForSubstepAdvance(
     if (lastState === 'cancelled') {
       throw new Error('Guided step was cancelled');
     }
-    if (lastState === 'completed') {
-      return;
-    }
     const index = lastIndex != null ? parseInt(lastIndex, 10) : 0;
     if (!Number.isNaN(index) && index > previousSubstepIndex) {
+      return;
+    }
+    if (lastState === 'completed' && lastIndex === null) {
       return;
     }
 
@@ -326,6 +495,7 @@ async function waitForSubstepAdvance(
       const skipBtn = commentBox.getByRole('button', { name: /^Skip$/ });
       const count = await skipBtn.count();
       if (count > 0) {
+        await dismissBadgeCelebrations(page);
         await skipBtn.click().catch(() => {});
       }
     }
@@ -341,7 +511,7 @@ async function waitForSubstepAdvance(
 /**
  * After formfill: debounce, optionally wait for data-test-form-state="valid", or retry once on persistent invalid (Phase 4.1).
  */
-async function waitForFormfillSettle(
+export async function waitForFormfillSettle(
   page: Page,
   stepLocator: Locator,
   target: Locator,
@@ -376,6 +546,7 @@ async function waitForFormfillSettle(
         invalidSince = Date.now();
       }
       if (Date.now() - invalidSince >= GUIDED_FORMFILL_INVALID_PERSIST_MS) {
+        await dismissBadgeCelebrations(page);
         await target.fill(targetValue);
         await page.waitForTimeout(GUIDED_FORMFILL_DEBOUNCE_MS);
         const afterRetry = await readFormState();
@@ -398,21 +569,97 @@ async function waitForFormfillSettle(
 }
 
 /**
+ * Outcome of waiting for the guided comment box:
+ * - `ready`: the comment box is visible and its contract can be read.
+ * - `completed`: the step reached `completed` while we were waiting.
+ * - `detached`: the step element was confirmed gone (a successful query
+ *   returned zero matches) while we were waiting.
+ */
+export type GuidedCommentBoxWaitOutcome = 'ready' | 'completed' | 'detached';
+
+/**
+ * Wait for the guided comment box to become visible, bounded by an absolute
+ * deadline rather than a fixed short constant. Every locator read inside the
+ * loop is itself bounded by the remaining time so a missing/slow locator
+ * can't silently consume more than this wait's own budget (e.g. the outer
+ * test timeout). Polls step state alongside the comment box so a step that
+ * has already entered `error`/`cancelled` fails fast, and returns a distinct
+ * outcome for `completed`/detached so the caller can treat those as legitimate
+ * step completion rather than "comment box never appeared".
+ */
+export async function waitForGuidedCommentBoxReady(
+  page: Page,
+  stepLocator: Locator,
+  commentBox: Locator,
+  timeoutMs = GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS
+): Promise<GuidedCommentBoxWaitOutcome> {
+  const deadline = Date.now() + timeoutMs;
+
+  for (;;) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error('Guided step: comment box not visible');
+    }
+
+    if ((await commentBox.count()) > 0 && (await commentBox.isVisible())) {
+      return 'ready';
+    }
+
+    // Check detachment via an immediate, successful count() BEFORE any bounded
+    // attribute read. In real Playwright, getAttribute() on a missing element
+    // auto-waits up to its own timeout, so an already-detached step must be
+    // caught here first or it would burn the full remaining budget for
+    // nothing. A count() error is not caught: it propagates as designed.
+    if ((await stepLocator.count()) === 0) {
+      return 'detached';
+    }
+
+    // Bound this read by the remaining budget so a stuck-but-attached locator
+    // can't exceed this wait's own deadline.
+    let state: string | null;
+    try {
+      state = await stepLocator.getAttribute('data-test-step-state', { timeout: remainingMs });
+    } catch {
+      state = null;
+    }
+
+    if (state === 'completed') {
+      return 'completed';
+    }
+    if (state === 'error') {
+      throw new Error('Guided step entered error state while waiting for comment box');
+    }
+    if (state === 'cancelled') {
+      throw new Error('Guided step was cancelled while waiting for comment box');
+    }
+
+    await page.waitForTimeout(Math.min(GUIDED_SUBSTEP_ADVANCE_POLL_MS, Math.max(1, deadline - Date.now())));
+  }
+}
+
+/**
  * Run the guided substep loop: read comment box contract, perform action, wait for advance.
  * Phase 4: formfill validation, hover dwell, skippable substeps, navigation re-query, error diagnostics.
  */
-async function runGuidedSubstepLoop(
+export async function runGuidedSubstepLoop(
   page: Page,
   step: TestableStep,
   options: {
     stepLocator: Locator;
     perSubstepTimeoutMs: number;
+    /**
+     * Absolute deadline (Date.now()-based epoch ms) bounding the cumulative
+     * comment-box visibility wait across every substep in this loop. Defaults
+     * to `Date.now() + GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS` when omitted.
+     */
+    commentBoxDeadlineMs?: number;
     verbose?: boolean;
     artifactsDir?: string;
   }
 ): Promise<{ completed: boolean }> {
   let stepLocator = options.stepLocator;
   const { perSubstepTimeoutMs, verbose = false, artifactsDir } = options;
+  const commentBoxDeadlineMs = options.commentBoxDeadlineMs ?? Date.now() + GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS;
   const guidedStepCount = step.guidedStepCount ?? 1;
 
   const captureLoopArtifacts = async (context: string) => {
@@ -421,7 +668,12 @@ async function runGuidedSubstepLoop(
     }
   };
 
-  // Step unmount mid-loop is a completion signal
+  // Step unmount mid-loop is a completion signal (section auto-collapse, or
+  // navigation unmounted it). Re-resolving the locator handles reload (e.g. a
+  // completeEarly action). A query error is NOT treated as detachment here:
+  // callers already synchronize on navigation before calling this, so a fault
+  // at this point (closed page, destroyed context, unrelated query error)
+  // is a genuine failure and must propagate rather than be reported as success.
   const stepDetached = async (): Promise<boolean> => {
     stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
     return (await stepLocator.count()) === 0;
@@ -448,8 +700,8 @@ async function runGuidedSubstepLoop(
       await captureLoopArtifacts(`unexpected-state-${state}`);
       throw new Error(`Unexpected guided step state: ${state}`);
     }
-
     const indexStr = await stepLocator.getAttribute('data-test-substep-index');
+
     const currentIndex = indexStr != null ? parseInt(indexStr, 10) : 0;
     const safeIndex = Number.isNaN(currentIndex) ? 0 : currentIndex;
     if (safeIndex >= guidedStepCount) {
@@ -457,10 +709,21 @@ async function runGuidedSubstepLoop(
     }
 
     const commentBox = page.locator('.interactive-comment-box').first();
-    await commentBox.waitFor({ state: 'visible', timeout: GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS }).catch(async () => {
+    let commentBoxOutcome: GuidedCommentBoxWaitOutcome;
+    try {
+      commentBoxOutcome = await waitForGuidedCommentBoxReady(
+        page,
+        stepLocator,
+        commentBox,
+        Math.max(1, commentBoxDeadlineMs - Date.now())
+      );
+    } catch (err) {
       await captureLoopArtifacts('comment-box-not-visible');
-      throw new Error('Guided step: comment box not visible');
-    });
+      throw err;
+    }
+    if (commentBoxOutcome === 'completed' || commentBoxOutcome === 'detached') {
+      return { completed: true };
+    }
 
     const action = await commentBox.getAttribute('data-test-action');
     const reftarget = await commentBox.getAttribute('data-test-reftarget');
@@ -473,18 +736,35 @@ async function runGuidedSubstepLoop(
     try {
       if (action === 'noop') {
         const continueBtn = commentBox.getByRole('button', { name: /Continue/ });
+        await dismissBadgeCelebrations(page);
         await continueBtn.click();
       } else if (action === 'button' || action === 'highlight') {
         if (!reftarget) {
           throw new Error('Guided step: button/highlight substep missing data-test-reftarget');
         }
         const urlBefore = page.url();
-        const target = await resolveGuidedTarget(page, reftarget, action);
-        await target.scrollIntoViewIfNeeded();
-        await target.click();
-        await page.waitForTimeout(100);
-        if (urlBefore !== page.url()) {
-          await page.waitForLoadState('domcontentloaded');
+        let navigated = false;
+        const onFrameNavigated = () => {
+          navigated = true;
+        };
+        page.on('framenavigated', onFrameNavigated);
+        try {
+          const target = await resolveGuidedTarget(page, reftarget, action);
+          await target.scrollIntoViewIfNeeded();
+          await dismissBadgeCelebrations(page);
+          await target.click();
+          await page.waitForTimeout(100);
+        } finally {
+          page.off('framenavigated', onFrameNavigated);
+        }
+        if (navigated || urlBefore !== page.url()) {
+          // The action reloaded/navigated the page (e.g. a completeEarly install).
+          // The pre-navigation locator is stale, so wait for the new document to
+          // settle before re-resolving the step locator against it. A failed/timed
+          // out load is a genuine failure (broken reload) and must propagate, not
+          // be swallowed into a false "completed" result.
+          await page.waitForLoadState('domcontentloaded', { timeout: GUIDED_RELOAD_LOAD_TIMEOUT_MS });
+          stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
         }
       } else if (action === 'hover') {
         if (!reftarget) {
@@ -492,6 +772,7 @@ async function runGuidedSubstepLoop(
         }
         const target = await resolveGuidedTarget(page, reftarget, 'hover');
         await target.scrollIntoViewIfNeeded();
+        await dismissBadgeCelebrations(page);
         await target.hover();
         await page.waitForTimeout(GUIDED_HOVER_DWELL_MS);
       } else if (action === 'formfill') {
@@ -500,6 +781,7 @@ async function runGuidedSubstepLoop(
         }
         const target = await resolveGuidedTarget(page, reftarget, 'formfill');
         await target.scrollIntoViewIfNeeded();
+        await dismissBadgeCelebrations(page);
         await target.fill(targetValue ?? '');
         await waitForFormfillSettle(page, stepLocator, target, targetValue ?? '');
       } else {
@@ -552,50 +834,223 @@ function createSkippedResult(
 }
 
 /**
- * Execute a single step in the guide (L3-3C enhanced).
+ * Build the success-path artifact bundle for a step, merging in a
+ * previously-captured PRE screenshot if there is one. Returns undefined when
+ * artifact capture isn't enabled, matching every success-return call site.
+ */
+async function buildSuccessArtifacts(
+  page: Page,
+  stepId: string,
+  artifactsDir: string | undefined,
+  alwaysScreenshot: boolean,
+  preScreenshotPath: string | undefined
+): Promise<ArtifactPaths | undefined> {
+  if (!artifactsDir || !alwaysScreenshot) {
+    return undefined;
+  }
+  const artifacts = await captureSuccessArtifacts(page, stepId, artifactsDir);
+  if (artifacts && preScreenshotPath) {
+    artifacts.screenshotPre = preScreenshotPath;
+    return artifacts;
+  }
+  return artifacts ?? (preScreenshotPath ? { screenshotPre: preScreenshotPath } : undefined);
+}
+
+/**
+ * Build the failure-path artifact bundle for a step, merging in a
+ * previously-captured PRE screenshot if there is one. Returns undefined when
+ * no artifacts directory was configured, matching every failure-return call site.
+ */
+async function buildFailureArtifacts(
+  page: Page,
+  stepId: string,
+  consoleErrors: string[],
+  artifactsDir: string | undefined,
+  preScreenshotPath: string | undefined
+): Promise<ArtifactPaths | undefined> {
+  if (!artifactsDir) {
+    return undefined;
+  }
+  const artifacts = await captureFailureArtifacts(page, stepId, consoleErrors, artifactsDir);
+  if (artifacts && preScreenshotPath) {
+    artifacts.screenshotPre = preScreenshotPath;
+    return artifacts;
+  }
+  return artifacts ?? (preScreenshotPath ? { screenshotPre: preScreenshotPath } : undefined);
+}
+
+/**
+ * Click a skippable step's Skip control and wait for the plugin to reach an
+ * explicit terminal state — `completed`, or a successful detach — so the
+ * next step in a sequential section isn't gated on "Complete previous step".
+ * A transient, non-terminal state such as `checking` is not treated as sync;
+ * only `completed`/detachment count, so we never mistake mid-flight state
+ * for a synchronized skip.
  *
- * This function implements step execution with proper timing:
- * 1. Handle pre-completed steps (skip with logging)
- * 2. Handle steps without "Do it" buttons (skip with logging)
- * 3. Scroll step into view with settle delay
- * 4. Check for objective-based auto-completion before clicking
- * 5. Wait for "Do it" button to be enabled (sequential dependencies)
- * 6. Click "Do it" button with post-click settle delay
- * 7. Wait for completion with objective polling
- * 8. Return result with diagnostics
- * 9. Capture artifacts on failure if artifactsDir is specified (L3-5D)
+ * Two Skip controls exist in the plugin and both call the same underlying
+ * `markSkipped()` action: the step's always-available Skip button (the one
+ * `discoverStepsFromDOM` uses to determine `step.skippable`), and the
+ * narrower Skip button rendered inside the requirements-explanation banner
+ * (surfaced via `detectRequirements().hasSkipButton`). We prefer the general
+ * one and fall back to the requirement-scoped one, so we support whichever
+ * control the plugin actually rendered instead of assuming a single fixed
+ * shape.
  *
- * Timing enhancements (L3-3C):
- * - Sequential dependencies: 10s timeout for button enable
- * - Multisteps: Dynamic timeout (30s base + 5s per internal action)
- * - Objective completion: Polling during wait to detect auto-completion
- * - Settle delays: Post-scroll and post-click delays for reactive system
- *
- * Artifact collection (L3-5D):
- * - Screenshots and DOM snapshots captured only on failure
- * - Console errors written to JSON file
- * - Artifacts saved to artifactsDir if specified
+ * Throws on any failure (no Skip control found, click error, or a timeout
+ * before reaching a terminal state) instead of swallowing it: recording a
+ * skip while the plugin never reached `completed`/detached reproduces the
+ * exact bug this fixes, so the caller must surface a clear runner failure
+ * rather than a false skip.
  *
  * @param page - Playwright Page object
- * @param step - The testable step to execute
- * @param options - Execution options
- * @returns StepTestResult with execution outcome and diagnostics
+ * @param stepId - The step identifier
+ * @param timeout - Maximum time to wait for the terminal state (ms)
  */
+export async function clickSkipButtonAndSync(
+  page: Page,
+  stepId: string,
+  timeout = SKIP_SYNC_TIMEOUT_MS
+): Promise<void> {
+  const stepSkipButton = page.getByTestId(testIds.interactive.skipButton(stepId));
+  const requirementSkipButton = page.getByTestId(testIds.interactive.requirementSkipButton(stepId));
+  const skipButton = (await stepSkipButton.count()) > 0 ? stepSkipButton : requirementSkipButton;
+  if ((await skipButton.count()) === 0) {
+    throw new Error(`Step ${stepId}: no Skip control available to sync the requirements-unmet state`);
+  }
+  await dismissBadgeCelebrations(page);
+  await skipButton.click({ timeout });
+
+  const stepLocator = page.getByTestId(testIds.interactive.step(stepId));
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(`Step ${stepId}: Skip did not reach a terminal state within ${timeout}ms`);
+    }
+    if ((await stepLocator.count()) === 0) {
+      return;
+    }
+    let state: string | null;
+    try {
+      state = await stepLocator.getAttribute('data-test-step-state', { timeout: remaining });
+    } catch {
+      state = null;
+    }
+    if (state === 'completed') {
+      return;
+    }
+    await page.waitForTimeout(Math.min(GUIDED_SUBSTEP_ADVANCE_POLL_MS, Math.max(1, deadline - Date.now())));
+  }
+}
+
+interface StepExecutionOptions {
+  timeout?: number;
+  deadlineMs?: number;
+  verbose?: boolean;
+  /** Directory to write artifacts to (L3-5D). If not set, no artifacts captured. */
+  artifactsDir?: string;
+  /** Capture screenshots on success, not just failure. Default: false */
+  alwaysScreenshot?: boolean;
+  onDeadline?(): void;
+}
+
+interface AllStepsOptions extends StepExecutionOptions {
+  stopOnMandatoryFailure?: boolean;
+  sessionCheckInterval?: number;
+  onStepComplete?: OnStepCompleteCallback;
+}
+
+export type BoundedSettlement<T> =
+  { status: 'fulfilled'; value: T } | { status: 'rejected'; reason: unknown } | { status: 'timed_out' };
+
+export async function settleWithin<T>(work: Promise<T>, timeoutMs: number): Promise<BoundedSettlement<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work.then(
+        (value): BoundedSettlement<T> => ({ status: 'fulfilled', value }),
+        (reason): BoundedSettlement<T> => ({ status: 'rejected', reason })
+      ),
+      new Promise<BoundedSettlement<T>>((resolve) => {
+        timer = setTimeout(() => resolve({ status: 'timed_out' }), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function closePageWithin(page: Page, timeoutMs: number): Promise<void> {
+  await settleWithin(page.close({ runBeforeUnload: false }), timeoutMs);
+}
+
 export async function executeStep(
   page: Page,
   step: TestableStep,
-  options: {
-    timeout?: number;
-    verbose?: boolean;
-    /** Directory to write artifacts to (L3-5D). If not set, no artifacts captured. */
-    artifactsDir?: string;
-    /** Capture screenshots on success, not just failure. Default: false */
-    alwaysScreenshot?: boolean;
-  } = {}
+  options: StepExecutionOptions = {}
 ): Promise<StepTestResult> {
-  // L3-3C: Calculate appropriate timeout based on step type
-  const calculatedTimeout = calculateStepTimeout(step);
-  const { timeout = calculatedTimeout, verbose = false, artifactsDir, alwaysScreenshot = false } = options;
+  const timeout = options.timeout ?? calculateStepTimeout(step);
+  const deadlineMs = options.deadlineMs ?? calculateStepDeadline(step, timeout);
+  const startedAt = Date.now();
+  const work = executeStepWork(page, step, { ...options, timeout });
+
+  return new Promise<StepTestResult>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      const currentUrl = page.url();
+      options.onDeadline?.();
+      void (async () => {
+        await closePageWithin(page, STEP_CLOSE_TIMEOUT_MS);
+        const drained = await settleWithin(work, STEP_WORK_DRAIN_TIMEOUT_MS);
+        const evidence = drained.status === 'fulfilled' ? drained.value : undefined;
+        resolve({
+          stepId: step.stepId,
+          status: 'failed',
+          durationMs: Date.now() - startedAt,
+          currentUrl: evidence?.currentUrl ?? currentUrl,
+          consoleErrors: evidence?.consoleErrors ?? [],
+          error: `Step ${step.stepId} exceeded its ${deadlineMs}ms runner deadline`,
+          deadlineExceeded: true,
+          skippable: step.skippable,
+          classification: 'infrastructure',
+          artifacts: evidence?.artifacts,
+        });
+      })();
+    }, deadlineMs);
+
+    work.then(
+      (result) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve(result);
+      },
+      (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+async function executeStepWork(
+  page: Page,
+  step: TestableStep,
+  options: StepExecutionOptions & { timeout: number }
+): Promise<StepTestResult> {
+  const { timeout, verbose = false, artifactsDir, alwaysScreenshot = false } = options;
   const startTime = Date.now();
   const consoleErrors: string[] = [];
 
@@ -620,7 +1075,45 @@ export async function executeStep(
       return createSkippedResult(step, page, startTime, consoleErrors, 'pre_completed');
     }
 
-    // Scroll step into view before interaction
+    // Some no-op/objective-based steps complete (or their element detaches)
+    // between discovery and execution; recheck immediately before scrolling so
+    // a step that's already done doesn't block on the scroll below. Bounded
+    // and error-propagating: a query/navigation fault fails the step instead
+    // of being mistaken for "already done". Reported as 'passed', matching
+    // the pre-click objective check below so the same DOM state (attached +
+    // completed) is never classified differently depending on which check
+    // happened to observe it first; detachment is treated the same way
+    // detachment is treated as completion elsewhere in this file.
+    const lateOutcome = await checkLateCompletionOrDetachment(page, step.stepId);
+    if (lateOutcome !== 'not-complete') {
+      const lateArtifacts = await buildSuccessArtifacts(
+        page,
+        step.stepId,
+        artifactsDir,
+        alwaysScreenshot,
+        preScreenshotPath
+      );
+      if (verbose) {
+        console.log(
+          `   ✓ Step ${step.stepId} ${lateOutcome === 'detached' ? 'detached' : 'completed via objectives'} before scroll`
+        );
+        if (lateArtifacts) {
+          console.log(`   📸 Success screenshot captured`);
+        }
+      }
+      return {
+        stepId: step.stepId,
+        status: 'passed',
+        durationMs: Date.now() - startTime,
+        currentUrl: page.url(),
+        consoleErrors,
+        skippable: step.skippable,
+        artifacts: lateArtifacts,
+      };
+    }
+
+    // Scroll step into view before interaction. Bounded so a step that's
+    // completing/detaching right around this point doesn't hang the run.
     await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
 
     // Capture PRE screenshot if alwaysScreenshot is enabled
@@ -644,71 +1137,52 @@ export async function executeStep(
 
     // If requirements are not met after fix attempts
     if (!requirements.requirementsMet && requirements.status === 'unmet') {
-      if (step.skippable) {
-        // Skippable steps: skip with reason logged
+      if (determineUnmetRequirementOutcome(step.skippable) === 'skip') {
+        // Click the Skip control and wait for the plugin to leave requirements-unmet
+        // so the next sequential step isn't gated on "Complete previous step". Only
+        // record the skip once that's confirmed; a sync failure is a clear runner
+        // failure rather than a false skip that reproduces the original bug.
+        try {
+          await clickSkipButtonAndSync(page, step.stepId);
+        } catch (syncError) {
+          const syncErrorMsg = syncError instanceof Error ? syncError.message : String(syncError);
+          if (verbose) {
+            console.log(`   ✗ Step ${step.stepId} failed: skip sync did not complete (${syncErrorMsg})`);
+          }
+          return {
+            stepId: step.stepId,
+            status: 'failed',
+            durationMs: Date.now() - startTime,
+            currentUrl: page.url(),
+            consoleErrors,
+            error: `Step is skippable but Skip sync failed: ${syncErrorMsg}`,
+            skippable: step.skippable,
+            classification: classifyError(syncErrorMsg),
+            artifacts: await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath),
+          };
+        }
         if (verbose) {
           console.log(`   ⊘ Step ${step.stepId} skipped due to unmet requirements (skippable)`);
         }
         return createSkippedResult(step, page, startTime, consoleErrors, 'requirements_unmet');
       }
-
-      // Mandatory steps: if fix was attempted and failed, report failure
-      if (fixResult && !fixResult.success) {
-        if (verbose) {
-          console.log(
-            `   ✗ Step ${step.stepId} failed: requirements not met after ${fixResult.totalAttempts} fix attempts`
-          );
-        }
-        const errorMsg = `Requirements not met after ${fixResult.totalAttempts} fix attempt(s): ${fixResult.failureReason || 'unknown reason'}`;
-
-        // L3-5D: Capture artifacts on failure
-        let artifacts: ArtifactPaths | undefined;
-        if (artifactsDir) {
-          artifacts = await captureFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir);
-          // Include PRE screenshot if captured
-          if (artifacts && preScreenshotPath) {
-            artifacts.screenshotPre = preScreenshotPath;
-          } else if (preScreenshotPath) {
-            artifacts = { screenshotPre: preScreenshotPath };
-          }
-          if (verbose && artifacts) {
-            console.log(`   📸 Artifacts captured to ${artifactsDir}`);
-          }
-        }
-
-        return {
-          stepId: step.stepId,
-          status: 'failed',
-          durationMs: Date.now() - startTime,
-          currentUrl: page.url(),
-          consoleErrors,
-          error: errorMsg,
-          skippable: step.skippable,
-          // L3-5C: Classify the error - requirements failures are typically 'unknown'
-          classification: classifyError(errorMsg),
-          // L3-5D: Include artifact paths
-          artifacts,
-        };
-      }
-
-      // Mandatory steps without fix button available - proceed to try "Do it"
-      // (button may still become enabled via sequential dependencies)
+      const errorMsg = fixResult
+        ? `Requirements not met after ${fixResult.totalAttempts} fix attempt(s): ${fixResult.failureReason || 'unknown reason'}`
+        : `Requirements not met: ${requirements.explanationText || 'no automatic fix is available'}`;
       if (verbose) {
-        console.log(`   ⚠ Step ${step.stepId} has unmet requirements but no fix available, attempting execution`);
+        console.log(`   ✗ Step ${step.stepId} failed: ${errorMsg}`);
       }
-    }
-
-    // Wait for "Do it" button to appear (handles sequential dependencies)
-    // Button may not exist at discovery time but appears after previous step completes
-    if (verbose) {
-      console.log(`   ⏳ Waiting for "Do it" button to appear...`);
-    }
-    const buttonAppeared = await waitForDoItButtonToAppear(page, step.stepId);
-    if (!buttonAppeared) {
-      if (verbose) {
-        console.log(`   ⊘ Step ${step.stepId} has no "Do it" button (timeout waiting for appearance), skipping`);
-      }
-      return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
+      return {
+        stepId: step.stepId,
+        status: 'failed',
+        durationMs: Date.now() - startTime,
+        currentUrl: page.url(),
+        consoleErrors,
+        error: errorMsg,
+        skippable: false,
+        classification: classifyError(errorMsg),
+        artifacts: await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath),
+      };
     }
 
     // L3-3C: Check for objective-based auto-completion BEFORE clicking
@@ -719,19 +1193,15 @@ export async function executeStep(
         console.log(`   ✓ Step ${step.stepId} auto-completed via objectives before clicking`);
       }
 
-      // Capture success screenshot if alwaysScreenshot is enabled
-      let artifacts: ArtifactPaths | undefined;
-      if (artifactsDir && alwaysScreenshot) {
-        artifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
-        // Include PRE screenshot if captured
-        if (artifacts && preScreenshotPath) {
-          artifacts.screenshotPre = preScreenshotPath;
-        } else if (preScreenshotPath) {
-          artifacts = { screenshotPre: preScreenshotPath };
-        }
-        if (verbose && artifacts) {
-          console.log(`   📸 Success screenshot captured`);
-        }
+      const artifacts = await buildSuccessArtifacts(
+        page,
+        step.stepId,
+        artifactsDir,
+        alwaysScreenshot,
+        preScreenshotPath
+      );
+      if (verbose && artifacts) {
+        console.log(`   📸 Success screenshot captured`);
       }
 
       return {
@@ -745,22 +1215,42 @@ export async function executeStep(
       };
     }
 
-    // L3-3C: Wait for "Do it" button to be enabled (U3: sequential dependencies)
-    // Uses dedicated timeout constant for button enablement
+    const discoveredAction = selectStepAction(step);
+    let action = await currentStepAction(page, step.stepId);
+    if (!action) {
+      if (verbose) {
+        console.log(`   ⏳ Waiting for a step action to appear...`);
+      }
+      action = await waitForStepActionToAppear(page, step.stepId, discoveredAction ? 1000 : BUTTON_APPEAR_TIMEOUT_MS);
+    }
+    if (!action) {
+      if (await checkObjectiveCompletion(page, step.stepId)) {
+        return {
+          stepId: step.stepId,
+          status: 'passed',
+          durationMs: Date.now() - startTime,
+          currentUrl: page.url(),
+          consoleErrors,
+          skippable: step.skippable,
+          artifacts: await buildSuccessArtifacts(page, step.stepId, artifactsDir, alwaysScreenshot, preScreenshotPath),
+        };
+      }
+      if (step.skippable) {
+        return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
+      }
+      throw new Error(`No executable Do it or Show me control appeared for mandatory step ${step.stepId}`);
+    }
     if (verbose && step.isMultistep) {
       console.log(
         `   ⏱ Multistep detected (${step.internalActionCount} actions), timeout: ${Math.round(timeout / 1000)}s`
       );
     }
-
-    await waitForDoItButtonEnabled(page, step.stepId, BUTTON_ENABLE_TIMEOUT_MS);
-
-    // Click "Do it" button
-    const doItButton = page.getByTestId(testIds.interactive.doItButton(step.stepId));
-    await doItButton.click();
+    await waitForStepActionEnabled(page, step.stepId, action);
+    await dismissBadgeCelebrations(page);
+    await stepActionButton(page, step.stepId, action).click();
 
     if (verbose) {
-      console.log(`   → Clicked "Do it" for step ${step.stepId}`);
+      console.log(`   → Clicked "${action === 'do-it' ? 'Do it' : 'Show me'}" for step ${step.stepId}`);
     }
 
     // Allow the reactive system to settle after click (debounced rechecks).
@@ -769,12 +1259,14 @@ export async function executeStep(
     // Phase 3: Guided step — wait for executing, run substep loop, then wait for completion
     if (step.isGuided && step.guidedStepCount != null && step.guidedStepCount > 0) {
       const stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-      await expect(stepLocator).toHaveAttribute('data-test-step-state', 'executing', {
-        timeout: GUIDED_WAIT_EXECUTING_MS,
-      });
+      await waitForGuidedExecutionStart(page, stepLocator, GUIDED_WAIT_EXECUTING_MS);
       const { completed } = await runGuidedSubstepLoop(page, step, {
         stepLocator,
         perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
+        // Bound the *cumulative* comment-box readiness wait, across every
+        // substep, by the step's own timeout budget (which already accounts
+        // for guidedStepCount) instead of a fixed 5s re-granted per substep.
+        commentBoxDeadlineMs: Date.now() + timeout,
         verbose,
         artifactsDir,
       });
@@ -782,17 +1274,15 @@ export async function executeStep(
         await waitForCompletionWithObjectivePolling(page, step.stepId, timeout);
       }
 
-      let guidedArtifacts: ArtifactPaths | undefined;
-      if (artifactsDir && alwaysScreenshot) {
-        guidedArtifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
-        if (guidedArtifacts && preScreenshotPath) {
-          guidedArtifacts.screenshotPre = preScreenshotPath;
-        } else if (preScreenshotPath) {
-          guidedArtifacts = { screenshotPre: preScreenshotPath };
-        }
-        if (verbose && guidedArtifacts) {
-          console.log(`   📸 Success screenshot captured`);
-        }
+      const guidedArtifacts = await buildSuccessArtifacts(
+        page,
+        step.stepId,
+        artifactsDir,
+        alwaysScreenshot,
+        preScreenshotPath
+      );
+      if (verbose && guidedArtifacts) {
+        console.log(`   📸 Success screenshot captured`);
       }
 
       return {
@@ -815,19 +1305,15 @@ export async function executeStep(
       console.log(`   ℹ Step ${step.stepId} completed quickly (possibly via objectives)`);
     }
 
-    // Capture success screenshot if alwaysScreenshot is enabled
-    let successArtifacts: ArtifactPaths | undefined;
-    if (artifactsDir && alwaysScreenshot) {
-      successArtifacts = await captureSuccessArtifacts(page, step.stepId, artifactsDir);
-      // Include PRE screenshot if captured
-      if (successArtifacts && preScreenshotPath) {
-        successArtifacts.screenshotPre = preScreenshotPath;
-      } else if (preScreenshotPath) {
-        successArtifacts = { screenshotPre: preScreenshotPath };
-      }
-      if (verbose && successArtifacts) {
-        console.log(`   📸 Success screenshot captured`);
-      }
+    const successArtifacts = await buildSuccessArtifacts(
+      page,
+      step.stepId,
+      artifactsDir,
+      alwaysScreenshot,
+      preScreenshotPath
+    );
+    if (verbose && successArtifacts) {
+      console.log(`   📸 Success screenshot captured`);
     }
 
     // Return success result with diagnostics
@@ -845,18 +1331,9 @@ export async function executeStep(
     const errorMsg = error instanceof Error ? error.message : String(error);
 
     // L3-5D: Capture artifacts on failure
-    let artifacts: ArtifactPaths | undefined;
-    if (artifactsDir) {
-      artifacts = await captureFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir);
-      // Include PRE screenshot if captured
-      if (artifacts && preScreenshotPath) {
-        artifacts.screenshotPre = preScreenshotPath;
-      } else if (preScreenshotPath) {
-        artifacts = { screenshotPre: preScreenshotPath };
-      }
-      if (verbose && artifacts) {
-        console.log(`   📸 Artifacts captured to ${artifactsDir}`);
-      }
+    const artifacts = await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath);
+    if (verbose && artifacts) {
+      console.log(`   📸 Artifacts captured to ${artifactsDir}`);
     }
 
     return {
@@ -908,19 +1385,7 @@ export async function executeStep(
 export async function executeAllSteps(
   page: Page,
   steps: TestableStep[],
-  options: {
-    timeout?: number;
-    verbose?: boolean;
-    stopOnMandatoryFailure?: boolean;
-    /** Session check interval in steps (L3-3D). Default: 5 */
-    sessionCheckInterval?: number;
-    /** Callback for real-time step progress (L3-5A). Called after each step completes. */
-    onStepComplete?: OnStepCompleteCallback;
-    /** Directory for artifacts (L3-5D). If not set, no artifacts captured. */
-    artifactsDir?: string;
-    /** Capture screenshots on success, not just failure. Default: false */
-    alwaysScreenshot?: boolean;
-  } = {}
+  options: AllStepsOptions = {}
 ): Promise<AllStepsResult> {
   const {
     verbose = false,
@@ -934,6 +1399,7 @@ export async function executeAllSteps(
   let aborted = false;
   let abortReason: AbortReason | undefined;
   let abortMessage: string | undefined;
+  let infrastructureError = false;
 
   if (verbose) {
     console.log(`\n🚀 Executing ${steps.length} steps...`);
@@ -1019,7 +1485,11 @@ export async function executeAllSteps(
     // - Skippable steps: if fail for any reason, log and continue (does NOT fail overall test)
     // - Mandatory steps: if fail for any reason, abort and mark remaining as NOT_REACHED
     if (result.status === 'failed') {
-      if (!step.skippable && stopOnMandatoryFailure) {
+      if (result.deadlineExceeded) {
+        aborted = true;
+        infrastructureError = true;
+        abortMessage = result.error;
+      } else if (!step.skippable && stopOnMandatoryFailure) {
         // Mandatory step failed - abort test
         if (verbose) {
           console.log(`   ❌ Mandatory step failed, aborting remaining steps`);
@@ -1039,7 +1509,7 @@ export async function executeAllSteps(
 
   // Capture final screenshot if alwaysScreenshot is enabled
   let finalScreenshot: string | undefined;
-  if (artifactsDir && alwaysScreenshot) {
+  if (artifactsDir && alwaysScreenshot && !results.some((result) => result.deadlineExceeded) && !page.isClosed()) {
     finalScreenshot = await captureFinalScreenshot(page, artifactsDir);
     if (verbose && finalScreenshot) {
       console.log(`\n   📸 Final screenshot captured: ${finalScreenshot}`);
@@ -1051,6 +1521,7 @@ export async function executeAllSteps(
     aborted,
     abortReason,
     abortMessage,
+    infrastructureError,
     finalScreenshot,
   };
 }
@@ -1086,7 +1557,11 @@ export function logStepResult(result: StepTestResult): void {
 
   // L3-4C: Show skippable indicator for failed steps
   if (result.status === 'failed') {
-    message += result.skippable ? ' [skippable - test continues]' : ' [mandatory - test stops]';
+    message += result.deadlineExceeded
+      ? ' [runner deadline - guide stops]'
+      : result.skippable
+        ? ' [skippable - test continues]'
+        : ' [mandatory - test stops]';
   }
 
   if (result.skipReason) {
@@ -1108,13 +1583,14 @@ export function logStepResult(result: StepTestResult): void {
  * Summarize execution results (L3-4C enhanced).
  *
  * Per design doc, overall test success is determined by:
- * - Skippable step failures do NOT fail the overall test
- * - Only mandatory step failures count against success
+ * - Mandatory step failures always fail the overall test
+ * - Skippable step failures fail the test only when no step has a verified pass
+ * - A clean all-skipped run succeeds
  *
  * @param results - Array of step test results
  * @returns Summary object with counts and overall status
  */
-export function summarizeResults(results: StepTestResult[]): {
+export interface ExecutionSummary {
   total: number;
   passed: number;
   failed: number;
@@ -1122,11 +1598,13 @@ export function summarizeResults(results: StepTestResult[]): {
   notReached: number;
   /** L3-4C: Count of mandatory step failures (determines overall success) */
   mandatoryFailed: number;
-  /** L3-4C: Count of skippable step failures (do not affect overall success) */
+  /** L3-4C: Count of skippable failures (affect success when no step passed) */
   skippableFailed: number;
   success: boolean;
   totalDurationMs: number;
-} {
+}
+
+export function summarizeResults(results: StepTestResult[]): ExecutionSummary {
   const failedResults = results.filter((r) => r.status === 'failed');
 
   // L3-4C: Separate mandatory vs skippable failures
@@ -1145,11 +1623,13 @@ export function summarizeResults(results: StepTestResult[]): {
 
   return {
     ...counts,
-    // L3-4C: Only mandatory failures count against overall success
-    // Per design doc: "Skippable step failures do NOT fail the overall test"
-    success: mandatoryFailed === 0,
+    success: mandatoryFailed === 0 && (counts.passed > 0 || counts.failed === 0),
     totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
   };
+}
+
+export function skippableFailuresAffectSuccess(summary: ExecutionSummary): boolean {
+  return !summary.success && summary.mandatoryFailed === 0 && summary.skippableFailed > 0;
 }
 
 /**
@@ -1174,7 +1654,10 @@ export function logExecutionSummary(results: StepTestResult[]): void {
       console.log(`      └─ Mandatory: ${summary.mandatoryFailed} (affects result)`);
     }
     if (summary.skippableFailed > 0) {
-      console.log(`      └─ Skippable: ${summary.skippableFailed} (does not affect result)`);
+      const impact = skippableFailuresAffectSuccess(summary)
+        ? 'affects result: no verified pass'
+        : 'does not affect result';
+      console.log(`      └─ Skippable: ${summary.skippableFailed} (${impact})`);
     }
   } else {
     console.log(`   ✗ Failed: 0`);

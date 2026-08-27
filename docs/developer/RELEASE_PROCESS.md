@@ -32,7 +32,7 @@ The project uses several GitHub Actions workflows for different release scenario
   - `push` to `main` (CLI-relevant paths): same, plus push the resulting Docker image to GHCR as `:latest` and `:main-<short-sha>`, cosign-sign the digest, and smoke-test the pushed image.
 - **Process**:
   - Builds the CLI via `npm run build:cli`.
-  - Generates a minimal runtime `package.json` (commander + zod only) via `scripts/cli-build-utils.js runtime-package <out>` so the image doesn't pull the plugin's full dependency tree.
+  - Generates a minimal runtime `package.json` (Commander, Zod, and the Model Context Protocol SDK only) via `scripts/cli-build-utils.js runtime-package <out>` so the image doesn't pull the plugin's full dependency tree.
   - Builds `Dockerfile.cli` and pushes to `ghcr.io/grafana/pathfinder-cli:latest` plus `ghcr.io/grafana/pathfinder-cli:main-<short-sha>`.
   - Authenticates to GHCR with the always-present `GITHUB_TOKEN` — no repo secrets are required to operate this workflow.
 - **No npm publish, no Docker Hub, no tag-driven release.** The image is the only consumable artifact. Pin to `:main-<sha>` for reproducibility; track `:latest` for "tip of trunk."
@@ -74,7 +74,7 @@ npm run sign           # Sign plugin for distribution
 
 ### Environment Progression
 
-1. **Development** (`dev`) - Automatic on push to main
+1. **Development** (`dev`) - Manual via publish workflow; can deploy a PR branch
 2. **Operations** (`ops`) - Manual via publish workflow
 3. **Production** (`prod`) - Manual via publish workflow
 
@@ -105,8 +105,8 @@ npm run sign           # Sign plugin for distribution
 
 ### For Development Deployments
 
-1. Push changes to `main` branch
-2. Automatic deployment to `dev` environment
+1. Run the manual publish workflow
+2. Select the `dev` environment and the branch to deploy
 3. Monitor via Slack channel `#pathfinder-app-release`
 
 ### For Production Deployments
@@ -132,13 +132,13 @@ Plugin signing is available but currently disabled. To enable:
 
 ## CLI and MCP continuous publish
 
-The `pathfinder-cli` Docker image at `ghcr.io/grafana/pathfinder-cli` is rebuilt and pushed on every merge to `main`. There is no tag-driven release flow, no npm publish, and no Docker Hub push — the GHCR image is the single consumable artifact and the only registry. Authentication uses the always-present `GITHUB_TOKEN`; no repo secrets are required to operate the pipeline.
+The `pathfinder-cli` Docker image at `ghcr.io/grafana/pathfinder-cli` is rebuilt and pushed when a merge to `main` changes a CLI-relevant path listed in `.github/workflows/cli-publish.yml`. There is no tag-driven release flow, no npm publish, and no Docker Hub push — the GHCR image is the single consumable artifact and the only registry. Authentication uses the always-present `GITHUB_TOKEN`; no repo secrets are required to operate the pipeline.
 
-### Tags published on every main merge
+### Tags published on each relevant main merge
 
 | Tag                                               | Stability                                                         |
 | ------------------------------------------------- | ----------------------------------------------------------------- |
-| `ghcr.io/grafana/pathfinder-cli:latest`           | Tip of `main`. Moves on every merge. Use for "follow trunk."      |
+| `ghcr.io/grafana/pathfinder-cli:latest`           | Tip of relevant changes on `main`. Use for "follow trunk."        |
 | `ghcr.io/grafana/pathfinder-cli:main-<short-sha>` | Immutable per-commit pointer. Use for reproducible deploys / pin. |
 
 ### Versioning
@@ -153,7 +153,7 @@ To bump what `pathfinder-cli --version` returns, bump `CURRENT_SCHEMA_VERSION` i
 npm run build:cli                                             # compile dist/cli/
 docker build -f Dockerfile.cli -t pathfinder-cli:local .      # produce the image
 docker run --rm pathfinder-cli:local --version                # CLI smoke
-docker run --rm pathfinder-cli:local mcp                      # routes to placeholder, exits 1
+docker run --rm pathfinder-cli:local mcp --version            # MCP subcommand smoke
 ```
 
 ### Consuming the image
@@ -188,18 +188,18 @@ This relies on the `id-token: write` permission granted to the `publish-ghcr-mai
 
 ### Refreshing the Docker base-image digest
 
-`Dockerfile.cli` pins `node:22-alpine` by digest (same digest in both stages) so two builds of the same git commit produce identical images. Refresh the digest periodically by running:
+`Dockerfile.cli` pins `node:24-alpine` by digest (same digest in both stages) so two builds of the same git commit produce identical images. Keep the image at Node 24.14.1 or newer so its bundled npm supports the repository's supply-chain settings. Refresh the digest periodically by running:
 
 ```bash
-docker pull node:22-alpine
-docker inspect --format='{{index .RepoDigests 0}}' node:22-alpine
+docker pull node:24-alpine
+docker inspect --format='{{index .RepoDigests 0}}' node:24-alpine
 ```
 
 Replace both `FROM` lines in `Dockerfile.cli` with the new digest. The two stages must use the same digest.
 
 ### Plugin tarball is unaffected
 
-The CLI is not bundled into the plugin tarball. Webpack only enters from `src/module.tsx` and never traverses `src/cli/`, so the plugin's `dist/` output is identical with or without the CLI changes. Verify by running `npm run build` on this branch and on `main` and diffing the file lists; they should match exactly.
+The CLI is not bundled into the plugin tarball. Webpack only enters from `src/module.tsx` and never traverses `src/cli/`, so changes confined to `src/cli/` do not add the CLI to the plugin's `dist/` output. Verify by running `npm run build` on this branch and on `main` and diffing the file lists; they should match exactly.
 
 ## Troubleshooting
 

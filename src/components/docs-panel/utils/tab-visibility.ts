@@ -5,6 +5,7 @@
  */
 
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
+import { getGuideStripTabs } from './tab-kinds';
 
 const TAB_SPACING = 4;
 const MIN_TAB_WIDTH = 80;
@@ -15,21 +16,18 @@ export interface TabVisibilityResult {
   overflowedTabs: LearningJourneyTab[];
 }
 
-export const PERMANENT_TAB_IDS = new Set(['recommendations', 'devtools', 'editor']);
-
 /**
  * Computes which tabs fit in the visible area and which move to overflow.
- * Permanent tabs (recommendations, devtools, editor) are always in visibleTabs;
- * guide tabs are split by available width, with the active tab forced visible if it would be overflowed.
+ * Recommendations stays out of the guide-tab competition (left-rail icon);
+ * remaining strip tabs share available width.
  */
 export function computeTabVisibility(
   tabs: LearningJourneyTab[],
   containerWidth: number,
   activeTabId: string
 ): TabVisibilityResult {
-  const guideTabs = tabs.filter((t) => !PERMANENT_TAB_IDS.has(t.id));
-
-  const permanentTabs = tabs.filter((t) => t.id === 'recommendations');
+  const guideTabs = getGuideStripTabs(tabs);
+  const homeTabs = tabs.filter((tab) => tab.type === 'recommendations');
 
   if (guideTabs.length === 0) {
     return { visibleTabs: tabs, overflowedTabs: [] };
@@ -66,13 +64,13 @@ export function computeTabVisibility(
       ...guideTabs.slice(activeGuideTabIndex + 1),
     ];
     return {
-      visibleTabs: [...permanentTabs, ...visibleGuideTabsArray],
+      visibleTabs: [...homeTabs, ...visibleGuideTabsArray],
       overflowedTabs: overflowGuideTabsArray,
     };
   }
 
   return {
-    visibleTabs: [...permanentTabs, ...guideTabs.slice(0, maxVisibleGuideTabs)],
+    visibleTabs: [...homeTabs, ...guideTabs.slice(0, maxVisibleGuideTabs)],
     overflowedTabs: guideTabs.slice(maxVisibleGuideTabs),
   };
 }

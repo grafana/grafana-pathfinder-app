@@ -26,6 +26,76 @@ Examples: `data-test-step-state`, `data-test-substep-index`, `data-test-action`
 
 ---
 
+## Docs panel bootstrap contract
+
+The guide runner must establish a ready Pathfinder panel before it can load guide content or discover steps. These signals form the stable contract between the plugin surface and `tests/e2e-runner/`:
+
+- **Plugin readiness**: `window.__pathfinderPluginConfig` is assigned when Pathfinder initialization completes. The runner waits for this before treating Grafana's Help control as a Pathfinder open action.
+- **Sidebar mount**: the outer Pathfinder sidebar dispatches `pathfinder-sidebar-mounted` on `window` after Grafana accepts the extension-sidebar open request. The runner uses this event to avoid a duplicate Help click; because it is an edge signal rather than current mounted state, post-click readiness still requires the panel DOM.
+- **Panel readiness**: the inner panel renders `data-testid="docs-panel-container"` when it is ready for guide content. Once this container is visible, the panel must be able to receive the content-open event below.
+- **Content open**: the panel listens for `pathfinder-auto-open-docs` on `document` with detail `{ url: string; title: string; source?: string }`.
+
+The Grafana-owned Help button and `grafana.navigation.extensionSidebarDocked` storage entry are recovery hints, not Pathfinder-owned contracts. A docs-panel or sidebar refactor must preserve the four Pathfinder signals above, or update the guide runner, contract tests, and this document in the same change.
+
+The source-level tripwires live in `src/components/docs-panel/docs-panel.contract.test.tsx` and `src/components/docs-panel/docs-panel.auto-open-event.test.tsx`.
+
+---
+
+## Block editor header contract
+
+The block-editor header exposes two stable row testids that responsive e2e tests depend on to assert the two-row layout holds at narrow widths:
+
+- **`block-editor-title-row`** (`testIds.blockEditor.titleRow`): the editable title + status cluster row. Rendered in edit/JSON view; hidden entirely in preview.
+- **`block-editor-toolbar-row`** (`testIds.blockEditor.toolbarRow`): the view-mode rocker + action cluster row, present in every view. In preview the status cluster relocates here, so `tests/block-editor-title-row.spec.ts` selects it to assert status stays visible at the 320px floating-panel minimum.
+
+A header refactor that renames or removes these rows must update `tests/block-editor-title-row.spec.ts` in the same change.
+
+---
+
+## My learning page contract
+
+The My learning page exposes stable section and action testids so E2E tests can assert progress partitioning and launch specific Discover more paths without depending on text or DOM structure:
+
+- **`my-learning-courses-section`** (`testIds.learningPaths.myCoursesSection`): the My courses section boundary.
+- **`my-learning-badges-section`** (`testIds.learningPaths.badgesSection`): the badges section boundary.
+- **`my-learning-discover-section`** (`testIds.learningPaths.discoverMoreSection`): the Discover more section boundary.
+- **`my-learning-completed-section`** (`testIds.learningPaths.completedSection`): the completed-paths section boundary.
+- **`discover-more-card-${id}`** (`testIds.learningPaths.discoverMoreCard(id)`): a Discover more card keyed by its upstream package ID.
+- **`discover-more-start-${id}`** (`testIds.learningPaths.discoverMoreStart(id)`): the start action for that upstream package ID.
+- **`discover-more-expand-${id}`** (`testIds.learningPaths.discoverMoreExpand(id)`): the description disclosure for that upstream package ID. Only rendered when the package index supplies a description — there is nothing to reveal otherwise.
+
+A My learning layout or selector refactor must preserve these values or update the E2E selectors and this document in the same change.
+
+---
+
+## Course cover page contract
+
+The course/learning-path cover page exposes stable testids for its hero and table-of-contents so E2E tests can assert cover-page rendering and launch the path without depending on text or DOM structure:
+
+- **`learning-paths-cover-hero`** (`testIds.learningPaths.coverHero`): the cover page's hero section boundary (title, description, module count, duration, badge preview).
+- **`learning-paths-toc-cta`** (`testIds.learningPaths.tableOfContentsCta`): the table of contents' get-started/resume action.
+
+A cover-page layout or selector refactor must preserve these values or update the E2E selectors and this document in the same change.
+
+---
+
+## Badge celebration runner contract
+
+After a guide completes, Pathfinder can show a full-screen badge celebration before the runner starts the next action.
+
+The runner and plugin share these stable test IDs:
+
+- **`learning-paths-badge-toast`** (`testIds.learningPaths.badgeToast`): identifies the visible badge dialog.
+- **`learning-paths-badge-toast-dismiss`** (`testIds.learningPaths.badgeToastDismiss`): identifies the dismiss action inside the current dialog.
+
+The runner uses only these selectors. It does not close generic Grafana modals.
+
+If a refactor changes these values, update `BadgeUnlockedToast.tsx`, the guide runner, the contract test, and this document in the same change.
+
+The source-level tripwire lives in `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts`.
+
+---
+
 ## Design Principles
 
 ### 1. Semantic Over Syntactic
@@ -338,22 +408,34 @@ This ensures consistency between:
 React components derive attributes from existing UI state:
 
 ```tsx
-// interactive-step.tsx
+// interactive-guided.tsx / interactive-multi-step.tsx
 <div
   data-test-step-state={
-    isCompleted
-      ? 'completed'
-      : isExecuting
-        ? 'executing'
-        : isChecking
-          ? 'checking'
-          : !isEnabled
-            ? 'requirements-unmet'
-            : 'idle'
+    isExecuting
+      ? 'executing'
+      : hasError
+        ? 'error'
+        : isCompleted
+          ? 'completed'
+          : isChecking
+            ? 'checking'
+            : !isEnabled
+              ? 'requirements-unmet'
+              : 'idle'
   }
   data-test-substep-index={isExecuting ? currentIndex : undefined}
 />
 ```
+
+For multi-step components, `executing` takes precedence over `completed`. A multi-step `completeEarly` write can occur before its automated actions settle.
+
+For guided components, `executing` also takes precedence during a narrower final-action window. Final click activation can persist while the application handler and guided cleanup settle.
+
+After composite execution settles, genuine objectives completion is authoritative. It suppresses stale local error or cancellation state.
+
+For multi-step execution, a `completeEarly` write alone does not suppress an error. For guided execution, callback failure becomes an error before completion wins. Successful final-action persistence keeps the completed outcome if later setup or cleanup fails.
+
+`InteractiveStep` also prioritizes active execution, but after execution settles it lets `completed` override a stale local error because completed rendering suppresses its error affordances. The `cancelled` state applies only to guided execution.
 
 **Key insight**: Attributes ARE the source of truth for rendered state. If they're wrong, the UI is wrong, so tests catch real bugs.
 
@@ -370,6 +452,7 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 - `src/components/interactive-tutorial/data-attributes.contract.test.tsx` - React component attributes
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
 - `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
+- `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
 
 ### Pattern: Dual Assertion
 
@@ -451,6 +534,12 @@ Guided steps run a substep loop driven by the comment box. The runner uses only 
 
 Completion is standardized on `data-test-step-state="completed"` for all step types (single, multistep, guided).
 
+The calculated step timeout remains the inner operation budget. A separate wall-clock backstop uses twice this budget plus 20 seconds.
+
+If the backstop expires, the runner closes the page and reports an infrastructure outcome. Normal step failures retain their evidence and skippable behavior.
+
+During active step execution, an unexpected page, context, or browser termination produces an infrastructure outcome. The runner retains results from steps that completed before the termination.
+
 ```typescript
 // Wait for guided execution to start
 await page.waitForSelector('[data-test-step-state="executing"]');
@@ -488,6 +577,30 @@ if (requirementsState === 'unmet') {
     await page.waitForSelector('[data-test-requirements-state="met"]');
   }
 }
+```
+
+---
+
+### Skip controls and runner synchronization
+
+The plugin renders two Skip controls that both call the same underlying `markSkipped()` action:
+
+- **`interactive-skip-${stepId}`** (`testIds.interactive.skipButton`): the step's always-available Skip button. It renders whenever the step is skippable, is not a noop action, and is not already completed, regardless of requirements state. Step discovery uses this control to determine `step.skippable`.
+- **`interactive-requirement-skip-${stepId}`** (`testIds.interactive.requirementSkipButton`): a narrower Skip button rendered only inside the requirements-explanation banner when requirements have failed. `detectRequirements()` reports this control's presence as `hasSkipButton`.
+
+A test or runner that needs to skip a step should prefer the step-level control and fall back to the requirement-scoped one only when the step-level control is not rendered, so it supports whichever shape the plugin actually renders instead of assuming one fixed control.
+
+Clicking either control does not skip the step immediately from the runner's point of view. The runner must wait for `data-test-step-state` to reach a terminal value, `completed`, or for the step element to detach, before treating the step as skipped. A transient value such as `checking` is not a terminal state; a runner that stops polling on the first non-`requirements-unmet` value can record a false skip while the plugin is still mid-transition.
+
+```typescript
+// Prefer the step-level Skip control; fall back to the requirement-scoped one.
+const stepSkip = page.getByTestId(testIds.interactive.skipButton(stepId));
+const requirementSkip = page.getByTestId(testIds.interactive.requirementSkipButton(stepId));
+const skipButton = (await stepSkip.count()) > 0 ? stepSkip : requirementSkip;
+await skipButton.click();
+
+// Wait for a terminal state before treating the step as skipped.
+await page.waitForSelector('[data-step-id="my-step"][data-test-step-state="completed"]');
 ```
 
 ---

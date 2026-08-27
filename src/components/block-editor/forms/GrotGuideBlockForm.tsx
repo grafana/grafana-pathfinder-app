@@ -10,7 +10,6 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
 import { loadAll } from 'js-yaml';
 import { getBlockFormStyles } from '../block-editor.styles';
-import { TypeSwitchDropdown } from './TypeSwitchDropdown';
 import type { BlockFormProps } from '../types';
 import { isGrotGuideBlock, type JsonGrotGuideBlock } from '../../../types/json-guide.types';
 
@@ -116,13 +115,7 @@ const DEFAULT_BLOCK: JsonGrotGuideBlock = {
   ],
 };
 
-export function GrotGuideBlockForm({
-  initialData,
-  onSubmit,
-  onCancel,
-  isEditing = false,
-  onSwitchBlockType,
-}: BlockFormProps) {
+export function GrotGuideBlockForm({ initialData, onSubmit, onCancel, isEditing = false }: BlockFormProps) {
   const styles = useStyles2(getBlockFormStyles);
   const formStyles = useStyles2(getFormStyles);
 
@@ -140,7 +133,7 @@ export function GrotGuideBlockForm({
   const [yamlError, setYamlError] = useState<string | null>(null);
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    (e: React.SubmitEvent) => {
       e.preventDefault();
       setError(null);
 
@@ -272,11 +265,6 @@ export function GrotGuideBlockForm({
       )}
 
       <div className={styles.footer}>
-        {isEditing && onSwitchBlockType && (
-          <div className={styles.footerLeft}>
-            <TypeSwitchDropdown currentType="grot-guide" onSwitch={onSwitchBlockType} blockData={initialData} />
-          </div>
-        )}
         <Button variant="secondary" onClick={onCancel} type="button">
           Cancel
         </Button>

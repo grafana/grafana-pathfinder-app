@@ -8,9 +8,11 @@
  * Dev mode allows localhost and GitHub raw URLs for development/testing.
  */
 
-import { LearningJourneyTab, PersistedTabData } from '../../../types/content-panel.types';
+import type { LearningJourneyTab, LearningJourneyTabType, PersistedTabData } from '../../../types/content-panel.types';
 import { isAllowedContentUrl, isLocalhostUrl, isGitHubRawUrl } from '../../../security';
 import { logger } from '../../../lib/logging';
+import { DEVTOOLS_TAB_ID, EDITOR_TAB_ID, RECOMMENDATIONS_TAB_ID } from './tab-kinds';
+import { DEFAULT_GUIDE_TITLE } from '../../block-editor/editor-chrome-status';
 
 /**
  * Tab storage interface for dependency injection
@@ -51,6 +53,33 @@ export function createUrlValidator(isDevMode: boolean): UrlValidator {
 }
 
 /**
+ * Validate the persisted identity/kind pair before it enters runtime state.
+ *
+ * Runtime behavior dispatches on `type`; singleton IDs remain stable identity
+ * keys. Reserved IDs and types must therefore agree in both directions so a
+ * malformed content record cannot acquire privileged singleton behavior.
+ */
+function getCanonicalPersistedTabType(data: PersistedTabData): LearningJourneyTabType | null {
+  const type: unknown = data.type ?? 'learning-journey';
+
+  if (type === 'recommendations') {
+    return data.id === RECOMMENDATIONS_TAB_ID ? type : null;
+  }
+  if (type === 'devtools') {
+    return data.id === DEVTOOLS_TAB_ID ? type : null;
+  }
+  if (type === 'editor') {
+    return data.id === EDITOR_TAB_ID ? type : null;
+  }
+
+  if (data.id === RECOMMENDATIONS_TAB_ID || data.id === DEVTOOLS_TAB_ID || data.id === EDITOR_TAB_ID) {
+    return null;
+  }
+
+  return type === 'learning-journey' || type === 'docs' || type === 'interactive' ? type : null;
+}
+
+/**
  * Restore tabs from storage with security validation
  *
  * SECURITY: All URLs are validated before restoration to prevent XSS via storage injection
@@ -66,40 +95,54 @@ export async function restoreTabsFromStorage(
   try {
     const parsedData = await tabStorage.getTabs<PersistedTabData>();
 
+    const recommendationsTab: LearningJourneyTab = {
+      id: RECOMMENDATIONS_TAB_ID,
+      type: 'recommendations',
+      title: 'Recommendations', // Will be translated in renderer
+      baseUrl: '',
+      currentUrl: '',
+      content: null,
+      isLoading: false,
+      error: null,
+    };
+
     if (!parsedData || parsedData.length === 0) {
-      // Return default tabs if no stored data
-      return [
-        {
-          id: 'recommendations',
-          title: 'Recommendations',
-          baseUrl: '',
-          currentUrl: '',
-          content: null,
-          isLoading: false,
-          error: null,
-        },
-      ];
+      // Return recommendations home if no stored data
+      return [recommendationsTab];
     }
 
-    const tabs: LearningJourneyTab[] = [
-      {
-        id: 'recommendations',
-        title: 'Recommendations', // Will be translated in renderer
-        baseUrl: '',
-        currentUrl: '',
-        content: null,
-        isLoading: false,
-        error: null,
-      },
-    ];
+    const tabs: LearningJourneyTab[] = [recommendationsTab];
 
     const validateUrl = createUrlValidator(options.isDevMode);
 
     parsedData.forEach((data: PersistedTabData) => {
+      const type = getCanonicalPersistedTabType(data);
+      if (!type) {
+        logger.warn('Rejected tab with invalid persisted identity/type pairing', {
+          id: data.id,
+          type: data.type,
+        });
+        return;
+      }
+
+      // Recommendations is created canonically above and is never restored
+      // from storage, avoiding duplicate home tabs.
+      if (type === 'recommendations') {
+        return;
+      }
+
+      // IDs are the panel's identity key: duplicates would collide on React
+      // keys, and close-by-ID would remove more than one tab. Tampered or
+      // legacy storage is the only way to get here, since saves map from state.
+      if (tabs.some((t) => t.id === data.id)) {
+        logger.warn('Rejected duplicate tab ID from storage', { id: data.id, type });
+        return;
+      }
+
       // Handle devtools tab specially - it has no URLs to validate
-      if (data.type === 'devtools') {
+      if (type === 'devtools') {
         tabs.push({
-          id: 'devtools',
+          id: DEVTOOLS_TAB_ID,
           title: 'Dev Tools',
           baseUrl: '',
           currentUrl: '',
@@ -112,10 +155,10 @@ export async function restoreTabsFromStorage(
       }
 
       // Handle editor tab specially - it has no URLs to validate
-      if (data.type === 'editor') {
+      if (type === 'editor') {
         tabs.push({
-          id: 'editor',
-          title: 'Guide editor',
+          id: EDITOR_TAB_ID,
+          title: data.title || DEFAULT_GUIDE_TITLE,
           baseUrl: '',
           currentUrl: '',
           content: null,
@@ -149,7 +192,7 @@ export async function restoreTabsFromStorage(
         content: null, // Will be loaded when tab becomes active
         isLoading: false,
         error: null,
-        type: data.type || 'learning-journey',
+        type,
         packageInfo: data.packageInfo,
       });
     });
@@ -159,7 +202,8 @@ export async function restoreTabsFromStorage(
     logger.error('Failed to restore tabs from storage', { error });
     return [
       {
-        id: 'recommendations',
+        id: RECOMMENDATIONS_TAB_ID,
+        type: 'recommendations',
         title: 'Recommendations',
         baseUrl: '',
         currentUrl: '',
@@ -172,11 +216,50 @@ export async function restoreTabsFromStorage(
 }
 
 /**
+ * Reconcile a storage-built tab strip with the model's current in-memory tabs.
+ *
+ * `restoreTabsFromStorage` always emits `content: null`. A wholesale
+ * `setState({ tabs })` on force restore would drop every loaded snapshot and
+ * refetch — same cost as a reload, on every fullscreen/floating round trip.
+ *
+ * When a restored tab shares an id and `currentUrl` with an existing tab that
+ * already has content, keep that content (and `pathContext`) and take the rest
+ * from storage. Do not carry `pendingAlignment`, `error`, or a mid-flight
+ * `isLoading`: those are surface-local, and preserving them would block the
+ * normal retry / `browser_restore` paths that a blank restore used to hit.
+ */
+export function mergeRestoredTabsWithExisting(
+  restoredTabs: LearningJourneyTab[],
+  existingTabs: LearningJourneyTab[]
+): LearningJourneyTab[] {
+  if (existingTabs.length === 0) {
+    return restoredTabs;
+  }
+
+  const existingById = new Map(existingTabs.map((tab) => [tab.id, tab]));
+
+  return restoredTabs.map((restored) => {
+    const existing = existingById.get(restored.id);
+    if (!existing || existing.currentUrl !== restored.currentUrl || existing.content == null) {
+      return restored;
+    }
+
+    return {
+      ...restored,
+      content: existing.content,
+      pathContext: existing.pathContext,
+      isLoading: false,
+      error: null,
+    };
+  });
+}
+
+/**
  * Restore active tab ID from storage
  *
  * @param tabStorage - Storage interface for persisted tabs
  * @param tabs - Array of restored tabs to validate against
- * @returns Promise resolving to active tab ID (defaults to 'recommendations' if not found)
+ * @returns Promise resolving to active tab ID (defaults to recommendations if not found)
  */
 export async function restoreActiveTabFromStorage(tabStorage: TabStorage, tabs: LearningJourneyTab[]): Promise<string> {
   try {
@@ -185,14 +268,13 @@ export async function restoreActiveTabFromStorage(tabStorage: TabStorage, tabs: 
     if (activeTabId) {
       const tabExists = tabs.some((t) => t.id === activeTabId);
 
-      // Restore the stored tab if it exists (including devtools - it should persist like normal tabs)
-      // The closeTab method ensures that when all tabs are closed, 'recommendations' is saved to storage
-      // So if storage has 'devtools', it means the user was legitimately on devtools when they refreshed
-      return tabExists ? activeTabId : 'recommendations';
+      // Restore the stored tab if it exists.
+      // closeTab ensures recommendations is saved when the strip is empty.
+      return tabExists ? activeTabId : RECOMMENDATIONS_TAB_ID;
     }
   } catch (error) {
     logger.error('Failed to restore active tab from storage', { error });
   }
 
-  return 'recommendations';
+  return RECOMMENDATIONS_TAB_ID;
 }

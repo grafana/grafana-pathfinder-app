@@ -1,19 +1,24 @@
+import type { InternalAction } from './interactive-actions.types';
+
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
 
-export interface CrossTabInternalAction {
-  targetAction: string;
-  refTarget?: string;
-  targetValue?: string;
-  targetComment?: string;
+// Derived by exclusion rather than restated: a field the engine reads off an
+// action must reach the live tab, and hand-listing the fields is what dropped
+// targetState on this wire three times over. Only `requirements` stays behind —
+// the controller gates them, the live tab replays. Fields added to
+// InternalAction therefore reach the wire by default rather than by remembering.
+export type CrossTabInternalAction = Omit<InternalAction, 'requirements'>;
+
+/** Narrow an engine action to what the wire carries. */
+export function toCrossTabInternalAction(action: InternalAction): CrossTabInternalAction {
+  const { requirements, ...wire } = action;
+  return wire;
 }
 
-export interface CrossTabAction {
-  targetAction: string;
+export interface CrossTabAction extends CrossTabInternalAction {
   refTarget: string;
-  targetValue?: string;
-  targetComment?: string;
   internalActions?: CrossTabInternalAction[];
 }
 
@@ -23,9 +28,11 @@ interface CrossTabEnvelope {
   timestamp: number;
 }
 
-// Tier-0 structural mirror of requirements-manager's CheckResultError /
-// RequirementsCheckResult, so a live-tab result crosses the channel without an
-// upward import.
+// Deliberate re-statement (not an alias) of CheckResultError /
+// RequirementsCheckResult: this is a wire contract, and the two tabs on a
+// channel may run different plugin versions, so the internal type must not be
+// able to reshape the wire silently. A compile-time guard in
+// cross-tab.types.test.ts forces a conscious update here when they diverge.
 export interface RemoteRequirementError {
   requirement: string;
   pass: boolean;
@@ -227,7 +234,8 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
   if (
     typeof action.refTarget !== 'string' ||
     typeof action.targetAction !== 'string' ||
-    !KNOWN_TARGET_ACTIONS.has(action.targetAction)
+    !KNOWN_TARGET_ACTIONS.has(action.targetAction) ||
+    !isOptionalTargetState(action.targetState)
   ) {
     return false;
   }
@@ -245,7 +253,8 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
           KNOWN_TARGET_ACTIONS.has(sub.targetAction) &&
           isOptionalString(sub.refTarget) &&
           isOptionalString(sub.targetValue) &&
-          isOptionalString(sub.targetComment)
+          isOptionalString(sub.targetComment) &&
+          isOptionalTargetState(sub.targetState)
       )
     );
   }
@@ -262,6 +271,10 @@ function isValidSidebarHandoff(message: Record<string, unknown>): boolean {
 
 function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string';
+}
+
+function isOptionalTargetState(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean' || typeof value === 'string';
 }
 
 const MAX_PAIRING_FIELD_LENGTH = 512;

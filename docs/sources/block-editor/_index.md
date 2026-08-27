@@ -119,6 +119,7 @@ The primary button in the header reflects your guide's lifecycle. Start with **S
 | **Image**       | An embedded image with optional dimensions.                                                                                                                                                      |
 | **Video**       | A YouTube embed or a native HTML5 video.                                                                                                                                                         |
 | **Section**     | A container that groups related steps and adds a "Do section" button.                                                                                                                            |
+| **Collapsible** | A container that hides its content behind a toggle the user expands.                                                                                                                             |
 | **Conditional** | Two branches of content — show one branch when conditions pass, the other when they fail. Conditions use the same syntax as requirements (for example, `has-datasource:prometheus`, `is-admin`). |
 | **Interactive** | A single step with **Show me** and **Do it** buttons that highlight or perform an action in Grafana.                                                                                             |
 | **Multistep**   | A sequence of actions that runs automatically when the user clicks **Do it**.                                                                                                                    |
@@ -126,9 +127,11 @@ The primary button in the header reflects your guide's lifecycle. Start with **S
 | **Quiz**        | A knowledge-check with single or multiple-choice answers.                                                                                                                                        |
 | **Input**       | A prompt that collects a value from the user (text, checkbox, or data source picker) and stores it as a variable for later steps to reference.                                                   |
 | **Code block**  | A code snippet with copy-to-clipboard and, in supported contexts, an Insert button that types the code into a Grafana Monaco editor.                                                             |
+| **Challenge**   | A hands-on task the user has to solve, with progressive hints and a **Check my work** button that evaluates a success condition. Runs against the user's own Grafana or in a sandbox VM.         |
 | **Grot guide**  | A choose-your-own-adventure decision tree where each screen offers options that branch to other screens.                                                                                         |
+| **Snippet**     | A reference to a published snippet — the guide always renders the latest version of the snippet's content.                                                                                       |
 
-If your administrator has enabled the Coda terminal integration, the palette also exposes **Terminal** (a runnable shell command) and **Terminal connect** (a button that provisions a sandbox VM and opens a terminal panel) blocks.
+If your administrator has enabled the Coda terminal integration, the palette also exposes **Terminal** (a runnable shell command) and **Terminal connect** (a button that provisions a sandbox VM and opens a terminal panel) blocks. A challenge block only needs the terminal integration when it runs in sandbox VM mode.
 
 ## Record interactive steps
 

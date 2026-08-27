@@ -14,12 +14,29 @@ jest.mock('@grafana/runtime', () => ({
   },
 }));
 
+const mockGetMode = jest.fn(() => 'sidebar');
+const mockRequestSidebarHandoffAndWait = jest.fn().mockResolvedValue(undefined);
+jest.mock('../global-state/panel-mode', () => {
+  const { GRAFANA_DRIVING_ACTIONS } = jest.requireActual('../constants/interactive-actions');
+  return {
+    panelModeManager: { getMode: () => mockGetMode() },
+    requestSidebarHandoffAndWait: (...args: unknown[]) => mockRequestSidebarHandoffAndWait(...args),
+    isGrafanaDrivingHandoffNeeded: (targetAction: string) =>
+      mockGetMode() === 'fullscreen' && GRAFANA_DRIVING_ACTIONS.has(targetAction),
+  };
+});
+
 // Mock requirements checker
-jest.mock('../requirements-manager', () => ({
-  checkRequirements: jest.fn(),
-  checkPostconditions: jest.fn(),
-  RequirementsCheckOptions: jest.fn(),
-}));
+jest.mock('../requirements-manager', () => {
+  const checkRequirements = jest.fn();
+  const checkPostconditions = jest.fn();
+  return {
+    checkRequirements,
+    checkPostconditions,
+    useGuideRequirements: () => ({ checkRequirements, checkPostconditions }),
+    RequirementsCheckOptions: jest.fn(),
+  };
+});
 
 // Mock action handlers
 jest.mock('./action-handlers', () => ({
@@ -97,7 +114,7 @@ describe('useInteractiveElements', () => {
 
   // Create a container div for our tests
   let container: HTMLDivElement;
-  let containerRef: React.RefObject<HTMLDivElement>;
+  let containerRef: React.RefObject<HTMLDivElement | null>;
 
   // Helper function to set up the test environment with our example HTML
   const setupTestEnvironment = () => {
@@ -257,7 +274,11 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
-        await result.current.executeInteractiveAction('highlight', '#target', undefined, 'show');
+        await result.current.executeInteractiveAction({
+          targetAction: 'highlight',
+          refTarget: '#target',
+          buttonType: 'show',
+        });
       });
 
       expect(withFaroUserAction).toHaveBeenCalledWith(
@@ -273,7 +294,7 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
-        await result.current.executeInteractiveAction('button', 'Save', undefined, 'do');
+        await result.current.executeInteractiveAction({ targetAction: 'button', refTarget: 'Save', buttonType: 'do' });
       });
 
       expect(withFaroUserAction).toHaveBeenCalledWith(
@@ -633,7 +654,11 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
-        await result.current.executeInteractiveAction('highlight', 'test-target', undefined, 'do');
+        await result.current.executeInteractiveAction({
+          targetAction: 'highlight',
+          refTarget: 'test-target',
+          buttonType: 'do',
+        });
       });
 
       // Should call interactiveFocus
@@ -644,7 +669,11 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
-        await result.current.executeInteractiveAction('button', 'test-target', undefined, 'do');
+        await result.current.executeInteractiveAction({
+          targetAction: 'button',
+          refTarget: 'test-target',
+          buttonType: 'do',
+        });
       });
 
       // Should call interactiveButton
@@ -655,7 +684,12 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
-        await result.current.executeInteractiveAction('formfill', 'test-target', 'test-value', 'do');
+        await result.current.executeInteractiveAction({
+          targetAction: 'formfill',
+          refTarget: 'test-target',
+          targetValue: 'test-value',
+          buttonType: 'do',
+        });
       });
 
       // Should call interactiveFormFill
@@ -666,7 +700,11 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
-        await result.current.executeInteractiveAction('navigate', '/test-route', undefined, 'do');
+        await result.current.executeInteractiveAction({
+          targetAction: 'navigate',
+          refTarget: '/test-route',
+          buttonType: 'do',
+        });
       });
 
       // Should call interactiveNavigate
@@ -677,7 +715,11 @@ describe('useInteractiveElements', () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
       await act(async () => {
-        await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+        await result.current.executeInteractiveAction({
+          targetAction: 'sequence',
+          refTarget: 'span#test1',
+          buttonType: 'do',
+        });
       });
 
       // Should call interactiveSequence
@@ -689,7 +731,11 @@ describe('useInteractiveElements', () => {
 
       let outcome: unknown;
       await act(async () => {
-        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+        outcome = await result.current.executeInteractiveAction({
+          targetAction: 'sequence',
+          refTarget: 'span#test1',
+          buttonType: 'do',
+        });
       });
 
       expect(outcome).toBe('ok');
@@ -706,7 +752,11 @@ describe('useInteractiveElements', () => {
 
       let outcome: unknown;
       await act(async () => {
-        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+        outcome = await result.current.executeInteractiveAction({
+          targetAction: 'sequence',
+          refTarget: 'span#test1',
+          buttonType: 'do',
+        });
       });
 
       expect(outcome).toBe('error');
@@ -723,7 +773,11 @@ describe('useInteractiveElements', () => {
 
       let outcome: unknown;
       await act(async () => {
-        outcome = await result.current.executeInteractiveAction('sequence', 'span#test1', undefined, 'do');
+        outcome = await result.current.executeInteractiveAction({
+          targetAction: 'sequence',
+          refTarget: 'span#test1',
+          buttonType: 'do',
+        });
       });
 
       expect(outcome).toBe('error');
@@ -735,7 +789,11 @@ describe('useInteractiveElements', () => {
       const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       await act(async () => {
-        await result.current.executeInteractiveAction('unknown', 'test-target', undefined, 'do');
+        await result.current.executeInteractiveAction({
+          targetAction: 'unknown',
+          refTarget: 'test-target',
+          buttonType: 'do',
+        });
       });
 
       expect(consoleWarnSpy).toHaveBeenCalledWith('Unknown interactive action: unknown', '');
@@ -749,7 +807,11 @@ describe('useInteractiveElements', () => {
       result.current.interactiveFocus = jest.fn().mockRejectedValue(mockError);
 
       await act(async () => {
-        await result.current.executeInteractiveAction('highlight', 'test-target', undefined, 'do');
+        await result.current.executeInteractiveAction({
+          targetAction: 'highlight',
+          refTarget: 'test-target',
+          buttonType: 'do',
+        });
       });
 
       // Should handle error gracefully
@@ -897,6 +959,104 @@ describe('useInteractiveElements', () => {
         targetValue: 'test-value',
         stepId: 'unknown',
       });
+    });
+  });
+
+  describe('Full-screen sidebar handoff gate', () => {
+    beforeEach(() => {
+      mockGetMode.mockReturnValue('sidebar');
+    });
+
+    it('hands off before executing a Grafana-driving "Do it" action while in full screen', async () => {
+      mockGetMode.mockReturnValue('fullscreen');
+      const { ButtonHandler } = require('./action-handlers');
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      await act(async () => {
+        await result.current.executeInteractiveAction({
+          targetAction: 'button',
+          refTarget: 'test-target',
+          buttonType: 'do',
+          fullScreenFallbackLocation: '/connections',
+        });
+      });
+
+      expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
+      const buttonHandlerInstance = ButtonHandler.mock.results[0]!.value;
+      const elementData = buttonHandlerInstance.execute.mock.calls[0]![0];
+      expect(elementData.skipCompletionOnEmptyTarget).toBe(true);
+    });
+
+    it('does not hand off for a Grafana-driving action outside full screen', async () => {
+      mockGetMode.mockReturnValue('sidebar');
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      await act(async () => {
+        await result.current.executeInteractiveAction({
+          targetAction: 'button',
+          refTarget: 'test-target',
+          buttonType: 'do',
+        });
+      });
+
+      expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
+    });
+
+    it('hands off for "Show me" too — neither button type has anything to preview or act on without it', async () => {
+      mockGetMode.mockReturnValue('fullscreen');
+      const { ButtonHandler } = require('./action-handlers');
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      await act(async () => {
+        await result.current.executeInteractiveAction({
+          targetAction: 'button',
+          refTarget: 'test-target',
+          buttonType: 'show',
+          fullScreenFallbackLocation: '/connections',
+        });
+      });
+
+      expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
+      const buttonHandlerInstance = ButtonHandler.mock.results[0]!.value;
+      const elementData = buttonHandlerInstance.execute.mock.calls[0]![0];
+      expect(elementData.skipCompletionOnEmptyTarget).toBe(true);
+    });
+
+    it('does not hand off for a non-Grafana-driving action in full screen', async () => {
+      mockGetMode.mockReturnValue('fullscreen');
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      await act(async () => {
+        await result.current.executeInteractiveAction({
+          targetAction: 'sequence',
+          refTarget: 'span#test1',
+          buttonType: 'do',
+        });
+      });
+
+      expect(mockRequestSidebarHandoffAndWait).not.toHaveBeenCalled();
+    });
+
+    it('reports "error" (not "ok") when the handler suppresses completion because its target was never found', async () => {
+      mockGetMode.mockReturnValue('fullscreen');
+      const { ButtonHandler } = require('./action-handlers');
+      ButtonHandler.mockImplementationOnce(() => ({
+        execute: jest.fn().mockImplementation(async (data: { completionSuppressed?: boolean }) => {
+          data.completionSuppressed = true;
+        }),
+      }));
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await result.current.executeInteractiveAction({
+          targetAction: 'button',
+          refTarget: 'test-target',
+          buttonType: 'do',
+        });
+      });
+
+      expect(outcome).toBe('error');
     });
   });
 });

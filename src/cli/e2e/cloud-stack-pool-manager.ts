@@ -7,8 +7,11 @@ import type {
 } from './cloud-chain-environment';
 import type { PackageMeta } from './e2e-results';
 
-const POOL_MANAGER_FETCH_TIMEOUT_MS = 15_000;
+const POOL_MANAGER_LEASE_TIMEOUT_MS = 90_000;
+const POOL_MANAGER_RETIRE_TIMEOUT_MS = 15_000;
 const FALLBACK_POLICY = 'hot_only';
+const CAPACITY_RETRY_BASE_DELAY_MS = 250;
+const CAPACITY_RETRY_MAX_DELAY_MS = 5_000;
 
 export const DEFAULT_CLOUD_STACK_POOL_ID = 'nightly';
 
@@ -18,6 +21,15 @@ export interface CloudStackPoolManagerConfigInput {
   poolId?: string;
   maxWaitSeconds?: number;
   env?: NodeJS.ProcessEnv;
+}
+
+function retryDelayMs(attempt: number, random: () => number): number {
+  const exponential = CAPACITY_RETRY_BASE_DELAY_MS * 2 ** attempt;
+  return Math.round(Math.min(CAPACITY_RETRY_MAX_DELAY_MS, exponential * (0.5 + random())));
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export interface CloudStackPoolManagerConfig {
@@ -230,6 +242,7 @@ async function postJson<T>(
   path: string,
   body: unknown,
   errorPrefix: string,
+  timeoutMs: number,
   extraSecrets: string[] = []
 ): Promise<T> {
   const secrets = [config.token, ...extraSecrets];
@@ -244,7 +257,7 @@ async function postJson<T>(
         Accept: 'application/json',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(POOL_MANAGER_FETCH_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     throw new CloudStackPoolManagerError(`Pool manager request failed: ${redact(errorMessage(err), secrets)}`);
@@ -298,7 +311,10 @@ export class CloudStackPoolManager {
   constructor(
     private readonly config: CloudStackPoolManagerConfig,
     private readonly verbose: boolean,
-    private readonly fetchImpl: typeof fetch = fetch
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly waitImpl: (ms: number) => Promise<void> = wait,
+    private readonly randomImpl: () => number = Math.random,
+    private readonly nowImpl: () => number = Date.now
   ) {}
 
   async leaseForChain(options: LeaseForChainOptions): Promise<CloudStackPoolManagerLease> {
@@ -314,13 +330,42 @@ export class CloudStackPoolManager {
       metadata: metadataFor(packageIds, options.packageMetaById),
       ...(this.config.maxWaitSeconds !== undefined ? { maxWaitSeconds: this.config.maxWaitSeconds } : {}),
     };
-    const response = await postJson<CreateLeaseResponse>(
-      this.config,
-      this.fetchImpl,
-      '/v1/leases',
-      request,
-      `Pool manager could not lease a stack from pool "${this.config.poolId}": `
-    );
+    const startedAt = this.nowImpl();
+    let capacityRetryAttempt = 0;
+    let requestTimeoutMs = POOL_MANAGER_LEASE_TIMEOUT_MS;
+    let response: CreateLeaseResponse;
+    while (true) {
+      try {
+        response = await postJson<CreateLeaseResponse>(
+          this.config,
+          this.fetchImpl,
+          '/v1/leases',
+          request,
+          `Pool manager could not lease a stack from pool \"${this.config.poolId}\": `,
+          requestTimeoutMs
+        );
+        break;
+      } catch (error) {
+        if (!(error instanceof CloudStackPoolManagerError) || error.code !== 'no_capacity') {
+          throw error;
+        }
+        const budgetMs = (this.config.maxWaitSeconds ?? 0) * 1000;
+        const remainingMs = budgetMs - (this.nowImpl() - startedAt);
+        if (remainingMs <= 0) {
+          throw error;
+        }
+        const delayMs = Math.min(remainingMs, retryDelayMs(capacityRetryAttempt++, this.randomImpl));
+        if (this.verbose) {
+          console.log(`   ⏳ Pool ${this.config.poolId} has no capacity; retrying in ${delayMs}ms`);
+        }
+        await this.waitImpl(delayMs);
+        const retryBudgetMs = budgetMs - (this.nowImpl() - startedAt);
+        if (retryBudgetMs <= 0) {
+          throw error;
+        }
+        requestTimeoutMs = Math.min(POOL_MANAGER_LEASE_TIMEOUT_MS, retryBudgetMs);
+      }
+    }
     const lease = {
       leaseId: stringField(response.leaseId, 'leaseId'),
       targetUrl: normalizeGrafanaUrl(response.grafanaUrl),
@@ -389,6 +434,7 @@ export class CloudStackPoolManagerLease implements CloudChainEnvironment {
         `/v1/leases/${this.lease.leaseId}/retire`,
         request,
         '',
+        POOL_MANAGER_RETIRE_TIMEOUT_MS,
         [this.lease.token]
       );
       if (this.verbose) {

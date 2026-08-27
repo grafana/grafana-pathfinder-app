@@ -36,10 +36,20 @@ export interface AccessLogEntry {
   rpcMethod?: string;
   /**
    * For `tools/call` requests, the `params.name` value (e.g.
-   * "pathfinder_add_block"). Lets us break token spend down by tool, which
+   * "pathfinder_manage_block"). Lets us break token spend down by tool, which
    * the HTTP-level `path` field cannot — every tool call hits `/mcp`.
    */
   rpcToolName?: string;
+  /**
+   * For `tools/call` requests on suite tools, the `params.arguments.operation`
+   * value (e.g. "add-block", "remove-block"). Without it, an append and a
+   * cascade delete are indistinguishable in the log — `rpcToolName` collapsed
+   * to one value per suite when the per-verb tools were consolidated. Only
+   * emitted when the raw value matches `KNOWN_TOOL_OPERATIONS`; this field is
+   * extracted before Zod validation runs, so free-form params never reach the
+   * log.
+   */
+  rpcToolOperation?: string;
   /**
    * Echoed JSON-RPC id, for cross-correlating client logs with server logs.
    * Strings, numbers, and null are preserved as-is; objects/arrays are
@@ -117,11 +127,35 @@ export interface AccessLogEntry {
 export interface RpcInfo {
   rpcMethod?: string;
   rpcToolName?: string;
+  rpcToolOperation?: string;
   rpcId?: string | number | null;
   batchSize?: number;
   sessionTokenPrefix?: string;
   sessionTokenHash?: string;
 }
+
+/**
+ * Allowlist for `rpcToolOperation`. The log line is built from the raw
+ * JSON-RPC body before any Zod validation, so bounding to known enum values
+ * is what keeps arbitrary client input out of the log. A unit test asserts
+ * this set stays in sync with the operation enums the tools publish.
+ */
+export const KNOWN_TOOL_OPERATIONS: ReadonlySet<string> = new Set([
+  // pathfinder_manage_block
+  'add-block',
+  'edit-block',
+  'remove-block',
+  'add-step',
+  'add-choice',
+  // pathfinder_manage_guide
+  'set-manifest',
+  // pathfinder_read_session / pathfinder_read_repository
+  'list-blocks',
+  'get-block',
+  'get-manifest',
+  'list-packages',
+  'get-package',
+]);
 
 /**
  * Extract JSON-RPC method, tool name, and id from a parsed request body.
@@ -157,6 +191,10 @@ export function extractRpcInfo(body: unknown): RpcInfo {
     // logging the raw token. Best-effort: any shape we don't recognize is
     // silently skipped.
     if (params.arguments && typeof params.arguments === 'object') {
+      const operation = (params.arguments as { operation?: unknown }).operation;
+      if (typeof operation === 'string' && KNOWN_TOOL_OPERATIONS.has(operation)) {
+        info.rpcToolOperation = operation;
+      }
       const raw = (params.arguments as { sessionToken?: unknown }).sessionToken;
       if (typeof raw === 'string') {
         const token = normalizeSessionToken(raw);

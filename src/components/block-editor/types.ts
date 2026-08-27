@@ -12,27 +12,8 @@ import type { JsonBlock, JsonGuide, JsonStep, JsonInteractiveAction } from '../.
  */
 export type ViewMode = 'edit' | 'preview' | 'json';
 
-/**
- * Block type identifiers
- */
-export type BlockType =
-  | 'markdown'
-  | 'html'
-  | 'image'
-  | 'video'
-  | 'section'
-  | 'conditional'
-  | 'interactive'
-  | 'multistep'
-  | 'guided'
-  | 'quiz'
-  | 'input'
-  | 'terminal'
-  | 'terminal-connect'
-  | 'challenge'
-  | 'code-block'
-  | 'grot-guide'
-  | 'snippet-ref';
+/** Block type identifiers. */
+export type BlockType = JsonBlock['type'];
 
 /**
  * Block metadata for the palette

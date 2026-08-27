@@ -134,6 +134,22 @@ describe('fetchPathGuides', () => {
     );
   });
 
+  // resolveGuideMetadata looks this map up by arbitrary guide id, so an id that
+  // happens to name an Object.prototype member must miss, not hand back a function.
+  it.each(['constructor', 'toString', 'hasOwnProperty'])(
+    'resolves no metadata for the inherited name %s',
+    async (inheritedName) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => SAMPLE_INDEX_JSON,
+      });
+
+      const result = await fetchPathGuides('https://grafana.com/docs/learning-paths/linux-server-integration/');
+
+      expect(result!.guideMetadata[inheritedName]).toBeUndefined();
+    }
+  );
+
   it('returns null on fetch failure', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,

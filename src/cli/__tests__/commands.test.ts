@@ -2,15 +2,18 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import { Command } from 'commander';
+
 import { runAddBlock } from '../commands/add-block';
 import { runAddChoice } from '../commands/add-choice';
 import { runAddStep } from '../commands/add-step';
 import { runCreate } from '../commands/create';
-import { runEditBlock } from '../commands/edit-block';
+import { editBlockSpec, runEditBlock } from '../commands/edit-block';
 import { runInspect } from '../commands/inspect';
 import { runRemoveBlock } from '../commands/remove-block';
-import { runSetManifest } from '../commands/set-manifest';
+import { runSetManifest, setManifestSpec } from '../commands/set-manifest';
 import { runValidate } from '../commands/validate';
+import { collectCommanderInput, mountCommander, parseCommandInput } from '../contracts';
 import { readPackage } from '../utils/package-io';
 import type { ContentJson } from '../../types/package.types';
 
@@ -83,7 +86,7 @@ describe('runAddBlock', () => {
     const result = await runAddBlock({
       dir,
       type: 'markdown',
-      flagValues: { content: 'Hello' },
+      fields: { content: 'Hello' },
     });
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') {
@@ -101,7 +104,7 @@ describe('runAddBlock', () => {
       const result = await runAddBlock({
         dir,
         type: 'video',
-        flagValues: { src: 'https://www.youtube.com/embed/dQw4w9WgXcQ' },
+        fields: { src: 'https://www.youtube.com/embed/dQw4w9WgXcQ' },
       });
       expect(result.status).toBe('ok');
     });
@@ -111,7 +114,7 @@ describe('runAddBlock', () => {
       const result = await runAddBlock({
         dir,
         type: 'video',
-        flagValues: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
+        fields: { src: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
       });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
@@ -135,7 +138,7 @@ describe('runAddBlock', () => {
       const result = await runAddBlock({
         dir,
         type: 'video',
-        flagValues: { src: 'https://youtu.be/dQw4w9WgXcQ' },
+        fields: { src: 'https://youtu.be/dQw4w9WgXcQ' },
       });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
@@ -152,7 +155,7 @@ describe('runAddBlock', () => {
       const result = await runAddBlock({
         dir,
         type: 'video',
-        flagValues: { src: 'https://player.vimeo.com/video/12345' },
+        fields: { src: 'https://player.vimeo.com/video/12345' },
       });
       expect(result.status).toBe('ok');
     });
@@ -160,12 +163,12 @@ describe('runAddBlock', () => {
 
   it('appends inside a section by --parent', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'section', explicitId: 'intro', flagValues: { title: 'Intro' } });
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
     const result = await runAddBlock({
       dir,
       type: 'markdown',
-      parentId: 'intro',
-      flagValues: { content: 'Inside intro' },
+      parent: 'intro',
+      fields: { content: 'Inside intro' },
     });
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') {
@@ -179,22 +182,22 @@ describe('runAddBlock', () => {
     await runAddBlock({
       dir,
       type: 'conditional',
-      explicitId: 'cond',
-      flagValues: { conditions: ['is-admin'] },
+      id: 'cond',
+      fields: { conditions: ['is-admin'] },
     });
     const t = await runAddBlock({
       dir,
       type: 'markdown',
-      parentId: 'cond',
+      parent: 'cond',
       branch: 'true',
-      flagValues: { content: 'true branch' },
+      fields: { content: 'true branch' },
     });
     const f = await runAddBlock({
       dir,
       type: 'markdown',
-      parentId: 'cond',
+      parent: 'cond',
       branch: 'false',
-      flagValues: { content: 'false branch' },
+      fields: { content: 'false branch' },
     });
     expect(t.status).toBe('ok');
     expect(f.status).toBe('ok');
@@ -208,7 +211,7 @@ describe('runAddBlock', () => {
 
   it('rejects a container without --id', async () => {
     const dir = await bootstrap();
-    const result = await runAddBlock({ dir, type: 'section', flagValues: { title: 'No id' } });
+    const result = await runAddBlock({ dir, type: 'section', fields: { title: 'No id' } });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
       expect(result.code).toBe('CONTAINER_REQUIRES_ID');
@@ -218,7 +221,7 @@ describe('runAddBlock', () => {
   it('rejects a missing required field with SCHEMA_VALIDATION', async () => {
     const dir = await bootstrap();
     // Markdown requires `content`.
-    const result = await runAddBlock({ dir, type: 'markdown', flagValues: {} });
+    const result = await runAddBlock({ dir, type: 'markdown', fields: {} });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
       expect(result.code).toBe('SCHEMA_VALIDATION');
@@ -227,13 +230,13 @@ describe('runAddBlock', () => {
 
   it('--if-absent no-ops when a matching container already exists', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'section', explicitId: 'intro', flagValues: { title: 'Intro' } });
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
     const result = await runAddBlock({
       dir,
       type: 'section',
-      explicitId: 'intro',
+      id: 'intro',
       ifAbsent: true,
-      flagValues: { title: 'Intro' },
+      fields: { title: 'Intro' },
     });
     expect(result.status).toBe('ok');
     if (result.status === 'ok') {
@@ -243,13 +246,13 @@ describe('runAddBlock', () => {
 
   it('--if-absent reports IF_ABSENT_CONFLICT on scalar mismatch', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'section', explicitId: 'intro', flagValues: { title: 'Intro' } });
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
     const result = await runAddBlock({
       dir,
       type: 'section',
-      explicitId: 'intro',
+      id: 'intro',
       ifAbsent: true,
-      flagValues: { title: 'Different' },
+      fields: { title: 'Different' },
     });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
@@ -262,8 +265,8 @@ describe('runAddBlock', () => {
     const result = await runAddBlock({
       dir,
       type: 'markdown',
-      parentId: 'nope',
-      flagValues: { content: 'x' },
+      parent: 'nope',
+      fields: { content: 'x' },
     });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
@@ -277,7 +280,7 @@ describe('runAddBlock', () => {
       const result = await runAddBlock({
         dir,
         type: 'interactive',
-        flagValues: { action: 'button', reftarget: '[data-testid="my-btn"]', content: 'Click it' },
+        fields: { action: 'button', reftarget: '[data-testid="my-btn"]', content: 'Click it' },
       });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
@@ -293,7 +296,7 @@ describe('runAddBlock', () => {
       const result = await runAddBlock({
         dir,
         type: 'interactive',
-        flagValues: { action: 'noop', content: 'just look here' },
+        fields: { action: 'noop', content: 'just look here' },
       });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
@@ -307,7 +310,7 @@ describe('runAddBlock', () => {
       const result = await runAddBlock({
         dir,
         type: 'code-block',
-        flagValues: { reftarget: '[data-testid="monaco-editor"]', code: 'SELECT 1', language: 'sql' },
+        fields: { reftarget: '[data-testid="monaco-editor"]', code: 'SELECT 1', language: 'sql' },
       });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
@@ -318,11 +321,13 @@ describe('runAddBlock', () => {
 
     it('emits UNVERIFIED_SELECTOR from runAddStep when a step writes a reftarget', async () => {
       const dir = await bootstrap();
-      await runAddBlock({ dir, type: 'guided', explicitId: 'walk', flagValues: { content: 'walk' } });
+      await runAddBlock({ dir, type: 'guided', id: 'walk', fields: { content: 'walk' } });
       const result = await runAddStep({
         dir,
-        parentId: 'walk',
-        flagValues: { action: 'button', reftarget: '[data-testid="b"]', description: 'Click' },
+        parent: 'walk',
+        action: 'button',
+        reftarget: '[data-testid="b"]',
+        description: 'Click',
       });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
@@ -336,12 +341,8 @@ describe('runAddBlock', () => {
 
     it('does NOT emit UNVERIFIED_SELECTOR from runAddStep for noop steps', async () => {
       const dir = await bootstrap();
-      await runAddBlock({ dir, type: 'multistep', explicitId: 'ms', flagValues: { content: 'walk' } });
-      const result = await runAddStep({
-        dir,
-        parentId: 'ms',
-        flagValues: { action: 'noop', description: 'just look' },
-      });
+      await runAddBlock({ dir, type: 'multistep', id: 'ms', fields: { content: 'walk' } });
+      const result = await runAddStep({ dir, parent: 'ms', action: 'noop', description: 'just look' });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
         return;
@@ -354,14 +355,10 @@ describe('runAddBlock', () => {
       await runAddBlock({
         dir,
         type: 'interactive',
-        explicitId: 'click-x',
-        flagValues: { action: 'button', reftarget: '[data-testid="old"]', content: 'Click' },
-      });
-      const result = await runEditBlock({
-        dir,
         id: 'click-x',
-        flagValues: { reftarget: '[data-testid="new"]' },
+        fields: { action: 'button', reftarget: '[data-testid="old"]', content: 'Click' },
       });
+      const result = await runEditBlock({ dir, id: 'click-x', reftarget: '[data-testid="new"]' });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
         return;
@@ -378,14 +375,10 @@ describe('runAddBlock', () => {
       await runAddBlock({
         dir,
         type: 'interactive',
-        explicitId: 'click-x',
-        flagValues: { action: 'button', reftarget: '[data-testid="old"]', content: 'before' },
-      });
-      const result = await runEditBlock({
-        dir,
         id: 'click-x',
-        flagValues: { content: 'after' },
+        fields: { action: 'button', reftarget: '[data-testid="old"]', content: 'before' },
       });
+      const result = await runEditBlock({ dir, id: 'click-x', content: 'after' });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
         return;
@@ -402,8 +395,8 @@ describe('runAddBlock', () => {
       const result = await runAddBlock({
         dir,
         type: 'multistep',
-        explicitId: 'walk',
-        flagValues: { content: 'walk' },
+        id: 'walk',
+        fields: { content: 'walk' },
       });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
@@ -422,7 +415,7 @@ describe('runAddBlock', () => {
       const result = await runAddBlock({
         dir,
         type: 'markdown',
-        flagValues: { content: 'hello' },
+        fields: { content: 'hello' },
       });
       expect(result.status).toBe('ok');
       if (result.status !== 'ok') {
@@ -437,8 +430,8 @@ describe('runAddBlock', () => {
       const first = await runAddBlock({
         dir,
         type: 'multistep',
-        explicitId: 'walk',
-        flagValues: { content: 'walk' },
+        id: 'walk',
+        fields: { content: 'walk' },
       });
       expect(first.status).toBe('ok');
       if (first.status === 'ok') {
@@ -448,9 +441,9 @@ describe('runAddBlock', () => {
       const second = await runAddBlock({
         dir,
         type: 'multistep',
-        explicitId: 'walk',
+        id: 'walk',
         ifAbsent: true,
-        flagValues: { content: 'walk' },
+        fields: { content: 'walk' },
       });
       expect(second.status).toBe('ok');
       if (second.status === 'ok') {
@@ -471,13 +464,15 @@ describe('runAddStep', () => {
     await runAddBlock({
       dir,
       type: 'guided',
-      explicitId: 'walk',
-      flagValues: { content: 'walk' },
+      id: 'walk',
+      fields: { content: 'walk' },
     });
     const result = await runAddStep({
       dir,
-      parentId: 'walk',
-      flagValues: { action: 'button', reftarget: '[data-testid="b"]', description: 'Click' },
+      parent: 'walk',
+      action: 'button',
+      reftarget: '[data-testid="b"]',
+      description: 'Click',
     });
     expect(result.status).toBe('ok');
     const content = readContent(dir);
@@ -487,12 +482,8 @@ describe('runAddStep', () => {
 
   it('rejects a non-multistep/guided parent', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'section', explicitId: 'intro', flagValues: { title: 'Intro' } });
-    const result = await runAddStep({
-      dir,
-      parentId: 'intro',
-      flagValues: { action: 'noop', description: 'x' },
-    });
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
+    const result = await runAddStep({ dir, parent: 'intro', action: 'noop', description: 'x' });
     expect(result.status).toBe('error');
   });
 });
@@ -507,20 +498,12 @@ describe('runAddChoice', () => {
     await runAddBlock({
       dir,
       type: 'quiz',
-      explicitId: 'check',
-      flagValues: { question: 'Q?' },
+      id: 'check',
+      fields: { question: 'Q?' },
     });
-    const a = await runAddChoice({
-      dir,
-      parentId: 'check',
-      flagValues: { id: 'a', text: 'A' },
-    });
+    const a = await runAddChoice({ dir, parent: 'check', id: 'a', text: 'A' });
     expect(a.status).toBe('ok');
-    const dup = await runAddChoice({
-      dir,
-      parentId: 'check',
-      flagValues: { id: 'a', text: 'duplicate' },
-    });
+    const dup = await runAddChoice({ dir, parent: 'check', id: 'a', text: 'duplicate' });
     expect(dup.status).toBe('error');
     if (dup.status === 'error') {
       expect(dup.code).toBe('DUPLICATE_ID');
@@ -538,7 +521,7 @@ describe('runEditBlock', () => {
     await runAddBlock({
       dir,
       type: 'interactive',
-      flagValues: {
+      fields: {
         action: 'navigate',
         reftarget: '[data-testid="x"]',
         content: 'old',
@@ -548,7 +531,8 @@ describe('runEditBlock', () => {
     const result = await runEditBlock({
       dir,
       id: 'interactive-1',
-      flagValues: { content: 'new', requirements: ['is-editor'] },
+      content: 'new',
+      requirements: ['is-editor'],
     });
     expect(result.status).toBe('ok');
     const content = readContent(dir);
@@ -559,7 +543,7 @@ describe('runEditBlock', () => {
 
   it('reports BLOCK_NOT_FOUND on a missing id', async () => {
     const dir = await bootstrap();
-    const result = await runEditBlock({ dir, id: 'nope', flagValues: { content: 'x' } });
+    const result = await runEditBlock({ dir, id: 'nope', content: 'x' });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
       expect(result.code).toBe('BLOCK_NOT_FOUND');
@@ -568,11 +552,59 @@ describe('runEditBlock', () => {
 
   it('rejects when no flags are passed', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'markdown', flagValues: { content: 'x' } });
-    const result = await runEditBlock({ dir, id: 'markdown-1', flagValues: {} });
+    await runAddBlock({ dir, type: 'markdown', fields: { content: 'x' } });
+    const result = await runEditBlock({ dir, id: 'markdown-1' });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
       expect(result.code).toBe('NO_CHANGES');
+    }
+  });
+
+  // The parameter union means a flag can be valid for the command and meaningless
+  // for the block being edited. Dropping those is what lets one command address
+  // any block type.
+  it('drops parameters the addressed block type does not declare', async () => {
+    const dir = await bootstrap();
+    await runAddBlock({ dir, type: 'markdown', id: 'md-1', fields: { content: 'x' } });
+
+    const result = await runEditBlock({ dir, id: 'md-1', content: 'y', src: 'https://example.com/i.png' });
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') {
+      return;
+    }
+    expect((result.data as { changed: string[] }).changed).toEqual(['content']);
+    const block = readContent(dir).blocks[0] as unknown as Record<string, unknown>;
+    expect(block.src).toBeUndefined();
+  });
+
+  it('reports NO_CHANGES when every parameter passed belongs to another block type', async () => {
+    const dir = await bootstrap();
+    await runAddBlock({ dir, type: 'markdown', id: 'md-1', fields: { content: 'x' } });
+
+    const result = await runEditBlock({ dir, id: 'md-1', src: 'https://example.com/i.png' });
+
+    expect(result.status).toBe('error');
+    if (result.status === 'error') {
+      expect(result.code).toBe('NO_CHANGES');
+    }
+  });
+
+  // Declared in order to be refused, in the schema, so both entrypoints answer the
+  // same way and name the command that does the job.
+  it('refuses reordering and names move-block', () => {
+    for (const [param, instead] of [
+      ['position', 'to-position'],
+      ['before', 'before'],
+      ['after', 'after'],
+    ] as const) {
+      const parsed = parseCommandInput(editBlockSpec, { dir: '/tmp/pkg', id: 'md-1', [param]: 'x' });
+      expect(parsed.ok).toBe(false);
+      if (parsed.ok) {
+        continue;
+      }
+      expect(parsed.outcome.code).toBe('SCHEMA_VALIDATION');
+      expect(parsed.outcome.message).toContain(`move-block <dir> <id> --${instead}`);
     }
   });
 });
@@ -584,7 +616,7 @@ describe('runEditBlock', () => {
 describe('runRemoveBlock', () => {
   it('removes a leaf block', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'markdown', flagValues: { content: 'x' } });
+    await runAddBlock({ dir, type: 'markdown', fields: { content: 'x' } });
     const result = await runRemoveBlock({ dir, id: 'markdown-1', cascade: false });
     expect(result.status).toBe('ok');
     expect(readContent(dir).blocks).toHaveLength(0);
@@ -592,8 +624,8 @@ describe('runRemoveBlock', () => {
 
   it('refuses to remove a non-empty container without --cascade', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'section', explicitId: 'intro', flagValues: { title: 'Intro' } });
-    await runAddBlock({ dir, type: 'markdown', parentId: 'intro', flagValues: { content: 'inside' } });
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
+    await runAddBlock({ dir, type: 'markdown', parent: 'intro', fields: { content: 'inside' } });
     const result = await runRemoveBlock({ dir, id: 'intro', cascade: false });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
@@ -603,8 +635,8 @@ describe('runRemoveBlock', () => {
 
   it('cascades through a non-empty container with --cascade', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'section', explicitId: 'intro', flagValues: { title: 'Intro' } });
-    await runAddBlock({ dir, type: 'markdown', parentId: 'intro', flagValues: { content: 'inside' } });
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
+    await runAddBlock({ dir, type: 'markdown', parent: 'intro', fields: { content: 'inside' } });
     const result = await runRemoveBlock({ dir, id: 'intro', cascade: true });
     expect(result.status).toBe('ok');
     if (result.status === 'ok') {
@@ -621,10 +653,7 @@ describe('runRemoveBlock', () => {
 describe('runSetManifest', () => {
   it('updates only the supplied fields and preserves the rest', async () => {
     const dir = await bootstrap();
-    const result = await runSetManifest({
-      dir,
-      flagValues: { description: 'Now with description', category: 'demo' },
-    });
+    const result = await runSetManifest({ dir, description: 'Now with description', category: 'demo' });
     expect(result.status).toBe('ok');
     const state = readPackage(dir);
     expect(state.manifest?.description).toBe('Now with description');
@@ -635,11 +664,40 @@ describe('runSetManifest', () => {
 
   it('rejects when no field flags are passed', async () => {
     const dir = await bootstrap();
-    const result = await runSetManifest({ dir, flagValues: {} });
+    const result = await runSetManifest({ dir });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
       expect(result.code).toBe('NO_CHANGES');
     }
+  });
+
+  // A supplied key is a change, and `[]` is a supplied key. The heuristic this
+  // replaces read `[]` as "unset", making a list impossible to clear (§3.2).
+  it('clears an array field when sent an empty array', async () => {
+    const dir = await bootstrap();
+    expect((await runSetManifest({ dir, provides: ['loki-basics'] })).status).toBe('ok');
+    expect(readPackage(dir).manifest?.provides).toEqual(['loki-basics']);
+
+    const cleared = await runSetManifest({ dir, provides: [] });
+    expect(cleared.status).toBe('ok');
+    expect(readPackage(dir).manifest?.provides).toEqual([]);
+  });
+
+  // Why that is safe: Commander sets `[]` on every repeatable option it holds, so if
+  // those counted as supplied, one `--description` would clear every list on the
+  // manifest. They are dropped by option source rather than by value shape.
+  it('forwards only the flags the command line actually set', async () => {
+    const command = mountCommander(setManifestSpec, { positionals: ['dir'] });
+    let raw: Record<string, unknown> | undefined;
+    // Replaces the generated action, which would otherwise run the mutation and
+    // call process.exit. Commander parsing itself is unchanged.
+    command.action(function (this: Command, dirArg: string) {
+      raw = collectCommanderInput(['dir'], [dirArg], this.opts(), (name) => this.getOptionValueSource(name));
+    });
+
+    await command.parseAsync(['/tmp/pkg', '--description', 'only this'], { from: 'user' });
+
+    expect(raw).toEqual({ dir: '/tmp/pkg', description: 'only this' });
   });
 });
 
@@ -650,8 +708,8 @@ describe('runSetManifest', () => {
 describe('runInspect', () => {
   it('returns a package summary', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'section', explicitId: 'intro', flagValues: { title: 'Intro' } });
-    await runAddBlock({ dir, type: 'markdown', parentId: 'intro', flagValues: { content: 'x' } });
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
+    await runAddBlock({ dir, type: 'markdown', parent: 'intro', fields: { content: 'x' } });
     const result = runInspect({ dir });
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') {
@@ -664,8 +722,8 @@ describe('runInspect', () => {
 
   it('returns block details for --block <id>', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'section', explicitId: 'intro', flagValues: { title: 'Intro' } });
-    const result = runInspect({ dir, blockId: 'intro' });
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
+    const result = runInspect({ dir, block: 'intro' });
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') {
       return;
@@ -676,8 +734,8 @@ describe('runInspect', () => {
 
   it('reports BLOCK_NOT_FOUND with the available id list', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'section', explicitId: 'intro', flagValues: { title: 'Intro' } });
-    const result = runInspect({ dir, blockId: 'nope' });
+    await runAddBlock({ dir, type: 'section', id: 'intro', fields: { title: 'Intro' } });
+    const result = runInspect({ dir, block: 'nope' });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
       expect(result.code).toBe('BLOCK_NOT_FOUND');
@@ -693,7 +751,7 @@ describe('runInspect', () => {
 describe('runValidate', () => {
   it('returns ok for a freshly built valid package', async () => {
     const dir = await bootstrap();
-    await runAddBlock({ dir, type: 'markdown', flagValues: { content: 'Hi' } });
+    await runAddBlock({ dir, type: 'markdown', fields: { content: 'Hi' } });
     const state = readPackage(dir);
     const result = runValidate({
       content: state.content,

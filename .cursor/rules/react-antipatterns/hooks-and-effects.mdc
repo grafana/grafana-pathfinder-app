@@ -1,0 +1,281 @@
+---
+alwaysApply: false
+description: React anti-patterns R1, R2, R3, R8, R13, R15 — useEffect cleanup, stale closures, dependency arrays, conditional hooks, ref listener cleanup. Load on a review hit for any of these codes, or when writing hooks and effects.
+---
+
+# Hooks and effects
+
+Part of the R1-R21 catalog. The routing table and the full code list live in `.cursor/rules/react-antipatterns.mdc`.
+
+---
+
+## R1 — Missing useEffect Cleanup
+Subscriptions, event listeners, and timers created in `useEffect` must be cleaned up to prevent memory leaks.
+
+**Don't**
+```tsx
+useEffect(() => {
+  const subscription = dataSource.subscribe(handleData);
+  window.addEventListener('resize', handleResize);
+  const timer = setInterval(pollData, 5000);
+  // No cleanup - resources persist after unmount
+}, []);
+```
+
+**Do**
+```tsx
+useEffect(() => {
+  const subscription = dataSource.subscribe(handleData);
+  window.addEventListener('resize', handleResize);
+  const timer = setInterval(pollData, 5000);
+
+  // REACT: cleanup subscriptions, listeners, timers (R1)
+  return () => {
+    subscription.unsubscribe();
+    window.removeEventListener('resize', handleResize);
+    clearInterval(timer);
+  };
+}, []);
+```
+
+**Agent behavior**
+- Flag any `useEffect` with `addEventListener`, `subscribe`, `setInterval`, or `setTimeout` that lacks a cleanup return.
+- Ensure WebSocket connections, MutationObservers, and ResizeObservers are disconnected on cleanup.
+- When reviewing, check that every resource acquisition has a corresponding release.
+
+---
+
+---
+
+## R2 — Stale Closure in Callbacks
+Closures in `useEffect` or callbacks capture variable values at creation time. Without proper handling, they reference stale data.
+
+**Don't**
+```tsx
+const [count, setCount] = useState(0);
+
+useEffect(() => {
+  const timer = setInterval(() => {
+    setCount(count + 1); // Always reads initial count (0)
+  }, 1000);
+  return () => clearInterval(timer);
+}, []); // count not in deps - stale closure
+```
+
+**Do**
+```tsx
+const [count, setCount] = useState(0);
+
+useEffect(() => {
+  const timer = setInterval(() => {
+    // REACT: functional update avoids stale closure (R2)
+    setCount(prev => prev + 1);
+  }, 1000);
+  return () => clearInterval(timer);
+}, []);
+
+// Alternative: useRef for latest value
+const countRef = useRef(count);
+useEffect(() => {
+  countRef.current = count;
+}, [count]);
+```
+
+**Agent behavior**
+- When state is used inside `setInterval`, `setTimeout`, or event callbacks, prefer functional updates (`setState(prev => ...)`) over direct state references.
+- If a callback needs the latest value but can't use functional updates, use a ref to track current state.
+- Flag any `useEffect` where state variables are used but not in the dependency array without functional updates.
+
+---
+
+---
+
+## R3 — Object/Array Dependencies Causing Infinite Loops
+Objects and arrays are compared by reference. Creating new objects in render causes `useEffect` to see them as "changed" every time.
+
+**Don't**
+```tsx
+function UserProfile({ userId }) {
+  const [user, setUser] = useState(null);
+  
+  // New object every render
+  const options = { userId, includeDetails: true };
+  
+  useEffect(() => {
+    fetchUser(options).then(setUser);
+  }, [options]); // Infinite loop - options is always "new"
+}
+```
+
+**Do**
+```tsx
+function UserProfile({ userId }) {
+  const [user, setUser] = useState(null);
+  
+  // REACT: memoize object dependencies (R3)
+  const options = useMemo(
+    () => ({ userId, includeDetails: true }),
+    [userId]
+  );
+  
+  useEffect(() => {
+    fetchUser(options).then(setUser);
+  }, [options]);
+}
+
+// Better: use primitive dependencies directly
+useEffect(() => {
+  fetchUser({ userId, includeDetails: true }).then(setUser);
+}, [userId]); // Primitives compare by value
+```
+
+**Agent behavior**
+- Flag any object or array literal in a `useEffect` dependency array.
+- Recommend `useMemo` for complex objects or extracting primitive values as dependencies.
+- When reviewing, trace dependency array items to their definitions—if defined inline during render, they will cause re-runs.
+
+---
+
+---
+
+## R8 — Conditional Hook Calls
+React tracks hooks by call order. Conditional hooks break this tracking.
+
+**Don't**
+```tsx
+function UserDashboard({ user }) {
+  if (!user) {
+    return <LoginPrompt />;
+  }
+  
+  // These hooks only run sometimes - violates rules
+  const [data, setData] = useState(null);
+  const theme = useContext(ThemeContext);
+  
+  useEffect(() => {
+    fetchUserData(user.id).then(setData);
+  }, [user.id]);
+  
+  return <Dashboard data={data} theme={theme} />;
+}
+```
+
+**Do**
+```tsx
+function UserDashboard({ user }) {
+  // REACT: all hooks at top level, always called (R8)
+  const [data, setData] = useState(null);
+  const theme = useContext(ThemeContext);
+  
+  useEffect(() => {
+    if (user) {
+      fetchUserData(user.id).then(setData);
+    }
+  }, [user]);
+  
+  // Conditional rendering AFTER all hooks
+  if (!user) {
+    return <LoginPrompt />;
+  }
+  
+  return <Dashboard data={data} theme={theme} />;
+}
+```
+
+**Agent behavior**
+- Flag any hook call that appears after a conditional return statement.
+- Flag hooks inside `if` blocks, loops, or nested functions.
+- Ensure all hooks are called unconditionally at the top of the component.
+- ESLint rule `react-hooks/rules-of-hooks` should catch this—ensure it's enabled.
+
+---
+
+---
+
+## R13 — Missing Dependency Array in useEffect
+Without a dependency array, `useEffect` runs after every render, potentially causing infinite loops.
+
+**Don't**
+```tsx
+useEffect(() => {
+  fetchUserData(userId).then(setData);
+}); // Missing [] - runs EVERY render
+
+// setData triggers re-render -> effect runs -> setData -> infinite loop
+```
+
+**Do**
+```tsx
+// REACT: explicit dependencies (R13)
+useEffect(() => {
+  fetchUserData(userId).then(setData);
+}, [userId]); // Runs when userId changes
+
+// For one-time setup:
+useEffect(() => {
+  initializeApp();
+}, []); // Empty array = mount only
+```
+
+**Agent behavior**
+- Every `useEffect` MUST have a dependency array (even if empty).
+- Flag any `useEffect` without a second argument.
+- Use the `react-hooks/exhaustive-deps` ESLint rule.
+- When reviewing, verify that all values used inside the effect are in the dependency array.
+
+---
+
+---
+
+## R15 — Ref Manipulation Without Cleanup
+DOM refs can accumulate event listeners and external library instances if not cleaned up.
+
+**Don't**
+```tsx
+function VideoPlayer({ src }) {
+  const videoRef = useRef();
+  
+  useEffect(() => {
+    const video = videoRef.current;
+    video.addEventListener('ended', handleEnded);
+    video.addEventListener('error', handleError);
+    
+    const player = new FancyPlayer(video);
+    player.init();
+    // No cleanup - listeners accumulate, player not destroyed
+  }, []);
+}
+```
+
+**Do**
+```tsx
+function VideoPlayer({ src }) {
+  const videoRef = useRef();
+  const playerRef = useRef();
+  
+  useEffect(() => {
+    const video = videoRef.current;
+    
+    video.addEventListener('ended', handleEnded);
+    video.addEventListener('error', handleError);
+    
+    playerRef.current = new FancyPlayer(video);
+    playerRef.current.init();
+    
+    // REACT: clean up DOM listeners and external libraries (R15)
+    return () => {
+      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('error', handleError);
+      playerRef.current?.destroy();
+    };
+  }, []);
+}
+```
+
+**Agent behavior**
+- Any `addEventListener` on a ref element requires `removeEventListener` in cleanup.
+- External libraries attached to DOM elements must be destroyed/disposed on cleanup.
+- Flag direct DOM manipulation without corresponding cleanup.
+- Remember: React synthetic events (onClick, etc.) are cleaned up automatically—native DOM events are not.
+
+---

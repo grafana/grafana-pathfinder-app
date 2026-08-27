@@ -15,12 +15,14 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 ## Source map for agents
 
 - `src/cli/commands/e2e.ts` — Commander options, input resolution, dependency planning, pre-flight orchestration, clean-stack resets, cloud routing, and per-guide Playwright invocation.
+- `src/cli/e2e/e2e-local-package.ts` — local path/journey manifest validation, repository loading, milestone expansion, target gating, and guide hydration.
 - `src/cli/e2e/e2e-runner-contract.ts` — environment-variable contract between the CLI process and Playwright runner.
 - `src/cli/e2e/e2e-package.ts` — remote package and repository resolution, content fetch, schema validation, side-effect classification, and pre-run skip reasons.
+- `src/cli/e2e/guide-chains.ts` — pure package graph planning across hard dependencies, capabilities, and recursive milestones, followed by leaf-guide hydration.
 - `src/cli/e2e/e2e-targets.ts` — manifest `testEnvironment` to concrete target URL or skip reason.
 - `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
 - `tests/e2e-runner/guide-runner.spec.ts` — browser-side guide loading, pre-flight checks, DOM discovery, step execution, and result file writing.
-- `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, requirement fixing, artifact capture, and failure classification.
+- `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, browser-termination monitoring, requirement fixing, artifact capture, and failure classification.
 - `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
 
 ## Quick start
@@ -53,7 +55,7 @@ npx pathfinder-cli e2e [options] [files...]
 | Option                                     | Description                                                                                                                                              | Default                           |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
 | `--grafana-url <url>`                      | Grafana instance URL. Auto-switches to `http://localhost:3010` when `--clean` is set and this flag is not passed.                                        | `http://localhost:3000`           |
-| `--output <path>`                          | Path for JSON report output                                                                                                                              | None                              |
+| `--output <path>`                          | Explicit path for JSON report output. Non-passing runs also write a default report under `--artifacts`.                                                  | None                              |
 | `--artifacts <dir>`                        | Directory for failure artifacts (screenshots, DOM snapshots)                                                                                             | `/tmp/pathfinder-e2e-{uuid}`      |
 | `--verbose`                                | Enable detailed logging                                                                                                                                  | `false`                           |
 | `--bundled`                                | Test all bundled guides                                                                                                                                  | `false`                           |
@@ -62,7 +64,7 @@ npx pathfinder-cli e2e [options] [files...]
 | `--always-screenshot`                      | Capture screenshots on success and failure                                                                                                               | `false`                           |
 | `--clean`                                  | Run against an isolated docker-compose stack (project `pathfinder-e2e`, Grafana on `:3010`). Resets between dependency chains and tears down at the end. | `false`                           |
 | `--clean-ready-timeout-ms <ms>`            | How long to wait for the isolated Grafana to become healthy after a `--clean` reset                                                                      | `120000`                          |
-| `--package <dirOrId>`                      | Test a local package directory, or — when not an existing directory — a bare package ID resolved remotely via the recommender                            | None                              |
+| `--package <dirOrId>`                      | Test a local or remote guide, path, or journey package. Local paths/journeys also require `--repository` so milestone IDs resolve.                       | None                              |
 | `--tier <tier>`                            | Current environment tier (`local` or `cloud`); `cloud` guides are skipped on a `local` environment                                                       | `local`                           |
 | `--remote`                                 | Resolve and test every package from the CDN repository index                                                                                             | `false`                           |
 | `--repo-url <url>`                         | CDN base URL for `--remote`                                                                                                                              | Public package repository         |
@@ -81,8 +83,8 @@ The CLI accepts these input formats:
 1. **File paths**: `npx pathfinder-cli e2e ./my-guide.json ./another.json`
 2. **Bundled flag**: `npx pathfinder-cli e2e --bundled` (tests all guides in `src/bundled-interactives/`)
 3. **Bundled by name**: `npx pathfinder-cli e2e bundled:welcome-to-grafana`
-4. **Local package directory**: `npx pathfinder-cli e2e --package ./my-package/` (reads `content.json` + `manifest.json`)
-5. **Remote package ID**: `npx pathfinder-cli e2e --package alerting-101` (resolved via the recommender; see [Remote package-aware testing](#remote-package-aware-testing))
+4. **Local package directory**: `npx pathfinder-cli e2e --package ./my-package/` (reads `content.json` + `manifest.json`; add `--repository <path>` for a path or journey)
+5. **Remote package ID**: `npx pathfinder-cli e2e --package alerting-101` (guides, paths, and journeys resolve via the recommender; see [Remote package-aware testing](#remote-package-aware-testing))
 6. **Remote repository**: `npx pathfinder-cli e2e --remote` (every package in the CDN index)
 
 ## Exit codes
@@ -96,6 +98,10 @@ The CLI accepts these input formats:
 | 4    | Authentication failure or session expired |
 
 ## How it works
+
+### Browser viewport
+
+The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chromium viewport from `playwright.config.ts` and `tests/e2e-runner/playwright.config.ts`. The stable wide viewport prevents responsive layouts from moving common action targets into overflow menus and keeps selector behavior and screenshots consistent across local, CI, and container runs.
 
 ### Architecture overview
 
@@ -142,7 +148,7 @@ The CLI accepts these input formats:
 
 5. **Reporting**
    - Console output with real-time progress
-   - JSON report if `--output` specified
+   - JSON report when `--output` is specified; non-passing runs also write a default report under `--artifacts`
    - Failure artifacts in `--artifacts` directory
 
 ## Requirements and skip behavior
@@ -169,6 +175,15 @@ Requirements met? → Execute step
 
 **Skippable steps** (those with a Skip button) allow the test to continue when requirements cannot be met. **Mandatory steps** cause the test to abort on failure, marking remaining steps as `not_reached`.
 
+An unmet read without a Fix button gets a short settle window before the runner treats it as terminal. A visible Fix button is already an actionable settled state. See `Requirements settle window` in the timing table below.
+
+The plugin's requirement check can be mid-transition right after the initial check, or right after a Fix button click. The runner polls briefly for the state to settle, instead of failing on one transient read.
+Skipping a step is a two-part handshake, not just a runner-side decision. The runner clicks the plugin's Skip control (the step's always-available Skip button, or the narrower Skip button inside the requirements-explanation banner, whichever the plugin rendered) and waits for the step to reach a terminal state: `completed`, or a successful detach. Only then does the runner record the step as `SKIPPED`. If the plugin never reaches that terminal state, for example no Skip control is found, the click fails, or it stays `requirements-unmet`, the runner records `FAILED` instead of a false `SKIPPED`. A false skip would leave the plugin gated on "Complete previous step" for every step that follows.
+
+A no-op or objective-based step can complete, or its element can detach, between discovery and this point in execution, before the runner even scrolls to it. The runner rechecks for this right before scrolling and records `PASSED`, the same outcome it records when it observes a step completing via objectives right before clicking "Do it". This keeps one DOM state, attached and `completed`, mapped to one outcome, no matter which check in the runner happens to observe it first.
+
+Overall success requires zero mandatory failures and either at least one verified pass or zero failed steps. A run where every step is skipped cleanly succeeds; a run with no verified pass and any failed skippable step fails.
+
 ## Artifacts and reporting
 
 ### Console output
@@ -186,6 +201,17 @@ Use `--output report.json` to generate a structured report:
 
 ```json
 {
+  "schemaVersion": "1.0.0",
+  "outcome": "passed",
+  "runner": {
+    "name": "pathfinder-e2e-runner",
+    "version": "commit-<sha>",
+    "nodeVersion": "v24.x",
+    "playwrightVersion": "1.61.1"
+  },
+  "startedAt": "2026-01-01T00:00:00.000Z",
+  "endedAt": "2026-01-01T00:00:01.000Z",
+  "target": { "url": "http://localhost:3000", "tier": "local" },
   "guide": { "id": "...", "title": "...", "path": "...", "targetUrl": "..." },
   "config": { "timestamp": "..." },
   "summary": {
@@ -193,13 +219,49 @@ Use `--output report.json` to generate a structured report:
     "passed": 8,
     "failed": 1,
     "skipped": 1,
-    "notReached": 0
+    "notReached": 0,
+    "duration": 1000,
+    "mandatoryFailed": 1,
+    "skippableFailed": 0
   },
   "steps": [...]
 }
 ```
 
-For `--bundled` runs, the report includes aggregated results across all guides.
+The report contract's single source of truth is the Zod schema in `src/cli/e2e/schemas/e2e-report.schema.ts`; TypeScript types derive from it via `z.infer<>`, and the runner self-validates every report before writing.
+
+Key contract fields:
+
+- `outcome`: one of `passed`, `failed`, `aborted`, `skipped`, `infrastructure_error`, or `configuration_error`. Multi-guide reports surface `aborted` when any guide's session expired.
+- `errorCode`: structured failure code present on non-passing reports. Notable values: `TIER_MISMATCH` (guide requires a different environment tier), `SKIPPED_PREREQ` (a prerequisite guide failed), `REPORT_MISSING` (Playwright exited but wrote no results file), `AUTH_EXPIRED`, `NO_CAPACITY`, `PLAYWRIGHT_SPAWN_FAILED`.
+- `guide.contentDigest`: SHA-256 digest of the exact guide content executed
+- `guide.sourceUrl`: remote package source URL when available
+- `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
+
+### Report validation
+
+The runner always attempts to write a report, even when self-validation fails, so a diagnostic artifact is not lost. A failed validation logs the schema error, writes the original object, and exits with code 2. Consumers must validate the report against the schema matching the producing runner before processing it.
+
+Catchable setup, preflight, provisioning, and Playwright spawn failures still write zero-step reports that validate against the schema. Observable browser termination during step execution produces a runner report. A container OOM or SIGKILL that prevents report creation remains the worker's responsibility.
+
+Consumers that need a language-agnostic contract can extract the JSON Schema from the CLI, so the artifact always matches the binary that produced the report:
+
+```bash
+# from a checkout
+npx pathfinder-cli schema e2e-report --include-version
+
+# from the published runner image (self-describing, in-sync by construction)
+docker run --rm --entrypoint node ghcr.io/grafana/pathfinder-e2e-runner:commit-<sha> \
+  /app/dist/cli/cli/index.js schema e2e-report --include-version
+```
+
+The emitted schema carries a stable `$id` (`https://grafana.com/schemas/pathfinder/e2e-test-report-<version>.json`) and `x-schema-version`. Pin consumers on the image digest plus `schemaVersion`.
+
+The `e2e-report` and `e2e-multi-report` schemas are **open-world**: the exported JSON Schema does not include `additionalProperties: false`. This means additive optional fields introduced in a newer runner version are non-breaking — an orchestrator validating reports from a newer runner against an older schema copy will not reject the report. Consumers should configure their validators accordingly (for example, ajv's default behavior already allows extra fields unless explicitly set to strict mode). Among the non-e2e schemas, `guide`, `block`, `content`, and `graph` remain strict. `manifest` and `repository` are deliberately open at the **top level only** — unknown top-level manifest keys are extension metadata that the packaging CLI forwards into the package's repository entry (see [extension fields](./package-authoring.md#extension-fields)). The `manifest` export therefore carries `additionalProperties: {}` on its root object, and `repository` carries it on each entry object. Their nested `author`, `targeting`, and `testEnvironment` schemas stay strict.
+
+Runs that execute more than one guide, or execute an explicitly selected path/journey with one milestone, write a multi-guide report with aggregate summary fields plus the individual per-guide reports.
+
+The dedicated `Dockerfile.e2e-runner` image contains the matching Playwright runner and Chromium, runs as a non-root user, and is published as a signed immutable `ghcr.io/grafana/pathfinder-e2e-runner:commit-<sha>` tag. Cloud Run Jobs should pin the resulting image digest rather than a mutable tag. The deterministic `always-passes` and `always-fails` package fixtures under `tests/e2e-runner/fixtures/` exercise the contract and artifact paths.
 
 ### Failure artifacts
 
@@ -207,9 +269,9 @@ When a step fails, the runner captures:
 
 - **Screenshot**: `{stepId}-failure.png` of the viewport
 - **DOM snapshot**: `{stepId}-dom.html` for selector debugging
-- **Console errors**: `{stepId}-console.json` for JavaScript errors observed during the step
+- **Console errors**: `{stepId}-console.json` when the step records console errors
 
-Artifacts are saved to the `--artifacts` directory (or a temp directory by default). `--always-screenshot` also records pre-step, success, and final screenshots; `--trace` records a Playwright trace and surfaces the trace path in CLI output.
+Artifacts are saved to the `--artifacts` directory (or a temp directory by default). With `--always-screenshot`, the runner also captures pre-step screenshots, success screenshots, and a final screenshot. `--trace` records a Playwright trace in a retained per-invocation output directory and surfaces the trace path in CLI output. Non-trace Playwright output directories are removed after each invocation. Trace capture is disabled for bearer-token-authenticated cloud runs because Playwright traces can contain authorization headers, cookies, and temporary credentials.
 
 ## Guided-block test guide
 
@@ -222,7 +284,7 @@ npx pathfinder-cli e2e bundled:block-editor-tutorial
 Or by path:
 
 ```bash
-npx pathfinder-cli e2e src/bundled-interactives/block-editor-tutorial.json
+npx pathfinder-cli e2e src/bundled-interactives/block-editor-tutorial/content.json
 ```
 
 Guided steps are discovered via `data-targetaction="guided"` and `data-test-substep-total`; after "Do it", the runner drives substeps using only the comment box (`data-test-action`, `data-test-reftarget`, `data-test-target-value`) and step state (`data-test-step-state`, `data-test-substep-index`). Full coverage (button, highlight, formfill, hover, noop, skippable) may require additional guides such as `prometheus-grafana-101` or `loki-grafana-101`.
@@ -250,6 +312,18 @@ Before running, the CLI builds an execution plan from a `repository.json` index 
 - **Virtual capabilities**: a `depends` target may be a capability name; it resolves to whichever guide `provides` it.
 - **Failure propagation**: if a prerequisite fails, its dependents in the same chain are marked skipped (`prerequisite failed`) and not run; the runner continues with the next chain.
 - Only `depends` forms a chain. `recommends` and `suggests` are advisory and do not affect ordering. A `depends` cycle is a configuration error.
+  An explicitly selected `path` or `journey` recursively expands its `milestones` into executable leaf guides:
+
+- Milestones run in declared order and share one environment, including nested paths/journeys.
+- A metapackage or milestone can declare normal CNF `depends`, including a dependency on another path/journey or a virtual capability provider.
+- Milestone order is not an implicit hard dependency. If a milestone fails, later milestones continue unless their resolved `depends` includes the failed guide or metapackage.
+- A hard dependency on a metapackage requires all of that metapackage's executable leaves to pass before the dependent package can run.
+- Missing milestones, incompatible targets, and cycles crossing `depends` and `milestones` fail before Grafana provisioning or Playwright execution.
+- The metapackage cover `content.json` is not executed; only leaf guides are sent to Playwright.
+
+After a guide passes, the runner carries its final passed step location to the next guide in that chain. The location includes its path, query, and fragment. It must use the same origin as the Grafana target.
+
+An explicit manifest `startingLocation` always takes precedence. A failed guide, a skipped final step, an unsafe final URL, or a zero-step guide does not replace the carried location. Each new chain starts without a carried location, so omitted metadata falls back to `/`.
 
 This ordering applies to every run. `--clean` additionally isolates each chain in its own environment (see below).
 
@@ -261,19 +335,34 @@ The environment is reset **between dependency chains**, not between every guide.
 
 ## Timing and timeouts
 
-| Constant             | Value            | Purpose                                      |
-| -------------------- | ---------------- | -------------------------------------------- |
-| Base step timeout    | 30s              | Maximum time for a single step               |
-| Multistep bonus      | +5s per action   | Added for each internal action in multisteps |
-| Guided substep bonus | +30s per substep | Added for each substep in guided blocks      |
-| Button enable wait   | 10s              | Wait for sequential dependencies             |
-| Fix button timeout   | 10s              | Per fix operation                            |
-| Max fix attempts     | 3                | Retry limit before giving up                 |
+| Constant                   | Value            | Purpose                                                                                     |
+| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------- |
+| Base step timeout          | 30s              | Maximum time for a single step                                                              |
+| Multistep bonus            | +5s per action   | Added for each internal action in multisteps                                                |
+| Guided substep bonus       | +30s per substep | Added for each substep in guided blocks                                                     |
+| Runner step backstop       | 2× step + 20s    | Wall-clock limit after normal step operation budgets                                        |
+| Backstop cleanup grace     | 3s per guide     | Page close, inner-work drain, and result publication after a backstop                       |
+| Button enable wait         | 10s              | Wait for sequential dependencies                                                            |
+| Fix button timeout         | 10s              | Per fix operation                                                                           |
+| Max fix attempts           | 3                | Retry limit before giving up                                                                |
+| Requirements settle window | 1s               | Poll budget before an unmet read with no Fix button counts as terminal                      |
+| Scroll into view           | 5s               | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
+| Late completion check      | 2s               | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
+| Skip sync                  | 5s               | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |
+| Guided reload wait         | 15s              | Bounds waiting for `domcontentloaded` after a detected reload or navigation mid-guided-step |
 
 Examples:
 
 - A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
 - A guided block with 3 substeps gets a 120s timeout (30s base + 3×30s).
+
+The calculated step timeout remains the operation budget for normal completion and artifact collection. The runner backstop is twice this budget plus 20 seconds.
+
+If the backstop expires, the runner closes the page and reports an infrastructure error. Normal skippable and mandatory timeout behavior remains unchanged.
+
+During step execution, the runner also watches for page crash, page close, context close, and browser disconnect events. An unexpected event stops the active work and writes an `infrastructure_error` report with completed prior steps.
+
+These outcomes use report schema `1.0.0`. They do not add new report error codes.
 
 ## Troubleshooting
 
@@ -299,7 +388,6 @@ Examples:
 
 - For local development, restart Grafana to reset the session
 - For CI, ensure auth credentials are valid
-- Check that the Playwright auth state file exists: `playwright/.auth/admin.json`
 
 ### Step timeouts
 
@@ -389,7 +477,9 @@ These variables are consumed by the CLI or passed to the spawned Playwright proc
 | ----------------------- | ------------------------------------------------------------------------------ | ----------------------- |
 | `GUIDE_JSON_PATH`       | Path to JSON guide file                                                        | Required                |
 | `GRAFANA_URL`           | Grafana instance URL                                                           | `http://localhost:3000` |
+| `STARTING_LOCATION`     | Effective same-origin start path from the manifest, current chain, or `/`      | `/`                     |
 | `AUTH_STATE_FILE`       | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
+| `GRAFANA_TOKEN`         | Opaque Bearer credential sent only to the Grafana target origin                | Unset (form login)      |
 | `E2E_VERBOSE`           | Enable verbose logging                                                         | `false`                 |
 | `E2E_TRACE`             | Generate Playwright trace file                                                 | `false`                 |
 | `ABORT_FILE_PATH`       | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
@@ -409,11 +499,11 @@ When a step fails, the runner assigns an error classification to help with triag
 | `SELECTOR_NOT_FOUND` | `unknown`        | Could be content-drift OR product-regression |
 | `ACTION_FAILED`      | `unknown`        | Needs human triage                           |
 | `REQUIREMENT_FAILED` | `unknown`        | Could be content-drift OR missing setup      |
-| `TIMEOUT`            | `infrastructure` | Likely environmental                         |
+| `TIMEOUT`            | `unknown`        | Could be content, product, or performance    |
 | `NETWORK_ERROR`      | `infrastructure` | Definitely environmental                     |
 | `AUTH_EXPIRED`       | `infrastructure` | Definitely environmental                     |
 
-Only `infrastructure` failures are auto-classified. `SELECTOR_NOT_FOUND`, `ACTION_FAILED`, and `REQUIREMENT_FAILED` default to `unknown` and require human triage — they could indicate content drift, a product regression, or a missing test environment setup.
+Only high-confidence network, authentication, browser-crash, and closed-target failures are auto-classified as `infrastructure`. Selector, action, requirement, and step timeout failures default to `unknown` and require human triage.
 
 The implemented classifier lives in `tests/e2e-runner/utils/guide-runner/classification.ts`.
 
@@ -436,8 +526,8 @@ When the failure is not clearly a runner or contract bug, avoid changing Pathfin
 
 The CLI can resolve published guides instead of reading local files, then test them against the configured Grafana instance.
 
-- **By ID** (`--package <id>`): when the `--package` value is not an existing local directory, it is treated as a bare package ID and resolved through the recommender (`--resolver-url`, default `https://recommender.grafana.com`). The runner fetches the package's `content.json` and `manifest.json`, validates the content, and runs it.
-- **Whole repository** (`--remote`): fetches the CDN `repository.json` (`--repo-url`, default the public package repository) and tests every package in the index. Dependency-aware chaining still applies, driven by the remote index.
+- **By ID** (`--package <id>`): when the `--package` value is not an existing local directory, it is treated as a bare package ID and resolved through the recommender (`--resolver-url`, default `https://recommender.grafana.com`). Guides run directly. Paths and journeys expand recursively from the CDN `repository.json`, then fetch and run their leaf guides.
+- **Whole repository** (`--remote`): fetches the CDN `repository.json` (`--repo-url`, default the public package repository) and tests every leaf guide in the index. Dependency-aware chaining still applies. Metapackages are not expanded implicitly in a repository sweep; select one explicitly with `--package`.
 
 Guides are routed by their manifest's `testEnvironment.tier`:
 
@@ -448,6 +538,8 @@ Cloud auth:
 
 - **Admin token per cloud target.** Pass `--cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN` to associate an admin service-account token env var with a cloud target. The CLI uses that admin token only to mint a fresh service account and short-lived token for each dependency chain; the browser runner receives only the minted token. Repeat the flag for each supported instance.
 - **Isolated stack leasing.** Pass `--cloud-stack-pool-manager-url <url>` and `--cloud-stack-pool-manager-token <env>` to let unsafe cloud dependency chains lease disposable Grafana Cloud stacks from the pool manager instead of the shared target. Pass `--cloud-stack-pool-id <id>` matching the pool configured on the pool manager you are targeting; the CLI default is `nightly`. The CLI sends `POST /v1/leases` before a dependency chain, runs all cloud guides in that chain against the returned `grafanaUrl` and `runnerToken`, then sends `POST /v1/leases/{leaseId}/retire` during teardown.
+
+The browser runner treats each `GRAFANA_TOKEN` value, including a pool-manager `runnerToken`, as an opaque Bearer credential. It adds the credential to the `Authorization` header only for requests to the Grafana target origin. The runner does not inspect the credential prefix or format.
 
 Per-chain service-account isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides.
 
@@ -467,32 +559,34 @@ Pool-backed run behavior:
 ### Known gaps and follow-up
 
 - Interactive SSO/Okta login (driving the identity provider's login UI) is not supported.
-- Path/journey (`milestones`) expansion is not yet implemented; `path` and `journey` packages are skipped as an unsupported type.
 
 ### Package outcomes
 
 In remote modes a package can end in one of these states. `failed`, `provisioning_failed`, and `validation_failed` produce a non-zero test-failure exit; `auth_expired` produces the auth-failure exit. Other skipped outcomes are logged and the batch continues.
 
-| Outcome                       | Meaning                                                    | Test failure? |
-| ----------------------------- | ---------------------------------------------------------- | ------------- |
-| `passed` / `failed`           | The guide ran (see step results)                           | `failed` only |
-| `provisioning_failed`         | Cloud target provisioning or pool-manager leasing failed   | **Yes**       |
-| `skipped_tier_mismatch`       | `cloud` guide on a `local` environment                     | No            |
-| `skipped_no_auth`             | `cloud` guide with no matching cloud auth                  | No            |
-| `skipped_invalid_instance`    | manifest `instance` is not a bare hostname                 | No            |
-| `skipped_unsafe_shared_stack` | Unsafe cloud chain had no isolated stack route             | No            |
-| `resolution_failed`           | Recommender returned 404 or a network error                | No            |
-| `fetch_failed`                | Could not fetch `content.json` from the CDN                | No            |
-| `unsupported_type`            | Package is a `path` / `journey` (milestone expansion TODO) | No            |
-| `prerequisite_failed`         | A hard prerequisite could not be resolved before execution | No            |
-| `skipped_prereq`              | A prerequisite in the same dependency chain failed         | No            |
-| `validation_failed`           | Fetched `content.json` failed guide schema validation      | **Yes**       |
+| Outcome                       | Meaning                                                        | Test failure? |
+| ----------------------------- | -------------------------------------------------------------- | ------------- |
+| `passed` / `failed`           | The guide ran (see step results)                               | `failed` only |
+| `provisioning_failed`         | Cloud target provisioning or pool-manager leasing failed       | **Yes**       |
+| `skipped_tier_mismatch`       | `cloud` guide on a `local` environment                         | No            |
+| `skipped_no_auth`             | `cloud` guide with no matching cloud auth                      | No            |
+| `skipped_invalid_instance`    | manifest `instance` is not a bare hostname                     | No            |
+| `skipped_unsafe_shared_stack` | Cloud guide requires an isolated stack, but none is configured | No            |
+| `resolution_failed`           | Recommender returned 404 or a network error                    | No            |
+| `fetch_failed`                | Could not fetch `content.json` from the CDN                    | No            |
+| `unsupported_type`            | Repository sweep encountered a non-guide composition package   | No            |
+| `prerequisite_failed`         | A required prerequisite could not be resolved or run           | No            |
+| `skipped_prereq`              | A prerequisite in the same dependency chain failed             | No            |
+| `validation_failed`           | Fetched `content.json` failed guide schema validation          | **Yes**       |
 
 With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).
 
 ```bash
 # Resolve and test a single published guide against local Grafana
 npx pathfinder-cli e2e --package alerting-101
+
+# Resolve and test every milestone in a published path
+npx pathfinder-cli e2e --package prometheus-lj
 
 # Test the whole published repository (local-tier guides run, cloud guides skip)
 npx pathfinder-cli e2e --remote --output results.json
