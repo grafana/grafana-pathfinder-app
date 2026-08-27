@@ -70,7 +70,6 @@ export function extractConcernPaths(markdown, concern) {
 
   const paths = [...row.trigger_paths.matchAll(/`([^`]+)`/g)]
     .map((match) => match[1])
-    .filter((path) => path.includes('/') || /\.[a-z]+$/i.test(path))
     .map((path) => (path.includes('*') ? `:(glob)${path}` : path));
 
   if (paths.length === 0) {

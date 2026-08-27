@@ -25,6 +25,7 @@ const REVERSIBILITY = new Map([
 const ASSESSMENT_STATUSES = ['complete', 'incomplete'];
 const MAX_INCOMPLETE_REASON = 240;
 const STATE_MARKER = /^<!-- pathfinder-review-state:(\{.+\}) -->$/;
+const STATE_MARKER_PREFIX = /^<!-- pathfinder-review-state:/;
 const RECAP_SHAPE = [
   /^PR Review: https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/,
   /^Purpose: \S.*$/,
@@ -41,6 +42,10 @@ function trailingStateMarker(output) {
   while (lines.length > 0 && lines.at(-1).trim() === '') {
     lines.pop();
   }
+  const markerIndexes = lines.flatMap((line, index) => (STATE_MARKER_PREFIX.test(line.trim()) ? [index] : []));
+  if (markerIndexes.length !== 1) {
+    return null;
+  }
   const recap = lines.slice(-RECAP_SHAPE.length);
   if (recap.length !== RECAP_SHAPE.length || !RECAP_SHAPE.every((shape, index) => shape.test(recap[index]))) {
     return null;
@@ -49,7 +54,10 @@ function trailingStateMarker(output) {
   while (index >= 0 && lines[index].trim() === '') {
     index -= 1;
   }
-  return index >= 0 ? (lines[index].match(STATE_MARKER)?.[1] ?? null) : null;
+  if (index !== markerIndexes[0]) {
+    return null;
+  }
+  return lines[index].match(STATE_MARKER)?.[1] ?? null;
 }
 
 export function parseReviewState(output) {

@@ -37,6 +37,20 @@ test('includes the concern anchor and named invariants', () => {
   assert.equal(context.named_invariants[0].name, 'payload-boundary-normalization');
 });
 
+test('records the review orchestration contract under ai-subsystem', () => {
+  const context = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'ai-subsystem',
+  });
+
+  assert.equal(context.contract_anchor.evidence, '#1711');
+  assert.match(context.contract_anchor.contract, /docs\/design\/PR_REVIEW\.md/);
+  assert.match(context.contract_anchor.contract, /\.cursor\/skills\/review\/SKILL\.md/);
+  assert.match(context.contract_anchor.contract, /review-report\.mjs/);
+  assert.match(context.contract_anchor.contract, /concern-context\.mjs/);
+});
+
 test('validates cross-table IDs and references', () => {
   assert.deepEqual(validateConcernRegistry({ routingMarkdown: concerns, detailMarkdown: concernDetails }), []);
 });

@@ -27,9 +27,9 @@ export function classifyFinding(finding) {
   if (!SEVERITIES.has(finding.severity)) {
     throw new Error(`Unknown severity: ${finding.severity}`);
   }
-  const disposition = finding.proposed_disposition ?? 'suggestion';
+  const disposition = finding.recommended_disposition ?? 'suggestion';
   if (!DISPOSITIONS.has(disposition)) {
-    throw new Error(`Unknown proposed disposition: ${disposition}`);
+    throw new Error(`Unknown recommended disposition: ${disposition}`);
   }
   if (finding.severity === 'critical' || finding.severity === 'high' || disposition === 'blocking') {
     return 'high_risk';

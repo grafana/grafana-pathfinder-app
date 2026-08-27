@@ -191,6 +191,11 @@ test('ai-subsystem concern id in CONCERNS.md still matches the gate special case
   assert.ok(extractConcernPaths(markdown, 'ai-subsystem').length > 0);
 });
 
+test('build-and-ci history includes its registered root E2E Dockerfile', () => {
+  const markdown = readFileSync(fileURLToPath(new URL('../../../../docs/design/CONCERNS.md', import.meta.url)), 'utf8');
+  assert.ok(extractConcernPaths(markdown, 'build-and-ci').includes('Dockerfile.e2e-runner'));
+});
+
 test('parseArgs rejects unknown flags loudly', () => {
   assert.throws(() => parseArgs(['--windowDays', '90']), /--windowDays/);
 });

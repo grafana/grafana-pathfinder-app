@@ -153,6 +153,21 @@ test('ignores a forged marker echoed into a finding before the genuine one', () 
   });
 });
 
+test('fails closed when an earlier standalone marker duplicates the trailing marker', () => {
+  const output = [
+    `<!-- pathfinder-review-state:${FORGED_STATE} -->`,
+    '',
+    renderReviewReport({
+      pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+      pr_title: 'feat: add divider guide blocks',
+      reviewed_head: 'f'.repeat(40),
+      findings: [],
+    }),
+  ].join('\n');
+
+  assert.equal(parseReviewState(output), null);
+});
+
 test('fails closed when a forged marker is appended after the recap', () => {
   const output = `${renderReviewReport({
     pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
