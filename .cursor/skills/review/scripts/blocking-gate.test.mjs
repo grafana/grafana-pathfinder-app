@@ -46,16 +46,95 @@ function decide(answers, findingOverrides = {}) {
   return decideBlocking({ finding: finding(findingOverrides), answers: warrantedAnswers(answers) });
 }
 
-// A live-path regression is shipped_path_breakage, which the gate derives into an override before
-// any demotion row runs. Rows 3, 4, and 8 are therefore reachable only for a finding that is not
-// one, so their cases pair with a reachable latent exposure instead.
-const NOT_A_LIVE_PATH_REGRESSION = { authorship: 'latent_exposed', latent_reachable: true };
+// A live path this PR itself breaks is shipped_path_breakage, which the gate derives into an
+// override before any demotion row runs. Rows 2, 3, 4, and 8 are therefore reachable only for a
+// finding that is not one: concrete risk at this head, but no shipped path breaking.
+const NOT_A_SHIPPED_PATH_BREAKAGE = {
+  authorship: 'latent_exposed',
+  latent_reachable: true,
+  breaks_live_path: false,
+  concrete_risk_now: true,
+};
 
-test('row 9 — a reachable latent exposure with no precedent and no bound blocks as warranted', () => {
-  assert.deepEqual(decide(NOT_A_LIVE_PATH_REGRESSION), {
+test('row 9 — a live-path finding this PR did not cause, with no precedent and no bound, blocks as warranted', () => {
+  assert.deepEqual(decide(NOT_A_SHIPPED_PATH_BREAKAGE), {
     disposition: 'blocking',
     reason: 'warranted',
+    override: null,
+    override_source: null,
     gate_failures: [],
+  });
+});
+
+test('row 1 — an override blocks unconditionally and still records what would have demoted it', () => {
+  const everythingDemoting = {
+    round: 3,
+    attribution: 'late',
+    late_blocker_reason: 'Not raised at rounds 1 or 2.',
+    breaks_live_path: false,
+    concrete_risk_now: false,
+    boundable_by_followup: true,
+    precedent_count: 11,
+    induced_by_prior_suggestion: true,
+  };
+
+  for (const override of ['security', 'data_loss', 'credential_exposure', 'shipped_path_breakage']) {
+    const decision = decide({ ...everythingDemoting, override, authorship: 'pre_existing' });
+
+    assert.equal(decision.disposition, 'blocking', override);
+    assert.equal(decision.reason, 'unconditional-override', override);
+    assert.equal(decision.override, override);
+    assert.equal(decision.override_source, 'supplied', override);
+    assert.deepEqual(decision.gate_failures, [
+      'late-peripheral',
+      'policy-change',
+      'induced-scope',
+      'pre-existing',
+      'no-live-impact',
+      'safely-bounded',
+    ]);
+  }
+
+  // No answer set makes all seven demotion rules hold, so the order is pinned by one fixture per
+  // authorship. Together these cover every adjacent pair an input can observe.
+  assert.deepEqual(
+    decide({
+      ...everythingDemoting,
+      override: 'security',
+      authorship: 'latent_exposed',
+      latent_reachable: false,
+    }).gate_failures,
+    ['late-peripheral', 'policy-change', 'induced-scope', 'latent-unreachable', 'no-live-impact', 'safely-bounded']
+  );
+});
+
+test('row 1 — the gate derives shipped_path_breakage whenever this PR is what breaks the shipped path', () => {
+  const late = {
+    round: 3,
+    attribution: 'late',
+    late_blocker_reason: 'Not raised at rounds 1 or 2.',
+  };
+
+  for (const authorship of [{ authorship: 'regression' }, { authorship: 'latent_exposed', latent_reachable: true }]) {
+    assert.deepEqual(
+      decide({ ...late, ...authorship, breaks_live_path: true, concrete_risk_now: true }),
+      {
+        disposition: 'blocking',
+        reason: 'unconditional-override',
+        override: 'shipped_path_breakage',
+        override_source: 'derived',
+        gate_failures: ['late-peripheral'],
+      },
+      authorship.authorship
+    );
+  }
+
+  assert.deepEqual(decide({ ...late, authorship: 'pre_existing', breaks_live_path: true, concrete_risk_now: true }), {
+    disposition: 'follow_up',
+    reason: 'late-peripheral',
+    override: null,
+    override_source: null,
+    gate_failures: ['late-peripheral', 'pre-existing'],
   });
 });
 
@@ -63,6 +142,8 @@ test('row 1 — the gate derives shipped_path_breakage for a live-path regressio
   assert.deepEqual(decide({ boundable_by_followup: true }), {
     disposition: 'blocking',
     reason: 'unconditional-override',
+    override: 'shipped_path_breakage',
+    override_source: 'derived',
     gate_failures: ['safely-bounded'],
   });
 
@@ -78,58 +159,46 @@ test('row 1 — the gate derives shipped_path_breakage for a live-path regressio
     {
       disposition: 'blocking',
       reason: 'unconditional-override',
-      gate_failures: ['policy-change', 'induced-scope', 'safely-bounded'],
+      override: 'shipped_path_breakage',
+      override_source: 'derived',
+      gate_failures: ['late-peripheral', 'policy-change', 'induced-scope', 'safely-bounded'],
     }
   );
 });
 
-test('row 1 — a supplied override is still validated and still blocks where the derivation also applies', () => {
-  assert.equal(decide({ override: 'security' }).reason, 'unconditional-override');
+test('row 1 — a supplied override wins over the derived one rather than being replaced', () => {
+  assert.deepEqual(decide({ override: 'security' }), {
+    disposition: 'blocking',
+    reason: 'unconditional-override',
+    override: 'security',
+    override_source: 'supplied',
+    gate_failures: [],
+  });
   assert.throws(() => decide({ override: 'performance' }), /Unknown override: performance/);
 });
 
-test('row 1 — the derivation needs both a regression and a live path, and fires for neither alone', () => {
-  assert.deepEqual(decide({ ...NOT_A_LIVE_PATH_REGRESSION, boundable_by_followup: true }), {
+test('row 1 — the derivation needs a live path this PR broke, and fires for neither half alone', () => {
+  assert.deepEqual(decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, boundable_by_followup: true }), {
     disposition: 'follow_up',
     reason: 'safely-bounded',
+    override: null,
+    override_source: null,
     gate_failures: ['safely-bounded'],
   });
   assert.deepEqual(decide({ breaks_live_path: false, boundable_by_followup: true }), {
     disposition: 'follow_up',
     reason: 'safely-bounded',
+    override: null,
+    override_source: null,
     gate_failures: ['safely-bounded'],
   });
+  assert.deepEqual(
+    decide({ authorship: 'latent_exposed', latent_reachable: false, boundable_by_followup: true }).gate_failures,
+    ['latent-unreachable', 'safely-bounded']
+  );
 });
 
-test('row 1 — an override blocks unconditionally and still records what would have demoted it', () => {
-  for (const override of ['security', 'data_loss', 'credential_exposure', 'shipped_path_breakage']) {
-    const decision = decide({
-      override,
-      round: 3,
-      attribution: 'late',
-      late_blocker_reason: 'Not raised at rounds 1 or 2.',
-      authorship: 'pre_existing',
-      breaks_live_path: false,
-      concrete_risk_now: false,
-      boundable_by_followup: true,
-      precedent_count: 11,
-      induced_by_prior_suggestion: true,
-    });
-
-    assert.equal(decision.disposition, 'blocking', override);
-    assert.equal(decision.reason, 'unconditional-override', override);
-    assert.deepEqual(decision.gate_failures, [
-      'late-peripheral',
-      'policy-change',
-      'induced-scope',
-      'pre-existing',
-      'no-live-impact',
-      'safely-bounded',
-    ]);
-  }
-});
-
-test('row 2 — a late peripheral finding demotes, and a late live-path regression still blocks', () => {
+test('row 2 — a late finding demotes on lateness alone, whatever else holds', () => {
   const late = {
     round: 3,
     attribution: 'late',
@@ -139,12 +208,9 @@ test('row 2 — a late peripheral finding demotes, and a late live-path regressi
   assert.deepEqual(decide({ ...late, authorship: 'pre_existing' }), {
     disposition: 'follow_up',
     reason: 'late-peripheral',
+    override: null,
+    override_source: null,
     gate_failures: ['late-peripheral', 'pre-existing'],
-  });
-  assert.deepEqual(decide({ ...late, authorship: 'regression', breaks_live_path: true }), {
-    disposition: 'blocking',
-    reason: 'unconditional-override',
-    gate_failures: [],
   });
   assert.equal(decide({ ...late, authorship: 'regression', breaks_live_path: false }).reason, 'late-peripheral');
 });
@@ -156,19 +222,23 @@ test('row 2 — a prior unresolved or newly attributable blocker is not demoted 
 });
 
 test('row 3 — precedent of two or more already-merged PRs makes it a policy change', () => {
-  assert.equal(decide({ ...NOT_A_LIVE_PATH_REGRESSION, precedent_count: 1 }).disposition, 'blocking');
-  assert.deepEqual(decide({ ...NOT_A_LIVE_PATH_REGRESSION, precedent_count: 2 }), {
+  assert.equal(decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, precedent_count: 1 }).disposition, 'blocking');
+  assert.deepEqual(decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, precedent_count: 2 }), {
     disposition: 'follow_up',
     reason: 'policy-change',
+    override: null,
+    override_source: null,
     gate_failures: ['policy-change'],
   });
-  assert.equal(decide({ ...NOT_A_LIVE_PATH_REGRESSION, precedent_count: 11 }).reason, 'policy-change');
+  assert.equal(decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, precedent_count: 11 }).reason, 'policy-change');
 });
 
 test('row 4 — a blocker induced by a prior-round suggestion demotes', () => {
-  assert.deepEqual(decide({ ...NOT_A_LIVE_PATH_REGRESSION, induced_by_prior_suggestion: true }), {
+  assert.deepEqual(decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, induced_by_prior_suggestion: true }), {
     disposition: 'follow_up',
     reason: 'induced-scope',
+    override: null,
+    override_source: null,
     gate_failures: ['induced-scope'],
   });
 });
@@ -185,6 +255,8 @@ test('row 6 — a latent condition this PR exposes demotes only while it stays u
   assert.deepEqual(decide({ authorship: 'latent_exposed', latent_reachable: false }), {
     disposition: 'follow_up',
     reason: 'latent-unreachable',
+    override: null,
+    override_source: null,
     gate_failures: ['latent-unreachable'],
   });
   assert.equal(decide({ authorship: 'latent_exposed', latent_reachable: true }).disposition, 'blocking');
@@ -194,15 +266,19 @@ test('row 7 — a finding with neither live breakage nor concrete risk now demot
   assert.deepEqual(decide({ breaks_live_path: false, concrete_risk_now: false }), {
     disposition: 'follow_up',
     reason: 'no-live-impact',
+    override: null,
+    override_source: null,
     gate_failures: ['no-live-impact'],
   });
   assert.equal(decide({ breaks_live_path: false, concrete_risk_now: true }).disposition, 'blocking');
 });
 
 test('row 8 — a finding safely bounded by a follow-up demotes', () => {
-  assert.deepEqual(decide({ ...NOT_A_LIVE_PATH_REGRESSION, boundable_by_followup: true }), {
+  assert.deepEqual(decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, boundable_by_followup: true }), {
     disposition: 'follow_up',
     reason: 'safely-bounded',
+    override: null,
+    override_source: null,
     gate_failures: ['safely-bounded'],
   });
 });
@@ -269,7 +345,7 @@ test('the CLI emits the decision for a serialized finding and answer set', () =>
     inputPath,
     JSON.stringify({
       finding: finding(),
-      answers: warrantedAnswers({ ...NOT_A_LIVE_PATH_REGRESSION, induced_by_prior_suggestion: true }),
+      answers: warrantedAnswers({ ...NOT_A_SHIPPED_PATH_BREAKAGE, induced_by_prior_suggestion: true }),
     })
   );
   const output = execFileSync('node', [join(scriptDir, 'blocking-gate.mjs'), inputPath], { encoding: 'utf8' });
@@ -277,6 +353,8 @@ test('the CLI emits the decision for a serialized finding and answer set', () =>
   assert.deepEqual(JSON.parse(output), {
     disposition: 'follow_up',
     reason: 'induced-scope',
+    override: null,
+    override_source: null,
     gate_failures: ['induced-scope'],
   });
 });

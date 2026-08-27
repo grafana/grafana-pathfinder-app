@@ -77,7 +77,7 @@ The warrant majority is counted **among confirming verdicts only**. A skeptic wh
 
 ### Blocking gate answers
 
-Every finding still recommended `blocking` after adversarial verification is serialized as `{ finding, answers }` and passed to `.cursor/skills/review/scripts/blocking-gate.mjs`, which returns `{ disposition, reason, gate_failures }`. `blocking-gate.test.mjs` is its behavioral spec, including the PR #1702 acceptance fixture. Never hand-apply its table.
+Every finding still recommended `blocking` after adversarial verification is serialized as `{ finding, answers }` and passed to `.cursor/skills/review/scripts/blocking-gate.mjs`, which returns `{ disposition, reason, override, override_source, gate_failures }`. `blocking-gate.test.mjs` is its behavioral spec, including the PR #1702 acceptance fixture. Never hand-apply its table.
 
 | Answer                        | Rule                                                                                               |
 | ----------------------------- | -------------------------------------------------------------------------------------------------- |
@@ -97,7 +97,11 @@ Every finding still recommended `blocking` after adversarial verification is ser
 
 The `override` list is the entire safety net, and it must not acquire round, precedent, or authorship conditions.
 
-**The gate derives `shipped_path_breakage` itself.** When `authorship` is `regression` and `breaks_live_path` is true and the reviewer supplied no `override`, the gate resolves the override to `shipped_path_breakage` before any demotion rule runs. A reviewer never has to think to hand-set it: a regression that breaks a shipped path blocks unconditionally at any round, whatever its precedent count, induced scope, or attribution. That derivation is what makes the late-finding demotion in row 2 safe — and equally what keeps rows 3, 4, and 8 from demoting a live-path regression, since such a finding never reaches them. An explicitly supplied override always wins as supplied and is never replaced.
+**The gate derives `shipped_path_breakage` itself.** When `breaks_live_path` is true, the reviewer supplied no `override`, and this PR is what breaks the path — `authorship` is `regression`, or `latent_exposed` with `latent_reachable` true — the gate resolves the override to `shipped_path_breakage` before any demotion rule runs. A reviewer never has to think to hand-set it: a shipped path that breaks because of this change blocks unconditionally at any round, whatever its precedent count, induced scope, or attribution. That derivation is what makes the late-finding demotion in row 2 safe, and what keeps rows 3, 4, and 8 from demoting such a finding, since it never reaches them.
+
+The derivation keys on the shipped path breaking **because of this PR**, not merely on the shipped path breaking. `pre_existing` with `breaks_live_path` true is deliberately excluded: that path was already broken at the base commit, so row 5 demoting it is the correct outcome, and blocking would charge this author for someone else's breakage. `latent_exposed` splits on `latent_reachable` for the same reason — this PR is what made the condition reachable, so the breakage is this PR's, while one that stays unreachable is still demoted by row 6.
+
+The gate returns the resolved `override` and an `override_source` of `supplied` or `derived`, so the trace can tell a reviewer's judgment from the gate's. Both are `null` when no override applies. An explicitly supplied override always wins and is never replaced by the derived one — a reviewer's `security` on a live-path regression resolves to `security` from `supplied`.
 
 `gate_failures` lists every demoting condition that held, not only the one that decided the outcome — including on an override, whether supplied or derived, so the debug trace shows what the override outranked.
 
@@ -107,8 +111,8 @@ First match wins, in this order. The reason code is the stable identifier; cite 
 
 | Row | Condition                                                        | Disposition | Reason                   |
 | --- | ---------------------------------------------------------------- | ----------- | ------------------------ |
-| 1   | `override` is supplied, or derived from a live-path regression   | `blocking`  | `unconditional-override` |
-| 2   | `attribution` is `late`, and not a live-path regression          | `follow_up` | `late-peripheral`        |
+| 1   | `override` is supplied, or derived per the rule above            | `blocking`  | `unconditional-override` |
+| 2   | `attribution` is `late`                                          | `follow_up` | `late-peripheral`        |
 | 3   | `precedent_count >= 2`                                           | `follow_up` | `policy-change`          |
 | 4   | `induced_by_prior_suggestion`                                    | `follow_up` | `induced-scope`          |
 | 5   | `authorship` is `pre_existing`                                   | `follow_up` | `pre-existing`           |
@@ -117,7 +121,9 @@ First match wins, in this order. The reason code is the stable identifier; cite 
 | 8   | `boundable_by_followup`                                          | `follow_up` | `safely-bounded`         |
 | 9   | no rule above holds                                              | `blocking`  | `warranted`              |
 
-Rows 2 through 8 are the `DEMOTIONS` list in `blocking-gate.mjs`, in source order; the row 1 test pins that order by deep-equalling the full `gate_failures` sequence, so reordering the list fails the suite rather than silently renumbering this table.
+Row 2 carries no carve-out. A late finding that breaks a shipped path because of this PR already blocked at row 1 on the derived override, so it never reaches row 2 — the exception lives at row 1, as one rule, rather than as a clause repeated on another. Row 2 therefore holds on lateness alone, and `gate_failures` records it even where row 1 outranked it.
+
+Rows 2 through 8 are the `DEMOTIONS` list in `blocking-gate.mjs`, in source order. No single answer set can make all seven hold — `pre-existing` and `latent-unreachable` demand different `authorship` values — so the order is pinned by two complementary `gate_failures` fixtures in the row 1 test, one per `authorship`. Between them they pin every adjacent pair any input can observe; rows 5 and 6 are mutually exclusive, so their relative order is unobservable and unpinned by construction. Reordering the list fails the suite rather than silently renumbering this table.
 
 ### Reversibility values
 

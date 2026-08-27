@@ -16,11 +16,7 @@ const REQUIRED_BOOLEANS = [
 const MAX_ROUND = 100;
 
 const DEMOTIONS = [
-  {
-    reason: 'late-peripheral',
-    holds: (answers) =>
-      answers.attribution === 'late' && !(answers.authorship === 'regression' && answers.breaks_live_path),
-  },
+  { reason: 'late-peripheral', holds: (answers) => answers.attribution === 'late' },
   { reason: 'policy-change', holds: (answers) => answers.precedent_count >= 2 },
   { reason: 'induced-scope', holds: (answers) => answers.induced_by_prior_suggestion },
   { reason: 'pre-existing', holds: (answers) => answers.authorship === 'pre_existing' },
@@ -37,7 +33,9 @@ function nonEmpty(value) {
 }
 
 function derivedOverride(answers) {
-  return answers.authorship === 'regression' && answers.breaks_live_path ? 'shipped_path_breakage' : null;
+  const thisPrBreaksIt =
+    answers.authorship === 'regression' || (answers.authorship === 'latent_exposed' && answers.latent_reachable);
+  return answers.breaks_live_path && thisPrBreaksIt ? 'shipped_path_breakage' : null;
 }
 
 function validateFinding(finding) {
@@ -105,7 +103,9 @@ function validateAnswers(answers) {
       throw new Error('contradicting a cleared claim requires non-empty new_evidence');
     }
   }
-  return { ...answers, override: suppliedOverride ?? derivedOverride(answers), attribution };
+  const override = suppliedOverride ?? derivedOverride(answers);
+  const overrideSource = override === null ? null : suppliedOverride === null ? 'derived' : 'supplied';
+  return { ...answers, override, override_source: overrideSource, attribution };
 }
 
 export function decideBlocking(input) {
@@ -115,13 +115,14 @@ export function decideBlocking(input) {
   validateFinding(input.finding);
   const answers = validateAnswers(input.answers);
   const gateFailures = DEMOTIONS.filter((rule) => rule.holds(answers)).map((rule) => rule.reason);
+  const override = { override: answers.override, override_source: answers.override_source };
   if (answers.override !== null) {
-    return { disposition: 'blocking', reason: 'unconditional-override', gate_failures: gateFailures };
+    return { disposition: 'blocking', reason: 'unconditional-override', ...override, gate_failures: gateFailures };
   }
   if (gateFailures.length > 0) {
-    return { disposition: 'follow_up', reason: gateFailures[0], gate_failures: gateFailures };
+    return { disposition: 'follow_up', reason: gateFailures[0], ...override, gate_failures: gateFailures };
   }
-  return { disposition: 'blocking', reason: 'warranted', gate_failures: [] };
+  return { disposition: 'blocking', reason: 'warranted', ...override, gate_failures: [] };
 }
 
 function main() {

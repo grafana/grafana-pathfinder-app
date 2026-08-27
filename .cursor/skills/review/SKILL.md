@@ -263,7 +263,7 @@ Rules:
 - **Never hand-apply the decision table.** Run the script and read its `disposition`.
 - The gate emits `blocking` or `follow_up` only. **The synthesizer must not convert a gate-demoted finding back to `blocking`.**
 - If a demoted finding leaves no maintainer action at all, the synthesizer may render it as a `suggestion` instead of a `follow_up`. That is the one judgment left downstream of the gate.
-- Record each decision's `reason` and `gate_failures` in the debug trace.
+- Record each decision's `reason`, `override`, `override_source`, and `gate_failures` in the debug trace, so a later reader can tell a reviewer-supplied override from one the gate derived, and see what it outranked.
 
 Genuine security, data-loss, credential-exposure, and shipped-path-breakage findings block unconditionally at any round, regardless of precedent or authorship. That is what `override` is for, and it is the entire safety net beneath everything else in this phase — reach for it whenever it genuinely applies, and never to rescue a blocker the other rules demoted.
 
@@ -290,7 +290,7 @@ The synthesizer must:
 - disclose when the PR's center of gravity appears only weakly covered by the current concern registry
 - suggest updating `docs/design/CONCERNS.md` when the same unowned area appears important enough to deserve subsystem-aware review
 - surface `contract_missing` and `contract_branching` verdicts from §3b even when all subsystem reviewers are clean
-- require the contract anchor in `docs/design/CONCERN_DETAILS.md` and the concern's routing paths in `docs/design/CONCERNS.md` in the same PR **only** when the PR _deliberately_ establishes or replaces a contract — a typed facade, reducer, schema owner, or lifecycle owner — **and** its author is a maintainer. Otherwise record it as a `follow_up` with `owner: maintainer` and a proposed issue. Requiring a community contributor to write an internal architecture anchor in order to land a block type is the review imposing its own scope on someone else's change
+- require the contract anchor in `docs/design/CONCERN_DETAILS.md` and the concern's routing paths in `docs/design/CONCERNS.md` in the same PR **only** when the PR _deliberately_ establishes or replaces a contract — a typed facade, reducer, schema owner, or lifecycle owner — **and** its author is a maintainer, which the handle list in `.github/community-pr-gate.json` decides — authoritative for this question even where `.github/CODEOWNERS` differs. Otherwise record it as a `follow_up` with `owner: maintainer` and a proposed issue. Requiring a community contributor to write an internal architecture anchor in order to land a block type is the review imposing its own scope on someone else's change
 - assign every retained finding a stable ID and final author disposition: `blocking`, `follow_up`, `suggestion`, or `nit`
 - treat an unanswered question as `blocking` only when the answer is required to merge; otherwise render it as a `suggestion`
 - state a complete merge contract: fixing every blocking ID must make the reviewed head mergeable, subject only to risks introduced by later commits
@@ -298,7 +298,7 @@ The synthesizer must:
 
 ### Do not manufacture blockers from the review's own effects
 
-**Induced scope.** A blocker whose existence traces to code the contributor added _in response to_ a prior-round `suggestion` or `nit` sets `induced_by_prior_suggestion` and is presumptively a `follow_up`. To stay blocking it must clear §4c on the `unconditional-override` row — an override the reviewer supplies, or the one the gate derives for a live-path regression. Suggesting an expansion and then gating merge on the expansion's quality is how a review grows a PR it was supposed to evaluate.
+**Induced scope.** A blocker whose existence traces to code the contributor added _in response to_ a prior-round `suggestion` or `nit` sets `induced_by_prior_suggestion` and is presumptively a `follow_up`. To stay blocking it must clear §4c on the `unconditional-override` row — an override the reviewer supplies, or the one the gate derives when this PR is what breaks a shipped path. Suggesting an expansion and then gating merge on the expansion's quality is how a review grows a PR it was supposed to evaluate.
 
 **Suggestion surface.** A suggestion that would widen the PR's changed surface — a new file, a new component, a new exported symbol, a new user-facing affordance — is a `follow_up`, not a `suggestion`. Optional advice that grows the diff is how a PR metastasizes; a proposed issue keeps the idea without charging this PR for it.
 
