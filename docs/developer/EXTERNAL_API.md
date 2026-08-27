@@ -391,8 +391,10 @@ opens `member.url`, which `resolvePackageMilestones` takes from the resolution's
 fetched through the `backend-guide:` loader, whose `buildLoaderManifest` spreads
 `spec.manifest` through with `additionalFields` intact. The value is at the
 reader. It is then discarded at the panel seam: `openMember` also passes the
-PATH's `packageInfo`, and `docs-panel.tsx` reads `packageInfo?.packageManifest`
-ahead of `fetchedContent.metadata.packageManifest`, so the stripped catalogue
+PATH's `packageInfo`, and `resolveDocsLoadAlignment`
+(`src/components/docs-panel/utils/docs-load-finalizer.ts`) reads
+`packageInfo?.packageManifest` ahead of
+`fetchedContent.metadata.packageManifest`, so the stripped catalogue
 manifest — truthy, and therefore never falling back — wins over the complete
 one. The CUE
 promotion does NOT fix this: the problem is precedence, not transport. Worse,

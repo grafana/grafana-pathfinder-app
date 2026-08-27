@@ -241,19 +241,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 - Support for learning paths and docs
 - Milestone navigation (journeys)
 
-**Tab State:**
-
-```typescript
-{
-  id: string; // Unique identifier
-  title: string; // Display name
-  baseUrl: string; // Initial URL
-  currentUrl: string; // Current milestone URL
-  content: Content; // Rendered content
-  isLoading: boolean; // Loading state
-  error: string | null; // Error state
-}
-```
+**Tab State:** see `LearningJourneyTab` in `src/types/content-panel.types.ts`; the persisted subset is `PersistedTabData` in the same file. The pure transitions that produce these shapes live in `src/components/docs-panel/utils/tab-state-transitions.ts` (close, gate prune, persistence projection) and `utils/docs-load-finalizer.ts` (alignment decision and load-success patch).
 
 ## Live Session Features
 
