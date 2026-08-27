@@ -67,8 +67,9 @@ export const DEFAULT_ENABLE_CODA_TERMINAL = false;
 export const DEFAULT_ENABLE_KIOSK_MODE = false;
 export const DEFAULT_KIOSK_RULES_URL = '';
 
-// AI auto-heal: default OFF — the AI write path requires explicit admin opt-in
-export const DEFAULT_ENABLE_AI_AUTO_HEAL = false;
+// AI auto-heal: default ON, but inert unless the Grafana Assistant is available —
+// the toggle is an admin kill switch, not a rollout gate
+export const DEFAULT_ENABLE_AI_AUTO_HEAL = true;
 
 // Two-tab controller: default OFF — the live-tab executor drives the user's
 // authenticated Grafana DOM, so it requires explicit admin opt-in

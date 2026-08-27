@@ -169,6 +169,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
         jsonData: {
           ...(resolvedJsonData || {}),
           ...getConfigWithDefaults(resolvedJsonData || {}),
+          // Pass through raw, not the resolved default — this tab doesn't own the
+          // field, and materializing it here would freeze out a future default change.
+          enableAiAutoHeal: resolvedJsonData?.enableAiAutoHeal,
           enableAssistantDevMode: newValue,
         },
       });
@@ -233,6 +236,9 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       const newJsonData = {
         ...(resolvedJsonData || {}),
         ...getConfigWithDefaults(resolvedJsonData || {}),
+        // Pass through raw, not the resolved default — this tab doesn't own the
+        // field, and materializing it here would freeze out a future default change.
+        enableAiAutoHeal: resolvedJsonData?.enableAiAutoHeal,
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
