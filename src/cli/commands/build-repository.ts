@@ -206,6 +206,11 @@ function readPackage(root: string, packageDir: string): PackageReadResult {
     entry.replaces = manifest.replaces?.length ? manifest.replaces : undefined;
     entry.targeting = manifest.targeting;
     entry.testEnvironment = manifest.testEnvironment;
+    // Named, so extension forwarding skips it — same trap the stats line below
+    // records. Without this the runtime floor never reaches repository.json.
+    if (manifest.minGrafanaVersion !== undefined) {
+      entry.minGrafanaVersion = manifest.minGrafanaVersion;
+    }
     // Named since #1682 declared it on the manifest schema, so the extension
     // forwarding below now skips it. Without this line the stamp silently stopped
     // reaching repository.json — the generated denominator, dropped between a

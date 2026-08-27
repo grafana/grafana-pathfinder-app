@@ -38,8 +38,10 @@ COPY src/cli ./src/cli
 COPY src/types ./src/types
 COPY src/validation ./src/validation
 # src/lib/guide-stats is the canonical block-count computation the
-# build-stats command calls.
+# build-stats command calls; guide-version.ts is the version comparator the
+# e2e preflight shares with the docs panel.
 COPY src/lib/guide-stats ./src/lib/guide-stats
+COPY src/lib/guide-version.ts ./src/lib/guide-version.ts
 
 RUN npm ci --no-audit --no-fund
 

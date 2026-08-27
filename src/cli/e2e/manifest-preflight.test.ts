@@ -10,8 +10,6 @@ import {
   checkMinVersion,
   checkPlugins,
   runManifestPreflight,
-  parseVersion,
-  compareVersions,
   loadManifestFromDir,
   type CurrentTier,
 } from './manifest-preflight';
@@ -20,48 +18,6 @@ import type { ManifestJson, TestEnvironment } from '../../types/package.types';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-
-// ============ parseVersion ============
-
-describe('parseVersion', () => {
-  it('parses a standard semver string', () => {
-    expect(parseVersion('12.2.0')).toEqual([12, 2, 0]);
-  });
-
-  it('parses a semver with pre-release suffix', () => {
-    expect(parseVersion('12.2.0-pre')).toEqual([12, 2, 0]);
-  });
-
-  it('parses a semver with build metadata', () => {
-    expect(parseVersion('12.2.0+security-01')).toEqual([12, 2, 0]);
-  });
-
-  it('returns null for non-semver strings', () => {
-    expect(parseVersion('not-a-version')).toBeNull();
-    expect(parseVersion('')).toBeNull();
-    expect(parseVersion('12.2')).toBeNull();
-  });
-});
-
-// ============ compareVersions ============
-
-describe('compareVersions', () => {
-  it('returns 0 for equal versions', () => {
-    expect(compareVersions([12, 2, 0], [12, 2, 0])).toBe(0);
-  });
-
-  it('returns negative when a < b (major)', () => {
-    expect(compareVersions([11, 0, 0], [12, 0, 0])).toBeLessThan(0);
-  });
-
-  it('returns positive when a > b (minor)', () => {
-    expect(compareVersions([12, 3, 0], [12, 2, 0])).toBeGreaterThan(0);
-  });
-
-  it('returns negative when patch differs', () => {
-    expect(compareVersions([12, 2, 1], [12, 2, 2])).toBeLessThan(0);
-  });
-});
 
 // ============ checkTier ============
 

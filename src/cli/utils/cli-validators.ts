@@ -270,6 +270,7 @@ export const CHOICE_FIELD_VALIDATORS: Record<string, FieldValidator[]> = {
 export const MANIFEST_FIELD_VALIDATORS: Record<string, FieldValidator[]> = {
   repository: [assertRepositoryRef],
   schemaVersion: [assertSemver],
+  minGrafanaVersion: [assertSemver],
   description: [assertNonEmptyString],
   depends: [arrayOf(assertPackageIdRef)],
   recommends: [arrayOf(assertPackageIdRef)],

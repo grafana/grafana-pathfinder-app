@@ -10,6 +10,7 @@ import type { RawContent } from '../../types/content.types';
 import type { LearningJourneyTab, PendingAlignment } from '../../types/content-panel.types';
 import {
   AlignmentPrompt,
+  GuideVersionNotice,
   LearningJourneyMilestoneToolbar,
   type MilestoneToolbarSurface,
 } from '../docs-panel/components';
@@ -137,6 +138,7 @@ export function FloatingPanelContent({
             />
           </div>
         )}
+        <GuideVersionNotice manifest={activeTab?.packageInfo?.packageManifest ?? content?.metadata.packageManifest} />
         {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
           <div style={{ padding: 16 }}>
             <AlignmentPrompt

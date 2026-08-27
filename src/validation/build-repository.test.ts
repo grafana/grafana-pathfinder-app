@@ -403,6 +403,25 @@ describe('buildRepository', () => {
     // Named, so it is not announced as a forwarded extension field.
     expect(info).toEqual([]);
   });
+
+  it('should carry minGrafanaVersion onto the entry as a named field', () => {
+    writeJson(path.join(tmpDir, 'guide-with-floor', 'content.json'), {
+      id: 'guide-with-floor',
+      title: 'Guide with a floor',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-floor', 'manifest.json'), {
+      id: 'guide-with-floor',
+      type: 'guide',
+      minGrafanaVersion: '13.2.0',
+    });
+
+    const { repository, info, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-with-floor']?.minGrafanaVersion).toBe('13.2.0');
+    // Named, so it is not announced as a forwarded extension field.
+    expect(info).toEqual([]);
+  });
   it('should carry a well-formed stats stamp onto the entry as a named field', () => {
     const stamp = {
       version: 1,

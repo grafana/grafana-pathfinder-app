@@ -125,6 +125,10 @@ export enum UserInteraction {
   // Interactive-learning banner experiment
   InteractiveLearningBannerShown = 'interactive_learning_banner_shown',
   InteractiveLearningBannerDismissed = 'interactive_learning_banner_dismissed',
+
+  // Guide declares a minGrafanaVersion the running instance does not meet.
+  // No acted/dismissed pair — the notice offers nothing to act on.
+  GuideVersionUnsupportedShown = 'guide_version_unsupported_shown',
 }
 
 // ============================================================================

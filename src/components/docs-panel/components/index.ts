@@ -8,6 +8,7 @@ export { MyLearningErrorBoundary } from './MyLearningErrorBoundary';
 export { TabBarActions, type TabBarActionsProps } from './TabBarActions';
 export { ModalBackdrop, type ModalBackdropProps } from './ModalBackdrop';
 export { AlignmentPrompt, type AlignmentPromptProps } from './AlignmentPrompt';
+export { GuideVersionNotice, type GuideVersionNoticeProps } from './GuideVersionNotice';
 export { FullScreenModeNotice } from './FullScreenModeNotice';
 export { PanelModeActionButtons, type PanelModeActionButtonsProps } from './PanelModeActionButtons';
 export {

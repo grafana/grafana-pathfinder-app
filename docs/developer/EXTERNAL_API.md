@@ -329,7 +329,8 @@ and what makes a path a path.
 | `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. Anything not typed above goes here.                                                                            |
 
 `recommends`, `suggests`, `provides`, `targeting`, `testEnvironment`,
-`startingLocation`, and the generated `stats` stamp have no typed home yet, so
+`startingLocation`, `minGrafanaVersion`, and the generated `stats` stamp have no
+typed home yet, so
 `upsert-learning-path.sh` writes them under `additionalFields` rather
 than dropping them — as it does for any manifest key the CRD doesn't
 declare, including surplus `author` subkeys. The block editor writes the two it
@@ -341,13 +342,18 @@ anything reads that location:
 | Key                                        | Read from `additionalFields`?                                                           |
 | ------------------------------------------ | --------------------------------------------------------------------------------------- |
 | `startingLocation`                         | On some routes only — see below.                                                        |
+| `minGrafanaVersion`                        | On some routes only — same split as `startingLocation`, see below.                      |
 | `stats`                                    | Not yet. Written by both App Platform writers; the first consumer reads both locations. |
 | `recommends`, `suggests`                   | No — the frontend reads these from the manifest's top level, so they are inert here.    |
 | `provides`, `targeting`, `testEnvironment` | No consumer on the App Platform path at all.                                            |
 
 `src/recovery/starting-location.ts` reads both locations, typed field first, so
 `startingLocation` takes effect wherever the manifest reaches it with
-`additionalFields` intact.
+`additionalFields` intact. `src/lib/guide-version.ts` does the same for
+`minGrafanaVersion`, and inherits the same route split: the catalogue proxy's
+`customGuideManifest` declares no `additionalFields`, so a guide opened from a
+path card loses the floor while the same guide opened standalone or by share
+link keeps it.
 
 Whichever location it came from, the value is authored data on its way to
 `locationService.push`, so it leaves the resolver only if

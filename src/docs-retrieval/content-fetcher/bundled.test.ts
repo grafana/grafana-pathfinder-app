@@ -126,3 +126,36 @@ describe('fetchBundledInteractive — invalid shapes', () => {
     expect(result.error).toBe('Empty bundled URL');
   });
 });
+
+describe('fetchBundledInteractive — sibling manifest', () => {
+  it('stamps the package manifest on a package-path load', async () => {
+    const result = await fetchBundledInteractive('bundled:welcome-to-grafana/content.json');
+
+    expect(result.content!.metadata.packageManifest).toMatchObject({
+      id: 'welcome-to-grafana',
+      type: 'guide',
+    });
+  });
+
+  it('stamps the package manifest on an indexed load', async () => {
+    const result = await fetchBundledInteractive('bundled:welcome-to-grafana');
+
+    expect(result.content!.metadata.packageManifest).toMatchObject({ id: 'welcome-to-grafana' });
+  });
+
+  it('loads a static link with no manifest rather than failing', async () => {
+    const result = await fetchBundledInteractive('bundled:static-links/administration-cloud.json');
+
+    expect(result.content).not.toBeNull();
+    expect(result.content!.metadata.packageManifest).toBeUndefined();
+  });
+
+  it('leaves localStorage-backed guides without a manifest', async () => {
+    localStorage.setItem(StorageKeys.E2E_TEST_GUIDE, JSON.stringify({ title: 'E2E Run', blocks: [] }));
+
+    const result = await fetchBundledInteractive('bundled:e2e-test');
+
+    expect(result.content!.metadata.packageManifest).toBeUndefined();
+    localStorage.clear();
+  });
+});

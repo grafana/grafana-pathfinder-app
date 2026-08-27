@@ -25,6 +25,7 @@ jest.mock('../docs-panel/link-handler.hook', () => ({
 
 jest.mock('../docs-panel/components', () => ({
   AlignmentPrompt: () => null,
+  GuideVersionNotice: () => null,
   LearningJourneyMilestoneToolbar: () => null,
 }));
 

@@ -24,7 +24,7 @@ import type {
 } from '../types/package.types';
 import { RepositoryJsonSchema } from '../types/package.schema';
 
-import { loadBundledContent, loadBundledManifest } from './loader';
+import { loadBundledContent, loadBundledManifest } from '../lib/bundled-package-files';
 
 const BUNDLED_REPOSITORY = 'bundled';
 

@@ -169,6 +169,11 @@ export const ManifestJsonObjectSchema = z.looseObject({
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.default(DEFAULT_TEST_ENVIRONMENT),
 
+  // No `.default()`, for the same reason as `startingLocation` above: a
+  // schema-supplied floor is indistinguishable from an authored one, and the
+  // docs panel would warn readers away from guides nobody version-gated.
+  minGrafanaVersion: z.string().optional(),
+
   /**
    * Generated, never hand-authored. Declared positively so a consumer reading a
    * stamped manifest back validates it instead of trusting an untyped
@@ -266,6 +271,7 @@ export const RepositoryEntrySchema = z.looseObject({
   ...packageMetadataSchemaFields,
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.optional(),
+  minGrafanaVersion: z.string().optional(),
 
   /**
    * Carried from the manifest by `build-repository`, not forwarded as an
