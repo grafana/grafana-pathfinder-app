@@ -1,70 +1,68 @@
 /**
- * `pathfinder_help` — exposes the same `--help --format json` surface the
- * CLI exposes, as a function call. The CLI's JSON help shape is a stability
- * contract (see AGENT-AUTHORING.md). The MCP forwards it verbatim.
+ * Contract: mcp-native
+ *
+ * `pathfinder_help` — the agent's view of any CLI command interface.
+ *
+ * Descriptions, types, and requiredness stay schema-owned; parameter names are
+ * a bound command's own `CommandSpec` field names, minus parameters an MCP
+ * tool already owns. Commander renders the same schema for `--help`; this
+ * module is the other renderer, not a reader of Commander's output. See
+ * `lib/command-interface.ts`.
+ *
+ * This is the *inbound* half of the agent contract, and the only half we
+ * author: a schema-rendered interface published so the agent never has to
+ * reason about argv. The outbound half is the CLI's own `CommandOutcome`, forwarded
+ * verbatim by `tools/result.ts`. Both halves are stated for agents in one
+ * place — `authoring_start`'s `interfaceContract` — so this description
+ * carries the translation mechanics and no other tool restates them.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { formatHelpAsJson, renderMachineJson } from '../../utils/output';
-import { CLI_COMMANDS } from '../program';
+import { renderMachineJson } from '../../utils/output';
+import { boundCommandNames, formatCommandInterface, isCommandInterfaceError } from '../lib/command-interface';
+import { commandSummary } from '../../commands/manifest';
 import { readOnly } from './annotations';
 import { textResult } from './result';
 
 export function registerHelpTool(server: McpServer): void {
+  // command/subcommand select a CLI interface; they are not runner opts.
   server.registerTool(
     'pathfinder_help',
     {
       description:
-        'Use this tool when you need exact flag names, per-block-type field schemas, or the full CLI command list while authoring a Pathfinder guide. Returns the structured help surface for a CLI command, equivalent to `pathfinder-cli <command> --help --format json`. Pass an empty command for the list of commands.',
+        "Use this tool when you need the exact parameter interface for a Pathfinder CLI-backed tool while authoring a guide. What comes back is the command's own schema rendered as JSON — not CLI syntax, so you never build a command line. Each parameter arrives under its camelCase name with schema-owned descriptions, types, and requiredness. Copy those names and JSON value types directly into `opts`: booleans are `true`/`false`, repeatables are arrays, enums are strings. Positional CLI arguments are republished as ordinary named parameters. When the response lists `subcommands`, pass your chosen value in `opts` and call this tool again with that value as `subcommand` for the full per-subcommand surface. Parameters a Pathfinder tool already takes as its own argument are omitted and rejected if sent. For pathfinder_manage_block and pathfinder_manage_guide, `command` is the same value as `operation`. Omit command for the command list.",
       annotations: readOnly('Show Pathfinder help'),
       inputSchema: {
         command: z
           .string()
           .optional()
-          .describe('CLI command name (e.g. "create", "add-block"). Omit for the top-level command list.'),
+          .describe(
+            'CLI command name (e.g. "create", "add-block", "add-step", "edit-block", "inspect", "schema"). Omit for the command list. For pathfinder_manage_block and pathfinder_manage_guide, pass the same string as that tool\'s `operation`. Do not pass MCP tool names like "pathfinder_manage_block".'
+          ),
         subcommand: z
           .string()
           .optional()
           .describe(
-            'Optional sub-command — used for `add-block <type>` style help where the block type drills into per-type flags.'
+            'Optional sub-command — used for `add-block <type>` style help where the block type drills into per-type parameters.'
           ),
       },
     },
     async ({ command, subcommand }) => {
       if (!command) {
+        // The manifest's summary, not a surface's rendering of it: the Commander
+        // group root appends a table of `--flag` names to its description, and an
+        // agent cannot send those.
         return textResult(
           renderMachineJson({
-            commands: Array.from(CLI_COMMANDS.entries()).map(([name, cmd]) => ({
-              name,
-              description: cmd.description(),
-            })),
+            commands: boundCommandNames().map((name) => ({ name, description: commandSummary(name) })),
           })
         );
       }
 
-      const root = CLI_COMMANDS.get(command);
-      if (!root) {
-        return textResult(
-          renderMachineJson({
-            status: 'error',
-            code: 'UNKNOWN_COMMAND',
-            message: `Unknown command "${command}". Available: ${Array.from(CLI_COMMANDS.keys()).join(', ')}`,
-          }),
-          true
-        );
-      }
-
-      let target = root;
-      if (subcommand) {
-        const sub = root.commands.find((c) => c.name() === subcommand);
-        if (sub) {
-          target = sub;
-        }
-      }
-
-      return textResult(renderMachineJson(formatHelpAsJson(target)));
+      const result = formatCommandInterface(command, subcommand);
+      return textResult(renderMachineJson(result), isCommandInterfaceError(result));
     }
   );
 }

@@ -112,7 +112,7 @@ export interface RunGuideOptions {
   headed: boolean;
   artifacts: string;
   alwaysScreenshot: boolean;
-  /** Minted short-lived token for a provisioned cloud target. Absent for form-login runs. */
+  /** Opaque Bearer credential scoped to the Grafana target origin. Absent for form-login runs. */
   token?: string;
 }
 

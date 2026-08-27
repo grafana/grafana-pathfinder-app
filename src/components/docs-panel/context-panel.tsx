@@ -7,6 +7,7 @@ import { usePluginContext, IconName } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
+import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { HelpFooter } from '../HelpFooter';
 import { UserProfileBar } from '../UserProfileBar/UserProfileBar';
 import { locationService, config, getAppEvents } from '@grafana/runtime';
@@ -896,7 +897,15 @@ export const RecommendationsSection = memo(function RecommendationsSection({
                                                 {t('contextPanel.notYetAvailable', '(not yet available)')}
                                               </span>
                                             ) : (
-                                              <span className={styles.milestoneDuration}>({milestone.duration})</span>
+                                              typeof milestone.estimatedMinutes === 'number' && (
+                                                <span className={styles.milestoneDuration}>
+                                                  (
+                                                  {t('docsPanel.milestoneEstimatedMinutes', '{{count}} min', {
+                                                    count: milestone.estimatedMinutes,
+                                                  })}
+                                                  )
+                                                </span>
+                                              )
                                             )}
                                           </div>
                                         </div>
@@ -1145,6 +1154,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
     <div className={styles.container} data-testid={testIds.contextPanel.container}>
       <div className={styles.content} ref={scrollContainerRef} data-testid={testIds.contextPanel.scrollContainer}>
         <div className={styles.contextSections}>
+          {/* Treatment arm of the interactive-learning banner experiment; renders null otherwise */}
+          <InteractiveLearningBanner />
+
           {/* User profile bar with learning stats and next action */}
           <UserProfileBar onOpenGuide={openLearningJourney} />
 

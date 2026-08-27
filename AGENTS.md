@@ -47,11 +47,12 @@ npm run server           # Run Grafana locally with Docker
 npm run test:ci          # Frontend tests, no coverage (agents should use this, not `npm test`)
 npm run test:coverage    # Frontend tests with coverage + thresholds (used by `npm run check`)
 npm run lint:fix         # Lint + autofix
-npm run check            # Full pre-merge gate: typecheck + lint + prettier + lint:go + test:go + test:coverage + test:scripts
-npm run test:scripts     # Shell scripts: bash -n, shellcheck, stubbed-curl behavioural suite
+npm run lint:go          # Go lint (golangci-lint); CI-enforced, so a diagnostic here blocks merge
+npm run check            # Full pre-merge gate (`npm run check -- --list` prints the steps)
+npm run test:scripts     # Shell scripts: bash -n, shellcheck, behavioural suites
 ```
 
-Dev server runs at http://localhost:3000 (admin/admin). Focused Jest runs need `--coverage=false`, or global thresholds report a false failure. For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
+Dev server runs at http://localhost:3000 (admin/admin). Focused Jest runs need `--coverage=false`, or global thresholds report a false failure. Go lint is this repository's linting just as much as eslint is: the `Lint backend` CI job runs the same `golangci-lint run ./...` that `npm run lint:go` does, `CI Gate` requires it, and `CI Gate` is required on `main` — so a Go lint diagnostic blocks merge. The linter version is pinned in `GOLANGCI_LINT_VERSION` in `.github/workflows/ci.yml`; match it locally to see the same diagnostics. For the complete command reference (build targets, mage tasks, validation, i18n, peerjs, etc.), see `docs/developer/COMMANDS.md` or read `package.json#scripts` directly.
 
 ## Code organization
 
@@ -73,7 +74,7 @@ For the annotated tier definitions, the per-subsystem reference, and the key dep
 
 ### Backend (`pkg/`)
 
-The Go backend is an **App Platform proxy**, and nothing else. No database, no streaming. Its **App Platform** routes — `completion_records.go` + `completion_records_write.go` and `custom_guide_repository.go` — drain a paginated namespace-scoped upstream LIST (and, for completion records, POST one durable object back), cache the shaped result per caller, and ride the caller's own identity end to end. `pkg/plugin/auth` owns both halves of that identity seam: inbound, it **cryptographically verifies** the caller's `X-Grafana-Id` against the stack's published JWKS (`id_token.go`); outbound, it mints an **on-behalf-of (OBO) access token** for that caller. The plugin holds no credential of its own beyond the provisioned CAP token that mint uses.
+The Go backend is an **App Platform proxy**, and nothing else. No database, no streaming. Its **App Platform** routes — `completion_records.go` + `completion_records_write.go` and `custom_guide_repository.go` — drain a paginated namespace-scoped upstream LIST (and, for completion records, POST one durable object back), cache the shaped result per caller, and ride the caller's own identity end to end. `pkg/plugin/auth` owns both halves of that identity seam: inbound, it **cryptographically verifies** the caller's `X-Grafana-Id` against the stack's own published JWKS, falling back to auth-api's where the stack publishes no matching key (the Grafana Cloud shape), and binds the token's `namespace` claim to the trusted plugin-context namespace because auth-api's key set is cell-wide (`id_token.go`); outbound, it mints an **on-behalf-of (OBO) access token** for that caller. The plugin holds no credential of its own beyond the provisioned CAP token that mint uses.
 
 `/package-recommendations` is **not** one of them: it is an anonymous fetch of a public CDN index behind a host allowlist, with no namespace and a single process-wide 6-hour cache. Keep it that way — its cache is shared across users, so per-user data must never enter it. `/health` is neither shape.
 
@@ -103,6 +104,8 @@ When the review skill's contract-evolution gate fires for an existing capability
 ## PR reviews
 
 Use `/review`. For Go PRs touching `pkg/**/*.go`, also verify `npm run lint:go`, `npm run test:go`, and `go build ./...` pass.
+
+A PR whose author is not listed in `.github/community-pr-gate.json` goes through the community PR gate before review; that binding's handle list decides who bypasses the gate, and it is authoritative even where `.github/CODEOWNERS` differs.
 
 `docs/design/CONCERNS.md` is useful on its own — without a review — for impact analysis, change risk classification, and subsystem-aware debugging.
 

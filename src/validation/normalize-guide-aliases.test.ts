@@ -1,4 +1,4 @@
-import { normalizeJsonGuideAliases } from './normalize-guide-aliases';
+import { normalizeJsonGuideAliases, readAliasedField } from './normalize-guide-aliases';
 import { validateGuide } from './validate-guide';
 
 describe('normalizeJsonGuideAliases', () => {
@@ -226,5 +226,28 @@ describe('boolean targetstate is coerced to its string form', () => {
 
     expect(twice.isValid).toBe(true);
     expect(twice.guide).toEqual(once.guide);
+  });
+});
+
+describe('readAliasedField', () => {
+  it('reads the canonical field when it is present', () => {
+    expect(readAliasedField({ action: 'navigate' }, 'action')).toBe('navigate');
+  });
+
+  it('falls back to the camelCase alias on an unnormalized record', () => {
+    expect(readAliasedField({ targetAction: 'navigate' }, 'action')).toBe('navigate');
+    expect(readAliasedField({ refTarget: '/dashboards' }, 'reftarget')).toBe('/dashboards');
+  });
+
+  it('prefers the canonical field over the alias, matching the normalizer', () => {
+    const raw = { action: 'navigate', targetAction: 'highlight' };
+    const normalized = normalizeJsonGuideAliases(raw) as Record<string, unknown>;
+
+    expect(readAliasedField(raw, 'action')).toBe('navigate');
+    expect(readAliasedField(raw, 'action')).toBe(normalized.action);
+  });
+
+  it('returns undefined when neither the canonical field nor an alias is present', () => {
+    expect(readAliasedField({ type: 'markdown' }, 'action')).toBeUndefined();
   });
 });

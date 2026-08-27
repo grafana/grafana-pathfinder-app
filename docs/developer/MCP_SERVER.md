@@ -117,47 +117,46 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 ## Tool surface
 
-21 tools, registered in `src/cli/mcp/tools/`:
+12 tools, registered in `src/cli/mcp/tools/`. Each module starts with `Contract: mcp-native | cli-routed`. MCP-native tools own their behavior and Zod schema. CLI-routed tools are a thin wrap of a CLI `runX` (agents copy `opts` from `pathfinder_help`); session/stateless transport around those runners is shared plumbing, not a second command interface.
 
-| Tool                                   | Module                  | Wraps                                                                                              |
-| -------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `pathfinder_authoring_start`           | `authoring-start.ts`    | (static context block)                                                                             |
-| `pathfinder_help`                      | `help.ts`               | `formatHelpAsJson` over the CLI commands                                                           |
-| `pathfinder_create_package`            | `artifact-tools.ts`     | `runCreate` — mints a sessionToken + returns the seed artifact (P7)                                |
-| `pathfinder_create_guide_template`     | `artifact-tools.ts`     | `newPackageState` + pre-populated starter blocks; round-tripped through `runValidate` (P7)         |
-| `pathfinder_add_block`                 | `mutation-tools.ts`     | `runAddBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                                      |
-| `pathfinder_add_step`                  | `mutation-tools.ts`     | `runAddStep` — accepts `{artifact}` OR `{sessionToken}` (P7)                                       |
-| `pathfinder_add_choice`                | `mutation-tools.ts`     | `runAddChoice` — accepts `{artifact}` OR `{sessionToken}` (P7)                                     |
-| `pathfinder_edit_block`                | `mutation-tools.ts`     | `runEditBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                                     |
-| `pathfinder_remove_block`              | `mutation-tools.ts`     | `runRemoveBlock` — accepts `{artifact}` OR `{sessionToken}` (P7)                                   |
-| `pathfinder_set_manifest`              | `mutation-tools.ts`     | `runSetManifest` — accepts `{artifact}` OR `{sessionToken}` (P7)                                   |
-| `pathfinder_inspect`                   | `inspection-tools.ts`   | `runInspect` — accepts `{artifact}` OR `{sessionToken}` (P7)                                       |
-| `pathfinder_validate`                  | `inspection-tools.ts`   | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7)                                      |
-| `pathfinder_list_blocks`               | `session-read-tools.ts` | Cheap tree summary for a session token (P7)                                                        |
-| `pathfinder_get_block`                 | `session-read-tools.ts` | One block by id from a session token (P7)                                                          |
-| `pathfinder_get_manifest_session`      | `session-read-tools.ts` | Session-stored manifest (distinct from the P6 CDN `pathfinder_get_manifest`) (P7)                  |
-| `pathfinder_finalize_for_app_platform` | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7) |
-| `pathfinder_list_packages`             | `repository-tools.ts`   | CDN `repository.json` + filters (P6)                                                               |
-| `pathfinder_get_package`               | `repository-tools.ts`   | CDN `content.json` + `manifest.json` for one id                                                    |
-| `pathfinder_get_manifest`              | `repository-tools.ts`   | CDN `manifest.json` only (cheaper variant)                                                         |
-| `pathfinder_launch_package`            | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                         |
-| `pathfinder_get_schema`                | `schema-tools.ts`       | `exportSchema` / `exportAllSchemas` / `listSchemas` from `src/cli/commands/schema.ts`              |
+| Tool                                   | Contract   | Module                  | Wraps                                                                                              |
+| -------------------------------------- | ---------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `pathfinder_authoring_start`           | mcp-native | `authoring-start.ts`    | (static context block)                                                                             |
+| `pathfinder_help`                      | mcp-native | `help.ts`               | A bound CLI command's interface, rendered from that command's schema                               |
+| `pathfinder_validate`                  | mcp-native | `validate.ts`           | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7); not CLI `validate` options          |
+| `pathfinder_read_session`              | mcp-native | `session-read-tools.ts` | Session reads; explicit top-level Zod schema                                                       |
+| `pathfinder_finalize_for_app_platform` | mcp-native | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7) |
+| `pathfinder_read_repository`           | mcp-native | `repository-tools.ts`   | CDN reads; explicit top-level Zod schema (P6)                                                      |
+| `pathfinder_launch_package`            | mcp-native | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                         |
+| `pathfinder_get_schema`                | cli-routed | `schema-tools.ts`       | CLI `schema` help-derived `opts` (`list` / `all` / `name` / `includeVersion`)                      |
+| `pathfinder_create_package`            | cli-routed | `artifact-tools.ts`     | CLI `create` help-derived `opts` — mints a sessionToken + returns the seed artifact                |
+| `pathfinder_manage_block`              | cli-routed | `mutation-tools.ts`     | Tree writes via `operation: add-block\|edit-block\|remove-block\|add-step\|add-choice` (CLI names) |
+| `pathfinder_manage_guide`              | cli-routed | `mutation-tools.ts`     | Guide writes via `operation: set-manifest` (CLI name)                                              |
+| `pathfinder_inspect`                   | cli-routed | `inspect.ts`            | CLI `inspect` help-derived `opts` + `{artifact}` OR `{sessionToken}`                               |
 
 [p6-launch-bug]: https://github.com/grafana/grafana-pathfinder-app/issues/855
 
+CLI-backed parameters live in opaque `opts` bags and are discovered through `pathfinder_help`; transport or MCP-only parameters stay top-level. A binding forwards its bag to the command's spec unchanged: the schema an agent was shown is the schema its bag is parsed against, so a binding neither rekeys parameters nor decides which of them reach the runner (RFC §8).
+
+`bindCommandInterface` is what makes a command addressable, so binding is opt-in: `pathfinder_help` and `validateCommandArgs` both report `UNKNOWN_COMMAND` for a CLI command no tool dispatches (`e2e`, `build-repository`, `build-graph`, `move-block`, `rename-id`, `requirements`, `validate`), and the no-argument command list is exactly the bound set. Binding a name that ships no spec throws at binding time rather than leaving the tool reachable but unhelpable. A binding may also narrow what it offers — `bindCommandInterface('remove-block', { withhold: ['orphanChildren'] })` — and a withheld name that the command does not declare throws at the same point, so the list cannot drift away from the schema it narrows.
+
+MCP-owned contracts do not expose a CLI command interface and therefore own explicit, top-level Zod schemas. They do not use `opts`, `bindCommandInterface`, or instruct agents to call `pathfinder_help`. This includes `pathfinder_validate`: it reuses `runValidate`, but its artifact-native input is not the disk-oriented CLI `validate` interface. Tool modules mark this boundary with a file-level `Contract: mcp-native` comment.
+
+Because MCP calls the runners directly, `validateCommandArgs` answers the questions Commander's parser would have: is a required parameter missing, is a parameter unknown, is one withheld from agents. It answers them from the command's schema, which is also what the runner parses against — the preflight exists to name the problem in the agent's vocabulary, not to be a second opinion about the shape.
+
 ### Repository tools (P6)
 
-The four `repository-tools.ts` tools are read-only against a public package CDN. They are stateless (no artifact in/out) and need no auth.
+The `repository-tools.ts` surface is read-only against a public package CDN (`pathfinder_read_repository` + `pathfinder_launch_package`). They are stateless (no artifact in/out) and need no auth.
 
 - **Default repository**: `https://interactive-learning.grafana.net/packages/`.
 - **Override**: set `PATHFINDER_REPOSITORY_URL` (trailing slash optional) on the process. The HTTP transport's deploy passes this through unchanged; for stdio clients, set it on the `npx pathfinder-cli mcp` invocation.
 - **Caching**: `repository.json` is cached in-process for 60 seconds with single-flight dedup. Per-package `content.json` / `manifest.json` fetches are uncached.
-- **Validation is non-fatal**: the get-tools always return `raw` (the bytes the CDN served) plus a `validation` report. Schema drift surfaces as `validation.issues` and never hard-fails. This is intentional — these tools are a discovery surface and clients debugging drift need to see the actual bytes.
+- **Validation is non-fatal**: `get-package` / `get-manifest` always return `raw` (the bytes the CDN served) plus a `validation` report. Schema drift surfaces as `validation.issues` and never hard-fails. This is intentional — these tools are a discovery surface and clients debugging drift need to see the actual bytes.
 - **Errors are structured, never thrown**: `{ status: "error", code, message, httpStatus? }` with `code` ∈ `HTTP_ERROR | NETWORK_ERROR | PARSE_ERROR | NOT_FOUND`.
 - **`pathfinder_launch_package`** returns a relative `launchPath` always; an absolute `launchUrl` when `instanceUrl` is provided. Pass `panelMode: "floating"` to append `&panelMode=floating`. The link is consumed by the existing `?doc=<interactive-learning.grafana.net URL>` path in `src/utils/find-doc-page.ts:60-86` (`isInteractiveLearningUrl` allowlist).
 - **`pathfinder_launch_package` ships PARTIAL** — see [#855][p6-launch-bug]. The URL it builds resolves to the Pathfinder plugin but does not currently load the targeted CDN guide as an interactive tutorial; it opens to a generic docs view instead. Every successful response carries a `warning: { status: "partial", message, tracking }` field so agents and clients see the limitation at runtime. The bug is in the app-side `auto-launch-tutorial` handler (`src/components/docs-panel/docs-panel.tsx`), which calls `openDocsPage(url, title)` without the `packageInfo` argument the recommendations panel passes — so the package-aware content pipeline never engages. The MCP tool will keep working as-is once the app-side fix lands.
 
-> Naming note: P7 ships a session-scoped manifest read as `pathfinder_get_manifest_session` (not `pathfinder_get_manifest`), per the resolved [P7 decision log entry](../design/phases/ai-authoring-7-gcs-sessions.md#2026-05-20--pathfinder_get_manifest_session-keeps-the-_session-suffix). The two tools read different data sources (public CDN vs. session store) and serve different mental models.
+> Naming note: session-scoped and CDN manifest reads used to be separate tools (`pathfinder_get_manifest_session` vs `pathfinder_get_manifest`). They are now collapsed into enablement tools that share an operation name but different data sources: `pathfinder_read_session` with `operation: "get-manifest"` (session store) vs `pathfinder_read_repository` with `operation: "get-manifest"` (public CDN).
 
 ### Go MCP endpoint
 
@@ -168,7 +167,7 @@ The Go MCP at `pkg/plugin/mcp.go` was retired under [MH5](../design/phases/mcp-h
 P7 layered server-side authoring sessions on top of the stateless transport. Every mutation, inspection, and finalize tool now accepts EITHER mode:
 
 - **Stateless `{artifact}`** (the historical contract) — the agent threads the full `{content, manifest}` artifact through every call. No server-side state.
-- **Session-mode `{sessionToken}`** (the recommended contract) — `pathfinder_create_package` mints an opaque 22-char Crockford base32 token and persists the seed artifact server-side. Every subsequent call passes only `{sessionToken}` and receives back an **ack** (`{sessionToken, generation, summary, outcome}`) — the full artifact never returns to the agent's context. Cheap explicit reads (`pathfinder_list_blocks` / `pathfinder_get_block` / `pathfinder_get_manifest_session` / `pathfinder_inspect`) are the read surface. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session.
+- **Session-mode `{sessionToken}`** (the recommended contract) — `pathfinder_create_package` mints an opaque 22-char Crockford base32 token and persists the seed artifact server-side. Every subsequent call passes `{sessionToken}` plus the tool's own parameters and receives back an **ack** (`{sessionToken, generation, summary, outcome}`) — the full artifact never returns to the agent's context. Cheap explicit reads (`pathfinder_read_session` with its explicit top-level operation schema, plus `pathfinder_inspect` for the full body) are the read surface. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session.
 
 Picking a mode is per-call; never mix on a single call (returns `INPUT_MODE_AMBIGUOUS`).
 
@@ -346,11 +345,11 @@ The fields documented in [Access log fields](#access-log-fields) appear under ea
 
 This is the verification path for any change that emits or modifies access-log fields, structured outcomes, or tool-call telemetry — drive the deployed service, then read the logs back. A local stdio run will not exercise the HTTP transport's logging code path.
 
-## CLI is the sole validator
+## CLI is the sole content validator
 
-The MCP performs no schema validation of its own. Each mutation tool dispatches to the corresponding CLI `runX` function, which is the only place block-shape, condition syntax, and cross-file checks live.
+Guide-content validation lives only in the CLI runners — block shape, condition syntax, and cross-file checks all happen in the imported `runX` functions, and any CLI-strict guard added to a runner is picked up by the MCP without code changes.
 
-The MCP input schemas are intentionally permissive (`record<string, unknown>` for block fields). Any CLI-strict guard added to a runner is automatically picked up by the MCP without code changes.
+The MCP does validate **argument shape**: `validateCommandArgs` preflights each help-derived `opts` bag against the exact interface `pathfinder_help` publishes (required positionals, mandatory options, the subcommand selector, published value types) and rejects withheld or unknown parameters with `UNSUPPORTED_PARAMETER` instead of silently dropping them. mcp-native tools own explicit top-level Zod schemas for their own parameters. Neither layer inspects guide content — the `opts` payload stays a permissive `record<string, unknown>` end to end.
 
 ## State bridge
 

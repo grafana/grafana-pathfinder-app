@@ -1,95 +1,112 @@
 /**
  * `pathfinder-cli edit-block <dir> <id> [flags]` — update fields on an
- * existing block. Scalar fields use merge semantics; arrays replace
- * entirely. Structural fields and `--type` are rejected.
+ * existing block. Scalar fields use merge semantics; arrays replace entirely.
+ *
+ * This is the one command whose parameter surface is a *union*. Every other
+ * command knows its shape from its name, but the block being edited only reveals
+ * its type when it is read from disk, so the command accepts any field any block
+ * type declares and the runner narrows to the addressed block's own schema. The
+ * union is built once, here, with the first declaration of a shared field
+ * winning — `content` is declared by several block types and needs one flag with
+ * one description.
+ *
+ * Every parameter is a patch parameter (`patchShape`): fields required to *create* a
+ * block — `image.src`, `interactive.action` — are optional when editing one. The
+ * interface used to publish all eleven as required while the preflight enforced none,
+ * because requiredness rode on `forceOptional` plus a side table (§3.4 ii).
+ *
+ * Both of this command's refusals are stated as parameters rather than runner
+ * branches, so they reach whichever entrypoint tried it: reordering (`reorderGuard`)
+ * and `UNEDITABLE_BLOCK_FIELDS`, which is omitted from the union.
  */
 
-import { Command, Option } from 'commander';
+import { z } from 'zod';
 
-import { editBlock, findBlockById, mutateAndValidate, PackageIOError, readPackage } from '../utils/package-io';
+import {
+  editBlock,
+  findBlockById,
+  mutateAndValidate,
+  PackageIOError,
+  readPackage,
+  UNEDITABLE_BLOCK_FIELDS,
+} from '../utils/package-io';
 import {
   issueToOutcome,
   manyIssuesOutcome,
-  printOutcome,
-  readOutputOptions,
   renderError,
   type CommandOutcome,
   type OutcomeWarning,
 } from '../utils/output';
 import { BLOCK_SCHEMA_MAP, type BlockType } from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
-import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
 import { normalizeBlockInput } from '../utils/input-normalizers';
 import { isNonEmptySelector, unverifiedSelectorWarning } from '../utils/warnings';
+import { defineCommand, patchShape, pickSupplied, shapeKeys, withPolicy, type CommandShape } from '../contracts';
 
-export const editBlockCommand = new Command('edit-block')
-  .description('Update fields on an existing block by id')
-  .argument('<dir>', 'package directory')
-  .argument('<id>', 'id of the block to edit')
-  // We can't know the block type until we read it from disk, so register a
-  // permissive set of options. Each block-specific option is added below
-  // for completeness — the action handler validates the resulting block
-  // shape against the schema for the actual block type after the patch.
-  .allowUnknownOption(true);
-
-// Aggregate every flag that any block schema exposes. Multiple schemas share
-// fields like `--id` and `--content`; `skipExisting: true` keeps the first
-// occurrence (with its first-found .describe() text) and ignores duplicates.
-// `forceOptional: true` strips mandatory-flag markers — fields that are
-// required at *create* time (e.g., image.src) are merely optional at patch
-// time. The action handler uses the block's actual schema to project values
-// and then re-validates, so flags not relevant to a given block type are
-// silently dropped.
-for (const schema of Object.values(BLOCK_SCHEMA_MAP)) {
-  registerSchemaOptions(editBlockCommand, schema, { skipExisting: true, forceOptional: true });
-}
-
-// `--id` is in the forbid-list inside editBlock (block-level rename requires
-// updating every reference in the package, which is non-trivial), so hide it
-// from --help. Keeping the flag registered (rather than removing) preserves
-// Commander parsing — passing `--id` still produces a structured error from
-// editBlock rather than Commander's "unknown option".
-const idOption = editBlockCommand.options.find((o) => o.long === '--id');
-if (idOption) {
-  idOption.hideHelp(true);
-}
-
-editBlockCommand
-  // After the schema-derived options register, ensure --quiet / --format
-  // remain visible from the parent.
-  .addOption(new Option('--no-validate', 'Skip post-edit validation (advanced)').hideHelp())
-  // Recognize position-shaped flags so Commander's "too many arguments" error
-  // doesn't mislead authors. The action handler intercepts and redirects to
-  // move-block.
-  .addOption(new Option('--position <n>', 'Reordering is not handled here — use move-block').hideHelp())
-  .addOption(new Option('--before <id>', 'Reordering is not handled here — use move-block').hideHelp())
-  .addOption(new Option('--after <id>', 'Reordering is not handled here — use move-block').hideHelp())
-  .action(async function (this: Command, dir: string, id: string) {
-    const opts = this.opts() as Record<string, unknown>;
-    const output = readOutputOptions(this);
-    const outcome = await runEditBlock({ dir, id, flagValues: opts });
-    process.exit(printOutcome(outcome, output));
-  });
-
-interface EditBlockArgs {
-  dir: string;
-  id: string;
-  flagValues: Record<string, unknown>;
-}
-
-export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome> {
-  // Reordering attempts are accepted by the parser (so users don't see
-  // Commander's misleading "too many arguments") but redirected here.
-  for (const reorderFlag of ['position', 'before', 'after'] as const) {
-    if (args.flagValues[reorderFlag] !== undefined) {
-      return {
-        status: 'error',
-        code: 'SCHEMA_VALIDATION',
-        message: `edit-block does not change block position. Use: pathfinder-cli move-block <dir> ${args.id} --${reorderFlag === 'position' ? 'to-position' : reorderFlag} <value>`,
-      };
+/**
+ * Every field any editable block type declares, first declaration winning.
+ *
+ * `UNEDITABLE_BLOCK_FIELDS` is omitted because the mutator rejects those, and
+ * publishing a parameter that can only fail would be a lie. It is also what
+ * dissolves the two-`id` problem (§8.5 (a)): `id` leaves the content union, leaving
+ * the address below as the command's only `id`.
+ *
+ * Fields with no flag spelling — `type` literals, arrays of nested blocks — need no
+ * exclusion: the renderers drop them for not being representable.
+ */
+function blockFieldUnion(): CommandShape {
+  const union: CommandShape = {};
+  for (const schema of Object.values(BLOCK_SCHEMA_MAP)) {
+    const shape = (schema as unknown as { shape: CommandShape }).shape;
+    for (const [name, field] of Object.entries(shape)) {
+      if (UNEDITABLE_BLOCK_FIELDS.has(name) || name in union) {
+        continue;
+      }
+      union[name] = field;
     }
   }
+  return union;
+}
 
+/**
+ * A placement parameter this command accepts in order to refuse it. Without the
+ * declaration, `--position 3` is Commander's "unknown option", which tells an author
+ * something untrue: the CLI does reorder blocks, just with another command. Stated in
+ * the schema, the redirect is written once and reaches both entrypoints.
+ *
+ * Hiding it from text help is a separate decision made at the mount site — an author
+ * should be able to stumble into the redirect, not be offered it.
+ */
+function reorderGuard(instead: string) {
+  return z
+    .string()
+    .optional()
+    .refine((value) => value === undefined, {
+      message: `edit-block does not reorder blocks — use "move-block <dir> <id> --${instead} <value>"`,
+    })
+    .describe('Reordering is not handled here — use move-block')
+    .meta({ role: 'placement' });
+}
+
+export const EditBlockCommand = z.object({
+  dir: z.string().describe('package directory').meta({ role: 'io' }),
+  id: z.string().describe('id of the block to edit').meta({ role: 'addressing' }),
+  ...withPolicy(patchShape(blockFieldUnion()), { role: 'content' }),
+  position: reorderGuard('to-position'),
+  before: reorderGuard('before'),
+  after: reorderGuard('after'),
+});
+
+/**
+ * Typed plumbing plus an open bag of block fields. The union is assembled by
+ * iterating `BLOCK_SCHEMA_MAP` at runtime, so the content half is `unknown` — the
+ * honest shape rather than a gap, since which fields are legal depends on a block type
+ * this command does not know until it reads the file, and their types belong to that
+ * block's schema.
+ */
+export type EditBlockInput = z.output<typeof EditBlockCommand> & Record<string, unknown>;
+
+export async function runEditBlock(args: EditBlockInput): Promise<CommandOutcome> {
   // Inspect the block first to figure out which schema its flags must
   // project through. This is the price of a single command targeting any
   // block type — we pay one read up front.
@@ -121,20 +138,17 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     };
   }
 
-  const rawPatch = parseOptionValues(schema, args.flagValues) as Record<string, unknown>;
-  // Drop bridge-defaulted empties — the user didn't provide them, so we
-  // shouldn't accidentally clobber existing values.
-  for (const [k, v] of Object.entries(rawPatch)) {
-    if (Array.isArray(v) && v.length === 0) {
-      delete rawPatch[k];
-    }
-  }
+  // Narrow the union to the addressed block's own fields. A parameter that is
+  // valid for some other block type is dropped rather than written, which is
+  // the behaviour the union buys at the cost of this step.
+  const editable = shapeKeys(schema).filter((name) => !UNEDITABLE_BLOCK_FIELDS.has(name));
+  const rawPatch = pickSupplied(args as Record<string, unknown>, editable);
 
   if (Object.keys(rawPatch).length === 0) {
     return {
       status: 'error',
       code: 'NO_CHANGES',
-      message: 'edit-block needs at least one field flag to change. See --help for the field list of this block type.',
+      message: 'edit-block needs at least one field of this block type to change.',
     };
   }
 
@@ -212,3 +226,10 @@ export async function runEditBlock(args: EditBlockArgs): Promise<CommandOutcome>
     },
   };
 }
+
+export const editBlockSpec = defineCommand({
+  name: 'edit-block',
+  summary: "Update fields on an existing block by id. Only options valid for the block's actual type are retained.",
+  schema: EditBlockCommand,
+  run: runEditBlock,
+});

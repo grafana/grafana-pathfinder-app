@@ -8,6 +8,8 @@
  * produces byte-identical output for unchanged content.
  */
 
+import type { GuideStatsSummary } from '../../types/guide-stats.schema';
+
 import { computeGuideBlockIndex, type CountableBlock, type GuideBlockIndex } from './block-index';
 
 /**
@@ -22,21 +24,21 @@ import { computeGuideBlockIndex, type CountableBlock, type GuideBlockIndex } fro
  */
 export const GUIDE_STATS_VERSION = 1;
 
-export interface GuideStatsSummary {
-  version: number;
-  /** The completion denominator: counted blocks, containers excluded. */
-  blockCount: number;
-  /** Section containers. Reported for authoring insight; not in the denominator. */
-  sectionCount: number;
-  /** Counted blocks carrying a completion affordance. */
-  completableBlockCount: number;
-  /**
-   * Position of the last completable block, 0 when there is none. Equal to
-   * `blockCount` when the final counted block is completable, which is the
-   * signal that the guide needs no "Mark as complete" button at its foot.
-   */
-  finalCompletablePosition: number;
-}
+/**
+ * Re-exported from tier 0, where the Zod schema owns the shape so the writer
+ * here and the validator on the read side cannot drift (#1666). The type-only
+ * import keeps this module free of a runtime dependency.
+ *
+ * - `version` — {@link GUIDE_STATS_VERSION} at the time of the stamp.
+ * - `blockCount` — the completion denominator: counted blocks, containers excluded.
+ * - `sectionCount` — section containers. Authoring insight; not in the denominator.
+ * - `completableBlockCount` — counted blocks carrying a completion affordance.
+ * - `finalCompletablePosition` — position of the last completable block, 0 when
+ *   there is none. Equal to `blockCount` when the final counted block is
+ *   completable, which is the signal that the guide needs no "Mark as complete"
+ *   button at its foot.
+ */
+export type { GuideStatsSummary };
 
 export function summarizeGuideBlockIndex(index: GuideBlockIndex): GuideStatsSummary {
   return {

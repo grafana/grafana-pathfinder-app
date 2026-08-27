@@ -85,6 +85,10 @@
       "toggleViewMode": "切換檢視模式"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "所有路徑已完成！",
     "allCompleteTooltip": "您已完成所有學習路徑——做得好！",

@@ -13,11 +13,10 @@
  * mutation responses the MCP layer surfaces verbatim.
  */
 
-import type { Command } from 'commander';
 import { ZodError, z } from 'zod';
 
-import { getSchemaRequiredFlagNames, STRUCTURAL_SKIP_FIELDS } from './schema-options';
-import type { PackageIOIssue } from './package-io';
+import type { IssueRemedy, PackageIOIssue } from './package-io';
+import { CLI_SPELLING, spellOutcome } from './param-spelling';
 
 // ---------------------------------------------------------------------------
 // Output mode
@@ -28,29 +27,6 @@ export type OutputFormat = 'text' | 'json';
 export interface OutputOptions {
   format: OutputFormat;
   quiet: boolean;
-}
-
-/**
- * Read `--format` and `--quiet` off any Commander command (or a parent in the
- * tree) and produce a single normalized `OutputOptions`. Walks `cmd.parent`
- * because we register the global flags on the root program, not on every
- * subcommand.
- */
-export function readOutputOptions(cmd: Command): OutputOptions {
-  let cursor: Command | null = cmd;
-  let format: OutputFormat = 'text';
-  let quiet = false;
-  while (cursor) {
-    const opts = cursor.opts() as { format?: string; quiet?: boolean };
-    if (opts.format === 'json' || opts.format === 'text') {
-      format = opts.format;
-    }
-    if (opts.quiet) {
-      quiet = true;
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return { format, quiet };
 }
 
 /**
@@ -129,6 +105,12 @@ export interface SuccessOutcome {
   hints?: string[];
   /** Stable JSON-format payload. Authoritative when --format json is requested. */
   data?: Record<string, unknown>;
+  /**
+   * The exported document, for a command that emits one (`emits: 'artifact'`). Separate
+   * from `data` because it is not a report *about* the command but the thing the caller
+   * asked for, written to stdout verbatim so it can be redirected to a file.
+   */
+  artifact?: unknown;
 }
 
 export interface ErrorOutcome {
@@ -139,6 +121,10 @@ export interface ErrorOutcome {
   message: string;
   /** Additional structured detail per error (available IDs, conflicting fields, …). */
   data?: Record<string, unknown>;
+  /** The command that fixes this, named rather than spelled. Renders only on the CLI. */
+  remedy?: IssueRemedy;
+  /** Optional process exit code for commands that distinguish failure types */
+  exitCode?: number;
 }
 
 export type CommandOutcome = SuccessOutcome | ErrorOutcome;
@@ -154,6 +140,7 @@ export function issueToOutcome(issue: PackageIOIssue, data?: Record<string, unkn
     code: issue.code,
     message: issue.message,
     data: data ?? (issue.path ? { path: issue.path } : undefined),
+    ...(issue.remedy ? { remedy: issue.remedy } : {}),
   };
 }
 
@@ -248,16 +235,21 @@ export function renderError(err: unknown): string {
  * Commands should call this exactly once and use the returned value with
  * `process.exit()` so structured-output consumers see a clean stream.
  */
-export function printOutcome(outcome: CommandOutcome, output: OutputOptions): number {
+export function printOutcome(raw: CommandOutcome, output: OutputOptions): number {
+  // Anything a runner left as a parameter reference is spelled the way this surface
+  // spells one. Idempotent, so an outcome already spelled by the Commander adapter —
+  // which knows which parameters are positional and can do better than this — passes
+  // through untouched.
+  const outcome = spellOutcome(raw, CLI_SPELLING);
   if (output.format === 'json') {
     const stream = outcome.status === 'ok' ? process.stdout : process.stderr;
     stream.write(renderMachineJson(outcome) + '\n');
-    return outcome.status === 'ok' ? 0 : 1;
+    return outcome.status === 'ok' ? 0 : (outcome.exitCode ?? 1);
   }
 
   if (outcome.status === 'error') {
     process.stderr.write(formatErrorText(outcome) + '\n');
-    return 1;
+    return outcome.exitCode ?? 1;
   }
 
   process.stdout.write(formatSuccessText(outcome, output.quiet) + '\n');
@@ -322,7 +314,10 @@ function formatDetailValue(value: string | number | boolean | string[]): string 
 }
 
 function formatErrorText(outcome: ErrorOutcome): string {
-  return `Error: ${outcome.message}`;
+  const fix = outcome.remedy
+    ? `\nFix: pathfinder-cli ${[outcome.remedy.command, ...(outcome.remedy.args ?? [])].join(' ')}`
+    : '';
+  return `Error: ${outcome.message}${fix}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -330,8 +325,8 @@ function formatErrorText(outcome: ErrorOutcome): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Serialize a Commander command's surface into the stable JSON shape the
- * P3 MCP `pathfinder_help` tool will pass through verbatim.
+ * The stable JSON shape of a command's parameter interface, emitted by
+ * `--help --format json` and published to agents by `pathfinder_help`.
  *
  * Top-level keys (`command`, `summary`, `required`, `optional`, `addressing`)
  * are stable. Per-flag entries have stable keys (`name`, `valueType`, `enum`,
@@ -342,11 +337,26 @@ function formatErrorText(outcome: ErrorOutcome): string {
  */
 export interface HelpJsonFlag {
   name: string;
-  valueType: 'string' | 'number' | 'boolean' | 'enum' | 'array';
+  valueType: 'string' | 'number' | 'boolean' | 'enum' | 'array' | 'union';
   enum?: readonly string[];
+  /**
+   * The types a `valueType: 'union'` parameter accepts, e.g. `['string', 'boolean']`.
+   * Parallel to `enum`: additive key, present only on that `valueType`.
+   */
+  unionOf?: readonly string[];
   repeatable?: boolean;
   description: string;
   default?: unknown;
+  /**
+   * Whether the caller must supply this parameter. Additive key, populated by
+   * the schema-driven renderer.
+   *
+   * The `required` / `optional` buckets cannot carry this on their own, because
+   * `addressing` is a third bucket that overlaps both: `add-step`'s `parent` is
+   * mandatory and `add-block`'s is not, and both land in `addressing`. Stating
+   * it per-parameter removes the need for a consumer to know that rule.
+   */
+  required?: boolean;
 }
 
 export interface HelpJson {
@@ -363,101 +373,4 @@ export interface HelpJson {
    * type. Additive key in the help-shape stability contract.
    */
   requiredByType?: Record<string, string[]>;
-}
-
-const ADDRESSING_FLAGS: ReadonlySet<string> = new Set(['parent', 'branch', 'id', 'if-absent']);
-
-export function formatHelpAsJson(cmd: Command): HelpJson {
-  const required: HelpJsonFlag[] = [];
-  const optional: HelpJsonFlag[] = [];
-  const addressing: HelpJsonFlag[] = [];
-
-  for (const option of cmd.options) {
-    const flagName = (option.long ?? option.flags ?? '').replace(/^--/, '').split(/\s+/)[0] ?? '';
-    if (!flagName) {
-      continue;
-    }
-    if (STRUCTURAL_SKIP_FIELDS.has(flagName)) {
-      continue;
-    }
-    const isBoolean = option.isBoolean();
-    const isVariadic = option.variadic === true;
-    const argChoices = (option as unknown as { argChoices?: string[] }).argChoices;
-    let valueType: HelpJsonFlag['valueType'];
-    if (isBoolean) {
-      valueType = 'boolean';
-    } else if (argChoices && argChoices.length > 0) {
-      valueType = 'enum';
-    } else if (isVariadic || Array.isArray(option.defaultValue)) {
-      valueType = 'array';
-    } else if (option.flags.includes('<number>')) {
-      valueType = 'number';
-    } else {
-      valueType = 'string';
-    }
-
-    const flag: HelpJsonFlag = {
-      name: flagName,
-      valueType,
-      description: option.description,
-    };
-    if (argChoices && argChoices.length > 0) {
-      flag.enum = argChoices;
-    }
-    if (valueType === 'array') {
-      flag.repeatable = true;
-    }
-    if (
-      option.defaultValue !== undefined &&
-      !(Array.isArray(option.defaultValue) && option.defaultValue.length === 0)
-    ) {
-      flag.default = option.defaultValue;
-    }
-
-    const schemaRequired = getSchemaRequiredFlagNames(cmd);
-    const isLogicallyRequired = option.mandatory === true || schemaRequired?.has(flagName) === true;
-    if (ADDRESSING_FLAGS.has(flagName)) {
-      addressing.push(flag);
-    } else if (isLogicallyRequired) {
-      required.push(flag);
-    } else {
-      optional.push(flag);
-    }
-  }
-
-  const subcommands = cmd.commands.length > 0 ? cmd.commands.map((c) => c.name()) : undefined;
-
-  // Build requiredByType from any subcommands that recorded schema-required
-  // flags. Only includes container `--id` and conditional `--conditions` if
-  // the parent surfaced them; the upstream populator (`add-block.ts`) handles
-  // those CLI-level requirements.
-  let requiredByType: Record<string, string[]> | undefined;
-  if (cmd.commands.length > 0) {
-    for (const sub of cmd.commands) {
-      const reqSet = getSchemaRequiredFlagNames(sub);
-      if (reqSet && reqSet.size > 0) {
-        if (!requiredByType) {
-          requiredByType = {};
-        }
-        requiredByType[sub.name()] = [...reqSet];
-      }
-    }
-  }
-
-  const result: HelpJson = {
-    command: cmd.name(),
-    summary: cmd.description() ?? '',
-    required,
-    optional,
-  };
-  if (addressing.length > 0) {
-    result.addressing = addressing;
-  }
-  if (subcommands && subcommands.length > 0) {
-    result.subcommands = subcommands;
-  }
-  if (requiredByType) {
-    result.requiredByType = requiredByType;
-  }
-  return result;
 }

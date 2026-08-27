@@ -4,21 +4,18 @@
  * is always regenerated, never hand-edited.
  */
 
-import { Command } from 'commander';
+import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import { JsonSnippetSchema, SnippetCatalogSchema } from '../../types/json-snippet.schema';
 import type { SnippetCatalog, SnippetCatalogEntry } from '../../types/json-snippet.types';
 import { readJsonFile } from '../../validation/package-io';
+import { defineCommand } from '../contracts';
 import { resolveCliPath } from '../utils/file-loader';
-import { formatJsonWithPrettier } from '../utils/output';
+import { formatJsonWithPrettier, type CommandOutcome } from '../utils/output';
 
 const CATALOG_FILENAME = 'index.json';
-
-interface BuildSnippetsOptions {
-  output?: string;
-}
 
 export function buildSnippetCatalog(dir: string): {
   catalog: SnippetCatalog;
@@ -100,28 +97,41 @@ export function buildSnippetCatalog(dir: string): {
   return { catalog, warnings, errors };
 }
 
-export const buildSnippetsCommand = new Command('build-snippets')
-  .description('Build index.json from a directory of snippet bodies')
-  .argument('<dir>', 'Directory containing snippet bodies (<id>.json)')
-  .option('-o, --output <file>', 'Output file path (default: <dir>/index.json)')
-  .action(async (dir: string, options: BuildSnippetsOptions) => {
-    const absoluteDir = resolveCliPath(dir);
-    const { catalog, warnings, errors } = buildSnippetCatalog(absoluteDir);
+export const BuildSnippetsCommand = z.object({
+  dir: z.string().describe('Directory containing snippet bodies (<id>.json)').meta({ role: 'io' }),
+  output: z.string().optional().describe('Output file path (default: <dir>/index.json)').meta({ role: 'io' }),
+});
 
-    for (const warning of warnings) {
-      console.warn(`⚠️  ${warning}`);
-    }
-    for (const error of errors) {
-      console.error(`❌ ${error}`);
-    }
-    if (errors.length > 0) {
-      console.error(`❌ ${errors.length} error(s) prevented building index.json; no output written.`);
-      process.exit(1);
-    }
+export type BuildSnippetsInput = z.output<typeof BuildSnippetsCommand>;
 
-    const json = await formatJsonWithPrettier(JSON.stringify(catalog, null, 2));
-    const outputPath = options.output ? resolveCliPath(options.output) : path.join(absoluteDir, CATALOG_FILENAME);
+export async function runBuildSnippets(args: BuildSnippetsInput): Promise<CommandOutcome> {
+  const absoluteDir = resolveCliPath(args.dir);
+  const { catalog, warnings, errors } = buildSnippetCatalog(absoluteDir);
 
-    fs.writeFileSync(outputPath, json, 'utf-8');
-    console.log(`✅ Wrote ${outputPath} (${Object.keys(catalog).length} snippets)`);
-  });
+  for (const warning of warnings) {
+    console.warn(`⚠️  ${warning}`);
+  }
+  for (const error of errors) {
+    console.error(`❌ ${error}`);
+  }
+  if (errors.length > 0) {
+    console.error(`❌ ${errors.length} error(s) prevented building index.json; no output written.`);
+    return { status: 'error', code: 'BUILD_FAILED', message: `${errors.length} error(s) building index.json` };
+  }
+
+  const json = await formatJsonWithPrettier(JSON.stringify(catalog, null, 2));
+  const outputPath = args.output ? resolveCliPath(args.output) : path.join(absoluteDir, CATALOG_FILENAME);
+
+  fs.writeFileSync(outputPath, json, 'utf-8');
+  console.log(`✅ Wrote ${outputPath} (${Object.keys(catalog).length} snippets)`);
+  return { status: 'ok', summary: `Wrote ${outputPath}` };
+}
+
+export const buildSnippetsSpec = defineCommand({
+  name: 'build-snippets',
+  summary: 'Build index.json from a directory of snippet bodies',
+  schema: BuildSnippetsCommand,
+  // Progress lines and the ❌/✅ trailers are the output contract CI reads.
+  emits: 'stream',
+  run: runBuildSnippets,
+});

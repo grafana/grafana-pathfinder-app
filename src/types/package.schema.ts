@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 
+import { GuideStatsSummarySchema } from './guide-stats.schema';
 import { JsonBlockSchema, CURRENT_SCHEMA_VERSION } from './json-guide.schema';
 import type {
   Author,
@@ -43,7 +44,11 @@ export const PACKAGE_ID_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
  */
 export const PACKAGE_ID_MAX_LENGTH = 253;
 
-const packageIdSchema = z.string().min(1).max(PACKAGE_ID_MAX_LENGTH).regex(PACKAGE_ID_REGEX, {
+/**
+ * Exported so every command that accepts a package id validates against the same
+ * regex/length rule instead of hand-rolling a weaker copy that drifts
+ */
+export const packageIdSchema = z.string().min(1).max(PACKAGE_ID_MAX_LENGTH).regex(PACKAGE_ID_REGEX, {
   error: 'Package id must be kebab-case (lowercase alphanumeric and hyphens, no leading/trailing hyphen)',
 });
 
@@ -130,8 +135,11 @@ export const PackageTypeSchema = z.enum(['guide', 'path', 'journey']) satisfies 
 /**
  * Manifest object schema without the refinement, for composing
  * with passthrough or other transformations.
+ *
+ * Loose by design: unknown top-level keys are extension metadata and survive
+ * parsing unchanged. Known fields keep their full validation.
  */
-export const ManifestJsonObjectSchema = z.object({
+export const ManifestJsonObjectSchema = z.looseObject({
   schemaVersion: z.string().default(CURRENT_SCHEMA_VERSION),
   id: packageIdSchema,
   type: PackageTypeSchema,
@@ -140,10 +148,16 @@ export const ManifestJsonObjectSchema = z.object({
   milestones: z.array(z.string().min(1)).optional(),
 
   description: z.string().optional(),
+  /** Author-provided time estimate, in minutes, shown on cover-page module lists. */
+  estimatedMinutes: z.number().positive().optional().catch(undefined),
   language: z.string().default('en'),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
-  startingLocation: z.string().default('/'),
+  // No `.default('/')`: a schema-applied default would be indistinguishable
+  // from an author explicitly declaring `/`, and `recovery/starting-location.ts`'s
+  // alignment prompt treats any truthy value as an author-declared target —
+  // an unauthored manifest must parse to `undefined`, not a fabricated `/`.
+  startingLocation: z.string().optional(),
 
   depends: DependencyListSchema.default([]),
   recommends: DependencyListSchema.default([]),
@@ -154,6 +168,25 @@ export const ManifestJsonObjectSchema = z.object({
 
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.default(DEFAULT_TEST_ENVIRONMENT),
+
+  /**
+   * Generated, never hand-authored. Declared positively so a consumer reading a
+   * stamped manifest back validates it instead of trusting an untyped
+   * passthrough — before this, only `.loose()` kept the field alive on read and
+   * a strict parse silently dropped it.
+   *
+   * `.catch(undefined)` because a malformed stamp must not invalidate the whole
+   * manifest. A partial or hand-edited `stats` is precisely the input
+   * `pathfinder-cli build-stats` exists to repair, so failing the read there
+   * would break the one tool that fixes it. Reading as absent is also the
+   * honest answer: a stamp missing fields is not a denominator anyone should
+   * trust, and every consumer already handles no stamp at all.
+   *
+   * The catch is for readers only. `validate-package` re-checks the raw value
+   * so an author is told the stamp is present and ignored — see
+   * `emitStatsStampMessage`.
+   */
+  stats: GuideStatsSummarySchema.optional().catch(undefined),
 });
 
 /**
@@ -164,6 +197,7 @@ export const ManifestJsonObjectSchema = z.object({
  * - ERROR: id, type (hard requirements)
  * - WARN: description, category, targeting, startingLocation (missing but recommended)
  * - INFO: repository, language, schemaVersion, dependency fields, author, testEnvironment (defaults applied)
+ * - GENERATED: stats (stamped by `pathfinder-cli build-stats` or the block editor; never authored)
  * - Conditional ERROR: milestones required when type is "path" or "journey" (Rule 1)
  * - Conditional ERROR: milestones only valid when type is "path" or "journey" (Rule 2)
  *
@@ -202,6 +236,9 @@ const packageMetadataSchemaFields = {
   type: PackageTypeSchema,
   title: z.string().optional(),
   description: z.string().optional(),
+  /** Same graceful-degrade as ManifestJsonObjectSchema's field above — a bad
+   * value drops only this field instead of failing the whole repository entry. */
+  estimatedMinutes: z.number().positive().optional().catch(undefined),
   category: z.string().optional(),
   author: AuthorSchema.optional(),
   startingLocation: z.string().optional(),
@@ -218,13 +255,26 @@ const packageMetadataSchemaFields = {
 
 /**
  * Schema for a single repository.json entry.
+ *
+ * Loose so extension metadata forwarded from a manifest survives a
+ * repository.json round-trip.
+ *
  * @coupling Type: RepositoryEntry
  */
-export const RepositoryEntrySchema = z.object({
+export const RepositoryEntrySchema = z.looseObject({
   path: z.string().min(1),
   ...packageMetadataSchemaFields,
   targeting: GuideTargetingSchema.optional(),
   testEnvironment: TestEnvironmentSchema.optional(),
+
+  /**
+   * Carried from the manifest by `build-repository`, not forwarded as an
+   * extension key — declared here so the entry states it and so a hand-edited
+   * `repository.json` gets the same sanitising read as the manifest does.
+   * Not part of `packageMetadataSchemaFields`: a `GraphNode` shares those and
+   * has no use for a block-count stamp.
+   */
+  stats: GuideStatsSummarySchema.optional().catch(undefined),
 }) satisfies z.ZodType<RepositoryEntry>;
 
 /**

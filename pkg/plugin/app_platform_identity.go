@@ -22,13 +22,19 @@ const idTokenVerifierMaxAge = 5 * time.Minute
 // validIDToken for routes that only need an authenticated caller,
 // subjectFromIDToken for per-user-data routes that additionally key on the
 // caller's subject. Both cryptographically verify the forwarded Grafana ID token
-// (X-Grafana-Id) against the stack's published JWKS — see "The identity trust
-// boundary" in docs/design/BACKEND_PROXY_PATTERN.md §3.
+// (X-Grafana-Id) against the JWKS of whichever authority issued it AND bind its
+// `namespace` claim to this stack's — see "The identity trust boundary" in
+// docs/design/BACKEND_PROXY_PATTERN.md §3.
 
 // identityStatus is the verdict of the identity gate. Three distinct failures,
-// because BACKEND_PROXY_PATTERN.md §7's transient/structural split cuts across
-// them: only one of the three is retryable, and reporting a retryable outage as
-// a standing condition darkens the surface past the end of the outage.
+// each with its own capability reason, so an operator can tell a caller with no
+// acceptable token from a stack that can never verify one, and both from a
+// signing-keys address the plugin cannot reach. The two channels separate
+// different amounts: the logs tell the two key-lookup causes apart on every
+// deployment, the envelope only where no source answers at all — on a Grafana
+// Cloud stack its own endpoint always answers `{"keys":null}`, so a dead
+// auth-api address there reports identity-unavailable and the logs are the
+// diagnosis (BACKEND_PROXY_PATTERN.md §3).
 type identityStatus int
 
 const (
@@ -40,30 +46,41 @@ const (
 	identityVerified
 
 	// identityRejected: no token at all, or one this stack will not accept —
-	// forged signature, unknown `kid`, wrong `typ`, expired, or no `exp`.
+	// forged signature, unknown `kid`, wrong `typ`, expired, no `exp`, or a
+	// `namespace` claim naming some other stack.
 	identityRejected
 
-	// identityUnverifiable: no signing-keys URL is resolvable on this stack (no
-	// Grafana config on the request, or a config carrying no app URL), so
-	// verification can never succeed here.
+	// identityUnverifiable: nothing this stack supplies makes verification
+	// possible — no Grafana config on the request, a config carrying no app URL,
+	// or no server-derived namespace to bind the token to.
 	identityUnverifiable
 
-	// identitySigningKeysDown: the signing-keys URL resolved but the fetch
-	// failed. Retryable, so routes serve §7's 503 + Retry-After — a capability
-	// envelope would read as "never works here" for the whole client cache TTL.
+	// identitySigningKeysDown: no signing-keys endpoint could be reached at all
+	// (DNS, refused, timeout, non-200). Treated as a STANDING condition, not a
+	// retryable one: a reachable source answering without the `kid` is the
+	// expected Grafana Cloud shape and lands on identityRejected instead, so
+	// arriving here means the configured address is far more likely wrong than
+	// briefly down.
 	identitySigningKeysDown
 )
 
-// capabilityReason is the envelope token for a status served as a soft 200.
-// identitySigningKeysDown has none: it takes each route's transient path. An
+// capabilityReason is the envelope token for a status. Every failing status has
+// one, because none of them is retryable and all three are served in-band. An
 // unrecognized status reports the generic identity failure rather than an empty
-// reason, since every status but identityVerified is served with no data.
+// reason, since every status but identityVerified is served with no data. The
+// default arm is the safe catch-all and stays; //exhaustive:enforce is what
+// makes a newly added status a lint failure here instead of a silent fall-through.
 func (s identityStatus) capabilityReason() string {
+	//exhaustive:enforce
 	switch s {
-	case identityVerified, identitySigningKeysDown:
+	case identityVerified:
 		return ""
 	case identityUnverifiable:
 		return reasonIdentityUnverifiable
+	case identitySigningKeysDown:
+		return reasonSigningKeysUnreachable
+	case identityUnknown, identityRejected:
+		return reasonIdentityUnavailable
 	default:
 		return reasonIdentityUnavailable
 	}
@@ -160,10 +177,17 @@ func (a *App) subjectFromIDToken(r *http.Request) (string, identityStatus) {
 	return sub, identityVerified
 }
 
-// verifyIDToken verifies the inbound ID token and returns its `sub` claim.
+// verifyIDToken verifies the inbound ID token and returns its `sub` claim. The
+// namespace it binds the token to is the trusted plugin context's, per §2 —
+// never a header, never the token's own claim.
 func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 	token := strings.TrimSpace(r.Header.Get(backend.GrafanaUserSignInTokenHeaderName))
 	if token == "" {
+		// Logged separately from the rejection below, and at the same level: an
+		// absent header and an unacceptable token are one status but different
+		// operational faults, and without this they are indistinguishable from
+		// outside the process.
+		a.ctxLogger(r.Context()).Info("no caller id token on the request")
 		return "", identityRejected
 	}
 
@@ -173,26 +197,46 @@ func (a *App) verifyIDToken(r *http.Request) (string, identityStatus) {
 		return "", identityUnverifiable
 	}
 
-	sub, err := verifier.Verify(r.Context(), token)
+	namespace := backend.PluginConfigFromContext(r.Context()).Namespace
+	sub, err := verifier.Verify(r.Context(), token, namespace)
+
+	// Every branch logs at Info under its own message. These are the only
+	// visibility an operator has into a gate that serves no data, and the causes
+	// are different faults with different owners: a broken deployment, a caller
+	// presenting a sibling stack's identity, a signing-keys address that resolves
+	// nowhere, and a token the live key sets simply do not know.
+	var mismatch *auth.NamespaceMismatchError
+	var keysErr *auth.SigningKeysError
 	switch {
 	case err == nil:
 		return sub, identityVerified
-	case auth.SigningKeysUnavailable(err):
-		a.ctxLogger(r.Context()).Info("cannot fetch signing keys to verify caller id token", "error", err)
-		return "", identitySigningKeysDown
+	case errors.Is(err, auth.ErrUnknownNamespace):
+		a.ctxLogger(r.Context()).Info("no stack namespace to bind the caller id token to")
+		return "", identityUnverifiable
+	case errors.As(err, &mismatch):
+		a.ctxLogger(r.Context()).Info("caller id token was issued for another namespace",
+			"tokenNamespace", mismatch.Got, "stackNamespace", mismatch.Want)
+		return "", identityRejected
+	case errors.As(err, &keysErr):
+		if auth.SigningKeysUnavailable(err) {
+			a.ctxLogger(r.Context()).Info("no signing-keys source could be reached to verify caller id token",
+				"sources", keysErr.SourceDetail())
+			return "", identitySigningKeysDown
+		}
+		a.ctxLogger(r.Context()).Info("no signing-keys source publishes the key the caller id token names",
+			"sources", keysErr.SourceDetail())
+		return "", identityRejected
 	default:
-		// Info, not Debug: this branch is only reachable when a token was present
-		// and unacceptable, so it must be observable without raising the log level.
 		a.ctxLogger(r.Context()).Info("caller id token rejected", "error", err)
 		return "", identityRejected
 	}
 }
 
 // idTokenVerifier returns this stack's ID-token verifier, building it on first
-// use. The signing-keys URL derives from the per-request Grafana config, so the
-// verifier cannot be built in NewApp. It is reused briefly so authlib's key
-// cache is shared across requests, then rebuilt to bound how long a key removed
-// from the live JWKS remains trusted.
+// use. The stack's own signing-keys URL derives from the per-request Grafana
+// config, so the verifier cannot be built in NewApp. It is reused briefly so
+// authlib's key cache is shared across requests, then rebuilt to bound how long
+// a key removed from the live JWKS remains trusted.
 func (a *App) idTokenVerifier(ctx context.Context) (*auth.IDTokenVerifier, error) {
 	appURL, err := config.GrafanaConfigFromContext(ctx).AppURL()
 	if err != nil {
@@ -209,7 +253,7 @@ func (a *App) idTokenVerifier(ctx context.Context) (*auth.IDTokenVerifier, error
 		now.Before(a.idVerifierCreatedAt.Add(idTokenVerifierMaxAge)) {
 		return a.idVerifier, nil
 	}
-	verifier, err := auth.NewIDTokenVerifier(appURL)
+	verifier, err := auth.NewIDTokenVerifier(signingKeysURL, appURL)
 	if err != nil {
 		return nil, err
 	}

@@ -12,7 +12,7 @@
  * milestones are measured before the path itself.
  */
 
-import { Command } from 'commander';
+import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -24,14 +24,10 @@ import {
 } from '../../lib/guide-stats';
 import { ContentJsonSchema, ManifestJsonObjectSchema } from '../../types/package.schema';
 import { readJsonFile } from '../../validation/package-io';
+import { defineCommand } from '../contracts';
 import { resolveCliPath } from '../utils/file-loader';
-import { formatJsonWithPrettier } from '../utils/output';
+import { formatJsonWithPrettier, type CommandOutcome } from '../utils/output';
 import { discoverPackages } from './build-repository';
-
-interface BuildStatsOptions {
-  exclude?: string[];
-  check?: boolean;
-}
 
 interface DiscoveredPackage {
   id: string;
@@ -423,59 +419,74 @@ function collectMilestoneStructureErrors(
   }
 }
 
-export const buildStatsCommand = new Command('build-stats')
-  .description('Compute block stats for every package under a tree and write them into each manifest.json')
-  .argument('<root>', 'Root directory containing package directories')
-  .option(
-    '-e, --exclude <paths...>',
-    'Path(s) to exclude from scan (relative to root); excluded trees are not descended into'
-  )
-  .option('--check', 'Report packages whose stats are out of date and exit non-zero; write nothing')
-  .action(async (root: string, options: BuildStatsOptions) => {
-    const absoluteRoot = resolveCliPath(root);
+export const BuildStatsCommand = z.object({
+  root: z.string().describe('Root directory containing package directories').meta({ role: 'io' }),
+  exclude: z
+    .array(z.string())
+    .default([])
+    .describe('Path(s) to exclude from scan (relative to root); excluded trees are not descended into')
+    .meta({ role: 'control' }),
+  check: z
+    .boolean()
+    .default(false)
+    .describe('Report packages whose stats are out of date and exit non-zero; write nothing')
+    .meta({ role: 'control' }),
+});
 
-    if (!fs.existsSync(absoluteRoot)) {
-      console.error(`Directory not found: ${absoluteRoot}`);
-      process.exit(1);
-    }
+export type BuildStatsInput = z.output<typeof BuildStatsCommand>;
 
-    const exclude = options.exclude ? (Array.isArray(options.exclude) ? options.exclude : [options.exclude]) : [];
-    const { unchanged, written, warnings, errors } = await buildStats(absoluteRoot, {
-      exclude,
-      check: options.check,
-    });
+export async function runBuildStats(args: BuildStatsInput): Promise<CommandOutcome> {
+  const absoluteRoot = resolveCliPath(args.root);
 
-    for (const warning of warnings) {
-      console.warn(`⚠️  ${warning}`);
-    }
+  if (!fs.existsSync(absoluteRoot)) {
+    const message = `Directory not found: ${absoluteRoot}`;
+    console.error(message);
+    return { status: 'error', code: 'DIR_NOT_FOUND', message };
+  }
 
-    for (const error of errors) {
-      console.error(`❌ ${error}`);
-    }
+  const { unchanged, written, warnings, errors } = await buildStats(absoluteRoot, args);
 
-    if (errors.length > 0) {
-      console.error(
-        written.length > 0
-          ? `❌ ${errors.length} error(s) while writing manifests; the tree is partially stamped.`
-          : `❌ ${errors.length} error(s) prevented computing stats; no manifests written.`
-      );
-      process.exit(1);
-    }
+  for (const warning of warnings) {
+    console.warn(`⚠️  ${warning}`);
+  }
+  for (const error of errors) {
+    console.error(`❌ ${error}`);
+  }
 
-    if (options.check) {
-      if (written.length > 0) {
-        for (const dirName of written) {
-          console.error(`❌ ${dirName}: manifest stats are out of date`);
-        }
-        console.error(`❌ ${written.length} manifest(s) out of date; run build-stats to update them.`);
-        process.exit(1);
+  if (errors.length > 0) {
+    const message =
+      written.length > 0
+        ? `${errors.length} error(s) while writing manifests; the tree is partially stamped.`
+        : `${errors.length} error(s) prevented computing stats; no manifests written.`;
+    console.error(`❌ ${message}`);
+    return { status: 'error', code: 'BUILD_FAILED', message };
+  }
+
+  if (args.check) {
+    if (written.length > 0) {
+      for (const dirName of written) {
+        console.error(`❌ ${dirName}: manifest stats are out of date`);
       }
-      console.log(`✅ ${unchanged.length} manifest(s) up to date`);
-      return;
+      const message = `${written.length} manifest(s) out of date; run build-stats to update them.`;
+      console.error(`❌ ${message}`);
+      return { status: 'error', code: 'STATS_OUT_OF_DATE', message };
     }
+    console.log(`✅ ${unchanged.length} manifest(s) up to date`);
+    return { status: 'ok', summary: `${unchanged.length} manifest(s) up to date` };
+  }
 
-    for (const dirName of written) {
-      console.log(`   updated ${dirName}/manifest.json`);
-    }
-    console.log(`✅ ${written.length} manifest(s) updated, ${unchanged.length} already up to date`);
-  });
+  for (const dirName of written) {
+    console.log(`   updated ${dirName}/manifest.json`);
+  }
+  const summary = `${written.length} manifest(s) updated, ${unchanged.length} already up to date`;
+  console.log(`✅ ${summary}`);
+  return { status: 'ok', summary };
+}
+
+export const buildStatsSpec = defineCommand({
+  name: 'build-stats',
+  summary: 'Compute block stats for every package under a tree and write them into each manifest.json',
+  schema: BuildStatsCommand,
+  emits: 'stream',
+  run: runBuildStats,
+});

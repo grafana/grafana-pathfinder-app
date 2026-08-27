@@ -85,6 +85,10 @@
       "toggleViewMode": "Görünüm modunu değiştir"
     }
   },
+  "interactiveLearningBanner": {
+    "body": "",
+    "title": ""
+  },
   "userProfileBar": {
     "allComplete": "Tüm öğrenme yolları tamamlandı!",
     "allCompleteTooltip": "Tüm öğrenme yollarını tamamladınız — harika!",

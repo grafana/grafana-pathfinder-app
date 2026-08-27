@@ -18,38 +18,8 @@ jest.mock('@grafana/runtime', () => ({
     push: jest.fn(),
   },
 }));
-jest.mock('../../security/url-validator', () => ({
-  parseUrlSafely: jest.fn((url: string) => {
-    try {
-      return new URL(url);
-    } catch {
-      return null;
-    }
-  }),
-  validateRedirectPath: jest.fn((input: string, isAdmin?: boolean) => {
-    const alwaysDenied = ['/logout', '/profile/password'];
-    const adminOnly = ['/admin', '/api'];
-    if (!input || !input.startsWith('/') || input.startsWith('//')) {
-      return '/';
-    }
-    // Replicate real behavior: strip query strings and fragments (return pathname only)
-    let pathname: string;
-    try {
-      pathname = new URL(input, 'http://localhost').pathname;
-    } catch {
-      return '/';
-    }
-    if (alwaysDenied.some((d) => pathname === d || pathname.startsWith(d + '/'))) {
-      return '/';
-    }
-    if (!isAdmin) {
-      if (adminOnly.some((d) => pathname === d || pathname.startsWith(d + '/'))) {
-        return '/';
-      }
-    }
-    return pathname;
-  }),
-}));
+// Deliberately NOT mocked: the redirect rules ARE what these cases assert, and a
+// hand-rolled stand-in was free to drift from the validator that ships.
 
 const mockStateManager = {
   setState: jest.fn(),

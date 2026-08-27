@@ -78,25 +78,32 @@ export async function resolvePackageMilestones(milestoneIds: string[], pathSlug?
 
     if (result.status === 'rejected') {
       logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone ${id}`, { reason: result.reason });
-      milestones.push({ number, title: id, duration: '5-10 min', url: '', isActive: false, isLocked: true });
+      milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
     const resolution = result.value;
     if (!resolution.ok) {
       logger.warn(`[resolvePackageMilestones] Locking unresolvable milestone: ${id}`);
-      milestones.push({ number, title: id, duration: '5-10 min', url: '', isActive: false, isLocked: true });
+      milestones.push({ number, title: id, url: '', isActive: false, isLocked: true });
       continue;
     }
 
-    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+    const title = resolution.content?.title ?? resolution.entryTitle ?? resolution.manifest?.description ?? id;
+    // Only surface the manifest description as a subtitle when it isn't
+    // already doing double duty as the title fallback above.
+    const description = resolution.manifest?.description !== title ? resolution.manifest?.description : undefined;
+    const estimatedMinutes = resolution.manifest?.estimatedMinutes;
+    const startingLocation = resolution.manifest?.startingLocation;
 
     milestones.push({
       number,
       title,
-      duration: '5-10 min',
       url: resolution.contentUrl,
       isActive: false,
+      ...(description != null && { description }),
+      ...(typeof estimatedMinutes === 'number' && { estimatedMinutes }),
+      ...(typeof startingLocation === 'string' && { startingLocation }),
       ...(pathSlug != null && { websiteUrl: buildMilestoneWebsiteUrl(pathSlug, id) }),
     });
   }
@@ -138,7 +145,7 @@ export async function resolvePackageNavLinks(packageIds: string[]): Promise<Reso
       continue;
     }
 
-    const title = resolution.content?.title ?? resolution.manifest?.description ?? id;
+    const title = resolution.content?.title ?? resolution.entryTitle ?? resolution.manifest?.description ?? id;
     const manifest: Record<string, unknown> | undefined = resolution.manifest
       ? (resolution.manifest as unknown as Record<string, unknown>)
       : undefined;
@@ -292,7 +299,15 @@ export async function fetchPackageContent(
       };
 
       if (currentMilestone === 0) {
-        contentString = injectJourneyExtrasIntoJsonGuide(ensureNonEmptyCoverContent(contentString), learningJourney);
+        // skipReadyToBegin: true — the React cover-page TOC (LearningPathTableOfContents)
+        // renders its own Start/Resume CTA against real progress data; the
+        // legacy HTML button always says "Ready to Begin" and always targets
+        // milestone 1, so leaving both on would show two conflicting CTAs.
+        contentString = injectJourneyExtrasIntoJsonGuide(
+          ensureNonEmptyCoverContent(contentString),
+          learningJourney,
+          true
+        );
       }
     }
   }
@@ -305,7 +320,11 @@ export async function fetchPackageContent(
       type: renderType,
       metadata: {
         ...result.content.metadata,
-        ...(packageManifest !== undefined && { packageManifest }),
+        // Merge, not replace: a catalogue entry is a slim projection and would
+        // otherwise bury fields the loader resolved in full (issue #1681).
+        ...(packageManifest !== undefined && {
+          packageManifest: { ...result.content.metadata.packageManifest, ...packageManifest },
+        }),
         // Fall back to the repository the baseUrl resolution already carries, so
         // an entry path that supplies no explicit one still keys the durable
         // completion on the true source instead of the manifest schema default.

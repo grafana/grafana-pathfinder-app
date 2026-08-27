@@ -257,7 +257,7 @@ docker run --rm --entrypoint node ghcr.io/grafana/pathfinder-e2e-runner:commit-<
 
 The emitted schema carries a stable `$id` (`https://grafana.com/schemas/pathfinder/e2e-test-report-<version>.json`) and `x-schema-version`. Pin consumers on the image digest plus `schemaVersion`.
 
-The `e2e-report` and `e2e-multi-report` schemas are **open-world**: the exported JSON Schema does not include `additionalProperties: false`. This means additive optional fields introduced in a newer runner version are non-breaking — an orchestrator validating reports from a newer runner against an older schema copy will not reject the report. Consumers should configure their validators accordingly (for example, ajv's default behavior already allows extra fields unless explicitly set to strict mode). The `guide`, `manifest`, and other non-e2e schemas remain strict.
+The `e2e-report` and `e2e-multi-report` schemas are **open-world**: the exported JSON Schema does not include `additionalProperties: false`. This means additive optional fields introduced in a newer runner version are non-breaking — an orchestrator validating reports from a newer runner against an older schema copy will not reject the report. Consumers should configure their validators accordingly (for example, ajv's default behavior already allows extra fields unless explicitly set to strict mode). Among the non-e2e schemas, `guide`, `block`, `content`, and `graph` remain strict. `manifest` and `repository` are deliberately open at the **top level only** — unknown top-level manifest keys are extension metadata that the packaging CLI forwards into the package's repository entry (see [extension fields](./package-authoring.md#extension-fields)). The `manifest` export therefore carries `additionalProperties: {}` on its root object, and `repository` carries it on each entry object. Their nested `author`, `targeting`, and `testEnvironment` schemas stay strict.
 
 Runs that execute more than one guide, or execute an explicitly selected path/journey with one milestone, write a multi-guide report with aggregate summary fields plus the individual per-guide reports.
 
@@ -479,6 +479,7 @@ These variables are consumed by the CLI or passed to the spawned Playwright proc
 | `GRAFANA_URL`           | Grafana instance URL                                                           | `http://localhost:3000` |
 | `STARTING_LOCATION`     | Effective same-origin start path from the manifest, current chain, or `/`      | `/`                     |
 | `AUTH_STATE_FILE`       | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
+| `GRAFANA_TOKEN`         | Opaque Bearer credential sent only to the Grafana target origin                | Unset (form login)      |
 | `E2E_VERBOSE`           | Enable verbose logging                                                         | `false`                 |
 | `E2E_TRACE`             | Generate Playwright trace file                                                 | `false`                 |
 | `ABORT_FILE_PATH`       | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
@@ -537,6 +538,8 @@ Cloud auth:
 
 - **Admin token per cloud target.** Pass `--cloud-instance-admin-token learn.grafana.net=GRAFANA_LEARN_ADMIN_TOKEN` to associate an admin service-account token env var with a cloud target. The CLI uses that admin token only to mint a fresh service account and short-lived token for each dependency chain; the browser runner receives only the minted token. Repeat the flag for each supported instance.
 - **Isolated stack leasing.** Pass `--cloud-stack-pool-manager-url <url>` and `--cloud-stack-pool-manager-token <env>` to let unsafe cloud dependency chains lease disposable Grafana Cloud stacks from the pool manager instead of the shared target. Pass `--cloud-stack-pool-id <id>` matching the pool configured on the pool manager you are targeting; the CLI default is `nightly`. The CLI sends `POST /v1/leases` before a dependency chain, runs all cloud guides in that chain against the returned `grafanaUrl` and `runnerToken`, then sends `POST /v1/leases/{leaseId}/retire` during teardown.
+
+The browser runner treats each `GRAFANA_TOKEN` value, including a pool-manager `runnerToken`, as an opaque Bearer credential. It adds the credential to the `Authorization` header only for requests to the Grafana target origin. The runner does not inspect the credential prefix or format.
 
 Per-chain service-account isolation mirrors how `--clean` resets the local docker stack per chain. Minted tokens carry a TTL, and accounts orphaned by crashed runs are swept on the next run. This isolates per-identity state (preferences, stars, sessions) between chains; it does **not** reset org data such as dashboards or data sources created by guides.
 

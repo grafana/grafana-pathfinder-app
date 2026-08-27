@@ -113,8 +113,11 @@ export function validatePackageState(
       if (manifest.id !== content.id) {
         issues.push({
           code: 'ID_MISMATCH',
-          message: `ID mismatch: content.json has "${content.id}", manifest.json has "${manifest.id}". Fix: pathfinder-cli rename-id <dir> <chosen-id>`,
+          message: `ID mismatch: content.json has "${content.id}", manifest.json has "${manifest.id}"`,
           path: ['id'],
+          // Named, not spelled: the command line renders it as a `Fix:` line, and a
+          // surface that cannot reach `rename-id` renders nothing.
+          remedy: { command: 'rename-id', args: ['<dir>', '<chosen-id>'] },
         });
       }
       // Skip the drift check when the manifest's schemaVersion was filled in

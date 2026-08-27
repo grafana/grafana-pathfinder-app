@@ -42,6 +42,7 @@ export const testIds = {
     popOutButton: 'docs-panel-pop-out-button',
     fullScreenButton: 'docs-panel-full-screen-button',
     openControllerTabButton: 'docs-panel-open-controller-tab-button',
+    milestoneMoreActionsButton: 'docs-panel-milestone-more-actions-button',
   },
 
   // Full screen mode page (sibling of the sidebar / floating panel)
@@ -104,6 +105,7 @@ export const testIds = {
     featuredCard: (index: number) => `context-panel-featured-card-${index}`,
     featuredStartButton: (index: number) => `context-panel-featured-start-${index}`,
     featuredSummaryButton: (index: number) => `context-panel-featured-summary-${index}`,
+    interactiveLearningBanner: 'context-panel-interactive-learning-banner',
   },
 
   // Dev Tools / Block Editor
@@ -331,6 +333,8 @@ export const testIds = {
     discoverMoreStart: (id: string) => `discover-more-start-${id}`,
     discoverMoreExpand: (id: string) => `discover-more-expand-${id}`,
     tableOfContents: 'learning-paths-toc',
+    tableOfContentsCta: 'learning-paths-toc-cta',
+    coverHero: 'learning-paths-cover-hero',
   },
 
   // Live Session

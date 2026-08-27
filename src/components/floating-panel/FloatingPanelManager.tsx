@@ -16,6 +16,7 @@ import { PANEL_MODE_CHANGE_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib
 import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
+import { enrollInteractiveLearningBannerExperiment } from '../../utils/experiments/interactive-learning-banner';
 import { SkeletonLoader } from '../SkeletonLoader';
 
 // Lazy-loaded so the editor only ships when the user actually pops it out.
@@ -132,6 +133,11 @@ function FloatingPanelInner() {
     document.addEventListener('pathfinder-auto-launch-pending', handlePending, { once: true });
 
     document.dispatchEvent(new CustomEvent('pathfinder-panel-mounted', { detail: { timestamp: Date.now() } }));
+    // Enrollment seam for this surface, mirroring ContextSidebar in module.tsx.
+    // Reading the flag emits the exposure, so it belongs where the surface comes up:
+    // this one renders the banner above guide content and may never see the sidebar.
+    enrollInteractiveLearningBannerExperiment();
+
     sidebarState.setIsSidebarMounted(true);
 
     return () => {

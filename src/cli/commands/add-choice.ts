@@ -1,47 +1,35 @@
 /**
  * `pathfinder-cli add-choice <dir> --parent <id> --id <a|b|c> --text <text>` —
- * append a choice to a quiz block. Flags are derived from `JsonQuizChoiceSchema`.
+ * append a choice to a quiz block. Content fields come from
+ * `JsonQuizChoiceSchema`.
+ *
+ * See `add-step.ts` for the composition pattern. `id` here is the choice's own content
+ * field rather than an address — the address is `parent` — a distinction that used to
+ * be implicit in which file declared the flag.
  */
 
-import { Command, Option } from 'commander';
+import { z } from 'zod';
 
 import { JsonQuizChoiceSchema } from '../../types/json-guide.schema';
 import type { JsonQuizChoice } from '../../types/json-guide.types';
+import { defineCommand, pickContent, shapeKeys, withPolicy } from '../contracts';
 import { assertCliChoiceFields, CliValidationError } from '../utils/cli-validators';
 import { appendChoice, mutateAndValidate, PackageIOError } from '../utils/package-io';
-import {
-  issueToOutcome,
-  manyIssuesOutcome,
-  printOutcome,
-  readOutputOptions,
-  renderError,
-  type CommandOutcome,
-} from '../utils/output';
-import { parseOptionValues, registerSchemaOptions } from '../utils/schema-options';
+import { issueToOutcome, manyIssuesOutcome, renderError, type CommandOutcome } from '../utils/output';
 
-export const addChoiceCommand = new Command('add-choice')
-  .description('Append a choice to a quiz block')
-  .argument('<dir>', 'package directory')
-  .addOption(new Option('--parent <id>', 'Quiz block id').makeOptionMandatory());
+const CHOICE_CONTENT_KEYS = shapeKeys(JsonQuizChoiceSchema);
 
-registerSchemaOptions(addChoiceCommand, JsonQuizChoiceSchema);
-
-addChoiceCommand.action(async function (this: Command, dir: string) {
-  const opts = this.opts() as Record<string, unknown>;
-  const output = readOutputOptions(this);
-  const outcome = await runAddChoice({ dir, parentId: String(opts.parent), flagValues: opts });
-  process.exit(printOutcome(outcome, output));
+export const AddChoiceCommand = z.object({
+  dir: z.string().describe('package directory').meta({ role: 'io' }),
+  parent: z.string().describe('Quiz block id').meta({ role: 'addressing' }),
+  ...withPolicy(JsonQuizChoiceSchema.shape, { role: 'content' }),
 });
 
-interface AddChoiceArgs {
-  dir: string;
-  parentId: string;
-  flagValues: Record<string, unknown>;
-}
+export type AddChoiceInput = z.output<typeof AddChoiceCommand>;
 
-export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome> {
-  const projected = parseOptionValues(JsonQuizChoiceSchema, args.flagValues) as Record<string, unknown>;
-  delete projected.parent;
+export async function runAddChoice(args: AddChoiceInput): Promise<CommandOutcome> {
+  const parentId = args.parent;
+  const projected = pickContent(args as Record<string, unknown>, CHOICE_CONTENT_KEYS);
 
   try {
     assertCliChoiceFields(projected);
@@ -61,7 +49,7 @@ export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome>
   let legacyIdsMinted = 0;
   try {
     const result = await mutateAndValidate(args.dir, ({ content }) => {
-      const r = appendChoice(content, candidate.data as JsonQuizChoice, args.parentId);
+      const r = appendChoice(content, candidate.data as JsonQuizChoice, parentId);
       position = r.position;
     });
     if (!result.validation.ok) {
@@ -84,7 +72,7 @@ export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome>
 
   return {
     status: 'ok',
-    summary: `Added choice "${candidate.data.id}" to quiz "${args.parentId}" at ${position}`,
+    summary: `Added choice "${candidate.data.id}" to quiz "${parentId}" at ${position}`,
     details: {
       id: candidate.data.id,
       correct: candidate.data.correct ?? false,
@@ -93,13 +81,20 @@ export async function runAddChoice(args: AddChoiceArgs): Promise<CommandOutcome>
       ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
     },
     hints: [
-      `Add another choice with: pathfinder-cli add-choice ${args.dir} --parent ${args.parentId} --id <id> --text <text>`,
+      `Add another choice with: pathfinder-cli add-choice ${args.dir} --parent ${parentId} --id <id> --text <text>`,
     ],
     data: {
       position,
-      parent: args.parentId,
+      parent: parentId,
       id: candidate.data.id,
       ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
     },
   };
 }
+
+export const addChoiceSpec = defineCommand({
+  name: 'add-choice',
+  summary: 'Append a choice to a quiz block',
+  schema: AddChoiceCommand,
+  run: runAddChoice,
+});

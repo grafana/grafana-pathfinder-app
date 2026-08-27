@@ -16,7 +16,7 @@
 import { validateGuideFromString } from '../../validation';
 import type { RepositoryEntry, RepositoryJson, TestEnvironment } from '../../types/package.types';
 import { resolvePackageById } from './recommender-resolver';
-import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../mcp/lib/repository-client';
+import { fetchRepositoryIndex, buildPackageFileUrl, type RepositoryPackage } from '../utils/repository-client';
 import { hydrateExecutionPlan, planGuideExecution, planPackageExecution, type ExecutionPlan } from './guide-chains';
 import type { LoadedGuide } from '../utils/file-loader';
 import { resolveTarget, type CloudTargetCapabilities } from './e2e-targets';

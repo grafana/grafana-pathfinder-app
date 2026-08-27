@@ -29,7 +29,7 @@
  */
 
 export { PackageIOError } from './errors';
-export type { PackageIOErrorCode, PackageIOIssue } from './errors';
+export type { IssueRemedy, PackageIOErrorCode, PackageIOIssue } from './errors';
 
 export { walkBlocks, findBlockById, findContainerById, collectAllIds } from './tree';
 
@@ -44,7 +44,7 @@ export type { ValidationOutcome, ValidatePackageStateOptions } from './state-val
 export { readPackage, writePackage } from './disk';
 export type { PackageState } from './disk';
 
-export { appendBlock, appendStep, appendChoice, editBlock, removeBlock } from './mutators';
+export { appendBlock, appendStep, appendChoice, editBlock, removeBlock, UNEDITABLE_BLOCK_FIELDS } from './mutators';
 export type { AppendBlockOptions, AppendBlockResult, EditBlockOptions, RemoveBlockOptions } from './mutators';
 
 export { moveBlock } from './move';

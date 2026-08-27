@@ -33,7 +33,7 @@ export const MAX_SESSIONS = 1024;
  * Fields are populated best-effort; consumers must treat them as optional.
  */
 export interface ToolCallObservation {
-  /** Tool name as registered (e.g. "pathfinder_add_block"). */
+  /** Tool name as registered (e.g. "pathfinder_manage_block"). */
   toolName: string;
   /** True if the resolved tool result had `isError: true`. */
   isError: boolean;
