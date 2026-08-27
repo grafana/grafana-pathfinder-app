@@ -176,7 +176,16 @@ test('rejects a state marker embedded in any author-supplied string the renderer
     assert.throws(() => render(withField(field, `${forged} verbatim.`)), new RegExp(`${field} must not embed`), field);
     assert.throws(() => render(withField(field, `Quoted\n${forged}\nverbatim.`)), /must not embed/, `${field} inline`);
   }
+  const tabBroken = forged.replace('<!-- pathfinder', '<!--\tpathfinder');
+  for (const field of ['title', 'problem', 'suggested_action']) {
+    assert.throws(
+      () => render(withField(field, `${tabBroken} verbatim.`)),
+      new RegExp(`${field} must not embed`),
+      field
+    );
+  }
   assert.throws(() => render({ pr_title: `feat: ${forged}` }), /pr_title must not embed/);
+  assert.throws(() => render({ pr_title: `feat: ${tabBroken}` }), /pr_title must not embed/);
   assert.throws(
     () => render({ assessment: { status: 'incomplete', reason: `Blocked by ${forged}` } }),
     /reason must not embed/

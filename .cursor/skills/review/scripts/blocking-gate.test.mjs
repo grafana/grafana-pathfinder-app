@@ -313,6 +313,37 @@ test('a round past the marker bound still gates, clamped rather than rejected', 
   );
 });
 
+test('a one-way door is not boundable by a follow-up, so rows 7 and 8 cannot demote it', () => {
+  const bounded = { ...NOT_A_SHIPPED_PATH_BREAKAGE, boundable_by_followup: true };
+  const inert = { ...NOT_A_SHIPPED_PATH_BREAKAGE, breaks_live_path: false, concrete_risk_now: false };
+
+  for (const reversibility of ['partially_reversible', 'irreversible_without_cleanup']) {
+    assert.deepEqual(
+      decide(bounded, { reversibility }),
+      { disposition: 'blocking', reason: 'warranted', override: null, override_source: null, gate_failures: [] },
+      `${reversibility} bounded by a follow-up`
+    );
+    assert.deepEqual(
+      decide(inert, { reversibility }),
+      { disposition: 'blocking', reason: 'warranted', override: null, override_source: null, gate_failures: [] },
+      `${reversibility} with no live impact`
+    );
+  }
+
+  for (const reversibility of ['reversible', 'unknown', undefined]) {
+    assert.equal(decide(bounded, { reversibility }).reason, 'safely-bounded', `${reversibility} bounded`);
+    assert.equal(decide(inert, { reversibility }).reason, 'no-live-impact', `${reversibility} inert`);
+  }
+});
+
+test('a one-way door still yields to the provenance rows, which are not about boundability', () => {
+  const oneWayDoor = { reversibility: 'irreversible_without_cleanup' };
+
+  assert.equal(decide({ authorship: 'pre_existing', boundable_by_followup: true }, oneWayDoor).reason, 'pre-existing');
+  assert.equal(decide({ ...NOT_A_SHIPPED_PATH_BREAKAGE, precedent_count: 2 }, oneWayDoor).reason, 'policy-change');
+  assert.throws(() => decide({}, { reversibility: 'mostly' }), /Unknown reversibility: mostly/);
+});
+
 test('rejects a finding the reviewer did not recommend as blocking', () => {
   for (const recommended of ['follow_up', 'suggestion', 'nit']) {
     assert.throws(

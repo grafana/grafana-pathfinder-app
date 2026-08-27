@@ -76,6 +76,10 @@ function completeVerdict(blocking, followUps, suggestions, nits) {
   return followUps > 0 || suggestions > 0 || nits > 0 ? 'Approve with Minor' : 'Approve';
 }
 
+function embedsStateMarker(value) {
+  return value.includes(STATE_MARKER_TOKEN) || oneLine(value).includes(STATE_MARKER_TOKEN);
+}
+
 function isCapped(value, max) {
   return (
     typeof value === 'string' &&
@@ -290,7 +294,7 @@ function readAssessment(report) {
     return { status: 'complete', reason: null };
   }
   const reason = typeof assessment.reason === 'string' ? oneLine(assessment.reason) : '';
-  if (reason.includes(STATE_MARKER_TOKEN)) {
+  if (embedsStateMarker(reason)) {
     throw new Error('an incomplete assessment reason must not embed a review state marker');
   }
   if (reason.length === 0 || reason.length > MAX_INCOMPLETE_REASON) {
@@ -318,7 +322,7 @@ function validateFollowUp(finding) {
   if (typeof proposed.body !== 'string' || proposed.body.trim().length === 0) {
     throw new Error('a follow-up finding must carry a proposed_issue with a title and a body');
   }
-  if (proposed.body.includes(STATE_MARKER_TOKEN)) {
+  if (embedsStateMarker(proposed.body)) {
     throw new Error('a proposed issue body must not embed a review state marker');
   }
   if (proposed.body.length > MAX_PROPOSED_ISSUE_BODY) {
@@ -366,7 +370,7 @@ function validateReport(report) {
   if (typeof report.pr_title !== 'string' || normalizePurpose(report.pr_title).length === 0) {
     throw new Error('pr_title must produce a non-empty purpose');
   }
-  if (report.pr_title.includes(STATE_MARKER_TOKEN)) {
+  if (embedsStateMarker(report.pr_title)) {
     throw new Error('pr_title must not embed a review state marker');
   }
   if (!/^[0-9a-f]{40}$/i.test(report.reviewed_head ?? '')) {
@@ -400,7 +404,7 @@ function validateReport(report) {
       if (typeof finding[field] !== 'string' || finding[field].trim().length === 0) {
         throw new Error(`finding ${field} must be a non-empty string`);
       }
-      if (finding[field].includes(STATE_MARKER_TOKEN)) {
+      if (embedsStateMarker(finding[field])) {
         throw new Error(`finding ${field} must not embed a review state marker`);
       }
     }

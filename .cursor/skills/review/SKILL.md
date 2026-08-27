@@ -254,7 +254,7 @@ Keep `verification_dropped` and skeptic reasoning in the debug trace only; never
 
 Adversarial verification establishes that a finding is **true**. This phase decides whether it **blocks**, and it is the only place that decision is made.
 
-Every finding whose disposition after §4b is `blocking` — including one elevated by the one-way-door instruction in §5, and including any blocking contract verdict from §3b — is serialized with its gate answers to a temporary JSON file and passed to the gate:
+Every finding whose disposition after §4b is `blocking` — including one §5 elevated from a `suggestion` or `nit` by its one-way-door instruction, and including any blocking contract verdict from §3b — is serialized with its gate answers to a temporary JSON file and passed to the gate. A `follow_up` never reaches this phase by elevation; §5 may not elevate one:
 
 ```bash
 node .cursor/skills/review/scripts/blocking-gate.mjs <gate-input-file>
@@ -268,6 +268,8 @@ Rules:
 - The gate emits `blocking` or `follow_up` only. **The synthesizer must not convert a gate-demoted finding back to `blocking`.**
 - If a demoted finding leaves no maintainer action at all, the synthesizer may render it as a `suggestion` instead of a `follow_up` — at rounds 1 and 2 only, since §3a's round budget forbids new suggestions outright from round 3 onward, where such a finding is a `follow_up` or nothing. That is the one judgment left downstream of the gate.
 - Record each decision's `reason`, `override`, `override_source`, and `gate_failures` in the debug trace, so a later reader can tell a reviewer-supplied override from one the gate derived, and see what it outranked.
+
+Send the finding's `reversibility` with its answers. A one-way door — `partially_reversible` or `irreversible_without_cleanup` — is not boundable by a follow-up, so the gate withholds the two rows that demote on that premise (`no-live-impact` and `safely-bounded`) and such a finding leaves the gate `blocking` unless a provenance row demotes it. That is the whole reason §5 can forbid elevating a `follow_up`.
 
 Genuine security, data-loss, credential-exposure, and shipped-path-breakage findings block unconditionally at any round, regardless of precedent or authorship. That is what `override` is for, and it is the entire safety net beneath everything else in this phase — reach for it whenever it genuinely applies, and never to rescue a blocker the other rules demoted.
 
@@ -288,7 +290,7 @@ The synthesizer must:
 - choose a primary owning concern for each merged finding
 - preserve secondary concern links only when they add real explanatory value
 - prefer one high-signal finding over several repetitive variants of the same issue
-- elevate one-way door findings when rollback would not restore the system cleanly — this elevates a **recommendation**; §4c disposes
+- elevate one-way door findings when rollback would not restore the system cleanly — this elevates a **recommendation**; §4c disposes. This applies only to a finding that is **not already** a `follow_up`. A `follow_up` is never elevated to `blocking`, which is what keeps §4b's lane assignment sound: a follow-up takes one skeptic and answers no warrant axis, so elevating one would publish a blocker that skipped both. Nothing is lost by the restriction, because a one-way door cannot be dispositioned as a follow-up in the first place — §4c's rows 7 and 8 do not hold for one, so the gate returns it `blocking` rather than handing §5 something it may not elevate
 - call out disagreement or uncertainty explicitly if reviewers conflict
 - note when change classification may have reduced reviewer fan-out, if that affects confidence
 - disclose when the PR's center of gravity appears only weakly covered by the current concern registry
@@ -299,7 +301,7 @@ The synthesizer must:
 - treat an unanswered question as `blocking` only when the answer is required to merge; otherwise render it as a `suggestion`
 - state a complete merge contract: fixing every blocking ID must make the reviewed head mergeable, subject only to risks introduced by later commits
 - carry forward each **still-unresolved** entry from the marker's `deferred` list as a `follow_up`, and mark it `carried_forward: true`. `deferred` shrinks as work lands: an entry the author has fixed at this head is dropped, not re-rendered, because the next marker's `deferred` is derived from the follow-ups this report carries. Nothing else removes an entry — every follow-up this round produces reaches the marker, whatever its source, so none of them can lose the suppression `deferred` grants, unless the marker saturates and says so
-- expect **carried** follow-ups to lose their rendered detail first. The body is bounded at 60000 characters, and when it is over the renderer compresses entries to identifiers on the overflow line — carried entries first, lowest severity first, and within a severity the last one you listed; new entries only if that is not enough. A new follow-up's proposed issue exists nowhere else, so it is the last thing to go. Forgetting the tag is harmless: an untagged carried entry is treated as new, so it renders in full, costing space and losing nothing
+- expect **carried** follow-ups to lose their rendered detail first. The renderer targets a 60000-character body, and when it is over it compresses entries to identifiers on the overflow line — carried entries first, lowest severity first, and within a severity the last one you listed; new entries only if that is not enough. A new follow-up's proposed issue exists nowhere else, so it is the last thing to go. Forgetting the tag is harmless: an untagged carried entry is treated as new, so it renders in full, costing space and losing nothing
 - set the report's `cleared` array to the union of the prior marker's `cleared` entries and what this round examined and cleared, deduplicated by claim. Unlike `deferred`, `cleared` persists for the life of the PR — a clearance an earlier round wrote stays readable to every later round, and nothing but the cap removes it. When the union exceeds the 12-entry `cleared` cap the renderer rejects it, so prune the least load-bearing entries rather than dropping the earlier rounds wholesale. Exceeding the 4500-character budget is not a rejection — the marker truncates and declares itself saturated, which costs the next round a full review
 
 ### Do not manufacture blockers from the review's own effects
@@ -379,7 +381,7 @@ The PR URL must be complete and clickable. `Purpose` is derived from the PR titl
 
 Set the report's `round` and `cleared` fields so the emitted marker carries the ratchet forward. `cleared` is the accumulated union across every round of this PR, not just this round's clearances. `deferred` and `cleared` hold **separate** character budgets in the marker — 3300 and 4500 inside an 8192-character total — so within their own budgets neither squeezes the other. A `deferred` entry is a bare identifier pair costing 48 to 65 characters in practice, so its budget holds around fifty; a `cleared` entry costs 267 at typical claim and reason lengths, so its budget holds all 12 the count cap allows.
 
-**The renderer never fails on volume.** Past those budgets it truncates the marker's tail and sets `truncated: true`, and past 60000 body characters it compresses follow-up detail — a review is always published. Both are honest degradations the next round detects: a truncated marker forces the full-review path in §3a. Prune `cleared` and split a very large round if you would rather not pay that cost, but the renderer will publish either way.
+**The renderer degrades rather than failing on volume.** Past those budgets it truncates the marker's tail and sets `truncated: true`, and past 60000 body characters it compresses follow-up detail. Both are honest degradations the next round detects: a truncated marker forces the full-review path in §3a. Follow-ups are the only compressible content, though — blocking, suggestion, and nit detail never yields — so a round whose blockers alone fill the body renders over the budget and GitHub rejects the post. Treat that as the signal it is: split the round, or reconsider whether that many findings truly block.
 
 ## 10. Pattern catalog
 

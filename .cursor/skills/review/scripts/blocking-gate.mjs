@@ -7,6 +7,8 @@ const SEVERITIES = new Set(['critical', 'high', 'medium', 'low']);
 const OVERRIDES = new Set(['security', 'data_loss', 'credential_exposure', 'shipped_path_breakage']);
 const AUTHORSHIP = new Set(['regression', 'pre_existing', 'latent_exposed']);
 const ATTRIBUTIONS = new Set(['prior_unresolved', 'since_prior_head', 'late']);
+const REVERSIBILITY = new Set(['reversible', 'partially_reversible', 'irreversible_without_cleanup', 'unknown']);
+const ONE_WAY_DOORS = new Set(['partially_reversible', 'irreversible_without_cleanup']);
 const REQUIRED_BOOLEANS = [
   'breaks_live_path',
   'concrete_risk_now',
@@ -24,8 +26,11 @@ const DEMOTIONS = [
     reason: 'latent-unreachable',
     holds: (answers) => answers.authorship === 'latent_exposed' && answers.latent_reachable === false,
   },
-  { reason: 'no-live-impact', holds: (answers) => !answers.breaks_live_path && !answers.concrete_risk_now },
-  { reason: 'safely-bounded', holds: (answers) => answers.boundable_by_followup },
+  {
+    reason: 'no-live-impact',
+    holds: (answers) => !answers.one_way_door && !answers.breaks_live_path && !answers.concrete_risk_now,
+  },
+  { reason: 'safely-bounded', holds: (answers) => !answers.one_way_door && answers.boundable_by_followup },
 ];
 
 function nonEmpty(value) {
@@ -54,6 +59,13 @@ function validateFinding(finding) {
   if (finding.recommended_disposition !== 'blocking') {
     throw new Error('The blocking gate runs only on a finding recommended as blocking');
   }
+  if (finding.reversibility != null && !REVERSIBILITY.has(finding.reversibility)) {
+    throw new Error(`Unknown reversibility: ${finding.reversibility}`);
+  }
+}
+
+function isOneWayDoor(finding) {
+  return ONE_WAY_DOORS.has(finding.reversibility);
 }
 
 function validateAnswers(answers) {
@@ -114,7 +126,7 @@ export function decideBlocking(input) {
     throw new Error('Expected an object holding { finding, answers }');
   }
   validateFinding(input.finding);
-  const answers = validateAnswers(input.answers);
+  const answers = { ...validateAnswers(input.answers), one_way_door: isOneWayDoor(input.finding) };
   const gateFailures = DEMOTIONS.filter((rule) => rule.holds(answers)).map((rule) => rule.reason);
   const override = { override: answers.override, override_source: answers.override_source };
   if (answers.override !== null) {

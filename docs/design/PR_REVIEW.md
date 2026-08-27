@@ -81,21 +81,22 @@ Unanimity among believers is the bar because keeping a blocker whose only believ
 
 Every finding still recommended `blocking` after adversarial verification is serialized as `{ finding, answers }` and passed to `.cursor/skills/review/scripts/blocking-gate.mjs`, which returns `{ disposition, reason, override, override_source, gate_failures }`. `blocking-gate.test.mjs` is its behavioral spec, including the PR #1702 acceptance fixture. Never hand-apply its table.
 
-| Answer                        | Rule                                                                                                  |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `round`                       | Positive integer, clamped at 100; read from the re-review marker, or derived per §3a when none exists |
-| `override`                    | `null`, or one of `security`, `data_loss`, `credential_exposure`, `shipped_path_breakage`             |
-| `authorship`                  | `regression \| pre_existing \| latent_exposed`, judged against the base commit                        |
-| `latent_reachable`            | Required when `authorship` is `latent_exposed`                                                        |
-| `breaks_live_path`            | Does the condition break a path that ships today?                                                     |
-| `concrete_risk_now`           | Is there a concrete risk at this head, not a hypothetical future one?                                 |
-| `boundable_by_followup`       | Can a tracked follow-up hold this safely?                                                             |
-| `precedent_count`             | Non-negative count of already-merged PRs shipping the same property                                   |
-| `induced_by_prior_suggestion` | Does this blocker exist only because of code added in response to a prior-round suggestion or nit?    |
-| `attribution`                 | `prior_unresolved \| since_prior_head \| late`; required from round 2 onward                          |
-| `late_blocker_reason`         | Required and non-empty when `attribution` is `late`                                                   |
-| `prior_contract_satisfied`    | Optional context for the §5 contract-anchor judgment; no decision rule reads it                       |
-| `contradicts_cleared`         | Optional `{ claim, reason, new_evidence }` quoting a `cleared` marker entry this finding overturns    |
+| Answer                           | Rule                                                                                                  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `reversibility` (on the finding) | Optional; one of the four reversibility values. A one-way door suppresses rows 7 and 8                |
+| `round`                          | Positive integer, clamped at 100; read from the re-review marker, or derived per §3a when none exists |
+| `override`                       | `null`, or one of `security`, `data_loss`, `credential_exposure`, `shipped_path_breakage`             |
+| `authorship`                     | `regression \| pre_existing \| latent_exposed`, judged against the base commit                        |
+| `latent_reachable`               | Required when `authorship` is `latent_exposed`                                                        |
+| `breaks_live_path`               | Does the condition break a path that ships today?                                                     |
+| `concrete_risk_now`              | Is there a concrete risk at this head, not a hypothetical future one?                                 |
+| `boundable_by_followup`          | Can a tracked follow-up hold this safely?                                                             |
+| `precedent_count`                | Non-negative count of already-merged PRs shipping the same property                                   |
+| `induced_by_prior_suggestion`    | Does this blocker exist only because of code added in response to a prior-round suggestion or nit?    |
+| `attribution`                    | `prior_unresolved \| since_prior_head \| late`; required from round 2 onward                          |
+| `late_blocker_reason`            | Required and non-empty when `attribution` is `late`                                                   |
+| `prior_contract_satisfied`       | Optional context for the §5 contract-anchor judgment; no decision rule reads it                       |
+| `contradicts_cleared`            | Optional `{ claim, reason, new_evidence }` quoting a `cleared` marker entry this finding overturns    |
 
 The `override` list is the entire safety net. Its **membership** is fixed at exactly `security`, `data_loss`, `credential_exposure`, and `shipped_path_breakage`, and must not grow. Once an override applies, it is never weakened by round, precedent, or authorship — it blocks unconditionally. Whether `shipped_path_breakage` applies, by contrast, _is_ derived from authorship, deliberately, per the rule below; that is a rule for resolving an override, not a condition that weakens one.
 
@@ -113,17 +114,19 @@ A round above 100 is clamped to 100 rather than rejected, in both the gate and t
 
 First match wins, in this order. The reason code is the stable identifier; cite it rather than the row number, which is meaningful only against this table.
 
-| Row | Condition                                                        | Disposition | Reason                   |
-| --- | ---------------------------------------------------------------- | ----------- | ------------------------ |
-| 1   | `override` is supplied, or derived per the rule above            | `blocking`  | `unconditional-override` |
-| 2   | `attribution` is `late`                                          | `follow_up` | `late-peripheral`        |
-| 3   | `precedent_count >= 2`                                           | `follow_up` | `policy-change`          |
-| 4   | `induced_by_prior_suggestion`                                    | `follow_up` | `induced-scope`          |
-| 5   | `authorship` is `pre_existing`                                   | `follow_up` | `pre-existing`           |
-| 6   | `authorship` is `latent_exposed` and `latent_reachable` is false | `follow_up` | `latent-unreachable`     |
-| 7   | neither `breaks_live_path` nor `concrete_risk_now`               | `follow_up` | `no-live-impact`         |
-| 8   | `boundable_by_followup`                                          | `follow_up` | `safely-bounded`         |
-| 9   | no rule above holds                                              | `blocking`  | `warranted`              |
+| Row | Condition                                                                  | Disposition | Reason                   |
+| --- | -------------------------------------------------------------------------- | ----------- | ------------------------ |
+| 1   | `override` is supplied, or derived per the rule above                      | `blocking`  | `unconditional-override` |
+| 2   | `attribution` is `late`                                                    | `follow_up` | `late-peripheral`        |
+| 3   | `precedent_count >= 2`                                                     | `follow_up` | `policy-change`          |
+| 4   | `induced_by_prior_suggestion`                                              | `follow_up` | `induced-scope`          |
+| 5   | `authorship` is `pre_existing`                                             | `follow_up` | `pre-existing`           |
+| 6   | `authorship` is `latent_exposed` and `latent_reachable` is false           | `follow_up` | `latent-unreachable`     |
+| 7   | neither `breaks_live_path` nor `concrete_risk_now`, and not a one-way door | `follow_up` | `no-live-impact`         |
+| 8   | `boundable_by_followup`, and not a one-way door                            | `follow_up` | `safely-bounded`         |
+| 9   | no rule above holds                                                        | `blocking`  | `warranted`              |
+
+**A one-way door is not boundable by a follow-up.** Rows 7 and 8 are the two that demote on the premise that the finding can wait, so neither holds when the finding's `reversibility` is `partially_reversible` or `irreversible_without_cleanup`: the harm of a door that closes on merge lands at merge, which is exactly when a follow-up has not yet been acted on. That is why §5 can forbid elevating a `follow_up` to `blocking` without losing one-way doors — the invariant binds where the disposition is decided rather than being bolted on after. The gate reads `reversibility` off the finding; the other rows are about provenance and precedent rather than boundability, and are unchanged.
 
 Row 2 carries no carve-out. A late finding that breaks a shipped path because of this PR already blocked at row 1 on the derived override, so it never reaches row 2 — the exception lives at row 1, as one rule, rather than as a clause repeated on another. Row 2 therefore holds on lateness alone, and `gate_failures` records it even where row 1 outranked it.
 
@@ -380,9 +383,11 @@ Each `cleared` entry contains `claim` (≤ 200 characters), `concern_id`, and `r
 
 Follow-ups render in their own `## Follow-ups` section between the merge contract and `## Suggestions`, under the fixed line `These are tracked separately and do not block merge.` They count toward `Approve with Minor` and never toward `Request Changes`.
 
-**Volume never fails a review.** The renderer rejects no follow-up count, no marker size, and no body size: it degrades instead, so a round always publishes something. Every follow-up a round produces is offered to the marker's `deferred` list — gate demotions, §4b demotions, tech debt, doc drift, instrumentation, and §5's suggestion-surface rule alike — and reaches it unless the marker saturates, which it declares. Every other cap keeps rejecting exactly as before; this applies to quantity alone, never to malformed input.
+**Follow-up and marker volume never fail a review.** The renderer rejects no follow-up count and no marker size: it compresses follow-up detail and truncates the marker instead. Every follow-up a round produces is offered to the marker's `deferred` list — gate demotions, §4b demotions, tech debt, doc drift, instrumentation, and §5's suggestion-surface rule alike — and reaches it unless the marker saturates, which it declares. Every other cap keeps rejecting exactly as before; this applies to quantity alone, never to malformed input.
 
-**Carried follow-ups compress before new ones.** The rendered body is bounded at 60000 characters, under GitHub's 65536 limit, and a count cap cannot bound it because a single entry may carry a 2000-character proposed-issue body. When the assembled body is over budget the renderer compresses entries to identifiers on the overflow line until it fits, taking **carried entries first, lowest severity first, and within a severity the last one the synthesizer listed**; only if that is not enough does it start on new ones by the same order. Compressing a new entry is the last resort because its `proposed_issue` exists nowhere but this report. The overflow line says only that the detail was omitted to keep the review postable — it makes no claim about where the detail lives, because for a compressed new entry there is nowhere it does.
+Body size is the one volume the renderer cannot always absorb. Follow-ups are its only compressible content — blocking, suggestion, and nit detail never yields, deliberately — so a report whose non-follow-up sections alone exceed the budget is emitted over it, and GitHub rejects the post. That is not defended against, and should not be: `problem` and `suggested_action` are one rendered line each, so reaching 60000 characters on blockers alone takes dozens of paragraph-length blocking findings, and a review with that many blockers has a calibration problem this document exists to fix, not a rendering problem.
+
+**Carried follow-ups compress before new ones.** The renderer targets a 60000-character body, under GitHub's 65536 limit, and reaches it by compressing follow-ups — so the target holds whenever follow-up detail is what makes the body large. A count cap could not do this, because a single entry may carry a 2000-character proposed-issue body. When the assembled body is over budget the renderer compresses entries to identifiers on the overflow line until it fits, taking **carried entries first, lowest severity first, and within a severity the last one the synthesizer listed**; only if that is not enough does it start on new ones by the same order. Compressing a new entry is the last resort because its `proposed_issue` exists nowhere but this report. The overflow line says only that the detail was omitted to keep the review postable — it makes no claim about where the detail lives, because for a compressed new entry there is nowhere it does.
 
 This is the complete author-facing vocabulary. `confidence`, skeptic reasoning, and every other reviewer-internal field stay in the debug trace — the renderer has no channel for them, so the synthesizer must not fold them into `problem` as prose.
 
