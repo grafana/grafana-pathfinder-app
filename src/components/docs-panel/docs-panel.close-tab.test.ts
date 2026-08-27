@@ -225,6 +225,7 @@ jest.mock('../../hooks', () => ({}));
 // ---------------------------------------------------------------------------
 
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import { tabStorage } from '../../lib/user-storage';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 
 // ---------------------------------------------------------------------------
@@ -319,5 +320,117 @@ describe('CombinedLearningJourneyPanel.closeTab — focus adjacency', () => {
       tabIds: ['recommendations', 'guide-1', 'guide-2'],
       activeTabId: 'guide-2',
     });
+  });
+
+  it('does not commit or persist when the tab is missing', () => {
+    const panel = panelWith([RECOMMENDATIONS, tab('guide-1', 'docs')], 'guide-1');
+    const setState = jest.spyOn(panel as any, 'setState');
+    const saveTabs = jest.spyOn(panel, 'saveTabsToStorage');
+
+    panel.closeTab('missing');
+
+    expect(setState).not.toHaveBeenCalled();
+    expect(saveTabs).not.toHaveBeenCalled();
+  });
+
+  it('does not commit or persist when a recommendations-kind tab is closed', () => {
+    const recommendations = tab('noncanonical-recommendations-id', 'recommendations');
+    const panel = panelWith([recommendations, tab('guide-1', 'docs')], 'guide-1');
+    const setState = jest.spyOn(panel as any, 'setState');
+    const saveTabs = jest.spyOn(panel, 'saveTabsToStorage');
+
+    panel.closeTab(recommendations.id);
+
+    expect(setState).not.toHaveBeenCalled();
+    expect(saveTabs).not.toHaveBeenCalled();
+  });
+
+  it('commits and requests persistence once for a valid close', () => {
+    const panel = panelWith([RECOMMENDATIONS, tab('guide-1', 'docs')], 'guide-1');
+    const setState = jest.spyOn(panel as any, 'setState');
+    const saveTabs = jest.spyOn(panel, 'saveTabsToStorage');
+
+    panel.closeTab('guide-1');
+
+    expect(setState).toHaveBeenCalledTimes(1);
+    expect(saveTabs).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CombinedLearningJourneyPanel.saveTabsToStorage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('writes the exact persisted projection with the active tab in the same save', async () => {
+    const packageInfo = { packageId: 'package-1', packageManifest: { id: 'package-1' } };
+    const guide: LearningJourneyTab = {
+      ...tab('guide-1', 'learning-journey'),
+      title: 'Guide one',
+      baseUrl: 'https://example.com/guide',
+      currentUrl: 'https://example.com/guide/milestone-2',
+      packageInfo,
+      content: {
+        content: '{}',
+        metadata: { title: 'Guide one' },
+        type: 'learning-journey',
+        url: 'https://example.com/guide/milestone-2',
+        lastFetched: '2026-08-27T00:00:00.000Z',
+      },
+      isLoading: true,
+      error: 'runtime-only',
+      pathContext: {
+        learningJourney: {
+          currentMilestone: 1,
+          totalMilestones: 1,
+          milestones: [],
+          baseUrl: 'https://example.com/guide',
+        },
+      },
+      pendingAlignment: {
+        startingLocation: '/connections',
+        currentPath: '/explore',
+        launchSource: 'home_page',
+        decidedAt: 123,
+      },
+    };
+    const panel = panelWith([RECOMMENDATIONS, guide], guide.id);
+    const stateBefore = (panel as any).state;
+    let resolveTabs!: () => void;
+    let resolveActiveTab!: () => void;
+    (tabStorage.setTabs as jest.Mock).mockReturnValueOnce(new Promise<void>((resolve) => (resolveTabs = resolve)));
+    (tabStorage.setActiveTab as jest.Mock).mockReturnValueOnce(
+      new Promise<void>((resolve) => (resolveActiveTab = resolve))
+    );
+
+    let settled = false;
+    const save = panel.saveTabsToStorage().then(() => {
+      settled = true;
+    });
+
+    expect(tabStorage.setTabs).toHaveBeenCalledTimes(1);
+    expect(tabStorage.setActiveTab).toHaveBeenCalledTimes(1);
+    expect(tabStorage.setTabs).toHaveBeenCalledWith([
+      {
+        id: guide.id,
+        title: guide.title,
+        baseUrl: guide.baseUrl,
+        currentUrl: guide.currentUrl,
+        type: guide.type,
+        packageInfo,
+      },
+    ]);
+    expect(tabStorage.setActiveTab).toHaveBeenCalledWith(guide.id);
+    const persistedGuide = (tabStorage.setTabs as jest.Mock).mock.calls[0][0][0];
+    expect(Object.keys(persistedGuide).sort()).toEqual(['baseUrl', 'currentUrl', 'id', 'packageInfo', 'title', 'type']);
+    expect(persistedGuide.packageInfo).toBe(packageInfo);
+    expect((panel as any).state).toBe(stateBefore);
+
+    resolveTabs();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    resolveActiveTab();
+    await save;
+    expect(settled).toBe(true);
   });
 });

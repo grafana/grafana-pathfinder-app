@@ -533,6 +533,47 @@ describe('CombinedLearningJourneyPanel — tab gate sync', () => {
     setupRestoreMocks();
   });
 
+  it('does not commit or persist when pruning is a no-op', () => {
+    const panel = new CombinedLearningJourneyPanel();
+    const setState = jest.spyOn(panel as any, 'setState');
+    const saveTabs = jest.spyOn(panel, 'saveTabsToStorage');
+
+    panel.pruneGatedTabs();
+
+    expect(setState).not.toHaveBeenCalled();
+    expect(saveTabs).not.toHaveBeenCalled();
+  });
+
+  it('commits once without persisting on the first unauthorized observation', () => {
+    const panel = new CombinedLearningJourneyPanel();
+    (panel as any).setState({ tabs: [...RESTORED_TABS, DEVTOOLS_TAB], activeTabId: 'devtools' });
+    const setState = jest.spyOn(panel as any, 'setState');
+    const saveTabs = jest.spyOn(panel, 'saveTabsToStorage');
+
+    panel.pruneGatedTabs();
+
+    expect(setState).toHaveBeenCalledTimes(1);
+    expect(saveTabs).not.toHaveBeenCalled();
+  });
+
+  it('commits and persists once when an observed open gate closes', async () => {
+    (isDevModeEnabled as jest.Mock).mockReturnValue(true);
+    mockRestoreTabsFromStorage.mockResolvedValue([...RESTORED_TABS, DEVTOOLS_TAB]);
+    mockRestoreActiveTabFromStorage.mockResolvedValue('devtools');
+    const panel = new CombinedLearningJourneyPanel({ devMode: true, devModeUserIds: [1] });
+    await panel.restoreTabsAsync();
+
+    (isDevModeEnabled as jest.Mock).mockReturnValue(false);
+    (panel as any).setState({ pluginConfig: { devMode: false } });
+    const setState = jest.spyOn(panel as any, 'setState');
+    const saveTabs = jest.spyOn(panel, 'saveTabsToStorage');
+
+    panel.pruneGatedTabs();
+
+    expect(setState).toHaveBeenCalledTimes(1);
+    expect(saveTabs).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps Dev Tools when the renderer reports an unresolved plugin context', async () => {
     // The regression: an unresolved context produced getConfigWithDefaults({}),
     // which reads as "dev mode off" and stripped an authorized Dev Tools tab.
