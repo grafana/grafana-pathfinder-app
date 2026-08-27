@@ -11,8 +11,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { runInspect } from '../../commands/inspect';
-import { registerCommandInterfaceConfig, validateCommandArgs } from '../lib/command-interface';
+import { inspectSpec } from '../../commands/inspect';
+import { parseCommandInput } from '../../contracts';
+import { bindCommandInterface, validateCommandArgs } from '../lib/command-interface';
 import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
@@ -41,7 +42,7 @@ export function registerInspectTool(
   options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
-  registerCommandInterfaceConfig('inspect', { optBlacklist: ['dir'] });
+  bindCommandInterface('inspect');
 
   server.registerTool(
     'pathfinder_inspect',
@@ -66,9 +67,10 @@ export function registerInspectTool(
         if (!resolved.ok) {
           return resolved.response;
         }
-        const result = await withArtifact({ content: resolved.content, manifest: resolved.manifest }, (dir) =>
-          runInspect({ dir, blockId: bag.block as string | undefined, at: bag.at as string | undefined })
-        );
+        const result = await withArtifact({ content: resolved.content, manifest: resolved.manifest }, (dir) => {
+          const parsed = parseCommandInput(inspectSpec, { ...bag, dir });
+          return parsed.ok ? inspectSpec.run(parsed.value) : parsed.outcome;
+        });
         return outcomeResult(result.outcome, result.artifact, result.summary);
       });
     }

@@ -44,7 +44,11 @@ export const PACKAGE_ID_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
  */
 export const PACKAGE_ID_MAX_LENGTH = 253;
 
-const packageIdSchema = z.string().min(1).max(PACKAGE_ID_MAX_LENGTH).regex(PACKAGE_ID_REGEX, {
+/**
+ * Exported so every command that accepts a package id validates against the same
+ * regex/length rule instead of hand-rolling a weaker copy that drifts
+ */
+export const packageIdSchema = z.string().min(1).max(PACKAGE_ID_MAX_LENGTH).regex(PACKAGE_ID_REGEX, {
   error: 'Package id must be kebab-case (lowercase alphanumeric and hyphens, no leading/trailing hyphen)',
 });
 

@@ -8,16 +8,15 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { exportAllSchemas, exportSchema, listSchemas, SCHEMA_REGISTRY } from '../../commands/schema';
+import { runSchema, schemaSpec } from '../../commands/schema';
+import { parseCommandInput } from '../../contracts';
 import { renderMachineJson } from '../../utils/output';
-import { registerCommandInterfaceConfig, validateCommandArgs } from '../lib/command-interface';
+import { bindCommandInterface, validateCommandArgs } from '../lib/command-interface';
 import { readOnly } from './annotations';
 import { outcomeResult, textResult } from './result';
 
-const SCHEMA_NAMES = Object.keys(SCHEMA_REGISTRY);
-
 export function registerSchemaTools(server: McpServer): void {
-  registerCommandInterfaceConfig('schema', {});
+  bindCommandInterface('schema');
 
   server.registerTool(
     'pathfinder_get_schema',
@@ -36,33 +35,13 @@ export function registerSchemaTools(server: McpServer): void {
       if (rejected) {
         return rejected;
       }
-      const includeVersion = opts.includeVersion === true;
 
-      if (opts.list === true) {
-        return textResult(renderMachineJson({ schemas: listSchemas() }));
+      const parsed = parseCommandInput(schemaSpec, opts);
+      if (!parsed.ok) {
+        return outcomeResult(parsed.outcome);
       }
-      if (opts.all === true) {
-        return textResult(renderMachineJson({ schemas: exportAllSchemas(includeVersion), available: SCHEMA_NAMES }));
-      }
-
-      const name = typeof opts.name === 'string' ? opts.name : undefined;
-      if (!name) {
-        return outcomeResult({
-          status: 'error',
-          code: 'MISSING_NAME',
-          message: `Please specify a schema name, or set list: true or all: true in opts. Available: ${SCHEMA_NAMES.join(', ')}.`,
-        });
-      }
-
-      const schema = exportSchema(name, includeVersion);
-      if (!schema) {
-        return outcomeResult({
-          status: 'error',
-          code: 'UNKNOWN_SCHEMA',
-          message: `Unknown schema "${name}". Available: ${SCHEMA_NAMES.join(', ')}.`,
-        });
-      }
-      return textResult(renderMachineJson({ name, schema }));
+      const outcome = runSchema(parsed.value);
+      return outcome.status === 'ok' ? textResult(renderMachineJson(outcome.data)) : outcomeResult(outcome);
     }
   );
 }

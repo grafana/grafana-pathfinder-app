@@ -73,7 +73,7 @@ Instead of asking agents to understand the schema and produce raw JSON, we give 
 
 2. **Impossible to produce invalid output.** Every mutation validates the full package (both `content.json` and `manifest.json`) before writing. If validation fails, the file is not modified and the error is printed.
 
-3. **Append-first.** New blocks are appended sequentially. There is no insert-at-index and no reordering. The agent writes blocks in the order they should appear. Existing blocks can be updated in place via `edit-block` or removed via `remove-block` using their ID.
+3. **Append-first for agents.** The CLI itself supports arbitrary placement (`add-block --before`/`--after`/`--position`, `move-block`) for human/power use, but the MCP agent surface withholds those parameters via a bind-time blacklist (see [The command's Zod schema is the stability contract](#the-commands-zod-schema-is-the-stability-contract)), so an agent's own procedure stays append-only: it writes blocks in the order they should appear, updates them in place via `edit-block`, and removes them via `remove-block` using their ID.
 
 4. **ID-based addressing.** All blocks have an `id`. Container blocks (sections, conditionals, assistant, multistep, guided, quiz) require an author-supplied `--id`. Leaf blocks are auto-assigned an ID by the CLI when none is provided. All IDs are stored in `content.json` — the guide file is the source of truth for block identity and is durable across sessions.
 
@@ -356,7 +356,7 @@ The addressing model defines how commands locate where to append content within 
 
 4. **`--branch` disambiguates conditional branches.** When the parent is a `conditional` block, `--branch true` appends to `whenTrue` and `--branch false` appends to `whenFalse`. If the parent is a conditional and `--branch` is omitted, the command fails.
 
-5. **No positional mutation.** There is no insert-at-index and no reordering. New blocks are always appended. `edit-block` and `remove-block` operate on existing blocks by ID without touching positions of other blocks.
+5. **CLI positional mutation is a human/power-user path, not an agent one.** `add-block` accepts `--before <id>` / `--after <id>` / `--position <n>` for placement within the resolved parent (default: append), and `move-block` repositions an existing block. The MCP agent surface withholds all three placement parameters, plus `move-block` itself, via a bind-time blacklist, so an agent's own writes are still append-only. `edit-block` and `remove-block` operate on existing blocks by ID without touching positions of other blocks.
 
 6. **IDs must be unique within the guide.** The CLI enforces ID uniqueness at creation time.
 
@@ -422,30 +422,35 @@ The central design challenge is keeping CLI flags tightly coupled to the Zod sch
 
 ### The bridge module
 
-A new module `src/cli/utils/schema-options.ts` provides the Zod-to-Commander bridge.
+`src/cli/utils/schema-options.ts` answers one question about a Zod field — what kind of parameter is this? — and `src/cli/contracts/` renders the answer onto each entrypoint.
 
 ```typescript
-// Conceptual interface — not the final API
-function zodFieldToOption(name: string, field: z.ZodType): commander.Option | null;
+// What kind of value the field holds: string, number, boolean, enum, array,
+// array-enum, a union of primitives, literal, or unsupported.
+function describeField(field: z.ZodType): FieldShape;
 
-function registerSchemaOptions(cmd: Command, schema: z.ZodObject): Command;
+// The Commander spelling of one field, or null when it has none.
+function buildOptionForField(name: string, field: z.ZodType): commander.Option | null;
 ```
 
-The bridge walks the `.shape` of a `z.object()` schema and generates a Commander option for each field:
+Which fields become parameters is stated by a command's own schema (`CommandSpec`), and `mountCommander` walks it. The type mapping below is what `describeField` decides and both entrypoints read, so a parameter cannot be an enum on one surface and an array on the other:
 
-| Zod type                  | Commander option             | Help display                 |
-| ------------------------- | ---------------------------- | ---------------------------- |
-| `z.string()`              | `--name <string>`            | `--name <string>`            |
-| `z.string().optional()`   | `--name <string>` (optional) | `--name <string>`            |
-| `z.boolean().optional()`  | `--name` (flag)              | `--name`                     |
-| `z.enum(['a', 'b', 'c'])` | `--name <a\|b\|c>`           | `--name <a\|b\|c>`           |
-| `z.array(z.string())`     | `--name <item>` (repeatable) | `--name <item> (repeatable)` |
-| `z.number()`              | `--name <number>`            | `--name <number>`            |
-| `z.literal(...)`          | skipped                      | —                            |
+| Zod type                             | Commander option             | Help display                 |
+| ------------------------------------ | ---------------------------- | ---------------------------- |
+| `z.string()`                         | `--name <string>`            | `--name <string>`            |
+| `z.string().optional()`              | `--name <string>` (optional) | `--name <string>`            |
+| `z.boolean().optional()`             | `--name` (flag)              | `--name`                     |
+| `z.enum(['a', 'b', 'c'])`            | `--name <a\|b\|c>`           | `--name <a\|b\|c>`           |
+| `z.array(z.string())`                | `--name <item>` (repeatable) | `--name <item> (repeatable)` |
+| `z.number()`                         | `--name <number>`            | `--name <number>`            |
+| `z.union([z.string(), z.boolean()])` | `--name <string-or-boolean>` | `--name <string-or-boolean>` |
+| `z.literal(...)`                     | skipped                      | —                            |
 
 For array fields like `requirements` and `objectives`, options are repeatable: `--requirements on-page:/dashboards --requirements is-admin`.
 
-Fields named `type` are skipped — the block type is the subcommand name. Fields named `blocks`, `whenTrue`, `whenFalse`, and `steps` are skipped — these are populated by subcommands (`add-block`, `add-step`), not flags.
+A union of primitives (string, number, boolean — `input.defaultValue`'s `z.union([z.string(), z.boolean()])` is the schema's own example) is one parameter with more than one acceptable shape, not an unsupported one: the CLI coerces the typed token toward whichever branch it looks like (`"true"`/`"false"` to a boolean, a numeric string to a number where the union declares one) before the schema ever sees it, and the agent interface publishes `valueType: 'union'` with a `unionOf` list naming the accepted types. A union that mixes in a non-primitive branch — an object, an array, a nested union — still cannot become one CLI token and stays `unsupported`.
+
+Which fields become parameters is a fact about a `CommandSpec`'s own schema, not a name this bridge recognizes: a variant's schema simply does not declare `type` (the block type is the subcommand name) or `blocks` / `whenTrue` / `whenFalse` / `steps` (populated by subcommands like `add-block` and `add-step`, not flags), so there is nothing for `describeField` to see. An earlier version of this bridge walked a runtime schema and skipped fields by a hardcoded name list, which is also what silently dropped `create --type` — a package-type enum unrelated to any block discriminator, but named `type` all the same.
 
 ### Field descriptions via `.describe()`
 
@@ -691,16 +696,17 @@ Common requirements:
     has-permission:<perm>, var-<name>:<value>, renderer:<type>
 ```
 
-### `--help --format json` is a stability contract
+### The command's Zod schema is the stability contract
 
-The Pathfinder authoring MCP exposes a `pathfinder_help` tool that returns the output of `pathfinder-cli <command> [<subcommand>] --help --format json` directly to the calling agent (see [Pathfinder authoring MCP service — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)). This makes the JSON shape of `--help` part of the public contract:
+Since #1639, `pathfinder_help` no longer forwards `pathfinder-cli <command> [<subcommand>] --help --format json` verbatim. Every bound command's `CommandSpec` (`src/cli/contracts/spec.ts`) is the single authority for its input shape, and both entrypoints render it rather than one projecting the other: Commander renders it into flags for `--help --format json`, and `src/cli/mcp/lib/command-interface.ts` renders the same schema into the agent-facing interface `pathfinder_help` publishes (see [Pathfinder authoring MCP service — Core tools](./HOSTED-AUTHORING-MCP.md#core-tools)). This makes the schema, not either rendering, the public contract:
 
-- The top-level keys (e.g., `command`, `summary`, `required`, `optional`, `constraints`, `addressing`) are stable. New keys may be added as additive fields. Existing keys are not renamed or removed within a major version.
-- Per-flag entries have stable keys (`name`, `valueType`, `enum`, `repeatable`, `description`, `default`).
-- A flag that both accumulates and constrains its values reports `valueType: 'array'`, keeping `enum` alongside `repeatable: true` — the accumulating type wins, because the flag takes a list of enum members rather than one of them. `--target-platform` is the live case; it reported `enum` before schema 1.1.0, which made consumers reject a correct list value.
-- Removing or renaming a flag is a breaking change and rides the schema version.
+- A field's name is its schema field name; its type, enum, requiredness, and description come straight from the Zod shape and its `.describe()` text — nothing is inferred from a flag string.
+- Binding is opt-in: `pathfinder_help` and `validateCommandArgs` only address commands an MCP tool has registered (`bindCommandInterface`); an unbound CLI command reports `UNKNOWN_COMMAND` rather than publishing flags no tool accepts.
+- A binding may withhold parameters the command declares (e.g. `add-block`'s `before`/`after`/`position`) as a narrowing of the agent procedure, not a fact about the command — the CLI still offers them. Withheld or unknown parameters sent in `opts` are rejected with `UNSUPPORTED_PARAMETER`, never silently dropped.
+- `validateCommandArgs` preflights an `opts` bag against the exact interface `pathfinder_help` publishes, so a missing required field, an unknown field, or a withheld field is reported before the runner is called, in the same vocabulary `pathfinder_help` uses.
+- Removing a schema field, changing its role, or renaming it is a breaking change and rides the schema version, same as before.
 
-Agents call `pathfinder_help` instead of carrying field-level guidance locally; promoting `--help --format json` to a contract is what lets the MCP layer be a thin pass-through with no schema knowledge of its own.
+Agents call `pathfinder_help` instead of carrying field-level guidance locally; rendering both the CLI's flags and the agent's `opts` shape from one schema is what keeps them from drifting apart, and is what replaced the old thin pass-through.
 
 ---
 
@@ -727,12 +733,12 @@ The `create` command stamps `schemaVersion: CURRENT_SCHEMA_VERSION` into both `c
 
 The coupling between schema and CLI is maintained at three levels:
 
-| Level               | Mechanism                                                  | What it catches                                                          |
-| ------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **Compile-time**    | `BLOCK_SCHEMA_MAP` keys tested against `VALID_BLOCK_TYPES` | Forgetting to register a new block type                                  |
-| **Runtime (help)**  | `registerSchemaOptions()` walks `schema.shape` dynamically | New fields automatically appear in `--help` and are accepted as flags    |
-| **Runtime (write)** | `validatePackage()` on every mutation                      | Any bug in option parsing, schema introspection, or flag-to-JSON mapping |
-| **Version**         | `program.version(CURRENT_SCHEMA_VERSION)`                  | Version drift between CLI and schema                                     |
+| Level               | Mechanism                                                                | What it catches                                                                           |
+| ------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| **Compile-time**    | `BLOCK_SCHEMA_MAP` keys tested against `VALID_BLOCK_TYPES`               | Forgetting to register a new block type                                                   |
+| **Runtime (help)**  | `mountCommander()` / `renderInterface()` walk the command schema's shape | New fields automatically appear in `--help`, publish to agents, and are accepted as flags |
+| **Runtime (write)** | `validatePackage()` on every mutation                                    | Any bug in option parsing, schema introspection, or flag-to-JSON mapping                  |
+| **Version**         | `program.version(CURRENT_SCHEMA_VERSION)`                                | Version drift between CLI and schema                                                      |
 
 The only thing that requires manual maintenance is `.describe()` text on Zod fields. Fields without descriptions get a generic fallback. This is intentional — descriptions are documentation, not structural coupling, and can be added incrementally without breaking anything.
 
@@ -968,7 +974,7 @@ If the CLI is published as a standalone npm package, the version is already coup
 
 ### Reordering
 
-Block reordering (`move-block`) is intentionally excluded. Moving blocks creates positional instability that is difficult for agents to reason about correctly. If structure needs to be substantially rearranged, removing and re-adding blocks in the correct order is the supported path.
+`move-block` exists on the CLI, but is withheld from the MCP agent surface: an agent that could reposition a block by moving it could also reorder by proxy, which is a bigger procedural surface than we want agents holding. A human using the CLI directly can call `move-block`; an agent instead removes and re-adds blocks in the correct order.
 
 ### Dry-run mode
 

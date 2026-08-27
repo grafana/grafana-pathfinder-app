@@ -320,7 +320,7 @@ The "long-lived Node sidecar" item from earlier drafts of this design is no long
 
 **Scope.**
 
-- New CDN client `src/cli/mcp/lib/repository-client.ts` — Node `fetch` against `repository.json` and per-package `content.json` / `manifest.json`. 60-second in-process TTL on `repository.json` only; per-package fetches are uncached. Repository base URL is read from `PATHFINDER_REPOSITORY_URL` (env var) with the CDN URL above as the default. Slash-normalization mirrors `buildPackageFileUrl` in `src/lib/package-recommendations-client.ts`.
+- New CDN client `src/cli/utils/repository-client.ts` (moved from `src/cli/mcp/lib/repository-client.ts` since #1639, now shared by the CLI and MCP surfaces) — Node `fetch` against `repository.json` and per-package `content.json` / `manifest.json`. 60-second in-process TTL on `repository.json` only; per-package fetches are uncached. Repository base URL is read from `PATHFINDER_REPOSITORY_URL` (env var) with the CDN URL above as the default. Slash-normalization mirrors `buildPackageFileUrl` in `src/lib/package-recommendations-client.ts`.
 - New tool group `src/cli/mcp/tools/repository-tools.ts`, registered alongside the existing groups in `src/cli/mcp/tools/index.ts`. Stateless; no artifact in/out.
 - Tools (the three read tools were later consolidated into `pathfinder_read_repository` with an `operation` flag — see #1639; capabilities unchanged):
   - `pathfinder_read_repository` `operation: "list-packages"` — list packages from `repository.json`. Optional filters: `type` (`guide`/`path`/`journey`), `category`, `q` (substring on title and description). Returns `{ baseUrl, packages: [...] }`.

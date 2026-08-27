@@ -16,7 +16,7 @@ import {
   fetchRepositoryIndex,
   getRepositoryBaseUrl,
   REPOSITORY_URL_ENV_VAR,
-} from '../repository-client';
+} from './repository-client';
 
 const DEFAULT_BASE = 'https://interactive-learning.grafana.net/packages/';
 

@@ -8,8 +8,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { buildRepository, buildRepositoryCommand } from '../cli/commands/build-repository';
+import { buildRepository } from '../cli/commands/build-repository';
+import { COMMANDER_COMMANDS } from '../cli/cli-commands';
 import { RepositoryEntrySchema, RepositoryJsonSchema } from '../types/package.schema';
+
+const buildRepositoryCommand = COMMANDER_COMMANDS.get('build-repository')!;
 
 jest.mock('prettier', () => ({
   resolveConfig: async () => ({}),

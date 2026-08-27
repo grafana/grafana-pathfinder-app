@@ -49,10 +49,11 @@ Load these files **only when working in the relevant domain**.
 
 ## CLI and MCP
 
-| File            | When to load                                                                                                                | Auto-triggered by globs |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `CLI_TOOLS.md`  | CLI validation, guide authoring tooling                                                                                     | `src/cli/*`             |
-| `MCP_SERVER.md` | Pathfinder authoring MCP server (`pathfinder-cli mcp`) — tools, transports (stdio/HTTP), how to add a tool, deploy artifact | `src/cli/mcp/*`         |
+| File                          | When to load                                                                                                                                      | Auto-triggered by globs                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CLI_TOOLS.md`                | CLI validation, guide authoring tooling                                                                                                           | `src/cli/*`                                                                                                                                      |
+| `MCP_SERVER.md`               | Pathfinder authoring MCP server (`pathfinder-cli mcp`) — tools, transports (stdio/HTTP), how to add a tool, deploy artifact                       | `src/cli/mcp/*`                                                                                                                                  |
+| `AGENT-AUTHORING.md` (design) | Shared CLI/MCP command contract: `CommandSpec`/Zod as sole authority for input shape, Commander and MCP as renderers over it, bind/withhold rules | `src/cli/contracts/*`, `src/cli/commands/manifest.ts`, `src/cli/cli-commands.ts`, `src/cli/help-json.ts`, `src/cli/mcp/lib/command-interface.ts` |
 
 ## Dev mode, local dev, live sessions
 
