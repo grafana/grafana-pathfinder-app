@@ -3,6 +3,7 @@
 // `src/bundled-interactives/` (via webpack `require`) or from localStorage
 // (WYSIWYG preview + E2E test guides).
 import { RawContent, ContentFetchResult } from '../../types/content.types';
+import { loadBundledManifest } from '../../lib/bundled-package-files';
 import { StorageKeys } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
 
@@ -97,6 +98,17 @@ function loadBundledE2ETest(url: string): ContentFetchResult {
   );
 }
 
+/** Undefined rather than an error: `static-links/*.json` are real bundled
+ *  targets with no package, and no manifest, around them. */
+function readSiblingManifest(relativePath: string): Record<string, unknown> | undefined {
+  const packageDir = relativePath.split('/')[0];
+  if (!packageDir) {
+    return undefined;
+  }
+  const outcome = loadBundledManifest(packageDir);
+  return outcome.ok ? (outcome.data as unknown as Record<string, unknown>) : undefined;
+}
+
 function loadBundledPackage(url: string, relativePath: string): ContentFetchResult {
   try {
     const jsonModule = require(`../../bundled-interactives/${relativePath}`);
@@ -113,9 +125,10 @@ function loadBundledPackage(url: string, relativePath: string): ContentFetchResu
         ? jsonModule.title
         : undefined;
     const title: string = moduleTitle ?? relativePath.split('/')[0] ?? relativePath;
+    const packageManifest = readSiblingManifest(relativePath);
     const rawContent: RawContent = {
       content: jsonContent,
-      metadata: { title },
+      metadata: { title, ...(packageManifest ? { packageManifest } : {}) },
       type: 'interactive',
       url,
       lastFetched: new Date().toISOString(),
@@ -145,9 +158,10 @@ function loadBundledIndexed(url: string, id: string): ContentFetchResult {
     if (!jsonContent || jsonContent.trim() === '' || jsonContent === '{}') {
       return { content: null, error: `Bundled interactive content is empty: ${id}` };
     }
+    const packageManifest = readSiblingManifest(filename);
     const rawContent: RawContent = {
       content: jsonContent,
-      metadata: { title: interactive.title || id },
+      metadata: { title: interactive.title || id, ...(packageManifest ? { packageManifest } : {}) },
       type: 'interactive',
       url,
       lastFetched: new Date().toISOString(),

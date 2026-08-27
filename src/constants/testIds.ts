@@ -63,6 +63,11 @@ export const testIds = {
     sectionHint: 'alignment-prompt-section-hint',
   },
 
+  // Guide min-version notice — warn-only, no actions
+  guideVersionNotice: {
+    container: 'guide-version-notice-container',
+  },
+
   // Context Panel - Recommendations and content
   contextPanel: {
     container: 'context-panel-container',

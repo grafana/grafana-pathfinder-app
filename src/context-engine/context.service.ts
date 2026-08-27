@@ -705,6 +705,9 @@ export class ContextService {
     if (typeof m.startingLocation === 'string') {
       sanitized.startingLocation = m.startingLocation;
     }
+    if (typeof m.minGrafanaVersion === 'string') {
+      sanitized.minGrafanaVersion = m.minGrafanaVersion;
+    }
     if (Array.isArray(m.milestones)) {
       sanitized.milestones = m.milestones.filter((s): s is string => typeof s === 'string');
     }
@@ -1506,8 +1509,9 @@ export class ContextService {
    *
    * COUPLING POINT — package manifest schema. The dependency-like field
    * allowlist below (`milestones`, `depends`, `recommends`, `suggests`,
-   * `provides`, `conflicts`, `replaces`) is the contract with the upstream
-   * package author format documented in `docs/developer/package-authoring.md`.
+   * `provides`, `conflicts`, `replaces`), plus the scalars `startingLocation`
+   * and `minGrafanaVersion`, is the contract with the upstream package author
+   * format documented in `docs/developer/package-authoring.md`.
    * If the package design adds new dependency-like fields (e.g. `enhances`,
    * `breaks`), they will silently fail to surface to OSS users until this
    * allowlist is updated. Treat changes here and in
@@ -1538,6 +1542,9 @@ export class ContextService {
     }
     if (typeof raw.startingLocation === 'string') {
       normalized.startingLocation = raw.startingLocation;
+    }
+    if (typeof raw.minGrafanaVersion === 'string') {
+      normalized.minGrafanaVersion = raw.minGrafanaVersion;
     }
     for (const field of ['milestones', 'depends', 'recommends', 'suggests', 'provides', 'conflicts', 'replaces']) {
       const value = raw[field];

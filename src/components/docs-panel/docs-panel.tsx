@@ -68,6 +68,7 @@ import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { coerceLaunchSource, evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
+import { evaluateVersionSupport, resolveMinGrafanaVersion } from '../../lib/guide-version';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -980,6 +981,23 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
             launch_source: pendingAlignment.launchSource,
             current_path: pendingAlignment.currentPath,
             starting_location: pendingAlignment.startingLocation,
+          });
+        }
+
+        // Emitted here rather than from the notice itself, which remounts on every
+        // tab switch and surface handoff — this counts guide opens, not renders.
+        const versionSupport = evaluateVersionSupport({
+          minGrafanaVersion: resolveMinGrafanaVersion(
+            packageInfo?.packageManifest ?? fetchedContent.metadata.packageManifest
+          ),
+          currentVersion: config.buildInfo?.version,
+        });
+        if (versionSupport.shouldWarn) {
+          reportAppInteraction(UserInteraction.GuideVersionUnsupportedShown, {
+            guide_url: url,
+            guide_title: finalTab?.title ?? '',
+            required_version: versionSupport.requiredVersion,
+            grafana_version: versionSupport.currentVersion,
           });
         }
         return 'completed';

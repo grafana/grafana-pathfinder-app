@@ -75,6 +75,10 @@
     "switchToTab": "Switch to {{title}}",
     "wordmark": "Interactive Learning"
   },
+  "guideVersionNotice": {
+    "body": "This guide is written for Grafana {{required}} or later, and this instance runs {{current}}. Some steps might not match what you see.",
+    "title": "This guide needs a newer Grafana"
+  },
   "interactiveLearningBanner": {
     "body": "Interactive guides walk you through Grafana one step at a time. \"Show me\" highlights the control to use, and \"Do it\" performs the step for you.",
     "title": "Learn by doing"

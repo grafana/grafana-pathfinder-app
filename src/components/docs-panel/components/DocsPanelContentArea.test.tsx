@@ -8,6 +8,8 @@
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { config } from '@grafana/runtime';
+import { testIds } from '../../../constants/testIds';
 import { DocsPanelContentArea, type DocsPanelContentAreaProps } from './DocsPanelContentArea';
 
 jest.mock('@grafana/i18n', () => ({
@@ -278,5 +280,35 @@ describe('DocsPanelContentArea', () => {
       expect(screen.getByTestId('home-content')).toBeInTheDocument();
       expect(screen.queryByTestId('editor-tab-content')).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('DocsPanelContentArea — guide version notice', () => {
+  // Assign onto the real config rather than mocking '@grafana/runtime': this
+  // suite reaches the module transitively and a partial mock would blank the
+  // rest of it.
+  const originalVersion = config.buildInfo?.version;
+
+  beforeEach(() => {
+    config.buildInfo.version = '13.1.0';
+  });
+
+  afterAll(() => {
+    config.buildInfo.version = originalVersion;
+  });
+
+  it('renders no notice for a guide with no manifest', () => {
+    render(<DocsPanelContentArea {...makeProps()} />);
+
+    expect(screen.queryByTestId(testIds.guideVersionNotice.container)).not.toBeInTheDocument();
+  });
+
+  it('renders the notice when the content manifest declares a floor above the running Grafana', () => {
+    const props = makeProps();
+    props.stableContent!.metadata.packageManifest = { minGrafanaVersion: '13.2.0' };
+
+    render(<DocsPanelContentArea {...props} />);
+
+    expect(screen.getByTestId(testIds.guideVersionNotice.container)).toBeInTheDocument();
   });
 });

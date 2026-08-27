@@ -137,6 +137,7 @@ describe('ContextService: online package recommendations (recommender-disabled b
             type: 'path',
             description: 'Connect Prometheus end-to-end.',
             startingLocation: '/connections/datasources',
+            minGrafanaVersion: '13.2.0',
             milestones: ['intro', 'install', 'verify'],
             recommends: ['related-1'],
             suggests: ['related-2'],
@@ -158,6 +159,7 @@ describe('ContextService: online package recommendations (recommender-disabled b
       type: 'path',
       description: 'Connect Prometheus end-to-end.',
       startingLocation: '/connections/datasources',
+      minGrafanaVersion: '13.2.0',
       milestones: ['intro', 'install', 'verify'],
       recommends: ['related-1'],
       suggests: ['related-2'],
@@ -168,6 +170,29 @@ describe('ContextService: online package recommendations (recommender-disabled b
     expect(rec!.pendingMilestoneIds).toEqual(['intro', 'install', 'verify']);
     expect(rec!.pendingRecommendIds).toEqual(['related-1']);
     expect(rec!.pendingSuggestIds).toEqual(['related-2']);
+  });
+
+  it('drops a non-string minGrafanaVersion rather than carrying it', async () => {
+    (fetchOnlinePackageRecommendations as jest.Mock).mockResolvedValue({
+      baseUrl: 'https://interactive-learning.grafana.net/packages/',
+      packages: [
+        {
+          id: 'bad-floor',
+          path: 'bad-floor/v1',
+          title: 'Guide with a bad floor',
+          type: 'guide',
+          targeting: { match: { urlPrefix: '/connections' } },
+          manifest: { id: 'bad-floor', type: 'guide', minGrafanaVersion: 13 },
+        },
+      ],
+    });
+
+    const result = await ContextService.fetchRecommendations(baseContext, {
+      acceptedTermsAndConditions: false,
+    });
+
+    const rec = result.recommendations.find((r) => r.title === 'Guide with a bad floor');
+    expect(rec!.manifest).not.toHaveProperty('minGrafanaVersion');
   });
 
   it('builds clean content/manifest URLs even when entry.path already has a trailing slash', async () => {

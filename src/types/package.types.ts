@@ -179,6 +179,16 @@ export interface ManifestJson {
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
 
+  /**
+   * Lowest Grafana version this guide is written for. The docs panel compares it
+   * to the running Grafana and warns the reader when the instance is below it.
+   *
+   * Distinct from `testEnvironment.minVersion`, which routes E2E runs and fails a
+   * test rather than informing a reader: a guide may be tested only on latest yet
+   * still work several releases back.
+   */
+  minGrafanaVersion?: string;
+
   /** Generated block-count stamp. Written by build tooling, never authored. */
   stats?: GuideStatsSummary;
 }
@@ -196,6 +206,8 @@ export interface RepositoryEntry extends PackageMetadataFields {
   path: string;
   targeting?: GuideTargeting;
   testEnvironment?: TestEnvironment;
+  /** Runtime Grafana floor, carried from the package's manifest. */
+  minGrafanaVersion?: string;
   /** Generated block-count stamp, carried from the package's manifest. */
   stats?: GuideStatsSummary;
 }

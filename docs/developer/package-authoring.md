@@ -57,26 +57,43 @@ The content file is what the block editor produces. It contains only the fields 
 
 The manifest carries metadata, dependencies, and targeting as flat top-level fields. All fields except `id` and `type` are optional.
 
-| Field              | Type                                 | Required                      | Default                   | Description                                                                |
-| ------------------ | ------------------------------------ | ----------------------------- | ------------------------- | -------------------------------------------------------------------------- |
-| `schemaVersion`    | `string`                             | No                            | `"1.1.0"`                 | Schema version                                                             |
-| `id`               | `string`                             | **Yes**                       | —                         | Bare package identifier — must match `content.json`                        |
-| `type`             | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                               |
-| `repository`       | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                      |
-| `milestones`       | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages                                         |
-| `description`      | `string`                             | Recommended                   | —                         | Full description for display and search                                    |
-| `language`         | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                              |
-| `category`         | `string`                             | Recommended                   | —                         | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`)     |
-| `author`           | `{ name?, team? }`                   | Recommended                   | —                         | Content author or owning team                                              |
-| `startingLocation` | `string`                             | Recommended                   | `"/"`                     | URL path where the guide expects to begin execution                        |
-| `depends`          | `DependencyList`                     | No                            | —                         | Hard prerequisites — must be completed first                               |
-| `recommends`       | `DependencyList`                     | No                            | —                         | Soft prerequisites — recommended but not required                          |
-| `suggests`         | `DependencyList`                     | No                            | —                         | Related content for enrichment                                             |
-| `provides`         | `string[]`                           | No                            | —                         | Virtual capabilities this guide provides on completion                     |
-| `conflicts`        | `string[]`                           | No                            | —                         | Packages this one conflicts with (mutually exclusive)                      |
-| `replaces`         | `string[]`                           | No                            | —                         | Packages this one supersedes entirely                                      |
-| `targeting`        | `{ match? }`                         | No                            | —                         | Advisory recommendation targeting (see [targeting](#targeting))            |
-| `testEnvironment`  | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment)) |
+| Field               | Type                                 | Required                      | Default                   | Description                                                                                                                    |
+| ------------------- | ------------------------------------ | ----------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `schemaVersion`     | `string`                             | No                            | `"1.1.0"`                 | Schema version                                                                                                                 |
+| `id`                | `string`                             | **Yes**                       | —                         | Bare package identifier — must match `content.json`                                                                            |
+| `type`              | `"guide"` \| `"path"` \| `"journey"` | **Yes**                       | —                         | Package type                                                                                                                   |
+| `repository`        | `string`                             | No                            | `"interactive-tutorials"` | Provenance — which repository this package belongs to                                                                          |
+| `milestones`        | `string[]`                           | Required for `path`/`journey` | —                         | Ordered bare IDs of child packages                                                                                             |
+| `description`       | `string`                             | Recommended                   | —                         | Full description for display and search                                                                                        |
+| `language`          | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                                                                                  |
+| `category`          | `string`                             | Recommended                   | —                         | Content category for taxonomy (e.g., `"data-sources"`, `"dashboards"`)                                                         |
+| `author`            | `{ name?, team? }`                   | Recommended                   | —                         | Content author or owning team                                                                                                  |
+| `startingLocation`  | `string`                             | Recommended                   | `"/"`                     | URL path where the guide expects to begin execution                                                                            |
+| `depends`           | `DependencyList`                     | No                            | —                         | Hard prerequisites — must be completed first                                                                                   |
+| `recommends`        | `DependencyList`                     | No                            | —                         | Soft prerequisites — recommended but not required                                                                              |
+| `suggests`          | `DependencyList`                     | No                            | —                         | Related content for enrichment                                                                                                 |
+| `provides`          | `string[]`                           | No                            | —                         | Virtual capabilities this guide provides on completion                                                                         |
+| `conflicts`         | `string[]`                           | No                            | —                         | Packages this one conflicts with (mutually exclusive)                                                                          |
+| `replaces`          | `string[]`                           | No                            | —                         | Packages this one supersedes entirely                                                                                          |
+| `targeting`         | `{ match? }`                         | No                            | —                         | Advisory recommendation targeting (see [targeting](#targeting))                                                                |
+| `testEnvironment`   | `TestEnvironment`                    | Recommended                   | `{ tier: "cloud" }`       | Test infrastructure requirements (see [testEnvironment](#testenvironment))                                                     |
+| `minGrafanaVersion` | `string` (semver)                    | No                            | —                         | Lowest Grafana this guide is written for — the docs panel warns readers below it (see [minGrafanaVersion](#mingrafanaversion)) |
+
+### minGrafanaVersion
+
+The lowest Grafana release a guide is written for. When the running instance is below it, the docs panel shows a warning at the top of the guide naming both versions. It is warn-only: the steps stay live, because the reader may still get value from part of the guide and nothing here can know which part.
+
+```json
+{
+  "minGrafanaVersion": "13.2.0"
+}
+```
+
+Declare one when a guide targets UI that older releases do not have — most often a `grafana:` selector path added in a recent release, which resolves on an old stack to a value that stack never renders, leaving `exists-reftarget` permanently unmet. `docs/developer/interactive-examples/selectors-reference.md` covers that failure in detail.
+
+**Not the same field as `testEnvironment.minVersion`.** That one routes E2E runs and fails a test; this one informs a reader. A guide may be tested only on latest and still work several releases back. When `testEnvironment.minVersion` is absent, the preflight falls back to `minGrafanaVersion` — so declaring only this field is the common case, and declaring both is for guides whose test rig needs something newer than their readers do.
+
+One transport gap to know: a custom guide served through the App Platform catalogue proxy loses the field, because the proxy's shaped response declares no `additionalFields`. The same guide opened standalone or by share link keeps it. See [EXTERNAL_API.md](./EXTERNAL_API.md#specmanifest).
 
 ### Extension fields
 
