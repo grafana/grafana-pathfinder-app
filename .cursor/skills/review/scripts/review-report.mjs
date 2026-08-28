@@ -22,12 +22,6 @@ const SECTIONS = [
   ['nit', 'Nits'],
 ];
 const FOLLOW_UP_PREAMBLE = 'These are tracked separately and do not block merge.';
-const overflowNotice = (findings, listed) => {
-  const named = findings.slice(0, listed).map((finding) => finding.id);
-  const rest = findings.length - named.length;
-  const tail = rest > 0 ? [...named, `and ${rest} more`].join(', ') : named.join(', ');
-  return `Also still tracked, detail omitted to keep this review postable: ${tail}.`;
-};
 const FOLLOW_UP_OWNERS = ['maintainer', 'author'];
 const SEVERITY_RANK = new Map([
   ['critical', 0],
@@ -45,11 +39,8 @@ const ASSESSMENT_STATUSES = ['complete', 'incomplete'];
 const MAX_INCOMPLETE_REASON = 240;
 const MAX_ROUND = 100;
 const MAX_CLEARED = 12;
-const MAX_BODY = 60000;
 const MAX_CLAIM = 200;
 const MAX_CLEARED_REASON = 300;
-const MAX_PROPOSED_ISSUE_TITLE = 120;
-const MAX_PROPOSED_ISSUE_BODY = 2000;
 const MAX_DEFERRED_CHARS = 3300;
 const MAX_CLEARED_CHARS = 4500;
 const MAX_MARKER = 8192;
@@ -135,10 +126,6 @@ function isFindingRef(entry) {
     /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(entry.id ?? '') &&
     /^[a-z0-9-]+$/.test(entry.concern_id ?? '')
   );
-}
-
-function isCarriedForward(finding) {
-  return finding.disposition === 'follow_up' && finding.carried_forward === true;
 }
 
 function withinBudget(entries, max) {
@@ -258,11 +245,6 @@ function countLabel(count, singular, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function fencedBlock(body, indent) {
-  const fence = '`'.repeat(Math.max(3, ...[...body.matchAll(/`+/g)].map((run) => run[0].length + 1)));
-  return [fence, ...body.split(/\r?\n/), fence].map((line) => (line.length > 0 ? `${indent}${line}` : line)).join('\n');
-}
-
 function renderFinding(finding, index) {
   const meta = [finding.severity, finding.concern_id, REVERSIBILITY.get(finding.reversibility)].filter(Boolean);
   const marker = `${index + 1}. `;
@@ -273,11 +255,7 @@ function renderFinding(finding, index) {
     `${indent}${ACTION_LABELS.get(finding.disposition)}: ${oneLine(finding.suggested_action)}`,
   ];
   if (finding.disposition === 'follow_up') {
-    lines.push(
-      `${indent}Proposed issue (${finding.owner}): ${oneLine(finding.proposed_issue.title)}`,
-      '',
-      fencedBlock(finding.proposed_issue.body.trimEnd(), indent)
-    );
+    lines.push(`${indent}Owner: ${finding.owner}`);
   }
   return lines.join('\n');
 }
@@ -301,35 +279,6 @@ function readAssessment(report) {
     throw new Error(`an incomplete assessment must state one reason of at most ${MAX_INCOMPLETE_REASON} characters`);
   }
   return { status: 'incomplete', reason };
-}
-
-function validateFollowUp(finding) {
-  if (finding.carried_forward != null && typeof finding.carried_forward !== 'boolean') {
-    throw new Error('a follow-up finding carried_forward must be true or false');
-  }
-  if (!FOLLOW_UP_OWNERS.includes(finding.owner)) {
-    throw new Error('a follow-up finding owner must be maintainer or author');
-  }
-  const proposed = finding.proposed_issue;
-  if (!proposed || typeof proposed !== 'object') {
-    throw new Error('a follow-up finding must carry a proposed_issue with a title and a body');
-  }
-  if (typeof proposed.title !== 'string' || !isCapped(oneLine(proposed.title), MAX_PROPOSED_ISSUE_TITLE)) {
-    throw new Error(
-      `a proposed issue title must be one line of at most ${MAX_PROPOSED_ISSUE_TITLE} characters and must not embed an HTML comment boundary`
-    );
-  }
-  if (typeof proposed.body !== 'string' || proposed.body.trim().length === 0) {
-    throw new Error('a follow-up finding must carry a proposed_issue with a title and a body');
-  }
-  if (embedsStateMarker(proposed.body)) {
-    throw new Error('a proposed issue body must not embed a review state marker');
-  }
-  if (proposed.body.length > MAX_PROPOSED_ISSUE_BODY) {
-    throw new Error(
-      `a proposed issue body must be at most ${MAX_PROPOSED_ISSUE_BODY} characters; link the detail rather than inlining it`
-    );
-  }
 }
 
 function readCleared(report) {
@@ -408,14 +357,14 @@ function validateReport(report) {
         throw new Error(`finding ${field} must not embed a review state marker`);
       }
     }
-    if (finding.disposition === 'follow_up') {
-      validateFollowUp(finding);
+    if (finding.disposition === 'follow_up' && !FOLLOW_UP_OWNERS.includes(finding.owner)) {
+      throw new Error('a follow-up finding owner must be maintainer or author');
     }
   }
 }
 
-function assembleBody(context, compressed, listedOverflow) {
-  const { assessment, grouped, cleared, purpose, round, report, counts, verdict, bySeverity } = context;
+function assembleBody(context) {
+  const { assessment, grouped, cleared, purpose, round, report, counts, verdict } = context;
   const sections = [];
   if (assessment.status === 'incomplete') {
     sections.push(
@@ -444,19 +393,12 @@ function assembleBody(context, compressed, listedOverflow) {
     if (findings.length === 0) {
       continue;
     }
-    if (disposition !== 'follow_up') {
-      sections.push('', `## ${heading}`, '', findings.map(renderFinding).join('\n\n'));
-      continue;
-    }
-    const detailed = findings.filter((finding) => !compressed.has(finding.id)).sort(bySeverity);
-    const overflow = findings.filter((finding) => compressed.has(finding.id)).sort(bySeverity);
     sections.push(
       '',
       `## ${heading}`,
       '',
-      FOLLOW_UP_PREAMBLE,
-      ...(detailed.length > 0 ? ['', detailed.map(renderFinding).join('\n\n')] : []),
-      ...(overflow.length > 0 ? ['', overflowNotice(overflow, listedOverflow)] : [])
+      ...(disposition === 'follow_up' ? [FOLLOW_UP_PREAMBLE, ''] : []),
+      findings.map(renderFinding).join('\n\n')
     );
   }
   if (assessment.status === 'complete') {
@@ -507,34 +449,7 @@ export function renderReviewReport(report) {
           grouped.suggestion.length,
           grouped.nit.length
         );
-  const context = { assessment, grouped, cleared, purpose, round, report, counts, verdict, bySeverity };
-
-  const carried = grouped.follow_up.filter(isCarriedForward);
-  const introduced = grouped.follow_up.filter((finding) => !isCarriedForward(finding));
-  const compressionOrder = [...carried.slice().reverse(), ...introduced.slice().reverse()];
-  let listed = grouped.follow_up.length;
-  const withCompressed = (count) =>
-    assembleBody(context, new Set(compressionOrder.slice(0, count).map((finding) => finding.id)), listed);
-  let compressedCount = 0;
-  let body = withCompressed(0);
-  if (body.length > MAX_BODY) {
-    let low = 0;
-    let high = compressionOrder.length;
-    while (low < high) {
-      const mid = Math.floor((low + high) / 2);
-      if (withCompressed(mid).length <= MAX_BODY) {
-        high = mid;
-      } else {
-        low = mid + 1;
-      }
-    }
-    compressedCount = low;
-    body = withCompressed(compressedCount);
-  }
-  while (body.length > MAX_BODY && listed > 0) {
-    listed = Math.floor(listed / 2);
-    body = withCompressed(compressedCount);
-  }
+  const body = assembleBody({ assessment, grouped, cleared, purpose, round, report, counts, verdict });
 
   const expectedMarkers = assessment.status === 'complete' ? 1 : 0;
   if (markerLineCount(body) !== expectedMarkers) {

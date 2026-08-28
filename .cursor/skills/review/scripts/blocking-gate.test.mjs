@@ -587,7 +587,7 @@ function reportFor(round, dispositions, carried, cleared) {
     reviewed_head: `${round}`.repeat(40).slice(0, 40),
     round,
     cleared,
-    findings: [...dispositions, ...carried].map(({ finding, disposition, carried_forward }) => ({
+    findings: [...dispositions, ...carried].map(({ finding, disposition }) => ({
       id: finding.finding_id,
       disposition,
       severity: finding.severity,
@@ -598,8 +598,6 @@ function reportFor(round, dispositions, carried, cleared) {
       ...(disposition === 'follow_up'
         ? {
             owner: 'maintainer',
-            carried_forward: carried_forward === true,
-            proposed_issue: { title: `Track ${finding.finding_id}`, body: `Detail for ${finding.finding_id}.` },
           }
         : {}),
     })),
@@ -645,7 +643,7 @@ test('the #1702 rounds publish as mergeable and carry round 1 clearance to round
 
     pool = [...decided, ...carried]
       .filter(({ disposition }) => disposition === 'follow_up')
-      .map(({ finding }) => ({ finding, disposition: 'follow_up', carried_forward: true }));
+      .map(({ finding }) => ({ finding, disposition: 'follow_up' }));
     priorState = state;
   }
 

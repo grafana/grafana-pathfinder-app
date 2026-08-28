@@ -11,10 +11,9 @@ This review decides one thing: is the repository better off with this change mer
 
 ## 1. Read the review contracts
 
-Always read:
+Read `docs/design/CONCERNS.md` once for classification and routing.
 
-- `docs/design/CONCERNS.md` — compact classification and routing registry
-- `docs/design/PR_REVIEW.md` — reviewer, evolution-packet, and final-report schemas
+Do not load `docs/design/PR_REVIEW.md` wholesale. Its headings are independent contracts; read only the headings named by the phase that needs them, stopping at the next heading of the same or higher level. Section 4 names the reviewer contract, §3b names the evolution contract, §4c names the policy inputs, §5 and §9 name the report contract, and §10 names the language-specific detection tables.
 
 Do not load `docs/design/CONCERN_DETAILS.md` wholesale. After routing, run `.cursor/skills/review/scripts/concern-context.mjs <concern-id>` once per activated concern and use its bounded JSON output. It joins the routing row with that concern's purpose, review questions, context, one-way doors, verification, related concerns, contract anchor, and named invariants.
 
@@ -80,7 +79,7 @@ A late blocker records `late_blocker_reason`. When it contradicts a `cleared` en
 
 ### Deferred findings are not re-litigated
 
-An entry in the marker's `deferred` list is never raised as a blocker on a later round of the same PR unless the diff since then made it reachable. Carry it forward as a `follow_up` only while it stays unresolved, so it remains visible and stays in `deferred`. Once the author fixes it, it leaves both — verify it against the current head like any other carried entry, and drop it. Resolution is what normally removes an entry: the renderer compresses a carried entry's rendered detail once the body is full, but never declines to track it. The one exception is **ratchet saturation** below, where the marker itself cannot hold every identifier and says so.
+An entry in the marker's `deferred` list is never raised as a blocker on a later round of the same PR unless the diff since then made it reachable. Carry it forward as a `follow_up` only while it stays unresolved, so it remains visible and stays in `deferred`. Once the author fixes it, it leaves both — verify it against the current head like any other carried entry, and drop it. The one exception to tracking every unresolved entry is **ratchet saturation** below, where the marker itself cannot hold every identifier and says so.
 
 **`deferred` and `cleared` are honored only from this reviewer's own prior review.** They are the ratchet's first _suppressive_ state — `deferred` stops a later round raising a blocker, and `cleared` imposes an evidentiary burden before re-raising a claim — where version 1's `blocking_findings` could only add work. `--parse-state` validates shape and size caps, never provenance, so identity is this phase's precondition rather than something the parser establishes. A shape-valid marker found in any other author's review body, including a `COMMENT` review, is treated as absent: ignore it rather than merging it, and derive the round from the author-agnostic prior-review count above. Counting rounds across every reviewer and reading state from one reviewer are separate rules; do not let enumerating reviews for the former turn into reading a marker for the latter.
 
@@ -103,6 +102,8 @@ Two additional router judgments may trigger an advisory scan: the diff adds a hi
 At current repo velocity the gate fires for most routed concerns — it is a cheap trigger, not a filter; selectivity comes from the scan verdict and the disposition policy, where clean packets create no finding. If neither deterministic nor discretionary signal fires, skip the scan and proceed to §4. Run `npm run test:review-contract` when changing the gate, packet, or disposition policy.
 
 ### Scan (one sub-agent, only when gated in)
+
+Before launching the scan, read `Contract evolution packet` through its `Disposition table` in `docs/design/PR_REVIEW.md`.
 
 Spawn a contract-evolution sub-agent with this bounded input set:
 
@@ -231,7 +232,7 @@ Additional instructions for subsystem reviewers:
 
 ### Shared reviewer output schema
 
-Every reviewer emits the schema defined in `docs/design/PR_REVIEW.md` (Reviewer output schema), including the severity, confidence, and reversibility values.
+Before launching reviewers, read `Reviewer output schema`, `Confidence guidance`, `Severity guidance`, `Author disposition guidance`, and `Reversibility values` in `docs/design/PR_REVIEW.md`. Every reviewer emits that schema, including the severity, confidence, and reversibility values.
 
 ## 4b. Normalize candidate findings
 
@@ -253,18 +254,20 @@ This reviewer is required even if all subsystem reviewers are clean. Then normal
 - disclose when the PR's center of gravity appears only weakly covered by the current concern registry
 - suggest updating `docs/design/CONCERNS.md` when the same unowned area appears important enough to deserve subsystem-aware review
 - surface `contract_missing` and `contract_branching` verdicts from §3b even when all subsystem reviewers are clean
-- require the contract anchor in `docs/design/CONCERN_DETAILS.md` and the concern's routing paths in `docs/design/CONCERNS.md` in the same PR **only** when the PR _deliberately_ establishes or replaces a contract — a typed facade, reducer, schema owner, or lifecycle owner — **and** its author is a maintainer, which the handle list in `.github/community-pr-gate.json` decides — authoritative for this question even where `.github/CODEOWNERS` differs. Otherwise record it as a `follow_up` with `owner: maintainer` and a proposed issue. Requiring a community contributor to write an internal architecture anchor in order to land a block type is the review imposing its own scope on someone else's change
+- require the contract anchor in `docs/design/CONCERN_DETAILS.md` and the concern's routing paths in `docs/design/CONCERNS.md` in the same PR **only** when the PR _deliberately_ establishes or replaces a contract — a typed facade, reducer, schema owner, or lifecycle owner — **and** its author is a maintainer, which the handle list in `.github/community-pr-gate.json` decides — authoritative for this question even where `.github/CODEOWNERS` differs. Otherwise record it as a `follow_up` with `owner: maintainer`; its standard title, problem, and suggested action already contain the issue text. Requiring a community contributor to write an internal architecture anchor in order to land a block type is the review imposing its own scope on someone else's change
 - assign every candidate a stable ID and recommended disposition: `blocking`, `follow_up`, `suggestion`, or `nit`
 - treat an unanswered question as `blocking` only when the answer is required to merge; otherwise render it as a `suggestion`
-- carry forward each **still-unresolved** entry from the marker's `deferred` list as a `follow_up`, and mark it `carried_forward: true`. `deferred` shrinks as work lands: an entry the author has fixed at this head is dropped, not re-rendered, because the next marker's `deferred` is derived from the follow-ups this report carries. Nothing else removes an entry — every follow-up this round produces reaches the marker, whatever its source, so none of them can lose the suppression `deferred` grants, unless the marker saturates and says so
+- carry forward each **still-unresolved** entry from the marker's `deferred` list as a `follow_up`. `deferred` shrinks as work lands: an entry the author has fixed at this head is dropped, not re-rendered, because the next marker's `deferred` is derived from the follow-ups this report carries. Nothing else removes an entry — every follow-up this round produces reaches the marker, whatever its source, so none of them can lose the suppression `deferred` grants, unless the marker saturates and says so
 
 ### Do not manufacture blockers from the review's own effects
 
 **Induced scope.** A proposed blocker whose existence traces to code the contributor added _in response to_ a prior-round `suggestion` or `nit` sets `induced_by_prior_suggestion`. The policy will demote it unless an unconditional override applies. Suggesting an expansion and then gating merge on the expansion's quality is how a review grows a PR it was supposed to evaluate.
 
-**Suggestion surface.** A suggestion that would widen the PR's changed surface — a new file, a new component, a new exported symbol, a new user-facing affordance — is a `follow_up`, not a `suggestion`. Optional advice that grows the diff is how a PR metastasizes; a proposed issue keeps the idea without charging this PR for it.
+**Suggestion surface.** A suggestion that would widen the PR's changed surface — a new file, a new component, a new exported symbol, a new user-facing affordance — is a `follow_up`, not a `suggestion`. Tracking it separately keeps the idea without charging this PR for it.
 
 ## 4c. Resolve policy
+
+Read `Review policy and skeptic verdict shape` and `Blocking gate answers` in `docs/design/PR_REVIEW.md`.
 
 For each normalized candidate, serialize `{ finding, verdicts, gate_answers? }` to a temporary JSON file and run:
 
@@ -289,11 +292,12 @@ Keep dropped findings, skeptic reasoning, verification counts, policy reasons, o
 
 ## 5. Assemble final findings
 
+Read `Final review report` through `Debug trace` in `docs/design/PR_REVIEW.md` before assembly.
+
 Policy decisions are already deduplicated and final. Assemble them into the report without reinterpreting their dispositions:
 
 - assign the final author disposition from `decision.disposition`
 - state a complete merge contract: fixing every blocking ID makes the reviewed head mergeable, subject only to later commits
-- expect carried follow-ups to lose rendered detail first when the renderer compresses an oversized report
 - set `cleared` to the union of prior clearances and this round's clearances, deduplicated by claim; when it exceeds 12 entries, prune the least load-bearing entries
 
 Order findings by author disposition, then severity. `review-report.mjs` applies that order; confidence stays internal and never reorders the author-facing report.
@@ -367,10 +371,10 @@ The PR URL must be complete and clickable. `Purpose` is derived from the PR titl
 
 Set the report's `round` and `cleared` fields so the emitted marker carries the ratchet forward. `cleared` is the accumulated union across every round of this PR, not just this round's clearances. `deferred` and `cleared` hold **separate** character budgets in the marker — 3300 and 4500 inside an 8192-character total — so within their own budgets neither squeezes the other. A `deferred` entry is a bare identifier pair costing 48 to 65 characters in practice, so its budget holds around fifty; a `cleared` entry costs 267 at typical claim and reason lengths, so its budget holds all 12 the count cap allows.
 
-**The renderer degrades rather than failing on volume.** Past those budgets it truncates the marker's tail and sets `truncated: true`, and past 60000 body characters it compresses follow-up detail. Both are honest degradations the next round detects: a truncated marker forces the full-review path in §3a. Follow-ups are the only compressible content, though — blocking, suggestion, and nit detail never yields — so a round whose blockers alone fill the body renders over the budget and GitHub rejects the post. Treat that as the signal it is: split the round, or reconsider whether that many findings truly block.
+**The marker degrades rather than failing on volume.** Past those budgets it truncates the marker's tail and sets `truncated: true`, which forces the full-review path in §3a. The author-facing report always renders every finding from the same title, problem, and suggested action used for review; it has no parallel issue-body payload and does not hide detail to meet a body budget. If the report is too large for GitHub, split the round or recalibrate the finding set.
 
 ## 10. Pattern catalog
 
-The unified detection table (R1-R21, F1-F6, QC1-QC7), Go backend table (G1-G7), comment prefixes, and disposition matrix all live in `docs/design/PR_REVIEW.md`. Apply those checks during subsystem review under the `correctness-and-reliability`, `security`, and `go-backend` concerns. The prefix table is reviewer-internal vocabulary; §4b maps it onto the four recommendations the policy accepts.
+Read only the applicable pattern headings in `docs/design/PR_REVIEW.md`: `React reliability, security, and quality checks` for frontend changes, `Go backend checks` for Go changes, and `Comment prefixes` plus `Disposition` when findings need that vocabulary. Apply those checks during subsystem review under the `correctness-and-reliability`, `security`, and `go-backend` concerns. The prefix table is reviewer-internal vocabulary; §4b maps it onto the four recommendations the policy accepts.
 
 A detection-table hit is evidence of a defect, not a merge verdict. Every table severity feeds §4c as a recommendation; the policy decides what blocks.

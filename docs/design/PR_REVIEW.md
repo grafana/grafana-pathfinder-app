@@ -52,12 +52,11 @@ Severity describes **defect impact**: how bad the condition is. Disposition desc
 
 Reviewers recommend a disposition, and §4b normalizes and deduplicates those recommendations before policy resolution. `review-policy.mjs` owns every transition after that point: one-way-door promotion, verification dispatch and adjudication, and the final blocking-gate decision. Its final disposition may not be changed downstream.
 
-A `follow_up` carries two fields beyond the standard finding set:
+A `follow_up` carries one field beyond the standard finding set:
 
 - `owner` — `maintainer | author`
-- `proposed_issue` — `{ title, body }`, copy-pasteable and capped at 120 characters of title
 
-The review **proposes** issue text; the invoker decides whether to file it. No part of the review files GitHub issues.
+The standard finding fields are also the proposed issue text: use `title` as the issue title and `problem` plus `suggested_action` as its body. The invoker decides whether to file it. No part of the review files GitHub issues.
 
 ### Review policy and skeptic verdict shape
 
@@ -376,18 +375,12 @@ Each `findings` entry contains:
 - `suggested_action` — the smallest change that resolves the finding
 - `reversibility` — optional; one of the four reversibility values. The renderer surfaces only `partially_reversible` and `irreversible_without_cleanup`, because only those change what the author must weigh
 - `owner` — required on a `follow_up`; `maintainer | author`
-- `carried_forward` — optional on a `follow_up`; `true` marks an entry carried over from the prior marker's `deferred` list. It decides only which entries may be compressed when the rendered section is full, never what the marker tracks, so omitting it costs space rather than data
-- `proposed_issue` — required on a `follow_up`; `{ title, body }`. The title renders inline and is capped at 120 characters; the body renders in a fenced block so the invoker can copy it straight into an issue and is capped at 2000 characters, which bounds what a single entry costs the 60000-character body budget below. Neither may embed a review state marker
 
 Each `cleared` entry contains `claim` (≤ 200 characters), `concern_id`, and `reason` (≤ 300 characters): a claim a round examined and found sound, so a later round cannot silently reverse it. The array accumulates for the life of the PR — final assembly unions the prior marker's entries with this round's, deduplicated by claim. This is unlike `deferred`, which shrinks as its entries are resolved. At most 12 entries, and past that count the renderer rejects the report, so final assembly prunes the least load-bearing entries. Exceeding the list's character budget is different: there the marker truncates and declares saturation rather than failing, which costs the next round a full review. No free-text marker field may embed `<!-- pathfinder-review-state:` or `-->`; the renderer rejects both rather than escaping them, because either would break the hidden comment or forge a second one.
 
 Follow-ups render in their own `## Follow-ups` section between the merge contract and `## Suggestions`, under the fixed line `These are tracked separately and do not block merge.` They count toward `Approve with Minor` and never toward `Request Changes`.
 
-**Follow-up and marker volume never fail a review.** The renderer rejects no follow-up count and no marker size: it compresses follow-up detail and truncates the marker instead. Every follow-up a round produces is offered to the marker's `deferred` list — policy demotions, normalized suggestion-surface findings, tech debt, doc drift, and instrumentation alike — and reaches it unless the marker saturates, which it declares. Every other cap keeps rejecting exactly as before; this applies to quantity alone, never to malformed input.
-
-Body size is the one volume the renderer cannot always absorb. Follow-ups are its only compressible content — blocking, suggestion, and nit detail never yields, deliberately — so a report whose non-follow-up sections alone exceed the budget is emitted over it, and GitHub rejects the post. That is not defended against, and should not be: `problem` and `suggested_action` are one rendered line each, so reaching 60000 characters on blockers alone takes dozens of paragraph-length blocking findings, and a review with that many blockers has a calibration problem this document exists to fix, not a rendering problem.
-
-**Carried follow-ups compress before new ones.** The renderer targets a 60000-character body, under GitHub's 65536 limit, and reaches it by compressing follow-ups — so the target holds whenever follow-up detail is what makes the body large. A count cap could not do this, because a single entry may carry a 2000-character proposed-issue body. When the assembled body is over budget the renderer compresses entries to identifiers on the overflow line until it fits, taking **carried entries first, lowest severity first, and within a severity the last one final assembly listed**; only if that is not enough does it start on new ones by the same order. Compressing a new entry is the last resort because its `proposed_issue` exists nowhere but this report. The overflow line says only that the detail was omitted to keep the review postable — it makes no claim about where the detail lives, because for a compressed new entry there is nowhere it does. Past the point where compressing every entry still leaves the body over budget, that line sheds identifiers too, into an `and <n> more` tail; the marker's `deferred` list still carries each one, so what is lost there is legibility rather than tracking.
+**Follow-up count does not fail rendering.** The renderer always renders every finding. Every follow-up a round produces is offered to the marker's `deferred` list — policy demotions, normalized suggestion-surface findings, tech debt, doc drift, and instrumentation alike — and reaches it unless the marker saturates, which it declares by setting `truncated: true`. A pathologically large author-facing report can still exceed GitHub's body limit; that is a signal to split the round or recalibrate the finding set, not to hide finding detail.
 
 This is the complete author-facing vocabulary. `confidence`, skeptic reasoning, and every other reviewer-internal field stay in the debug trace — the renderer has no channel for them, so final assembly must not fold them into `problem` as prose.
 

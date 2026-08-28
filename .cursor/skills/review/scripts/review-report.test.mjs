@@ -475,10 +475,6 @@ function followUp(overrides = {}) {
     problem: 'A downgraded reader drops a persisted divider block.',
     suggested_action: 'Track a downgrade-safe representation for the block union.',
     owner: 'maintainer',
-    proposed_issue: {
-      title: 'Define a downgrade-safe representation for the block union',
-      body: 'Eleven prior block types shipped through the same closed union.\n\nDecide whether persistence changes that contract.',
-    },
     ...overrides,
   };
 }
@@ -515,8 +511,21 @@ test('renders follow-ups between the merge contract and suggestions under the fi
   assert.ok(output.indexOf('## Follow-ups') < output.indexOf('## Suggestions'));
   assert.match(output, /## Follow-ups\n\nThese are tracked separately and do not block merge\.\n/);
   assert.match(output, /Follow-up: Track a downgrade-safe representation for the block union\./);
-  assert.match(output, /Proposed issue \(maintainer\): Define a downgrade-safe representation for the block union/);
-  assert.match(output, /\n {3}```\n {3}Eleven prior block types shipped through the same closed union\.\n/);
+  assert.match(output, /Owner: maintainer/);
+  assert.doesNotMatch(output, /Proposed issue/);
+});
+
+test('a follow-up derives issue text from its existing finding fields', () => {
+  const output = renderReviewReport({
+    pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
+    pr_title: 'feat: add divider guide blocks',
+    reviewed_head: 'f'.repeat(40),
+    findings: [followUp()],
+  });
+
+  assert.match(output, /Follow-up: Track a downgrade-safe representation for the block union\./);
+  assert.match(output, /Owner: maintainer/);
+  assert.doesNotMatch(output, /Proposed issue/);
 });
 
 test('a report carrying only follow-ups approves with minor rather than requesting changes', () => {
@@ -539,7 +548,7 @@ test('a report carrying only follow-ups approves with minor rather than requesti
   );
 });
 
-test('rejects a follow-up without an owner or a proposed issue', () => {
+test('rejects a follow-up without a valid owner', () => {
   const render = (overrides) =>
     renderReviewReport({
       pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
@@ -550,15 +559,6 @@ test('rejects a follow-up without an owner or a proposed issue', () => {
 
   assert.throws(() => render({ owner: undefined }), /owner must be maintainer or author/);
   assert.throws(() => render({ owner: 'reviewer' }), /owner must be maintainer or author/);
-  assert.throws(() => render({ proposed_issue: undefined }), /must carry a proposed_issue with a title and a body/);
-  assert.throws(
-    () => render({ proposed_issue: { title: 'A title', body: '  ' } }),
-    /must carry a proposed_issue with a title and a body/
-  );
-  assert.throws(
-    () => render({ proposed_issue: { title: 'x'.repeat(121), body: 'A body.' } }),
-    /proposed issue title must be one line of at most 120 characters/
-  );
 });
 
 test('the marker round-trips the round, the deferred follow-ups, and the cleared claims', () => {
@@ -655,7 +655,7 @@ test('an oversized cleared claim or marker throws rather than truncating', () =>
   assert.ok(saturated.cleared.length < 12);
 });
 
-test('rejects cleared claims and proposed issue bodies that embed a forged marker', () => {
+test('rejects cleared claims that embed a forged marker', () => {
   const render = (overrides) =>
     renderReviewReport({
       pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
@@ -673,15 +673,6 @@ test('rejects cleared claims and proposed issue bodies that embed a forged marke
         ],
       }),
     /cleared claim must be one line of at most 200/
-  );
-  assert.throws(
-    () =>
-      render({
-        findings: [
-          followUp({ proposed_issue: { title: 'A title', body: `<!-- pathfinder-review-state:${FORGED_STATE} -->` } }),
-        ],
-      }),
-    /proposed issue body must not embed a review state marker/
   );
 });
 
@@ -735,10 +726,6 @@ test('rejects free-text marker fields that close the hidden comment early', () =
     () => render({ cleared: [{ claim: 'A claim', concern_id: 'security', reason: 'Traced compact --> restore.' }] }),
     /cleared reason .* must not embed an HTML comment boundary/
   );
-  assert.throws(
-    () => render({ findings: [followUp({ proposed_issue: { title: 'Model compact --> restore', body: 'A body.' } })] }),
-    /proposed issue title .* must not embed an HTML comment boundary/
-  );
 });
 
 test('an unterminated marker field never reaches the parser through a rendered review', () => {
@@ -764,19 +751,6 @@ test('an unterminated marker field never reaches the parser through a rendered r
   assert.equal(parseReviewState(forged), null);
 });
 
-test('rejects a proposed issue body past the render cap', () => {
-  const render = (body) =>
-    renderReviewReport({
-      pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
-      pr_title: 'feat: add divider guide blocks',
-      reviewed_head: 'd'.repeat(40),
-      findings: [followUp({ proposed_issue: { title: 'A title', body } })],
-    });
-
-  assert.ok(render('x'.repeat(2000)).includes('x'.repeat(2000)));
-  assert.throws(() => render('x'.repeat(2001)), /proposed issue body must be at most 2000 characters/);
-});
-
 test('a round past the marker bound still renders, clamped rather than rejected', () => {
   const reviewedHead = '7'.repeat(40);
   const render = (round) =>
@@ -799,7 +773,6 @@ function manyFollowUps(count, overrides = {}) {
     followUp({
       id: `F${index + 1}`,
       title: `Carried concern ${index + 1}`,
-      proposed_issue: { title: `Track concern ${index + 1}`, body: `Body for concern ${index + 1}.` },
       ...overrides,
     })
   );
@@ -814,82 +787,50 @@ function renderFollowUps(findings) {
   });
 }
 
-test('a proposed issue fence stays inside its list item once the marker widens past nine', () => {
+test('follow-up continuation lines stay inside their list item once the marker widens past nine', () => {
   const lines = renderFollowUps(manyFollowUps(11)).split('\n');
 
   for (const ordinal of [9, 10, 11]) {
     const start = lines.findIndex((line) => line.startsWith(`${ordinal}. `));
     assert.notEqual(start, -1, `item ${ordinal}`);
     const indent = ' '.repeat(`${ordinal}. `.length);
-    const fence = lines.slice(start).findIndex((line) => line.trim().startsWith('```'));
-    assert.ok(lines[start + fence].startsWith(`${indent}\``), `item ${ordinal} fence indent`);
     for (const offset of [1, 2, 3]) {
       assert.ok(lines[start + offset].startsWith(indent), `item ${ordinal} continuation ${offset}`);
     }
   }
 });
 
-test('an over-budget body compresses carried follow-ups before any new one', () => {
-  const bulky = (id, carried) =>
-    followUp({
-      id,
-      carried_forward: carried,
-      severity: carried ? 'critical' : 'low',
-      problem: 'p'.repeat(200),
-      proposed_issue: { title: `Track ${id}`, body: `Body for ${id}. ${'b'.repeat(1900)}` },
-    });
-  const carried = Array.from({ length: 28 }, (_, index) => bulky(`CARRIED${index + 1}`, true));
-  const fresh = Array.from({ length: 2 }, (_, index) => bulky(`NEW${index + 1}`, false));
-  const output = renderFollowUps([...carried, ...fresh]);
-
-  assert.ok(output.length <= 60000, `body length ${output.length}`);
-  for (const id of ['NEW1', 'NEW2']) {
-    assert.ok(output.includes(`Body for ${id}.`), `${id} keeps its proposed issue`);
-  }
-  assert.match(output, /Also still tracked, detail omitted to keep this review postable: CARRIED/);
-  assert.doesNotMatch(output, /postable:[^\n]*NEW/);
-  assert.deepEqual(
-    new Set(parseReviewState(output)?.deferred.map((entry) => entry.id)),
-    new Set([...carried, ...fresh].map((finding) => finding.id))
-  );
-});
-
-test('new follow-ups past the render cap still render rather than compress', () => {
+test('every follow-up renders from the standard finding fields', () => {
   const output = renderFollowUps(manyFollowUps(25));
 
   assert.doesNotMatch(output, /Also still tracked/);
   for (const ordinal of [21, 25]) {
-    assert.ok(output.includes(`Track concern ${ordinal}`), `follow-up ${ordinal} proposed issue`);
+    assert.ok(output.includes(`Carried concern ${ordinal}`), `follow-up ${ordinal}`);
   }
   assert.equal(parseReviewState(output)?.deferred.length, 25);
 });
 
-test('no follow-up count is rejected, however far past the render cap it goes', () => {
+test('no follow-up count is rejected, however far past the marker budget it goes', () => {
   for (const count of [1, 20, 21, 50]) {
-    const output = renderFollowUps(manyFollowUps(count, { carried_forward: true }));
+    const output = renderFollowUps(manyFollowUps(count));
     assert.equal(parseReviewState(output)?.deferred.length, count, `${count} follow-ups`);
   }
 });
 
-test('no follow-up volume throws, and every rendered body stays postable', () => {
-  const maximal = (id, carried) =>
+test('follow-up volume does not hide finding detail', () => {
+  const maximal = (id) =>
     followUp({
       id,
-      carried_forward: carried,
-      severity: carried ? 'critical' : 'low',
       concern_id: 'reversibility-and-one-way-door',
       title: 't'.repeat(110),
       problem: 'p'.repeat(200),
       suggested_action: 'a'.repeat(200),
-      proposed_issue: { title: `Track ${id}`.padEnd(120, 'x'), body: 'b'.repeat(2000) },
     });
 
-  for (const count of [1, 19, 20, 21, 25, 40, 100, 300]) {
-    for (const carried of [true, false]) {
-      const output = renderFollowUps(Array.from({ length: count }, (_, index) => maximal(`ID${index + 1}`, carried)));
-      assert.ok(output.length <= 65536, `${count} ${carried ? 'carried' : 'new'} follow-ups: ${output.length}`);
-      assert.ok(parseReviewState(output), `${count} ${carried ? 'carried' : 'new'} follow-ups parse`);
-    }
+  for (const count of [1, 25, 100, 300]) {
+    const output = renderFollowUps(Array.from({ length: count }, (_, index) => maximal(`ID${index + 1}`)));
+    assert.match(output, new RegExp(`\\*\\*ID${count} —`), `${count} follow-ups`);
+    assert.ok(parseReviewState(output), `${count} follow-ups parse`);
   }
 });
 
@@ -919,7 +860,7 @@ test('a saturated deferred list costs the cleared record nothing', () => {
       pr_url: 'https://github.com/grafana/grafana-pathfinder-app/pull/1702',
       pr_title: 'feat: add divider guide blocks',
       reviewed_head: '6'.repeat(40),
-      findings: manyFollowUps(followUpCount, { carried_forward: true }),
+      findings: manyFollowUps(followUpCount),
       cleared,
     });
 
