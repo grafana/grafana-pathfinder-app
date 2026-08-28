@@ -64,14 +64,6 @@ export function useGuidePreviewProgress(progressKey: string): GuidePreviewProgre
           activeProgress.current.add(key);
         } else {
           activeProgress.current.delete(key);
-          if (detail.kind === 'section') {
-            const prefix = `step:${detail.sectionId}:`;
-            for (const activeKey of activeProgress.current) {
-              if (activeKey.startsWith(prefix)) {
-                activeProgress.current.delete(activeKey);
-              }
-            }
-          }
         }
         setHasProgress(activeProgress.current.size > 0);
       }

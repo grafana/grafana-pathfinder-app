@@ -256,6 +256,52 @@ describe('useGuidePreviewProgress — listener contract', () => {
     expect(result.current.hasProgress).toBe(false);
   });
 
+  it('keeps remaining step progress when a completed section becomes incomplete', async () => {
+    const { result } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'step', stepId: 'step-1', sectionId: 'section-a', completed: true, reason: 'manual' },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'step', stepId: 'step-2', sectionId: 'section-a', completed: true, reason: 'manual' },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', sectionId: 'section-a', completed: true },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'step', stepId: 'step-2', sectionId: 'section-a', completed: false, reason: 'none' },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'section', sectionId: 'section-a', completed: false },
+        })
+      );
+    });
+
+    expect(result.current.hasProgress).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'step', stepId: 'step-1', sectionId: 'section-a', completed: false, reason: 'none' },
+        })
+      );
+    });
+    expect(result.current.hasProgress).toBe(false);
+  });
+
   it('unsubscribes its listeners on unmount', async () => {
     const { result, unmount } = renderHook(() => useGuidePreviewProgress(PROGRESS_KEY));
     await act(async () => {

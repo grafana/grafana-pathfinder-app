@@ -33,7 +33,6 @@ import {
   interactiveStepStorage,
   sectionAcknowledgementStorage,
 } from '../lib/user-storage';
-import { dispatchInteractiveProgressCleared } from '../lib/event-names';
 import { StorageKeys } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
 
@@ -265,14 +264,9 @@ function persistSection(contentKey: string, sectionId: string): void {
   if (completedIds.size > 0 && percentage !== undefined) {
     dispatchProgress({ kind: 'guide', contentKey, percentage, hasProgress: true });
   }
-  // Tail-reset / partial-reset coverage for the content-scoped
-  // `interactive-progress-cleared` event. The store also drops to zero progress
-  // when the user redoes the first step or runs a reset path that
-  // doesn't go through one of those manual sites. Fire here whenever
-  // the *guide* total falls to zero so the alignment-prompt and
-  // preview-reset-button consumers see every clear path. Guarded on
-  // !isPreview to mirror persistence; the preview path manages its own
-  // dispatch elsewhere.
+  // Tail-reset / partial-reset coverage for guide-level progress consumers.
+  // Reset commands are reserved for explicit reset actions; reaching zero by
+  // redoing a step only updates the guide progress channel.
   if (!isPreview && completedIds.size === 0 && typeof window !== 'undefined') {
     const guideTotal = interactiveStepStorage.countAllCompleted(contentKey);
     // Both counts must be zero — passive acks are real progress even
@@ -280,7 +274,7 @@ function persistSection(contentKey: string, sectionId: string): void {
     // in a mixed guide must not fire "cleared" while acks remain.
     const ackTotal = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
     if (guideTotal === 0 && ackTotal === 0) {
-      dispatchInteractiveProgressCleared({ scope: 'content', contentKey });
+      dispatchProgress({ kind: 'guide', contentKey, percentage: percentage ?? 0, hasProgress: false });
     }
   }
 }
