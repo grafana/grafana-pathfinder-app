@@ -300,6 +300,32 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         unsubscribe();
       }
     });
+
+    it('dispatches section incomplete when a completed step is redone', async () => {
+      const { events, unsubscribe } = recordSectionEvents();
+      try {
+        renderSingleStepSection();
+        await waitFor(() => expect(screen.getByTestId(completeBtn(STEP_ID))).toBeInTheDocument());
+        act(() => screen.getByTestId(completeBtn(STEP_ID)).click());
+        await waitFor(() =>
+          expect(
+            events.find((event) => event.name === 'pathfinder:progress' && event.detail.kind === 'section')
+          ).toBeDefined()
+        );
+
+        events.length = 0;
+        act(() => screen.getByTestId(`harness-redo-${STEP_ID}`).click());
+
+        await waitFor(() => {
+          const event = events.find(
+            (candidate) => candidate.name === 'pathfinder:progress' && candidate.detail.kind === 'section'
+          );
+          expect(event?.detail).toEqual({ kind: 'section', sectionId: SECTION_ID, completed: false });
+        });
+      } finally {
+        unsubscribe();
+      }
+    });
   });
 
   describe('window globals', () => {

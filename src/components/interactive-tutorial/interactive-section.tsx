@@ -450,26 +450,6 @@ export function InteractiveSection({
     disableAutoCollapse: pluginConfig.disableAutoCollapse,
   });
 
-  useEffect(() => {
-    if (isPreviewMode || typeof window === 'undefined') {
-      return;
-    }
-
-    const contentKey = getContentKey();
-    const handleProgressCleared = (event: Event) => {
-      const detail = (event as CustomEvent<InteractiveProgressClearedDetail>).detail;
-      if (!isProgressClearForSection(detail, contentKey, sectionId)) {
-        return;
-      }
-
-      dispatch({ type: 'CLEAR_ACK' });
-      resetCollapse();
-    };
-
-    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
-    return () => window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
-  }, [isPreviewMode, resetCollapse, sectionId]);
-
   // Enable action monitor when component mounts (if feature is enabled in config)
   useEffect(() => {
     const actionMonitor = ActionMonitor.getInstance();
@@ -494,7 +474,11 @@ export function InteractiveSection({
   // dependent steps re-block until the user re-completes the section.
   useEffect(() => {
     if (!isCompleted) {
+      const wasCompleted = hasEmittedGuideCompletionRef.current;
       hasEmittedGuideCompletionRef.current = false;
+      if (wasCompleted) {
+        dispatchProgress({ kind: 'section', sectionId, completed: false });
+      }
       if (!isPreviewMode) {
         sectionDoneStorage.clear(getContentKey(), sectionId);
       }
@@ -947,6 +931,10 @@ export function InteractiveSection({
               }
             }
 
+            if (isCancelledRef.current) {
+              break;
+            }
+
             // First, show the step (highlight it) - skip for multi-step components OR if showMe is false
             if (!stepInfo.isMultiStep && stepInfo.showMe !== false) {
               await executeInteractiveAction({ ...stepInfo, targetAction: stepInfo.targetAction!, buttonType: 'show' });
@@ -966,6 +954,11 @@ export function InteractiveSection({
 
             // Then, execute the step (verifyStepResult already has retry logic)
             const success = await executeStep(stepInfo);
+
+            if (isCancelledRef.current) {
+              setResetTrigger((prev) => prev + 1);
+              break;
+            }
 
             if (success) {
               completedStepsCount = i + 1;
@@ -1098,6 +1091,55 @@ export function InteractiveSection({
     endProgrammaticScroll,
   ]);
 
+  const resetLiveSectionState = useCallback(() => {
+    if (isRunning) {
+      isCancelledRef.current = true;
+      setIsRunning(false);
+      stopSectionBlocking(sectionId);
+      endProgrammaticScroll();
+      ActionMonitor.getInstance().forceEnable();
+    }
+    setCurrentlyExecutingStep(null);
+    setExecutingStepNumber(0);
+    dispatch({ type: 'CLEAR_ACK' });
+    resetCollapse();
+    setResetTrigger((prev) => prev + 1);
+
+    void import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {
+      const manager = SequentialRequirementsManager.getInstance();
+      manager.stopDOMMonitoring();
+      stepComponents.forEach((step) => {
+        manager.updateStep(step.stepId, {
+          isEnabled: false,
+          isCompleted: false,
+          isChecking: false,
+          isSkipped: false,
+          completionReason: 'none',
+          explanation: undefined,
+          error: undefined,
+        });
+      });
+      setTimeout(() => {
+        manager.triggerReactiveCheck();
+        setTimeout(() => manager.startDOMMonitoring(), 100);
+      }, 200);
+    });
+  }, [endProgrammaticScroll, isRunning, resetCollapse, sectionId, stepComponents, stopSectionBlocking]);
+
+  useEffect(() => {
+    if (isPreviewMode || typeof window === 'undefined') {
+      return;
+    }
+    const handleProgressCleared = (event: Event) => {
+      const detail = (event as CustomEvent<InteractiveProgressClearedDetail>).detail;
+      if (isProgressClearForSection(detail, getContentKey(), sectionId)) {
+        resetLiveSectionState();
+      }
+    };
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+    return () => window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleProgressCleared);
+  }, [isPreviewMode, resetLiveSectionState, sectionId]);
+
   /**
    * Handle complete section reset
    * Clears all completion state and resets all steps to initial state
@@ -1111,15 +1153,10 @@ export function InteractiveSection({
     // collapse storage via the persistence hook. Three writers, one
     // call site — invariants now live with their respective owners.
     resetSectionStore(sectionId);
-    dispatch({ type: 'CLEAR_ACK' });
-    setCurrentlyExecutingStep(null);
-
-    // Expand the section and clear the auto-collapse-once guard so a
-    // future completion re-fires the auto-collapse.
-    resetCollapse();
-
-    // Signal all child steps to reset their local state
-    setResetTrigger((prev) => prev + 1);
+    if (isPreviewMode) {
+      // Preview deliberately skips the window listener below.
+      resetLiveSectionState();
+    }
 
     // Clear ack + collapse storage. Hook gates on preview mode internally.
     clearAckAndCollapseStorage();
@@ -1133,7 +1170,6 @@ export function InteractiveSection({
     // per-section reset, even when no progress is left.
     if (typeof window !== 'undefined') {
       const contentKey = getContentKey();
-      dispatchProgress({ kind: 'section', sectionId, completed: false });
       dispatchInteractiveProgressCleared({ scope: 'section', contentKey, sectionId });
       // All-passive sections bypass `persistSection` on reset too;
       // recompute so the persisted percentage drops in lockstep.
@@ -1141,36 +1177,7 @@ export function InteractiveSection({
         refreshAndNotifyGuideProgress(contentKey);
       }
     }
-
-    // Reset all step states in the global manager
-    import('../../requirements-manager').then(({ SequentialRequirementsManager }) => {
-      const manager = SequentialRequirementsManager.getInstance();
-
-      // Temporarily stop DOM monitoring during reset
-      manager.stopDOMMonitoring();
-
-      // Reset all step states including completion and skipped status
-      stepComponents.forEach((step) => {
-        manager.updateStep(step.stepId, {
-          isEnabled: false,
-          isCompleted: false,
-          isChecking: false,
-          isSkipped: false, // Clear skipped state on reset
-          completionReason: 'none',
-          explanation: undefined,
-          error: undefined,
-        });
-      });
-
-      // Re-enable monitoring and trigger check for first step after reset
-      setTimeout(() => {
-        manager.triggerReactiveCheck();
-        setTimeout(() => {
-          manager.startDOMMonitoring();
-        }, 100);
-      }, 200);
-    });
-  }, [disabled, isRunning, stepComponents, resetCollapse, clearAckAndCollapseStorage, sectionId, isPreviewMode]);
+  }, [disabled, isRunning, resetLiveSectionState, clearAckAndCollapseStorage, sectionId, isPreviewMode]);
 
   /**
    * Mark the section as acknowledged (issue #842).
