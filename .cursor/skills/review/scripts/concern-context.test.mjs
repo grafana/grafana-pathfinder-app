@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { extractConcernContext, validateConcernRegistry } from './concern-context.mjs';
+import { buildReviewPlan, extractConcernContext, validateConcernRegistry } from './concern-context.mjs';
 
 const concernsPath = fileURLToPath(new URL('../../../../docs/design/CONCERNS.md', import.meta.url));
 const concernDetailsPath = fileURLToPath(new URL('../../../../docs/design/CONCERN_DETAILS.md', import.meta.url));
+const skillPath = fileURLToPath(new URL('../SKILL.md', import.meta.url));
+const scriptsPath = fileURLToPath(new URL('.', import.meta.url));
 const concerns = readFileSync(concernsPath, 'utf8');
 const concernDetails = readFileSync(concernDetailsPath, 'utf8');
 
@@ -50,9 +52,8 @@ test('records the review orchestration contract under ai-subsystem', () => {
   assert.match(context.contract_anchor.contract, /review-report\.mjs/);
   assert.match(context.contract_anchor.contract, /concern-context\.mjs/);
   assert.match(context.contract_anchor.contract, /review-policy\.mjs/);
-  assert.match(context.contract_anchor.contract, /blocking-gate\.mjs/);
-  assert.match(context.contract_anchor.contract, /blocking_warranted/);
-  assert.match(context.contract_anchor.contract, /v1 read-compatibility window/);
+  assert.match(context.contract_anchor.contract, /30,000 characters/);
+  assert.match(context.contract_anchor.contract, /Version 1 remains read-compatible/);
 });
 
 test('routes shared CLI and MCP command-contract changes to both owners', () => {
@@ -107,7 +108,7 @@ test('rejects routing values outside the registry schema', () => {
   assert.deepEqual(validateConcernRegistry({ routingMarkdown: invalid, detailMarkdown: concernDetails }), [
     'Unknown category invalid for security',
     'min_signals must be between 1 and 8 for security',
-    'max_context_files must be between 1 and 20 for security',
+    'max_context_files must be between 1 and 8 for security',
   ]);
 });
 
@@ -156,6 +157,25 @@ test('rejects blank required concern guidance', () => {
 
 test('keeps the always-loaded routing registry within its context budget', () => {
   assert.ok(Buffer.byteLength(concerns) < 25_000);
+  assert.ok(Buffer.byteLength(concerns) + Buffer.byteLength(readFileSync(skillPath, 'utf8')) < 40_000);
+});
+
+test('keeps only the five agent-facing review executables', () => {
+  const executables = readdirSync(scriptsPath)
+    .filter(
+      (name) =>
+        name.endsWith('.mjs') &&
+        !name.endsWith('.test.mjs') &&
+        readFileSync(`${scriptsPath}/${name}`, 'utf8').includes('process.argv[1] === fileURLToPath(import.meta.url)')
+    )
+    .sort();
+  assert.deepEqual(executables, [
+    'concern-context.mjs',
+    'contract-evolution-gate.mjs',
+    'contract-evolution-policy.mjs',
+    'review-policy.mjs',
+    'review-report.mjs',
+  ]);
 });
 
 test('emits every completion-records doc as one loadable path', () => {
@@ -174,4 +194,72 @@ test('emits every completion-records doc as one loadable path', () => {
     assert.doesNotMatch(doc, /`/);
     assert.ok(existsSync(fileURLToPath(new URL(`../../../../${doc.split(' ')[0]}`, import.meta.url))), doc);
   }
+});
+
+test('full routing keeps concern coverage inside three workers and both context envelopes', () => {
+  const shared = { path: 'src/example.ts', excerpt: 'x'.repeat(4_000) };
+  const plan = buildReviewPlan({
+    mode: 'full',
+    skeptic_batch_count: 2,
+    concerns: [
+      { id: 'correctness-and-reliability', context: [shared] },
+      { id: 'testing-and-verification', context: [shared] },
+      { id: 'security', specialist: 'security', context: [{ path: 'src/security.ts', excerpt: 'safe' }] },
+      { id: 'cross-cutting-architecture', context: [{ path: 'src/other.ts', excerpt: 'boundary' }] },
+    ],
+    contract_evolution: {
+      concern_id: 'ai-subsystem',
+      context: [{ path: 'docs/design/PR_REVIEW.md', excerpt: 'contract' }],
+    },
+  });
+
+  assert.equal(plan.workers.length, 3);
+  assert.equal(plan.workers.filter(({ kind }) => kind === 'general' || kind === 'security').length, 2);
+  assert.ok(plan.workers.every(({ files, context_characters }) => files.length <= 8 && context_characters <= 30_000));
+  assert.ok(
+    ['security', 'correctness-and-reliability', 'testing-and-verification', 'cross-cutting-architecture'].every(
+      (id) => plan.coverage[id]
+    )
+  );
+  assert.equal(plan.debug.worker_count, 3);
+  assert.equal(plan.debug.skeptic_batch_count, 2);
+  assert.equal(plan.coverage['contract-evolution:ai-subsystem'], 'contract-evolution');
+});
+
+test('incremental routing uses one general worker, one conditional specialist, and root overflow', () => {
+  const packet = (id, index) => ({
+    id,
+    context: Array.from({ length: 8 }, (_, file) => ({
+      path: `src/${index}-${file}.ts`,
+      excerpt: 'x'.repeat(2_000),
+    })),
+  });
+  const plan = buildReviewPlan({
+    mode: 'incremental',
+    concerns: [packet('correctness-and-reliability', 1), packet('testing-and-verification', 2)],
+    contract_evolution: {
+      concern_id: 'ai-subsystem',
+      context: [{ path: 'docs/design/PR_REVIEW.md', excerpt: 'contract' }],
+    },
+  });
+
+  assert.equal(plan.workers.length, 2);
+  assert.deepEqual(plan.root.concern_ids, ['testing-and-verification']);
+  assert.equal(plan.coverage['correctness-and-reliability'], 'general-1');
+  assert.equal(plan.coverage['testing-and-verification'], 'root');
+});
+
+test('a packet above eight files or 30,000 characters stays with the root synthesizer', () => {
+  const tooManyFiles = Array.from({ length: 9 }, (_, index) => ({ path: `src/${index}.ts`, excerpt: 'x' }));
+  const tooManyCharacters = [{ path: 'src/large.ts', excerpt: 'x'.repeat(30_001) }];
+  const plan = buildReviewPlan({
+    mode: 'full',
+    concerns: [
+      { id: 'security', context: tooManyFiles },
+      { id: 'correctness-and-reliability', context: tooManyCharacters },
+    ],
+  });
+
+  assert.equal(plan.workers.length, 0);
+  assert.deepEqual(plan.root.concern_ids, ['security', 'correctness-and-reliability']);
 });

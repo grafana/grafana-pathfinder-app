@@ -1,99 +1,53 @@
-#!/usr/bin/env node
-
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
-const SEVERITIES = new Set(['critical', 'high', 'medium', 'low']);
-const DISPOSITIONS = new Set(['blocking', 'follow_up', 'suggestion', 'nit']);
 const VERDICTS = new Set(['confirmed', 'refuted', 'uncertain']);
-const WARRANTS = new Set(['yes', 'no', 'uncertain']);
-const FIRST_WAVE = new Map([
-  ['high_risk', 2],
-  ['advisory', 1],
-  ['unverified', 0],
-]);
 
-function resolved(lane, outcome) {
-  return { lane, dispatch: { role: null, count: 0 }, status: 'resolved', outcome };
+function resolved(lane, status) {
+  return { lane, dispatch: { role: null, count: 0 }, status };
 }
 
 function awaiting(lane, role, count) {
-  return { lane, dispatch: { role, count }, status: 'awaiting_verdicts', outcome: null };
+  return { lane, dispatch: { role, count }, status: 'needs_verification' };
 }
 
-export function classifyFinding(finding) {
-  if (!finding || typeof finding !== 'object') {
-    throw new Error('finding must be an object');
-  }
-  if (!SEVERITIES.has(finding.severity)) {
-    throw new Error(`Unknown severity: ${finding.severity}`);
-  }
-  if (!Object.hasOwn(finding, 'recommended_disposition')) {
-    throw new Error('recommended_disposition is required');
-  }
-  const disposition = finding.recommended_disposition;
-  if (!DISPOSITIONS.has(disposition)) {
-    throw new Error(`Unknown recommended disposition: ${disposition}`);
-  }
-  if (disposition === 'follow_up') {
-    return finding.severity === 'low' ? 'unverified' : 'advisory';
-  }
-  if (finding.severity === 'critical' || finding.severity === 'high' || disposition === 'blocking') {
-    return 'high_risk';
-  }
-  return finding.severity === 'medium' ? 'advisory' : 'unverified';
-}
-
-export function planFirstWave(finding) {
-  const lane = classifyFinding(finding);
-  return { lane, skeptics: FIRST_WAVE.get(lane) };
-}
-
-function countVerdicts(verdicts, warrantRequired) {
+function validateVerdicts(verdicts) {
   if (!Array.isArray(verdicts)) {
     throw new Error('verdicts must be an array');
   }
-  let refuted = 0;
-  let confirmed = 0;
-  let unwarranted = 0;
   for (const verdict of verdicts) {
-    if (!verdict || !VERDICTS.has(verdict.verdict)) {
+    if (!verdict || typeof verdict !== 'object' || !VERDICTS.has(verdict.verdict)) {
       throw new Error(`Unknown verdict: ${verdict?.verdict}`);
     }
-    if (typeof verdict.reason !== 'string' || verdict.reason.length === 0) {
+    const keys = Object.keys(verdict).sort();
+    if (keys.length !== 2 || keys[0] !== 'reason' || keys[1] !== 'verdict') {
+      throw new Error('Each verdict must contain only verdict and reason');
+    }
+    if (typeof verdict.reason !== 'string' || verdict.reason.trim().length === 0) {
       throw new Error('Each verdict must cite a non-empty reason');
     }
-    if (verdict.verdict === 'refuted') {
-      refuted += 1;
-    } else if (verdict.verdict === 'confirmed') {
-      confirmed += 1;
-    }
-    if (warrantRequired) {
-      if (!WARRANTS.has(verdict.blocking_warranted)) {
-        throw new Error(`Unknown blocking warrant: ${verdict.blocking_warranted}`);
-      }
-      if (verdict.blocking_warranted === 'no' && verdict.verdict === 'confirmed') {
-        unwarranted += 1;
-      }
-    }
   }
-  return { refuted, confirmed, unwarranted };
 }
 
-function unwarrantedByEveryBeliever(confirmed, unwarranted) {
-  return confirmed >= 1 && unwarranted === confirmed;
+export function deriveVerificationLane(observation, provisionallyBlocking) {
+  if (observation.kind !== 'defect') {
+    return 'unverified';
+  }
+  if (observation.severity === 'critical' || observation.severity === 'high' || provisionallyBlocking) {
+    return 'high_risk';
+  }
+  return observation.severity === 'medium' ? 'advisory' : 'unverified';
 }
 
-export function decideVerification(finding, verdicts = []) {
-  const lane = classifyFinding(finding);
-  const { refuted, confirmed, unwarranted } = countVerdicts(verdicts, finding.recommended_disposition === 'blocking');
+export function decideVerification(observation, verdicts = [], provisionallyBlocking = false) {
+  validateVerdicts(verdicts);
+  const lane = deriveVerificationLane(observation, provisionallyBlocking);
+  const refuted = verdicts.filter(({ verdict }) => verdict === 'refuted').length;
+  const confirmed = verdicts.filter(({ verdict }) => verdict === 'confirmed').length;
   const seen = verdicts.length;
 
   if (lane === 'unverified') {
     if (seen > 0) {
-      throw new Error('A low non-blocking finding is passed through without verification');
+      throw new Error('An unverified observation passes without skeptic verdicts');
     }
-    return resolved(lane, 'kept');
+    return resolved(lane, 'established');
   }
 
   if (lane === 'high_risk') {
@@ -108,45 +62,24 @@ export function decideVerification(finding, verdicts = []) {
         return resolved(lane, 'dropped');
       }
       if (confirmed === 2) {
-        return resolved(lane, unwarrantedByEveryBeliever(confirmed, unwarranted) ? 'demoted' : 'kept');
+        return resolved(lane, 'established');
       }
       return awaiting(lane, 'tiebreaker', 1);
     }
     if (seen === 3) {
-      if (refuted >= 2) {
-        return resolved(lane, 'dropped');
-      }
-      return resolved(lane, unwarrantedByEveryBeliever(confirmed, unwarranted) ? 'demoted' : 'kept');
+      return resolved(lane, refuted >= 2 ? 'dropped' : 'established');
     }
-    throw new Error('A high-risk finding takes at most three skeptic verdicts');
+    throw new Error('A high-risk defect takes at most three skeptic verdicts');
   }
 
   if (seen === 0) {
     return awaiting(lane, 'skeptic', 1);
   }
   if (seen === 1) {
-    return confirmed === 1 ? resolved(lane, 'kept') : awaiting(lane, 'adjudicator', 1);
+    return confirmed === 1 ? resolved(lane, 'established') : awaiting(lane, 'adjudicator', 1);
   }
   if (seen === 2) {
-    return resolved(lane, verdicts[1].verdict === 'refuted' ? 'dropped' : 'kept');
+    return resolved(lane, verdicts[1].verdict === 'refuted' ? 'dropped' : 'established');
   }
-  throw new Error('A medium advisory finding takes at most one skeptic and one adjudicator');
-}
-
-function main() {
-  const inputPath = process.argv[2];
-  if (!inputPath || process.argv.length !== 3) {
-    throw new Error('Expected one path to a JSON file holding { finding, verdicts }');
-  }
-  const { finding, verdicts } = JSON.parse(readFileSync(inputPath, 'utf8'));
-  process.stdout.write(`${JSON.stringify(decideVerification(finding, verdicts), null, 2)}\n`);
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  try {
-    main();
-  } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    process.exitCode = 2;
-  }
+  throw new Error('A medium defect takes at most one skeptic and one adjudicator');
 }

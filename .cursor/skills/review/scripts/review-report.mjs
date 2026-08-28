@@ -22,7 +22,6 @@ const SECTIONS = [
   ['nit', 'Nits'],
 ];
 const FOLLOW_UP_PREAMBLE = 'These are tracked separately and do not block merge.';
-const FOLLOW_UP_OWNERS = ['maintainer', 'author'];
 const SEVERITY_RANK = new Map([
   ['critical', 0],
   ['high', 1],
@@ -36,13 +35,31 @@ const REVERSIBILITY = new Map([
   ['irreversible_without_cleanup', 'irreversible without cleanup'],
 ]);
 const ASSESSMENT_STATUSES = ['complete', 'incomplete'];
+const REPORT_FIELDS = new Set([
+  'pr_url',
+  'pr_title',
+  'reviewed_head',
+  'findings',
+  'round',
+  'deferred',
+  'cleared',
+  'assessment',
+]);
+const FINDING_FIELDS = new Set([
+  'id',
+  'concern_id',
+  'disposition',
+  'severity',
+  'title',
+  'problem',
+  'suggested_action',
+  'reversibility',
+]);
 const MAX_INCOMPLETE_REASON = 240;
 const MAX_ROUND = 100;
 const MAX_CLEARED = 12;
 const MAX_CLAIM = 200;
 const MAX_CLEARED_REASON = 300;
-const MAX_DEFERRED_CHARS = 3300;
-const MAX_CLEARED_CHARS = 4500;
 const MAX_MARKER = 8192;
 const STATE_MARKER_TOKEN = '<!-- pathfinder-review-state:';
 const COMMENT_TERMINATOR = '-->';
@@ -128,31 +145,20 @@ function isFindingRef(entry) {
   );
 }
 
-function withinBudget(entries, max) {
-  return JSON.stringify(entries).length <= max;
-}
-
-function encodeState(base, deferred, cleared, truncated) {
-  return JSON.stringify({ ...base, deferred, cleared, ...(truncated ? { truncated: true } : {}) });
-}
-
 function buildState(base, allDeferred, allCleared) {
-  let deferred = allDeferred;
-  let cleared = allCleared;
-  let truncated = false;
-  const overBudget = () =>
-    !withinBudget(deferred, MAX_DEFERRED_CHARS) ||
-    !withinBudget(cleared, MAX_CLEARED_CHARS) ||
-    encodeState(base, deferred, cleared, truncated).length > MAX_MARKER;
-  while (overBudget() && deferred.length + cleared.length > 0) {
-    truncated = true;
-    if (!withinBudget(deferred, MAX_DEFERRED_CHARS) || cleared.length === 0) {
-      deferred = deferred.slice(0, -1);
-    } else {
-      cleared = cleared.slice(0, -1);
-    }
+  const complete = JSON.stringify({ ...base, deferred: allDeferred, cleared: allCleared });
+  if (complete.length <= MAX_MARKER) {
+    return complete;
   }
-  return encodeState(base, deferred, cleared, truncated);
+  return JSON.stringify({
+    version: 2,
+    round: base.round,
+    reviewed_head: base.reviewed_head,
+    blocking_findings: [],
+    deferred: [],
+    cleared: [],
+    truncated: true,
+  });
 }
 
 function isClearedEntry(entry) {
@@ -186,10 +192,13 @@ function normalizeState(state) {
   if (state.truncated != null && state.truncated !== true) {
     return null;
   }
-  if (!withinBudget(state.deferred, MAX_DEFERRED_CHARS) || !withinBudget(state.cleared, MAX_CLEARED_CHARS)) {
+  if (!state.deferred.every(isFindingRef) || !state.cleared.every(isClearedEntry)) {
     return null;
   }
-  if (!state.deferred.every(isFindingRef) || !state.cleared.every(isClearedEntry)) {
+  if (
+    state.truncated === true &&
+    (state.blocking_findings.length > 0 || state.deferred.length > 0 || state.cleared.length > 0)
+  ) {
     return null;
   }
   return {
@@ -210,8 +219,13 @@ export function parseReviewState(output) {
   }
   try {
     const state = JSON.parse(trailing.encoded);
+    const allowedFields =
+      state.version === 1
+        ? new Set(['version', 'reviewed_head', 'blocking_findings'])
+        : new Set(['version', 'round', 'reviewed_head', 'blocking_findings', 'deferred', 'cleared', 'truncated']);
     if (
       (state.version !== 1 && state.version !== 2) ||
+      Object.keys(state).some((field) => !allowedFields.has(field)) ||
       !/^[0-9a-f]{40}$/i.test(state.reviewed_head ?? '') ||
       !Array.isArray(state.blocking_findings) ||
       !state.blocking_findings.every(isFindingRef)
@@ -229,9 +243,7 @@ export function parseReviewState(output) {
     );
     if (
       verdict !== completeVerdict(blockingCount, followUpCount, suggestionCount, nitCount) ||
-      normalized.blocking_findings.length !== blockingCount ||
-      (normalized.version === 2 && !normalized.truncated && normalized.deferred.length !== followUpCount) ||
-      (normalized.truncated && normalized.deferred.length > followUpCount)
+      (!normalized.truncated && normalized.blocking_findings.length !== blockingCount)
     ) {
       return null;
     }
@@ -254,9 +266,6 @@ function renderFinding(finding, index) {
     `${indent}${oneLine(finding.problem)}`,
     `${indent}${ACTION_LABELS.get(finding.disposition)}: ${oneLine(finding.suggested_action)}`,
   ];
-  if (finding.disposition === 'follow_up') {
-    lines.push(`${indent}Owner: ${finding.owner}`);
-  }
   return lines.join('\n');
 }
 
@@ -309,9 +318,30 @@ function readCleared(report) {
   });
 }
 
+function readDeferred(report) {
+  if (!Array.isArray(report.deferred)) {
+    throw new Error('deferred must be the reconciled array from review-policy.mjs');
+  }
+  const seen = new Set();
+  return report.deferred.map((entry) => {
+    if (!isFindingRef(entry)) {
+      throw new Error('each deferred entry must include a stable id and concern_id');
+    }
+    if (seen.has(entry.id)) {
+      throw new Error(`deferred id ${entry.id} must be unique`);
+    }
+    seen.add(entry.id);
+    return { id: entry.id, concern_id: entry.concern_id };
+  });
+}
+
 function validateReport(report) {
   if (!report || typeof report !== 'object') {
     throw new Error('Review report must be an object');
+  }
+  const unknownReportField = Object.keys(report).find((field) => !REPORT_FIELDS.has(field));
+  if (unknownReportField) {
+    throw new Error(`unknown review report field: ${unknownReportField}`);
   }
   if (!/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(report.pr_url ?? '')) {
     throw new Error('pr_url must be a full GitHub pull request URL');
@@ -330,6 +360,10 @@ function validateReport(report) {
   }
   const seenIds = new Set();
   for (const finding of report.findings) {
+    const unknownFindingField = Object.keys(finding).find((field) => !FINDING_FIELDS.has(field));
+    if (unknownFindingField) {
+      throw new Error(`unknown author-facing finding field: ${unknownFindingField}`);
+    }
     if (!DISPOSITIONS.includes(finding.disposition)) {
       throw new Error('finding disposition must be blocking, follow_up, suggestion, or nit');
     }
@@ -357,14 +391,11 @@ function validateReport(report) {
         throw new Error(`finding ${field} must not embed a review state marker`);
       }
     }
-    if (finding.disposition === 'follow_up' && !FOLLOW_UP_OWNERS.includes(finding.owner)) {
-      throw new Error('a follow-up finding owner must be maintainer or author');
-    }
   }
 }
 
 function assembleBody(context) {
-  const { assessment, grouped, cleared, purpose, round, report, counts, verdict } = context;
+  const { assessment, grouped, deferred, cleared, purpose, round, report, counts, verdict } = context;
   const sections = [];
   if (assessment.status === 'incomplete') {
     sections.push(
@@ -408,7 +439,6 @@ function assembleBody(context) {
       reviewed_head: report.reviewed_head,
       blocking_findings: grouped.blocking.map(({ id, concern_id }) => ({ id, concern_id })),
     };
-    const deferred = grouped.follow_up.map(({ id, concern_id }) => ({ id, concern_id }));
     sections.push('', `<!-- pathfinder-review-state:${buildState(base, deferred, cleared)} -->`);
   }
   sections.push('', `PR Review: ${report.pr_url}`, `Purpose: ${purpose}`, `Verdict: ${verdict}`, counts);
@@ -423,11 +453,19 @@ export function renderReviewReport(report) {
   validateReport(report);
   const round = resolveRound(report.round);
   const assessment = readAssessment(report);
+  const deferred = readDeferred(report);
   const cleared = readCleared(report);
   const purpose = normalizePurpose(report.pr_title);
   const grouped = Object.fromEntries(DISPOSITIONS.map((disposition) => [disposition, []]));
   for (const finding of report.findings) {
     grouped[finding.disposition].push(finding);
+  }
+  const deferredById = new Map(deferred.map((entry) => [entry.id, entry]));
+  for (const finding of grouped.follow_up) {
+    const entry = deferredById.get(finding.id);
+    if (!entry || entry.concern_id !== finding.concern_id) {
+      throw new Error(`follow-up ${finding.id} must be present in reconciled deferred state`);
+    }
   }
   const bySeverity = (left, right) =>
     (SEVERITY_RANK.get(left.severity) ?? 99) - (SEVERITY_RANK.get(right.severity) ?? 99);
@@ -449,7 +487,7 @@ export function renderReviewReport(report) {
           grouped.suggestion.length,
           grouped.nit.length
         );
-  const body = assembleBody({ assessment, grouped, cleared, purpose, round, report, counts, verdict });
+  const body = assembleBody({ assessment, grouped, deferred, cleared, purpose, round, report, counts, verdict });
 
   const expectedMarkers = assessment.status === 'complete' ? 1 : 0;
   if (markerLineCount(body) !== expectedMarkers) {

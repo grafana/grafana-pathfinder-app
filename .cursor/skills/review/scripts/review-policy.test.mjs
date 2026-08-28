@@ -1,160 +1,314 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, test } from 'node:test';
+import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { advanceReviewPolicy } from './review-policy.mjs';
+import {
+  advanceReviewPolicy,
+  deriveVerificationLane,
+  disposeObservation,
+  planVerificationBatches,
+  reconcileReviewState,
+  validateObservation,
+} from './review-policy.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const tempDirs = [];
 
-afterEach(() => {
-  while (tempDirs.length > 0) {
-    rmSync(tempDirs.pop(), { recursive: true, force: true });
+function observation(overrides = {}) {
+  return {
+    finding_id: 'OBS-1',
+    concern_id: 'correctness-and-reliability',
+    kind: 'defect',
+    severity: 'medium',
+    confidence: 'high',
+    title: 'Changed behavior drops a required result',
+    evidence: ['src/example.ts:12 returns before recording the result.'],
+    why_it_matters: 'The shipped path reports success without saving the result.',
+    suggested_action: 'Record the result before returning.',
+    reversibility: 'reversible',
+    applies_to_files: ['src/example.ts'],
+    origin: 'regression',
+    impact: 'ordinary',
+    timing: 'first_round',
+    scope_effect: 'within_changed_surface',
+    breaks_shipped_path: false,
+    induced: false,
+    ...overrides,
+  };
+}
+
+const confirmed = { verdict: 'confirmed', reason: 'The changed branch demonstrably drops the result.' };
+const refuted = { verdict: 'refuted', reason: 'The base and head both record the result before returning.' };
+const uncertain = { verdict: 'uncertain', reason: 'The reachable caller could not be established from the packet.' };
+
+test('canonical observation validation rejects producer-owned policy fields', () => {
+  for (const field of ['recommended_disposition', 'blocking_warranted', 'override', 'disposition', 'gate_answers']) {
+    assert.throws(() => validateObservation(observation({ [field]: 'blocking' })), /Unknown observation field/);
+  }
+  assert.throws(
+    () => advanceReviewPolicy({ observation: observation(), verdicts: [{ ...confirmed, blocking_warranted: 'yes' }] }),
+    /only verdict and reason/
+  );
+});
+
+test('truth adjudication preserves the bounded high-risk and medium lanes', () => {
+  const high = observation({ severity: 'high' });
+  assert.equal(deriveVerificationLane(high, false), 'high_risk');
+  assert.deepEqual(advanceReviewPolicy({ observation: high }).dispatch, { role: 'skeptic', count: 2 });
+  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [confirmed] }).dispatch.count, 0);
+  assert.equal(
+    advanceReviewPolicy({ observation: high, verdicts: [confirmed, uncertain] }).dispatch.role,
+    'tiebreaker'
+  );
+  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [refuted, refuted] }).status, 'dropped');
+  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [refuted, confirmed, refuted] }).status, 'dropped');
+  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [refuted, confirmed, uncertain] }).status, 'final');
+
+  const mediumNonBlocking = observation({ origin: 'pre_existing' });
+  assert.equal(deriveVerificationLane(mediumNonBlocking, false), 'advisory');
+  assert.deepEqual(advanceReviewPolicy({ observation: mediumNonBlocking }).dispatch, { role: 'skeptic', count: 1 });
+  assert.equal(
+    advanceReviewPolicy({ observation: mediumNonBlocking, verdicts: [uncertain] }).dispatch.role,
+    'adjudicator'
+  );
+  assert.equal(
+    advanceReviewPolicy({ observation: mediumNonBlocking, verdicts: [uncertain, refuted] }).status,
+    'dropped'
+  );
+  assert.equal(advanceReviewPolicy({ observation: mediumNonBlocking, verdicts: [refuted, uncertain] }).status, 'final');
+
+  const low = observation({ severity: 'low', origin: 'pre_existing' });
+  assert.equal(advanceReviewPolicy({ observation: low }).status, 'final');
+  assert.throws(() => advanceReviewPolicy({ observation: low, verdicts: [confirmed] }), /passes without skeptic/);
+});
+
+test('provisionally blocking medium defects receive high-risk verification', () => {
+  assert.equal(advanceReviewPolicy({ observation: observation() }).lane, 'high_risk');
+  assert.equal(advanceReviewPolicy({ observation: observation({ origin: 'pre_existing' }) }).lane, 'advisory');
+});
+
+const dispositionCases = [
+  {
+    name: 'pre-existing security',
+    input: { origin: 'pre_existing', impact: 'security', severity: 'low' },
+    disposition: 'follow_up',
+    reason: 'pre-existing',
+  },
+  {
+    name: 'unreachable data loss',
+    input: { origin: 'latent_unreachable', impact: 'data_loss', severity: 'low' },
+    disposition: 'follow_up',
+    reason: 'latent-unreachable',
+  },
+  {
+    name: 'late credential exposure',
+    input: { impact: 'credential_exposure', timing: 'late' },
+    disposition: 'blocking',
+    reason: 'protected-harm',
+  },
+  {
+    name: 'induced protected harm',
+    input: { impact: 'security', induced: true },
+    disposition: 'blocking',
+    reason: 'protected-harm',
+  },
+  {
+    name: 'PR-caused shipped-path breakage',
+    input: { impact: 'none', breaks_shipped_path: true },
+    disposition: 'blocking',
+    reason: 'protected-harm',
+  },
+  {
+    name: 'pre-existing shipped-path failure',
+    input: { origin: 'pre_existing', breaks_shipped_path: true },
+    disposition: 'follow_up',
+    reason: 'pre-existing',
+  },
+  {
+    name: 'ordinary one-way door with current harm',
+    input: { reversibility: 'partially_reversible' },
+    disposition: 'blocking',
+    reason: 'one-way-door',
+  },
+  {
+    name: 'ordinary one-way door without current harm',
+    input: { reversibility: 'irreversible_without_cleanup', impact: 'none' },
+    disposition: 'blocking',
+    reason: 'one-way-door',
+  },
+  {
+    name: 'late ordinary regression',
+    input: { timing: 'late' },
+    disposition: 'follow_up',
+    reason: 'late',
+  },
+  {
+    name: 'induced ordinary regression',
+    input: { induced: true },
+    disposition: 'follow_up',
+    reason: 'induced-scope',
+  },
+  {
+    name: 'reversible condition with no harm',
+    input: { impact: 'none' },
+    disposition: 'follow_up',
+    reason: 'no-current-harm',
+  },
+  {
+    name: 'newly reachable ordinary regression',
+    input: { origin: 'latent_reachable' },
+    disposition: 'blocking',
+    reason: 'confirmed-regression',
+  },
+];
+
+test('the closed disposition intersection table preserves protected-harm and authorship precedence', () => {
+  for (const fixture of dispositionCases) {
+    const decision = disposeObservation(observation(fixture.input));
+    assert.equal(decision.disposition, fixture.disposition, fixture.name);
+    assert.equal(decision.reason, fixture.reason, fixture.name);
+  }
+  for (const origin of ['regression', 'latent_reachable']) {
+    for (const timing of ['first_round', 'prior_unresolved', 'since_prior_head', 'late']) {
+      for (const impact of ['security', 'data_loss', 'credential_exposure']) {
+        assert.equal(
+          disposeObservation(observation({ origin, timing, impact })).disposition,
+          'blocking',
+          `${origin} ${timing} ${impact}`
+        );
+      }
+      assert.equal(
+        disposeObservation(observation({ origin, timing, impact: 'none', breaks_shipped_path: true })).disposition,
+        'blocking',
+        `${origin} ${timing} shipped path`
+      );
+    }
   }
 });
 
-const oneWayDoorFollowUp = {
-  concern_id: 'reversibility-and-one-way-door',
-  finding_id: 'RWD-1',
-  severity: 'medium',
-  recommended_disposition: 'follow_up',
-  reversibility: 'partially_reversible',
-};
-
-test('one-way-door follow-ups enter blocker-level verification', () => {
-  assert.deepEqual(advanceReviewPolicy({ finding: oneWayDoorFollowUp, verdicts: [] }), {
-    status: 'needs_verification',
-    finding: { ...oneWayDoorFollowUp, recommended_disposition: 'blocking' },
-    lane: 'high_risk',
-    dispatch: { role: 'skeptic', count: 2 },
-  });
-});
-
-test('the blocking gate makes the final disposition after verification', () => {
-  const verdicts = [
-    { verdict: 'confirmed', blocking_warranted: 'yes', reason: 'The state change survives rollback.' },
-    { verdict: 'confirmed', blocking_warranted: 'yes', reason: 'Cleanup is required after revert.' },
-  ];
-  const gateAnswers = {
-    round: 1,
-    authorship: 'pre_existing',
-    breaks_live_path: false,
-    concrete_risk_now: false,
-    boundable_by_followup: true,
-    induced_by_prior_suggestion: false,
-    precedent_count: 0,
-  };
-
-  assert.deepEqual(advanceReviewPolicy({ finding: oneWayDoorFollowUp, verdicts, gate_answers: gateAnswers }), {
+test('optional work cannot widen later rounds', () => {
+  const suggestion = observation({ kind: 'suggestion', impact: 'none', severity: 'low' });
+  assert.deepEqual(disposeObservation(suggestion, 1), {
     status: 'final',
-    finding: { ...oneWayDoorFollowUp, recommended_disposition: 'blocking' },
-    decision: {
-      disposition: 'follow_up',
-      reason: 'pre-existing',
-      override: null,
-      override_source: null,
-      gate_failures: ['pre-existing'],
-    },
+    disposition: 'suggestion',
+    reason: 'within-surface-optional',
   });
-});
-
-test('verification demotion finalizes as a follow-up without gate answers', () => {
-  const finding = {
-    ...oneWayDoorFollowUp,
-    finding_id: 'RWD-2',
-    recommended_disposition: 'blocking',
-    reversibility: 'reversible',
-  };
-  const verdicts = [
-    { verdict: 'confirmed', blocking_warranted: 'no', reason: 'The issue does not affect this merge.' },
-    { verdict: 'confirmed', blocking_warranted: 'no', reason: 'The work can be tracked independently.' },
-  ];
-
-  assert.deepEqual(advanceReviewPolicy({ finding, verdicts }), {
-    status: 'final',
-    finding,
-    decision: {
-      disposition: 'follow_up',
-      reason: 'verification-demoted',
-      override: null,
-      override_source: null,
-      gate_failures: [],
-    },
-  });
-});
-
-test('a verified blocker requests gate answers before final disposition', () => {
-  const finding = { ...oneWayDoorFollowUp, recommended_disposition: 'blocking', reversibility: 'reversible' };
-  const verdicts = [
-    { verdict: 'confirmed', blocking_warranted: 'yes', reason: 'The changed path fails.' },
-    { verdict: 'confirmed', blocking_warranted: 'yes', reason: 'The failure is attributable to this PR.' },
-  ];
-
-  assert.deepEqual(advanceReviewPolicy({ finding, verdicts }), {
-    status: 'needs_gate_answers',
-    finding,
-  });
-});
-
-test('a verified non-blocking finding keeps its recommended disposition', () => {
-  const finding = {
-    ...oneWayDoorFollowUp,
-    finding_id: 'TEST-1',
-    recommended_disposition: 'suggestion',
-    reversibility: 'reversible',
-  };
-  const verdicts = [{ verdict: 'confirmed', reason: 'The changed test misses the new branch.' }];
-
-  assert.deepEqual(advanceReviewPolicy({ finding, verdicts }), {
-    status: 'final',
-    finding,
-    decision: {
-      disposition: 'suggestion',
-      reason: 'verified',
-      override: null,
-      override_source: null,
-      gate_failures: [],
-    },
-  });
-});
-
-test('a refuted finding leaves the policy pipeline', () => {
-  const finding = { ...oneWayDoorFollowUp, recommended_disposition: 'blocking', reversibility: 'reversible' };
-  const verdicts = [
-    { verdict: 'refuted', blocking_warranted: 'no', reason: 'The base commit has the same behavior.' },
-    { verdict: 'refuted', blocking_warranted: 'no', reason: 'The changed path is not reachable.' },
-  ];
-
-  assert.deepEqual(advanceReviewPolicy({ finding, verdicts }), {
-    status: 'dropped',
-    finding,
-    reason: 'verification-refuted',
-  });
-});
-
-test('the CLI emits the next policy action', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'review-policy-'));
-  tempDirs.push(dir);
-  const inputPath = join(dir, 'input.json');
-  writeFileSync(inputPath, JSON.stringify({ finding: oneWayDoorFollowUp, verdicts: [] }));
-
-  const output = execFileSync('node', [join(scriptDir, 'review-policy.mjs'), inputPath], { encoding: 'utf8' });
-
-  assert.deepEqual(JSON.parse(output), {
-    status: 'needs_verification',
-    finding: { ...oneWayDoorFollowUp, recommended_disposition: 'blocking' },
-    lane: 'high_risk',
-    dispatch: { role: 'skeptic', count: 2 },
-  });
-});
-
-test('one-way-door promotion does not hide an invalid recommendation', () => {
-  assert.throws(
-    () => advanceReviewPolicy({ finding: { ...oneWayDoorFollowUp, recommended_disposition: 'unknown' } }),
-    /Unknown recommended disposition/
+  assert.equal(
+    disposeObservation({ ...suggestion, scope_effect: 'widens_changed_surface' }, 1).disposition,
+    'follow_up'
   );
+  assert.deepEqual(disposeObservation(suggestion, 3), { status: 'dropped', reason: 'round-three-optional' });
+  assert.equal(disposeObservation({ ...suggestion, timing: 'prior_unresolved' }, 3).disposition, 'follow_up');
+});
+
+test('clearance contradictions must quote checked prior state exactly', () => {
+  const prior = {
+    concern_id: 'correctness-and-reliability',
+    claim: 'Divider conversion is total.',
+    reason: 'All variants are classified.',
+  };
+  const candidate = observation({
+    severity: 'low',
+    origin: 'pre_existing',
+    clearance_contradiction: {
+      claim: prior.claim,
+      prior_reason: prior.reason,
+      new_evidence: 'The new separator variant reaches the default branch.',
+    },
+  });
+  assert.equal(advanceReviewPolicy({ observation: candidate, prior_cleared: [prior] }).status, 'final');
+  assert.throws(
+    () => advanceReviewPolicy({ observation: candidate, prior_cleared: [{ ...prior, reason: 'Different reason.' }] }),
+    /exact prior cleared claim and reason/
+  );
+  assert.throws(
+    () =>
+      validateObservation({
+        ...candidate,
+        clearance_contradiction: { ...candidate.clearance_contradiction, new_evidence: '' },
+      }),
+    /checked new_evidence/
+  );
+});
+
+test('related verification work batches by concern and evidence surface without merging independent skeptics', () => {
+  const requests = Array.from({ length: 5 }, (_, index) =>
+    observation({ finding_id: `OBS-${index + 1}`, severity: 'high' })
+  );
+  const batches = planVerificationBatches(requests);
+  assert.equal(batches.length, 4);
+  assert.deepEqual(
+    batches.map(({ independent_role }) => independent_role),
+    [1, 1, 2, 2]
+  );
+  assert.ok(batches.every(({ finding_ids }) => finding_ids.length <= 4));
+  assert.deepEqual(
+    batches.map(({ finding_ids }) => finding_ids.length),
+    [4, 1, 4, 1]
+  );
+});
+
+test('reconciliation carries unresolved deferred work, removes only verified fixes, and accumulates clearances', () => {
+  const first = reconcileReviewState({
+    current_follow_ups: [{ id: 'DOC-1', concern_id: 'documentation-alignment' }],
+    current_cleared: [
+      {
+        claim: 'Divider classification is total.',
+        concern_id: 'testing-and-verification',
+        reason: 'The exhaustive fixture passes.',
+      },
+    ],
+  });
+  const second = reconcileReviewState({
+    prior_deferred: first.next_deferred,
+    current_follow_ups: [{ id: 'CONTRACT-1', concern_id: 'ai-subsystem' }],
+    prior_cleared: first.next_cleared,
+  });
+  assert.deepEqual(
+    second.next_deferred.map(({ id }) => id),
+    ['CONTRACT-1', 'DOC-1']
+  );
+  const third = reconcileReviewState({
+    prior_deferred: second.next_deferred,
+    verified_fixed_ids: ['CONTRACT-1'],
+    prior_cleared: second.next_cleared,
+    current_cleared: [
+      { claim: 'The review terminates.', concern_id: 'ai-subsystem', reason: 'Round three adds no optional work.' },
+    ],
+  });
+  assert.deepEqual(
+    third.next_deferred.map(({ id }) => id),
+    ['DOC-1']
+  );
+  assert.equal(third.next_cleared.length, 2);
+  const pruned = reconcileReviewState({
+    current_cleared: Array.from({ length: 14 }, (_, index) => ({
+      claim: `Claim ${index}`,
+      concern_id: 'ai-subsystem',
+      reason: `Checked reason ${index}`,
+    })),
+  });
+  assert.equal(pruned.next_cleared.length, 12);
+  assert.equal(pruned.next_cleared.at(-1).claim, 'Claim 11');
+  assert.throws(
+    () => reconcileReviewState({ prior_deferred: second.next_deferred, verified_fixed_ids: ['UNKNOWN'] }),
+    /not present in prior_deferred/
+  );
+});
+
+test('the facade CLI exposes advance, batching, and reconciliation without another policy command', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'review-policy-'));
+  const inputPath = join(dir, 'input.json');
+  writeFileSync(
+    inputPath,
+    JSON.stringify({ observation: observation({ kind: 'nit', impact: 'none', severity: 'low' }) })
+  );
+  const output = JSON.parse(
+    execFileSync('node', [join(scriptDir, 'review-policy.mjs'), inputPath], { encoding: 'utf8' })
+  );
+  assert.equal(output.status, 'final');
+  assert.equal(output.decision.disposition, 'nit');
 });
