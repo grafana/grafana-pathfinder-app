@@ -32,11 +32,27 @@ jest.mock('@grafana/ui', () => ({
 // @grafana/runtime — and that reaches into @grafana/ui internals this suite's
 // partial mock does not carry. Mocking runtime stops the chain at the edge
 // rather than growing the ui mock to satisfy it.
+const mockBackendFetch = jest.fn();
 jest.mock('@grafana/runtime', () => ({
-  getBackendSrv: () => ({ fetch: jest.fn() }),
+  getBackendSrv: () => ({ fetch: (...args: unknown[]) => mockBackendFetch(...args) }),
   getGrafanaLiveSrv: () => ({}),
-  config: { bootData: { user: { id: 7, isSignedIn: true, login: 'admin', orgRole: 'Admin' } } },
+  config: { bootData: { user: { id: 7, isSignedIn: true, login: 'admin', orgId: 1, orgRole: 'Admin' } } },
 }));
+
+/**
+ * The mint preflight reads Grafana directly and fails closed, so a mint only
+ * gets as far as `provisionGcx` once the account name is answered for. Nothing
+ * holds it here, which is the ordinary case for a first mint.
+ */
+function preflightFindsNothing() {
+  mockBackendFetch.mockImplementation(() => ({
+    subscribe: (observer: any) => {
+      observer.next({ data: { serviceAccounts: [] } });
+      observer.complete();
+      return undefined;
+    },
+  }));
+}
 
 jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
@@ -127,6 +143,8 @@ beforeEach(() => {
   mockSandboxUnavailable = null;
   mockCanMint = true;
   mockProvisionGcx.mockReset();
+  mockBackendFetch.mockReset();
+  preflightFindsNothing();
   // The credential state is module-scoped, shared with the terminal toolbar.
   resetGcxCredentialStore();
 });

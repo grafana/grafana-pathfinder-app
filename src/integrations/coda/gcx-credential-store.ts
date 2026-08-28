@@ -17,7 +17,12 @@ import {
   type GcxCredential,
   type MintTokenOptions,
 } from './coda-api';
-import { ACCOUNT_OUTRANKS_CALLER, assertServiceAccountIsMintable, gcxServiceAccountName } from './gcx-service-account';
+import {
+  ACCOUNT_CHECK_UNAVAILABLE,
+  ACCOUNT_OUTRANKS_CALLER,
+  assertServiceAccountIsMintable,
+  gcxServiceAccountName,
+} from './gcx-service-account';
 
 /** `needs-token` is "asked, and told to paste one instead". */
 export type GcxState = 'idle' | 'provisioning' | 'ready' | 'needs-token' | 'failed';
@@ -163,6 +168,15 @@ export async function runGcxCredential(sessionId: string | null, token?: string)
       const revealed = settle({ sessionId, state: 'needs-token', credential: null, error: codaErr.message });
       if (revealed) {
         recordGcxCredentialDegradation('account-outranks-caller');
+      }
+      return;
+    }
+    if (codaErr.code === ACCOUNT_CHECK_UNAVAILABLE) {
+      // Not a refusal — the preflight reached no answer, so back to `idle` with
+      // the mint still on offer rather than to the paste-only branch.
+      const reported = settle({ sessionId, state: 'idle', credential: null, error: codaErr.message });
+      if (reported) {
+        recordGcxCredentialDegradation('account-check-unavailable');
       }
       return;
     }

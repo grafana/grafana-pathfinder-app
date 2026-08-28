@@ -26,15 +26,15 @@
 import { config } from '@grafana/runtime';
 import { DocsPluginConfig } from '../constants';
 import { logger } from '../lib/logging';
-import { fetchPluginSettings, updatePluginSettings } from './utils.plugin';
+import { fetchPluginJsonData, updatePluginSettings } from './utils.plugin';
 import pluginJson from '../plugin.json';
 
 /**
- * Fetch current plugin settings from the backend to avoid overwriting
- * jsonData fields managed by other config tabs, and to preserve enabled/pinned.
+ * Fetch current plugin jsonData from the backend to avoid overwriting
+ * fields managed by other config tabs when saving dev mode changes.
  */
-async function fetchCurrentSettings() {
-  return fetchPluginSettings(pluginJson.id);
+async function fetchCurrentJsonData(): Promise<DocsPluginConfig> {
+  return fetchPluginJsonData(pluginJson.id);
 }
 
 /**
@@ -74,13 +74,14 @@ export const enableDevMode = async (currentUserId: number, currentUserIds: numbe
     // Add user to list if not already present
     const updatedUserIds = currentUserIds.includes(currentUserId) ? currentUserIds : [...currentUserIds, currentUserId];
 
-    const current = await fetchCurrentSettings();
+    // Fetch current settings to preserve fields managed by other config tabs
+    const currentJsonData = await fetchCurrentJsonData();
 
+    // Update plugin settings with dev mode enabled and updated user list
     await updatePluginSettings(pluginJson.id, {
       enabled: true,
-      pinned: current.pinned,
       jsonData: {
-        ...current.jsonData,
+        ...currentJsonData,
         devMode: true,
         devModeUserIds: updatedUserIds,
       },
@@ -107,13 +108,12 @@ export const disableDevModeForUser = async (userId: number, currentUserIds: numb
     // If no users left, disable dev mode entirely
     const devMode = updatedUserIds.length > 0;
 
-    const current = await fetchCurrentSettings();
+    const currentJsonData = await fetchCurrentJsonData();
 
     await updatePluginSettings(pluginJson.id, {
       enabled: true,
-      pinned: current.pinned,
       jsonData: {
-        ...current.jsonData,
+        ...currentJsonData,
         devMode,
         devModeUserIds: updatedUserIds,
       },
@@ -131,13 +131,13 @@ export const disableDevModeForUser = async (userId: number, currentUserIds: numb
  */
 export const disableDevMode = async (): Promise<void> => {
   try {
-    const current = await fetchCurrentSettings();
+    const currentJsonData = await fetchCurrentJsonData();
 
+    // Update plugin settings to disable dev mode entirely
     await updatePluginSettings(pluginJson.id, {
       enabled: true,
-      pinned: current.pinned,
       jsonData: {
-        ...current.jsonData,
+        ...currentJsonData,
         devMode: false,
         devModeUserIds: [],
       },

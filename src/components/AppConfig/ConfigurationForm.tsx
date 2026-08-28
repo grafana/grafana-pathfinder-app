@@ -18,7 +18,7 @@ import {
   getDefaultRecommenderUrl,
   isKnownRecommenderUrl,
 } from '../../constants';
-import { fetchPluginSettings, updatePluginSettings } from '../../utils/utils.plugin';
+import { fetchPluginJsonData, updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
 import { config } from '@grafana/runtime';
@@ -63,7 +63,7 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
   const urlParams = new URLSearchParams(window.location.search);
   const hasDevParam = urlParams.get('dev') === 'true';
   const s = useStyles2(getStyles);
-  const { jsonData: pluginJsonData } = plugin.meta;
+  const { enabled, pinned, jsonData: pluginJsonData } = plugin.meta;
   const [resolvedJsonData, setResolvedJsonData] = useState<DocsPluginConfig>(pluginJsonData || {});
   const [state, setState] = useState<State>(() => buildStateFromJsonData(pluginJsonData));
   const [isSaving, setIsSaving] = useState(false);
@@ -76,19 +76,18 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
   // `plugin.meta.jsonData` can lag a recent save, so seed the form from the
   // authoritative read — but never over an edit the admin has already made.
-  // A seed only: every write re-reads, because this one can go stale.
   useEffect(() => {
     let cancelled = false;
 
-    fetchPluginSettings(plugin.meta.id)
-      .then((fresh) => {
+    fetchPluginJsonData(plugin.meta.id)
+      .then((freshJsonData) => {
         if (cancelled) {
           return;
         }
 
-        setResolvedJsonData(fresh.jsonData);
+        setResolvedJsonData(freshJsonData);
         if (!isDraftEdited.current) {
-          setState(buildStateFromJsonData(fresh.jsonData));
+          setState(buildStateFromJsonData(freshJsonData));
         }
       })
       .catch((error) => {
@@ -163,14 +162,16 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     setAssistantDevModeToggling(true);
     try {
       const newValue = event.target.checked;
-      const current = await fetchPluginSettings(plugin.meta.id);
 
       await updatePluginSettings(plugin.meta.id, {
-        enabled: current.enabled,
-        pinned: current.pinned,
+        enabled,
+        pinned,
         jsonData: {
-          ...current.jsonData,
-          ...getConfigWithDefaults(current.jsonData),
+          ...(resolvedJsonData || {}),
+          ...getConfigWithDefaults(resolvedJsonData || {}),
+          // Pass through raw, not the resolved default — this tab doesn't own the
+          // field, and materializing it here would freeze out a future default change.
+          enableAiAutoHeal: resolvedJsonData?.enableAiAutoHeal,
           enableAssistantDevMode: newValue,
         },
       });
@@ -229,15 +230,15 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
     setIsSaving(true);
 
     try {
-      // POST /settings replaces the whole object, so the fields this form does
-      // not own — enabled, pinned, and provisioned jsonData such as stackId —
-      // are read back immediately before the write. The mount-time read is a
-      // seed for the form; another tab saving after that would make it a stale
-      // snapshot that silently restores old values.
-      const current = await fetchPluginSettings(plugin.meta.id);
+      // Preserve ALL existing jsonData fields first (including provisioned fields
+      // like stackId that aren't in DocsPluginConfig), then apply defaults for
+      // known fields, then override with this form's fields.
       const newJsonData = {
-        ...current.jsonData,
-        ...getConfigWithDefaults(current.jsonData),
+        ...(resolvedJsonData || {}),
+        ...getConfigWithDefaults(resolvedJsonData || {}),
+        // Pass through raw, not the resolved default — this tab doesn't own the
+        // field, and materializing it here would freeze out a future default change.
+        enableAiAutoHeal: resolvedJsonData?.enableAiAutoHeal,
         recommenderServiceUrl: state.recommenderServiceUrl,
         tutorialUrl: state.tutorialUrl,
         interceptGlobalDocsLinks: state.interceptGlobalDocsLinks,
@@ -251,8 +252,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
       };
 
       await updatePluginSettings(plugin.meta.id, {
-        enabled: current.enabled,
-        pinned: current.pinned,
+        enabled,
+        pinned,
         jsonData: newJsonData,
       });
 

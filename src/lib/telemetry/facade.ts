@@ -152,7 +152,8 @@ export function recordSandboxUnavailable(reason: SandboxUnavailableReason, block
  *
  * A closed set of rungs. No token, session id, or backend error text.
  */
-export type GcxCredentialDegradation = 'mint-forbidden' | 'account-outranks-caller' | 'plugin-too-old' | 'refused';
+export type GcxCredentialDegradation =
+  'mint-forbidden' | 'account-outranks-caller' | 'account-check-unavailable' | 'plugin-too-old' | 'refused';
 
 export function recordGcxCredentialDegradation(reason: GcxCredentialDegradation): void {
   pushFaroEvent(TELEMETRY_EVENTS.gcxCredentialDegraded, { reason });

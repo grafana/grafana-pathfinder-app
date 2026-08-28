@@ -99,6 +99,17 @@ the Coda backend to mint.
 Editors, so most people who can open a terminal cannot mint. `mint_forbidden` is a **branch** — reveal a
 token field — not an error to surface raw. Use `isMintForbidden`, never a status or message match.
 
+**Never treat an unread service account as an absent one.** Pathfinder names the mint account itself
+(`coda-gcx-u<userId>` in `gcx-service-account.ts`) because the client's login-derived default collides,
+and the client reuses an exact name match without checking its role. The preflight therefore fails
+closed: it compares against the caller's *live* role from `/api/user/orgs`, not `config.bootData`, and a
+lookup that cannot answer refuses — `mint_forbidden` for Grafana's own `403`, else the retryable
+`service_account_check_unavailable`. Do not restore a `catch { return; }` there.
+
+**Only a minted token's role and lifetime are ours to claim.** A pasted token is forwarded unchanged and
+opaque to us, so keep the role cap and the expiry claim attached to the mint path and ask for least
+privilege next to the field.
+
 **Do not complete the step on connection alone.** With `gcx` set, the step is done when the credential is
 in; ticking it off at `connected` marks success while every command it exists to enable would still fail
 unauthenticated.
@@ -212,6 +223,7 @@ on a connection must check `isTerminalRegistered` or it hangs (issue #1541).
 |------|---------|
 | `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `provisionGcx`, `sessionChannelAddress` |
 | `src/integrations/coda/gcx-credential-store.ts` | One gcx credential per session, shared by the step and the toolbar; session-keyed invalidation |
+| `src/integrations/coda/gcx-service-account.ts` | Names the mint account on the numeric user id, and the fail-closed role preflight before a mint |
 | `src/integrations/coda/useTerminalLive.hook.ts` | Live subscription, publish, animated provision progress bar, 35 s handshake timeout |
 | `src/integrations/coda/TerminalContext.tsx` | Shared context (`isTerminalRegistered`, `error`) + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` for the requirements checker |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |

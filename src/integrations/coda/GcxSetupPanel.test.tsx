@@ -108,6 +108,27 @@ describe('GcxSetupPanel', () => {
     expect(screen.getByTestId('lifetime')).toBeInTheDocument();
   });
 
+  it('claims the role cap only for the token it mints', () => {
+    // The cap is Grafana's guard on *creating* an account, so it says nothing
+    // about a token the learner pasted: that one carries its own service
+    // account's role, and a pasted Admin token stays Admin.
+    renderPanel();
+
+    expect(screen.getByText(/capped at your own Grafana role/i)).toBeInTheDocument();
+    expect(screen.getByTestId('lifetime').textContent).toMatch(/keeps its own service account/i);
+    expect(screen.getByTestId('lifetime').textContent).toMatch(/least privilege/i);
+    expect(screen.getByText(/readable inside the VM/i).textContent).not.toMatch(/role/i);
+  });
+
+  it('makes no role claim at all once minting has been refused', () => {
+    // With the mint gone, the paste path is the only one left — so a role cap
+    // would be a claim about a token nothing here can inspect.
+    renderPanel({ state: 'needs-token', offerMint: false, error: 'no' });
+
+    expect(screen.queryByText(/capped at your own Grafana role/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('lifetime').textContent).toMatch(/keeps its own service account/i);
+  });
+
   it('trims the pasted token before installing, and will not install an empty one', () => {
     const { onInstall } = renderPanel();
     expect(screen.getByTestId('install')).toBeDisabled();

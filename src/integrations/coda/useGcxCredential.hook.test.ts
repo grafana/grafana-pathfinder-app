@@ -14,11 +14,27 @@ import { CodaError } from '@grafana/coda-client';
 import { useGcxCredential } from './useGcxCredential.hook';
 import { invalidateGcxCredentialForSession, resetGcxCredentialStore, runGcxCredential } from './gcx-credential-store';
 
+const mockBackendFetch = jest.fn();
 jest.mock('@grafana/runtime', () => ({
-  getBackendSrv: () => ({ fetch: jest.fn() }),
+  getBackendSrv: () => ({ fetch: (...args: unknown[]) => mockBackendFetch(...args) }),
   getGrafanaLiveSrv: () => ({}),
-  config: { bootData: { user: { id: 7, isSignedIn: true, login: 'admin', orgRole: 'Admin' } } },
+  config: { bootData: { user: { id: 7, isSignedIn: true, login: 'admin', orgId: 1, orgRole: 'Admin' } } },
 }));
+
+/** The mint preflight reads Grafana directly, and it fails closed. */
+function preflightAnswers(answer: { data: unknown } | { error: unknown }) {
+  mockBackendFetch.mockImplementation(() => ({
+    subscribe: (observer: any) => {
+      if ('error' in answer) {
+        observer.error(answer.error);
+      } else {
+        observer.next({ data: answer.data });
+        observer.complete();
+      }
+      return undefined;
+    },
+  }));
+}
 
 jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
@@ -56,6 +72,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockCanMint = true;
   mockProvisionGcx.mockReset();
+  mockBackendFetch.mockReset();
+  // Nothing holds the account name, which is the ordinary case for a first mint.
+  preflightAnswers({ data: { serviceAccounts: [] } });
   // The state is module-scoped so the step and the toolbar share it.
   resetGcxCredentialStore();
 });
@@ -281,6 +300,70 @@ describe('state shared across surfaces', () => {
     expect(result.current.state).toBe('needs-token');
     expect(result.current.error).toMatch(/coda-gcx-u7/);
     expect(mockRecordDegradation).toHaveBeenCalledWith('account-outranks-caller');
+  });
+
+  it('never reaches the mint when the account cannot be read', async () => {
+    // The client reuses an exact name match without checking its role, so an
+    // unread account is an unknown role rather than an absent one — passing the
+    // name on regardless is the fail-open the preflight exists to prevent.
+    preflightAnswers({ error: new CodaError('nope', 'role_forbidden', 403) });
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(mockProvisionGcx).not.toHaveBeenCalled();
+    expect(result.current.state).toBe('needs-token');
+    expect(mockRecordDegradation).toHaveBeenCalledWith('mint-forbidden');
+  });
+
+  it('holds a mint back as retryable when the preflight cannot answer, keeping it on offer', async () => {
+    // Nothing here says the mint is disallowed, so the button has to come back
+    // — a refusal would send a transient 503 to the paste field for good.
+    preflightAnswers({ error: { status: 503 } });
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(mockProvisionGcx).not.toHaveBeenCalled();
+    expect(result.current.state).toBe('idle');
+    expect(result.current.offerMint).toBe(true);
+    expect(result.current.error).toMatch(/Try again/);
+    expect(mockRecordDegradation).toHaveBeenCalledWith('account-check-unavailable');
+  });
+
+  it('burns no token name on a refused preflight, so the retry asks for the first one', async () => {
+    preflightAnswers({ error: { status: 503 } });
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    preflightAnswers({ data: { serviceAccounts: [] } });
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(mockProvisionGcx).toHaveBeenCalledWith('s_abc', MINT_OPTIONS);
+  });
+
+  it('runs no preflight at all for a pasted token', async () => {
+    // There is no account to reason about: the token is forwarded unchanged.
+    preflightAnswers({ error: { status: 503 } });
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc', 'glsa_pasted');
+    });
+
+    expect(mockProvisionGcx).toHaveBeenCalledWith('s_abc', { token: 'glsa_pasted' });
+    expect(result.current.state).toBe('ready');
   });
 
   it('answers idle for a session other than the one installed into', async () => {

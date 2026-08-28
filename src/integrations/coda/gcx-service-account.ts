@@ -6,6 +6,10 @@
  * survives account reuse, and the client reuses an exact name match without
  * asking whose it is or what role it holds — so the choice of name, and a check
  * on what the name already resolves to, are the whole of the guard.
+ *
+ * Which is why the check fails closed. An account this code could not read is
+ * an unknown role rather than an absent one, and the client reuses it a moment
+ * later; a pass has to be an answer, not the absence of one.
  */
 
 import { config, getBackendSrv } from '@grafana/runtime';
@@ -18,6 +22,11 @@ const ROLE_RANK: Record<string, number> = { None: 0, Viewer: 1, Editor: 2, Admin
 
 interface ServiceAccountSearchResult {
   serviceAccounts?: Array<{ name?: string; role?: string }>;
+}
+
+interface UserOrg {
+  orgId?: number;
+  role?: string;
 }
 
 /**
@@ -46,40 +55,96 @@ export function gcxServiceAccountName(): string {
 export const ACCOUNT_OUTRANKS_CALLER = 'service_account_outranks_caller';
 
 /**
- * Refuse to mint against an account that outranks the caller today.
+ * The guard reached no answer. Distinct from every refusal: nothing here says
+ * the mint is disallowed, so the mint stays on offer to be tried again rather
+ * than being replaced by the paste field.
+ */
+export const ACCOUNT_CHECK_UNAVAILABLE = 'service_account_check_unavailable';
+
+function checkUnavailable(subject: string): CodaError {
+  logger.warn('[gcx] the service account preflight could not answer', { subject });
+  return new CodaError(
+    `${subject} could not be read, so minting is held back. Try again, or paste a service account token instead.`,
+    ACCOUNT_CHECK_UNAVAILABLE,
+    503
+  );
+}
+
+/** Grafana's own "you may not look at service accounts", not a fault. */
+function isAuthorizationDenial(err: unknown): boolean {
+  const status = (err as { status?: number } | null)?.status;
+  return status === 401 || status === 403;
+}
+
+async function readJson<T>(url: string): Promise<T | undefined> {
+  const response = await lastValueFrom(getBackendSrv().fetch<T>({ url, method: 'GET', showErrorAlert: false }));
+  return response.data;
+}
+
+/**
+ * The caller's role as Grafana holds it now. `bootData` carries the role the
+ * page was loaded with, and the account outlives the session that created it —
+ * a demotion during a long session is the case this guard exists for, so a
+ * boot-time snapshot is exactly the wrong side of the comparison.
+ */
+async function readCallerRank(): Promise<number> {
+  let orgs: UserOrg[] | undefined;
+  try {
+    orgs = await readJson<UserOrg[]>('/api/user/orgs');
+  } catch {
+    throw checkUnavailable('Your current Grafana role');
+  }
+
+  const orgId = config.bootData?.user?.orgId;
+  const role = (Array.isArray(orgs) ? orgs.find((org) => org.orgId === orgId) : undefined)?.role;
+  const rank = role === undefined ? undefined : ROLE_RANK[role];
+  if (rank === undefined) {
+    throw checkUnavailable('Your current Grafana role');
+  }
+  return rank;
+}
+
+/**
+ * Refuse to mint unless the name is free, or resolves to an account no stronger
+ * than the caller is right now.
  *
  * Grafana caps the role only when the account is created, and grants the
  * creator write on it, so an Admin who mints once and is later demoted keeps a
  * route to an Admin token through their own reused account.
  *
- * A failed search is not a refusal. Below Admin it is Grafana's own 403 on
- * `serviceaccounts:read`, which is the ordinary path to the paste field — the
- * client's search hits the same wall a moment later and says so.
+ * A lookup that cannot answer is not a pass. Grafana's `403` on
+ * `serviceaccounts:read` is the ordinary route to the paste field below Admin,
+ * so it is reported as a mint refusal; anything else holds the mint back as
+ * retryable rather than claiming the account is safe to reuse.
  */
 export async function assertServiceAccountIsMintable(name: string): Promise<void> {
-  const callerRole = config.bootData?.user?.orgRole ?? 'None';
-
-  let found: ServiceAccountSearchResult;
+  let found: ServiceAccountSearchResult | undefined;
   try {
-    found = await lastValueFrom(
-      getBackendSrv().fetch<ServiceAccountSearchResult>({
-        url: `/api/serviceaccounts/search?query=${encodeURIComponent(name)}&perpage=100`,
-        method: 'GET',
-        showErrorAlert: false,
-      })
-    ).then((response) => response.data ?? {});
-  } catch {
-    logger.warn('[gcx] could not read the service account before minting', { name });
-    return;
+    found = await readJson<ServiceAccountSearchResult>(
+      `/api/serviceaccounts/search?query=${encodeURIComponent(name)}&perpage=100`
+    );
+  } catch (err) {
+    if (isAuthorizationDenial(err)) {
+      throw new CodaError(
+        'Grafana would not let this account look up its own service accounts, so it cannot create a token either. Paste a service account token instead.',
+        'mint_forbidden',
+        403
+      );
+    }
+    throw checkUnavailable('The sandbox service account');
   }
 
-  const existing = found.serviceAccounts?.find((account) => account.name === name);
+  const existing = found?.serviceAccounts?.find((account) => account.name === name);
   if (!existing) {
     return;
   }
 
-  const accountRank = ROLE_RANK[existing.role ?? 'None'] ?? 0;
-  if (accountRank > (ROLE_RANK[callerRole] ?? 0)) {
+  const accountRank = existing.role === undefined ? undefined : ROLE_RANK[existing.role];
+  if (accountRank === undefined) {
+    throw checkUnavailable(`The role on service account ${name}`);
+  }
+
+  if (accountRank > (await readCallerRank())) {
     throw new CodaError(
       `The sandbox service account ${name} holds a higher Grafana role than you do, so minting against it is refused. Ask an administrator to delete it, or paste a service account token instead.`,
       ACCOUNT_OUTRANKS_CALLER,

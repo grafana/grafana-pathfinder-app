@@ -132,11 +132,20 @@ collision would hand one person a token minted against another person's account,
 role. Numeric ids do not collide. Reuse also outlives a role change — Grafana caps the role when the
 account is created and grants the creator write on it, so an Admin who mints and is later demoted keeps
 a route to an Admin token — and `assertServiceAccountIsMintable` refuses a reused account that
-outranks the caller today. That refusal carries its own code,
-`service_account_outranks_caller`, rather than folding into `mint_forbidden`: both branch to the paste
-field, but only this one names something an operator can delete, and only this one is a rung an
-operator can clear. A failed lookup is not a refusal; below Admin it is Grafana's own `403` on the
-search, which is the ordinary path to the paste field.
+outranks the caller today. _Today_ is the load-bearing word: the comparison reads the caller's role
+from `/api/user/orgs` rather than from `config.bootData`, which carries the role the page was loaded
+with. That refusal carries its own code, `service_account_outranks_caller`, rather than folding into
+`mint_forbidden`: both branch to the paste field, but only this one names something an operator can
+delete, and only this one is a rung an operator can clear.
+
+**A lookup that cannot answer holds the mint back.** The client reuses an exact name match without
+checking its role, so an account this code could not read is an _unknown_ role rather than an absent
+one — passing the name on regardless would hand the reuse straight back to the client. Grafana's `403`
+on `serviceaccounts:read` is the ordinary route to the paste field below Admin, so it is reported as
+`mint_forbidden`; any other failure is `service_account_check_unavailable`, which returns to `idle`
+with the mint still on offer rather than sending a transient `503` to the paste field for good. The
+preflight runs before the token name is claimed, so neither refusal burns one, and a pasted token skips
+it entirely — there is no account to reason about.
 
 **Minting is Admin-only in practice, so the paste path is not a fallback.** `serviceaccounts:create` is
 an Admin permission by default while sandbox sessions are open to Editors, so most people who can open
@@ -146,8 +155,11 @@ not an error: the step reveals a token field and the same flow works for everyon
 mint-only UI.**
 
 **The token is readable inside the VM.** The learner has a root shell on the same box, so it is exposed
-for as long as the token lives. That is bounded rather than prevented — it is the learner's own
-identity, capped at their own role. Recorded as an accepted risk in the Coda plugin's
+for as long as the token lives. For a **minted** token that is bounded rather than prevented — it is
+the learner's own identity, capped at their own role by Grafana's guard on creating the account. A
+**pasted** token carries whatever role its own service account holds, so a pasted Admin token is an
+Admin credential readable at root, and `GcxSetupPanel` attaches the cap claim to the mint button only
+and asks for least privilege next to the field. Recorded as an accepted risk in the Coda plugin's
 `docs/SECURITY.md`.
 
 **Only a minted token's lifetime is ours.** A mint asks for a short-lived token that expires on its
@@ -216,7 +228,8 @@ routes the step through `executeInteractiveAction`, which has no `terminal-conne
 back the controls.
 
 **The ladder is measured.** `recordGcxCredentialDegradation` emits the rung that stopped an install
-(`mint-forbidden`, `account-outranks-caller`, `plugin-too-old`, `refused`) and
+(`mint-forbidden`, `account-outranks-caller`, `account-check-unavailable`, `plugin-too-old`,
+`refused`) and
 `gcx_credential_installed` / `gcx_setup_skipped`
 count the outcomes. The whole shape of this surface rests on how often `mint_forbidden` comes back, so
 that rate cannot be left unmeasurable — no token, session id, or backend error text goes with it.
