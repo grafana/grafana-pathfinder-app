@@ -10,7 +10,7 @@
 import { Locator, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
-import { isSessionValid } from '../../auth/grafana-auth';
+import { validateSessionDetailed, type SessionValidationResult } from '../../auth/grafana-auth';
 import {
   REQUIREMENTS_CHECK_TIMEOUT_MS,
   REQUIREMENTS_POLL_INTERVAL_MS,
@@ -49,14 +49,12 @@ import type {
  * vs early detection.
  *
  * @param page - Playwright Page object
- * @returns true if session is valid, false if expired
+ * @returns A valid, auth-expired, or infrastructure result
  *
  * @see tests/e2e-runner/auth/grafana-auth.ts for auth strategy customization
  */
-export async function validateSession(page: Page): Promise<boolean> {
-  // Delegate to auth abstraction module (L3-7A)
-  // This uses the default plugin-e2e auth strategy
-  return isSessionValid(page);
+export async function validateSession(page: Page): Promise<SessionValidationResult> {
+  return validateSessionDetailed(page);
 }
 
 // ============================================

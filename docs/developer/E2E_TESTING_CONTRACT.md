@@ -41,6 +41,44 @@ The source-level tripwires live in `src/components/docs-panel/docs-panel.contrac
 
 ---
 
+## Runner guide-load contract
+
+Both runner modes use the exact `bundled:e2e-test` URL. Shared execution does not add a plugin URL format.
+
+The installed plugin reads guide JSON from `StorageKeys.E2E_TEST_GUIDE`. No guide content or bearer token is stored in the URL.
+
+Before each later interactive milestone, the runner uses this replacement sequence:
+
+1. It publishes the completed milestone result.
+2. It dismisses Pathfinder badge celebrations.
+3. It clicks the existing `Reset guide` control.
+4. It waits for `interactive-progress-cleared` with content key `bundled:e2e-test`.
+5. It captures any step roots that appeared during reset.
+6. It closes the active E2E guide tab.
+7. It waits until all pre-reset and current step roots detach.
+8. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
+9. It dispatches `pathfinder-auto-open-docs` with `bundled:e2e-test`.
+10. It waits until `window.__DocsPluginActiveTabUrl` equals `bundled:e2e-test`.
+11. It waits for the replacement content before step discovery.
+
+If a zero-step guide has no `Reset guide` control, the runner closes its tab directly.
+
+The tab close control uses `docs-panel-tab-close-${tabId}`. This test ID is part of the shared runner contract.
+
+The standalone runner and first shared milestone can reload once during panel recovery. A later milestone never reloads during recovery.
+
+If later panel recovery fails, the runner reports infrastructure failure. It does not erase unsaved page state with a reload.
+
+The reset clears Pathfinder progress and its in-memory completion cache. It does not reload the Grafana page.
+
+The same page, browser context, cookies, session storage, form values, and application memory remain active.
+
+This is a runner-only contract. The installed Pathfinder frontend and `bundled:e2e-test` loader remain unchanged.
+
+If this handshake changes, update both runner specs, runner contract tests, and this document in one change.
+
+---
+
 ## Block editor header contract
 
 The block-editor header exposes two stable row testids that responsive e2e tests depend on to assert the two-row layout holds at narrow widths:

@@ -37,6 +37,7 @@ import {
   GUIDED_SKIP_AFTER_TIMEOUT_FRACTION,
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
   SKIP_SYNC_TIMEOUT_MS,
+  STEP_DEADLINE_CLEANUP_GRACE_MS,
 } from './constants';
 import { classifyError } from './classification';
 import {
@@ -58,9 +59,10 @@ import type {
 } from './types';
 import { resolveSelector } from '../selector-resolver';
 import type { Locator } from '@playwright/test';
+import type { SessionValidationResult } from '../../auth/grafana-auth';
 const STEP_CLOSE_TIMEOUT_MS = 1000;
 const STEP_WORK_DRAIN_TIMEOUT_MS = 1000;
-export const STEP_DEADLINE_CLEANUP_GRACE_MS = STEP_CLOSE_TIMEOUT_MS + STEP_WORK_DRAIN_TIMEOUT_MS + 1000;
+export { STEP_DEADLINE_CLEANUP_GRACE_MS } from './constants';
 
 // ============================================
 // Utility Functions
@@ -957,6 +959,7 @@ interface StepExecutionOptions {
 interface AllStepsOptions extends StepExecutionOptions {
   stopOnMandatoryFailure?: boolean;
   sessionCheckInterval?: number;
+  sessionValidator?: (page: Page) => Promise<SessionValidationResult>;
   onStepComplete?: OnStepCompleteCallback;
 }
 
@@ -1370,7 +1373,8 @@ async function executeStepWork(
  * Session validation (L3-3D):
  * - Checks session validity every `sessionCheckInterval` steps (default: 5)
  * - Validates at step indices 0, N, 2N, etc. to ensure session is valid
- * - On auth expiry, aborts with AUTH_EXPIRED reason and exit code 4
+ * - Uses AUTH_EXPIRED only for clear authentication evidence
+ * - Uses infrastructure failure for transport, server, or browser loss
  * - Remaining steps marked as not_reached
  *
  * Artifact collection (L3-5D):
@@ -1391,6 +1395,7 @@ export async function executeAllSteps(
     verbose = false,
     stopOnMandatoryFailure = true,
     sessionCheckInterval = DEFAULT_SESSION_CHECK_INTERVAL,
+    sessionValidator = validateSession,
     onStepComplete,
     artifactsDir,
     alwaysScreenshot = false,
@@ -1429,18 +1434,18 @@ export async function executeAllSteps(
         console.log(`\n   🔐 Validating session (step ${i + 1})...`);
       }
 
-      const sessionValid = await validateSession(page);
+      const session = await sessionValidator(page);
 
-      if (!sessionValid) {
+      if (!session.valid) {
         if (verbose) {
-          console.log(`   ❌ Session expired, aborting remaining steps`);
+          console.log(`   ❌ Session validation failed, aborting remaining steps`);
         }
         aborted = true;
-        abortReason = 'AUTH_EXPIRED';
-        abortMessage = 'Session expired mid-test';
+        abortReason = session.failureKind === 'auth_expired' ? 'AUTH_EXPIRED' : undefined;
+        abortMessage = session.error;
+        infrastructureError = session.failureKind === 'infrastructure_error';
 
-        // Mark current and remaining steps as not_reached
-        // L3-5C: Classify as infrastructure since it's due to AUTH_EXPIRED
+        // Mark current and remaining steps as not_reached.
         for (let j = i; j < steps.length; j++) {
           results.push({
             stepId: steps[j].stepId,
@@ -1449,7 +1454,6 @@ export async function executeAllSteps(
             currentUrl: page.url(),
             consoleErrors: [],
             skippable: steps[j].skippable,
-            // L3-5C: AUTH_EXPIRED is always infrastructure
             classification: 'infrastructure',
           });
         }
