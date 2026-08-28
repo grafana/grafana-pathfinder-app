@@ -10,6 +10,7 @@ const skillPath = fileURLToPath(new URL('../SKILL.md', import.meta.url));
 const scriptsPath = fileURLToPath(new URL('.', import.meta.url));
 const concerns = readFileSync(concernsPath, 'utf8');
 const concernDetails = readFileSync(concernDetailsPath, 'utf8');
+const skill = readFileSync(skillPath, 'utf8');
 
 test('joins routing and review guidance into one concern packet', () => {
   const context = extractConcernContext({
@@ -157,7 +158,13 @@ test('rejects blank required concern guidance', () => {
 
 test('keeps the always-loaded routing registry within its context budget', () => {
   assert.ok(Buffer.byteLength(concerns) < 25_000);
-  assert.ok(Buffer.byteLength(concerns) + Buffer.byteLength(readFileSync(skillPath, 'utf8')) < 40_000);
+  assert.ok(Buffer.byteLength(concerns) + Buffer.byteLength(skill) < 40_000);
+});
+
+test('requires fresh user approval after rendering and before publication', () => {
+  assert.match(skill, /Route → Observe → Verify → Dispose → Reconcile → Render → Await user approval → Publish/);
+  assert.match(skill, /A request to review does not authorize publication/);
+  assert.match(skill, /Do not post.*without explicit user approval/);
 });
 
 test('keeps only the five agent-facing review executables', () => {

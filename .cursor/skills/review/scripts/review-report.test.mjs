@@ -88,9 +88,9 @@ test('compact report fixtures render every author-facing category in stable orde
     output.split('\n').slice(-4).join('\n'),
     [
       'PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702',
-      'Purpose: add divider guide blocks',
+      'Summary: add divider guide blocks',
       'Verdict: Request Changes',
-      '1 blocking, 1 follow-up, 1 suggestion, 1 nit',
+      'Results: 1 blocker, 2 non-blocking findings, 1 follow-up',
     ].join('\n')
   );
 });

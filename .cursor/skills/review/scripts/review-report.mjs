@@ -65,13 +65,23 @@ const STATE_MARKER_TOKEN = '<!-- pathfinder-review-state:';
 const COMMENT_TERMINATOR = '-->';
 const STATE_MARKER = /^<!-- pathfinder-review-state:(\{.+\}) -->$/;
 const STATE_MARKER_PREFIX = /^<!-- pathfinder-review-state:/;
-const RECAP_SHAPE = [
-  /^PR Review: https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/,
-  /^Purpose: \S.*$/,
-  /^Verdict: (?:Approve|Approve with Minor|Request Changes|Review Incomplete)$/,
-  /^\d+ blocking, (?:\d+ follow-ups?, )?\d+ suggestions?, \d+ nits?$/,
+const RECAP_LINE_COUNT = 4;
+const RECAP_SHAPES = [
+  [
+    /^PR Review: https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/,
+    /^Summary: \S.{0,119}$/,
+    /^Verdict: (?:Approve|Approve with Minor|Request Changes|Review Incomplete)$/,
+    /^Results: \d+ blockers?, \d+ non-blocking findings?, \d+ follow-ups?$/,
+  ],
+  [
+    /^PR Review: https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/,
+    /^Purpose: \S.*$/,
+    /^Verdict: (?:Approve|Approve with Minor|Request Changes|Review Incomplete)$/,
+    /^\d+ blocking, (?:\d+ follow-ups?, )?\d+ suggestions?, \d+ nits?$/,
+  ],
 ];
-const RECAP_COUNTS = /^(\d+) blocking, (?:(\d+) follow-ups?, )?(\d+) suggestions?, (\d+) nits?$/;
+const RESULTS_COUNTS = /^Results: (\d+) blockers?, (\d+) non-blocking findings?, (\d+) follow-ups?$/;
+const LEGACY_RECAP_COUNTS = /^(\d+) blocking, (?:(\d+) follow-ups?, )?(\d+) suggestions?, (\d+) nits?$/;
 
 function oneLine(value) {
   return value.replace(/\s+/g, ' ').trim();
@@ -118,11 +128,14 @@ function trailingStateMarker(output) {
   if (markerIndexes.length !== 1) {
     return null;
   }
-  const recap = lines.slice(-RECAP_SHAPE.length);
-  if (recap.length !== RECAP_SHAPE.length || !RECAP_SHAPE.every((shape, index) => shape.test(recap[index]))) {
+  const recap = lines.slice(-RECAP_LINE_COUNT);
+  if (
+    recap.length !== RECAP_LINE_COUNT ||
+    !RECAP_SHAPES.some((shapes) => shapes.every((shape, index) => shape.test(recap[index])))
+  ) {
     return null;
   }
-  let index = lines.length - RECAP_SHAPE.length - 1;
+  let index = lines.length - RECAP_LINE_COUNT - 1;
   while (index >= 0 && lines[index].trim() === '') {
     index -= 1;
   }
@@ -234,10 +247,12 @@ export function parseReviewState(output) {
       return null;
     }
     const verdict = trailing.recap[2].slice('Verdict: '.length);
-    const [, blocking, followUps, suggestions, nits] = trailing.recap[3].match(RECAP_COUNTS) ?? [];
-    const [blockingCount, followUpCount, suggestionCount, nitCount] = [blocking, followUps ?? 0, suggestions, nits].map(
-      Number
-    );
+    const results = trailing.recap[3].match(RESULTS_COUNTS);
+    const legacy = trailing.recap[3].match(LEGACY_RECAP_COUNTS);
+    const blockingCount = Number(results?.[1] ?? legacy?.[1]);
+    const followUpCount = Number(results?.[3] ?? legacy?.[2] ?? 0);
+    const suggestionCount = Number(results?.[2] ?? legacy?.[3]);
+    const nitCount = Number(legacy?.[4] ?? 0);
     if (
       verdict !== completeVerdict(blockingCount, followUpCount, suggestionCount, nitCount) ||
       (!normalized.truncated && normalized.blocking_findings.length !== blockingCount)
@@ -440,7 +455,7 @@ function assembleBody(context) {
     };
     sections.push('', `<!-- pathfinder-review-state:${buildState(base, deferred, cleared)} -->`);
   }
-  sections.push('', `PR Review: ${report.pr_url}`, `Purpose: ${purpose}`, `Verdict: ${verdict}`, counts);
+  sections.push('', `PR Review: ${report.pr_url}`, `Summary: ${purpose}`, `Verdict: ${verdict}`, counts);
   return sections.join('\n');
 }
 
@@ -471,12 +486,11 @@ export function renderReviewReport(report) {
   for (const disposition of DISPOSITIONS) {
     grouped[disposition].sort(bySeverity);
   }
-  const counts = [
-    countLabel(grouped.blocking.length, 'blocking', 'blocking'),
+  const counts = `Results: ${[
+    countLabel(grouped.blocking.length, 'blocker'),
+    countLabel(grouped.suggestion.length + grouped.nit.length, 'non-blocking finding'),
     countLabel(grouped.follow_up.length, 'follow-up'),
-    countLabel(grouped.suggestion.length, 'suggestion'),
-    countLabel(grouped.nit.length, 'nit'),
-  ].join(', ');
+  ].join(', ')}`;
   const verdict =
     assessment.status === 'incomplete'
       ? 'Review Incomplete'

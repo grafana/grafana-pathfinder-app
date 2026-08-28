@@ -188,12 +188,12 @@ Verify `npm run lint:go`, `npm run test:go`, and `go build ./...`.
 
 ## Final review report
 
-After policy and reconciliation, publish one `ReviewReport`:
+After policy and reconciliation, render one `ReviewReport`:
 
 | Field           | Rule                                               |
 | --------------- | -------------------------------------------------- |
 | `pr_url`        | Full GitHub pull request URL                       |
-| `pr_title`      | Current title; renderer derives a one-line purpose |
+| `pr_title`      | Current title; renderer derives a one-line summary |
 | `reviewed_head` | Full 40-character commit SHA                       |
 | `findings`      | Final author-facing findings                       |
 | `round`         | Explicit integer from 1 through 100                |
@@ -204,6 +204,8 @@ After policy and reconciliation, publish one `ReviewReport`:
 Each finding contains only `id`, `concern_id`, `disposition`, `severity`, `title`, `problem`, `suggested_action`, and optional `reversibility`. Disposition is `blocking`, `follow_up`, `suggestion`, or `nit`. The report does not carry confidence, reviewer reasoning, or follow-up ownership.
 
 `review-report.mjs` validates, sorts by disposition then severity, renders every retained finding, derives the verdict and counts, and emits exactly one marker plus one trailing operator recap. It performs no policy decisions.
+
+Rendering does not authorize publication. Present the complete output to the user and obtain explicit approval before posting it or otherwise mutating GitHub.
 
 An incomplete assessment needs one concise reason, claims no mergeability, and emits no marker. A complete report with no blockers says the PR is mergeable.
 
@@ -236,7 +238,7 @@ When that complete value exceeds `MAX_MARKER`, it writes only:
 }
 ```
 
-A truncated marker always forces a full next review. The parser keeps version 1 read compatibility, recap adjacency, strict shape checks, and fail-closed behavior for malformed, duplicated, forged, oversized, or misplaced state. Provenance and ancestor validation remain caller preconditions: suppressive state is honored only from the same reviewer's prior review and only when `reviewed_head` is an ancestor.
+A truncated marker always forces a full next review. The parser keeps version 1 and legacy `Purpose` recap read compatibility, recap adjacency, strict shape checks, and fail-closed behavior for malformed, duplicated, forged, oversized, or misplaced state. Provenance and ancestor validation remain caller preconditions: suppressive state is honored only from the same reviewer's prior review and only when `reviewed_head` is an ancestor.
 
 ### Operator recap
 
@@ -244,12 +246,12 @@ The last four lines are always:
 
 ```text
 PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702
-Purpose: add divider guide blocks
+Summary: add divider guide blocks
 Verdict: Request Changes
-1 blocking, 2 follow-ups, 2 suggestions, 3 nits
+Results: 1 blocker, 5 non-blocking findings, 2 follow-ups
 ```
 
-Nothing follows the count line. `Verdict` is `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`.
+Nothing follows the results line. `Summary` is one line of at most 120 characters. `Verdict` is `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Results count current rendered findings: suggestions plus nits are non-blocking findings, and carried deferred IDs without repeated prose are not follow-ups.
 
 ### Debug trace
 

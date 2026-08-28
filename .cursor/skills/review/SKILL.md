@@ -5,7 +5,7 @@ description: Routed PR review orchestrator. Load for `/review` command or any PR
 
 # PR review orchestrator
 
-Decide whether the repository is better off with the change merged. Use this bounded pipeline: Route → Observe → Verify → Dispose → Reconcile → Publish.
+Decide whether the repository is better off with the change merged. Use this bounded pipeline: Route → Observe → Verify → Dispose → Reconcile → Render → Await user approval → Publish.
 
 ## 1. Route
 
@@ -156,7 +156,7 @@ After every observation is final or dropped, call the same facade with:
 
 Pass every final follow-up as `{ id, concern_id }`. List a prior deferred ID in `verified_fixed_ids` only after checking the current head. The returned `next_deferred` and `next_cleared` are final state; publishing must not derive or alter them. Order clearances by importance before reconciliation when the 12-entry cap may prune them. Each clearance claim is at most 200 characters and each reason at most 300; reconciliation normalizes whitespace and rejects HTML comment boundaries before returning state.
 
-## 6. Publish
+## 6. Render, await user approval, and publish
 
 Load `Final review report` from `docs/design/PR_REVIEW.md`. Convert each final policy result to the author-facing fields: stable `id`, owning `concern_id`, final `disposition`, `severity`, `title`, a concise `problem` grounded in evidence and consequence, `suggested_action`, and optional `reversibility`.
 
@@ -169,6 +169,8 @@ node .cursor/skills/review/scripts/review-report.mjs <report-file>
 ```
 
 Use the renderer output verbatim. It renders all findings, orders them, derives verdict and counts, emits one marker, and ends with the four-line operator recap. It performs no policy work.
+
+Present the complete rendered review to the user and stop. A request to review does not authorize publication. Do not post the review or otherwise mutate GitHub without explicit user approval after rendering. Once approved, publish the rendered output verbatim; without approval, leave GitHub unchanged.
 
 A truncated v2 marker contains empty finding, deferred, and cleared lists and forces a full next review. Version 1 is read-only compatibility. Ancestor validation and same-reviewer provenance remain orchestrator checks.
 
@@ -186,4 +188,4 @@ Pattern severity feeds the canonical observation. It never decides disposition.
 
 Record full-versus-incremental mode, activated concern ownership, worker count, each worker's files and context characters, skeptic batch count, dropped evidence, policy reason codes, coverage gaps, and timings. Keep the trace internal unless the user requests it.
 
-Stop when every activated concern has a worker or root owner, all verification has resolved, reconciliation has run, and `review-report.mjs` has produced the final report. Ordinary first rounds must use no more than three workers total; incremental rounds no more than two.
+The review is complete when every activated concern has a worker or root owner, all verification has resolved, reconciliation has run, and `review-report.mjs` has produced the final report. Publication remains a separate optional mutation after the approval gate. Ordinary first rounds must use no more than three workers total; incremental rounds no more than two.
