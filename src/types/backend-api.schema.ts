@@ -17,6 +17,8 @@
 
 import { z } from 'zod';
 
+import { GuideStatsSummarySchema } from './guide-stats.schema';
+
 /** Any JSON value. Mirrors Go `json.RawMessage` / `interface{}` passthrough. */
 export const JsonValueSchema = z.json();
 
@@ -81,15 +83,14 @@ export const CustomGuideAuthorWireSchema = z.strictObject({
  * version of the counting rules that produced the counts, not a content
  * version.
  *
+ * Derived from the canonical `GuideStatsSummarySchema` rather than restated, so
+ * the wire cannot admit a stamp the producer would reject — in particular the
+ * non-negative invariant every member carries. `strictObject` adds only the
+ * closed-shape rule the rest of this module's wire schemas apply.
+ *
  * @coupling Go struct: customGuideStats
  */
-export const CustomGuideStatsWireSchema = z.strictObject({
-  version: z.int(),
-  blockCount: z.int(),
-  sectionCount: z.int(),
-  completableBlockCount: z.int(),
-  finalCompletablePosition: z.int(),
-});
+export const CustomGuideStatsWireSchema = z.strictObject(GuideStatsSummarySchema.shape);
 
 /**
  * Three fields are deliberately wider here than in `CustomGuideManifest`
