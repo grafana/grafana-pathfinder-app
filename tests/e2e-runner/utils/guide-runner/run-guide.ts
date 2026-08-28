@@ -3,7 +3,6 @@ import type { Page } from '@playwright/test';
 import { testIds } from '../../../../src/constants/testIds';
 import { contentDigest, type TestResultsData } from '../../../../src/cli/e2e/e2e-reporter';
 import { printDetailedSummary, printDiscoveryResults, printHeader, printStepResult } from '../console-reporter';
-import { dismissBadgeCelebrations } from './badge-celebrations';
 import { discoverStepsFromDOM } from './discovery';
 import { calculateGuideTimeout, executeAllSteps, settleWithin, summarizeResults } from './execution';
 import { countInteractiveBlocks } from './static-analysis';
@@ -39,7 +38,7 @@ export interface RunGuideOnPageOptions {
   onTimeoutCalculated?: (timeoutMs: number) => void;
 }
 
-export function parsePageGuide(path: string, content: string): PageGuide {
+export function parsePageGuide(path: string, content: string, plannedId?: string): PageGuide {
   const parsed = JSON.parse(content) as { id?: unknown; title?: unknown };
   const fallbackId =
     path
@@ -47,7 +46,7 @@ export function parsePageGuide(path: string, content: string): PageGuide {
       .pop()
       ?.replace(/\.json$/, '') ?? 'unknown';
   return {
-    id: typeof parsed.id === 'string' && parsed.id ? parsed.id : fallbackId,
+    id: plannedId ?? (typeof parsed.id === 'string' && parsed.id ? parsed.id : fallbackId),
     title: typeof parsed.title === 'string' && parsed.title ? parsed.title : 'E2E Test Guide',
     path,
     content,

@@ -103,7 +103,7 @@ test.describe('Shared guide runner', () => {
             const milestoneArtifactsDir = artifactsDir
               ? join(artifactsDir, `milestone-${String(index + 1).padStart(3, '0')}-${guide.id}`)
               : undefined;
-            return runGuideOnPage(page, parsePageGuide(guide.path, guide.content), {
+            return runGuideOnPage(page, parsePageGuide(guide.path, guide.content, guide.id), {
               targetUrl: chainInput.targetUrl,
               startingLocation: transition.startingLocation,
               navigateToStartingLocation: transition.navigateToStartingLocation,

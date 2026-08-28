@@ -23,6 +23,11 @@ const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
 if (report.outcome !== 'passed' || report.reports.length !== 2) {
   throw new Error('The shared fixture did not produce two passing reports.');
 }
+const expectedIds = ['shared-session-enter-unsaved-config', 'shared-session-use-unsaved-config'];
+const reportIds = report.reports.map((milestone) => milestone.guide.id);
+if (JSON.stringify(reportIds) !== JSON.stringify(expectedIds)) {
+  throw new Error(`The shared fixture did not preserve planner IDs: ${reportIds.join(', ')}`);
+}
 for (const milestone of report.reports) {
   const urls = [milestone.guide.startingLocation, ...milestone.steps.map((step) => step.currentUrl)];
   if (urls.some((url) => String(url).includes(marker))) {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.1.0",
-  "id": "shared-session-use-unsaved-config",
+  "id": "shared-session-use-unsaved-config-content-id",
   "title": "Use the unsaved configuration value",
   "blocks": [
     {
