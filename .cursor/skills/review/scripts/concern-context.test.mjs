@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +8,7 @@ import { buildReviewPlan, extractConcernContext, validateConcernRegistry } from 
 const concernsPath = fileURLToPath(new URL('../../../../docs/design/CONCERNS.md', import.meta.url));
 const concernDetailsPath = fileURLToPath(new URL('../../../../docs/design/CONCERN_DETAILS.md', import.meta.url));
 const skillPath = fileURLToPath(new URL('../SKILL.md', import.meta.url));
+const scriptPath = fileURLToPath(new URL('./concern-context.mjs', import.meta.url));
 const scriptsPath = fileURLToPath(new URL('.', import.meta.url));
 const concerns = readFileSync(concernsPath, 'utf8');
 const concernDetails = readFileSync(concernDetailsPath, 'utf8');
@@ -26,6 +28,28 @@ test('joins routing and review guidance into one concern packet', () => {
   assert.ok(context.trigger_paths.includes('src/security/**'));
   assert.match(context.purpose, /Protect the plugin from XSS/);
   assert.ok(context.related.includes('docs-retrieval-and-rendering'));
+});
+
+test('worker mode emits only the guidance needed for observation', () => {
+  const worker = JSON.parse(execFileSync('node', [scriptPath, '--worker', 'security'], { encoding: 'utf8' }));
+  const root = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'security',
+  });
+
+  assert.deepEqual(Object.keys(worker), [
+    'id',
+    'purpose',
+    'review_questions',
+    'one_way_doors',
+    'verification',
+    'contract_anchor',
+    'named_invariants',
+  ]);
+  assert.equal(worker.id, root.id);
+  assert.deepEqual(worker.review_questions, root.review_questions);
+  assert.ok(JSON.stringify(worker).length < JSON.stringify(root).length);
 });
 
 test('includes the concern anchor and named invariants', () => {

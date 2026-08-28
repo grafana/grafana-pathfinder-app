@@ -81,6 +81,11 @@ export function extractConcernContext({ routingMarkdown, detailMarkdown, concern
   };
 }
 
+function workerConcernContext(context) {
+  const { id, purpose, review_questions, one_way_doors, verification, contract_anchor, named_invariants } = context;
+  return { id, purpose, review_questions, one_way_doors, verification, contract_anchor, named_invariants };
+}
+
 export function validateConcernRegistry({ routingMarkdown, detailMarkdown }) {
   const tables = registryTables(routingMarkdown, detailMarkdown);
   const errors = [];
@@ -338,8 +343,9 @@ function main() {
     process.stdout.write(`${JSON.stringify(buildReviewPlan(input), null, 2)}\n`);
     return;
   }
-  const concern = process.argv[2];
-  if (!concern || process.argv.length !== 3) {
+  const workerMode = process.argv[2] === '--worker';
+  const concern = workerMode ? process.argv[3] : process.argv[2];
+  if (!concern || process.argv.length !== (workerMode ? 4 : 3)) {
     throw new Error('Expected one concern id');
   }
   const routingMarkdown = readFileSync(
@@ -350,9 +356,8 @@ function main() {
     fileURLToPath(new URL('../../../../docs/design/CONCERN_DETAILS.md', import.meta.url)),
     'utf8'
   );
-  process.stdout.write(
-    `${JSON.stringify(extractConcernContext({ routingMarkdown, detailMarkdown, concern }), null, 2)}\n`
-  );
+  const context = extractConcernContext({ routingMarkdown, detailMarkdown, concern });
+  process.stdout.write(`${JSON.stringify(workerMode ? workerConcernContext(context) : context, null, 2)}\n`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
