@@ -16,6 +16,7 @@
 
 import type { z } from 'zod';
 
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { describeField, fieldHelpText, isRepresentableField } from '../utils/schema-options';
 import { spellParams, type ParamSpelling } from '../utils/param-spelling';
 import type { HelpJson, HelpJsonFlag } from '../utils/output';
@@ -87,7 +88,12 @@ function valueTypeOf(field: z.ZodType): HelpJsonFlag['valueType'] {
       return 'array';
     case 'union':
       return 'union';
+    case 'string':
+    case 'literal':
+    case 'unsupported':
+      return 'string';
     default:
+      assertExhaustive(shape);
       return 'string';
   }
 }

@@ -121,6 +121,25 @@ export function codaErrorCodeMessage(code: CodaErrorCode | undefined, fallback: 
     case 'coda_unavailable':
     case 'upstream_failed':
       return 'The sandbox service could not be reached. Wait a moment and try again.';
+    case undefined:
+    case 'invalid_request':
+    case 'invalid_ready_file':
+    case 'conflicting_gate':
+    case 'no_enrollment_key':
+    case 'no_api_url':
+    case 'api_url_not_allowed':
+    case 'no_user':
+    case 'admin_required':
+    case 'session_not_found':
+    case 'vm_not_found':
+    case 'method_not_allowed':
+    case 'terminal_not_connected':
+    case 'vm_conflict':
+    case 'already_registered':
+    case 'registration_in_progress':
+    case 'internal':
+    case 'exec_failed':
+      return fallback;
     default:
       return fallback;
   }
