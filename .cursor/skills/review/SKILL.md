@@ -62,6 +62,8 @@ In incremental mode:
 
 Derive the round as the prior v2 round plus one. Without v2 state, use one plus all prior review submissions. A vanished code anchor does not prove a blocker fixed; re-check the underlying invariant.
 
+Pass that explicit round, from 1 through 100, to every policy, verification-batch, and report request. The scripts reject a missing or out-of-range round; only this orchestrator derives the version 1 compatibility fallback.
+
 At round three or later, do not emit new suggestions or nits. Unresolved prior optional work may carry by stable ID without repeated prose. Do not turn a deferred item into a blocker unless the new diff makes it newly reachable.
 
 ## 2. Observe
@@ -117,7 +119,7 @@ Plan related packets through the facade:
 
 Run `review-policy.mjs` on that input. A packet holds at most four findings sharing a concern and evidence surface. Keep independent skeptic roles on different agents.
 
-For each observation, call the facade with `{ observation, verdicts, round, prior_cleared }`:
+For each observation, call the facade with `{ observation, verdicts, round, prior_deferred, prior_cleared }`:
 
 ```bash
 node .cursor/skills/review/scripts/review-policy.mjs <policy-input-file>
@@ -126,6 +128,8 @@ node .cursor/skills/review/scripts/review-policy.mjs <policy-input-file>
 - `needs_verification`: run exactly the returned role/count, append verdicts, and call again.
 - `final`: accept the returned disposition and reason unchanged.
 - `dropped`: omit it and keep the refutation in the debug trace.
+
+For `timing: "prior_unresolved"`, pass the prior reconciled deferred state. The facade carries optional work only when both its stable finding ID and concern match an exact prior deferred entry.
 
 Never call the pure verifier helper directly or hand-apply its thresholds.
 
@@ -150,7 +154,7 @@ After every observation is final or dropped, call the same facade with:
 }
 ```
 
-Pass every final follow-up as `{ id, concern_id }`. List a prior deferred ID in `verified_fixed_ids` only after checking the current head. The returned `next_deferred` and `next_cleared` are final state; publishing must not derive or alter them. Order clearances by importance before reconciliation when the 12-entry cap may prune them.
+Pass every final follow-up as `{ id, concern_id }`. List a prior deferred ID in `verified_fixed_ids` only after checking the current head. The returned `next_deferred` and `next_cleared` are final state; publishing must not derive or alter them. Order clearances by importance before reconciliation when the 12-entry cap may prune them. Each clearance claim is at most 200 characters and each reason at most 300; reconciliation normalizes whitespace and rejects HTML comment boundaries before returning state.
 
 ## 6. Publish
 

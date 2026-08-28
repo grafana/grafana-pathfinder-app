@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { decideVerification, deriveVerificationLane } from './adversarial-policy.mjs';
+import { normalizeClearedEntry } from './review-report.mjs';
 
 const KINDS = new Set(['defect', 'suggestion', 'nit']);
 const SEVERITIES = new Set(['critical', 'high', 'medium', 'low']);
@@ -44,11 +45,11 @@ function nonEmpty(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function normalizeRound(round = 1) {
-  if (!Number.isInteger(round) || round < 1) {
-    throw new Error('round must be a positive integer');
+function normalizeRound(round) {
+  if (!Number.isInteger(round) || round < 1 || round > MAX_ROUND) {
+    throw new Error(`round must be an integer from 1 to ${MAX_ROUND}`);
   }
-  return Math.min(round, MAX_ROUND);
+  return round;
 }
 
 function validateStringArray(value, field, { allowEmpty = true } = {}) {
@@ -127,7 +128,7 @@ function prCausedOneWayDoor(observation) {
   return PR_CAUSED.has(observation.origin) && ONE_WAY_DOORS.has(observation.reversibility);
 }
 
-export function disposeObservation(observation, round = 1) {
+export function disposeObservation(observation, round) {
   validateObservation(observation);
   const resolvedRound = normalizeRound(round);
   if (observation.kind !== 'defect') {
@@ -166,24 +167,11 @@ export function disposeObservation(observation, round = 1) {
   return { status: 'final', disposition: 'blocking', reason: 'confirmed-regression' };
 }
 
-function validateClearedEntry(entry) {
-  if (
-    !entry ||
-    typeof entry !== 'object' ||
-    !/^[a-z0-9-]+$/.test(entry.concern_id ?? '') ||
-    !nonEmpty(entry.claim) ||
-    !nonEmpty(entry.reason)
-  ) {
-    throw new Error('each cleared entry must include concern_id, claim, and reason');
-  }
-  return { concern_id: entry.concern_id, claim: entry.claim.trim(), reason: entry.reason.trim() };
-}
-
 function validateContradictionAgainstState(observation, priorCleared) {
   if (!Array.isArray(priorCleared)) {
     throw new Error('prior_cleared must be an array');
   }
-  const cleared = priorCleared.map(validateClearedEntry);
+  const cleared = priorCleared.map(normalizeClearedEntry);
   const contradiction = observation.clearance_contradiction;
   if (!contradiction) {
     return;
@@ -203,10 +191,25 @@ function provisionalBlocking(observation, round) {
   return observation.kind === 'defect' && disposeObservation(observation, round).disposition === 'blocking';
 }
 
-export function advanceReviewPolicy({ observation, verdicts = [], round = 1, prior_cleared = [] }) {
+function validatePriorDeferred(entries) {
+  if (!Array.isArray(entries)) {
+    throw new Error('prior_deferred must be an array');
+  }
+  return entries.map(validateFindingRef);
+}
+
+export function advanceReviewPolicy({ observation, verdicts = [], round, prior_deferred = [], prior_cleared = [] }) {
   validateObservation(observation);
   const resolvedRound = normalizeRound(round);
+  const priorDeferred = validatePriorDeferred(prior_deferred);
+  validateContradictionAgainstState(observation, prior_cleared);
   if (observation.kind !== 'defect') {
+    if (
+      observation.timing === 'prior_unresolved' &&
+      !priorDeferred.some((entry) => entry.id === observation.finding_id && entry.concern_id === observation.concern_id)
+    ) {
+      return { status: 'dropped', observation, reason: 'unmatched-prior-optional' };
+    }
     const optional = disposeObservation(observation, resolvedRound);
     if (optional.status === 'dropped') {
       return { status: 'dropped', observation, reason: optional.reason };
@@ -225,7 +228,6 @@ export function advanceReviewPolicy({ observation, verdicts = [], round = 1, pri
   if (verification.status === 'dropped') {
     return { status: 'dropped', observation, reason: 'verification-refuted' };
   }
-  validateContradictionAgainstState(observation, prior_cleared);
   return { status: 'final', observation, decision: disposeObservation(observation, resolvedRound) };
 }
 
@@ -239,10 +241,9 @@ export function planVerificationBatches(requests) {
   }
   const groups = new Map();
   for (const request of requests) {
-    const observation = request.observation ?? request;
-    const verdicts = request.observation ? (request.verdicts ?? []) : [];
+    const { observation, verdicts = [] } = request;
     validateObservation(observation);
-    const round = normalizeRound(request.round ?? 1);
+    const round = normalizeRound(request.round);
     const verification = decideVerification(observation, verdicts, provisionalBlocking(observation, round));
     if (verification.status !== 'needs_verification' || verification.dispatch.count === 0) {
       continue;
@@ -323,7 +324,7 @@ export function reconcileReviewState({
   const unresolvedPrior = priorDeferred.filter(({ id }) => !fixed.has(id));
   const nextDeferred = dedupe([...currentFollowUps, ...unresolvedPrior], ({ id }) => id);
   const nextCleared = dedupe(
-    [...current_cleared.map(validateClearedEntry), ...prior_cleared.map(validateClearedEntry)],
+    [...current_cleared.map(normalizeClearedEntry), ...prior_cleared.map(normalizeClearedEntry)],
     ({ claim }) => claim
   ).slice(0, MAX_CLEARED);
   return { next_deferred: nextDeferred, next_cleared: nextCleared };

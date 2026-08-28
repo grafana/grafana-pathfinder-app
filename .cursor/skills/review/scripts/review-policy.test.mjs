@@ -49,7 +49,12 @@ test('canonical observation validation rejects producer-owned policy fields', ()
     assert.throws(() => validateObservation(observation({ [field]: 'blocking' })), /Unknown observation field/);
   }
   assert.throws(
-    () => advanceReviewPolicy({ observation: observation(), verdicts: [{ ...confirmed, blocking_warranted: 'yes' }] }),
+    () =>
+      advanceReviewPolicy({
+        observation: observation(),
+        verdicts: [{ ...confirmed, blocking_warranted: 'yes' }],
+        round: 1,
+      }),
     /only verdict and reason/
   );
 });
@@ -57,37 +62,55 @@ test('canonical observation validation rejects producer-owned policy fields', ()
 test('truth adjudication preserves the bounded high-risk and medium lanes', () => {
   const high = observation({ severity: 'high' });
   assert.equal(deriveVerificationLane(high, false), 'high_risk');
-  assert.deepEqual(advanceReviewPolicy({ observation: high }).dispatch, { role: 'skeptic', count: 2 });
-  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [confirmed] }).dispatch.count, 0);
+  assert.deepEqual(advanceReviewPolicy({ observation: high, round: 1 }).dispatch, { role: 'skeptic', count: 2 });
+  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [confirmed], round: 1 }).dispatch.count, 0);
   assert.equal(
-    advanceReviewPolicy({ observation: high, verdicts: [confirmed, uncertain] }).dispatch.role,
+    advanceReviewPolicy({ observation: high, verdicts: [confirmed, uncertain], round: 1 }).dispatch.role,
     'tiebreaker'
   );
-  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [refuted, refuted] }).status, 'dropped');
-  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [refuted, confirmed, refuted] }).status, 'dropped');
-  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [refuted, confirmed, uncertain] }).status, 'final');
+  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [refuted, refuted], round: 1 }).status, 'dropped');
+  assert.equal(
+    advanceReviewPolicy({ observation: high, verdicts: [refuted, confirmed, refuted], round: 1 }).status,
+    'dropped'
+  );
+  assert.equal(
+    advanceReviewPolicy({ observation: high, verdicts: [refuted, confirmed, uncertain], round: 1 }).status,
+    'final'
+  );
 
   const mediumNonBlocking = observation({ origin: 'pre_existing' });
   assert.equal(deriveVerificationLane(mediumNonBlocking, false), 'advisory');
-  assert.deepEqual(advanceReviewPolicy({ observation: mediumNonBlocking }).dispatch, { role: 'skeptic', count: 1 });
+  assert.deepEqual(advanceReviewPolicy({ observation: mediumNonBlocking, round: 1 }).dispatch, {
+    role: 'skeptic',
+    count: 1,
+  });
   assert.equal(
-    advanceReviewPolicy({ observation: mediumNonBlocking, verdicts: [uncertain] }).dispatch.role,
+    advanceReviewPolicy({ observation: mediumNonBlocking, verdicts: [uncertain], round: 1 }).dispatch.role,
     'adjudicator'
   );
   assert.equal(
-    advanceReviewPolicy({ observation: mediumNonBlocking, verdicts: [uncertain, refuted] }).status,
+    advanceReviewPolicy({ observation: mediumNonBlocking, verdicts: [uncertain, refuted], round: 1 }).status,
     'dropped'
   );
-  assert.equal(advanceReviewPolicy({ observation: mediumNonBlocking, verdicts: [refuted, uncertain] }).status, 'final');
+  assert.equal(
+    advanceReviewPolicy({ observation: mediumNonBlocking, verdicts: [refuted, uncertain], round: 1 }).status,
+    'final'
+  );
 
   const low = observation({ severity: 'low', origin: 'pre_existing' });
-  assert.equal(advanceReviewPolicy({ observation: low }).status, 'final');
-  assert.throws(() => advanceReviewPolicy({ observation: low, verdicts: [confirmed] }), /passes without skeptic/);
+  assert.equal(advanceReviewPolicy({ observation: low, round: 1 }).status, 'final');
+  assert.throws(
+    () => advanceReviewPolicy({ observation: low, verdicts: [confirmed], round: 1 }),
+    /passes without skeptic/
+  );
 });
 
 test('provisionally blocking medium defects receive high-risk verification', () => {
-  assert.equal(advanceReviewPolicy({ observation: observation() }).lane, 'high_risk');
-  assert.equal(advanceReviewPolicy({ observation: observation({ origin: 'pre_existing' }) }).lane, 'advisory');
+  assert.equal(advanceReviewPolicy({ observation: observation(), round: 1 }).lane, 'high_risk');
+  assert.equal(
+    advanceReviewPolicy({ observation: observation({ origin: 'pre_existing' }), round: 1 }).lane,
+    'advisory'
+  );
 });
 
 const dispositionCases = [
@@ -167,7 +190,7 @@ const dispositionCases = [
 
 test('the closed disposition intersection table preserves protected-harm and authorship precedence', () => {
   for (const fixture of dispositionCases) {
-    const decision = disposeObservation(observation(fixture.input));
+    const decision = disposeObservation(observation(fixture.input), 1);
     assert.equal(decision.disposition, fixture.disposition, fixture.name);
     assert.equal(decision.reason, fixture.reason, fixture.name);
   }
@@ -175,13 +198,13 @@ test('the closed disposition intersection table preserves protected-harm and aut
     for (const timing of ['first_round', 'prior_unresolved', 'since_prior_head', 'late']) {
       for (const impact of ['security', 'data_loss', 'credential_exposure']) {
         assert.equal(
-          disposeObservation(observation({ origin, timing, impact })).disposition,
+          disposeObservation(observation({ origin, timing, impact }), 1).disposition,
           'blocking',
           `${origin} ${timing} ${impact}`
         );
       }
       assert.equal(
-        disposeObservation(observation({ origin, timing, impact: 'none', breaks_shipped_path: true })).disposition,
+        disposeObservation(observation({ origin, timing, impact: 'none', breaks_shipped_path: true }), 1).disposition,
         'blocking',
         `${origin} ${timing} shipped path`
       );
@@ -204,6 +227,37 @@ test('optional work cannot widen later rounds', () => {
   assert.equal(disposeObservation({ ...suggestion, timing: 'prior_unresolved' }, 3).disposition, 'follow_up');
 });
 
+test('carried optional work requires exact prior deferred provenance', () => {
+  const carried = observation({
+    finding_id: 'OPTIONAL-1',
+    concern_id: 'documentation-alignment',
+    kind: 'suggestion',
+    impact: 'none',
+    severity: 'low',
+    timing: 'prior_unresolved',
+  });
+  assert.equal(
+    advanceReviewPolicy({ observation: carried, round: 3, prior_deferred: [] }).reason,
+    'unmatched-prior-optional'
+  );
+  assert.equal(
+    advanceReviewPolicy({
+      observation: carried,
+      round: 3,
+      prior_deferred: [{ id: carried.finding_id, concern_id: 'testing-and-verification' }],
+    }).reason,
+    'unmatched-prior-optional'
+  );
+  assert.equal(
+    advanceReviewPolicy({
+      observation: carried,
+      round: 3,
+      prior_deferred: [{ id: carried.finding_id, concern_id: carried.concern_id }],
+    }).decision.reason,
+    'carried-optional'
+  );
+});
+
 test('clearance contradictions must quote checked prior state exactly', () => {
   const prior = {
     concern_id: 'correctness-and-reliability',
@@ -219,9 +273,14 @@ test('clearance contradictions must quote checked prior state exactly', () => {
       new_evidence: 'The new separator variant reaches the default branch.',
     },
   });
-  assert.equal(advanceReviewPolicy({ observation: candidate, prior_cleared: [prior] }).status, 'final');
+  assert.equal(advanceReviewPolicy({ observation: candidate, prior_cleared: [prior], round: 1 }).status, 'final');
   assert.throws(
-    () => advanceReviewPolicy({ observation: candidate, prior_cleared: [{ ...prior, reason: 'Different reason.' }] }),
+    () =>
+      advanceReviewPolicy({
+        observation: candidate,
+        prior_cleared: [{ ...prior, reason: 'Different reason.' }],
+        round: 1,
+      }),
     /exact prior cleared claim and reason/
   );
   assert.throws(
@@ -234,10 +293,39 @@ test('clearance contradictions must quote checked prior state exactly', () => {
   );
 });
 
-test('related verification work batches by concern and evidence surface without merging independent skeptics', () => {
-  const requests = Array.from({ length: 5 }, (_, index) =>
-    observation({ finding_id: `OBS-${index + 1}`, severity: 'high' })
+test('optional clearance contradictions are checked before optional disposition', () => {
+  const candidate = observation({
+    kind: 'suggestion',
+    impact: 'none',
+    severity: 'low',
+    clearance_contradiction: {
+      claim: 'Divider conversion is total.',
+      prior_reason: 'All variants are classified.',
+      new_evidence: 'The new separator variant reaches the default branch.',
+    },
+  });
+  assert.throws(
+    () =>
+      advanceReviewPolicy({
+        observation: candidate,
+        prior_cleared: [
+          {
+            concern_id: candidate.concern_id,
+            claim: candidate.clearance_contradiction.claim,
+            reason: 'A different prior reason.',
+          },
+        ],
+        round: 1,
+      }),
+    /exact prior cleared claim and reason/
   );
+});
+
+test('related verification work batches by concern and evidence surface without merging independent skeptics', () => {
+  const requests = Array.from({ length: 5 }, (_, index) => ({
+    observation: observation({ finding_id: `OBS-${index + 1}`, severity: 'high' }),
+    round: 1,
+  }));
   const batches = planVerificationBatches(requests);
   assert.equal(batches.length, 4);
   assert.deepEqual(
@@ -304,7 +392,7 @@ test('the facade CLI exposes advance, batching, and reconciliation without anoth
   const inputPath = join(dir, 'input.json');
   writeFileSync(
     inputPath,
-    JSON.stringify({ observation: observation({ kind: 'nit', impact: 'none', severity: 'low' }) })
+    JSON.stringify({ observation: observation({ kind: 'nit', impact: 'none', severity: 'low' }), round: 1 })
   );
   const output = JSON.parse(
     execFileSync('node', [join(scriptDir, 'review-policy.mjs'), inputPath], { encoding: 'utf8' })

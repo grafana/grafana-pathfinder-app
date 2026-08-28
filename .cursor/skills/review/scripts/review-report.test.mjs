@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { advanceReviewPolicy, reconcileReviewState } from './review-policy.mjs';
+import { advanceReviewPolicy, planVerificationBatches, reconcileReviewState } from './review-policy.mjs';
 import { parseReviewState, renderReviewReport } from './review-report.mjs';
 
 function finding(disposition = 'blocking', overrides = {}) {
@@ -56,6 +56,20 @@ function observation(overrides = {}) {
     ...overrides,
   };
 }
+
+test('facade requests require an explicit round from 1 through 100', () => {
+  for (const round of [undefined, 0, 101]) {
+    assert.throws(
+      () => advanceReviewPolicy({ observation: observation(), round }),
+      /round must be an integer from 1 to 100/
+    );
+    assert.throws(
+      () => planVerificationBatches([{ observation: observation(), round }]),
+      /round must be an integer from 1 to 100/
+    );
+    assert.throws(() => renderReviewReport(report({ round })), /round must be an integer from 1 to 100/);
+  }
+});
 
 test('compact report fixtures render every author-facing category in stable order', () => {
   const followUp = finding('follow_up');
@@ -148,6 +162,34 @@ test('the v2 marker carries reconciled state even when carried deferred entries 
     ],
     truncated: false,
   });
+});
+
+test('reconciliation returns clearance state the renderer accepts unchanged', () => {
+  assert.throws(
+    () =>
+      reconcileReviewState({
+        current_cleared: [
+          {
+            claim: 'Divider conversion is total.',
+            concern_id: 'correctness-and-reliability',
+            reason: 'x'.repeat(301),
+          },
+        ],
+      }),
+    /at most 300 characters/
+  );
+
+  const state = reconcileReviewState({
+    current_cleared: [
+      {
+        claim: '  Divider conversion\n is total.  ',
+        concern_id: 'correctness-and-reliability',
+        reason: '  Every registered variant\n is classified.  ',
+      },
+    ],
+  });
+  const output = renderReviewReport(report({ cleared: state.next_cleared }));
+  assert.deepEqual(parseReviewState(output)?.cleared, state.next_cleared);
 });
 
 test('one marker size limit falls back to the exact compact truncated state', () => {

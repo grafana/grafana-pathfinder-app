@@ -71,7 +71,9 @@ For an established defect, `review-policy.mjs` applies this closed rule in order
 
 Protected harm is derived from either a `security`, `data_loss`, or `credential_exposure` impact, or `breaks_shipped_path: true`, combined with `regression` or `latent_reachable` origin. One-way-door status is derived from `reversibility`.
 
-Optional observations use the same facade. A scope-widening suggestion or nit becomes `follow_up`. At round three or later, a new suggestion or nit drops. A prior unresolved optional observation may carry by stable ID without new prose. Before round three, optional work within the changed surface preserves its `suggestion` or `nit` kind.
+Optional observations use the same facade. A scope-widening suggestion or nit becomes `follow_up`. At round three or later, a new suggestion or nit drops. A prior unresolved optional observation may carry by stable ID without new prose only when its finding ID and concern exactly match an entry in the facade's `prior_deferred` input. Before round three, optional work within the changed surface preserves its `suggestion` or `nit` kind.
+
+Every policy request, verification-batch request, and `ReviewReport` supplies an explicit integer round from 1 through 100. Missing or out-of-range values fail closed. Only the orchestrator derives a fallback when a version 1 marker supplies no reliable round.
 
 The facade returns only `needs_verification`, `final`, or `dropped`. A final result has one disposition and one stable reason. No downstream phase changes it.
 
@@ -84,7 +86,7 @@ next_deferred = verified-unresolved(prior_deferred) union current_follow_up_ids
 next_cleared  = dedupe(current_cleared union prior_cleared)
 ```
 
-A deferred entry leaves only when its stable ID appears in `verified_fixed_ids`. Every current follow-up must enter `current_follow_ups`. Clearances deduplicate by claim and retain at most 12 load-bearing entries; order current entries from most to least important before prior entries when pruning matters.
+A deferred entry leaves only when its stable ID appears in `verified_fixed_ids`. Every current follow-up must enter `current_follow_ups`. Clearances deduplicate by claim and retain at most 12 load-bearing entries; order current entries from most to least important before prior entries when pruning matters. Reconciliation and publication share one clearance schema: `concern_id` is a lowercase concern identifier, `claim` is one line of at most 200 characters, `reason` is one line of at most 300 characters, and neither text field may contain a review-state marker or HTML comment terminator. Reconciliation normalizes whitespace before deduplication and returns publication-ready clearance entries unchanged.
 
 A candidate that contradicts a prior clearance must carry its exact claim and reason plus checked new evidence. The facade rejects a contradiction that does not match prior state.
 
@@ -194,7 +196,7 @@ After policy and reconciliation, publish one `ReviewReport`:
 | `pr_title`      | Current title; renderer derives a one-line purpose |
 | `reviewed_head` | Full 40-character commit SHA                       |
 | `findings`      | Final author-facing findings                       |
-| `round`         | Positive integer, clamped at 100                   |
+| `round`         | Explicit integer from 1 through 100                |
 | `deferred`      | Exact `next_deferred` from reconciliation          |
 | `cleared`       | Exact `next_cleared` from reconciliation           |
 | `assessment`    | Optional complete or incomplete status             |

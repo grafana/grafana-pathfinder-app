@@ -103,13 +103,10 @@ function isRound(value) {
 }
 
 function resolveRound(round) {
-  if (round === undefined) {
-    return 1;
+  if (!Number.isInteger(round) || round < 1 || round > MAX_ROUND) {
+    throw new Error(`round must be an integer from 1 to ${MAX_ROUND}`);
   }
-  if (!Number.isInteger(round) || round < 1) {
-    throw new Error('round must be a positive integer');
-  }
-  return Math.min(round, MAX_ROUND);
+  return round;
 }
 
 function trailingStateMarker(output) {
@@ -290,6 +287,25 @@ function readAssessment(report) {
   return { status: 'incomplete', reason };
 }
 
+export function normalizeClearedEntry(entry) {
+  if (!entry || typeof entry !== 'object' || !/^[a-z0-9-]+$/.test(entry.concern_id ?? '')) {
+    throw new Error('each cleared claim must name a concern_id');
+  }
+  const claim = typeof entry.claim === 'string' ? oneLine(entry.claim) : '';
+  const reason = typeof entry.reason === 'string' ? oneLine(entry.reason) : '';
+  if (!isCapped(claim, MAX_CLAIM)) {
+    throw new Error(
+      `a cleared claim must be one line of at most ${MAX_CLAIM} characters and must not embed an HTML comment boundary`
+    );
+  }
+  if (!isCapped(reason, MAX_CLEARED_REASON)) {
+    throw new Error(
+      `a cleared reason must be one line of at most ${MAX_CLEARED_REASON} characters and must not embed an HTML comment boundary`
+    );
+  }
+  return { claim, concern_id: entry.concern_id, reason };
+}
+
 function readCleared(report) {
   const cleared = report.cleared ?? [];
   if (!Array.isArray(cleared)) {
@@ -298,24 +314,7 @@ function readCleared(report) {
   if (cleared.length > MAX_CLEARED) {
     throw new Error(`a review carries at most ${MAX_CLEARED} cleared claims; prune the least load-bearing ones`);
   }
-  return cleared.map((entry) => {
-    if (!entry || typeof entry !== 'object' || !/^[a-z0-9-]+$/.test(entry.concern_id ?? '')) {
-      throw new Error('each cleared claim must name a concern_id');
-    }
-    const claim = typeof entry.claim === 'string' ? oneLine(entry.claim) : '';
-    const reason = typeof entry.reason === 'string' ? oneLine(entry.reason) : '';
-    if (!isCapped(claim, MAX_CLAIM)) {
-      throw new Error(
-        `a cleared claim must be one line of at most ${MAX_CLAIM} characters and must not embed an HTML comment boundary`
-      );
-    }
-    if (!isCapped(reason, MAX_CLEARED_REASON)) {
-      throw new Error(
-        `a cleared reason must be one line of at most ${MAX_CLEARED_REASON} characters and must not embed an HTML comment boundary`
-      );
-    }
-    return { claim, concern_id: entry.concern_id, reason };
-  });
+  return cleared.map(normalizeClearedEntry);
 }
 
 function readDeferred(report) {
