@@ -615,7 +615,7 @@ appears in the terminal toolbar's **gcx** modal, keyed by fixed ids rather than 
 | Control                       | Step id (`testIds.interactive.*`)          | Toolbar id (`testIds.codaTerminal.*`) | Rendered when                                                         |
 | ----------------------------- | ------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------- |
 | Open the toolbar modal        | —                                          | `coda-terminal-gcx`                   | The terminal is connected                                             |
-| Mint a token                  | `interactive-gcx-mint-${stepId}`           | `coda-terminal-gcx-mint`              | No mint has been tried or refused for this session yet                |
+| Mint a token                  | `interactive-gcx-mint-${stepId}`           | `coda-terminal-gcx-mint`              | No mint has been refused for this session yet                         |
 | Paste a token                 | `interactive-gcx-token-${stepId}`          | `coda-terminal-gcx-token`             | Always, while the form is shown — the paste path is primary           |
 | Pasted-token lifetime warning | `interactive-gcx-token-lifetime-${stepId}` | `coda-terminal-gcx-token-lifetime`    | Always, while the form is shown                                       |
 | Install the pasted token      | `interactive-gcx-install-${stepId}`        | `coda-terminal-gcx-install`           | Always, while the form is shown; disabled until the field has a value |
@@ -635,6 +635,9 @@ Lifecycle notes a runner has to honour:
   (`interactive-terminal-skip-${stepId}`) as it always did.
 - **A credential belongs to one session.** After a reconnect the ready line detaches and the form
   returns, because the new VM holds no credential.
+- **A held-back mint brings its own button back.** A mint whose preflight could not reach an answer is
+  retryable rather than refused, so the error appears _and_ the mint control re-attaches. Only a refusal
+  detaches it for the rest of the session.
 - **Skipping still completes the step.** "Continue without gcx" marks it complete, so
   `data-test-step-state` reaches `completed` on that path too.
 
