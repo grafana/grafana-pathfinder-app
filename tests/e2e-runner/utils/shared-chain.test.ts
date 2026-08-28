@@ -62,6 +62,13 @@ describe('shared guide chain', () => {
     });
   });
 
+  it('accepts a blank page before the first milestone navigation', () => {
+    expect(resolveMilestoneTransition('http://localhost:3000', 'about:blank', undefined, true)).toEqual({
+      startingLocation: '/',
+      navigateToStartingLocation: true,
+    });
+  });
+
   it('continues a soft-ordered milestone and skips only the blocked dependency', async () => {
     const runGuide = jest
       .fn()
@@ -71,6 +78,7 @@ describe('shared guide chain', () => {
 
     const outcome = await runSharedGuideChain(input(), {
       currentUrl: () => 'http://localhost:3000/current',
+      browserSessionEnded: () => false,
       runGuide,
       publish,
     });
@@ -84,6 +92,42 @@ describe('shared guide chain', () => {
     expect(publish).toHaveBeenCalledTimes(3);
   });
 
+  it('continues after a guide error while the browser session remains available', async () => {
+    const runGuide = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('Guide steps did not render'))
+      .mockResolvedValueOnce(result('second', 'passed'));
+
+    const outcome = await runSharedGuideChain(input(), {
+      currentUrl: () => 'http://localhost:3000/current',
+      browserSessionEnded: () => false,
+      runGuide,
+      publish: jest.fn(),
+    });
+
+    expect(runGuide.mock.calls.map(([guide]) => guide.id)).toEqual(['first', 'second']);
+    expect(outcome.results.map((item) => [item.guide.id, item.outcome, item.errorCode])).toEqual([
+      ['first', 'infrastructure_error', 'REPORT_MISSING'],
+      ['second', 'passed', 'UNKNOWN'],
+      ['dependent', 'skipped', 'SKIPPED_PREREQ'],
+    ]);
+  });
+
+  it('stops after a guide error when the browser session ended', async () => {
+    const runGuide = jest.fn().mockRejectedValueOnce(new Error('The browser context closed'));
+
+    const outcome = await runSharedGuideChain(input(), {
+      currentUrl: () => 'http://localhost:3000/current',
+      browserSessionEnded: () => true,
+      runGuide,
+      publish: jest.fn(),
+    });
+
+    expect(runGuide).toHaveBeenCalledTimes(1);
+    expect(outcome.results).toHaveLength(3);
+    expect(outcome.results.every((item) => item.outcome === 'infrastructure_error')).toBe(true);
+  });
+
   it('aborts remaining milestones after authentication expiry', async () => {
     const authResult = createMinimalResultsData({
       guide: { id: 'first', title: 'First', path: '/first.json' },
@@ -95,6 +139,7 @@ describe('shared guide chain', () => {
 
     const outcome = await runSharedGuideChain(input(), {
       currentUrl: () => 'http://localhost:3000/current',
+      browserSessionEnded: () => false,
       runGuide: jest.fn().mockResolvedValue(authResult),
       publish: jest.fn(),
     });
@@ -115,6 +160,7 @@ describe('shared guide chain', () => {
 
     const outcome = await runSharedGuideChain(input(), {
       currentUrl: () => 'http://localhost:3000/current',
+      browserSessionEnded: () => true,
       runGuide: jest.fn().mockResolvedValue(infrastructureResult),
       publish: jest.fn(),
     });
@@ -127,6 +173,7 @@ describe('shared guide chain', () => {
   it('keeps one existing report per milestone in plan order', async () => {
     const outcome = await runSharedGuideChain(input(), {
       currentUrl: () => 'http://localhost:3000/current',
+      browserSessionEnded: () => false,
       runGuide: (guide) => Promise.resolve(result(guide.id)),
       publish: jest.fn(),
     });

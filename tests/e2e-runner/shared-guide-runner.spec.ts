@@ -94,6 +94,7 @@ test.describe('Shared guide runner', () => {
     try {
       const outcome = await runSharedGuideChain(chainInput, {
         currentUrl: () => page.url(),
+        browserSessionEnded: () => terminationMonitor.isTerminated() || page.isClosed(),
         runGuide: (guide, index, transition) =>
           test.step(guide.id, async () => {
             const session = await sessionValidator(page);

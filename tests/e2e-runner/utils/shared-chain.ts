@@ -14,6 +14,7 @@ export interface SharedChainResult {
 
 interface SharedChainExecutor {
   currentUrl(): string;
+  browserSessionEnded(): boolean;
   runGuide(guide: E2EChainGuide, index: number, transition: MilestoneTransition): Promise<TestResultsData>;
   onPrerequisiteSkipped?(guide: E2EChainGuide, failedPrerequisite: string): Promise<void>;
   publish(results: TestResultsData[]): void;
@@ -38,14 +39,17 @@ export function resolveMilestoneTransition(
   authoredStartingLocation: string | undefined,
   isFirstRunnable: boolean
 ): MilestoneTransition {
+  const startingLocation = sameOriginPath(targetUrl, authoredStartingLocation ?? '/');
+  if (isFirstRunnable) {
+    return { startingLocation, navigateToStartingLocation: true };
+  }
   const currentPath = sameOriginPath(targetUrl, currentUrl);
-  if (authoredStartingLocation === undefined && !isFirstRunnable) {
+  if (authoredStartingLocation === undefined) {
     return { startingLocation: currentPath, navigateToStartingLocation: false };
   }
-  const startingLocation = sameOriginPath(targetUrl, authoredStartingLocation ?? '/');
   return {
     startingLocation,
-    navigateToStartingLocation: isFirstRunnable || currentPath !== startingLocation,
+    navigateToStartingLocation: currentPath !== startingLocation,
   };
 }
 
@@ -147,9 +151,11 @@ export async function runSharedGuideChain(
     );
     firstRunnable = false;
     let result: TestResultsData;
+    let runnerFailed = false;
     try {
       result = await executor.runGuide(guide, index, transition);
     } catch (error) {
+      runnerFailed = true;
       result = createMinimalResultsData({
         guide: packageGuideMetadata(guide, guide.packageMetadata, input.targetUrl, transition.startingLocation),
         outcome: 'infrastructure_error',
@@ -162,6 +168,9 @@ export async function runSharedGuideChain(
 
     if (result.outcome !== 'passed') {
       blocked.add(guide.id);
+    }
+    if (runnerFailed && !executor.browserSessionEnded()) {
+      continue;
     }
     if (!endsSharedSession(result)) {
       continue;
