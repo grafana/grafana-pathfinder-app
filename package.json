@@ -1,6 +1,6 @@
 {
   "name": "grafana-pathfinder-app",
-  "version": "2.16.0",
+  "version": "2.17.0",
   "bin": {
     "pathfinder-cli": "./dist/cli/cli/index.js"
   },
@@ -23,7 +23,7 @@
     "test": "jest --watch --onlyChanged",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
     "test:coverage": "jest --coverage",
-    "test:review-contract": "node --test .cursor/skills/review/scripts/contract-evolution.test.mjs",
+    "test:review-contract": "node --test .cursor/skills/review/scripts/*.test.mjs",
     "test:scripts": "bash scripts/tests/run.sh",
     "test:governance": "jest src/validation/architecture.test.ts src/validation/import-graph.test.ts src/validation/security-lint-config.test.ts src/validation/control-bytes.test.ts",
     "test:coverage:watch": "jest --coverage --watch",

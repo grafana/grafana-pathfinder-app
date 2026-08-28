@@ -278,6 +278,14 @@ function convertBlockByType(
   switch (block.type) {
     case 'markdown':
       return convertMarkdownBlock(block, path, baseUrl);
+    case 'divider':
+      return {
+        element: {
+          type: 'hr',
+          props: { className: 'guide-divider' },
+          children: [],
+        },
+      };
     case 'html':
       return convertHtmlBlock(block, path, baseUrl);
     case 'section':

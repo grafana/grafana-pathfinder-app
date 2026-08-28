@@ -13,14 +13,14 @@ import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { runCreate } from '../../commands/create';
-import { defaultPackageId } from '../../utils/auto-id';
+import { createSpec } from '../../commands/create';
+import { parseCommandInput } from '../../contracts';
 import { buildArtifactSummary, readPackage, type TreeNode } from '../../utils/package-io';
 import { MCP_TMPDIR_PREFIX } from '../lib/constants';
-import { registerCommandInterfaceConfig, validateCommandArgs } from '../lib/command-interface';
+import { bindCommandInterface, validateCommandArgs } from '../lib/command-interface';
 import { generateSessionToken } from '../lib/session-token';
 import { SESSION_GENERATION_ABSENT, type SessionArtifact, type AuthoringSessionStore } from '../lib/session-store';
-import { type CommandOutcome, renderError, renderMachineJson } from '../../utils/output';
+import { type CommandOutcome, renderMachineJson } from '../../utils/output';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { writeAppend } from './annotations';
 import { sanitizeOutcomeForMcp, outcomeResult, textResult, withToolErrorEnvelope, type ToolResult } from './result';
@@ -30,7 +30,7 @@ export function registerArtifactTools(
   options: { sessionStore: AuthoringSessionStore; mcpSessionId?: string }
 ): void {
   const { sessionStore, mcpSessionId } = options;
-  registerCommandInterfaceConfig('create', { optBlacklist: ['dir'] });
+  bindCommandInterface('create');
 
   server.registerTool(
     'pathfinder_create_package',
@@ -49,30 +49,18 @@ export function registerArtifactTools(
       if (rejected) {
         return rejected;
       }
-      // `create` mints the id in its Commander action, so the binding does the
-      // same before calling the runner. A title with no alphanumerics is an
-      // agent input error, not the INTERNAL_ERROR the outer envelope reports.
-      const title = opts.title as string;
-      let id = opts.id as string | undefined;
-      if (id === undefined) {
-        try {
-          id = defaultPackageId(title);
-        } catch (err) {
-          return outcomeResult({ status: 'error', code: 'INVALID_TITLE', message: renderError(err) });
-        }
-      }
-
       return withToolErrorEnvelope(undefined, 'create_package', async () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${MCP_TMPDIR_PREFIX}create-`));
         try {
           const pkgDir = path.join(dir, 'pkg');
-          const outcome = await runCreate({
-            dir: pkgDir,
-            id,
-            title,
-            type: (opts.type as 'guide' | 'path' | 'journey') ?? 'guide',
-            description: opts.description as string | undefined,
-          });
+          // Id minting, the `type` fallback, and the INVALID_TITLE report all live in
+          // the runner, so this binding states nothing about the command's shape. It
+          // used to restate all three, with its own INVALID_TITLE wording.
+          const parsed = parseCommandInput(createSpec, { ...opts, dir: pkgDir });
+          if (!parsed.ok) {
+            return outcomeResult(parsed.outcome);
+          }
+          const outcome = await createSpec.run(parsed.value);
           if (outcome.status !== 'ok') {
             return outcomeResult(outcome);
           }

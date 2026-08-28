@@ -952,6 +952,46 @@ describe('fetchPackageContent path-type enrichment', () => {
       expect(result.content.metadata.learningJourney).toBeDefined();
     }
   });
+
+  it('hydrates baseUrl by resolving manifest.id in URL-only mode, which never verifies (matches AppPlatformPackageResolver)', async () => {
+    // AppPlatformPackageResolver's URL-only mode (no verifyPublished) never
+    // probes the upstream resource — it just string-templates the id it's
+    // given into a contentUrl and returns ok: true unconditionally (see
+    // fetchPackageById's "its id is already known-good" comment). This mock
+    // matches that contract: it always succeeds, so correctness here depends
+    // entirely on manifest.id already being the resource-addressable one —
+    // which app-platform-resolver.ts's buildManifest guarantees for
+    // path/journey manifests regardless of a drifted spec.id (pinned in
+    // app-platform-resolver.test.ts). A resolver mock that returns `ok: false`
+    // for a "wrong" id would misrepresent that contract (Cursor Bugbot flagged
+    // exactly this on an earlier version of this test).
+    const resolver: PackageResolver = {
+      resolve: jest.fn().mockImplementation((id: string) =>
+        Promise.resolve({
+          ok: true,
+          id,
+          contentUrl: `bundled:${id}/content.json`,
+          manifestUrl: `bundled:${id}/manifest.json`,
+          repository: 'bundled',
+          content: { id, title: `Milestone: ${id}`, blocks: [] },
+          manifest: { id, type: 'guide' },
+        })
+      ),
+    };
+    setPackageResolver(resolver);
+
+    const manifest = {
+      id: 'the-real-resource-name',
+      type: 'path',
+      milestones: ['first-dashboard'],
+    };
+
+    const result = await fetchPackageContent('bundled:first-dashboard/content.json', manifest);
+
+    expect(result.content).toBeTruthy();
+    expect(result.content?.metadata.learningJourney?.baseUrl).toBe('bundled:the-real-resource-name/content.json');
+    expect(resolver.resolve).toHaveBeenCalledWith('the-real-resource-name', { loadContent: false });
+  });
 });
 
 // The realistically-broken catalogue inputs: the CR manifest leaves

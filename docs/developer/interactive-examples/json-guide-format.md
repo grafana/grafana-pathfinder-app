@@ -66,6 +66,16 @@ The primary block type for formatted text content.
 }
 ```
 
+#### Divider block
+
+Adds a semantic horizontal separator with standard guide spacing. Divider blocks have no content fields.
+
+```json
+{
+  "type": "divider"
+}
+```
+
 #### HTML Block
 
 For raw HTML content. Use sparingly—prefer markdown for new content.
@@ -438,7 +448,7 @@ Hides its nested blocks behind a toggle. Use it to gate solutions or example out
 | `collapsed` | boolean             | ❌       | Whether it starts collapsed (defaults to `true`)    |
 | `blocks`    | content block array | ✅       | Content hidden behind the toggle                    |
 
-> A collapsible is presentational: it accepts content blocks only — `markdown` (including fenced code), `html`, `image`, and `video`. Interactive steps and containers (`section`, `collapsible`, `conditional`) are rejected, so a collapsible never carries completion state. To gate interactive steps, use a `section`.
+> A collapsible is presentational: it accepts content blocks only — `markdown` (including fenced code), `html`, `image`, `video`, `callout`, and `divider`. Interactive steps and containers (`section`, `collapsible`, `conditional`) are rejected, so a collapsible never carries completion state. To gate interactive steps, use a `section`.
 
 #### Conditional Block
 
@@ -1225,6 +1235,7 @@ If a ref cannot be resolved — unknown ID, catalog fetch failure — it is repl
 | Block Type         | Category    | Description                                                                     |
 | ------------------ | ----------- | ------------------------------------------------------------------------------- |
 | `markdown`         | Content     | Formatted text with headings, lists, code, tables                               |
+| `divider`          | Content     | Horizontal separator between adjacent guide sections                            |
 | `html`             | Content     | Raw HTML for migration/custom content                                           |
 | `image`            | Content     | Embedded images with optional dimensions                                        |
 | `video`            | Content     | YouTube, Vimeo, or native HTML5 video embeds                                    |

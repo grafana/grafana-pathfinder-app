@@ -238,6 +238,17 @@ export const JsonMarkdownBlockSchema = z.object({
 });
 
 /**
+ * Schema for a content divider. It intentionally has no reader-visible
+ * fields: the block renders a semantic horizontal rule.
+ * @coupling Type: JsonDividerBlock
+ */
+export const JsonDividerBlockSchema = z.object({
+  type: z.literal('divider'),
+  id: z.string().optional().describe('Stable identifier for edit-block / remove-block addressing'),
+  ...AuthorAnnotatedSchema.shape,
+});
+
+/**
  * Schema for HTML block.
  * @coupling Type: JsonHtmlBlock
  */
@@ -846,6 +857,7 @@ export const JsonSnippetRefBlockSchema = z.object({
  */
 const NonRecursiveBlockSchema = z.union([
   JsonMarkdownBlockSchema,
+  JsonDividerBlockSchema,
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
@@ -870,6 +882,7 @@ const NonRecursiveBlockSchema = z.union([
  */
 const NonRecursiveBlockSchemaNoRef = z.union([
   JsonMarkdownBlockSchema,
+  JsonDividerBlockSchema,
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
@@ -894,6 +907,7 @@ const NonRecursiveBlockSchemaNoRef = z.union([
  */
 export const PresentationalBlockSchema = z.union([
   JsonMarkdownBlockSchema,
+  JsonDividerBlockSchema,
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
   JsonVideoBlockSchema,
@@ -1187,6 +1201,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
   // `AuthorAnnotatedSchema` into every block type. It's stripped on
   // export, but stays in the schema so authoring tools can persist it.
   markdown: new Set(['type', 'id', 'content', 'assistantEnabled', 'assistantId', 'assistantType', 'authorNote']),
+  divider: new Set(['type', 'id', 'authorNote']),
   html: new Set(['type', 'id', 'content', 'authorNote']),
   image: new Set(['type', 'id', 'src', 'alt', 'width', 'height', 'authorNote']),
   video: new Set(['type', 'id', 'src', 'provider', 'title', 'start', 'end', 'authorNote']),

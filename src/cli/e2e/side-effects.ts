@@ -3,6 +3,7 @@ import {
   isChallengeBlock,
   isCodeBlockBlock,
   isConditionalBlock,
+  isDividerBlock,
   isGrotGuideBlock,
   isGuidedBlock,
   isHtmlBlock,
@@ -158,6 +159,7 @@ function classifyBlocks(blocks: JsonBlock[] | undefined, path: string): SideEffe
 function classifyBlock(block: JsonBlock, path: string): SideEffectClassification {
   if (
     isMarkdownBlock(block) ||
+    isDividerBlock(block) ||
     isHtmlBlock(block) ||
     isImageBlock(block) ||
     isVideoBlock(block) ||

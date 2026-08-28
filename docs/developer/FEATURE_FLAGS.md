@@ -225,7 +225,7 @@ Enrollment also re-stamps the Faro session `experiments` attribute, because `ini
 
 **Dismissal**: persisted per browser under `grafana-pathfinder-interactive-learning-banner-dismissed-{hostname}`. Dismissing hides the banner permanently but does **not** un-enroll the user — they stay in the treatment arm for analysis.
 
-**Behavior events** (in addition to the exposure): `pathfinder_interactive_learning_banner_shown` (once per page load) and `..._banner_dismissed`, both carrying `interaction_location: interactive_learning_banner`.
+**Behavior events** (in addition to the exposure): `pathfinder_interactive_learning_banner_shown` (once per page load) and `pathfinder_interactive_learning_banner_dismissed`. Both carry `interaction_location: interactive_learning_banner` (context page) or `interactive_learning_banner_guide` (above a guide). Control renders nothing, so these events are treatment-only by construction — engagement comparisons must use guide-interaction events that carry the experiments enrichment, not these. See [EXPERIMENT_TESTING.md](./EXPERIMENT_TESTING.md#verifying-banner-analytics) for the readout contract.
 
 **Code**: everything except the registry entry, the three enrollment seams, and the two banner mount lines lives in [`src/utils/experiments/interactive-learning-banner.ts`](../../src/utils/experiments/interactive-learning-banner.ts) and [`src/components/InteractiveLearningBanner/`](../../src/components/InteractiveLearningBanner/), so retiring the experiment is a directory delete plus the registry entry. [`enrollment-notifier.ts`](../../src/utils/experiments/enrollment-notifier.ts) is shared machinery and stays.
 

@@ -12,6 +12,7 @@ Persistent tracker for the maintain-docs skill's persistent state across runs.
 
 <!-- Docs checked against source and found accurate. Format: date, doc path. Update date on re-validation. -->
 
+- **2026-08-26**: `docs/developer/interactive-examples/authoring-interactive-journeys.md` — Corrected the authoring entry points, public-repository scope, action versus block types, and optional-manifest package model. Validated against the current JSON guide schemas and types, package/custom-guide/API references, block-editor workflow, and external contributor README.
 - **2026-08-12**: `docs/developer/RELEASE_PROCESS.md` — Corrected dev deployment, CLI publish triggers, runtime dependencies, MCP smoke testing, Node base-image guidance, and plugin-tarball isolation. Validated against current release/publish workflows, `Dockerfile.cli`, `scripts/cli-build-utils.js`, and package scripts.
 - **2026-08-19**: `docs/developer/learning-paths/README.md` — Revalidated after the private-path split and Discover more launch changes. Documented private-path routing, schema-validated manifest propagation, and the lazy package-resolver registry lifecycle. Supersedes the 2026-08-12 entry.
 - **2026-08-19**: `.cursor/rules/systemPatterns.mdc` — Corrected the composite resolver chain and documented lazy package-resolver registration plus the published-only App Platform bare-ID gate. Validated against the current package engine, resolver registry, and plugin initialization. Supersedes the 2026-06-16 entry.

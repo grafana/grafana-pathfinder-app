@@ -2,7 +2,7 @@
 
 Canonical reference for what reviewers (human or agent) check against when reviewing a PR in this repository. Tool-neutral. Both Cursor and Claude Code skills load this document.
 
-The orchestration workflow that uses this catalog lives in `.cursor/skills/review/SKILL.md` (invoked via `/review`). The concern routing table lives in `docs/design/CONCERNS.md`.
+The orchestration workflow that uses this catalog lives in `.cursor/skills/review/SKILL.md` (invoked via `/review`). The concern routing table lives in `docs/design/CONCERNS.md`; per-concern review guidance, one-way doors, and contract anchors live in `docs/design/CONCERN_DETAILS.md` and are extracted one concern at a time by `.cursor/skills/review/scripts/concern-context.mjs`.
 
 ## Reviewer output schema
 
@@ -14,6 +14,7 @@ If findings exist, include:
 - `finding_id`
 - `severity`
 - `confidence`
+- `recommended_disposition` — `blocking | suggestion | nit`
 - `title`
 - `evidence`
 - `why_it_matters`
@@ -40,6 +41,14 @@ If no findings, include:
 - `medium`: meaningful risk or ambiguity that should be resolved before merge if the PR is high leverage
 - `low`: useful question or non-blocking improvement with concrete evidence
 
+### Author disposition guidance
+
+- `blocking`: must be fixed or answered before merge
+- `suggestion`: concrete non-blocking improvement, including an optional question
+- `nit`: minor style or wording preference
+
+Severity describes impact; disposition describes the merge contract. A medium finding can be blocking when the ambiguity must be resolved before merge, and a high-risk observation can remain a suggestion when the PR does not create that risk. Reviewers recommend a disposition; the synthesizer owns the final value after verification and deduplication.
+
 ### Reversibility values
 
 - `reversible`
@@ -62,7 +71,7 @@ Required fields:
 - `history_status` — `complete | partial | unavailable`; defaults to the gate's value — upgrade `partial` to `complete` only after inspecting each unmapped or unclassified commit the gate reported and recording in `sources` why it is irrelevant to this capability
 - `use_ordinal` — `first | second | third_or_later`: this PR's position in the sequence of distinct PRs extending or reshaping the capability's contract surface, with the introducing PR as `first`; count PRs (the gate's distinct-PR history is the baseline evidence), not consumers or call sites. Count only PRs that extended or reshaped the specific contract surface at issue, not every semantic PR under the concern's paths — a scroll-position fix in the same directory does not advance the ordinal of an event-name contract. `third_or_later` plus a branching condition blocks, so over-counting manufactures blocking findings
 - `same_bug_count` — total bugs observed in this class, including the one this PR addresses; `0` when this PR does not address a bug in a previously seen class
-- `has_recorded_anchor` — `true` only when the concern has a row in the Contract anchors table; pre-contract candidates do not count
+- `has_recorded_anchor` — `true` only when the concern has a row in the Contract anchors table in `docs/design/CONCERN_DETAILS.md`; pre-contract candidates do not count
 - `anchor_violated` — `true` only when the change contradicts an invariant stated in the recorded anchor; must be `false` when `has_recorded_anchor` is `false`
 - `branching_conditions`
 - `sources` — immutable same-repository PR, issue, and commit identifiers plus selection reasons
@@ -140,18 +149,18 @@ Record each applicable condition; conditions classify the delta but do not deter
 
 ### Disposition table
 
-This table is the only source of disposition truth. `.cursor/skills/review/scripts/contract-evolution-policy.mjs` implements it.
+This table is the only source of disposition truth **for the contract evolution scan**. `.cursor/skills/review/scripts/contract-evolution-policy.mjs` implements it. Its `advisory` value is scan-internal vocabulary: `contract-evolution-policy.mjs` maps it to the author-facing `suggestion` when it converts a packet to a reviewer finding. The synthesizer still owns the final author disposition (see Author disposition guidance).
 
-| History and contract state                                             | Verdict                | Severity | Disposition |
-| ---------------------------------------------------------------------- | ---------------------- | -------- | ----------- |
-| Complete history; change conforms                                      | `follows_contract`     | —        | none        |
-| Complete history; one owner grows coherently                           | `coherent_extension`   | —        | none        |
-| No owner, any use ordinal                                              | `contract_missing`     | medium   | advisory    |
-| First or second use, no anchor violation                               | `contract_branching`   | medium   | advisory    |
-| Recorded anchor is violated and a branching condition exists           | `contract_branching`   | high     | blocking    |
-| Third-or-later use and a branching condition exists                    | `contract_branching`   | high     | blocking    |
-| Second or later bug in the same class and a branching condition exists | `contract_branching`   | high     | blocking    |
-| Partial or unavailable history with no recorded anchor                 | `insufficient_history` | low      | advisory    |
+| History and contract state                                             | Verdict                | Severity | Recommended disposition |
+| ---------------------------------------------------------------------- | ---------------------- | -------- | ----------------------- |
+| Complete history; change conforms                                      | `follows_contract`     | —        | none                    |
+| Complete history; one owner grows coherently                           | `coherent_extension`   | —        | none                    |
+| No owner, any use ordinal                                              | `contract_missing`     | medium   | advisory                |
+| First or second use, no anchor violation                               | `contract_branching`   | medium   | advisory                |
+| Recorded anchor is violated and a branching condition exists           | `contract_branching`   | high     | blocking                |
+| Third-or-later use and a branching condition exists                    | `contract_branching`   | high     | blocking                |
+| Second or later bug in the same class and a branching condition exists | `contract_branching`   | high     | blocking                |
+| Partial or unavailable history with no recorded anchor                 | `insufficient_history` | low      | advisory                |
 
 Every advisory or blocking packet is converted to the shared reviewer output schema before adversarial verification. Skeptics receive that finding, the relevant hunks, and the immutable sources recorded in the packet.
 
@@ -238,6 +247,8 @@ For PRs touching `pkg/**/*.go`, also check:
 
 ## Comment prefixes
 
+Reviewer-internal vocabulary for labelling findings before synthesis. The author-facing report carries only the three dispositions `review-report.mjs` accepts: a `[question]` becomes `blocking` or `suggestion` per the disposition guidance above, and `[security]` and `[react]` become the finding's `concern_id`.
+
 | Prefix         | Meaning                     |
 | -------------- | --------------------------- |
 | `[blocking]`   | Must fix before merge       |
@@ -255,12 +266,64 @@ For PRs touching `pkg/**/*.go`, also check:
 | **Approve with minor** | Small suggestions, nothing blocking     |
 | **Request changes**    | Blocking issues must be addressed       |
 
-## Reporting
+## Final review report
 
-**Clean PR** — one line:
+The synthesizer emits this `ReviewReport` object after all supplemental checks finish:
 
-> LGTM. No blocking concerns found across the activated review perspectives. Approve to merge.
+| Field           | Type   | Rule                                                       |
+| --------------- | ------ | ---------------------------------------------------------- |
+| `pr_url`        | string | Full `https://github.com/<owner>/<repo>/pull/<number>` URL |
+| `pr_title`      | string | Current PR title; the renderer derives a one-line purpose  |
+| `reviewed_head` | string | Full 40-character commit SHA                               |
+| `findings`      | array  | Retained, verified, deduplicated author-facing findings    |
+| `assessment`    | object | Optional; defaults to complete. See Incomplete assessment  |
 
-**Issues found** — for each finding, state the problem, reference the rule ID or concern ID, include reversibility when relevant, and suggest a fix. Keep it terse.
+Each `findings` entry contains:
 
-Avoid repeating the same finding under multiple concern headings unless the cross-concern interaction itself is important.
+- `id` — stable across re-reviews, and unique within the report
+- `concern_id` — owning concern; rendered compactly and used to route an incremental re-review
+- `disposition` — `blocking | suggestion | nit`
+- `severity` — `critical | high | medium | low`; rendered compactly
+- `title`
+- `problem` — concise evidence and consequence written for the PR author, in one rendered line
+- `suggested_action` — the smallest change that resolves the finding
+- `reversibility` — optional; one of the four reversibility values. The renderer surfaces only `partially_reversible` and `irreversible_without_cleanup`, because only those change what the author must weigh
+
+This is the complete author-facing vocabulary. `confidence`, skeptic reasoning, and every other reviewer-internal field stay in the debug trace — the renderer has no channel for them, so the synthesizer must not fold them into `problem` as prose.
+
+Serialize the object to a temporary JSON file and render it with `.cursor/skills/review/scripts/review-report.mjs`. The script validates the schema, orders findings by disposition and then severity, derives the verdict and counts, and emits the final text. Never hand-format around it.
+
+### Incomplete assessment
+
+`assessment` is `{ "status": "complete" }` by default and may be omitted. Set `{ "status": "incomplete", "reason": "<one concise sentence>" }` only when the review could not be completed — a reviewer that could not run, history the scan could not resolve, or a center of gravity the concern registry does not model well enough to assert a merge contract over.
+
+An incomplete report states the reason, claims no mergeability, renders `Verdict: Review Incomplete`, lists any blockers found so far as findings rather than as a merge contract, and publishes no re-review state marker. A complete assessment with zero blockers still states that the PR is mergeable. Coverage gaps that do not undermine the merge claim stay in the debug trace.
+
+### Merge contract
+
+When blockers exist, lead with: `Fix this item and this PR is mergeable.` or `Fix these items and this PR is mergeable.` List every blocking ID before optional findings. Fixing those IDs is the complete merge contract for the reviewed head; a re-review checks them plus the incremental diff for newly introduced risks.
+
+Do not emit headings, summaries, or status lines for processors that returned no findings. Clean tech-debt, documentation-drift, instrumentation, security, contract-evolution, and other lens results remain silent. Avoid repeating the same finding under multiple concern headings unless the cross-concern interaction is itself the problem.
+
+### Re-review state
+
+Immediately before the operator recap, a **complete** review emits a hidden `pathfinder-review-state` HTML comment containing version 1, `reviewed_head`, and each blocking finding's ID and owning concern. Only `review-report.mjs --parse-state` may consume it, and only from that trailing position: the parser accepts the marker solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. It accepts either LF or CRLF line endings, because a body edited through the GitHub web UI comes back CRLF-encoded. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental fast path.
+
+An **incomplete** review emits no marker at all. Its coverage hole is exactly what an incremental baseline must not inherit, so every later review of that PR falls back to a full review.
+
+### Operator recap
+
+The last four lines are always:
+
+```text
+PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702
+Purpose: add divider guide blocks
+Verdict: Request Changes
+1 blocking, 2 suggestions, 3 nits
+```
+
+`Purpose` contains no newline and is capped at 120 characters. The renderer chooses `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Nothing follows the count line.
+
+### Debug trace
+
+Routing decisions, clean processor results, coverage gaps without an author action, verification drops, skeptic reasoning, call counts, and stage timings belong in an internal debug trace. Show it only when the user explicitly requests diagnostics.

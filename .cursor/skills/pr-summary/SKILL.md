@@ -157,7 +157,7 @@ If the author's answer to question 3 reveals a subtle invariant (e.g., "the retr
 
    For `mixed`, pick the class of the largest commit (by line count).
 
-2. Read `docs/design/CONCERNS.md` and walk the routing table. For each concern, compute whether its `trigger_paths` or `trigger_keywords` match any path in `git diff --name-status`. Track:
+2. Read `docs/design/CONCERNS.md` and walk the compact routing table. For each concern, compute whether its `trigger_paths` or `trigger_keywords` match any path in `git diff --name-status`. For each activated concern, run `.cursor/skills/review/scripts/concern-context.mjs <concern-id>` instead of loading `docs/design/CONCERN_DETAILS.md` wholesale. Track:
    - `activated_concerns` — list of concern IDs that fired
    - `activation_reason` — which path or keyword triggered each
    - `likely_one_way_doors` — copy any concern's `one_way_doors` field if that concern was activated AND the changed files include the one-way-door surface

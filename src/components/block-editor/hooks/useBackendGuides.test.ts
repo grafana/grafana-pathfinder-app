@@ -24,6 +24,7 @@ import { of } from 'rxjs';
 
 import { fetchBackendGuides } from '../../../utils/fetchBackendGuides';
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
+import { PERSISTED_DIVIDER_MARKDOWN } from '../../../types/app-platform-guide-compat';
 import type { JsonGuide } from '../types';
 import { hasManageableBackendGuides, useBackendGuides } from './useBackendGuides';
 
@@ -284,6 +285,36 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
       },
     });
     expect(request.data.metadata).toEqual({ name: 'fresh', namespace: 'stacks-1' });
+  });
+
+  it('stamps the schema version the editor emits, not a stale literal', async () => {
+    const result = await renderLoaded([]);
+
+    // getGuide() never returns a schemaVersion, so every editor save takes the fallback.
+    const guide = { id: 'fresh', title: 'Fresh guide', blocks: [] };
+    await act(async () => {
+      await result.current.saveGuide(guide as JsonGuide);
+    });
+
+    expect(lastRequest().data.spec.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
+    expect(lastRequest().data.spec.schemaVersion).not.toBe('1.0');
+  });
+
+  it('persists dividers in the rollback-compatible markdown representation', async () => {
+    const result = await renderLoaded([]);
+    const guide = {
+      id: 'divider-guide',
+      title: 'Divider guide',
+      blocks: [{ id: 'divider-1', type: 'divider' }],
+    } as JsonGuide;
+
+    await act(async () => {
+      await result.current.saveGuide(guide);
+    });
+
+    expect(lastRequest().data.spec.blocks).toEqual([
+      { id: 'divider-1', type: 'markdown', content: PERSISTED_DIVIDER_MARKDOWN },
+    ]);
   });
 
   it('does not borrow a manifest from an unrelated resource in the loaded list', async () => {

@@ -119,30 +119,30 @@ Opens a UI at `http://localhost:5173` for poking at tools without an LLM in the 
 
 12 tools, registered in `src/cli/mcp/tools/`. Each module starts with `Contract: mcp-native | cli-routed`. MCP-native tools own their behavior and Zod schema. CLI-routed tools are a thin wrap of a CLI `runX` (agents copy `opts` from `pathfinder_help`); session/stateless transport around those runners is shared plumbing, not a second command interface.
 
-| Tool                                   | Contract   | Module                  | Wraps                                                                                                   |
-| -------------------------------------- | ---------- | ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `pathfinder_authoring_start`           | mcp-native | `authoring-start.ts`    | (static context block)                                                                                  |
-| `pathfinder_help`                      | mcp-native | `help.ts`               | Any CLI command interface via `formatHelpAsJson` + Commander `Option.attributeName()`, minus exclusions |
-| `pathfinder_validate`                  | mcp-native | `validate.ts`           | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7); not CLI `validate` options               |
-| `pathfinder_read_session`              | mcp-native | `session-read-tools.ts` | Session reads; explicit top-level Zod schema                                                            |
-| `pathfinder_finalize_for_app_platform` | mcp-native | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7)      |
-| `pathfinder_read_repository`           | mcp-native | `repository-tools.ts`   | CDN reads; explicit top-level Zod schema (P6)                                                           |
-| `pathfinder_launch_package`            | mcp-native | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                              |
-| `pathfinder_get_schema`                | cli-routed | `schema-tools.ts`       | CLI `schema` help-derived `opts` (`list` / `all` / `name` / `includeVersion`)                           |
-| `pathfinder_create_package`            | cli-routed | `artifact-tools.ts`     | CLI `create` help-derived `opts` — mints a sessionToken + returns the seed artifact                     |
-| `pathfinder_manage_block`              | cli-routed | `mutation-tools.ts`     | Tree writes via `operation: add-block\|edit-block\|remove-block\|add-step\|add-choice` (CLI names)      |
-| `pathfinder_manage_guide`              | cli-routed | `mutation-tools.ts`     | Guide writes via `operation: set-manifest` (CLI name)                                                   |
-| `pathfinder_inspect`                   | cli-routed | `inspect.ts`            | CLI `inspect` help-derived `opts` + `{artifact}` OR `{sessionToken}`                                    |
+| Tool                                   | Contract   | Module                  | Wraps                                                                                              |
+| -------------------------------------- | ---------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `pathfinder_authoring_start`           | mcp-native | `authoring-start.ts`    | (static context block)                                                                             |
+| `pathfinder_help`                      | mcp-native | `help.ts`               | A bound CLI command's interface, rendered from that command's schema                               |
+| `pathfinder_validate`                  | mcp-native | `validate.ts`           | `runValidate` — accepts `{artifact}` OR `{sessionToken}` (P7); not CLI `validate` options          |
+| `pathfinder_read_session`              | mcp-native | `session-read-tools.ts` | Session reads; explicit top-level Zod schema                                                       |
+| `pathfinder_finalize_for_app_platform` | mcp-native | `finalize.ts`           | `runValidate` + handoff payload; accepts `{artifact}` OR `{sessionToken}`; deletes on success (P7) |
+| `pathfinder_read_repository`           | mcp-native | `repository-tools.ts`   | CDN reads; explicit top-level Zod schema (P6)                                                      |
+| `pathfinder_launch_package`            | mcp-native | `repository-tools.ts`   | Builds `?doc=<cdn-url>` deep link — **partial**, see [#855][p6-launch-bug]                         |
+| `pathfinder_get_schema`                | cli-routed | `schema-tools.ts`       | CLI `schema` help-derived `opts` (`list` / `all` / `name` / `includeVersion`)                      |
+| `pathfinder_create_package`            | cli-routed | `artifact-tools.ts`     | CLI `create` help-derived `opts` — mints a sessionToken + returns the seed artifact                |
+| `pathfinder_manage_block`              | cli-routed | `mutation-tools.ts`     | Tree writes via `operation: add-block\|edit-block\|remove-block\|add-step\|add-choice` (CLI names) |
+| `pathfinder_manage_guide`              | cli-routed | `mutation-tools.ts`     | Guide writes via `operation: set-manifest` (CLI name)                                              |
+| `pathfinder_inspect`                   | cli-routed | `inspect.ts`            | CLI `inspect` help-derived `opts` + `{artifact}` OR `{sessionToken}`                               |
 
 [p6-launch-bug]: https://github.com/grafana/grafana-pathfinder-app/issues/855
 
-CLI-backed parameters live in opaque `opts` bags and are discovered through `pathfinder_help`; transport or MCP-only parameters stay top-level. Each MCP binding maps its own bag onto the imported runner's arguments — `block` → `blockId` for inspect, `id` as an address rather than a patch value for edit-block — so the CLI's Commander actions stay untouched.
+CLI-backed parameters live in opaque `opts` bags and are discovered through `pathfinder_help`; transport or MCP-only parameters stay top-level. A binding forwards its bag to the command's spec unchanged: the schema an agent was shown is the schema its bag is parsed against, so a binding neither rekeys parameters nor decides which of them reach the runner (RFC §8).
 
-MCP-owned contracts do not expose a CLI command interface and therefore own explicit, top-level Zod schemas. They do not use `opts`, `registerCommandInterfaceConfig`, or instruct agents to call `pathfinder_help`. This includes `pathfinder_validate`: it reuses `runValidate`, but its artifact-native input is not the disk-oriented CLI `validate` interface. Tool modules mark this boundary with a file-level `Contract: mcp-native` comment.
+`bindCommandInterface` is what makes a command addressable, so binding is opt-in: `pathfinder_help` and `validateCommandArgs` both report `UNKNOWN_COMMAND` for a CLI command no tool dispatches (`e2e`, `build-repository`, `build-graph`, `move-block`, `rename-id`, `requirements`, `validate`), and the no-argument command list is exactly the bound set. Binding a name that ships no spec throws at binding time rather than leaving the tool reachable but unhelpable. A binding may also narrow what it offers — `bindCommandInterface('remove-block', { withhold: ['orphanChildren'] })` — and a withheld name that the command does not declare throws at the same point, so the list cannot drift away from the schema it narrows.
 
-Because MCP calls the runners directly, `validateCommandArgs` replicates the checks Commander's parser would have made: required positionals, mandatory options, the configured subcommand selector, and the value types published by help. Content validation remains the runner's job.
+MCP-owned contracts do not expose a CLI command interface and therefore own explicit, top-level Zod schemas. They do not use `opts`, `bindCommandInterface`, or instruct agents to call `pathfinder_help`. This includes `pathfinder_validate`: it reuses `runValidate`, but its artifact-native input is not the disk-oriented CLI `validate` interface. Tool modules mark this boundary with a file-level `Contract: mcp-native` comment.
 
-**Known follow-up.** Help and suite packing already scale with the CLI; the named `runX` field map in `mutation-tools.ts` (`MUTATION_RUNNERS`) does not. Closing that gap means dispatching through Commander (in-process argv, or subprocess `--format json`) instead of the hand-written runner structs. Blockers and rationale live in [`HOSTED-AUTHORING-MCP.md` — Tool-surface design notes](../design/HOSTED-AUTHORING-MCP.md#tool-surface-design-notes).
+Because MCP calls the runners directly, `validateCommandArgs` answers the questions Commander's parser would have: is a required parameter missing, is a parameter unknown, is one withheld from agents. It answers them from the command's schema, which is also what the runner parses against — the preflight exists to name the problem in the agent's vocabulary, not to be a second opinion about the shape.
 
 ### Repository tools (P6)
 

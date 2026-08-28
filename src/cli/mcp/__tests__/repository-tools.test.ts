@@ -10,7 +10,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import { __resetRepositoryClientForTests, REPOSITORY_URL_ENV_VAR } from '../lib/repository-client';
+import { __resetRepositoryClientForTests, REPOSITORY_URL_ENV_VAR } from '../../utils/repository-client';
 import { buildServer } from '../server';
 
 const sampleIndex = {

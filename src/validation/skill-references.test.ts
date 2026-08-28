@@ -472,6 +472,10 @@ describe('Skill stub parity — .cursor/skills ↔ .claude/skills', () => {
   const sourceNames = skillNamesIn(SKILL_SOURCE_DIR);
   const stubNames = skillNamesIn(SKILL_STUB_DIR);
 
+  it('does not introduce an unsupported .agents skill root', () => {
+    expect(fs.existsSync(path.join(REPO_ROOT, '.agents'))).toBe(false);
+  });
+
   it('at least one skill is discovered', () => {
     expect(sourceNames.length).toBeGreaterThan(0);
   });

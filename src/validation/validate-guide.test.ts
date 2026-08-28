@@ -40,6 +40,7 @@ describe('JsonGuideSchema', () => {
           { type: 'html', content: '<p>HTML</p>' },
           { type: 'image', src: 'https://example.com/img.png' },
           { type: 'video', src: 'https://youtube.com/watch?v=abc' },
+          { type: 'divider' },
           {
             type: 'interactive',
             action: 'highlight',

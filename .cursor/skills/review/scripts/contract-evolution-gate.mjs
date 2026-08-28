@@ -3,6 +3,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseArgs as parseCliArgs } from 'node:util';
+import { findTable, unquote } from './registry-table.mjs';
 
 const DEFAULT_WINDOW_DAYS = 30;
 const SEMANTIC_TYPES = new Set([
@@ -58,48 +59,17 @@ function assertInputs({ base, head, concern, windowDays }) {
   }
 }
 
-function splitTableRow(row) {
-  return row
-    .slice(1, -1)
-    .split('|')
-    .map((cell) => cell.trim());
-}
-
 export function extractConcernPaths(markdown, concern) {
-  const lines = markdown.split('\n');
-  const headerIndex = lines.findIndex((line) => {
-    if (!line.startsWith('|')) {
-      return false;
-    }
-    const cells = splitTableRow(line).map((cell) => cell.toLowerCase());
-    return cells.includes('id') && cells.includes('trigger_paths');
+  const rows = findTable(markdown, ['id', 'trigger_paths'], {
+    notFoundMessage: 'Routing table header with id and trigger_paths columns not found in CONCERNS.md',
   });
-  if (headerIndex === -1) {
-    throw new Error('Routing table header with id and trigger_paths columns not found in CONCERNS.md');
-  }
-
-  const header = splitTableRow(lines[headerIndex]).map((cell) => cell.toLowerCase());
-  const idColumn = header.indexOf('id');
-  const pathsColumn = header.indexOf('trigger_paths');
-
-  let row = null;
-  for (let index = headerIndex + 1; index < lines.length && lines[index].startsWith('|'); index += 1) {
-    const cells = splitTableRow(lines[index]);
-    if (cells[idColumn] === `\`${concern}\``) {
-      row = cells;
-      break;
-    }
-  }
+  const row = rows.find((candidate) => unquote(candidate.id) === concern);
   if (!row) {
     throw new Error(`Concern ${concern} is not present in the routing table`);
   }
-  if (row.length !== header.length) {
-    throw new Error(`Concern ${concern} has an invalid routing row`);
-  }
 
-  const paths = [...row[pathsColumn].matchAll(/`([^`]+)`/g)]
+  const paths = [...row.trigger_paths.matchAll(/`([^`]+)`/g)]
     .map((match) => match[1])
-    .filter((path) => path.includes('/') || /\.[a-z]+$/i.test(path))
     .map((path) => (path.includes('*') ? `:(glob)${path}` : path));
 
   if (paths.length === 0) {

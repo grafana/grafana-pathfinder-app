@@ -24,6 +24,7 @@
 import type { TreeNode } from '../../utils/package-io';
 import { ARTIFACT_ETAG_FIELD, computeArtifactEtag } from '../../utils/etag';
 import { type CommandOutcome, renderMachineJson } from '../../utils/output';
+import { spellOutcome } from '../../utils/param-spelling';
 import { type ConcurrentModificationResult, type SessionTooLargeResult } from './state-bridge';
 
 export type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
@@ -34,8 +35,16 @@ export type ToolResult = { content: Array<{ type: 'text'; text: string }>; isErr
  * send. Keep the structured outcome and omit those CLI-only next-step hints.
  */
 export function sanitizeOutcomeForMcp(outcome: CommandOutcome): CommandOutcome {
-  const structured = { ...outcome } as CommandOutcome & { hints?: string[] };
+  // Parameter references land as the names this surface published — `id`, not `--id`.
+  const structured = { ...spellOutcome(outcome, (name) => name) } as CommandOutcome & {
+    hints?: string[];
+    remedy?: unknown;
+  };
   delete structured.hints;
+  // A remedy names a command line, and the commands it names are not bound as tools.
+  // Passing it through would tell an agent to shell out; the tool descriptions already
+  // say what to call instead.
+  delete structured.remedy;
   return structured;
 }
 

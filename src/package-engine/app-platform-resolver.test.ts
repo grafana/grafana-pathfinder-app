@@ -237,6 +237,19 @@ describe('AppPlatformPackageResolver — metadata-only', () => {
     });
   });
 
+  it('prefers spec.id over the resolve() input in the inferred (no spec.manifest) branch too', async () => {
+    mockFetch.mockReturnValue(of(okResource({ id: 'renamed-guide-id' })));
+
+    const resolver = new AppPlatformPackageResolver();
+    const result = await resolver.resolve('legacy-resource-name', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest?.id).toBe('renamed-guide-id');
+  });
+
   // The loader in docs-retrieval synthesizes a manifest for the same resource shape. If only one of
   // the two filled in a description, a reader would see a different shape depending on which entry
   // point opened the guide.
@@ -405,7 +418,7 @@ describe('AppPlatformPackageResolver — full content', () => {
     expect(result.error.code).toBe('not-found');
   });
 
-  it('does not let a persisted spec.manifest.id override the resolved packageId', async () => {
+  it("does not let a persisted spec.manifest.id override the resource's own declared identity", async () => {
     mockFetch.mockReturnValue(of(okResource({ manifest: { type: 'guide', id: 'some-other-id' } })));
     const resolver = new AppPlatformPackageResolver();
 
@@ -416,6 +429,73 @@ describe('AppPlatformPackageResolver — full content', () => {
       return;
     }
     expect(result.manifest?.id).toBe('fe-alerting-01');
+  });
+
+  it('prefers spec.id over the resolve() input when a guide was renamed after its resource name was set', async () => {
+    // packageId ('legacy-resource-name') is the immutable k8s resource name a
+    // guide was created under; spec.id ('renamed-guide-id') is the author's
+    // current, editable guide id. buildLoaderManifest (docs-retrieval's
+    // backend-guide.ts) has always preferred spec.id for this same resource
+    // shape — this pins the two builders agreeing, so completion identity
+    // doesn't drift depending on which one happened to run.
+    mockFetch.mockReturnValue(of(okResource({ id: 'renamed-guide-id', manifest: { type: 'guide' } })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('legacy-resource-name', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest?.id).toBe('renamed-guide-id');
+  });
+
+  it('falls back to the resolve() input when the resource carries no spec.id of its own', async () => {
+    mockFetch.mockReturnValue(of(okResource({ id: undefined, manifest: { type: 'guide' } })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('fe-alerting-01', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest?.id).toBe('fe-alerting-01');
+  });
+
+  it('keeps the resolve() input as id for a path/journey manifest, even when spec.id has drifted', async () => {
+    // A path/journey's id must stay resource-name-equal: fetchPackageContent's
+    // baseUrl-hydration re-resolves it in URL-only mode, which never verifies
+    // — it only string-templates `backend-guide:<id>` — on the documented
+    // assumption that the id is "already known-good" (fetchPackageById's own
+    // comment). A drifted spec.id would silently produce an unfetchable URL.
+    // This is the one case where a plain guide's spec.id preference does not
+    // apply (Cursor Bugbot flagged this on the guide-preference commit).
+    mockFetch.mockReturnValue(
+      of(okResource({ id: 'renamed-path-id', manifest: { type: 'path', milestones: ['m1'] } }))
+    );
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('legacy-resource-name', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest?.id).toBe('legacy-resource-name');
+  });
+
+  it('keeps the resolve() input as id for a journey manifest too', async () => {
+    mockFetch.mockReturnValue(of(okResource({ id: 'renamed-journey-id', manifest: { type: 'journey' } })));
+    const resolver = new AppPlatformPackageResolver();
+
+    const result = await resolver.resolve('legacy-resource-name', { loadContent: 'metadata-only' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.manifest?.id).toBe('legacy-resource-name');
   });
 
   it('overwrites a persisted spec.manifest.repository pointing at the public CDN', async () => {

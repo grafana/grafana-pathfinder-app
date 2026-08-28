@@ -141,7 +141,7 @@ function synthesizeInsufficientHistoryFinding(packet) {
     ],
     why_it_matters:
       'The scan could not verify the contract verdict against complete history or a recorded anchor, so contract branching may be invisible.',
-    suggested_action: `Record a contract anchor for ${packet.concern_id} in docs/design/CONCERNS.md (Contract anchors) or re-run the scan with complete history.`,
+    suggested_action: `Record a contract anchor for ${packet.concern_id} in docs/design/CONCERN_DETAILS.md or re-run the scan with complete history.`,
     reversibility: 'unknown',
     applies_to_files: [],
   };
@@ -191,7 +191,7 @@ export function buildFinding(packet) {
     suggested_action: finding.suggested_action,
     reversibility: finding.reversibility,
     applies_to_files: finding.applies_to_files,
-    disposition: decision.disposition,
+    recommended_disposition: decision.disposition === 'blocking' ? 'blocking' : 'suggestion',
   };
 }
 

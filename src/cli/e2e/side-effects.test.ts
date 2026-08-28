@@ -19,6 +19,10 @@ describe('classifyGuideSideEffects', () => {
     expect(result).toEqual({ level: 'readonly', reasons: [] });
   });
 
+  it('classifies dividers as readonly', () => {
+    expect(classifyGuideSideEffects(guide([{ type: 'divider' }]))).toEqual({ level: 'readonly', reasons: [] });
+  });
+
   it('classifies destructive and save-like buttons as mutating', () => {
     const result = classifyGuideSideEffects(
       guide([{ type: 'interactive', action: 'button', reftarget: 'Save dashboard', content: 'Save your work' }])

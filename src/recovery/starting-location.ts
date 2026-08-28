@@ -7,7 +7,7 @@
  *      `InteractiveGuide` CRD's `#Manifest` does not declare `startingLocation`, so a
  *      value written at the top level is pruned on write; both the block editor and
  *      `scripts/upsert-learning-path.sh` put it under `additionalFields` instead. Two
- *      locations to handle until the CUE field is promoted (see `docs/design/CONCERNS.md`).
+ *      locations to handle until the CUE field is promoted (see `docs/design/CONCERN_DETAILS.md`).
  *   3. `bundled-interactives/index.json` `url[0]` — fallback for unmigrated bundled guides
  *      (URLs of the form `bundled:<id>`)
  *   4. `null` — for remote guides without a manifest; caller skips prompting and
@@ -23,6 +23,12 @@
  * This is the single gate. `pendingAlignment` is written from this return value
  * and from nowhere else, so validating here covers what gets stored, what the
  * prompt shows, what telemetry reports, and what is eventually pushed.
+ *
+ * More than one manifest may describe the same launch, and they are not equally
+ * complete: a catalogue-proxy entry is a slim projection that drops keys its Go
+ * struct does not declare, while a content loader's manifest is whole. Callers
+ * pass them most-authoritative-first and the first declared value wins, so a slim
+ * manifest no longer shadows a complete one.
  *
  * @see docs/design/AUTORECOVERY_DESIGN.md § "The implied 0th step"
  */
@@ -51,30 +57,42 @@ export interface ResolveStartingLocationOptions {
   isAdmin?: boolean;
 }
 
+/**
+ * A launch describes itself with either one manifest or several. The parameter
+ * accepts both shapes so the common single-manifest call stays as it reads, and
+ * only a caller that genuinely holds competing manifests pays the array syntax.
+ */
+export type ManifestCandidates = Record<string, unknown> | Array<Record<string, unknown> | undefined>;
+
 export function resolveStartingLocation(
   url: string,
-  packageManifest?: Record<string, unknown>,
+  packageManifests?: ManifestCandidates,
   options?: ResolveStartingLocationOptions
 ): string | null {
-  const candidate = resolveCandidate(url, packageManifest);
+  const candidates = Array.isArray(packageManifests) ? packageManifests : [packageManifests];
+  const candidate = resolveCandidate(url, candidates);
   if (candidate === null) {
     return null;
   }
   return validateInternalNavigationPath(candidate, options?.isAdmin);
 }
 
-function resolveCandidate(url: string, packageManifest?: Record<string, unknown>): string | null {
-  const fromManifest = packageManifest?.startingLocation;
-  if (typeof fromManifest === 'string' && fromManifest.length > 0) {
-    return fromManifest;
-  }
+function resolveCandidate(url: string, packageManifests: Array<Record<string, unknown> | undefined>): string | null {
+  // Manifest authority dominates: a manifest that declares the value at all
+  // settles it, and only then do we fall through to the next one. Within a
+  // single manifest the typed field still wins over `additionalFields` — a
+  // promoted CUE field is the more specific declaration, and `additionalFields`
+  // is where a value waits for that promotion.
+  for (const packageManifest of packageManifests) {
+    const fromManifest = packageManifest?.startingLocation;
+    if (typeof fromManifest === 'string' && fromManifest.length > 0) {
+      return fromManifest;
+    }
 
-  // The typed field wins when both are present: a promoted CUE field is the more
-  // specific declaration, and `additionalFields` is where a value waits for that
-  // promotion.
-  const fromAdditional = readAdditionalStartingLocation(packageManifest);
-  if (fromAdditional) {
-    return fromAdditional;
+    const fromAdditional = readAdditionalStartingLocation(packageManifest);
+    if (fromAdditional) {
+      return fromAdditional;
+    }
   }
 
   if (url.startsWith(BUNDLED_PREFIX)) {

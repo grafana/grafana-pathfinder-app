@@ -6,6 +6,8 @@ import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 import { itemUrl } from '../../utils/interactive-guides-api';
 import { validateGuide } from '../../validation';
+import { decodeAppPlatformGuideBlocks } from '../../types/app-platform-guide-compat';
+import type { JsonBlock } from '../../types/json-guide.types';
 
 export interface BackendGuideResource {
   metadata?: {
@@ -26,7 +28,7 @@ const APP_PLATFORM_REPOSITORY = 'app-platform';
  * Completion identity for a launch that carries no resolved package — an orphan
  * guide from the custom guides list, a `?doc=api:<id>` share link, auto-dock tab
  * restore. `id` and `repository` are forced over any persisted manifest value per
- * `repository-identity-authority` (docs/design/CONCERNS.md); a resource with no
+ * `repository-identity-authority` (docs/design/CONCERN_DETAILS.md); a resource with no
  * id of its own gets none, so the recorder fails closed rather than keying on the
  * loader URL. `type` is carried through unforced so a path cover is not recorded
  * as a standalone guide.
@@ -74,7 +76,7 @@ export function buildBackendGuideContent(
     id: guideResource.spec.id || guideResource.metadata?.name || resourceName,
     title: guideResource.spec.title,
     schemaVersion: guideResource.spec.schemaVersion || '1.0',
-    blocks: guideResource.spec.blocks,
+    blocks: decodeAppPlatformGuideBlocks(guideResource.spec.blocks as JsonBlock[]),
   };
 
   const validationResult = validateGuide(guide);

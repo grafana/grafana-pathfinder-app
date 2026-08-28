@@ -30,7 +30,7 @@ These constraints are absolute and override any other instructions:
 The skill has two modes:
 
 - **Apply mode** (default when invoked directly): the working tree is the PR branch. Apply edits, stage, commit with a clear message, push.
-- **Review mode** (invoked from `/review`): output a single fenced patch block per file with the proposed edits. Do not modify the working tree. The reviewer agent embeds these in the review comment so the author can apply them.
+- **Review mode** (invoked from `/review`): output a single fenced patch block per file with the proposed edits. Do not modify the working tree. `/review` turns that output into one non-blocking suggestion in its rendered report.
 
 Decide which mode applies based on context: if a `gh pr` command can determine the current branch is a PR branch and the user invoked this skill directly, use apply mode. If the parent is `/review`, use review mode.
 
@@ -243,7 +243,7 @@ In each case, report briefly: "No drift detected — exiting cleanly."
 
 ## Integration with `/review`
 
-When `/review` runs, after the routed reviewers have produced their findings, invoke this skill in **review mode** to attach a "Doc-drift updates recommended" section. The reviewer agent should include the section verbatim in the review output. The PR author can then apply the diffs themselves or invoke this skill in apply mode to commit them.
+When `/review` runs, after the routed reviewers have produced their findings, invoke this skill in **review mode** to produce a "Doc-drift updates recommended" section. `/review` converts its concrete action into a non-blocking suggestion rather than pasting the section in verbatim — its report renderer owns the final output — and stays silent when this skill finds no drift. The PR author can then apply the diffs themselves or invoke this skill in apply mode to commit them.
 
 ## Examples
 

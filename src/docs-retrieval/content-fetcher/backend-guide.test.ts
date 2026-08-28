@@ -1,5 +1,6 @@
 import { of, throwError } from 'rxjs';
 import { fetchBackendInteractive } from './backend-guide';
+import { PERSISTED_DIVIDER_MARKDOWN } from '../../types/app-platform-guide-compat';
 
 let mockNamespace: string | undefined = 'stacks-123';
 const mockFetch = jest.fn();
@@ -127,6 +128,27 @@ describe('fetchBackendInteractive — happy path', () => {
     const result = await fetchBackendInteractive('backend-guide:my-guide');
 
     expect(JSON.parse(result.content!.content).schemaVersion).toBe('1.0');
+  });
+
+  it('decodes rollback-compatible divider markdown before validation', async () => {
+    mockFetch.mockReturnValue(
+      of(
+        okResource({
+          spec: {
+            id: 'guide-id',
+            title: 'My Guide',
+            blocks: [{ type: 'markdown', id: 'divider-1', content: PERSISTED_DIVIDER_MARKDOWN }],
+          },
+        })
+      )
+    );
+
+    const result = await fetchBackendInteractive('backend-guide:my-guide');
+
+    expect(mockValidateGuide).toHaveBeenCalledWith(
+      expect.objectContaining({ blocks: [{ type: 'divider', id: 'divider-1' }] })
+    );
+    expect(JSON.parse(result.content!.content).blocks).toEqual([{ type: 'divider', id: 'divider-1' }]);
   });
 });
 
