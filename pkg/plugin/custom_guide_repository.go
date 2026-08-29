@@ -202,6 +202,10 @@ func (a *App) writeCustomGuideUnavailable(w http.ResponseWriter) {
 // drainCustomGuides drains the namespace LIST across pages — up to the
 // aggregate entry budget — and returns the shaped catalogue entries.
 func drainCustomGuides(ctx context.Context, namespace string, lister customGuideLister) ([]customGuideRepositoryEntry, int, error) {
+	if finalizer, ok := lister.(customGuideDrainFinalizer); ok {
+		defer finalizer.finalizeDrain(namespace)
+	}
+
 	entries := []customGuideRepositoryEntry{}
 	continueToken := ""
 	pages := 0
