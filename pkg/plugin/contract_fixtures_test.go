@@ -352,6 +352,9 @@ func contractNestedStruct(typ reflect.Type) (reflect.Type, bool) {
 }
 
 func renderContractType(typ reflect.Type) string {
+	if typ == reflect.TypeOf(json.RawMessage{}) {
+		return "json.RawMessage"
+	}
 	if typ.Name() != "" {
 		return typ.String()
 	}
@@ -464,6 +467,25 @@ type contractJSONValue struct{}
 
 func (contractJSONValue) MarshalJSON() ([]byte, error) {
 	return []byte(`"value"`), nil
+}
+
+func TestContractTypeDescriptors(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{"raw message", json.RawMessage{}, "json.RawMessage"},
+		{"raw message slice", []json.RawMessage{}, "[]json.RawMessage"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := renderContractType(reflect.TypeOf(c.value)); got != c.want {
+				t.Errorf("contract type = %q, want %q", got, c.want)
+			}
+		})
+	}
 }
 
 func TestContractWireTypeDescriptors(t *testing.T) {
