@@ -220,12 +220,8 @@
   "authoring_policy": {
     "prefer_extending_existing": true,
     "add_concern_evidence": ["a missed review", "a recurring bug class", "an important architectural blind spot"],
-    "noise_reduction_order": [
-      "tighten semantic selectors",
-      "narrow the load_code context",
-      "raise minimum_signals",
-      "widen activation scope last"
-    ],
+    "noise_reduction_options": ["tighten semantic selectors", "narrow the load_code context", "raise minimum_signals"],
+    "widen_activation_scope_last": true,
     "coverage_gap_response": "When coverage-gap detection repeatedly points at the same unowned area, first try expanding an adjacent concern before adding a new entry.",
     "stale_selector_rule": "Remove stale selectors that cause noisy activation.",
     "source_documents": ["docs/design/CONCERNS.md", "docs/design/CONCERN_DETAILS.md"]
@@ -3129,8 +3125,8 @@
             "path": "src/components/interactive-tutorial/challenge-block.test.tsx"
           },
           {
-            "kind": "test_path",
-            "path": "src/integrations/coda/*.test.ts"
+            "kind": "test_glob",
+            "pattern": "src/integrations/coda/*.test.ts"
           }
         ]
       },
@@ -4650,8 +4646,8 @@
             "path": "src/completion-records/completion-write-queue.test.ts"
           },
           {
-            "kind": "test_path",
-            "path": "src/lib/guide-stats/*.test.ts"
+            "kind": "test_glob",
+            "pattern": "src/lib/guide-stats/*.test.ts"
           },
           {
             "kind": "test_path",

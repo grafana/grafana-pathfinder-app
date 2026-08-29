@@ -53,6 +53,26 @@ const PINNED_CONTRACT_LIMITS = {
 };
 const PINNED_INVARIANT_NAMES_GLOBALLY_UNIQUE = true;
 
+// Each fixture pins one rule. Deleting or renaming one must fail here rather
+// than silently retire the rule while the suite stays green.
+const MALFORMED_FIXTURES = [
+  '001-unknown-top-level-key.json',
+  '002-missing-concerns.json',
+  '003-unsupported-schema-version.json',
+  '004-concern-notes-field.json',
+  '005-non-stable-concern-id.json',
+  '006-subsystem-with-weak-mode.json',
+  '007-minimum-signals-out-of-bounds.json',
+  '008-context-budget-over-worker-cap.json',
+  '009-glob-selector-without-wildcard.json',
+  '010-semantic-selector-with-backtick.json',
+  '011-conditional-concern-without-semantic-selectors.json',
+  '012-untyped-verification-step.json',
+  '013-candidate-authorizing-blocking-finding.json',
+  '014-unresolved-selector-without-candidates.json',
+  '015-related-referencing-empty-list.json',
+];
+
 function compile() {
   const ajv = new Ajv2020({ strict: true, allErrors: true });
   return ajv.compile(schema);
@@ -114,7 +134,7 @@ test('every malformed fixture is rejected for the reason it names', () => {
   const fixtures = readdirSync(invalidDir)
     .filter((name) => name.endsWith('.json'))
     .sort();
-  assert.ok(fixtures.length > 0, 'expected at least one invalid-registry fixture');
+  assert.deepEqual(fixtures, MALFORMED_FIXTURES);
   for (const fixture of fixtures) {
     const spec = readJson(join(invalidDir, fixture));
     const { instance, expected } = applyFixture(spec);
@@ -249,7 +269,7 @@ test('activation mode and category agree with the declared category defaults', (
     assert.equal(
       concern.activation.rationale,
       expectedRationale(concern, categoryDefault),
-      `${concern.id} rationale states a threshold its numbers do not`
+      `${concern.id} rationale disagrees with its category and minimum_signals`
     );
   }
 });
