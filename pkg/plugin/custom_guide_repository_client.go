@@ -33,7 +33,7 @@ const (
 	// catalogue drain may emit. A schema drift affects every stored guide at
 	// once, and the aggregate drain budget is customGuideListMaxTotalEntries, so
 	// an uncapped warning is a log flood rather than a diagnostic; the remainder
-	// is summarised in a single line when the drain reaches its last page.
+	// is summarised in a single line when the drain finishes.
 	customGuideDecodeWarnPerDrain = 10
 )
 
@@ -226,6 +226,10 @@ type customGuideLister interface {
 	ListPage(ctx context.Context, namespace, continueToken string) (*customGuidePage, error)
 }
 
+type customGuideDrainFinalizer interface {
+	finalizeDrain(namespace string)
+}
+
 // customGuideHTTPClient is the per-kind wrapper over the shared App Platform
 // LIST client: it supplies the interactiveguides coordinates and shapes each
 // `items[].spec` into a slim, block-stripped customGuideRepositoryEntry.
@@ -247,6 +251,14 @@ type customGuideHTTPClient struct {
 // surfaced as an identity-scoped terminal error.
 func newCustomGuideHTTPClient(appURL string, minter accessTokenMinter, idToken string, logger log.Logger) *customGuideHTTPClient {
 	return &customGuideHTTPClient{inner: newAppPlatformListClient(appURL, minter, idToken, logger)}
+}
+
+func (c *customGuideHTTPClient) finalizeDrain(namespace string) {
+	if c.decodeWarns <= customGuideDecodeWarnPerDrain {
+		return
+	}
+	c.inner.logger.Warn("custom guide repository: further decode warnings suppressed",
+		"namespace", namespace, "warnings", c.decodeWarns, "logged", customGuideDecodeWarnPerDrain)
 }
 
 // ListPage fetches one page of InteractiveGuides for the namespace and shapes
@@ -293,12 +305,6 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 			continue
 		}
 		entries = append(entries, entry)
-	}
-	// The last page ends the drain this client was built for, so the suppression
-	// summary lands exactly once and counts every page.
-	if page.Continue == "" && c.decodeWarns > customGuideDecodeWarnPerDrain {
-		c.inner.logger.Warn("custom guide repository: further decode warnings suppressed",
-			"namespace", namespace, "warnings", c.decodeWarns, "logged", customGuideDecodeWarnPerDrain)
 	}
 	return &customGuidePage{Entries: entries, Continue: page.Continue}, nil
 }
