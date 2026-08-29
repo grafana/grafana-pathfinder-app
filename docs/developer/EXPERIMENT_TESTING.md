@@ -13,6 +13,8 @@ All overrides go through `window.__pathfinderExperiment`, the debug surface crea
 
 See [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) for the full flag shapes and variant tables.
 
+A related pre-post change — **PLG Onboarding Flow Revamp** — auto-opens Pathfinder from the Cloud onboarding survey. It is not a Pathfinder MTFF flag; identify it in analytics by `source` on `pathfinder_docs_panel_interaction`. See [PLG Onboarding Flow Revamp](#plg-onboarding-flow-revamp-pre-post).
+
 ## Debug-surface API
 
 ```js
@@ -233,6 +235,32 @@ This is the one thing that behaves differently from the highlighted-guide experi
 - `pathfinder_feature_flag_evaluated` for this flag appears on first panel open, not on page load. If you are watching the network tab from boot expecting it immediately, that is why it is missing.
 - Reloading without opening Pathfinder produces no exposure at all. That is intended — a user who never opened the panel never had the chance to see the banner.
 
+Concretely, the exposure fires on the first of these in a browser:
+
+- the sidebar opens, or
+- a guide or learning path renders for the first time in any mode (sidebar, floating, or full-screen)
+
+### Verifying banner analytics
+
+Filter Rudderstack (or your local analytics tap) for:
+
+| Event                                              | When                                                                                          | Key properties                                                                           |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `pathfinder_feature_flag_evaluated`                | First sidebar open **or** first guide / learning-path render in any mode — never on page load | `flag_key: pathfinder.interactive-learning-banner-experiment`, `tracking_key`, `variant` |
+| `pathfinder_interactive_learning_banner_shown`     | Banner actually painted (once per page load, whichever placement rendered first)              | `interaction_location`                                                                   |
+| `pathfinder_interactive_learning_banner_dismissed` | User dismisses the banner                                                                     | `interaction_location`                                                                   |
+
+`interaction_location` is the placement:
+
+| Value                               | Placement                              |
+| ----------------------------------- | -------------------------------------- |
+| `interactive_learning_banner`       | Context page (above the profile bar)   |
+| `interactive_learning_banner_guide` | Above a rendered guide / learning path |
+
+Control renders nothing, so `shown` and `dismissed` are **treatment-only by construction**. Do not use them for the engagement comparison — they cannot exist on control. Compare guide-interaction events that carry the experiments enrichment (`pathfinder_open_resource_click`, `pathfinder_docs_panel_interaction`, Show me / Do it, and so on). The exposure event is the one that exists on both arms.
+
+The same per-browser `(hostname, flag, variant)` dedup as the highlighted-guide experiment applies to `pathfinder_feature_flag_evaluated`. Use `__pathfinderExperiment.showExposures()` / `clearExposures()` if you expect an exposure and it is missing.
+
 ### Resetting the dismissal
 
 The banner stays dismissed per browser. `clearOverrides()` does not clear it:
@@ -243,6 +271,45 @@ Object.keys(localStorage)
   .forEach((k) => localStorage.removeItem(k));
 location.reload();
 ```
+
+## PLG Onboarding Flow Revamp (pre-post)
+
+This is **not** a Pathfinder MTFF experiment and has no `__pathfinderExperiment` override. From **2026-08-26 00:00 UTC**, the Grafana Cloud onboarding flow (setup-guide) auto-opens Pathfinder when a user who clicked the Frontend Observability or Synthetics recommendation tile lands on the matching product page.
+
+The parent onboarding A/B is `setup-guide.onboarding-plg` (treatment = the survey-led onboarding). The Pathfinder auto-open is a follow-on change on that treatment experience, analysed as a **pre vs post** cut — not a Pathfinder `control` / `treatment` split.
+
+Do not confuse these auto-opens with [`pathfinder.highlighted-guide-experiment`](#pathfinderhighlighted-guide-experiment). That flag tags `source: 'highlighted_guide_experiment'`. The onboarding revamp tags a dedicated `plg-survey-*` source.
+
+### How to identify the cohort
+
+Spine: `grafanalabs-global.rudderstack.pathfinder_docs_panel_interaction` where `action = 'auto-open'` and `source` is one of:
+
+| `source`                   | Survey tile (`onboarding_flow_event.component_key_properties_recommendation`) | Product page                                        |
+| -------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------- |
+| `plg-survey-frontend-o11y` | `frontend-o11y`                                                               | FE O11y / Kowalski (`/a/grafana-kowalski-app*`)     |
+| `plg-survey-monitor-url`   | `monitor-url`                                                                 | Synthetics (`/a/grafana-synthetic-monitoring-app*`) |
+
+The auto-open row does **not** carry `resource_info`, `suggested_urls`, or `experiments.guideId` for these sources (all null). The guide that opened is the first `pathfinder_open_resource_click` with `interaction_location = 'docs_panel'` immediately after auto-open:
+
+| `source`                   | Guide slug                       |
+| -------------------------- | -------------------------------- |
+| `plg-survey-frontend-o11y` | `welcome-frontend-observability` |
+| `plg-survey-monitor-url`   | `sm-ping-check-tutorial`         |
+
+### Pre vs post windows
+
+| Period                               | Clock                                             | Cohort event                                                                                     |
+| ------------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Pre-change (no Pathfinder auto-open) | 2026-08-04 00:00 UTC through 2026-08-26 00:00 UTC | Survey-tile click (`onboarding_survey_recommendation_click` for `frontend-o11y` / `monitor-url`) |
+| Post-change                          | 2026-08-26 00:00 UTC onward                       | `plg-survey-*` auto-open                                                                         |
+
+Join `setup-guide.onboarding-plg` separately if you need the parent A/B population. Not every `plg-survey-*` auto-open has a `feature_toggle_event` row on `user_id` — resolve assignment on `org_id` (and tolerate null `user_id` on the flag).
+
+### Gotchas for this readout
+
+- **Never use `context_traits_org_id`** on these Rudderstack events — it is org 1. Resolve org via instance URL + `user_id` / email through `stg_grafana_instance_url_xref` (same pattern as `rpt_pathfinder_onboarding_experiment`).
+- `plg-survey-*` is an **analytics source string** set by the onboarding flow when it auto-opens the sidebar. It is not a Pathfinder `LaunchSource`, so alignment-prompt classification treats it as unknown (needs check). That does not affect the auto-open event itself.
+- Staff users should be excluded via `core_users.is_staff`, not by filtering Rudderstack traits.
 
 ## Common gotchas
 

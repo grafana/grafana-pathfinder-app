@@ -23,6 +23,11 @@ describe('BranchBlocksEditor createDefaultBlock', () => {
     expect(ALLOWED_BRANCH_BLOCK_TYPES).toContain('callout');
   });
 
+  it('offers and builds a divider in the inline add picker', () => {
+    expect(ALLOWED_BRANCH_BLOCK_TYPES).toContain('divider');
+    expect(createDefaultBlock('divider')).toEqual({ type: 'divider' });
+  });
+
   it('builds an empty callout block, not empty markdown', () => {
     expect(createDefaultBlock('callout')).toEqual({
       type: 'callout',

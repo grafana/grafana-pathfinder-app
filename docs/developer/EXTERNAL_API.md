@@ -338,12 +338,12 @@ derives, `stats` and `startingLocation`, to the same place.
 Which of them actually _work_ from `additionalFields` depends on whether
 anything reads that location:
 
-| Key                                        | Read from `additionalFields`?                                                           |
-| ------------------------------------------ | --------------------------------------------------------------------------------------- |
-| `startingLocation`                         | On some routes only — see below.                                                        |
-| `stats`                                    | Not yet. Written by both App Platform writers; the first consumer reads both locations. |
-| `recommends`, `suggests`                   | No — the frontend reads these from the manifest's top level, so they are inert here.    |
-| `provides`, `targeting`, `testEnvironment` | No consumer on the App Platform path at all.                                            |
+| Key                                        | Read from `additionalFields`?                                                                                                                                                                |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `startingLocation`                         | On some routes only — see below.                                                                                                                                                             |
+| `stats`                                    | No — the catalogue proxy decodes a typed `manifest.stats` but not `additionalFields`, so a stamp written here is dropped at the wire boundary. Promoting it to a typed CUE field is the fix. |
+| `recommends`, `suggests`                   | No — the frontend reads these from the manifest's top level, so they are inert here.                                                                                                         |
+| `provides`, `targeting`, `testEnvironment` | No consumer on the App Platform path at all.                                                                                                                                                 |
 
 `src/recovery/starting-location.ts` reads both locations, typed field first, so
 `startingLocation` takes effect wherever the manifest reaches it with

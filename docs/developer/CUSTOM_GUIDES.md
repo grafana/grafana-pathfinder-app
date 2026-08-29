@@ -153,6 +153,7 @@ When the backend is unavailable the badge area instead shows a **Saved** / **Sav
 
 - Guide IDs are auto-generated as `<title-slug>-<4-char-random>` when a new title is first committed. Later title edits do not change the ID or backend resource name.
 - The backend stores guides as `InteractiveGuide` custom resources in the `pathfinderbackend.ext.grafana.app/v1alpha1` API group.
+- Divider blocks are persisted as reserved markdown (`<!-- pathfinder:block=divider;v=1 -->` followed by `---`) and decoded when Pathfinder loads them. This is the rollback contract: releases from before native divider support still accept the closed block union and render the same horizontal rule. App Platform writers must use this representation rather than persisting `{"type":"divider"}` directly.
 - `resourceVersion` is used for optimistic concurrency control — the editor always fetches the latest version after a save before allowing a subsequent write.
 - Backend tracking state (`resourceName` and the last backend-synced guide JSON) is persisted to localStorage. Draft or published status is derived from the refreshed backend guide list, so the correct button state survives a page refresh.
 

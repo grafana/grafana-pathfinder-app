@@ -30,7 +30,7 @@ These constraints are absolute and override any other instructions:
 The skill has two modes:
 
 - **Apply mode** (default when invoked directly): the working tree is the PR branch. Apply edits, stage, commit with a clear message, push.
-- **Review mode** (invoked from `/review`): output a single fenced patch block per file with the proposed edits. Do not modify the working tree. `/review` turns that output into one non-blocking suggestion in its rendered report.
+- **Review mode** (invoked from `/review`): emit one canonical observation with the proposed patch evidence. Do not modify the working tree. The shared review policy decides its disposition.
 
 Decide which mode applies based on context: if a `gh pr` command can determine the current branch is a PR branch and the user invoked this skill directly, use apply mode. If the parent is `/review`, use review mode.
 
@@ -107,8 +107,7 @@ If no concern's `trigger_paths` covers the new directory, the subsystem has no r
 
 - **Apply mode**: append a backlog item to `docs/_maintenance-backlog.md` (Phase 5):
   `YYYY-MM-DD: No CONCERNS.md concern covers src/<new-dir>/ — consider adding one or extending the nearest subsystem concern.`
-- **Review mode**: add a note in the "Doc-drift updates recommended" section:
-  `No CONCERNS.md concern covers src/<new-dir>/. Consider adding one or extending the nearest subsystem concern (e.g., <closest-matching-concern-id>).`
+- **Review mode**: include this checked gap in the observation evidence and make the suggested action: `Add src/<new-dir>/ to the nearest concern, <closest-matching-concern-id>.`
 
 To identify the closest matching concern, scan the `trigger_paths` column for the concern whose paths share the most path segments with `src/<new-dir>/`.
 
@@ -150,27 +149,26 @@ If multiple rules target the same file (e.g., several new scripts), batch their 
 
 **Review mode** (invoked from `/review`):
 
-Output a single section the reviewer can paste into the PR comment:
+Do not modify the working tree. Emit one observation using `Canonical observation` from `docs/design/PR_REVIEW.md`:
 
-```
-## Doc-drift updates recommended
+- `finding_id`: a stable `doc-drift-<bucket>` identifier
+- `concern_id`: `documentation-alignment`
+- `kind`: `defect`
+- `severity`: `low`
+- `confidence`: `high` only when the changed contract and stale guidance are both checked
+- `evidence`: changed contract evidence plus one proposed fenced patch per affected file
+- `why_it_matters`: the specific stale instruction a future contributor or agent would follow
+- `suggested_action`: apply the minimal proposed documentation edits
+- `reversibility`: `reversible`
+- `applies_to_files`: affected guidance files
+- `origin`: `regression`
+- `impact`: `none`
+- `timing`: supplied by the parent review
+- `scope_effect`: `widens_changed_surface` unless every affected guidance file is already changed
+- `breaks_shipped_path`: `false`
+- `induced`: whether the drift exists only because optional earlier review advice was implemented
 
-The following changes introduce new <bucket>, which require updates to agent guidance. Apply these diffs to keep the docs in sync:
-
-### AGENTS.md
-\`\`\`diff
-<unified diff>
-\`\`\`
-
-### CLAUDE.md
-\`\`\`diff
-<unified diff>
-\`\`\`
-
-(... per target file ...)
-```
-
-Do not modify the working tree in review mode.
+Do not supply or imply a disposition. The parent runs the observation through `review-policy.mjs`.
 
 ### Phase 5 — Backlog handoff
 
@@ -243,7 +241,7 @@ In each case, report briefly: "No drift detected — exiting cleanly."
 
 ## Integration with `/review`
 
-When `/review` runs, after the routed reviewers have produced their findings, invoke this skill in **review mode** to produce a "Doc-drift updates recommended" section. `/review` converts its concrete action into a non-blocking suggestion rather than pasting the section in verbatim — its report renderer owns the final output — and stays silent when this skill finds no drift. The PR author can then apply the diffs themselves or invoke this skill in apply mode to commit them.
+When `/review` runs, fold this skill into a routed worker or the root and use **review mode**. It emits a canonical no-impact defect and stays silent when no drift exists. `review-policy.mjs` owns disposition and `review-report.mjs` owns publication. The PR author can apply the suggested edits or invoke this skill in apply mode.
 
 ## Examples
 

@@ -3,7 +3,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
 )
@@ -28,6 +28,13 @@ const (
 	// carries full InteractiveGuide specs (blocks included) off the wire — they
 	// are stripped in-process during shaping — so the per-page cap is generous.
 	customGuideListMaxBytes = 8 * 1024 * 1024
+
+	// customGuideDecodeWarnPerDrain bounds the per-spec decode warnings one
+	// catalogue drain may emit. A schema drift affects every stored guide at
+	// once, and the aggregate drain budget is customGuideListMaxTotalEntries, so
+	// an uncapped warning is a log flood rather than a diagnostic; the remainder
+	// is summarised in a single line when the drain reaches its last page.
+	customGuideDecodeWarnPerDrain = 10
 )
 
 // customGuideAggregationToggle is the boot-time toggle the aggregation layer sets
@@ -51,11 +58,146 @@ type customGuideManifest struct {
 	Description string   `json:"description,omitempty"`
 	Milestones  []string `json:"milestones,omitempty"`
 	Category    string   `json:"category,omitempty"`
-	Author      *struct {
-		Name string `json:"name,omitempty"`
-		Team string `json:"team,omitempty"`
-	} `json:"author,omitempty"`
-	Depends []json.RawMessage `json:"depends,omitempty"`
+	// An alias, not a defined type: the wire contract inventory renders this
+	// field as an anonymous struct, and naming it would move its entry.
+	Author  *customGuideManifestAuthor `json:"author,omitempty"`
+	Depends []json.RawMessage          `json:"depends,omitempty"`
+	Stats   *customGuideStats          `json:"stats,omitempty"`
+
+	// decodeDrift collects the per-field decode failures. It is unexported, so
+	// it never reaches the wire; ListPage turns it into one warning naming the
+	// guide id.
+	decodeDrift error
+}
+
+type customGuideManifestAuthor = struct {
+	Name string `json:"name,omitempty"`
+	Team string `json:"team,omitempty"`
+}
+
+// UnmarshalJSON decodes each fallible composite field on its own, through a
+// json.RawMessage, and keeps it only once it has decoded whole. A single shared
+// decode would not do: encoding/json fills a slice or nested struct with
+// whatever it understood before it failed, so a malformed member would launder
+// a broken manifest into valid-looking catalogue data instead of degrading at
+// the field that was actually bad.
+//
+// It reports no error, because encoding/json abandons the REST of the enclosing
+// spec once a custom unmarshaler returns one — the guide would lose its title
+// and status to a drifted manifest field. What failed is recorded in
+// decodeDrift for ListPage to log instead.
+func (m *customGuideManifest) UnmarshalJSON(data []byte) error {
+	var probe struct {
+		Type        string          `json:"type"`
+		Repository  string          `json:"repository"`
+		Description string          `json:"description"`
+		Category    string          `json:"category"`
+		Milestones  json.RawMessage `json:"milestones"`
+		Author      json.RawMessage `json:"author"`
+		Depends     json.RawMessage `json:"depends"`
+		Stats       json.RawMessage `json:"stats"`
+	}
+	var errs []error
+	if err := json.Unmarshal(data, &probe); err != nil {
+		errs = append(errs, err)
+	}
+
+	*m = customGuideManifest{
+		Type:        probe.Type,
+		Repository:  probe.Repository,
+		Description: probe.Description,
+		Category:    probe.Category,
+	}
+	var milestones []string
+	if decodeManifestField(probe.Milestones, &milestones, &errs) {
+		m.Milestones = milestones
+	}
+	var author customGuideManifestAuthor
+	if decodeManifestField(probe.Author, &author, &errs) {
+		m.Author = &author
+	}
+	var depends []json.RawMessage
+	if decodeManifestField(probe.Depends, &depends, &errs) {
+		m.Depends = depends
+	}
+	// A stamp that decodes but carries no usable counts is kept here and dropped
+	// by ListPage, which owns the warning that names the guide id.
+	var stats customGuideStats
+	if decodeManifestField(probe.Stats, &stats, &errs) {
+		m.Stats = &stats
+	}
+	m.decodeDrift = errors.Join(errs...)
+	return nil
+}
+
+// decodeManifestField decodes one composite manifest field and reports whether
+// dst may be kept. A failed decode can leave dst partially populated, so a false
+// return means discard it, not "retry".
+func decodeManifestField(raw json.RawMessage, dst any, errs *[]error) bool {
+	if len(raw) == 0 || string(raw) == "null" {
+		return false
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		*errs = append(*errs, err)
+		return false
+	}
+	return true
+}
+
+// customGuideStats mirrors the stamped `manifest.stats` object — the same five
+// members as GuideStatsSummarySchema in src/types/guide-stats.schema.ts. These
+// counts are the denominator for completion percentages, so they must survive
+// decoding; a manifest with no stats leaves this nil.
+type customGuideStats struct {
+	// Version is the version of the COUNTING RULES that produced the counts
+	// below. It says nothing about whether the guide's content changed.
+	Version                  int `json:"version"`
+	BlockCount               int `json:"blockCount"`
+	SectionCount             int `json:"sectionCount"`
+	CompletableBlockCount    int `json:"completableBlockCount"`
+	FinalCompletablePosition int `json:"finalCompletablePosition"`
+
+	// complete records whether the stored object supplied all five members. It
+	// is unexported, so it never reaches the wire; ListPage drops a stamp that
+	// does not carry it.
+	complete bool
+}
+
+// UnmarshalJSON accepts a stamp only when the stored object supplies every
+// member and none of them is negative — the canonical GuideStatsSummarySchema
+// invariant. Zero is a legitimate count, so a missing member would otherwise be
+// laundered into a plausible denominator, and a negative one is not a
+// denominator at all. Either way the stamp reads as ABSENT, the way
+// `completion-denominator-authority` requires. It reports no error, so an
+// unusable stamp degrades to an absent one instead of aborting the surrounding
+// spec the way a returned error would.
+func (s *customGuideStats) UnmarshalJSON(data []byte) error {
+	var probe struct {
+		Version                  *int `json:"version"`
+		BlockCount               *int `json:"blockCount"`
+		SectionCount             *int `json:"sectionCount"`
+		CompletableBlockCount    *int `json:"completableBlockCount"`
+		FinalCompletablePosition *int `json:"finalCompletablePosition"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil
+	}
+	members := []*int{probe.Version, probe.BlockCount, probe.SectionCount,
+		probe.CompletableBlockCount, probe.FinalCompletablePosition}
+	for _, member := range members {
+		if member == nil || *member < 0 {
+			return nil
+		}
+	}
+	*s = customGuideStats{
+		Version:                  *probe.Version,
+		BlockCount:               *probe.BlockCount,
+		SectionCount:             *probe.SectionCount,
+		CompletableBlockCount:    *probe.CompletableBlockCount,
+		FinalCompletablePosition: *probe.FinalCompletablePosition,
+		complete:                 true,
+	}
+	return nil
 }
 
 // customGuideRepositoryEntry is the slim, block-stripped view of an
@@ -89,6 +231,11 @@ type customGuideLister interface {
 // `items[].spec` into a slim, block-stripped customGuideRepositoryEntry.
 type customGuideHTTPClient struct {
 	inner *appPlatformListClient
+
+	// decodeWarns counts spec-decode warnings across every page of the one drain
+	// this client serves, so the budget bounds the whole catalogue rather than
+	// resetting per page.
+	decodeWarns int
 }
 
 // newCustomGuideHTTPClient builds a lister that calls appURL as the user the
@@ -114,10 +261,31 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 	// Decode each spec directly into the slim entry: spec.blocks has no field
 	// here, so encoding/json drops it — that omission IS the block-stripping.
 	entries := make([]customGuideRepositoryEntry, 0, len(page.Specs))
+	warn := func(msg string, args ...any) {
+		c.decodeWarns++
+		if c.decodeWarns <= customGuideDecodeWarnPerDrain {
+			c.inner.logger.Warn(msg, append([]any{"namespace", namespace}, args...)...)
+		}
+	}
 	for _, raw := range page.Specs {
 		var entry customGuideRepositoryEntry
-		if err := json.Unmarshal(raw, &entry); err != nil {
-			return nil, fmt.Errorf("custom guide repository: decode spec: %w", err)
+		err := json.Unmarshal(raw, &entry)
+		if m := entry.Manifest; m != nil {
+			if m.Stats != nil && !m.Stats.complete {
+				m.Stats = nil
+				warn("custom guide repository: incomplete manifest stats dropped", "id", entry.ID)
+			}
+			if m.decodeDrift != nil {
+				warn("custom guide repository: manifest field did not decode", "id", entry.ID, "error", m.decodeDrift)
+			}
+		}
+		if err != nil {
+			// A spec this hand-written mirror disagrees with must neither fail
+			// the page — that error is not terminal, so the route would answer
+			// 503 forever and hide the whole namespace — nor drop the guide.
+			// encoding/json keeps decoding past a type mismatch, so every field
+			// it did understand is still usable.
+			warn("custom guide repository: spec did not fully decode", "id", entry.ID, "error", err)
 		}
 		if entry.ID == "" {
 			// id is required by the CRD schema; skip anything malformed rather
@@ -125,6 +293,12 @@ func (c *customGuideHTTPClient) ListPage(ctx context.Context, namespace, continu
 			continue
 		}
 		entries = append(entries, entry)
+	}
+	// The last page ends the drain this client was built for, so the suppression
+	// summary lands exactly once and counts every page.
+	if page.Continue == "" && c.decodeWarns > customGuideDecodeWarnPerDrain {
+		c.inner.logger.Warn("custom guide repository: further decode warnings suppressed",
+			"namespace", namespace, "warnings", c.decodeWarns, "logged", customGuideDecodeWarnPerDrain)
 	}
 	return &customGuidePage{Entries: entries, Continue: page.Continue}, nil
 }

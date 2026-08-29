@@ -12,6 +12,7 @@ import { stripAuthorNotes } from '../utils/block-export';
 import { deriveManifest } from '../utils/derive-manifest';
 import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
 import { logger } from '../../../lib/logging';
+import { encodeAppPlatformGuideBlocks } from '../../../types/app-platform-guide-compat';
 
 export type BackendGuideMetadata = {
   name: string;
@@ -89,7 +90,7 @@ export function preservedSpec(
     title: guide.title,
     // Normalised deliberately: the editor writes the schema version it emits, not the stored one.
     schemaVersion: guide.schemaVersion || CURRENT_SCHEMA_VERSION,
-    blocks: guide.blocks,
+    blocks: encodeAppPlatformGuideBlocks(guide.blocks),
     status,
     manifest: deriveManifest(guide, existingSpec?.manifest, existingSpec?.blocks),
   };

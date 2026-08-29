@@ -269,6 +269,8 @@ export function createDefaultBlock(type: BlockType): JsonBlock {
   switch (type) {
     case 'markdown':
       return { type: 'markdown', content: '' };
+    case 'divider':
+      return { type: 'divider' };
     case 'interactive':
       return { type: 'interactive', action: 'highlight', reftarget: '', content: '' };
     case 'image':
@@ -305,6 +307,7 @@ export function createDefaultBlock(type: BlockType): JsonBlock {
 // silently create the wrong block shape (see #1542).
 const BRANCH_INLINE_CREATABLE_TYPES: BlockType[] = [
   'markdown',
+  'divider',
   'interactive',
   'image',
   'video',
