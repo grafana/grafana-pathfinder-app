@@ -1101,6 +1101,10 @@ describe('CombinedLearningJourneyPanel — implied-0th-step alignment', () => {
 });
 
 describe('CombinedLearningJourneyPanel — package resolver config source', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   afterEach(() => {
     delete (window as any).__pathfinderPluginConfig;
   });
