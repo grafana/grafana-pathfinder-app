@@ -452,7 +452,8 @@
               "parser_artifact",
               "provenance",
               "undefined_policy",
-              "evidence_semantics"
+              "evidence_semantics",
+              "value_shape_ambiguity"
             ]
           },
           "summary": { "$ref": "#/$defs/text" },
@@ -869,7 +870,8 @@
               "items": { "$ref": "#/$defs/slugUnderscore" }
             },
             "source_document": { "$ref": "#/$defs/repositoryPath" },
-            "source_element": { "$ref": "#/$defs/text" }
+            "source_element": { "$ref": "#/$defs/text" },
+            "discrepancy_id": { "$ref": "#/$defs/slug" }
           }
         },
         "contract_records": { "type": "array", "items": { "$ref": "#/$defs/contractRecord" } },

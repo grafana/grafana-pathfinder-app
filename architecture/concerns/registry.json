@@ -356,6 +356,44 @@
       "candidate_readings": ["range", "lineage", "supersession", "open series"],
       "resolution": "unresolved",
       "resolve_in": "phase-3"
+    },
+    {
+      "id": "test-path-two-value-shapes",
+      "kind": "value_shape_ambiguity",
+      "summary": "The `test_path` verification kind carries two value shapes that resolve differently. Of its 17 values, 8 are repo-rooted paths that resolve against the worktree, and 9 are bare test basenames that do not resolve without a search: BlockEditor.persistence.test.tsx, useBlockPersistence.test.ts, useBackendSaveFlow.test.ts, useJsonModeHandlers.test.ts, dodge-session.test.ts, FloatingPanel.dodge-session.test.tsx, useHighlightDodge.test.ts, sidebar-handoff-wiring.contract.test.ts, and resolve-safe-target-path.test.ts. All nine name real test files that exist under src/, so the gap is the missing directory prefix rather than a stale reference. Both shapes are faithful to the source cells, which say exactly these basenames, so Phase 1 preserves them verbatim under one kind; a Phase-2 consumer that resolves `test_path` as a repository path must either search by basename or carry a resolution step.",
+      "sources": [
+        {
+          "path": "docs/design/CONCERN_DETAILS.md",
+          "location": "verification cells for block-editor-authoring, floating-panel, and full-screen-sidebar-handoff",
+          "statement": "Names test files by bare basename, while other concerns name them by repo-rooted path."
+        }
+      ],
+      "resolution": "divergence_recorded",
+      "resolve_in": "phase-3"
+    },
+    {
+      "id": "reversibility-values-narrower-than-live-contract",
+      "kind": "provenance",
+      "summary": "The reversibility concern's `output_policy.values` translates footnote 2 verbatim and lists three values. The live review contract permits a fourth, `unknown`, which footnote 2 does not list, so a Phase-2 consumer validating emitted findings against `output_policy.values` alone would reject an `unknown` verdict the current policy scripts accept. Phase 1 preserves footnote 2 rather than widening it, and records the narrowing here.",
+      "sources": [
+        {
+          "path": "docs/design/PR_REVIEW.md",
+          "location": "line 19",
+          "statement": "Declares the reversibility field as reversible | partially_reversible | irreversible_without_cleanup | unknown."
+        },
+        {
+          "path": ".cursor/skills/review/scripts/review-policy.mjs",
+          "location": "line 12",
+          "statement": "Builds REVERSIBILITIES with unknown included; line 17 then treats only partially_reversible and irreversible_without_cleanup as one-way doors."
+        },
+        {
+          "path": ".cursor/skills/review/scripts/contract-evolution-policy.mjs",
+          "location": "line 17",
+          "statement": "Builds REVERSIBILITY with unknown included."
+        }
+      ],
+      "resolution": "divergence_recorded",
+      "resolve_in": "phase-3"
     }
   ],
   "excluded_source_elements": [
@@ -1097,7 +1135,8 @@
         "field": "reversibility",
         "values": ["reversible", "partially_reversible", "irreversible_without_cleanup"],
         "source_document": "docs/design/CONCERN_DETAILS.md",
-        "source_element": "footnote 2"
+        "source_element": "footnote 2",
+        "discrepancy_id": "reversibility-values-narrower-than-live-contract"
       }
     },
     {

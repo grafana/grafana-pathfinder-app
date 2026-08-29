@@ -228,6 +228,9 @@ test('every discrepancy reference resolves to a recorded discrepancy', () => {
     if (concern.dispatch.kind === 'specialist' && concern.dispatch.discrepancy_id) {
       referenced.push(concern.dispatch.discrepancy_id);
     }
+    if (concern.output_policy?.discrepancy_id) {
+      referenced.push(concern.output_policy.discrepancy_id);
+    }
   }
   for (const id of referenced) {
     assert.ok(known.has(id), `unknown discrepancy reference ${id}`);
