@@ -1,0 +1,8 @@
+{
+  "description": "A context budget cannot exceed the eight-file worker packet cap.",
+  "concern_id": "context-engine",
+  "operation": "set",
+  "pointer": "/context_budget/max_context_files",
+  "value": 9,
+  "expect_error_at": "/context_budget/max_context_files"
+}

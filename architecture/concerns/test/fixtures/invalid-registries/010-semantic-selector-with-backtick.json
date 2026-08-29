@@ -1,0 +1,8 @@
+{
+  "description": "A substring selector cannot carry the interior backtick the legacy Markdown parser leaves behind.",
+  "concern_id": "context-engine",
+  "operation": "set",
+  "pointer": "/activation/selectors/semantics/0",
+  "value": { "kind": "substring", "value": "continue` token", "scope": "changed_hunks" },
+  "expect_error_at": "/activation"
+}

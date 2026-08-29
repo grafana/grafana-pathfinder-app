@@ -1,0 +1,8 @@
+{
+  "description": "A subsystem concern is strong; the category and mode cannot disagree.",
+  "concern_id": "context-engine",
+  "operation": "set",
+  "pointer": "/activation/mode",
+  "value": "weak",
+  "expect_error_at": "/activation"
+}

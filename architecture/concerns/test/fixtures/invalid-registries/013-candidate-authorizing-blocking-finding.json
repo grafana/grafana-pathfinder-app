@@ -1,0 +1,8 @@
+{
+  "description": "A pre-contract candidate can never authorize a blocking conformance finding.",
+  "concern_id": "analytics-and-telemetry",
+  "operation": "set",
+  "pointer": "/contract_records/0/authorizes_blocking_conformance_finding",
+  "value": true,
+  "expect_error_at": "/contract_records/0"
+}

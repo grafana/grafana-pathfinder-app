@@ -1,0 +1,8 @@
+{
+  "description": "A concern id must stay in the stable lower-kebab shape that serialized review state depends on.",
+  "concern_id": "context-engine",
+  "operation": "set",
+  "pointer": "/id",
+  "value": "Context_Engine",
+  "expect_error_at": "/id"
+}

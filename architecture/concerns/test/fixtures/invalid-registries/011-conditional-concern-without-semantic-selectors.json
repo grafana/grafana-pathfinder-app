@@ -1,0 +1,8 @@
+{
+  "description": "A conditional concern must declare at least one semantic selector.",
+  "concern_id": "context-engine",
+  "operation": "set",
+  "pointer": "/activation/selectors/semantics",
+  "value": [],
+  "expect_error_at": "/activation"
+}

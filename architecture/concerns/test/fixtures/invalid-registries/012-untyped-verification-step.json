@@ -1,0 +1,8 @@
+{
+  "description": "A verification step must pick one kind; a command and a narrative cannot share a record.",
+  "concern_id": "go-backend",
+  "operation": "set",
+  "pointer": "/guidance/verification/0",
+  "value": { "kind": "command", "command": "npm run lint:go", "text": "and read the diff" },
+  "expect_error_at": "/guidance/verification/0"
+}

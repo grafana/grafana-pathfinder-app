@@ -1,0 +1,8 @@
+{
+  "description": "A selector tagged as a glob must actually be one, so a literal path cannot hide behind the glob kind.",
+  "concern_id": "context-engine",
+  "operation": "set",
+  "pointer": "/activation/selectors/paths/0",
+  "value": { "kind": "glob", "pattern": "src/context-engine/index.ts" },
+  "expect_error_at": "/activation"
+}

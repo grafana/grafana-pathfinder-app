@@ -1,0 +1,8 @@
+{
+  "description": "An unresolved selector must record the competing readings rather than stand alone.",
+  "concern_id": "go-backend",
+  "operation": "set",
+  "pointer": "/activation/selectors/semantics/7",
+  "value": { "kind": "unresolved_selector", "source_text": "`continue` token", "scope": "changed_hunks" },
+  "expect_error_at": "/activation"
+}

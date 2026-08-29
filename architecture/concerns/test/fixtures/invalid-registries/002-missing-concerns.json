@@ -1,0 +1,6 @@
+{
+  "description": "The registry cannot drop its concern records.",
+  "operation": "remove",
+  "pointer": "/concerns",
+  "expect_error_at": ""
+}

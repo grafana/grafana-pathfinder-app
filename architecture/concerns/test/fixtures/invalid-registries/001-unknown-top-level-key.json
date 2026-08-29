@@ -1,0 +1,7 @@
+{
+  "description": "The registry rejects a top-level key the schema does not declare.",
+  "operation": "set",
+  "pointer": "/notes",
+  "value": "a generic bucket for anything that did not fit",
+  "expect_error_at": ""
+}

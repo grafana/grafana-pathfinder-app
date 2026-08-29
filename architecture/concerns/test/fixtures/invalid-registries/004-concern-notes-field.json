@@ -1,0 +1,8 @@
+{
+  "description": "A concern cannot carry a free-form notes field; every narrative kind has a named field.",
+  "concern_id": "context-engine",
+  "operation": "set",
+  "pointer": "/notes",
+  "value": "unstructured prose that belongs in a typed field",
+  "expect_error_at": ""
+}

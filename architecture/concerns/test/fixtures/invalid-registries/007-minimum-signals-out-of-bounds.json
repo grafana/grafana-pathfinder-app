@@ -1,0 +1,8 @@
+{
+  "description": "Minimum signals stays inside the 1 to 8 bounds the extractor already validates.",
+  "concern_id": "context-engine",
+  "operation": "set",
+  "pointer": "/activation/minimum_signals",
+  "value": 0,
+  "expect_error_at": "/activation"
+}

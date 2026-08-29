@@ -1,0 +1,8 @@
+{
+  "description": "A concern that declares related ids must name at least one.",
+  "concern_id": "context-engine",
+  "operation": "set",
+  "pointer": "/related/ids",
+  "value": [],
+  "expect_error_at": "/related"
+}

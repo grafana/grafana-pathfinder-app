@@ -1,0 +1,7 @@
+{
+  "description": "A registry written against a future schema version is rejected rather than read as version 1.",
+  "operation": "set",
+  "pointer": "/schema_version",
+  "value": 2,
+  "expect_error_at": "/schema_version"
+}

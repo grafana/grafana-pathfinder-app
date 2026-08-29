@@ -1,0 +1,864 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pathfinder concern registry",
+  "description": "Describes the shape of architecture/concerns/registry.json. It never restates concern identifiers: the registry owns those.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "registry",
+    "change_classes",
+    "classification_policy",
+    "category_defaults",
+    "signal_policy",
+    "coverage_gap_policy",
+    "rule_sources",
+    "extraction_policy",
+    "contract_policy",
+    "invariant_policy",
+    "candidate_policy",
+    "dispatch_policy",
+    "authoring_policy",
+    "migration_discrepancies",
+    "excluded_source_elements",
+    "concerns"
+  ],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "schema_version": { "type": "integer", "const": 1 },
+    "registry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "purpose", "scope_statement", "source_documents", "lifecycle"],
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "name": { "$ref": "#/$defs/text" },
+        "purpose": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/slug" }
+        },
+        "scope_statement": { "$ref": "#/$defs/text" },
+        "source_documents": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "role"],
+            "properties": {
+              "path": { "$ref": "#/$defs/repositoryPath" },
+              "role": { "$ref": "#/$defs/slugUnderscore" }
+            }
+          }
+        },
+        "lifecycle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "authoritative_sources_until_cutover", "becomes_canonical_in_phase"],
+          "properties": {
+            "status": { "enum": ["phase-1-translation", "canonical"] },
+            "authoritative_sources_until_cutover": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/repositoryPath" }
+            },
+            "becomes_canonical_in_phase": { "type": "integer", "minimum": 1, "maximum": 4 }
+          }
+        }
+      }
+    },
+    "change_classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description"],
+        "properties": {
+          "id": { "$ref": "#/$defs/slug" },
+          "description": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "classification_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classify_before_routing",
+        "multiple_classes_permitted",
+        "uncertain_class",
+        "fail_open_statement",
+        "suppression_prohibited_domains",
+        "suppression_prohibition_statement",
+        "never_suppressed_concerns",
+        "final_cross_cutting_synthesis_always_runs"
+      ],
+      "properties": {
+        "classify_before_routing": { "type": "boolean" },
+        "multiple_classes_permitted": { "type": "boolean" },
+        "uncertain_class": { "$ref": "#/$defs/slug" },
+        "fail_open_statement": { "$ref": "#/$defs/text" },
+        "suppression_prohibited_domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "suppression_prohibition_statement": { "$ref": "#/$defs/text" },
+        "never_suppressed_concerns": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/slug" }
+        },
+        "final_cross_cutting_synthesis_always_runs": { "type": "boolean" }
+      }
+    },
+    "category_defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "categories", "discrepancy_id"],
+      "properties": {
+        "role": { "$ref": "#/$defs/text" },
+        "categories": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "category",
+              "source_abbreviation",
+              "conditional",
+              "mode",
+              "default_minimum_signals",
+              "default_max_context_files"
+            ],
+            "properties": {
+              "category": { "$ref": "#/$defs/category" },
+              "source_abbreviation": { "type": "string", "minLength": 1, "maxLength": 8 },
+              "conditional": { "type": "boolean" },
+              "mode": { "$ref": "#/$defs/mode" },
+              "default_minimum_signals": { "$ref": "#/$defs/signalCount" },
+              "default_max_context_files": { "$ref": "#/$defs/contextFileCount" }
+            }
+          }
+        },
+        "discrepancy_id": { "$ref": "#/$defs/slug" }
+      }
+    },
+    "signal_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statement",
+        "path_match_signal_value",
+        "high_value_semantic_signal_value",
+        "high_value_semantic_definition",
+        "repeated_low_value_hits_per_hunk_signal_value",
+        "semantic_evidence_requirement"
+      ],
+      "properties": {
+        "statement": { "$ref": "#/$defs/text" },
+        "path_match_signal_value": { "type": "integer", "minimum": 0 },
+        "high_value_semantic_signal_value": { "type": "integer", "minimum": 0 },
+        "high_value_semantic_definition": { "$ref": "#/$defs/text" },
+        "repeated_low_value_hits_per_hunk_signal_value": { "type": "integer", "minimum": 0 },
+        "semantic_evidence_requirement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "statement",
+            "applies_to_activation_kinds",
+            "exempt_activation_kinds",
+            "status",
+            "discrepancy_id"
+          ],
+          "properties": {
+            "statement": { "$ref": "#/$defs/text" },
+            "applies_to_activation_kinds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/activationKind" }
+            },
+            "exempt_activation_kinds": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/activationKind" }
+            },
+            "status": { "enum": ["unresolved", "resolved"] },
+            "discrepancy_id": { "$ref": "#/$defs/slug" }
+          }
+        }
+      }
+    },
+    "coverage_gap_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disposition",
+        "is_gate",
+        "actions",
+        "conditions",
+        "suppression_prohibition_statement",
+        "file_universe"
+      ],
+      "properties": {
+        "disposition": { "enum": ["disclose", "gate"] },
+        "is_gate": { "type": "boolean" },
+        "actions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } },
+        "conditions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } },
+        "suppression_prohibition_statement": { "$ref": "#/$defs/text" },
+        "file_universe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "discrepancy_id"],
+          "properties": {
+            "status": { "enum": ["undefined", "defined"] },
+            "discrepancy_id": { "$ref": "#/$defs/slug" }
+          }
+        }
+      }
+    },
+    "rule_sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_ids",
+          "domain",
+          "intent_source",
+          "enforced_syntax_source",
+          "enforced_syntax_scope",
+          "enforced_syntax_statement",
+          "referencing_documents",
+          "referencing_documents_may_redefine",
+          "precedence"
+        ],
+        "properties": {
+          "rule_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[A-Z][0-9]+$" }
+          },
+          "domain": { "$ref": "#/$defs/text" },
+          "intent_source": { "$ref": "#/$defs/repositoryPath" },
+          "enforced_syntax_source": { "$ref": "#/$defs/repositoryPath" },
+          "enforced_syntax_scope": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[A-Z][0-9]+$" }
+          },
+          "enforced_syntax_statement": { "$ref": "#/$defs/text" },
+          "referencing_documents": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/repositoryPath" }
+          },
+          "referencing_documents_may_redefine": { "type": "boolean" },
+          "precedence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["subject", "wins"],
+              "properties": {
+                "subject": { "$ref": "#/$defs/text" },
+                "wins": { "$ref": "#/$defs/repositoryPath" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "extraction_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bounded_loading_statement",
+        "wholesale_load_permitted",
+        "extractor_command",
+        "alignment_validation_command",
+        "packet_fields"
+      ],
+      "properties": {
+        "bounded_loading_statement": { "$ref": "#/$defs/text" },
+        "wholesale_load_permitted": { "type": "boolean" },
+        "extractor_command": { "$ref": "#/$defs/text" },
+        "alignment_validation_command": { "$ref": "#/$defs/text" },
+        "packet_fields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "contract_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "definition",
+        "scan_owner_document",
+        "scan_with_anchor",
+        "scan_without_anchor",
+        "anchors_are_authority",
+        "maximum_established_records_per_concern",
+        "maximum_candidate_records_per_concern",
+        "rules"
+      ],
+      "properties": {
+        "definition": { "$ref": "#/$defs/text" },
+        "scan_owner_document": { "$ref": "#/$defs/repositoryPath" },
+        "scan_with_anchor": { "$ref": "#/$defs/text" },
+        "scan_without_anchor": { "$ref": "#/$defs/text" },
+        "anchors_are_authority": { "type": "boolean" },
+        "maximum_established_records_per_concern": { "type": "integer", "minimum": 1 },
+        "maximum_candidate_records_per_concern": { "type": "integer", "minimum": 1 },
+        "rules": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } }
+      }
+    },
+    "invariant_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["definition", "reading_rule", "ownership_rule", "naming_rule", "names_globally_unique"],
+      "properties": {
+        "definition": { "$ref": "#/$defs/text" },
+        "reading_rule": { "$ref": "#/$defs/text" },
+        "ownership_rule": { "$ref": "#/$defs/text" },
+        "naming_rule": { "$ref": "#/$defs/text" },
+        "names_globally_unique": { "type": "boolean" }
+      }
+    },
+    "candidate_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["definition", "authorizes_blocking_conformance_finding", "promotion_rule", "evolution_packet_flag"],
+      "properties": {
+        "definition": { "$ref": "#/$defs/text" },
+        "authorizes_blocking_conformance_finding": { "type": "boolean", "const": false },
+        "promotion_rule": { "$ref": "#/$defs/text" },
+        "evolution_packet_flag": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "value"],
+          "properties": {
+            "field": { "$ref": "#/$defs/slugUnderscore" },
+            "value": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "dispatch_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default_kind",
+        "security_specialist",
+        "contract_evolution_gate",
+        "source_document",
+        "discrepancy_id"
+      ],
+      "properties": {
+        "default_kind": { "$ref": "#/$defs/dispatchKind" },
+        "security_specialist": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["concern_id", "specialist_skill", "consumes_general_observation_slot", "plan_marker"],
+          "properties": {
+            "concern_id": { "$ref": "#/$defs/slug" },
+            "specialist_skill": { "$ref": "#/$defs/slug" },
+            "consumes_general_observation_slot": { "type": "boolean" },
+            "plan_marker": { "$ref": "#/$defs/text" }
+          }
+        },
+        "contract_evolution_gate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["applies_to_categories", "requires_concrete_path_selectors", "skips_always_on"],
+          "properties": {
+            "applies_to_categories": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/category" }
+            },
+            "requires_concrete_path_selectors": { "type": "boolean" },
+            "skips_always_on": { "type": "boolean" }
+          }
+        },
+        "source_document": { "$ref": "#/$defs/repositoryPath" },
+        "discrepancy_id": { "$ref": "#/$defs/slug" }
+      }
+    },
+    "authoring_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prefer_extending_existing",
+        "add_concern_evidence",
+        "noise_reduction_order",
+        "coverage_gap_response",
+        "stale_selector_rule",
+        "source_documents"
+      ],
+      "properties": {
+        "prefer_extending_existing": { "type": "boolean" },
+        "add_concern_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "noise_reduction_order": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "coverage_gap_response": { "$ref": "#/$defs/text" },
+        "stale_selector_rule": { "$ref": "#/$defs/text" },
+        "source_documents": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/repositoryPath" }
+        }
+      }
+    },
+    "migration_discrepancies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "summary", "sources", "resolution", "resolve_in"],
+        "properties": {
+          "id": { "$ref": "#/$defs/slug" },
+          "kind": {
+            "enum": [
+              "activation_conflict",
+              "selector_ambiguity",
+              "documentation_conflict",
+              "parser_artifact",
+              "provenance",
+              "undefined_policy",
+              "evidence_semantics"
+            ]
+          },
+          "summary": { "$ref": "#/$defs/text" },
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "location", "statement"],
+              "properties": {
+                "path": { "$ref": "#/$defs/repositoryPath" },
+                "location": { "$ref": "#/$defs/text" },
+                "statement": { "$ref": "#/$defs/text" }
+              }
+            }
+          },
+          "candidate_readings": {
+            "type": "array",
+            "minItems": 2,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/text" }
+          },
+          "resolution": {
+            "enum": [
+              "unresolved",
+              "preserved_current_behavior",
+              "divergence_recorded",
+              "imported_from_secondary_source"
+            ]
+          },
+          "resolve_in": { "enum": ["phase-3", "phase-4", "post-cutover-alignment"] }
+        }
+      }
+    },
+    "excluded_source_elements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_document", "element", "reason"],
+        "properties": {
+          "source_document": { "$ref": "#/$defs/repositoryPath" },
+          "element": { "$ref": "#/$defs/text" },
+          "reason": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "concerns": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/concern" }
+    }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+    "slugUnderscore": { "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$" },
+    "text": { "type": "string", "minLength": 1 },
+    "category": { "enum": ["always-on", "subsystem", "cross-cutting"] },
+    "mode": { "enum": ["always", "strong", "weak"] },
+    "activationKind": { "enum": ["always", "signals"] },
+    "dispatchKind": { "enum": ["general", "specialist"] },
+    "signalCount": { "type": "integer", "minimum": 1, "maximum": 8 },
+    "contextFileCount": { "type": "integer", "minimum": 1, "maximum": 8 },
+    "repositoryPath": { "type": "string", "minLength": 1, "pattern": "^[^\\s`]+$" },
+    "globPattern": { "type": "string", "minLength": 1, "pattern": "^[^\\s`]*\\*[^\\s`]*$" },
+    "literalPath": { "type": "string", "minLength": 1, "pattern": "^[^\\s`*]+$" },
+    "pathSelector": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["kind", "pattern"],
+          "properties": {
+            "kind": { "const": "glob" },
+            "pattern": { "$ref": "#/$defs/globPattern" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": { "const": "literal_path" },
+            "path": { "$ref": "#/$defs/literalPath" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "source_text"],
+          "properties": {
+            "kind": { "const": "all_changed_files" },
+            "source_text": { "$ref": "#/$defs/text" }
+          }
+        }
+      ]
+    },
+    "semanticSelector": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["kind", "value", "scope"],
+          "properties": {
+            "kind": { "const": "substring" },
+            "value": { "type": "string", "minLength": 1, "pattern": "^[^`]+$" },
+            "scope": { "const": "changed_hunks" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "source_text", "scope", "candidate_values", "discrepancy_id"],
+          "properties": {
+            "kind": { "const": "unresolved_selector" },
+            "source_text": { "$ref": "#/$defs/text" },
+            "scope": { "const": "changed_hunks" },
+            "candidate_values": {
+              "type": "array",
+              "minItems": 2,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/text" }
+            },
+            "discrepancy_id": { "$ref": "#/$defs/slug" }
+          }
+        }
+      ]
+    },
+    "documentSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": { "const": "document" },
+        "path": { "$ref": "#/$defs/repositoryPath" },
+        "locator": { "$ref": "#/$defs/text" }
+      }
+    },
+    "codeSource": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["kind", "pattern"],
+          "properties": {
+            "kind": { "const": "code_glob" },
+            "pattern": { "$ref": "#/$defs/globPattern" },
+            "locator": { "$ref": "#/$defs/text" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": { "const": "literal_code_path" },
+            "path": { "$ref": "#/$defs/literalPath" },
+            "locator": { "$ref": "#/$defs/text" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "instruction"],
+          "properties": {
+            "kind": { "const": "scope_instruction" },
+            "instruction": { "$ref": "#/$defs/text" }
+          }
+        }
+      ]
+    },
+    "verificationStep": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["kind", "command"],
+          "properties": {
+            "kind": { "const": "command" },
+            "command": { "$ref": "#/$defs/text" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "path"],
+          "properties": {
+            "kind": { "const": "test_path" },
+            "path": { "$ref": "#/$defs/repositoryPath" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": { "enum": ["manual", "test_guidance", "reasoning"] },
+            "text": { "$ref": "#/$defs/text" }
+          }
+        }
+      ]
+    },
+    "relatedConcerns": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["kind", "ids"],
+          "properties": {
+            "kind": { "const": "ids" },
+            "ids": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/slug" }
+            }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "all_other_concerns" } }
+        }
+      ]
+    },
+    "dispatch": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "general" } }
+        },
+        {
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "specialist_skill",
+            "consumes_general_observation_slot",
+            "trigger_conditions",
+            "source_document"
+          ],
+          "properties": {
+            "kind": { "const": "specialist" },
+            "specialist_skill": { "$ref": "#/$defs/slug" },
+            "consumes_general_observation_slot": { "type": "boolean" },
+            "trigger_conditions": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/text" }
+            },
+            "source_document": { "$ref": "#/$defs/repositoryPath" },
+            "discrepancy_id": { "$ref": "#/$defs/slug" }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display_text", "referenced_pull_requests", "relation"],
+      "properties": {
+        "display_text": { "$ref": "#/$defs/text" },
+        "referenced_pull_requests": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "relation": { "enum": ["unreviewed", "range", "lineage", "supersession", "open_series"] }
+      }
+    },
+    "contractRecord": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["kind", "evidence", "statements"],
+          "properties": {
+            "kind": { "const": "established" },
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "statements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "evidence", "proposed_owner", "authorizes_blocking_conformance_finding"],
+          "properties": {
+            "kind": { "const": "candidate" },
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "proposed_owner": { "$ref": "#/$defs/text" },
+            "authorizes_blocking_conformance_finding": { "type": "boolean", "const": false }
+          }
+        }
+      ]
+    },
+    "namedInvariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "invariant"],
+      "properties": {
+        "name": { "$ref": "#/$defs/slug" },
+        "invariant": { "$ref": "#/$defs/text" }
+      }
+    },
+    "selectorSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths", "semantics"],
+      "properties": {
+        "paths": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/pathSelector" } },
+        "semantics": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/semanticSelector" } }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["kind", "category", "mode", "minimum_signals", "rationale", "context_selectors"],
+          "properties": {
+            "kind": { "const": "always" },
+            "category": { "const": "always-on" },
+            "mode": { "const": "always" },
+            "minimum_signals": { "$ref": "#/$defs/signalCount" },
+            "rationale": { "$ref": "#/$defs/text" },
+            "context_selectors": { "$ref": "#/$defs/selectorSet" }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["kind", "category", "mode", "minimum_signals", "rationale", "selectors"],
+          "properties": {
+            "kind": { "const": "signals" },
+            "category": { "enum": ["subsystem", "cross-cutting"] },
+            "mode": { "enum": ["strong", "weak"] },
+            "minimum_signals": { "$ref": "#/$defs/signalCount" },
+            "rationale": { "$ref": "#/$defs/text" },
+            "selectors": { "$ref": "#/$defs/selectorSet" }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "category": { "const": "subsystem" } }, "required": ["category"] },
+              "then": { "properties": { "mode": { "const": "strong" } } }
+            },
+            {
+              "if": { "properties": { "category": { "const": "cross-cutting" } }, "required": ["category"] },
+              "then": { "properties": { "mode": { "const": "weak" } } }
+            }
+          ]
+        }
+      ]
+    },
+    "concern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "activation",
+        "context_budget",
+        "guidance",
+        "related",
+        "dispatch",
+        "contract_records",
+        "named_invariants"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "name": { "$ref": "#/$defs/text" },
+        "activation": { "$ref": "#/$defs/activation" },
+        "context_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_context_files"],
+          "properties": { "max_context_files": { "$ref": "#/$defs/contextFileCount" } }
+        },
+        "guidance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["purpose", "load_documents", "load_code", "review_questions", "one_way_doors", "verification"],
+          "properties": {
+            "purpose": { "$ref": "#/$defs/text" },
+            "load_documents": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/documentSource" } },
+            "load_code": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/codeSource" } },
+            "review_questions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } },
+            "one_way_doors": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } },
+            "verification": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/verificationStep" } }
+          }
+        },
+        "related": { "$ref": "#/$defs/relatedConcerns" },
+        "dispatch": { "$ref": "#/$defs/dispatch" },
+        "output_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "field", "values", "source_document", "source_element"],
+          "properties": {
+            "kind": { "const": "finding_classification" },
+            "field": { "$ref": "#/$defs/slugUnderscore" },
+            "values": {
+              "type": "array",
+              "minItems": 2,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/slugUnderscore" }
+            },
+            "source_document": { "$ref": "#/$defs/repositoryPath" },
+            "source_element": { "$ref": "#/$defs/text" }
+          }
+        },
+        "contract_records": { "type": "array", "items": { "$ref": "#/$defs/contractRecord" } },
+        "named_invariants": { "type": "array", "items": { "$ref": "#/$defs/namedInvariant" } }
+      }
+    }
+  }
+}
