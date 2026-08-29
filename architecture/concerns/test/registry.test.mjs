@@ -45,6 +45,14 @@ const STABLE_CONCERN_IDS = [
   'performance-and-bundle',
 ];
 
+// The legacy validator hard-codes these bounds, so raising one in the registry
+// must fail here rather than silently retire a rule the Markdown registry keeps.
+const PINNED_CONTRACT_LIMITS = {
+  maximum_established_records_per_concern: 1,
+  maximum_candidate_records_per_concern: 1,
+};
+const PINNED_INVARIANT_NAMES_GLOBALLY_UNIQUE = true;
+
 function compile() {
   const ajv = new Ajv2020({ strict: true, allErrors: true });
   return ajv.compile(schema);
@@ -113,7 +121,7 @@ test('every malformed fixture is rejected for the reason it names', () => {
     assert.equal(validate(instance), false, `${fixture} should not validate: ${spec.description}`);
     const paths = validate.errors.map((error) => error.instancePath);
     assert.ok(
-      paths.some((path) => path === expected || path.startsWith(`${expected}/`)),
+      paths.some((path) => path === expected || (expected !== '' && path.startsWith(`${expected}/`))),
       `${fixture} failed, but not at ${expected || '<root>'}; errors at ${JSON.stringify(paths)}`
     );
   }
@@ -163,14 +171,16 @@ test('policy concern references resolve, and always-run concerns activate always
 test('named invariant names are globally unique and belong to their concern', () => {
   const names = registry.concerns.flatMap((concern) => concern.named_invariants.map((invariant) => invariant.name));
   assert.deepEqual(duplicates(names), []);
-  assert.equal(registry.invariant_policy.names_globally_unique, true);
+  assert.equal(registry.invariant_policy.names_globally_unique, PINNED_INVARIANT_NAMES_GLOBALLY_UNIQUE);
 });
 
 test('contract records stay within the per-concern limits', () => {
   const {
     maximum_established_records_per_concern: maxEstablished,
     maximum_candidate_records_per_concern: maxCandidate,
-  } = registry.contract_policy;
+  } = PINNED_CONTRACT_LIMITS;
+  assert.equal(registry.contract_policy.maximum_established_records_per_concern, maxEstablished);
+  assert.equal(registry.contract_policy.maximum_candidate_records_per_concern, maxCandidate);
   for (const concern of registry.concerns) {
     const established = concern.contract_records.filter((record) => record.kind === 'established').length;
     const candidates = concern.contract_records.filter((record) => record.kind === 'candidate').length;
@@ -236,8 +246,24 @@ test('activation mode and category agree with the declared category defaults', (
       categoryDefault.conditional ? 'signals' : 'always',
       `${concern.id} activation kind disagrees with its category`
     );
+    assert.equal(
+      concern.activation.rationale,
+      expectedRationale(concern, categoryDefault),
+      `${concern.id} rationale states a threshold its numbers do not`
+    );
   }
 });
+
+function expectedRationale(concern, categoryDefault) {
+  const { category, minimum_signals: minimum } = concern.activation;
+  const declared = categoryDefault.default_minimum_signals;
+  if (!categoryDefault.conditional) {
+    return `Always-on: runs on every review, so its selectors choose context rather than decide whether ${concern.id} activates.`;
+  }
+  return minimum === declared
+    ? `Conditional ${category} concern at the category default of ${declared} minimum signals.`
+    : `Conditional ${category} concern overriding the category default of ${declared} minimum signals with ${minimum}.`;
+}
 
 test('change class references resolve', () => {
   const classes = new Set(registry.change_classes.map((entry) => entry.id));

@@ -758,7 +758,7 @@
       "required": ["paths", "semantics"],
       "properties": {
         "paths": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/pathSelector" } },
-        "semantics": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/semanticSelector" } }
+        "semantics": { "type": "array", "items": { "$ref": "#/$defs/semanticSelector" } }
       }
     },
     "activation": {
@@ -785,7 +785,13 @@
             "mode": { "enum": ["strong", "weak"] },
             "minimum_signals": { "$ref": "#/$defs/signalCount" },
             "rationale": { "$ref": "#/$defs/text" },
-            "selectors": { "$ref": "#/$defs/selectorSet" }
+            "selectors": {
+              "type": "object",
+              "allOf": [
+                { "$ref": "#/$defs/selectorSet" },
+                { "type": "object", "properties": { "semantics": { "type": "array", "minItems": 1 } } }
+              ]
+            }
           },
           "allOf": [
             {

@@ -311,8 +311,8 @@
         },
         {
           "path": "docs/design/CONCERN_DETAILS.md",
-          "location": "one_way_doors, verification, load_docs, and load_code cells",
-          "statement": "Seventeen narrative entries plus one annotated document path and one annotated code path are affected."
+          "location": "one_way_doors, verification, and load_code cells",
+          "statement": "Fifteen narrative entries and one annotated code path are mangled. One annotated document path is split into a path plus a locator without being mangled, so seventeen entries are affected in total."
         }
       ],
       "resolution": "divergence_recorded",
@@ -325,7 +325,7 @@
       "sources": [
         {
           "path": ".cursor/skills/review/SKILL.md",
-          "location": "lines 30 and 43",
+          "location": "lines 30, 43, and 86",
           "statement": "Marks a dedicated security entry with a security specialist, and gates the contract-evolution specialist to activated subsystem and cross-cutting concerns with concrete routing paths."
         }
       ],
