@@ -28,7 +28,8 @@ npm run test:ci
 # and disposition policy, adversarial-verification policy, and report renderer
 npm run test:review-contract
 
-# Validate the concern registry library and CLI under architecture/concerns/
+# Validate the concern registry library and CLI under architecture/concerns/, plus
+# their parity with the Markdown registries and review scripts they will replace
 npm run test:concerns
 
 # Run tests in watch mode (for local development)
@@ -197,6 +198,16 @@ typed record of the concerns PR review routes against.
 `docs/design/CONCERNS.md` and `docs/design/CONCERN_DETAILS.md` stay the authoritative
 registries until the cutover the registry's own `lifecycle` block records, so this tool
 queries that translation rather than driving review today.
+
+Because it is a translation, `npm run test:concerns` pins both Markdown registries line
+by line — every table cell, policy paragraph and footnote, compared by trimmed content
+so reformatting is free but any content change is not. Editing either file fails the
+suite until the registry is reconciled with it and the pin moved in the same change.
+The same suite also compares the CLI against the review skill's concern extractor and
+contract-evolution gate; every packet field where the CLI and the extractor still
+disagree is enumerated in
+`architecture/concerns/test/fixtures/parity/known-divergences.json`, which the suite
+holds exhaustive in both directions.
 
 ```bash
 # Every command, the registry path, the activation semantics, and the exit codes
