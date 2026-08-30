@@ -235,9 +235,10 @@ export default defineConfig([
   // `@grafana/eslint-config` does not extend eslint:recommended, so none of
   // these ship by default. TypeScript's `noUnusedLocals` reports unused
   // bindings inside a dead branch but never the dead branch itself, and a
-  // `@ts-expect-error` silences it entirely — so nothing in the toolchain
-  // catches unreachable code today. The first four had zero violations at
-  // introduction; no-useless-return had five, all autofixed in the same PR.
+  // `@ts-expect-error` silences it entirely — so nothing else in the toolchain
+  // catches unreachable code. All five are at zero violations repo-wide, and
+  // `src/validation/dead-code-lint-config.test.ts` fails if a later config
+  // block downgrades or shadows them.
   // ---------------------------------------------------------------------------
   {
     rules: {
