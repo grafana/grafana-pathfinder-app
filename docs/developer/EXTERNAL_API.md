@@ -308,9 +308,25 @@ The wire format is the standard Kubernetes envelope:
 | `spec.blocks`              | yes      | Array of content blocks. The full schema is owned by the CUE definition in [grafana-pathfinder-backend/kinds/interactiveguide.cue](https://github.com/grafana/grafana-pathfinder-backend/blob/main/kinds/interactiveguide.cue) — that file is the source of truth. |
 | `spec.manifest`            | no       | Package metadata: grouping, sequencing, dependencies. Absent for content-only guides. See [Manifest](#manifest).                                                                                                                                                   |
 
-The CRD schema **is the validator**. Submit unknown fields and you'll
-get a `422 Unprocessable Entity` with a K8s `Status` envelope explaining
-which field is wrong.
+The CRD schema **is the validator**, and it treats two kinds of mistake
+very differently:
+
+- A **declared** field with a bad value is rejected with a `422` and a
+  K8s `Status` envelope naming the offending field. A `manifest` without
+  `type`, a `manifest.type` outside `guide`/`path`/`journey`, and a
+  `manifest.depends` entry that is a bare string instead of a clause
+  array all fail this way.
+- An **undeclared** field is **silently pruned**, not rejected. The write
+  returns `200`/`201`, and the key is gone on the next GET. The only
+  signal is a `Warning:` response header, which `getBackendSrv()` does not
+  surface to callers. This holds at the top level of `spec` and inside
+  `spec.manifest` alike, and it is the same pruning described for blocks
+  in [Block fields the CRD doesn't declare](#block-fields-the-crd-doesnt-declare).
+
+So a successful write is not evidence that everything you sent was
+persisted. For manifest keys `#Manifest` doesn't declare,
+`additionalFields` is the only durable home — not a stylistic
+preference, but the difference between keeping the value and losing it.
 
 ### Manifest
 
@@ -532,14 +548,14 @@ The aggregator returns standard Kubernetes `Status` envelopes:
 
 Common cases:
 
-| HTTP | Reason        | When                                                                         |
-| ---- | ------------- | ---------------------------------------------------------------------------- |
-| 401  | -             | Missing or invalid Bearer token.                                             |
-| 403  | -             | Token's role is too low for the operation (need Editor for writes).          |
-| 404  | NotFound      | The named guide doesn't exist (or, on listing, the namespace doesn't exist). |
-| 409  | AlreadyExists | POST against a name that already exists. Use PUT to update.                  |
-| 409  | Conflict      | Stale `resourceVersion` on PUT. Re-GET and retry.                            |
-| 422  | Invalid       | Spec failed CRD validation — message names the offending field.              |
+| HTTP | Reason        | When                                                                                                                                         |
+| ---- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| 401  | -             | Missing or invalid Bearer token.                                                                                                             |
+| 403  | -             | Token's role is too low for the operation (need Editor for writes).                                                                          |
+| 404  | NotFound      | The named guide doesn't exist (or, on listing, the namespace doesn't exist).                                                                 |
+| 409  | AlreadyExists | POST against a name that already exists. Use PUT to update.                                                                                  |
+| 409  | Conflict      | Stale `resourceVersion` on PUT. Re-GET and retry.                                                                                            |
+| 422  | Invalid       | A **declared** field failed CRD validation — message names the offending field. Undeclared fields are pruned instead, on a successful write. |
 
 ## Choosing this vs. the editor
 
