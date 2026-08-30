@@ -37,6 +37,7 @@ COPY src/cli ./src/cli
 # here is brittle because schema files transitively import siblings.
 COPY src/types ./src/types
 COPY src/validation ./src/validation
+COPY src/lib/assert-exhaustive.ts ./src/lib/assert-exhaustive.ts
 # src/lib/guide-stats is the canonical block-count computation the
 # build-stats command calls.
 COPY src/lib/guide-stats ./src/lib/guide-stats
