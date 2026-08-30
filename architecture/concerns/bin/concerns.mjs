@@ -368,17 +368,16 @@ function coverageText(payload) {
   ].join('\n');
 }
 
-function requireRegistry() {
-  const loaded = loadRegistry();
-  const result = validateRegistry(loaded);
-  if (!result.valid) {
-    throw runtimeError(
-      `${relative(REPOSITORY_ROOT, loaded.registryPath)} does not satisfy its schema; run "concerns validate" for the details.`
-    );
-  }
-  return loaded;
-}
-
+// Read commands (list/show/match/route/coverage) load the registry without
+// re-validating it. Schema and semantic conformance is a build-time property,
+// checked once by `concerns validate` (run in CI on every registry change),
+// not a per-invocation cost every reader should pay again. Re-validating here
+// bought no reader any safety CI had not already given them, and it was most
+// of this CLI's wall-clock cost: it pulls in the JSON-Schema validator and
+// re-runs the full schema-plus-semantic pass on every call, even a single
+// `show`. A malformed (unreadable or unparseable) registry.json still fails
+// loudly via `loadRegistry`; only the "well-formed but non-conformant" case
+// stops being caught outside `validate` itself.
 function semanticText(values) {
   if (values['text-file'] !== undefined && values.stdin) {
     throw usageError('Give either --text-file or --stdin, not both.');
@@ -395,7 +394,7 @@ function runList(argv) {
     return { text: commandHelp('list'), code: EXIT_OK };
   }
   const format = resolveFormat(values);
-  const { registry } = requireRegistry();
+  const { registry } = loadRegistry();
   const payload = envelope('list', listConcerns({ registry }));
   return { text: emit(format, payload, listText(payload)), code: EXIT_OK };
 }
@@ -413,7 +412,7 @@ function runShow(argv) {
   if (selected.length > 1) {
     throw usageError('Give at most one of --worker, --plan, or --view.');
   }
-  const { registry } = requireRegistry();
+  const { registry } = loadRegistry();
   const payload = envelope('show', showConcern({ registry, id: positionals[0], view: selected[0] ?? 'full' }));
   return { text: emit(format, payload, showText(payload)), code: EXIT_OK };
 }
@@ -431,7 +430,7 @@ function runMatch(argv) {
       `Give at least one --path, or supply diff text with --text-file or --stdin.\n\n${commandHelp('match')}`
     );
   }
-  const { registry } = requireRegistry();
+  const { registry } = loadRegistry();
   const payload = envelope('match', matchConcerns({ registry, input: analyzeInput({ paths, text }) }));
   return { text: emit(format, payload, matchText(payload)), code: EXIT_OK };
 }
@@ -468,7 +467,7 @@ function runRoute(argv) {
     request = { ...normalized, changeClass: values.class ?? normalized.changeClass };
   }
 
-  const { registry } = requireRegistry();
+  const { registry } = loadRegistry();
   const input = analyzeInput({ paths: request.paths, text: request.text });
   const payload = envelope('route', routeConcerns({ registry, input, changeClass: request.changeClass }));
   return { text: emit(format, payload, routeText(payload)), code: EXIT_OK };
@@ -524,7 +523,7 @@ function runCoverage(argv) {
   } else {
     paths = values.path;
   }
-  const { registry } = requireRegistry();
+  const { registry } = loadRegistry();
   const payload = { ...envelope('coverage', computeCoverage({ registry, paths })), source: sources[0] };
   return { text: emit(format, payload, coverageText(payload)), code: EXIT_OK };
 }

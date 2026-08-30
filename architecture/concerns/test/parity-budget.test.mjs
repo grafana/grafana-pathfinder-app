@@ -95,13 +95,17 @@ test('every concern declares the file budget the routing packet reports', () => 
   }
 });
 
-// Wall clock is where the new path is not the cheaper one. The CLI loads a
-// larger module graph than the Markdown extractor — a JSON-Schema validator
-// among it, even for read-only commands — and measures roughly three times the
-// per-packet cost. Both sides are therefore measured in the same process and
-// compared as a ratio, so shared machine load cancels; the bound is an
-// order-of-magnitude guard, not a race the CLI is expected to win.
-const PACKET_COST_RATIO = 12;
+// Wall clock is where the new path was not the cheaper one: `show` used to
+// re-validate the whole registry against its schema on every call, even a
+// read-only one, which measured roughly three times the per-packet cost of
+// the Markdown extractor. Read commands no longer do that (validation is a
+// build-time property `concerns validate` checks once, not a per-invocation
+// cost — see the comment above the read commands in bin/concerns.mjs), which
+// cut the measured ratio to roughly 1.4x. Both sides are still measured in
+// the same process and compared as a ratio, so shared machine load cancels;
+// the bound below is a regression guard with real margin above that figure,
+// not a race the CLI is expected to win outright.
+const PACKET_COST_RATIO = 4;
 
 test('per-packet cost stays within an order of magnitude of the Markdown extractor', () => {
   const ids = registry.concerns.map((concern) => concern.id);
