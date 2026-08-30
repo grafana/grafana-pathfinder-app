@@ -203,7 +203,7 @@ test('no Go import or embed directive in the backend reaches the subproject', ()
   }
   assert.ok(internal.length > 0, 'no in-module Go import was resolved, so the check would pass vacuously');
   for (const { path, edge } of [...internal, ...embedded]) {
-    assert.ok(edge.startsWith('pkg/'), `${path} reaches outside the backend tree: ${edge}`);
+    assert.ok(!edge.startsWith('architecture/'), `${path} reaches into the concern subproject: ${edge}`);
   }
 });
 
@@ -316,8 +316,16 @@ test('the subproject is a plain-Node root with no manifest, lockfile, or build o
   }
 });
 
-test('the root scripts expose the subproject without touching the shipped CLI', () => {
-  assert.equal(packageJson.scripts.concerns, `node ${SUBPROJECT}/bin/concerns.mjs`);
-  assert.equal(packageJson.scripts['concerns:validate'], 'npm run concerns -- validate');
-  assert.equal(packageJson.scripts['test:concerns'], `node --test ${SUBPROJECT}/test/*.test.mjs`);
+// Driven through npm rather than asserted as literals, so a behaviour-preserving
+// rewrite of the command keeps passing and a broken one does not.
+test('the root npm scripts reach the concerns CLI', () => {
+  const npm = (args) => spawnSync('npm', ['run', '--silent', ...args], { cwd: REPOSITORY_ROOT, encoding: 'utf8' });
+
+  const version = npm(['concerns', '--', '--version']);
+  assert.equal(version.status, 0, version.stderr);
+  assert.match(version.stdout, /^registry format version \d+$/m);
+
+  const validate = npm(['concerns:validate']);
+  assert.equal(validate.status, 0, validate.stderr);
+  assert.match(validate.stdout, new RegExp(`^${SUBPROJECT}/registry\\.json: valid `, 'm'));
 });

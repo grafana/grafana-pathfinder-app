@@ -307,6 +307,41 @@ test('route ignores repository diff configuration that would reshape every path'
   }
 });
 
+// `--name-only -z` reports a non-ASCII path raw while the diff header quotes and
+// octal-escapes it. If the two disagree, one changed file is counted twice.
+test('route over a real non-ASCII path counts it once', () => {
+  const repository = mkdtempSync(join(tmpdir(), 'concerns-quoted-'));
+  const git = (args) => execFileSync('git', args, { cwd: repository, encoding: 'utf8' });
+  const file = 'src/context-engine/caf\u00e9.ts';
+  try {
+    git(['init', '--quiet', '--initial-branch', 'main']);
+    git(['config', 'user.email', 'test@example.invalid']);
+    git(['config', 'user.name', 'Concerns Test']);
+    git(['config', 'commit.gpgsign', 'false']);
+    mkdirSync(join(repository, 'src/context-engine'), { recursive: true });
+    writeFileSync(join(repository, file), 'export const seed = 1;\n');
+    git(['add', '--all']);
+    git(['commit', '--quiet', '--no-gpg-sign', '-m', 'seed']);
+    const base = git(['rev-parse', 'HEAD']).trim();
+
+    writeFileSync(join(repository, file), 'export const seed = 1;\nawait fetchRecommendations();\n');
+    git(['add', '--all']);
+    git(['commit', '--quiet', '--no-gpg-sign', '-m', 'change']);
+    const head = git(['rev-parse', 'HEAD']).trim();
+
+    const { code, payload, stderr } = cliJson(['route', '--base', base, '--head', head], { cwd: repository });
+    assert.equal(code, 0, stderr);
+    assert.deepEqual(payload.input.paths.accepted, 1);
+    assert.deepEqual(payload.input.paths.derived_from_diff, 1);
+    const entry = payload.activated.find((item) => item.id === 'context-engine');
+    assert.ok(entry, 'the accented subsystem file must still reach its concern');
+    assert.equal(entry.signals.path, 1);
+    assert.ok(!payload.coverage_gaps.some((gap) => gap.kind === 'unowned_directory_cluster'));
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
+});
+
 // A repository whose filenames contain shell metacharacters. If any of them ever
 // reached a shell, this test would corrupt the scratch directory rather than pass.
 test('route over real commits handles hostile filenames without a shell', () => {

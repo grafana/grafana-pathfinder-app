@@ -1,14 +1,60 @@
+import { Buffer } from 'node:buffer';
 import { normalizeRepositoryPath } from './selectors.mjs';
 
 const DIFF_GIT = /^diff --git /;
 const HUNK_HEADER = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 
+const C_ESCAPES = new Map([
+  ['\\', 0x5c],
+  ['"', 0x22],
+  ['a', 0x07],
+  ['b', 0x08],
+  ['f', 0x0c],
+  ['n', 0x0a],
+  ['r', 0x0d],
+  ['t', 0x09],
+  ['v', 0x0b],
+]);
+
+// With core.quotePath on — the default — git wraps a header path in quotes and
+// writes every non-ASCII byte as an octal escape. Decoding it back to bytes and
+// then to UTF-8 is what makes a derived path equal the same file's path from
+// `--name-only -z`, which is never quoted.
+function decodeCStyle(value) {
+  const bytes = [];
+  let index = 0;
+  while (index < value.length) {
+    const escape = value.indexOf('\\', index);
+    if (escape === -1) {
+      bytes.push(...Buffer.from(value.slice(index), 'utf8'));
+      break;
+    }
+    bytes.push(...Buffer.from(value.slice(index, escape), 'utf8'));
+    const octal = /^[0-7]{1,3}/.exec(value.slice(escape + 1, escape + 4));
+    if (octal !== null) {
+      bytes.push(parseInt(octal[0], 8) & 0xff);
+      index = escape + 1 + octal[0].length;
+      continue;
+    }
+    const simple = C_ESCAPES.get(value[escape + 1]);
+    if (simple !== undefined) {
+      bytes.push(simple);
+      index = escape + 2;
+      continue;
+    }
+    bytes.push(0x5c);
+    index = escape + 1;
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
 function stripPrefix(value) {
   if (value === '/dev/null') {
     return null;
   }
-  const withoutQuotes = value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value;
-  return withoutQuotes.replace(/^[ab]\//, '');
+  const quoted = value.length > 1 && value.startsWith('"') && value.endsWith('"');
+  const unquoted = quoted ? decodeCStyle(value.slice(1, -1)) : value;
+  return unquoted.replace(/^[ab]\//, '');
 }
 
 function declaredCount(value) {

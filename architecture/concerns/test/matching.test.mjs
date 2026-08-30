@@ -119,6 +119,45 @@ test('a deletion diff attributes its hunk to the file the old side names', () =>
   assert.ok(!parsed.disclosures.some((entry) => entry.kind === 'hunk_without_file_header'));
 });
 
+// The byte contract of `core.quotePath`: git wraps the header path in quotes and
+// writes every non-ASCII byte as an octal escape, while the sibling
+// `--name-only -z` call reports the same file unquoted.
+const ACCENTED_PATH = 'src/context-engine/caf\u00e9.ts';
+const ACCENTED_DIFF = [
+  'diff --git "a/src/context-engine/caf\\303\\251.ts" "b/src/context-engine/caf\\303\\251.ts"',
+  '--- "a/src/context-engine/caf\\303\\251.ts"',
+  '+++ "b/src/context-engine/caf\\303\\251.ts"',
+  '@@ -1,1 +1,1 @@',
+  '-const a = 1;',
+  '+await fetchRecommendations();',
+].join('\n');
+
+test('a quoted header path decodes back to the path its unquoted twin reports', () => {
+  const analysis = analyzeSemanticInput(ACCENTED_DIFF);
+  assert.deepEqual(analysis.derived_paths, [ACCENTED_PATH]);
+  assert.deepEqual(
+    analysis.hunks.map((hunk) => hunk.path),
+    [ACCENTED_PATH]
+  );
+  assert.deepEqual(analysis.disclosures, []);
+});
+
+test('a quoted diff path and its unquoted twin count as one changed path', () => {
+  const merged = analyzeInput({ paths: [ACCENTED_PATH], text: ACCENTED_DIFF });
+  assert.deepEqual(merged.paths, [ACCENTED_PATH]);
+  assert.equal(merged.explicit_path_count, 1);
+  assert.equal(merged.derived_path_count, 1);
+});
+
+test('quoted control and metacharacter escapes decode to their own bytes', () => {
+  const parsed = parseUnifiedDiff(
+    ['diff --git "a/src/we\\tird\\\\name\\".ts" "b/src/we\\tird\\\\name\\".ts"', 'index 1111111..2222222 100644'].join(
+      '\n'
+    )
+  );
+  assert.deepEqual(parsed.paths, ['src/we\tird\\name".ts']);
+});
+
 // A rename and a binary change are the two entries git emits with no `---`/`+++`
 // pair at all, so the `diff --git` header is the only place their path appears.
 test('a rename contributes its post-change path alongside the files that carry hunks', () => {
