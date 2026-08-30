@@ -254,23 +254,16 @@
         "Paths or semantic selectors activate independently, as the PR-summary skill states."
       ],
       "resolution": "unresolved",
-      "resolve_in": "phase-3",
+      "resolve_in": "post-cutover-alignment",
       "disposition": {
-        "status": "escalated",
+        "status": "ratified_exception",
         "decided_in": "phase-3",
-        "rationale": "Choosing among the three readings changes which concerns activate in real reviews at cutover, which is an architecture decision rather than a mechanical translation fix. The CLI applies the prose rule today, withholds every path-only candidate, and discloses the conflict on every route, so nothing is silently normalised while the decision is open.",
+        "rationale": "Held open deliberately. The approved evolution plan reserves changes to what actually activates for the post-cutover alignment phase, so no phase through Phase 4 may settle this by changing routing, and the two readings that would resolve it both do exactly that. Phase 3 therefore preserves current behaviour: the CLI applies the prose rule from CONCERNS.md line 30, withholds every concern that reached its threshold on paths alone, and discloses this discrepancy with the withheld ids on every route. The conflict between line 30, the numeric minimum_signals convention, and the pr-summary skill's path-or-keyword description stays visible rather than normalised.",
         "evidence": [
-          "architecture/concerns/test/parity-routing.test.mjs: paths without semantic evidence are withheld rather than activated"
+          "architecture/concerns/test/parity-routing.test.mjs: paths without semantic evidence are withheld rather than activated",
+          "architecture/concerns/test/migration-dispositions.test.mjs: the activation conflict stays unresolved and disclosed on every route"
         ],
-        "escalation": {
-          "question": "Does a conditional concern whose minimum_signals is 1 activate on a path match alone, or must every conditional activation carry at least one semantic hit?",
-          "options": [
-            "Require a semantic hit for every conditional activation, reading CONCERNS.md line 30 as normative and minimum_signals as a floor on total signals.",
-            "Let a single path match satisfy a row whose minimum_signals is 1, as the numeric thresholds imply.",
-            "Let path and semantic selectors activate independently, as the pr-summary skill describes."
-          ],
-          "recommendation": "The first reading. It is the only one under which every statement in CONCERNS.md holds at once: line 30 is the document's sole normative sentence on the question, and reading minimum_signals as a floor on total signals still leaves the eight rows at 1 meaningful, because one semantic hit reaches the threshold on its own. The other two readings require discarding line 30 outright."
-        }
+        "expires_with": "post-cutover-alignment"
       }
     },
     {

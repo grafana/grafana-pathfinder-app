@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { cliJson, readJson, REGISTRY_PATH, REPOSITORY_ROOT } from './helpers.mjs';
@@ -14,14 +15,26 @@ function trackedFiles() {
 
 // Phase 1 recorded these conflicts and Phase 2 was forbidden to touch them.
 // Phase 3 owns them: each one is either answered, or held open on purpose with a
-// reason and an expiry, or named as a decision somebody above this code must make.
+// reason and an expiry. The list is spelled out rather than filtered, because
+// Phase 3 may re-earmark a discrepancy to a later phase and that must not be a
+// way for one to slip through undisposed.
+const DEFERRED_TO_PHASE_3 = [
+  'path-only-activation',
+  'go-backend-continue-selector',
+  'routing-defaults-versus-row-overrides',
+  'legacy-unquote-mangling',
+  'anchor-evidence-relation-unreviewed',
+  'test-path-two-value-shapes',
+  'reversibility-values-narrower-than-live-contract',
+];
+
 test('every discrepancy Phase 1 deferred to Phase 3 carries a Phase 3 disposition', () => {
-  const deferred = discrepancies.filter((entry) => entry.resolve_in === 'phase-3');
-  assert.equal(deferred.length, 7);
-  for (const entry of deferred) {
-    assert.ok(entry.disposition, `${entry.id} rode into Phase 4 without a disposition`);
-    assert.equal(entry.disposition.decided_in, 'phase-3', entry.id);
-    assert.ok(entry.disposition.rationale.length > 40, `${entry.id} needs a real rationale`);
+  for (const id of DEFERRED_TO_PHASE_3) {
+    const entry = discrepancies.find((candidate) => candidate.id === id);
+    assert.ok(entry, `${id} is no longer in the registry`);
+    assert.ok(entry.disposition, `${id} rode into Phase 4 without a disposition`);
+    assert.equal(entry.disposition.decided_in, 'phase-3', id);
+    assert.ok(entry.disposition.rationale.length > 40, `${id} needs a real rationale`);
   }
 });
 
@@ -56,11 +69,37 @@ test('every cited piece of evidence names a file that exists', () => {
   }
 });
 
-test('exactly one discrepancy is escalated, and it is the activation conflict', () => {
+test('no discrepancy is left escalated', () => {
   const escalated = discrepancies.filter((entry) => entry.disposition?.status === 'escalated');
-  assert.deepEqual(
-    escalated.map((entry) => entry.id),
-    ['path-only-activation']
+  assert.deepEqual(escalated, []);
+});
+
+// The approved plan reserves changes to what actually activates for the
+// post-cutover alignment phase, so Phase 3 preserves behaviour and keeps the
+// conflict disclosed. Routing must still say so on every run, and the signal
+// policy must still call the requirement unresolved.
+test('the activation conflict stays unresolved and disclosed on every route', () => {
+  const entry = discrepancies.find((candidate) => candidate.id === 'path-only-activation');
+  assert.equal(entry.resolution, 'unresolved');
+  assert.equal(entry.resolve_in, 'post-cutover-alignment');
+  assert.equal(entry.disposition.status, 'ratified_exception');
+  assert.equal(entry.disposition.expires_with, 'post-cutover-alignment');
+  assert.equal(entry.candidate_readings.length, 3, 'all three readings must stay on the record');
+
+  const requirement = registry.signal_policy.semantic_evidence_requirement;
+  assert.equal(requirement.status, 'unresolved');
+  assert.equal(requirement.discrepancy_id, 'path-only-activation');
+
+  const file = join(tmpdir(), 'concerns-disposition-route.json');
+  writeFileSync(file, JSON.stringify({ schema_version: 1, paths: ['pkg/plugin/resources.go'] }));
+  const routed = cliJson(['route', '--input', file]).payload;
+  const disclosure = routed.disclosures.find((item) => item.kind === 'semantic_evidence_requirement');
+  assert.ok(disclosure, 'routing must disclose the requirement it is applying');
+  assert.equal(disclosure.discrepancy_id, 'path-only-activation');
+  assert.equal(disclosure.status, 'unresolved');
+  assert.ok(
+    disclosure.path_only_candidates.includes('go-backend'),
+    'a minimum_signals 1 concern matched on paths alone is exactly the case the conflict is about'
   );
 });
 
