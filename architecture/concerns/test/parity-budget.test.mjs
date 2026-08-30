@@ -67,18 +67,18 @@ test('a bounded worker packet is never larger than the full packet it is cut fro
   }
 });
 
-// The registry models no per-concern character budget; what bounds a worker
-// packet is the flat 30,000-character ceiling the Markdown-era extractor enforces
-// on the packets it hands a review worker. This is that absolute ceiling, not a
-// declared per-concern value.
-const WORKER_PACKET_CEILING_CHARACTERS = 30_000;
+// An absolute guard this suite sets, not a rule either side imposes on this
+// packet. The legacy MAX_WORKER_CHARACTERS bounds merged context excerpts during
+// --plan, so the figure is borrowed as an order-of-magnitude size ceiling rather
+// than replayed as a constraint on a --worker packet.
+const PACKET_SIZE_GUARD_BYTES = 30_000;
 
-test('no worker packet exceeds the flat worker-packet ceiling the legacy extractor enforces', () => {
+test('no worker packet exceeds the absolute size guard this suite sets', () => {
   for (const concern of registry.concerns) {
     const packet = bytes(cli(['show', concern.id, '--view', 'worker', '--format', 'json']).stdout);
     assert.ok(
-      packet <= WORKER_PACKET_CEILING_CHARACTERS,
-      `${concern.id} worker packet is ${packet} bytes, over the flat ${WORKER_PACKET_CEILING_CHARACTERS}-character ceiling`
+      packet <= PACKET_SIZE_GUARD_BYTES,
+      `${concern.id} worker packet is ${packet} bytes, over the ${PACKET_SIZE_GUARD_BYTES}-byte absolute guard`
     );
   }
 });
@@ -98,20 +98,22 @@ test('every concern declares the file budget the routing packet reports', () => 
 // Wall clock is where the new path is not the cheaper one. The CLI loads a
 // larger module graph than the Markdown extractor — a JSON-Schema validator
 // among it, even for read-only commands — and measures roughly three times the
-// per-packet cost. The absolute figure is tens of milliseconds, so the budget
-// below is an order-of-magnitude guard rather than a race against the extractor.
-const PACKET_BUDGET_MS = 400;
+// per-packet cost. Both sides are therefore measured in the same process and
+// compared as a ratio, so shared machine load cancels; the bound is an
+// order-of-magnitude guard, not a race the CLI is expected to win.
+const PACKET_COST_RATIO = 12;
 
-test('per-packet cost stays within its absolute budget on both paths', () => {
+test('per-packet cost stays within an order of magnitude of the Markdown extractor', () => {
   const ids = registry.concerns.map((concern) => concern.id);
   const legacy = elapsed(() => ids.map((id) => runLegacy(LEGACY_EXTRACTOR, ['--worker', id]).stdout));
   const current = elapsed(() => ids.map((id) => cli(['show', id, '--view', 'worker', '--format', 'json']).stdout));
   assert.equal(legacy.value.length, current.value.length);
-  assert.ok(
-    current.ms / ids.length <= PACKET_BUDGET_MS,
-    `packet cost regressed: ${(current.ms / ids.length).toFixed(0)}ms each over ${ids.length} concerns`
-  );
   assert.ok(legacy.ms > 0 && current.ms > 0);
+  const ratio = current.ms / legacy.ms;
+  assert.ok(
+    ratio <= PACKET_COST_RATIO,
+    `packet cost regressed to ${ratio.toFixed(1)}x the Markdown extractor over ${ids.length} concerns`
+  );
 });
 
 test('the registry file itself never has to be read into a prompt', () => {

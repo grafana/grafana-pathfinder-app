@@ -59,8 +59,16 @@ test('input that is not a diff still routes on its paths and discloses the degra
   writeFileSync(file, JSON.stringify({ schema_version: 1, paths: ['src/lib/faro.ts'], diff: 'this is prose' }));
   const result = cliJson(['route', '--input', file]);
   assert.equal(result.code, 0);
-  assert.ok(result.payload.activated.length > 0, 'always-on concerns must still activate');
-  assert.ok(result.payload.disclosures.some((entry) => entry.kind.length > 0));
+  assert.ok(
+    result.payload.disclosures.some((entry) => entry.kind === 'unrecognised_diff'),
+    'prose must be disclosed as an unrecognised diff'
+  );
+  assert.equal(result.payload.input.semantics.source, 'text');
+  assert.equal(result.payload.input.paths.derived_from_diff, 0);
+  const sawPath = [...result.payload.activated, ...result.payload.withheld, ...result.payload.considered].some(
+    (entry) => entry.evidence.paths.some((evidence) => evidence.paths.includes('src/lib/faro.ts'))
+  );
+  assert.ok(sawPath, 'the supplied path must still reach the concerns that own it');
 });
 
 test('an unknown change class fails open to the uncertain class instead of refusing', () => {

@@ -1,7 +1,29 @@
 {
-  "description": "Every packet field where the concerns CLI and the Markdown-era extractor disagree after the documented legacy backtick projection is applied. The parity suite asserts this list is exact: an unlisted divergence fails, and a listed one that stops diverging also fails. Keeping it exhaustive is what turns 'close enough' into an equivalence statement.",
+  "description": "Every packet field where the concerns CLI and the Markdown-era extractor disagree after the one declared legacy projection, the backtick strip, is applied. Nothing else is normalised before the comparison, so a representational difference counts as a divergence and belongs here with its cause. The parity suite asserts this list is exact: an unlisted divergence fails, and a listed one that stops diverging also fails. Keeping it exhaustive is what turns 'close enough' into an equivalence statement.",
   "discrepancy_id": "legacy-unquote-mangling",
   "entries": [
+    {
+      "concern": "interactive-engine",
+      "view": "full",
+      "field": "contract_anchor.contract",
+      "index": null,
+      "legacy_value": "`InteractiveGuided` owns idempotent persistence and completion callbacks for the guided completion lifecycle.<br>`GuidedHandler` owns listeners, timeouts, connectivity intervals, overlays, click ordering, cleanup, and terminal arbitration.<br>A terminal winner blocks later completion work. Successful final-action persistence remains completed through later setup or cleanup faults.<br>Final click activation can cause persistence during capture, before the application handler. Without this activation, completion persists after the result.",
+      "registry_value": "`InteractiveGuided` owns idempotent persistence and completion callbacks for the guided completion lifecycle. `GuidedHandler` owns listeners, timeouts, connectivity intervals, overlays, click ordering, cleanup, and terminal arbitration. A terminal winner blocks later completion work. Successful final-action persistence remains completed through later setup or cleanup faults. Final click activation can cause persistence during capture, before the application handler. Without this activation, completion persists after the result.",
+      "cause": "The registry stores a contract as one statement per sentence, because a Markdown table cell cannot hold a newline and the source cell joined the statements with a literal <br>. show.mjs renders the list by joining the statements with a single space, so the separator differs wherever a contract carries more than one statement. The boundary is not recoverable from the joined CLI string, because a statement can itself contain a sentence break, so no projection can reconstruct the legacy value.",
+      "assessment": "Neither value is wrong: both carry the same four statements in the same order, and the parity suite separately asserts that every statement of the Markdown cell survives into the CLI packet in both views. interactive-engine is the only concern with a multi-statement established contract, so this is the whole of the separator divergence. A consumer that needs the statements individually reads them from the registry rather than re-splitting either string.",
+      "retires_with": "phase-4-markdown-deletion"
+    },
+    {
+      "concern": "interactive-engine",
+      "view": "worker",
+      "field": "contract_anchor.contract",
+      "index": null,
+      "legacy_value": "`InteractiveGuided` owns idempotent persistence and completion callbacks for the guided completion lifecycle.<br>`GuidedHandler` owns listeners, timeouts, connectivity intervals, overlays, click ordering, cleanup, and terminal arbitration.<br>A terminal winner blocks later completion work. Successful final-action persistence remains completed through later setup or cleanup faults.<br>Final click activation can cause persistence during capture, before the application handler. Without this activation, completion persists after the result.",
+      "registry_value": "`InteractiveGuided` owns idempotent persistence and completion callbacks for the guided completion lifecycle. `GuidedHandler` owns listeners, timeouts, connectivity intervals, overlays, click ordering, cleanup, and terminal arbitration. A terminal winner blocks later completion work. Successful final-action persistence remains completed through later setup or cleanup faults. Final click activation can cause persistence during capture, before the application handler. Without this activation, completion persists after the result.",
+      "cause": "The registry stores a contract as one statement per sentence, because a Markdown table cell cannot hold a newline and the source cell joined the statements with a literal <br>. show.mjs renders the list by joining the statements with a single space, so the separator differs wherever a contract carries more than one statement. The boundary is not recoverable from the joined CLI string, because a statement can itself contain a sentence break, so no projection can reconstruct the legacy value.",
+      "assessment": "Neither value is wrong: both carry the same four statements in the same order, and the parity suite separately asserts that every statement of the Markdown cell survives into the CLI packet in both views. interactive-engine is the only concern with a multi-statement established contract, so this is the whole of the separator divergence. A consumer that needs the statements individually reads them from the registry rather than re-splitting either string.",
+      "retires_with": "phase-4-markdown-deletion"
+    },
     {
       "concern": "full-screen-sidebar-handoff",
       "view": "full",

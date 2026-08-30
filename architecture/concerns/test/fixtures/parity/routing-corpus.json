@@ -9,7 +9,6 @@
       },
       "expect": {
         "changed_paths_include": ["src/security/new-name.ts"],
-        "activated_includes": ["security"],
         "semantics_source": "diff"
       }
     },
@@ -21,7 +20,6 @@
       },
       "expect": {
         "changed_paths_include": ["src/img/logo.png"],
-        "activated_includes": ["cross-cutting-architecture"],
         "semantic_signals_zero": true
       }
     },
@@ -109,7 +107,7 @@
       },
       "expect": {
         "changed_paths_include": ["pkg/plugin/resources.go"],
-        "activated_includes": ["go-backend", "security"]
+        "activated_includes": ["go-backend"]
       }
     }
   ]

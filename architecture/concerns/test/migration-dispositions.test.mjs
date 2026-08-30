@@ -4,7 +4,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { cliJson, readJson, REGISTRY_PATH, REPOSITORY_ROOT } from './helpers.mjs';
+import { loadRegistry, validateRegistry } from '../lib/registry.mjs';
+import { cliJson, readJson, REGISTRY_PATH, REPOSITORY_ROOT, SCHEMA_PATH } from './helpers.mjs';
 import { LEGACY_REVIEW_POLICY, runLegacy } from './legacy.mjs';
 
 const registry = readJson(REGISTRY_PATH);
@@ -53,11 +54,6 @@ test('a resolved discrepancy cites evidence and a ratified one also carries an e
       assert.ok(disposition.evidence?.length > 0, `${entry.id} is ratified without evidence`);
       assert.ok(disposition.expires_with, `${entry.id} is ratified without an expiry`);
     }
-    if (disposition.status === 'escalated') {
-      assert.ok(disposition.escalation, `${entry.id} is escalated without naming the question`);
-      assert.ok(disposition.escalation.options.length >= 2, entry.id);
-      assert.ok(disposition.escalation.recommendation, `${entry.id} should carry a recommendation`);
-    }
   }
 });
 
@@ -70,9 +66,17 @@ test('every cited piece of evidence names a file that exists', () => {
   }
 });
 
-test('no discrepancy is left escalated', () => {
-  const escalated = discrepancies.filter((entry) => entry.disposition?.status === 'escalated');
-  assert.deepEqual(escalated, []);
+test('an escalated disposition is no longer a shape the registry can carry', () => {
+  const loaded = loadRegistry({ registryPath: REGISTRY_PATH, schemaPath: SCHEMA_PATH });
+  const registryCopy = structuredClone(loaded.registry);
+  const target = registryCopy.migration_discrepancies.find((entry) => entry.disposition);
+  target.disposition.status = 'escalated';
+  const result = validateRegistry({ registry: registryCopy, schema: loaded.schema });
+  assert.equal(result.valid, false);
+  assert.ok(
+    result.schema_errors.some((error) => error.path.includes('/disposition/status')),
+    'the schema must be what refuses it'
+  );
 });
 
 // The approved plan reserves changes to what actually activates for the

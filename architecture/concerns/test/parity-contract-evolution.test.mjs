@@ -57,7 +57,11 @@ test('the registry derives the same Git pathspecs the contract-evolution gate ex
   assert.ok(compared >= 25, `only ${compared} concerns carried concrete paths`);
 });
 
-test('the concerns the gate refuses are exactly the ones the registry marks ineligible', () => {
+// Equality is not available: the gate CLI has no notion of always-on
+// suppression, so the registry marks every always-on concern ineligible through
+// dispatch_policy.skips_always_on while the gate still serves them. The subset,
+// plus the always-on carve-out below, is the whole of the shared claim.
+test('every concern the gate refuses is one the registry already marks ineligible', () => {
   const refusedByGate = registry.concerns
     .filter((concern) => registryPathspecs(concern).length === 0)
     .map((concern) => concern.id);
@@ -67,6 +71,15 @@ test('the concerns the gate refuses are exactly the ones the registry marks inel
   for (const id of refusedByGate) {
     assert.ok(ineligibleByRegistry.includes(id), `${id} is refused by the gate but eligible in the registry`);
   }
+  assert.deepEqual(
+    ineligibleByRegistry.filter((id) => !refusedByGate.includes(id)).sort(),
+    registry.concerns
+      .filter((concern) => concern.activation.kind === 'always')
+      .map((concern) => concern.id)
+      .filter((id) => !refusedByGate.includes(id))
+      .sort(),
+    'the only concerns ineligible without being refused are the always-on ones the gate cannot see'
+  );
   const gatePolicy = registry.dispatch_policy.contract_evolution_gate;
   assert.equal(gatePolicy.requires_concrete_path_selectors, true);
   assert.equal(gatePolicy.skips_always_on, true);

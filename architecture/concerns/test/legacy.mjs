@@ -23,28 +23,12 @@ export function legacyJson(script, args, options) {
   return { ...result, payload: result.code === 0 ? JSON.parse(result.stdout) : null };
 }
 
-// A Markdown table cell cannot hold a newline, so the legacy contract cell joined
-// its statements with a literal <br>. The CLI joins them with a space, so
-// collapsing the separator on the legacy side is what lets the CLI's own contract
-// string be the value under comparison instead of one re-derived from the registry.
-export function legacyAnchorSeparator(anchor) {
-  return anchor === null ? null : { ...anchor, contract: anchor.contract.split('<br>').join(' ') };
-}
-
-function replayAnchorSeparator(packet) {
-  return packet === null ? packet : { ...packet, contract_anchor: legacyAnchorSeparator(packet.contract_anchor) };
-}
-
-export function rawLegacyPacket(id) {
+export function legacyPacket(id) {
   return legacyJson(LEGACY_EXTRACTOR, [id]).payload;
 }
 
-export function legacyPacket(id) {
-  return replayAnchorSeparator(rawLegacyPacket(id));
-}
-
 export function legacyWorkerPacket(id) {
-  return replayAnchorSeparator(legacyJson(LEGACY_EXTRACTOR, ['--worker', id]).payload);
+  return legacyJson(LEGACY_EXTRACTOR, ['--worker', id]).payload;
 }
 
 // registry-table.mjs strips one leading and one trailing backtick, independently

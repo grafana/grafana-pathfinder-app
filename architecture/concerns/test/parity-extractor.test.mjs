@@ -3,13 +3,11 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { cliJson, readJson, REGISTRY_PATH } from './helpers.mjs';
 import {
-  legacyAnchorSeparator,
   legacyPacket,
   legacyUnquote,
   legacyWorkerPacket,
   projectPacketToLegacy,
   projectWorkerPacketToLegacy,
-  rawLegacyPacket,
 } from './legacy.mjs';
 
 const registry = readJson(REGISTRY_PATH);
@@ -32,24 +30,40 @@ function divergenceFor(concern, view, field, index) {
   );
 }
 
+function compareValue(concern, view, field, index, legacyValue, registryValue, observed) {
+  if (JSON.stringify(legacyValue) === JSON.stringify(registryValue)) {
+    return;
+  }
+  const locator = index === null ? field : `${field}[${index}]`;
+  const known = divergenceFor(concern, view, field, index);
+  assert.ok(known, `${concern}/${view}/${locator} diverges without a recorded reason: ${legacyValue}`);
+  assert.equal(known.legacy_value, legacyValue);
+  assert.equal(known.registry_value, registryValue);
+  observed.push(known);
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function comparePacket(concern, view, legacy, projected, observed) {
   for (const field of Object.keys(legacy)) {
     const left = legacy[field];
     const right = projected[field];
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
-      assert.deepEqual(right, left, `${concern}/${view}/${field}`);
+    if (Array.isArray(left) && Array.isArray(right) && left.length === right.length) {
+      for (const [index, value] of left.entries()) {
+        compareValue(concern, view, field, index, value, right[index], observed);
+      }
       continue;
     }
-    for (const [index, value] of left.entries()) {
-      if (JSON.stringify(value) === JSON.stringify(right[index])) {
-        continue;
+    if (isPlainObject(left) && isPlainObject(right)) {
+      assert.deepEqual(Object.keys(right).sort(), Object.keys(left).sort(), `${concern}/${view}/${field} keys`);
+      for (const key of Object.keys(left)) {
+        compareValue(concern, view, `${field}.${key}`, null, left[key], right[key], observed);
       }
-      const known = divergenceFor(concern, view, field, index);
-      assert.ok(known, `${concern}/${view}/${field}[${index}] diverges without a recorded reason: ${value}`);
-      assert.equal(known.legacy_value, value);
-      assert.equal(known.registry_value, right[index]);
-      observed.push(known);
+      continue;
     }
+    assert.deepEqual(right, left, `${concern}/${view}/${field}`);
   }
 }
 
@@ -94,22 +108,17 @@ test('the legacy projection replays the backtick artifact rather than passing va
   assert.equal(legacyUnquote('src/security/**'), 'src/security/**');
 });
 
-// The contract string the CLI emits is the value the comparison above pins, so
-// the separator replay has to be a real transformation of a real <br>-joined cell
-// rather than a no-op that would let the CLI drop statements unnoticed.
-test('the contract anchor the CLI emits is what the comparison pins, statement for statement', () => {
-  const multiStatement = packets.filter(
-    ({ concern }) =>
-      (concern.contract_records.find((record) => record.kind === 'established')?.statements.length ?? 0) > 1
-  );
+// The recorded contract-anchor divergence is a separator difference, not a lost
+// statement, and only this assertion tells the two apart.
+test('the contract anchor the CLI emits carries every statement of the Markdown cell', () => {
+  const multiStatement = packets.filter(({ legacyFull }) => legacyFull.contract_anchor?.contract.includes('<br>'));
   assert.ok(multiStatement.length >= 1, 'a multi-statement contract is what makes the separator observable');
-  for (const { concern, full, worker } of multiStatement) {
-    const raw = rawLegacyPacket(concern.id).contract_anchor;
-    assert.ok(raw.contract.includes('<br>'), `${concern.id} legacy contract must carry the separator`);
-    assert.equal(full.contract_anchor.contract, legacyAnchorSeparator(raw).contract, `${concern.id} full contract`);
-    assert.equal(worker.contract_anchor.contract, legacyAnchorSeparator(raw).contract, `${concern.id} worker contract`);
-    for (const statement of concern.contract_records.find((record) => record.kind === 'established').statements) {
-      assert.ok(full.contract_anchor.contract.includes(statement), `${concern.id} dropped a contract statement`);
+  for (const { concern, full, worker, legacyFull } of multiStatement) {
+    const statements = legacyFull.contract_anchor.contract.split('<br>');
+    assert.ok(statements.length > 1, concern.id);
+    for (const statement of statements) {
+      assert.ok(full.contract_anchor.contract.includes(statement), `${concern.id} full dropped a statement`);
+      assert.ok(worker.contract_anchor.contract.includes(statement), `${concern.id} worker dropped a statement`);
     }
   }
 });

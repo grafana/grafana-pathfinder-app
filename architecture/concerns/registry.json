@@ -284,7 +284,7 @@
       ],
       "candidate_readings": ["continue", "continue token"],
       "resolution": "unresolved",
-      "resolve_in": "phase-3",
+      "resolve_in": "phase-4",
       "disposition": {
         "status": "ratified_exception",
         "decided_in": "phase-3",
@@ -391,7 +391,7 @@
       ],
       "candidate_readings": ["range", "lineage", "supersession", "open series"],
       "resolution": "unresolved",
-      "resolve_in": "phase-3",
+      "resolve_in": "post-cutover-alignment",
       "disposition": {
         "status": "ratified_exception",
         "decided_in": "phase-3",
@@ -414,7 +414,7 @@
         }
       ],
       "resolution": "divergence_recorded",
-      "resolve_in": "phase-3",
+      "resolve_in": "phase-4",
       "disposition": {
         "status": "ratified_exception",
         "decided_in": "phase-3",
@@ -447,7 +447,7 @@
         }
       ],
       "resolution": "divergence_recorded",
-      "resolve_in": "phase-3",
+      "resolve_in": "phase-4",
       "disposition": {
         "status": "ratified_exception",
         "decided_in": "phase-3",
