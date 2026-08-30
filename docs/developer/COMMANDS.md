@@ -191,8 +191,12 @@ npm run test:scripts
 ## Concern registry
 
 `architecture/concerns/` is a repository-only tool, outside `src/`, `pkg/`, the plugin
-build, and both shipped images. It queries the typed concern registry that PR review
-routes against.
+build, and both shipped images. It queries `architecture/concerns/registry.json`, the
+typed record of the concerns PR review routes against.
+
+`docs/design/CONCERNS.md` and `docs/design/CONCERN_DETAILS.md` stay the authoritative
+registries until the cutover the registry's own `lifecycle` block records, so this tool
+queries that translation rather than driving review today.
 
 ```bash
 # Every command, the registry path, the activation semantics, and the exit codes
