@@ -148,18 +148,10 @@ export function useRecordingPersistence({
     }
   }, [isRecording, recordingIntoSection, recordingIntoConditionalBranch, recordingStartUrl, recordedSteps, save]);
 
-  // Clear persisted state when recording stops
+  // Retained only for load()'s corrupt-storage error log; the guard it held never cleared anything.
   useEffect(() => {
     if (!isRecording && hasRestoredRef.current) {
-      // Only clear if we're not in the middle of restoring
-      // Check if there's still persisted state - if so, we haven't finished restoring
-      const persisted = load();
-      if (!persisted) {
-        // Recording truly stopped, nothing to clear
-        return;
-      }
-      // If we were recording and stopped, clear the persisted state
-      // But only after restoration is complete
+      load();
     }
   }, [isRecording, load]);
 
