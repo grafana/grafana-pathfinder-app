@@ -28,6 +28,9 @@ npm run test:ci
 # and disposition policy, adversarial-verification policy, and report renderer
 npm run test:review-contract
 
+# Validate the concern registry library and CLI under architecture/concerns/
+npm run test:concerns
+
 # Run tests in watch mode (for local development)
 npm test
 
@@ -184,6 +187,44 @@ scripts/upsert-learning-path.sh --stack learn.grafana.net --package ./pkg --dry-
 # Test the scripts themselves (bash -n, shellcheck, behavioural suites)
 npm run test:scripts
 ```
+
+## Concern registry
+
+`architecture/concerns/` is a repository-only tool, outside `src/`, `pkg/`, the plugin
+build, and both shipped images. It queries the typed concern registry that PR review
+routes against.
+
+```bash
+# Every command, the registry path, the activation semantics, and the exit codes
+npm run concerns -- --help
+
+# Registry format version (not the plugin or guide-schema version)
+npm run concerns -- --version
+
+# Ordered concern ids with category, activation, and purpose
+npm run concerns -- list
+
+# One concern packet: full by default, or a bounded view
+npm run concerns -- show <id>
+npm run concerns -- show <id> --worker
+npm run concerns -- show <id> --view routing
+
+# Raw path and semantic evidence; this does not decide activation
+npm run concerns -- match --path src/context-engine/recommender.ts --stdin < change.patch
+
+# Activation decisions, coverage gaps, and disclosures
+npm run concerns -- route --base <sha> --head <sha>
+npm run concerns -- route --input change.json --class product-runtime
+
+# Schema plus cross-record validation; exits 1 when the registry is invalid
+npm run concerns:validate
+
+# Which repository paths conditional concerns claim
+npm run concerns -- coverage --tracked
+```
+
+Add `--format json` to any command for a `schema_version`-stamped envelope. stdout
+carries only the result; diagnostics go to stderr.
 
 ## Additional dev tools
 

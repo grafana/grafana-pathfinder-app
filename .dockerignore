@@ -9,6 +9,7 @@
 .cursor
 .config
 .planning
+architecture
 .vscode
 
 node_modules

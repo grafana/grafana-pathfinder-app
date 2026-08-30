@@ -1,0 +1,144 @@
+{
+  "description": "Curated routing cases. No executable router existed before this CLI, so these fixtures codify the intended semantics rather than replaying a predecessor's output. The exhaustive old/new corpus is Phase 3 work.",
+  "cases": [
+    {
+      "name": "semantic and path evidence together activate a subsystem concern",
+      "input": {
+        "schema_version": 1,
+        "paths": ["src/context-engine/recommender.ts"],
+        "diff": "diff --git a/src/context-engine/recommender.ts b/src/context-engine/recommender.ts\n--- a/src/context-engine/recommender.ts\n+++ b/src/context-engine/recommender.ts\n@@ -1,3 +1,3 @@\n-const a = 1;\n+export async function fetchRecommendations() {}\n"
+      },
+      "expect": {
+        "activated_includes": ["context-engine"],
+        "signals": {
+          "context-engine": {
+            "path": 1,
+            "semantic": 1,
+            "total": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "a path match without semantic evidence is withheld by the semantic requirement",
+      "input": {
+        "schema_version": 1,
+        "paths": ["src/context-engine/recommender.ts", "src/types/context.types.ts"]
+      },
+      "expect": {
+        "activated_excludes": ["context-engine"],
+        "withheld_includes": ["context-engine"],
+        "withheld_reason": "semantic_evidence_required"
+      }
+    },
+    {
+      "name": "semantic evidence alone can reach a minimum of one",
+      "input": {
+        "schema_version": 1,
+        "diff": "diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1,1 +1,1 @@\n+const panel = new TerminalPanel();\n"
+      },
+      "expect": {
+        "activated_includes": ["coda-terminal"]
+      }
+    },
+    {
+      "name": "repeated hits in one hunk collapse to one signal per selector",
+      "input": {
+        "schema_version": 1,
+        "diff": "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,3 +1,3 @@\n+fetchRecommendations();\n+fetchRecommendations();\n+fetchRecommendations();\n"
+      },
+      "expect": {
+        "signals": {
+          "context-engine": {
+            "path": 0,
+            "semantic": 1,
+            "total": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "the same selector in two hunks counts twice",
+      "input": {
+        "schema_version": 1,
+        "diff": "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1,1 +1,1 @@\n+fetchRecommendations();\n@@ -20,1 +20,1 @@\n+fetchRecommendations();\n"
+      },
+      "expect": {
+        "signals": {
+          "context-engine": {
+            "path": 0,
+            "semantic": 2,
+            "total": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "an unrecognised change class fails open to the registry's uncertain class",
+      "input": {
+        "schema_version": 1,
+        "paths": ["src/lib/faro.ts"],
+        "change_class": "not-a-real-class"
+      },
+      "expect": {
+        "change_class": {
+          "value": "mixed",
+          "source": "unknown_class_fail_open"
+        }
+      }
+    },
+    {
+      "name": "a declared change class is reported as explicit",
+      "input": {
+        "schema_version": 1,
+        "paths": ["src/lib/faro.ts"],
+        "change_class": "product-runtime"
+      },
+      "expect": {
+        "change_class": {
+          "value": "product-runtime",
+          "source": "explicit"
+        }
+      }
+    },
+    {
+      "name": "a directory of changed files no conditional concern claims is disclosed as a gap",
+      "input": {
+        "schema_version": 1,
+        "paths": ["src/hooks/use-one.ts", "src/hooks/use-two.ts"]
+      },
+      "expect": {
+        "coverage_gap_kinds": ["unowned_directory_cluster", "only_always_on_coverage"],
+        "unowned_directories": ["src/hooks"]
+      }
+    },
+    {
+      "name": "text that is not a diff is scanned as one block and disclosed",
+      "input": {
+        "schema_version": 1,
+        "diff": "fetchRecommendations and getContextData appear here"
+      },
+      "expect": {
+        "input_semantics_source": "text",
+        "disclosure_kinds": ["unrecognised_diff"],
+        "activated_includes": ["context-engine"]
+      }
+    },
+    {
+      "name": "always-on concerns activate with no evidence at all",
+      "input": {
+        "schema_version": 1,
+        "paths": ["README.md"]
+      },
+      "expect": {
+        "activated_includes": [
+          "security",
+          "correctness-and-reliability",
+          "testing-and-verification",
+          "reversibility-and-one-way-door",
+          "cross-cutting-architecture"
+        ]
+      }
+    }
+  ]
+}

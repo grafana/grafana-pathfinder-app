@@ -31,6 +31,7 @@ const STEPS = [
   'test:go',
   'test:coverage',
   'test:review-contract',
+  'test:concerns',
   'test:scripts',
 ];
 
