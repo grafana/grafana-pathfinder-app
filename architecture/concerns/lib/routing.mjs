@@ -1,9 +1,27 @@
 import { usageError } from './errors.mjs';
 import { describeInput, matchConcerns } from './matching.mjs';
 import { ENVELOPE_SCHEMA_VERSION } from './registry.mjs';
-import { pathSelectorMatches, selectorSetOf } from './selectors.mjs';
+import { conditionalOwnersOf, directoryOf } from './selectors.mjs';
 
-const HIGH_VALUE_CONDITION = 'repeated high-value symbols appear with no concern trigger';
+const EVALUATED_CONDITION_MARKER = 'directory with multiple changed files';
+
+// Every coverage-gap condition the registry states other than the directory
+// cluster needs a judgement Phase 2 cannot compute, so each is disclosed
+// verbatim from the registry rather than narrowed into a guess. Deriving the
+// list from the registry keeps a reworded or newly added condition from
+// silently losing its disclosure.
+const UNEVALUATED_CONDITION_REASONS = [
+  { marker: 'high-value', reason: 'it needs a high-value-symbol classification the registry does not carry' },
+  {
+    marker: 'always-on',
+    reason: 'it needs a machine-decidable reading of how many hunks count as "most", which nothing defines yet',
+  },
+];
+
+function unevaluatedConditionReason(condition) {
+  const known = UNEVALUATED_CONDITION_REASONS.find((entry) => condition.includes(entry.marker));
+  return known ? known.reason : 'this tool defines no computable semantics for it';
+}
 
 export const ROUTE_INPUT_KEYS = ['schema_version', 'paths', 'diff', 'change_class'];
 
@@ -69,25 +87,12 @@ function resolveChangeClass(registry, requested) {
   };
 }
 
-function directoryOf(path) {
-  const index = path.lastIndexOf('/');
-  return index === -1 ? '.' : path.slice(0, index);
+function isOwnedByAnyConditionalConcern(registry, path) {
+  const { strong, weak } = conditionalOwnersOf(registry, path);
+  return strong.length + weak.length > 0;
 }
 
-function conditionalPathOwners(registry, path) {
-  const owners = [];
-  for (const concern of registry.concerns) {
-    if (concern.activation.kind !== 'signals') {
-      continue;
-    }
-    if (selectorSetOf(concern).paths.some((selector) => pathSelectorMatches(selector, path))) {
-      owners.push(concern.id);
-    }
-  }
-  return owners;
-}
-
-function coverageGaps(registry, input, activatedConditional) {
+function coverageGaps(registry, input) {
   const conditions = registry.coverage_gap_policy.conditions;
   const gaps = [];
 
@@ -99,12 +104,12 @@ function coverageGaps(registry, input, activatedConditional) {
     }
     clusters.get(directory).push(path);
   }
-  const clusterCondition = conditions.find((text) => text.includes('directory with multiple changed files'));
+  const clusterCondition = conditions.find((text) => text.includes(EVALUATED_CONDITION_MARKER));
   for (const [directory, paths] of [...clusters].sort(([left], [right]) => (left < right ? -1 : 1))) {
     if (paths.length < 2) {
       continue;
     }
-    if (paths.some((path) => conditionalPathOwners(registry, path).length > 0)) {
+    if (paths.some((path) => isOwnedByAnyConditionalConcern(registry, path))) {
       continue;
     }
     gaps.push({
@@ -112,15 +117,6 @@ function coverageGaps(registry, input, activatedConditional) {
       condition: clusterCondition ?? null,
       directory,
       paths: [...paths].sort(),
-    });
-  }
-
-  const onlyAlwaysOnCondition = conditions.find((text) => text.includes('always-on'));
-  if (activatedConditional === 0 && (input.paths.length > 0 || input.semantics.hunks.length > 0)) {
-    gaps.push({
-      kind: 'only_always_on_coverage',
-      condition: onlyAlwaysOnCondition ?? null,
-      detail: 'no conditional concern activated, so every changed file is covered only by always-on concerns',
     });
   }
 
@@ -183,7 +179,6 @@ export function routeConcerns({ registry, input, changeClass = null }) {
     }
   }
 
-  const activatedConditional = activated.filter((entry) => entry.reason === 'signals').length;
   const disclosures = [...input.disclosures];
   if (changeClassResult.disclosure) {
     disclosures.push(changeClassResult.disclosure);
@@ -204,11 +199,16 @@ export function routeConcerns({ registry, input, changeClass = null }) {
     kind: 'signal_value_not_machine_decidable',
     message: `${registry.signal_policy.statement} The registry does not mark which semantic selectors are high value, so every distinct selector/path/hunk hit counts as one signal.`,
   });
-  disclosures.push({
-    kind: 'coverage_condition_not_evaluated',
-    condition: HIGH_VALUE_CONDITION,
-    message: 'this coverage-gap condition needs a high-value-symbol classification the registry does not carry',
-  });
+  for (const condition of registry.coverage_gap_policy.conditions) {
+    if (condition.includes(EVALUATED_CONDITION_MARKER)) {
+      continue;
+    }
+    disclosures.push({
+      kind: 'coverage_condition_not_evaluated',
+      condition,
+      message: `this coverage-gap condition is not evaluated: ${unevaluatedConditionReason(condition)}`,
+    });
+  }
 
   return {
     schema_version: ENVELOPE_SCHEMA_VERSION,
@@ -221,7 +221,7 @@ export function routeConcerns({ registry, input, changeClass = null }) {
     activated,
     withheld,
     considered,
-    coverage_gaps: coverageGaps(registry, input, activatedConditional),
+    coverage_gaps: coverageGaps(registry, input),
     disclosures,
     policy: {
       coverage_gap_disposition: registry.coverage_gap_policy.disposition,

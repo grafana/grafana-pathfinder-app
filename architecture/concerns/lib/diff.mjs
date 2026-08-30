@@ -1,7 +1,7 @@
 import { normalizeRepositoryPath } from './selectors.mjs';
 
 const DIFF_GIT = /^diff --git /;
-const HUNK_HEADER = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/;
+const HUNK_HEADER = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
 
 function stripPrefix(value) {
   if (value === '/dev/null') {
@@ -9,6 +9,10 @@ function stripPrefix(value) {
   }
   const withoutQuotes = value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value;
   return withoutQuotes.replace(/^[ab]\//, '');
+}
+
+function declaredCount(value) {
+  return value === undefined ? 1 : Number(value);
 }
 
 // Parses only what routing needs: which file each hunk belongs to and the text
@@ -20,8 +24,10 @@ export function parseUnifiedDiff(text) {
   const paths = [];
   const disclosures = [];
   let currentPath = null;
-  let pendingNewPath;
+  let oldPath = null;
   let hunk = null;
+  let remainingOld = 0;
+  let remainingNew = 0;
   let looksLikeDiff = false;
 
   const closeHunk = () => {
@@ -29,46 +35,80 @@ export function parseUnifiedDiff(text) {
       hunks.push(hunk);
     }
     hunk = null;
+    remainingOld = 0;
+    remainingNew = 0;
   };
+
+  const claimPath = (value) => {
+    currentPath = value;
+    if (currentPath !== null) {
+      paths.push(currentPath);
+    }
+  };
+
+  // A changed line is its content behind a single `-` or `+`, so a removed
+  // `-- x` arrives as `--- x` and an added `++ x` as `+++ x` — indistinguishable
+  // from a file header by shape alone. The hunk's declared line counts are the
+  // only disambiguator: while a hunk still owes lines, those are content.
+  const insideHunk = () => hunk !== null && (remainingOld > 0 || remainingNew > 0);
 
   for (const line of text.split('\n')) {
     if (DIFF_GIT.test(line)) {
       closeHunk();
       looksLikeDiff = true;
       currentPath = null;
-      pendingNewPath = undefined;
+      oldPath = null;
       continue;
     }
-    if (line.startsWith('--- ')) {
+    if (!insideHunk() && line.startsWith('--- ')) {
       closeHunk();
-      pendingNewPath = undefined;
+      oldPath = stripPrefix(line.slice(4).trim());
       continue;
     }
-    if (line.startsWith('+++ ')) {
+    if (!insideHunk() && line.startsWith('+++ ')) {
       closeHunk();
       looksLikeDiff = true;
-      pendingNewPath = stripPrefix(line.slice(4).trim());
-      currentPath = pendingNewPath;
-      if (currentPath !== null) {
-        paths.push(currentPath);
+      // A deletion names /dev/null on the new side; the old side still carries
+      // the path whose removal routing has to see.
+      claimPath(stripPrefix(line.slice(4).trim()) ?? oldPath);
+      continue;
+    }
+    const header = HUNK_HEADER.exec(line);
+    if (header) {
+      closeHunk();
+      looksLikeDiff = true;
+      if (currentPath === null && oldPath !== null) {
+        claimPath(oldPath);
       }
-      continue;
-    }
-    if (HUNK_HEADER.test(line)) {
-      closeHunk();
-      looksLikeDiff = true;
       if (currentPath === null) {
         disclosures.push({
           kind: 'hunk_without_file_header',
-          message: 'a hunk header appeared before any file header; its evidence is attributed to no path',
+          message: 'a hunk header appeared before any file header named a path; its evidence is attributed to no path',
         });
       }
+      remainingOld = declaredCount(header[1]);
+      remainingNew = declaredCount(header[2]);
       hunk = { path: currentPath, index: hunks.length, lines: [] };
       continue;
     }
-    if (hunk && (line.startsWith('+') || line.startsWith('-'))) {
-      hunk.lines.push(line.slice(1));
+    if (hunk === null) {
+      continue;
     }
+    if (line.startsWith('+')) {
+      hunk.lines.push(line.slice(1));
+      remainingNew -= 1;
+      continue;
+    }
+    if (line.startsWith('-')) {
+      hunk.lines.push(line.slice(1));
+      remainingOld -= 1;
+      continue;
+    }
+    if (line.startsWith('\\')) {
+      continue;
+    }
+    remainingOld -= 1;
+    remainingNew -= 1;
   }
   closeHunk();
 

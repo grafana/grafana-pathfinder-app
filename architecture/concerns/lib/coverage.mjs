@@ -1,25 +1,5 @@
 import { ENVELOPE_SCHEMA_VERSION } from './registry.mjs';
-import { normalizeRepositoryPaths, pathSelectorMatches, selectorSetOf } from './selectors.mjs';
-
-function ownersOf(registry, path) {
-  const strong = [];
-  const weak = [];
-  for (const concern of registry.concerns) {
-    if (concern.activation.kind !== 'signals') {
-      continue;
-    }
-    if (!selectorSetOf(concern).paths.some((selector) => pathSelectorMatches(selector, path))) {
-      continue;
-    }
-    (concern.activation.mode === 'weak' ? weak : strong).push(concern.id);
-  }
-  return { strong, weak };
-}
-
-function directoryOf(path) {
-  const index = path.lastIndexOf('/');
-  return index === -1 ? '.' : path.slice(0, index);
-}
+import { conditionalOwnersOf, directoryOf, normalizeRepositoryPaths } from './selectors.mjs';
 
 // Classification, not judgement: an unmapped path means no conditional concern
 // claims it, which the registry's own policy says must be disclosed rather than
@@ -31,7 +11,7 @@ export function computeCoverage({ registry, paths }) {
   const unmapped = [];
 
   for (const path of [...accepted].sort()) {
-    const { strong, weak } = ownersOf(registry, path);
+    const { strong, weak } = conditionalOwnersOf(registry, path);
     if (strong.length > 0) {
       mapped.push({ path, concern_ids: strong });
     } else if (weak.length > 0) {

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { assertLiteralRevision, changedPathsArgs, trackedFilesArgs, unifiedDiffArgs } from '../lib/git.mjs';
-import { cli, cliJson, REGISTRY_PATH } from './helpers.mjs';
+import { cli, cliJson, REGISTRY_PATH, REPOSITORY_ROOT } from './helpers.mjs';
 
 const COMMANDS = ['list', 'show', 'match', 'route', 'validate', 'coverage'];
 const scratch = mkdtempSync(join(tmpdir(), 'concerns-cli-'));
@@ -200,6 +200,22 @@ test('coverage requires exactly one path source', () => {
   assert.equal(payload.counts.unmapped, 2);
 });
 
+// `git ls-files` reports paths relative to the working directory and lists only
+// what sits beneath it, so a cwd-sensitive read would silently score the wrong
+// path universe against the registry's repository-rooted selectors.
+test('coverage --tracked reads the whole repository whatever directory it runs from', () => {
+  const fromRoot = cliJson(['coverage', '--tracked']);
+  assert.equal(fromRoot.code, 0, fromRoot.stderr);
+  const fromSubdirectory = cliJson(['coverage', '--tracked'], { cwd: join(REPOSITORY_ROOT, 'src') });
+  assert.equal(fromSubdirectory.code, 0, fromSubdirectory.stderr);
+  assert.deepEqual(fromRoot.payload, fromSubdirectory.payload);
+  assert.ok(fromRoot.payload.counts.mapped > 0, 'the registry must claim some tracked path');
+  assert.ok(
+    fromRoot.payload.mapped.every((entry) => !entry.path.startsWith('../')),
+    'every scored path must be repository-rooted'
+  );
+});
+
 test('route rejects an --input document that breaks its contract', () => {
   assert.equal(cli(['route', '--input', scratchFile('bad.json', '{ not json')]).code, 2);
   assert.equal(cli(['route', '--input', scratchFile('v2.json', '{"schema_version":2}')]).code, 2);
@@ -270,16 +286,48 @@ test('route over real commits handles hostile filenames without a shell', () => 
   }
 });
 
+// The two input paths must not drift: a caller reading the git leg and a caller
+// handing over the same diff document have to reach the same routing decision.
 test('route from git and route from --input agree on the same change', () => {
-  const paths = ['src/context-engine/recommender.ts'];
-  const diff = ['diff --git a/a.ts b/a.ts', '+++ b/a.ts', '@@ -1,1 +1,1 @@', '+fetchRecommendations();'].join('\n');
-  const viaInput = cliJson([
-    'route',
-    '--input',
-    scratchFile('agree.json', JSON.stringify({ schema_version: 1, paths, diff })),
-  ]).payload;
-  assert.ok(viaInput.activated.some((entry) => entry.id === 'context-engine'));
-  assert.deepEqual(viaInput.input.paths.accepted, 2);
+  const repository = mkdtempSync(join(tmpdir(), 'concerns-agree-'));
+  const git = (args) => execFileSync('git', args, { cwd: repository, encoding: 'utf8' });
+  const file = 'src/context-engine/recommender.ts';
+  try {
+    git(['init', '--quiet', '--initial-branch', 'main']);
+    git(['config', 'user.email', 'test@example.invalid']);
+    git(['config', 'user.name', 'Concerns Test']);
+    git(['config', 'commit.gpgsign', 'false']);
+    mkdirSync(join(repository, 'src/context-engine'), { recursive: true });
+    writeFileSync(join(repository, file), 'export const seed = 1;\n');
+    writeFileSync(join(repository, 'src/context-engine/doomed.ts'), 'export const doomed = 1;\n');
+    git(['add', '--all']);
+    git(['commit', '--quiet', '--no-gpg-sign', '-m', 'seed']);
+    const base = git(['rev-parse', 'HEAD']).trim();
+
+    writeFileSync(join(repository, file), 'export const seed = 1;\nawait fetchRecommendations();\n');
+    rmSync(join(repository, 'src/context-engine/doomed.ts'));
+    git(['add', '--all']);
+    git(['commit', '--quiet', '--no-gpg-sign', '-m', 'change']);
+    const head = git(['rev-parse', 'HEAD']).trim();
+
+    const viaGit = cliJson(['route', '--base', base, '--head', head], { cwd: repository });
+    assert.equal(viaGit.code, 0, viaGit.stderr);
+
+    const document = {
+      schema_version: 1,
+      paths: git(['diff', '--no-color', '--name-only', '-z', base, head]).split('\x00').filter(Boolean),
+      diff: git(['diff', '--no-color', '--no-ext-diff', '--unified=3', base, head]),
+    };
+    const viaInput = cliJson(['route', '--input', scratchFile('agree.json', JSON.stringify(document))]);
+    assert.equal(viaInput.code, 0, viaInput.stderr);
+
+    assert.deepEqual(viaGit.payload, viaInput.payload);
+    assert.ok(viaGit.payload.activated.some((entry) => entry.id === 'context-engine'));
+    // The deleted file is one of the two, and both legs have to see it.
+    assert.deepEqual(viaGit.payload.input.paths.accepted, 2);
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
 });
 
 test('the --class flag overrides the change class named in an --input document', () => {

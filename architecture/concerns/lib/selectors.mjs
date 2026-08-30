@@ -131,3 +131,26 @@ export function semanticSelectorValues(selector) {
 export function selectorSetOf(concern) {
   return concern.activation.kind === 'always' ? concern.activation.context_selectors : concern.activation.selectors;
 }
+
+export function directoryOf(path) {
+  const index = path.lastIndexOf('/');
+  return index === -1 ? '.' : path.slice(0, index);
+}
+
+// Routing's cluster gap and coverage's unmapped classification ask the same
+// question, so both read ownership from here: whether they agree is a contract,
+// not a coincidence. Always-on concerns claim every path and so own none.
+export function conditionalOwnersOf(registry, path) {
+  const strong = [];
+  const weak = [];
+  for (const concern of registry.concerns) {
+    if (concern.activation.kind !== 'signals') {
+      continue;
+    }
+    if (!selectorSetOf(concern).paths.some((selector) => pathSelectorMatches(selector, path))) {
+      continue;
+    }
+    (concern.activation.mode === 'weak' ? weak : strong).push(concern.id);
+  }
+  return { strong, weak };
+}

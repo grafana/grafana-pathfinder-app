@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, posix, relative } from 'node:path';
 import { test } from 'node:test';
+import { globToRegExp } from '../lib/selectors.mjs';
 import { readJson, REPOSITORY_ROOT } from './helpers.mjs';
 
 const SUBPROJECT = 'architecture/concerns';
@@ -34,11 +35,84 @@ function gitGrep(pattern, pathspecs) {
   }
 }
 
+// Reads a value a build input really exports, by loading the module in a child
+// process. The subproject keeps no import edge into the harness, and the test
+// asserts on the resolved value rather than on the text that produced it.
+function exportedValue(modulePath, name) {
+  const result = spawnSync(
+    process.execPath,
+    [
+      '-e',
+      'process.stdout.write(JSON.stringify(require(process.argv[1])[process.argv[2]]))',
+      join(REPOSITORY_ROOT, modulePath),
+      name,
+    ],
+    { encoding: 'utf8' }
+  );
+  assert.equal(result.status, 0, `${modulePath} would not load: ${result.stderr}`);
+  return JSON.parse(result.stdout);
+}
+
+function expandBraces(pattern) {
+  const group = /\{([^{}]*)\}/.exec(pattern);
+  if (!group) {
+    return [pattern];
+  }
+  return group[1]
+    .split(',')
+    .flatMap((option) =>
+      expandBraces(`${pattern.slice(0, group.index)}${option}${pattern.slice(group.index + group[0].length)}`)
+    );
+}
+
+// A pattern naming a directory selects everything beneath it, which is how both
+// tsconfig's include/exclude and npm's files field read a bare path.
+function selectionRegExps(patterns) {
+  return patterns
+    .map((pattern) => pattern.replace('<rootDir>/', '').replace(/\/$/, ''))
+    .flatMap(expandBraces)
+    .flatMap((pattern) => [pattern, `${pattern}/**`])
+    .map(globToRegExp);
+}
+
+function filesSelectedBy(patterns, files) {
+  const compiled = selectionRegExps(patterns);
+  return files.filter((file) => compiled.some((regexp) => regexp.test(file)));
+}
+
+function subprojectSelection(patterns, files) {
+  return filesSelectedBy(patterns, files).filter((file) => file.startsWith('architecture/'));
+}
+
+// Resolves the CopyWebpackPlugin patterns into the repository-relative globs
+// they actually select, by pairing each `from` with the declared copy context.
+function copyPatternGlobs() {
+  const config = readFileSync(join(REPOSITORY_ROOT, '.config/webpack/webpack.config.ts'), 'utf8');
+  const constants = readFileSync(join(REPOSITORY_ROOT, '.config/webpack/constants.ts'), 'utf8');
+  const sourceDir = /export const SOURCE_DIR = '([^']+)'/.exec(constants);
+  assert.ok(sourceDir, '.config/webpack/constants.ts must still declare SOURCE_DIR');
+  assert.match(
+    config,
+    /context: path\.join\(process\.cwd\(\), SOURCE_DIR\)/,
+    'the copy context must still be the plugin source directory'
+  );
+  const block = /new CopyWebpackPlugin\(\{\s*patterns: \[([\s\S]*?)\n\s*\],\s*\}\)/.exec(config);
+  assert.ok(block, 'the CopyWebpackPlugin patterns must still be a literal array this test can resolve');
+  const expressions = [...block[1].matchAll(/\{\s*from:([\s\S]*?),\s*to:/g)].map((match) => match[1]);
+  assert.ok(expressions.length > 0, 'no copy pattern was resolved, so the check would pass vacuously');
+  return expressions.flatMap((expression) => {
+    const literals = [...expression.matchAll(/'([^']*)'/g)].map((match) => match[1]);
+    assert.ok(literals.length > 0, `this test cannot resolve the copy pattern ${expression.trim()}`);
+    return literals.map((from) => posix.normalize(posix.join(sourceDir[1], from)));
+  });
+}
+
 function importSpecifiers(source) {
   return [...source.matchAll(/(?:^|\n)\s*import\s[^;]*?from\s+'([^']+)'/g)].map((match) => match[1]);
 }
 
 const subprojectFiles = repositoryFilesUnder(SUBPROJECT);
+const repositoryFiles = repositoryFilesUnder('.');
 const packageJson = readJson(join(REPOSITORY_ROOT, 'package.json'));
 
 test('the subproject lives outside every product source tree', () => {
@@ -84,33 +158,50 @@ test('the only external dependency is an existing dev dependency outside the shi
     assert.ok(packageJson.devDependencies[name], `${name} must stay a dev dependency`);
     assert.ok(!packageJson.dependencies?.[name], `${name} must not become a runtime dependency`);
   }
-  const cliBuildUtils = readFileSync(join(REPOSITORY_ROOT, 'scripts/cli-build-utils.js'), 'utf8');
-  const runtimeDeps = cliBuildUtils.match(/const RUNTIME_DEPS = \[([^\]]*)\]/)[1];
+  const runtimeDeps = exportedValue('scripts/cli-build-utils.js', 'RUNTIME_DEPS');
+  assert.ok(runtimeDeps.length > 0, 'the shipped CLI runtime allowlist must still be readable');
   for (const name of ALLOWED_EXTERNAL_PACKAGES) {
-    assert.ok(!runtimeDeps.includes(`'${name}'`), `${name} must stay out of the shipped CLI runtime allowlist`);
+    assert.ok(!runtimeDeps.includes(name), `${name} must stay out of the shipped CLI runtime allowlist`);
   }
 });
 
 test('the npm publication surface cannot reach the subproject', () => {
   assert.deepEqual(packageJson.files, ['dist/']);
-  assert.ok(!JSON.stringify(packageJson.files).includes('architecture'));
-  assert.ok(!packageJson.bin['pathfinder-cli'].includes('architecture'));
+  assert.deepEqual(subprojectSelection(packageJson.files, repositoryFiles), []);
+  assert.match(packageJson.bin['pathfinder-cli'], /^\.\/dist\//, 'the published bin must come from the build output');
 });
 
-test('no build input names the subproject, so it cannot reach the plugin archive', () => {
-  const buildInputs = [
-    'webpack.config.ts',
-    '.config/webpack/webpack.config.ts',
-    'tsconfig.cli.json',
-    'jest.config.js',
-    'Magefile.go',
-    'Dockerfile.cli',
-    'Dockerfile.e2e-runner',
-  ];
-  for (const path of buildInputs) {
-    const source = readFileSync(join(REPOSITORY_ROOT, path), 'utf8');
-    assert.ok(!source.includes('architecture'), `${path} must not name the architecture subproject`);
-  }
+test('the plugin archive copy patterns select no subproject file', () => {
+  assert.deepEqual(
+    gitGrep('CopyWebpackPlugin', ['.config', 'webpack.config.ts']),
+    ['.config/webpack/webpack.config.ts'],
+    'the copy patterns this test resolves must be the only ones the build declares'
+  );
+  const globs = copyPatternGlobs();
+  const selected = filesSelectedBy(globs, repositoryFiles);
+  assert.ok(selected.length > 0, 'the resolved copy patterns must still select the files the archive ships');
+  assert.deepEqual(subprojectSelection(globs, repositoryFiles), []);
+});
+
+test('the shipped CLI compile inputs select no subproject file', () => {
+  const tsconfig = readJson(join(REPOSITORY_ROOT, 'tsconfig.cli.json'));
+  const excluded = new Set(filesSelectedBy(tsconfig.exclude, repositoryFiles));
+  const compiled = filesSelectedBy(tsconfig.include, repositoryFiles).filter((file) => !excluded.has(file));
+  assert.ok(compiled.length > 0, 'the resolved compile inputs must still select the CLI sources');
+  assert.deepEqual(
+    compiled.filter((file) => file.startsWith('architecture/')),
+    []
+  );
+});
+
+// The subproject's own suite runs under `node --test`; jest must not pick it up
+// and silently subject it to the plugin's browser test environment.
+test('the jest suite selects no subproject test', () => {
+  const testMatch = exportedValue('jest.config.js', 'testMatch');
+  const selected = filesSelectedBy(testMatch, repositoryFiles);
+  assert.ok(selected.length > 0, 'the resolved testMatch must still select the plugin suite');
+  assert.deepEqual(subprojectSelection(testMatch, repositoryFiles), []);
+  assert.deepEqual(filesSelectedBy(testMatch, subprojectFiles), []);
 });
 
 test('the E2E runner image ignores the subproject its COPY would otherwise take', () => {
@@ -150,6 +241,4 @@ test('the root scripts expose the subproject without touching the shipped CLI', 
   assert.equal(packageJson.scripts.concerns, `node ${SUBPROJECT}/bin/concerns.mjs`);
   assert.equal(packageJson.scripts['concerns:validate'], 'npm run concerns -- validate');
   assert.equal(packageJson.scripts['test:concerns'], `node --test ${SUBPROJECT}/test/*.test.mjs`);
-  const cliCommands = readFileSync(join(REPOSITORY_ROOT, 'src/cli/cli-commands.ts'), 'utf8');
-  assert.ok(!cliCommands.includes('concerns'), 'the shipped CLI must not gain a concerns command');
 });

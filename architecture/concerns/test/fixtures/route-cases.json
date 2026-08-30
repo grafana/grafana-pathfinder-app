@@ -108,7 +108,7 @@
         "paths": ["src/hooks/use-one.ts", "src/hooks/use-two.ts"]
       },
       "expect": {
-        "coverage_gap_kinds": ["unowned_directory_cluster", "only_always_on_coverage"],
+        "coverage_gap_kinds": ["unowned_directory_cluster"],
         "unowned_directories": ["src/hooks"]
       }
     },
@@ -122,6 +122,23 @@
         "input_semantics_source": "text",
         "disclosure_kinds": ["unrecognised_diff"],
         "activated_includes": ["context-engine"]
+      }
+    },
+    {
+      "name": "a deletion diff routes on the path its old side names",
+      "input": {
+        "schema_version": 1,
+        "diff": "diff --git a/src/context-engine/recommender.ts b/src/context-engine/recommender.ts\n--- a/src/context-engine/recommender.ts\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-await fetchRecommendations();\n"
+      },
+      "expect": {
+        "activated_includes": ["context-engine"],
+        "signals": {
+          "context-engine": {
+            "path": 1,
+            "semantic": 1,
+            "total": 2
+          }
+        }
       }
     },
     {

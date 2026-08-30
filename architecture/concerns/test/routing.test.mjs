@@ -22,6 +22,43 @@ function ids(entries) {
   return entries.map((entry) => entry.id);
 }
 
+// The corpus is the primary evidence for routing semantics, so a mistyped or
+// emptied expectation has to fail rather than pass vacuously.
+const ASSERTING_EXPECT_KEYS = [
+  'activated_includes',
+  'activated_excludes',
+  'withheld_includes',
+  'signals',
+  'change_class',
+  'coverage_gap_kinds',
+  'unowned_directories',
+  'input_semantics_source',
+  'disclosure_kinds',
+];
+const MODIFIER_EXPECT_KEYS = ['withheld_reason'];
+
+test('every curated fixture states its expectations in the vocabulary the suite checks', () => {
+  assert.ok(fixtures.cases.length >= 10, 'the fixture corpus must cover each routing rule');
+  const known = new Set([...ASSERTING_EXPECT_KEYS, ...MODIFIER_EXPECT_KEYS]);
+  const names = new Set();
+  for (const fixture of fixtures.cases) {
+    assert.ok(typeof fixture.name === 'string' && fixture.name.length > 0, 'every fixture must be named');
+    assert.ok(!names.has(fixture.name), `duplicate fixture name: ${fixture.name}`);
+    names.add(fixture.name);
+    const keys = Object.keys(fixture.expect ?? {});
+    for (const key of keys) {
+      assert.ok(known.has(key), `${fixture.name}: unknown expectation key ${key}`);
+    }
+    assert.ok(
+      keys.some((key) => ASSERTING_EXPECT_KEYS.includes(key)),
+      `${fixture.name}: the fixture asserts nothing`
+    );
+    if (keys.includes('withheld_includes')) {
+      assert.ok(fixture.expect.withheld_reason, `${fixture.name}: withheld_includes needs a withheld_reason`);
+    }
+  }
+});
+
 test('every curated routing fixture behaves as it records', () => {
   assert.ok(fixtures.cases.length >= 10, 'the fixture corpus must cover each routing rule');
   for (const fixture of fixtures.cases) {
@@ -195,13 +232,32 @@ test('coverage gaps are disclosed and never gate', () => {
   assert.equal(gap.condition, registry.coverage_gap_policy.conditions[0]);
   assert.equal(result.policy.coverage_gap_is_gate, false);
   assert.equal(result.policy.coverage_gap_disposition, 'disclose');
-  assert.ok(result.disclosures.some((entry) => entry.kind === 'coverage_condition_not_evaluated'));
+});
+
+// Routing computes exactly one of the registry's coverage-gap conditions. Every
+// other one must be reported verbatim as unevaluated rather than narrowed into
+// a claim the registry does not make.
+test('every coverage-gap condition routing does not compute is disclosed verbatim', () => {
+  const result = route({ schema_version: 1, paths: ['src/hooks/one.ts', 'src/hooks/two.ts'] });
+  const evaluated = registry.coverage_gap_policy.conditions.filter((condition) =>
+    condition.includes('directory with multiple changed files')
+  );
+  assert.equal(evaluated.length, 1, 'the directory-cluster condition is the one routing evaluates');
+  const disclosed = result.disclosures
+    .filter((entry) => entry.kind === 'coverage_condition_not_evaluated')
+    .map((entry) => entry.condition);
+  assert.deepEqual(
+    disclosed,
+    registry.coverage_gap_policy.conditions.filter((condition) => !evaluated.includes(condition))
+  );
+  for (const entry of result.coverage_gaps) {
+    assert.ok(evaluated.includes(entry.condition), `${entry.kind} claims a condition routing does not evaluate`);
+  }
 });
 
 test('a single changed file in an unowned directory is not reported as a cluster', () => {
   const result = route({ schema_version: 1, paths: ['src/hooks/one.ts'] });
-  assert.ok(!result.coverage_gaps.some((entry) => entry.kind === 'unowned_directory_cluster'));
-  assert.ok(result.coverage_gaps.some((entry) => entry.kind === 'only_always_on_coverage'));
+  assert.deepEqual(result.coverage_gaps, []);
 });
 
 test('routing is deterministic for the same input', () => {
@@ -211,6 +267,75 @@ test('routing is deterministic for the same input', () => {
     diff: ['diff --git a/a.ts b/a.ts', '+++ b/a.ts', '@@ -1,1 +1,1 @@', '+fetchRecommendations();'].join('\n'),
   };
   assert.deepEqual(route(request), route(request));
+});
+
+test('deleting a subsystem file routes on the same signals as modifying it', () => {
+  const path = 'src/context-engine/recommender.ts';
+  const deletion = route({
+    schema_version: 1,
+    diff: [
+      `diff --git a/${path} b/${path}`,
+      `--- a/${path}`,
+      '+++ /dev/null',
+      '@@ -1,1 +0,0 @@',
+      '-await fetchRecommendations();',
+    ].join('\n'),
+  });
+  const modification = route({
+    schema_version: 1,
+    diff: [
+      `diff --git a/${path} b/${path}`,
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      '@@ -1,1 +1,1 @@',
+      '-await fetchRecommendations();',
+    ].join('\n'),
+  });
+  const entryFor = (result) => result.activated.find((item) => item.id === 'context-engine');
+  assert.deepEqual(deletion.input.paths.accepted, 1);
+  assert.ok(entryFor(deletion), 'the deleted subsystem file must still activate its concern');
+  assert.deepEqual(entryFor(deletion).signals, entryFor(modification).signals);
+});
+
+// A removed line reading `-- x` is shaped like a `---` file header. Reading one
+// as a header closes the hunk and drops every changed line after it.
+test('a changed line shaped like a file header does not discard the rest of its hunk', () => {
+  const path = 'src/context-engine/recommender.ts';
+  const withLookalike = route({
+    schema_version: 1,
+    paths: [path],
+    diff: [
+      `diff --git a/${path} b/${path}`,
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      '@@ -1,4 +1,3 @@',
+      '+const kept = 1;',
+      '--- note removed from a comment',
+      '-await fetchRecommendations();',
+      '-getContextData();',
+    ].join('\n'),
+  });
+  const entry = withLookalike.activated.find((item) => item.id === 'context-engine');
+  assert.ok(entry, 'the evidence after the look-alike line must still count');
+  assert.equal(entry.signals.semantic, 2);
+  assert.deepEqual(withLookalike.input.paths.accepted, 1);
+});
+
+test('an added line shaped like a file header contributes no path of its own', () => {
+  const result = route({
+    schema_version: 1,
+    diff: [
+      'diff --git a/src/a.ts b/src/a.ts',
+      '--- a/src/a.ts',
+      '+++ b/src/a.ts',
+      '@@ -1,1 +1,2 @@',
+      '+getContextData();',
+      '++ bumped counter',
+    ].join('\n'),
+  });
+  assert.deepEqual(result.input.paths.accepted, 1);
+  assert.deepEqual(result.input.semantics.hunk_count, 1);
+  assert.ok(!result.disclosures.some((entry) => entry.kind === 'diff_without_hunks'));
 });
 
 test('the --input contract rejects documents it cannot trust', () => {

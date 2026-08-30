@@ -109,13 +109,87 @@ test('a unified diff yields one hunk per header with its changed lines', () => {
   assert.deepEqual(parsed.paths, ['src/one.ts', 'src/two.ts']);
 });
 
-test('a deletion diff attributes its hunk to no file rather than dropping it', () => {
+test('a deletion diff attributes its hunk to the file the old side names', () => {
   const parsed = analyzeSemanticInput(
     ['diff --git a/gone.ts b/gone.ts', '--- a/gone.ts', '+++ /dev/null', '@@ -1,1 +0,0 @@', '-removed'].join('\n')
   );
   assert.equal(parsed.hunks.length, 1);
+  assert.equal(parsed.hunks[0].path, 'gone.ts');
+  assert.deepEqual(parsed.derived_paths, ['gone.ts']);
+  assert.ok(!parsed.disclosures.some((entry) => entry.kind === 'hunk_without_file_header'));
+});
+
+test('a hunk that truly precedes every file header is disclosed and attributed to no path', () => {
+  const parsed = analyzeSemanticInput(['@@ -1,1 +1,1 @@', '+orphan'].join('\n'));
+  assert.equal(parsed.hunks.length, 1);
   assert.equal(parsed.hunks[0].path, null);
+  assert.deepEqual(parsed.derived_paths, []);
   assert.ok(parsed.disclosures.some((entry) => entry.kind === 'hunk_without_file_header'));
+});
+
+test('an added file names its path from the new side while the old side is /dev/null', () => {
+  const parsed = parseUnifiedDiff(
+    ['diff --git a/new.ts b/new.ts', '--- /dev/null', '+++ b/new.ts', '@@ -0,0 +1,1 @@', '+added'].join('\n')
+  );
+  assert.deepEqual(parsed.paths, ['new.ts']);
+  assert.deepEqual(
+    parsed.hunks.map((hunk) => [hunk.path, hunk.lines]),
+    [['new.ts', ['added']]]
+  );
+});
+
+// A removed line reading `-- x` arrives as `--- x`, which is shaped exactly like
+// a file header. The hunk's declared line counts are what tell them apart.
+test('changed lines that look like file headers stay inside their hunk', () => {
+  const parsed = parseUnifiedDiff(
+    [
+      'diff --git a/src/one.ts b/src/one.ts',
+      '--- a/src/one.ts',
+      '+++ b/src/one.ts',
+      '@@ -1,3 +1,3 @@',
+      '+++ bumped counter',
+      '--- note removed from a comment',
+      '-await fetchRecommendations();',
+      '-getContextData();',
+      ' unchanged',
+    ].join('\n')
+  );
+  assert.deepEqual(parsed.paths, ['src/one.ts']);
+  assert.deepEqual(
+    parsed.hunks.map((hunk) => [hunk.path, hunk.lines]),
+    [
+      [
+        'src/one.ts',
+        ['++ bumped counter', '-- note removed from a comment', 'await fetchRecommendations();', 'getContextData();'],
+      ],
+    ]
+  );
+  assert.deepEqual(parsed.disclosures, []);
+});
+
+test('a file header still opens a new file once its hunk has consumed its declared lines', () => {
+  const parsed = parseUnifiedDiff(
+    [
+      '--- a/src/one.ts',
+      '+++ b/src/one.ts',
+      '@@ -1,1 +1,1 @@',
+      '-old',
+      '+new',
+      '--- a/src/two.ts',
+      '+++ b/src/two.ts',
+      '@@ -1,1 +1,1 @@',
+      '-gone',
+      '+here',
+    ].join('\n')
+  );
+  assert.deepEqual(parsed.paths, ['src/one.ts', 'src/two.ts']);
+  assert.deepEqual(
+    parsed.hunks.map((hunk) => [hunk.path, hunk.lines]),
+    [
+      ['src/one.ts', ['old', 'new']],
+      ['src/two.ts', ['gone', 'here']],
+    ]
+  );
 });
 
 test('input that is not a diff is scanned as text and disclosed', () => {

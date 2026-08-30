@@ -191,9 +191,10 @@ function readStdin() {
   }
 }
 
-function git(args) {
+function git(args, cwd) {
   try {
     return execFileSync('git', args, {
+      cwd,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -367,8 +368,8 @@ function coverageText(payload) {
   ].join('\n');
 }
 
-function requireRegistry(registryPath) {
-  const loaded = loadRegistry(registryPath ? { registryPath } : {});
+function requireRegistry() {
+  const loaded = loadRegistry();
   const result = validateRegistry(loaded);
   if (!result.valid) {
     throw runtimeError(
@@ -514,7 +515,7 @@ function runCoverage(argv) {
   }
   let paths;
   if (values.tracked) {
-    paths = splitNulList(git(trackedFilesArgs()));
+    paths = splitNulList(git(trackedFilesArgs(), REPOSITORY_ROOT));
   } else if (values.paths !== undefined) {
     paths = readTextFile(values.paths)
       .split('\n')
