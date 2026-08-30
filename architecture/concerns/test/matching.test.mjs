@@ -119,6 +119,78 @@ test('a deletion diff attributes its hunk to the file the old side names', () =>
   assert.ok(!parsed.disclosures.some((entry) => entry.kind === 'hunk_without_file_header'));
 });
 
+// A rename and a binary change are the two entries git emits with no `---`/`+++`
+// pair at all, so the `diff --git` header is the only place their path appears.
+test('a rename contributes its post-change path alongside the files that carry hunks', () => {
+  const analysis = analyzeSemanticInput(
+    [
+      'diff --git a/src/context-engine/old.ts b/src/context-engine/new.ts',
+      'similarity index 100%',
+      'rename from src/context-engine/old.ts',
+      'rename to src/context-engine/new.ts',
+      'diff --git a/src/hooks/x.ts b/src/hooks/x.ts',
+      '--- a/src/hooks/x.ts',
+      '+++ b/src/hooks/x.ts',
+      '@@ -1,1 +1,1 @@',
+      '-a',
+      '+b',
+    ].join('\n')
+  );
+  assert.deepEqual(analysis.derived_paths, ['src/context-engine/new.ts', 'src/hooks/x.ts']);
+  assert.deepEqual(
+    analysis.hunks.map((hunk) => hunk.path),
+    ['src/hooks/x.ts']
+  );
+  assert.deepEqual(analysis.disclosures, []);
+});
+
+test('a binary-only change contributes its path rather than vanishing', () => {
+  const analysis = analyzeSemanticInput(
+    [
+      'diff --git a/src/img/logo.png b/src/img/logo.png',
+      'index 1111111..2222222 100644',
+      'Binary files a/src/img/logo.png and b/src/img/logo.png differ',
+    ].join('\n')
+  );
+  assert.deepEqual(analysis.derived_paths, ['src/img/logo.png']);
+  assert.ok(analysis.disclosures.some((entry) => entry.kind === 'diff_without_hunks'));
+  assert.ok(!analysis.disclosures.some((entry) => entry.kind === 'diff_entry_without_path'));
+});
+
+test('a file header stays authoritative over the entry header it follows', () => {
+  const parsed = parseUnifiedDiff(
+    [
+      'diff --git a/src/context-engine/old.ts b/src/context-engine/new.ts',
+      'similarity index 90%',
+      'rename from src/context-engine/old.ts',
+      'rename to src/context-engine/new.ts',
+      '--- a/src/context-engine/old.ts',
+      '+++ b/src/context-engine/new.ts',
+      '@@ -1,1 +1,1 @@',
+      '-a',
+      '+b',
+    ].join('\n')
+  );
+  assert.deepEqual(parsed.paths, ['src/context-engine/new.ts']);
+  assert.deepEqual(
+    parsed.hunks.map((hunk) => hunk.path),
+    ['src/context-engine/new.ts']
+  );
+});
+
+test('a quoted entry header still yields its path', () => {
+  const parsed = parseUnifiedDiff(
+    ['diff --git "a/src/we ird.ts" "b/src/we ird.ts"', 'index 1111111..2222222 100644'].join('\n')
+  );
+  assert.deepEqual(parsed.paths, ['src/we ird.ts']);
+});
+
+test('an entry header naming no readable path is disclosed rather than dropped', () => {
+  const analysis = analyzeSemanticInput(['diff --git nonsense', 'Binary files differ'].join('\n'));
+  assert.deepEqual(analysis.derived_paths, []);
+  assert.ok(analysis.disclosures.some((entry) => entry.kind === 'diff_entry_without_path'));
+});
+
 test('a hunk that truly precedes every file header is disclosed and attributed to no path', () => {
   const parsed = analyzeSemanticInput(['@@ -1,1 +1,1 @@', '+orphan'].join('\n'));
   assert.equal(parsed.hunks.length, 1);

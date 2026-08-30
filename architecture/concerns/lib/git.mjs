@@ -13,12 +13,19 @@ export function assertLiteralRevision(value, flag) {
   return value;
 }
 
+// Diff output is read as repository-rooted paths behind the conventional `a/`
+// and `b/` prefixes, and both of those are configurable per repository. Pinning
+// them here keeps a caller's `diff.relative`, `diff.srcPrefix`, or
+// `diff.dstPrefix` from silently reshaping every path routing scores.
+const PATH_SHAPE = ['--no-relative', '--src-prefix=a/', '--dst-prefix=b/'];
+
 export function changedPathsArgs(base, head) {
   return [
     'diff',
     '--no-color',
     '--name-only',
     '-z',
+    ...PATH_SHAPE,
     assertLiteralRevision(base, '--base'),
     assertLiteralRevision(head, '--head'),
   ];
@@ -30,6 +37,7 @@ export function unifiedDiffArgs(base, head) {
     '--no-color',
     '--no-ext-diff',
     '--unified=3',
+    ...PATH_SHAPE,
     assertLiteralRevision(base, '--base'),
     assertLiteralRevision(head, '--head'),
   ];

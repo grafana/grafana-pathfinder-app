@@ -15,6 +15,22 @@ function declaredCount(value) {
   return value === undefined ? 1 : Number(value);
 }
 
+// `diff --git a/X b/Y` is the only line a rename or a binary-only entry carries,
+// and a path may hold spaces, so the ` b/` that opens the second side is the
+// split point rather than whitespace.
+function entryHeaderPaths(line) {
+  const rest = line.slice('diff --git '.length).trim();
+  const quoted = rest.lastIndexOf(' "b/');
+  const index = quoted === -1 ? rest.lastIndexOf(' b/') : quoted;
+  if (index === -1) {
+    return { old: null, new: null };
+  }
+  return {
+    old: stripPrefix(rest.slice(0, index).trim()),
+    new: stripPrefix(rest.slice(index + 1).trim()),
+  };
+}
+
 // Parses only what routing needs: which file each hunk belongs to and the text
 // of the lines that changed. Anything it cannot attribute to a file is reported
 // as a disclosure rather than dropped, because a silently skipped hunk would
@@ -25,6 +41,7 @@ export function parseUnifiedDiff(text) {
   const disclosures = [];
   let currentPath = null;
   let oldPath = null;
+  let entry = null;
   let hunk = null;
   let remainingOld = 0;
   let remainingNew = 0;
@@ -46,6 +63,27 @@ export function parseUnifiedDiff(text) {
     }
   };
 
+  // A rename or a binary change carries no `---`/`+++` pair, so the entry header
+  // is the only place its path is stated. Those headers stay authoritative when
+  // present; this runs once the entry is over and none of them named a path.
+  const closeEntry = () => {
+    if (entry === null) {
+      return;
+    }
+    if (currentPath === null) {
+      const fallback = entry.new ?? entry.old;
+      if (fallback === null) {
+        disclosures.push({
+          kind: 'diff_entry_without_path',
+          message: 'a diff entry named no path this tool could read, so it contributes no path',
+        });
+      } else {
+        claimPath(fallback);
+      }
+    }
+    entry = null;
+  };
+
   // A changed line is its content behind a single `-` or `+`, so a removed
   // `-- x` arrives as `--- x` and an added `++ x` as `+++ x` — indistinguishable
   // from a file header by shape alone. The hunk's declared line counts are the
@@ -55,9 +93,11 @@ export function parseUnifiedDiff(text) {
   for (const line of text.split('\n')) {
     if (DIFF_GIT.test(line)) {
       closeHunk();
+      closeEntry();
       looksLikeDiff = true;
       currentPath = null;
       oldPath = null;
+      entry = entryHeaderPaths(line);
       continue;
     }
     if (!insideHunk() && line.startsWith('--- ')) {
@@ -77,8 +117,9 @@ export function parseUnifiedDiff(text) {
     if (header) {
       closeHunk();
       looksLikeDiff = true;
-      if (currentPath === null && oldPath !== null) {
-        claimPath(oldPath);
+      const stated = oldPath ?? entry?.new ?? entry?.old ?? null;
+      if (currentPath === null && stated !== null) {
+        claimPath(stated);
       }
       if (currentPath === null) {
         disclosures.push({
@@ -111,6 +152,7 @@ export function parseUnifiedDiff(text) {
     remainingNew -= 1;
   }
   closeHunk();
+  closeEntry();
 
   return { hunks, paths, disclosures, looksLikeDiff };
 }

@@ -107,6 +107,60 @@ function copyPatternGlobs() {
   });
 }
 
+const JS_SPECIFIER_PATTERNS = [
+  /\bfrom\s+['"]([^'"]+)['"]/g,
+  /\bimport\s+['"]([^'"]+)['"]/g,
+  /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+  /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+];
+
+// A relative specifier is resolved into the repository-relative file it names, so
+// a traversal that never spells the subproject out still shows up as an edge.
+function relativeImportEdges(path, source) {
+  const directory = posix.dirname(path);
+  const edges = [];
+  for (const pattern of JS_SPECIFIER_PATTERNS) {
+    for (const match of source.matchAll(pattern)) {
+      if (match[1].startsWith('.')) {
+        edges.push(posix.normalize(posix.join(directory, match[1])));
+      }
+    }
+  }
+  return edges;
+}
+
+function goModulePath() {
+  const goMod = readFileSync(join(REPOSITORY_ROOT, 'go.mod'), 'utf8');
+  const declared = /^module\s+(\S+)$/m.exec(goMod);
+  assert.ok(declared, 'go.mod must still declare a module path');
+  return declared[1];
+}
+
+// Go's own two ways of naming a file outside the current one: an import of a
+// package inside this module, and an embed pattern. Both are resolved into
+// repository-relative paths; neither needs the Go toolchain.
+function goEdges(path, source, modulePath) {
+  const specifiers = [];
+  for (const block of source.matchAll(/import\s*\(([\s\S]*?)\)/g)) {
+    for (const quoted of block[1].matchAll(/"([^"]+)"/g)) {
+      specifiers.push(quoted[1]);
+    }
+  }
+  for (const single of source.matchAll(/^\s*import\s+(?:[\w.]+\s+)?"([^"]+)"/gm)) {
+    specifiers.push(single[1]);
+  }
+  const internal = specifiers
+    .filter((specifier) => specifier === modulePath || specifier.startsWith(`${modulePath}/`))
+    .map((specifier) => specifier.slice(modulePath.length).replace(/^\//, '') || '.');
+  const embedded = [];
+  for (const directive of source.matchAll(/^\s*\/\/go:embed\s+(.+)$/gm)) {
+    for (const pattern of directive[1].trim().split(/\s+/)) {
+      embedded.push(posix.normalize(posix.join(posix.dirname(path), pattern.replace(/^"|"$/g, ''))));
+    }
+  }
+  return { internal, embedded };
+}
+
 function importSpecifiers(source) {
   return [...source.matchAll(/(?:^|\n)\s*import\s[^;]*?from\s+'([^']+)'/g)].map((match) => match[1]);
 }
@@ -123,9 +177,34 @@ test('the subproject lives outside every product source tree', () => {
   }
 });
 
-test('production source never reads or imports the concern subproject', () => {
-  assert.deepEqual(gitGrep(SUBPROJECT, ['src', 'pkg']), []);
-  assert.deepEqual(gitGrep('registry.schema.json', ['src', 'pkg']), []);
+test('no import edge in the frontend source tree resolves into the subproject', () => {
+  const sources = repositoryFilesUnder('src').filter((file) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file));
+  assert.ok(sources.length > 0, 'the frontend source tree must be tracked');
+  const edges = sources.flatMap((path) =>
+    relativeImportEdges(path, readFileSync(join(REPOSITORY_ROOT, path), 'utf8')).map((edge) => ({ path, edge }))
+  );
+  assert.ok(edges.length > 0, 'no import edge was resolved, so the check would pass vacuously');
+  assert.deepEqual(
+    edges.filter(({ edge }) => edge.startsWith('architecture/')),
+    []
+  );
+});
+
+test('no Go import or embed directive in the backend reaches the subproject', () => {
+  const modulePath = goModulePath();
+  const sources = repositoryFilesUnder('pkg').filter((file) => file.endsWith('.go'));
+  assert.ok(sources.length > 0, 'the backend source tree must be tracked');
+  const internal = [];
+  const embedded = [];
+  for (const path of sources) {
+    const edges = goEdges(path, readFileSync(join(REPOSITORY_ROOT, path), 'utf8'), modulePath);
+    internal.push(...edges.internal.map((edge) => ({ path, edge })));
+    embedded.push(...edges.embedded.map((edge) => ({ path, edge })));
+  }
+  assert.ok(internal.length > 0, 'no in-module Go import was resolved, so the check would pass vacuously');
+  for (const { path, edge } of [...internal, ...embedded]) {
+    assert.ok(edge.startsWith('pkg/'), `${path} reaches outside the backend tree: ${edge}`);
+  }
 });
 
 test('the concern implementation never imports product code or a harness directory', () => {

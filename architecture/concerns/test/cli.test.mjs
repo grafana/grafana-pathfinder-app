@@ -240,14 +240,70 @@ test('route rejects revisions that are not literal object names', () => {
 test('git argument builders emit literal arrays with the revision in its own slot', () => {
   const sha = 'a'.repeat(40);
   const other = 'b'.repeat(7);
-  assert.deepEqual(changedPathsArgs(sha, other), ['diff', '--no-color', '--name-only', '-z', sha, other]);
-  assert.deepEqual(unifiedDiffArgs(sha, other), ['diff', '--no-color', '--no-ext-diff', '--unified=3', sha, other]);
+  const pathShape = ['--no-relative', '--src-prefix=a/', '--dst-prefix=b/'];
+  assert.deepEqual(changedPathsArgs(sha, other), ['diff', '--no-color', '--name-only', '-z', ...pathShape, sha, other]);
+  assert.deepEqual(unifiedDiffArgs(sha, other), [
+    'diff',
+    '--no-color',
+    '--no-ext-diff',
+    '--unified=3',
+    ...pathShape,
+    sha,
+    other,
+  ]);
   assert.deepEqual(trackedFilesArgs(), ['ls-files', '-z']);
   for (const args of [changedPathsArgs(sha, other), unifiedDiffArgs(sha, other), trackedFilesArgs()]) {
     assert.ok(
       args.every((argument) => typeof argument === 'string' && !argument.includes(' ')),
       'no argument may carry an embedded space that a shell would resplit'
     );
+  }
+});
+
+// `diff.relative` makes git emit paths relative to the working directory and
+// omit everything above it, and `diff.srcPrefix`/`diff.dstPrefix` rename the
+// `a/`/`b/` prefixes the parser strips. All three are repository configuration,
+// so routing must not inherit any of them.
+test('route ignores repository diff configuration that would reshape every path', () => {
+  const repository = mkdtempSync(join(tmpdir(), 'concerns-relative-'));
+  const git = (args) => execFileSync('git', args, { cwd: repository, encoding: 'utf8' });
+  try {
+    git(['init', '--quiet', '--initial-branch', 'main']);
+    git(['config', 'user.email', 'test@example.invalid']);
+    git(['config', 'user.name', 'Concerns Test']);
+    git(['config', 'commit.gpgsign', 'false']);
+    git(['config', 'diff.relative', 'true']);
+    git(['config', 'diff.srcPrefix', 'before/']);
+    git(['config', 'diff.dstPrefix', 'after/']);
+    mkdirSync(join(repository, 'src/context-engine'), { recursive: true });
+    writeFileSync(join(repository, 'src/context-engine/recommender.ts'), 'export const seed = 1;\n');
+    git(['add', '--all']);
+    git(['commit', '--quiet', '--no-gpg-sign', '-m', 'seed']);
+    const base = git(['rev-parse', 'HEAD']).trim();
+
+    writeFileSync(
+      join(repository, 'src/context-engine/recommender.ts'),
+      'export const seed = 1;\nawait fetchRecommendations();\n'
+    );
+    git(['add', '--all']);
+    git(['commit', '--quiet', '--no-gpg-sign', '-m', 'change']);
+    const head = git(['rev-parse', 'HEAD']).trim();
+
+    const fromRoot = cliJson(['route', '--base', base, '--head', head], { cwd: repository });
+    assert.equal(fromRoot.code, 0, fromRoot.stderr);
+    const fromSubdirectory = cliJson(['route', '--base', base, '--head', head], {
+      cwd: join(repository, 'src/context-engine'),
+    });
+    assert.equal(fromSubdirectory.code, 0, fromSubdirectory.stderr);
+
+    assert.deepEqual(fromRoot.payload, fromSubdirectory.payload);
+    assert.deepEqual(fromRoot.payload.input.paths.accepted, 1);
+    assert.ok(
+      fromRoot.payload.activated.some((entry) => entry.id === 'context-engine'),
+      'the repository-rooted path must still reach its subsystem concern'
+    );
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
   }
 });
 
