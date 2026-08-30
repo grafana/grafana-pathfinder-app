@@ -167,7 +167,7 @@ describe('useRecordingPersistence — recording stops after a restore', () => {
 
     const { rerender } = renderHook(
       (props: { recordingIntoSection: string | null }) => useRecordingPersistence(defaultOpts({ onRestore, ...props })),
-      { initialProps: { recordingIntoSection: 'section-2' } }
+      { initialProps: { recordingIntoSection: 'section-2' as string | null } }
     );
     expect(onRestore).toHaveBeenCalledTimes(1);
 
@@ -182,7 +182,7 @@ describe('useRecordingPersistence — recording stops after a restore', () => {
 
     const { rerender } = renderHook(
       (props: { recordingIntoSection: string | null }) => useRecordingPersistence(defaultOpts({ onRestore, ...props })),
-      { initialProps: { recordingIntoSection: 'section-2' } }
+      { initialProps: { recordingIntoSection: 'section-2' as string | null } }
     );
     expect(onRestore).toHaveBeenCalledTimes(1);
     logger.error.mockClear();
