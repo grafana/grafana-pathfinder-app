@@ -44,10 +44,6 @@ function tableRows(text, requiredHeaders) {
   return rows;
 }
 
-function inlineValues(cell) {
-  return [...cell.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
-}
-
 function bare(value) {
   return value.replace(/^`|`$/g, '');
 }
@@ -167,13 +163,36 @@ test('the independent reader agrees with the extractor the review skill actually
   }
 });
 
-// The registry was translated from these exact bytes. If they move, the
-// translation has to be re-reconciled rather than assumed still current.
-test('the Markdown registries are pinned to the revision the registry was translated from', () => {
-  const digest = (path) => createHash('sha256').update(markdown(path)).digest('hex').slice(0, 16);
+// The registry was translated from the content of these five tables. If any row
+// moves, the translation has to be re-reconciled rather than assumed still
+// current. Prose outside the tables is not part of the translation, so it is not
+// part of the pin.
+const PINNED_TABLES = [
+  ['routing', routingRows],
+  ['details', detailRows],
+  ['anchors', anchorRows],
+  ['invariants', invariantRows],
+  ['candidates', candidateRows],
+];
+
+function tableDigest() {
+  const digest = createHash('sha256');
+  for (const [name, rows] of PINNED_TABLES) {
+    digest.update(`${name}\x1d`);
+    for (const row of rows) {
+      for (const header of Object.keys(row).sort()) {
+        digest.update(`${header}\x1f${row[header] ?? ''}\x1f`);
+      }
+      digest.update('\x1e');
+    }
+  }
+  return digest.digest('hex').slice(0, 16);
+}
+
+test('the Markdown registry tables are pinned to the content the registry was translated from', () => {
   assert.equal(
-    `${digest(ROUTING_MARKDOWN)} ${digest(DETAIL_MARKDOWN)}`,
-    'b621adb1cb570136 6f74b2ca95882dee',
-    'a Markdown registry changed: re-run the registry parity reconciliation and update this pin in the same change'
+    tableDigest(),
+    'd53f8e2ab7cc975e',
+    'a Markdown registry table changed: re-run the registry parity reconciliation and update this pin in the same change'
   );
 });

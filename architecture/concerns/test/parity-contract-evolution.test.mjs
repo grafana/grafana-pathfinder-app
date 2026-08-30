@@ -14,7 +14,10 @@ function git(args, cwd) {
 }
 
 const HEAD = git(['rev-parse', 'HEAD'], REPOSITORY_ROOT);
-const BASE = git(['rev-parse', 'HEAD~1'], REPOSITORY_ROOT);
+// CI checks out at depth 1, where HEAD~1 does not resolve. The gate accepts
+// base === head: it is an ancestor of itself and the in-stack range is empty,
+// which is all the pathspec assertions below need from real history.
+const BASE = HEAD;
 
 function selectorsOf(concern) {
   return concern.activation.kind === 'always' ? concern.activation.context_selectors : concern.activation.selectors;

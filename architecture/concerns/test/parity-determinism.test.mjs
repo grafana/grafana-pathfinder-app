@@ -62,8 +62,8 @@ test('packets do not depend on the working directory', () => {
 
 test('the Markdown extractor is equally stable, so parity is compared against a fixed target', () => {
   for (const id of SAMPLE_IDS) {
-    const first = runLegacy(LEGACY_EXTRACTOR, [id]);
-    const second = runLegacy(LEGACY_EXTRACTOR, [id], { cwd: REPOSITORY_ROOT });
+    const first = runLegacy(LEGACY_EXTRACTOR, [id], { cwd: REPOSITORY_ROOT });
+    const second = runLegacy(LEGACY_EXTRACTOR, [id], { cwd: tmpdir() });
     assert.equal(first.stdout, second.stdout, id);
   }
 });

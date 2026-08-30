@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { cliJson, readJson, REGISTRY_PATH, REPOSITORY_ROOT } from './helpers.mjs';
+import { LEGACY_REVIEW_POLICY, runLegacy } from './legacy.mjs';
 
 const registry = readJson(REGISTRY_PATH);
 const discrepancies = registry.migration_discrepancies;
@@ -136,6 +137,39 @@ test('no concern packet exposes anchor evidence relation semantics', () => {
   }
 });
 
+function reviewPolicyVerdict(reversibility) {
+  const input = join(tmpdir(), `concerns-reversibility-${reversibility}.json`);
+  writeFileSync(
+    input,
+    JSON.stringify({
+      round: 1,
+      observation: {
+        finding_id: 'reversibility-probe',
+        concern_id: 'reversibility-and-one-way-door',
+        kind: 'nit',
+        severity: 'low',
+        confidence: 'high',
+        title: 'probe',
+        evidence: ['probe'],
+        why_it_matters: 'probe',
+        suggested_action: 'probe',
+        reversibility,
+        applies_to_files: [],
+        origin: 'regression',
+        impact: 'none',
+        timing: 'first_round',
+        scope_effect: 'within_changed_surface',
+        breaks_shipped_path: false,
+        induced: false,
+      },
+    })
+  );
+  return runLegacy(LEGACY_REVIEW_POLICY, [input]);
+}
+
+// The disposition holding this discrepancy open rests on the live policy still
+// accepting a fourth verdict, so the live policy is asked rather than read: the
+// probe below fails the moment 'unknown' leaves its accepted set.
 test('the reversibility output policy stays narrower than the live review contract', () => {
   const concern = registry.concerns.find((entry) => entry.id === 'reversibility-and-one-way-door');
   assert.deepEqual(concern.output_policy.values, [
@@ -143,8 +177,14 @@ test('the reversibility output policy stays narrower than the live review contra
     'partially_reversible',
     'irreversible_without_cleanup',
   ]);
-  const livePolicy = readFileSync(join(REPOSITORY_ROOT, '.cursor/skills/review/scripts/review-policy.mjs'), 'utf8');
-  assert.match(livePolicy, /unknown/, 'the live policy still accepts a verdict the registry does not list');
+  const accepted = reviewPolicyVerdict('unknown');
+  assert.equal(accepted.code, 0, `the live policy no longer accepts 'unknown': ${accepted.stderr}`);
+  const rejected = reviewPolicyVerdict('not-a-verdict');
+  assert.equal(rejected.code, 2, 'the probe must be able to observe a refusal at all');
+  assert.match(rejected.stderr, /Unknown reversibility/);
+  for (const value of concern.output_policy.values) {
+    assert.equal(reviewPolicyVerdict(value).code, 0, `${value} must remain acceptable to the live policy`);
+  }
 });
 
 // The registry-size question Phase 2 flagged. Pretty printing costs bytes on

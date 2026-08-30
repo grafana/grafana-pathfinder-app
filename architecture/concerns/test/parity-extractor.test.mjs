@@ -3,11 +3,13 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { cliJson, readJson, REGISTRY_PATH } from './helpers.mjs';
 import {
+  legacyAnchorSeparator,
   legacyPacket,
   legacyUnquote,
   legacyWorkerPacket,
   projectPacketToLegacy,
   projectWorkerPacketToLegacy,
+  rawLegacyPacket,
 } from './legacy.mjs';
 
 const registry = readJson(REGISTRY_PATH);
@@ -59,8 +61,8 @@ test('every concern packet matches the Markdown extractor exactly under the lega
   assert.equal(packets.length, 27);
   for (const { concern, full, worker, legacyFull, legacyWorker } of packets) {
     assert.ok(legacyFull && legacyWorker, `${concern.id} must be extractable from the Markdown registries`);
-    comparePacket(concern.id, 'full', legacyFull, projectPacketToLegacy(full, concern), observed);
-    comparePacket(concern.id, 'worker', legacyWorker, projectWorkerPacketToLegacy(worker, concern), observed);
+    comparePacket(concern.id, 'full', legacyFull, projectPacketToLegacy(full), observed);
+    comparePacket(concern.id, 'worker', legacyWorker, projectWorkerPacketToLegacy(worker), observed);
   }
   assert.deepEqual(
     observed,
@@ -71,13 +73,9 @@ test('every concern packet matches the Markdown extractor exactly under the lega
 
 test('the legacy packet field set is reproduced with no field added or dropped', () => {
   for (const { concern, full, worker, legacyFull, legacyWorker } of packets) {
+    assert.deepEqual(Object.keys(projectPacketToLegacy(full)).sort(), Object.keys(legacyFull).sort(), concern.id);
     assert.deepEqual(
-      Object.keys(projectPacketToLegacy(full, concern)).sort(),
-      Object.keys(legacyFull).sort(),
-      concern.id
-    );
-    assert.deepEqual(
-      Object.keys(projectWorkerPacketToLegacy(worker, concern)).sort(),
+      Object.keys(projectWorkerPacketToLegacy(worker)).sort(),
       Object.keys(legacyWorker).sort(),
       concern.id
     );
@@ -94,6 +92,26 @@ test('the legacy projection replays the backtick artifact rather than passing va
   );
   assert.equal(legacyUnquote('`data-test-*` renames'), 'data-test-*` renames');
   assert.equal(legacyUnquote('src/security/**'), 'src/security/**');
+});
+
+// The contract string the CLI emits is the value the comparison above pins, so
+// the separator replay has to be a real transformation of a real <br>-joined cell
+// rather than a no-op that would let the CLI drop statements unnoticed.
+test('the contract anchor the CLI emits is what the comparison pins, statement for statement', () => {
+  const multiStatement = packets.filter(
+    ({ concern }) =>
+      (concern.contract_records.find((record) => record.kind === 'established')?.statements.length ?? 0) > 1
+  );
+  assert.ok(multiStatement.length >= 1, 'a multi-statement contract is what makes the separator observable');
+  for (const { concern, full, worker } of multiStatement) {
+    const raw = rawLegacyPacket(concern.id).contract_anchor;
+    assert.ok(raw.contract.includes('<br>'), `${concern.id} legacy contract must carry the separator`);
+    assert.equal(full.contract_anchor.contract, legacyAnchorSeparator(raw).contract, `${concern.id} full contract`);
+    assert.equal(worker.contract_anchor.contract, legacyAnchorSeparator(raw).contract, `${concern.id} worker contract`);
+    for (const statement of concern.contract_records.find((record) => record.kind === 'established').statements) {
+      assert.ok(full.contract_anchor.contract.includes(statement), `${concern.id} dropped a contract statement`);
+    }
+  }
 });
 
 test('the projection is load-bearing for concerns whose cells open or close with inline code', () => {

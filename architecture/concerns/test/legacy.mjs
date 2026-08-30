@@ -4,6 +4,7 @@ import { REPOSITORY_ROOT } from './helpers.mjs';
 
 export const LEGACY_EXTRACTOR = '.cursor/skills/review/scripts/concern-context.mjs';
 export const LEGACY_GATE = '.cursor/skills/review/scripts/contract-evolution-gate.mjs';
+export const LEGACY_REVIEW_POLICY = '.cursor/skills/review/scripts/review-policy.mjs';
 
 // The subproject may not import a harness directory, so every legacy comparison
 // runs the Markdown-era script as a child process. That also makes the parity
@@ -22,12 +23,28 @@ export function legacyJson(script, args, options) {
   return { ...result, payload: result.code === 0 ? JSON.parse(result.stdout) : null };
 }
 
-export function legacyPacket(id) {
+// A Markdown table cell cannot hold a newline, so the legacy contract cell joined
+// its statements with a literal <br>. The CLI joins them with a space, so
+// collapsing the separator on the legacy side is what lets the CLI's own contract
+// string be the value under comparison instead of one re-derived from the registry.
+export function legacyAnchorSeparator(anchor) {
+  return anchor === null ? null : { ...anchor, contract: anchor.contract.split('<br>').join(' ') };
+}
+
+function replayAnchorSeparator(packet) {
+  return packet === null ? packet : { ...packet, contract_anchor: legacyAnchorSeparator(packet.contract_anchor) };
+}
+
+export function rawLegacyPacket(id) {
   return legacyJson(LEGACY_EXTRACTOR, [id]).payload;
 }
 
+export function legacyPacket(id) {
+  return replayAnchorSeparator(rawLegacyPacket(id));
+}
+
 export function legacyWorkerPacket(id) {
-  return legacyJson(LEGACY_EXTRACTOR, ['--worker', id]).payload;
+  return replayAnchorSeparator(legacyJson(LEGACY_EXTRACTOR, ['--worker', id]).payload);
 }
 
 // registry-table.mjs strips one leading and one trailing backtick, independently
@@ -45,18 +62,7 @@ function legacyRelated(related) {
   return related.kind === 'all_other_concerns' ? ['all¹'] : related.ids;
 }
 
-function legacyAnchor(anchor, statements) {
-  return anchor === null ? null : { evidence: anchor.evidence, contract: statements.join('<br>') };
-}
-
-// The registry keeps a contract as one statement per sentence; the Markdown cell
-// joined them with a literal <br>.
-function anchorStatements(concern) {
-  const record = concern.contract_records.find((entry) => entry.kind === 'established');
-  return record ? record.statements : [];
-}
-
-export function projectPacketToLegacy(showFull, registryConcern) {
+export function projectPacketToLegacy(showFull) {
   return {
     id: showFull.id,
     category: showFull.category,
@@ -74,20 +80,20 @@ export function projectPacketToLegacy(showFull, registryConcern) {
     one_way_doors: legacyList(showFull.one_way_doors),
     verification: legacyList(showFull.verification),
     related: legacyRelated(showFull.related),
-    contract_anchor: legacyAnchor(showFull.contract_anchor, anchorStatements(registryConcern)),
+    contract_anchor: showFull.contract_anchor,
     named_invariants: showFull.named_invariants.map(({ name, invariant }) => ({ name, invariant })),
     pre_contract_candidate: showFull.pre_contract_candidate,
   };
 }
 
-export function projectWorkerPacketToLegacy(showWorker, registryConcern) {
+export function projectWorkerPacketToLegacy(showWorker) {
   return {
     id: showWorker.id,
     purpose: showWorker.purpose,
     review_questions: legacyList(showWorker.review_questions),
     one_way_doors: legacyList(showWorker.one_way_doors),
     verification: legacyList(showWorker.verification),
-    contract_anchor: legacyAnchor(showWorker.contract_anchor, anchorStatements(registryConcern)),
+    contract_anchor: showWorker.contract_anchor,
     named_invariants: showWorker.named_invariants.map(({ name, invariant }) => ({ name, invariant })),
   };
 }

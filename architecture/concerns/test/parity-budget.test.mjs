@@ -67,11 +67,31 @@ test('a bounded worker packet is never larger than the full packet it is cut fro
   }
 });
 
-test('no worker packet exceeds the context budget its concern declares', () => {
-  const budget = registry.concerns[0].context_budget.max_context_characters ?? 30_000;
+// The registry models no per-concern character budget; what bounds a worker
+// packet is the flat 30,000-character ceiling the Markdown-era extractor enforces
+// on the packets it hands a review worker. This is that absolute ceiling, not a
+// declared per-concern value.
+const WORKER_PACKET_CEILING_CHARACTERS = 30_000;
+
+test('no worker packet exceeds the flat worker-packet ceiling the legacy extractor enforces', () => {
   for (const concern of registry.concerns) {
     const packet = bytes(cli(['show', concern.id, '--view', 'worker', '--format', 'json']).stdout);
-    assert.ok(packet <= budget, `${concern.id} worker packet is ${packet} bytes, over ${budget}`);
+    assert.ok(
+      packet <= WORKER_PACKET_CEILING_CHARACTERS,
+      `${concern.id} worker packet is ${packet} bytes, over the flat ${WORKER_PACKET_CEILING_CHARACTERS}-character ceiling`
+    );
+  }
+});
+
+test('every concern declares the file budget the routing packet reports', () => {
+  for (const concern of registry.concerns) {
+    const routing = JSON.parse(cli(['show', concern.id, '--view', 'routing', '--format', 'json']).stdout).concern;
+    assert.equal(
+      routing.activation.max_context_files,
+      concern.context_budget.max_context_files,
+      `${concern.id} max_context_files`
+    );
+    assert.ok(routing.activation.max_context_files >= 1, `${concern.id} declares no file budget`);
   }
 });
 
