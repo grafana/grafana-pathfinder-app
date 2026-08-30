@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,11 +57,73 @@ test('a resolved discrepancy cites evidence and a ratified one also carries an e
   }
 });
 
-test('every cited piece of evidence names a file that exists', () => {
-  for (const entry of discrepancies) {
-    for (const evidence of entry.disposition?.evidence ?? []) {
-      const path = evidence.split(':')[0].trim();
-      assert.ok(existsSync(join(REPOSITORY_ROOT, path)), `${entry.id} cites missing evidence ${path}`);
+function citations() {
+  return discrepancies.flatMap((entry) =>
+    (entry.disposition?.evidence ?? []).map((evidence) => {
+      const separator = evidence.indexOf(':');
+      return {
+        id: entry.id,
+        path: (separator === -1 ? evidence : evidence.slice(0, separator)).trim(),
+        name: separator === -1 ? null : evidence.slice(separator + 1).trim(),
+      };
+    })
+  );
+}
+
+// A cited test name is what makes a ratified exception more than good faith, so
+// the name is resolved by running it: the filtered run reports the test only if
+// it still exists under that name.
+function namesThatRan(file, names) {
+  const pattern = names.map((name) => `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`).join('|');
+  const result = spawnSync(
+    process.execPath,
+    ['--test', '--test-reporter=tap', `--test-name-pattern=${pattern}`, file],
+    {
+      cwd: REPOSITORY_ROOT,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, NODE_TEST_CONTEXT: undefined },
+    }
+  );
+  return {
+    ran: new Set([...result.stdout.matchAll(/^(?:not )?ok \d+ - (.*)$/gm)].map((match) => match[1])),
+    stderr: result.stderr,
+  };
+}
+
+test('every cited piece of evidence resolves to its file and to the test or case it names', () => {
+  const cited = citations();
+  assert.ok(cited.length >= 9, `only ${cited.length} citations were found`);
+  for (const citation of cited) {
+    assert.ok(
+      existsSync(join(REPOSITORY_ROOT, citation.path)),
+      `${citation.id} cites missing evidence ${citation.path}`
+    );
+  }
+
+  for (const citation of cited.filter((entry) => entry.name && entry.path.endsWith('.json'))) {
+    const cases = readJson(join(REPOSITORY_ROOT, citation.path)).cases ?? [];
+    assert.ok(
+      cases.some((fixture) => fixture.name === citation.name),
+      `${citation.id} cites a case absent from ${citation.path}: ${citation.name}`
+    );
+  }
+
+  const byFile = new Map();
+  for (const citation of cited.filter((entry) => entry.name && entry.path.endsWith('.test.mjs'))) {
+    byFile.set(citation.path, [...(byFile.get(citation.path) ?? []), citation]);
+  }
+  assert.ok(byFile.size >= 2, 'the guard must still be resolving cited test names');
+  for (const [file, group] of byFile) {
+    const { ran, stderr } = namesThatRan(
+      file,
+      group.map((citation) => citation.name)
+    );
+    for (const citation of group) {
+      assert.ok(
+        ran.has(citation.name),
+        `${citation.id} cites a test that no longer exists: ${file}: ${citation.name}${stderr}`
+      );
     }
   }
 });

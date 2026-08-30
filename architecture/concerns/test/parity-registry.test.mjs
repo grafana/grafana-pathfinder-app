@@ -163,36 +163,259 @@ test('the independent reader agrees with the extractor the review skill actually
   }
 });
 
-// The registry was translated from the content of these five tables. If any row
-// moves, the translation has to be re-reconciled rather than assumed still
-// current. Prose outside the tables is not part of the translation, so it is not
-// part of the pin.
-const PINNED_TABLES = [
-  ['routing', routingRows],
-  ['details', detailRows],
-  ['anchors', anchorRows],
-  ['invariants', invariantRows],
-  ['candidates', candidateRows],
-];
+// Both Markdown registries are pinned line by line, because the registry
+// translates far more of them than the five concern tables: the
+// change-classification and routing-defaults tables, the classification,
+// signal-counting, coverage-gap, rule-source, extraction and authoring
+// paragraphs, the anchor, invariant and candidate policy prose, and both
+// footnotes. Only presentation is left out — headings, blank lines, horizontal
+// rules, code-fence markers, prettier-ignore directives and table delimiter
+// rows. Cells and prose lines are compared by trimmed content, so reformatting
+// does not trip the pin while any content change does.
+const PINNED_MARKDOWN = [ROUTING_MARKDOWN, DETAIL_MARKDOWN];
 
-function tableDigest() {
-  const digest = createHash('sha256');
-  for (const [name, rows] of PINNED_TABLES) {
-    digest.update(`${name}\x1d`);
-    for (const row of rows) {
-      for (const header of Object.keys(row).sort()) {
-        digest.update(`${header}\x1f${row[header] ?? ''}\x1f`);
-      }
-      digest.update('\x1e');
-    }
-  }
-  return digest.digest('hex').slice(0, 16);
+function isPresentation(line) {
+  const trimmed = line.trim();
+  return (
+    trimmed === '' ||
+    trimmed === '---' ||
+    trimmed === '<!-- prettier-ignore -->' ||
+    trimmed.startsWith('```') ||
+    /^#{1,6} /.test(trimmed) ||
+    /^\|[\s|:-]+\|$/.test(trimmed)
+  );
 }
 
-test('the Markdown registry tables are pinned to the content the registry was translated from', () => {
+function normalizeLine(line) {
+  return line.startsWith('|')
+    ? line
+        .split('|')
+        .slice(1, -1)
+        .map((cell) => cell.trim())
+        .join('\x1f')
+    : line.trim();
+}
+
+function pinnedContent(path) {
+  return markdown(path)
+    .split('\n')
+    .filter((line) => !isPresentation(line))
+    .map(normalizeLine);
+}
+
+// The pin forces a re-reconciliation; these compare the translation itself, so a
+// changed sentence has to disagree with the field it was translated into rather
+// than only move the digest.
+function sectionLines(path, heading) {
+  const lines = markdown(path).split('\n');
+  const start = lines.findIndex((line) => line.trim() === heading);
+  assert.notEqual(start, -1, `${path} has no section ${heading}`);
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^#{1,6} /.test(line.trim()));
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+function sectionProse(path, heading) {
+  return sectionLines(path, heading).filter((line) => !isPresentation(line) && !line.startsWith('|'));
+}
+
+// Pinning the covered line count is what stops the pin being quietly narrowed
+// again: dropping a translated line, or adding one without reconciling it, moves
+// this number as well as the digest.
+const PINNED_LINE_COUNTS = [
+  [ROUTING_MARKDOWN, 50],
+  [DETAIL_MARKDOWN, 65],
+];
+
+const TRANSLATED_REGIONS = [
+  [ROUTING_MARKDOWN, '## Change classification'],
+  [ROUTING_MARKDOWN, '## Routing defaults'],
+  [ROUTING_MARKDOWN, '## Coverage-gap detection'],
+  [ROUTING_MARKDOWN, '## Canonical rule sources'],
+  [ROUTING_MARKDOWN, '## Concern routing table'],
+  [ROUTING_MARKDOWN, '## Concern details'],
+  [DETAIL_MARKDOWN, '## Concern review table'],
+  [DETAIL_MARKDOWN, '## Contract anchors'],
+  [DETAIL_MARKDOWN, '### Named invariants'],
+  [DETAIL_MARKDOWN, '### Pre-contract candidates'],
+  [DETAIL_MARKDOWN, '## Footnotes'],
+];
+
+test('the pin covers every translated region and not only the concern tables', () => {
+  for (const [path, expected] of PINNED_LINE_COUNTS) {
+    assert.equal(pinnedContent(path).length, expected, `${path} no longer pins the same number of content lines`);
+  }
+  for (const [path, heading] of TRANSLATED_REGIONS) {
+    const pinned = new Set(pinnedContent(path));
+    const lines = sectionLines(path, heading).filter((line) => !isPresentation(line));
+    assert.ok(lines.length > 0, `${path} ${heading} contributes nothing to the pin`);
+    for (const line of lines) {
+      assert.ok(pinned.has(normalizeLine(line)), `${path} ${heading} is outside the pin: ${line}`);
+    }
+  }
+});
+
+test('the Markdown registries are pinned to the content the registry was translated from', () => {
+  const digest = createHash('sha256');
+  for (const path of PINNED_MARKDOWN) {
+    digest.update(`${path}\x1d`);
+    for (const line of pinnedContent(path)) {
+      digest.update(`${line}\x1e`);
+    }
+  }
   assert.equal(
-    tableDigest(),
-    'd53f8e2ab7cc975e',
-    'a Markdown registry table changed: re-run the registry parity reconciliation and update this pin in the same change'
+    digest.digest('hex').slice(0, 16),
+    '9870543ffcb243c3',
+    'a Markdown registry changed a table cell or a translated sentence: re-run the registry parity reconciliation and update this pin in the same change'
+  );
+});
+
+test('the change classification table is exactly the registry change class list', () => {
+  const rows = tableRows(markdown(ROUTING_MARKDOWN), ['class', 'description']);
+  assert.deepEqual(
+    rows.map((row) => ({ id: bare(row.class), description: row.description })),
+    registry.change_classes.map(({ id, description }) => ({ id, description }))
+  );
+  const prose = sectionProse(ROUTING_MARKDOWN, '## Change classification');
+  assert.equal(prose[0], 'Classify PRs into one or more of these classes before routing:');
+  assert.equal(registry.classification_policy.classify_before_routing, true);
+  assert.equal(registry.classification_policy.multiple_classes_permitted, true);
+});
+
+test('the routing defaults table is exactly the registry category defaults', () => {
+  const rows = tableRows(markdown(ROUTING_MARKDOWN), ['category', 'mode', 'min_signals', 'max_context_files']);
+  assert.deepEqual(
+    rows.map((row) => ({
+      category: row.category.replace(/\s*\(`[^`]+`\)$/, ''),
+      abbreviation: row.category.match(/\(`([^`]+)`\)/)[1],
+      mode: bare(row.mode),
+      min: Number(row.min_signals),
+      max: Number(row.max_context_files),
+    })),
+    registry.category_defaults.categories.map((entry) => ({
+      category: entry.category,
+      abbreviation: entry.source_abbreviation,
+      mode: entry.mode,
+      min: entry.default_minimum_signals,
+      max: entry.default_max_context_files,
+    }))
+  );
+});
+
+test('the fail-open and signal-counting sentences are exactly what the policy fields store', () => {
+  const policy = registry.classification_policy;
+  const classification = sectionProse(ROUTING_MARKDOWN, '## Change classification').at(-1);
+  const stated = `${policy.fail_open_statement} ${policy.suppression_prohibition_statement}`;
+  assert.equal(classification.slice(0, stated.length), stated, 'the fail-open paragraph is no longer what is stored');
+  const remainder = classification.slice(stated.length).trim();
+  for (const concern of policy.never_suppressed_concerns) {
+    assert.ok(remainder.includes(concern), `${concern} is no longer named as always running`);
+  }
+  assert.equal(policy.final_cross_cutting_synthesis_always_runs, remainder.includes('always run'));
+  for (const domain of policy.suppression_prohibited_domains) {
+    assert.ok(policy.suppression_prohibition_statement.includes(domain), `${domain} is not in the stored sentence`);
+  }
+
+  const signal = registry.signal_policy;
+  assert.equal(
+    sectionProse(ROUTING_MARKDOWN, '## Routing defaults').at(-1),
+    `${signal.statement} ${signal.semantic_evidence_requirement.statement}`
+  );
+});
+
+test('the coverage-gap paragraph is exactly what the coverage gap policy stores', () => {
+  const policy = registry.coverage_gap_policy;
+  const [first, ...rest] = policy.actions;
+  const actions = [`${first.charAt(0).toUpperCase()}${first.slice(1)}`, ...rest];
+  assert.equal(
+    sectionProse(ROUTING_MARKDOWN, '## Coverage-gap detection').at(-1),
+    `${actions.slice(0, -1).join(', ')}, and ${actions.at(-1)} when: ${policy.conditions.join('; ')}. ${policy.suppression_prohibition_statement}`
+  );
+  assert.equal(policy.disposition, 'disclose');
+  assert.equal(policy.is_gate, false);
+});
+
+test('the canonical rule sources paragraph is what rule_sources stores', () => {
+  const [source] = registry.rule_sources;
+  const paragraph = sectionProse(ROUTING_MARKDOWN, '## Canonical rule sources').at(-1);
+  assert.ok(
+    paragraph.startsWith(
+      `${source.rule_ids[0]}–${source.rule_ids.at(-1)} security rules are defined in \`${source.intent_source}\`.`
+    ),
+    'the intent source or rule range changed'
+  );
+  assert.ok(paragraph.includes(source.enforced_syntax_statement), 'the enforced-syntax sentence changed');
+  for (const document of source.referencing_documents) {
+    assert.ok(paragraph.includes(`\`${document}\``), `${document} is no longer named as a referencing document`);
+  }
+  for (const entry of source.precedence) {
+    assert.ok(paragraph.includes(`wins for ${entry.subject}`), `precedence for ${entry.subject} is no longer stated`);
+  }
+  assert.ok(paragraph.includes(`\`${source.enforced_syntax_source}\``), 'the enforced syntax source changed');
+  assert.equal(source.referencing_documents_may_redefine, !paragraph.includes('without redefining them'));
+});
+
+test('the extraction and authoring prose is what the policy fields store', () => {
+  const details = sectionLines(ROUTING_MARKDOWN, '## Concern details').filter((line) => line.trim() !== '');
+  const extraction = registry.extraction_policy;
+  assert.ok(
+    details.some((line) => line.trim() === extraction.extractor_command),
+    'the extractor command changed'
+  );
+  assert.ok(
+    details.some((line) => line.includes(extraction.alignment_validation_command)),
+    'the alignment validation command changed'
+  );
+  const packetSentence = details.find((line) => line.startsWith('The extractor joins'));
+  for (const field of extraction.packet_fields) {
+    assert.ok(packetSentence.includes(field), `${field} is no longer listed as a packet field`);
+  }
+  assert.equal(extraction.wholesale_load_permitted, false);
+  assert.ok(details.some((line) => line.includes('Do not load that registry wholesale')));
+
+  const authoring = registry.authoring_policy;
+  const authoringSentence = details.at(-1);
+  assert.ok(authoringSentence.startsWith('When authoring concerns, prefer editing an existing concern'));
+  assert.equal(authoring.prefer_extending_existing, true);
+  for (const evidence of authoring.add_concern_evidence) {
+    assert.ok(authoringSentence.includes(evidence.replace(/^an? /, '')), `${evidence} is no longer required evidence`);
+  }
+});
+
+test('the anchor, invariant and candidate policy prose is what the policy fields store', () => {
+  const anchors = sectionProse(DETAIL_MARKDOWN, '## Contract anchors');
+  assert.ok(anchors[0].startsWith(registry.contract_policy.definition), 'the anchor definition changed');
+  assert.ok(anchors[0].includes(registry.contract_policy.scan_owner_document), 'the scan owner document changed');
+  assert.deepEqual(
+    anchors.filter((line) => line.startsWith('- ')).map((line) => line.slice(2)),
+    registry.contract_policy.rules
+  );
+
+  const invariants = sectionProse(DETAIL_MARKDOWN, '### Named invariants');
+  assert.ok(invariants[0].startsWith(registry.invariant_policy.definition), 'the invariant definition changed');
+  assert.ok(invariants[0].includes(registry.invariant_policy.naming_rule), 'the invariant naming rule changed');
+
+  const candidates = sectionProse(DETAIL_MARKDOWN, '### Pre-contract candidates');
+  assert.ok(
+    candidates[0].includes('advisory architecture hypotheses, not anchors.'),
+    'the candidate definition changed'
+  );
+  assert.ok(candidates[0].includes(registry.candidate_policy.evolution_packet_flag.field), 'the packet flag changed');
+  assert.equal(registry.candidate_policy.authorizes_blocking_conformance_finding, false);
+});
+
+test('both footnotes are represented by the typed values that replaced them', () => {
+  const footnotes = sectionProse(DETAIL_MARKDOWN, '## Footnotes');
+  const [related, reversibility] = footnotes;
+
+  const crossCutting = registry.concerns.find((concern) => concern.id === 'cross-cutting-architecture');
+  assert.ok(related.includes('cross-cutting-architecture'), 'footnote one no longer names the concern it replaced');
+  assert.equal(crossCutting.related.kind, 'all_other_concerns');
+
+  const reversible = registry.concerns.find((concern) => concern.id === 'reversibility-and-one-way-door');
+  assert.ok(reversibility.includes('reversibility-and-one-way-door'));
+  assert.deepEqual(
+    [...reversibility.matchAll(/`([a-z_]+)`/g)].map((match) => match[1]),
+    reversible.output_policy.values
   );
 });

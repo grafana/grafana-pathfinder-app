@@ -260,7 +260,7 @@
         "decided_in": "phase-3",
         "rationale": "Held open deliberately. The approved evolution plan reserves changes to what actually activates for the post-cutover alignment phase, so no phase through Phase 4 may settle this by changing routing, and the two readings that would resolve it both do exactly that. Phase 3 therefore preserves current behaviour: the CLI applies the prose rule from CONCERNS.md line 30, withholds every concern that reached its threshold on paths alone, and discloses this discrepancy with the withheld ids on every route. The conflict between line 30, the numeric minimum_signals convention, and the pr-summary skill's path-or-keyword description stays visible rather than normalised.",
         "evidence": [
-          "architecture/concerns/test/parity-routing.test.mjs: paths without semantic evidence are withheld rather than activated",
+          "architecture/concerns/test/fixtures/parity/routing-corpus.json: paths without semantic evidence are withheld rather than activated",
           "architecture/concerns/test/migration-dispositions.test.mjs: the activation conflict stays unresolved and disclosed on every route"
         ],
         "expires_with": "post-cutover-alignment"
