@@ -1,0 +1,17 @@
+{
+  "description": "Every packet field where the concerns CLI and the Markdown-era extractor disagree after the documented legacy backtick projection is applied. The parity suite asserts this list is exact: an unlisted divergence fails, and a listed one that stops diverging also fails. Keeping it exhaustive is what turns 'close enough' into an equivalence statement.",
+  "discrepancy_id": "legacy-unquote-mangling",
+  "entries": [
+    {
+      "concern": "full-screen-sidebar-handoff",
+      "view": "full",
+      "field": "load_code",
+      "index": 2,
+      "legacy_value": "src/interactive-engine/interactive.hook.ts` (handoff gate call site)",
+      "registry_value": "src/interactive-engine/interactive.hook.ts (handoff gate call site)",
+      "cause": "The source cell writes the locator outside the inline code span, as `src/interactive-engine/interactive.hook.ts` (handoff gate call site). The legacy parser strips only the leading backtick and leaves the closing one stranded mid-value. The registry stores the path and the locator as separate typed fields and renders them without either backtick, so it cannot reproduce where the span ended.",
+      "assessment": "The registry value is the correct one and the legacy value is a parser artifact. The other annotated entry in the registries, `.cursor/rules/systemPatterns.mdc (tier-1 lib/ guide-stats bullet)`, keeps its locator inside the code span and so round-trips exactly; only the outside-the-span shape is lossy.",
+      "retires_with": "phase-4-markdown-deletion"
+    }
+  ]
+}

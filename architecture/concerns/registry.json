@@ -254,7 +254,24 @@
         "Paths or semantic selectors activate independently, as the PR-summary skill states."
       ],
       "resolution": "unresolved",
-      "resolve_in": "phase-3"
+      "resolve_in": "phase-3",
+      "disposition": {
+        "status": "escalated",
+        "decided_in": "phase-3",
+        "rationale": "Choosing among the three readings changes which concerns activate in real reviews at cutover, which is an architecture decision rather than a mechanical translation fix. The CLI applies the prose rule today, withholds every path-only candidate, and discloses the conflict on every route, so nothing is silently normalised while the decision is open.",
+        "evidence": [
+          "architecture/concerns/test/parity-routing.test.mjs: paths without semantic evidence are withheld rather than activated"
+        ],
+        "escalation": {
+          "question": "Does a conditional concern whose minimum_signals is 1 activate on a path match alone, or must every conditional activation carry at least one semantic hit?",
+          "options": [
+            "Require a semantic hit for every conditional activation, reading CONCERNS.md line 30 as normative and minimum_signals as a floor on total signals.",
+            "Let a single path match satisfy a row whose minimum_signals is 1, as the numeric thresholds imply.",
+            "Let path and semantic selectors activate independently, as the pr-summary skill describes."
+          ],
+          "recommendation": "The first reading. It is the only one under which every statement in CONCERNS.md holds at once: line 30 is the document's sole normative sentence on the question, and reading minimum_signals as a floor on total signals still leaves the eight rows at 1 meaningful, because one semantic hit reaches the threshold on its own. The other two readings require discarding line 30 outright."
+        }
+      }
     },
     {
       "id": "go-backend-continue-selector",
@@ -274,7 +291,16 @@
       ],
       "candidate_readings": ["continue", "continue token"],
       "resolution": "unresolved",
-      "resolve_in": "phase-3"
+      "resolve_in": "phase-3",
+      "disposition": {
+        "status": "ratified_exception",
+        "decided_in": "phase-3",
+        "rationale": "Either reading changes routing: the selector matches both candidate values today, and collapsing it would add or remove real semantic hits. Phase 3's mandate is to prove equivalence rather than to change activation, so the ambiguity is held open and matched permissively. The source cell should be corrected when the Markdown is deleted and the registry becomes the only source.",
+        "evidence": [
+          "architecture/concerns/test/parity-registry.test.mjs: the registry carries exactly one unresolved selector and it is the recorded one"
+        ],
+        "expires_with": "phase-4-markdown-deletion"
+      }
     },
     {
       "id": "routing-defaults-versus-row-overrides",
@@ -293,7 +319,15 @@
         }
       ],
       "resolution": "preserved_current_behavior",
-      "resolve_in": "phase-3"
+      "resolve_in": "phase-3",
+      "disposition": {
+        "status": "resolved",
+        "decided_in": "phase-3",
+        "rationale": "The per-row values are authoritative and the defaults table is authoring guidance, which is what the legacy extractor and the CLI both already do. Phase 3 checked every row column against the typed record, so this is a documentation overlap rather than an open routing question.",
+        "evidence": [
+          "architecture/concerns/test/parity-registry.test.mjs: every routing row column matches the typed registry record"
+        ]
+      }
     },
     {
       "id": "legacy-unquote-mangling",
@@ -312,7 +346,16 @@
         }
       ],
       "resolution": "divergence_recorded",
-      "resolve_in": "phase-3"
+      "resolve_in": "phase-3",
+      "disposition": {
+        "status": "resolved",
+        "decided_in": "phase-3",
+        "rationale": "The artifact is fully characterised. Replaying the legacy backtick strip over the CLI packets reproduces the Markdown extractor exactly for all 27 concerns in both views, leaving one entry the registry cannot round-trip because its source wrote a locator outside the code span. That entry is enumerated in the parity fixture, and the registry value is the correct one.",
+        "evidence": [
+          "architecture/concerns/test/parity-extractor.test.mjs: every concern packet matches the Markdown extractor exactly under the legacy projection",
+          "architecture/concerns/test/fixtures/parity/known-divergences.json"
+        ]
+      }
     },
     {
       "id": "dispatch-source-outside-registries",
@@ -355,7 +398,16 @@
       ],
       "candidate_readings": ["range", "lineage", "supersession", "open series"],
       "resolution": "unresolved",
-      "resolve_in": "phase-3"
+      "resolve_in": "phase-3",
+      "disposition": {
+        "status": "ratified_exception",
+        "decided_in": "phase-3",
+        "rationale": "No consumer reads the relation. The CLI exposes only the evidence display text and the extracted pull-request numbers, and the contract-evolution gate reconstructs history from Git rather than from the anchor. Assigning a meaning to the arrow is an architecture-audit question with no current dependant, so it stays recorded rather than guessed.",
+        "evidence": [
+          "architecture/concerns/test/migration-dispositions.test.mjs: no concern packet exposes anchor evidence relation semantics"
+        ],
+        "expires_with": "post-cutover-alignment"
+      }
     },
     {
       "id": "test-path-two-value-shapes",
@@ -369,7 +421,16 @@
         }
       ],
       "resolution": "divergence_recorded",
-      "resolve_in": "phase-3"
+      "resolve_in": "phase-3",
+      "disposition": {
+        "status": "ratified_exception",
+        "decided_in": "phase-3",
+        "rationale": "Both shapes are faithful to the source cells, so narrowing them would break registry parity with the Markdown while it still exists. Phase 3 confirmed all 17 values resolve to exactly one tracked file, 8 by repository path and 9 by unique basename, so a consumer's resolution rule is a basename search and a guard now fails if any value stops resolving uniquely.",
+        "evidence": [
+          "architecture/concerns/test/migration-dispositions.test.mjs: every test_path verification value resolves to exactly one tracked file"
+        ],
+        "expires_with": "phase-4-markdown-deletion"
+      }
     },
     {
       "id": "reversibility-values-narrower-than-live-contract",
@@ -393,7 +454,16 @@
         }
       ],
       "resolution": "divergence_recorded",
-      "resolve_in": "phase-3"
+      "resolve_in": "phase-3",
+      "disposition": {
+        "status": "ratified_exception",
+        "decided_in": "phase-3",
+        "rationale": "Widening output_policy.values to include \"unknown\" now would diverge from footnote 2 while the Markdown is still the published source. The narrowing is pinned by a test instead, so the cutover cannot silently ship a policy that rejects a verdict the live review scripts already emit.",
+        "evidence": [
+          "architecture/concerns/test/migration-dispositions.test.mjs: the reversibility output policy stays narrower than the live review contract"
+        ],
+        "expires_with": "phase-4-markdown-deletion"
+      }
     }
   ],
   "excluded_source_elements": [

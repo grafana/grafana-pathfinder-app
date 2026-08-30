@@ -485,7 +485,40 @@
               "imported_from_secondary_source"
             ]
           },
-          "resolve_in": { "enum": ["phase-3", "phase-4", "post-cutover-alignment"] }
+          "resolve_in": { "enum": ["phase-3", "phase-4", "post-cutover-alignment"] },
+          "disposition": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "How Phase 3 disposed of this discrepancy. \"resolved\" means the question is answered and a test carries the answer; \"ratified_exception\" means the divergence stands on purpose and carries an expiry; \"escalated\" means it needs a decision above the implementing agent.",
+            "required": ["status", "decided_in", "rationale"],
+            "properties": {
+              "status": { "enum": ["resolved", "ratified_exception", "escalated"] },
+              "decided_in": { "enum": ["phase-3"] },
+              "rationale": { "$ref": "#/$defs/text" },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "$ref": "#/$defs/text" }
+              },
+              "expires_with": { "enum": ["phase-4-markdown-deletion", "post-cutover-alignment"] },
+              "escalation": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["question", "options"],
+                "properties": {
+                  "question": { "$ref": "#/$defs/text" },
+                  "options": {
+                    "type": "array",
+                    "minItems": 2,
+                    "uniqueItems": true,
+                    "items": { "$ref": "#/$defs/text" }
+                  },
+                  "recommendation": { "$ref": "#/$defs/text" }
+                }
+              }
+            }
+          }
         }
       }
     },
