@@ -105,6 +105,29 @@ test('gate counts distinct prior PRs and excludes current branch commits', () =>
   assert.equal(result.triggered, true);
 });
 
+test('gate reads newly added concern routing from head while keeping history at base', () => {
+  const repo = createRepo();
+  const base = git(repo, ['rev-parse', 'HEAD']);
+  const concernPath = 'src/lib/new-concern.ts';
+  const concernsFile = join(repo, 'docs/design/CONCERNS.md');
+
+  write(repo, concernPath, 'current change\n');
+  write(
+    repo,
+    'docs/design/CONCERNS.md',
+    `${readFileSync(concernsFile, 'utf8')}| \`new-concern\` | sub | N | strong | 1 | 8 | \`${concernPath}\` | \`new-concern\` |\n`
+  );
+  git(repo, ['add', '.']);
+  git(repo, ['commit', '-m', 'feat(new-concern): add routed concern (#12)']);
+  const head = git(repo, ['rev-parse', 'HEAD']);
+
+  const result = computeGate({ base, head, concern: 'new-concern', cwd: repo });
+
+  assert.deepEqual(result.paths, [concernPath]);
+  assert.equal(result.prior_semantic_pr_count, 0);
+  assert.deepEqual(result.in_stack_shas, [head]);
+});
+
 test('in_stack_shas is empty when base equals head', () => {
   const repo = createRepo();
   const base = commit(repo, 'feat(telemetry): add facade (#10)', 'feature\n');

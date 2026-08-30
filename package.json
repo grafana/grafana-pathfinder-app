@@ -127,7 +127,7 @@
     "@grafana/coda-client": "npm:@grafana-coda/sandbox-client@^1.1.1",
     "@grafana/data": "13.2.0",
     "@grafana/e2e-selectors": "13.2.0",
-    "@grafana/faro-instrumentation-replay": "~2.10.0",
+    "@grafana/faro-instrumentation-replay": "~2.11.0",
     "@grafana/faro-web-sdk": "^2.8.2",
     "@grafana/i18n": "13.2.0",
     "@grafana/runtime": "13.2.0",
