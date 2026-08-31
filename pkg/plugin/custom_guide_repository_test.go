@@ -869,7 +869,7 @@ func TestCustomGuideHTTPClient_DecodeWarnBudgetSpansPages(t *testing.T) {
 
 	logger := newCapturingLogger()
 	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", logger)
-	if _, _, err := drainCustomGuides(context.Background(), testNamespace, c); err != nil {
+	if _, _, err := drainCustomGuides(context.Background(), testNamespace, c, logger); err != nil {
 		t.Fatalf("drainCustomGuides: %v", err)
 	}
 
@@ -913,8 +913,11 @@ func TestCustomGuideHTTPClient_DecodeWarnSummaryOnAggregateBudget(t *testing.T) 
 
 	logger := newCapturingLogger()
 	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", logger)
-	if _, _, err := drainCustomGuides(context.Background(), testNamespace, c); err != nil {
+	if _, _, err := drainCustomGuides(context.Background(), testNamespace, c, logger); err != nil {
 		t.Fatalf("drainCustomGuides: %v", err)
+	}
+	if !logger.warnedWith("custom guide catalogue LIST truncated at aggregate budget") {
+		t.Fatal("aggregate-budget truncation warning did not use the drain's request-scoped logger")
 	}
 
 	details, summaries := 0, 0
@@ -957,7 +960,7 @@ func TestCustomGuideHTTPClient_DecodeWarnSummaryOnPageError(t *testing.T) {
 
 	logger := newCapturingLogger()
 	c := newCustomGuideHTTPClient(srv.URL, &stubMinter{token: "at-xyz"}, "id-token-abc", logger)
-	if _, _, err := drainCustomGuides(context.Background(), testNamespace, c); err == nil {
+	if _, _, err := drainCustomGuides(context.Background(), testNamespace, c, logger); err == nil {
 		t.Fatal("drainCustomGuides returned nil error")
 	}
 

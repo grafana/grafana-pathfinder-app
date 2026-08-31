@@ -149,11 +149,11 @@ func (a *App) handleCustomGuideRepository(w http.ResponseWriter, r *http.Request
 	// Detach the drain from the caller's cancellation, bounded by the aggregate
 	// deadline. Per-request (no cross-caller sharing): this fetch rides this
 	// caller's identity and is never handed to another caller.
+	logger := a.ctxLogger(r.Context())
 	fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), customGuideAggregateDeadline)
-	entries, pages, err := drainCustomGuides(fetchCtx, namespace, lister)
+	entries, pages, err := drainCustomGuides(fetchCtx, namespace, lister, logger)
 	cancel()
 
-	logger := a.ctxLogger(r.Context())
 	if err != nil {
 		if isTerminalUpstreamError(err) {
 			// Structurally can't serve for this caller ("never works here") —
@@ -201,7 +201,7 @@ func (a *App) writeCustomGuideUnavailable(w http.ResponseWriter) {
 
 // drainCustomGuides drains the namespace LIST across pages — up to the
 // aggregate entry budget — and returns the shaped catalogue entries.
-func drainCustomGuides(ctx context.Context, namespace string, lister customGuideLister) ([]customGuideRepositoryEntry, int, error) {
+func drainCustomGuides(ctx context.Context, namespace string, lister customGuideLister, logger log.Logger) ([]customGuideRepositoryEntry, int, error) {
 	if finalizer, ok := lister.(customGuideDrainFinalizer); ok {
 		defer finalizer.finalizeDrain(namespace)
 	}
@@ -226,7 +226,7 @@ func drainCustomGuides(ctx context.Context, namespace string, lister customGuide
 				entries = entries[:customGuideListMaxTotalEntries]
 			}
 			if truncated {
-				log.DefaultLogger.Warn("custom guide catalogue LIST truncated at aggregate budget",
+				logger.Warn("custom guide catalogue LIST truncated at aggregate budget",
 					"namespace", namespace, "maxTotalEntries", customGuideListMaxTotalEntries, "pages", pages)
 			}
 			break
