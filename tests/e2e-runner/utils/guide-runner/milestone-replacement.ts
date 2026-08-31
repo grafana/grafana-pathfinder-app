@@ -120,8 +120,11 @@ export async function openLegacyE2EGuide(page: Page, title: string): Promise<voi
 }
 export async function replacePreviousE2EGuide(page: Page, previousGuideHadInteractiveSteps: boolean): Promise<void> {
   const activeTab = await activeGuideTab(page);
-  if (!activeTab.id || activeTab.url !== E2E_GUIDE_URL) {
-    throw new Error('The previous E2E guide tab is not active');
+  if (activeTab.url !== E2E_GUIDE_URL) {
+    return;
+  }
+  if (!activeTab.id) {
+    throw new Error('The active E2E guide tab has no identifier');
   }
 
   await dismissBadgeCelebrations(page);

@@ -79,6 +79,20 @@ function replacementHarness(options: ReplacementHarnessOptions) {
   return { page, operations, resetButton, closeButton };
 }
 
+function waitForOpenedGuide(): Promise<{ url: string; title: string }> {
+  return new Promise((resolve) => {
+    document.addEventListener(
+      'pathfinder-auto-open-docs',
+      (event) => {
+        const detail = (event as CustomEvent<{ url: string; title: string }>).detail;
+        (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = detail.url;
+        resolve(detail);
+      },
+      { once: true }
+    );
+  });
+}
+
 afterEach(() => {
   jest.clearAllMocks();
   delete (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId;
@@ -120,6 +134,20 @@ it('fails when an interactive guide has no Reset guide control', async () => {
   expect(harness.closeButton.click).not.toHaveBeenCalled();
 });
 
+it('opens a later guide when the prior milestone failed before tab activation', async () => {
+  const harness = replacementHarness({ resetControlCount: 0 });
+  delete (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId;
+  delete (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl;
+  const opened = waitForOpenedGuide();
+
+  await replacePreviousE2EGuide(harness.page, false);
+  await openLegacyE2EGuide(harness.page, 'Later milestone');
+
+  await expect(opened).resolves.toEqual({ url: E2E_GUIDE_URL, title: 'Later milestone' });
+  expect(harness.operations).toEqual([]);
+  expect(dismissBadgeCelebrations).not.toHaveBeenCalled();
+});
+
 it('opens only the exact legacy E2E URL', async () => {
   const page = {
     evaluate: jest.fn().mockImplementation((callback, argument) => Promise.resolve(callback(argument))),
@@ -130,17 +158,7 @@ it('opens only the exact legacy E2E URL', async () => {
       return Promise.resolve(undefined);
     }),
   } as unknown as Page;
-  const opened = new Promise<{ url: string; title: string }>((resolve) => {
-    document.addEventListener(
-      'pathfinder-auto-open-docs',
-      (event) => {
-        const detail = (event as CustomEvent<{ url: string; title: string }>).detail;
-        (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = detail.url;
-        resolve(detail);
-      },
-      { once: true }
-    );
-  });
+  const opened = waitForOpenedGuide();
 
   await openLegacyE2EGuide(page, 'Milestone');
 
