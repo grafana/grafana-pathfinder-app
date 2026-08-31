@@ -185,6 +185,14 @@ describe('reportAppInteraction experiment enrichment', () => {
     expect(mockReportInteraction.mock.calls[0][1].variant).toBe('control');
   });
 
+  it('rolls variant up to excluded when every experiment is excluded', () => {
+    bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'excluded', pages: [], guideId: 'g' }]);
+
+    reportAppInteraction(UserInteraction.SummaryClick, {});
+
+    expect(mockReportInteraction.mock.calls[0][1].variant).toBe('excluded');
+  });
+
   it('omits variant/experiments when the user is enrolled in nothing', () => {
     bindExperimentsProvider(() => []);
 

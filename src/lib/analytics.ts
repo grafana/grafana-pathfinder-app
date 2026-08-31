@@ -187,14 +187,18 @@ export function getBoundActiveExperiments(): ExperimentAnalyticsEntry[] {
   return getExperimentsForAnalytics() ?? [];
 }
 
+const EXPERIMENT_VARIANT_PRECEDENCE = {
+  excluded: 0,
+  control: 1,
+  treatment: 2,
+} satisfies Record<ExperimentConfig['variant'], number>;
+
 function rollUpVariant(experiments: ExperimentAnalyticsEntry[]): ExperimentConfig['variant'] {
-  if (experiments.some((experiment) => experiment.variant === 'treatment')) {
-    return 'treatment';
-  }
-  if (experiments.some((experiment) => experiment.variant === 'control')) {
-    return 'control';
-  }
-  return 'excluded';
+  return experiments.reduce<ExperimentConfig['variant']>((highest, experiment) => {
+    return EXPERIMENT_VARIANT_PRECEDENCE[experiment.variant] > EXPERIMENT_VARIANT_PRECEDENCE[highest]
+      ? experiment.variant
+      : highest;
+  }, 'excluded');
 }
 
 /**

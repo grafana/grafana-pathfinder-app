@@ -33,8 +33,10 @@ type FeatureFlag =
  * @param pages - Target pages where sidebar should auto-open (for treatment)
  * @param resetCache - When toggled true, clears session storage to allow sidebar to auto-open again
  */
+export const EXPERIMENT_VARIANTS = ['excluded', 'control', 'treatment'] as const;
+
 export interface ExperimentConfig {
-  variant: 'excluded' | 'control' | 'treatment';
+  variant: (typeof EXPERIMENT_VARIANTS)[number];
   pages: string[];
   resetCache?: boolean;
 }
@@ -186,7 +188,7 @@ const pathfinderFeatureFlags = {
    */
   'pathfinder.interactive-learning-banner-experiment': {
     valueType: 'object',
-    values: [{ variant: 'excluded' }, { variant: 'control' }, { variant: 'treatment' }],
+    values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
     defaultValue: { variant: 'excluded' },
     trackingKey: 'interactive_learning_banner_experiment',
   },
@@ -579,7 +581,7 @@ export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
   }
 };
 
-const VALID_VARIANTS: ReadonlySet<HighlightedGuideConfig['variant']> = new Set(['excluded', 'control', 'treatment']);
+const VALID_VARIANTS: ReadonlySet<string> = new Set(EXPERIMENT_VARIANTS);
 
 const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set(['docs-page', 'learning-journey', 'interactive']);
 
