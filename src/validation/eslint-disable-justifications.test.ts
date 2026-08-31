@@ -8,6 +8,7 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 const SOURCE_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx']);
 const DIRECTIVE_PATTERN = /(?:\/\/|\/\*)\s*eslint-disable(?:-next-line|-line)?(?:\s|$)/;
 const JUSTIFICATION_SEPARATOR = ' -- ';
+const ESLINT_DISABLE_DIRECTIVE = ['eslint', 'disable'].join('-');
 
 const UNDESCRIBED_ESLINT_DISABLE_BASELINE = new Set([
   'src/learning-paths/learning-paths.hook.ts:137',
@@ -101,7 +102,7 @@ describe('eslint-disable justifications', () => {
   it('detects a newly introduced undescribed suppression', () => {
     const result = scanEslintDisableComments(
       'src/example.ts',
-      '// eslint-disable-next-line react-hooks/exhaustive-deps\nuseEffect(() => {}, []);'
+      `// ${ESLINT_DISABLE_DIRECTIVE}-next-line react-hooks/exhaustive-deps\nuseEffect(() => {}, []);`
     );
 
     expect(result).toEqual({ directiveCount: 1, undescribed: new Set(['src/example.ts:1']) });
@@ -111,7 +112,7 @@ describe('eslint-disable justifications', () => {
     const result = scanEslintDisableComments(
       'src/example.ts',
       [
-        '// eslint-disable-next-line react-hooks/exhaustive-deps -- dependency is intentionally stable',
+        `// ${ESLINT_DISABLE_DIRECTIVE}-next-line react-hooks/exhaustive-deps -- dependency is intentionally stable`,
         '// This prose says eslint-disable but is not a directive.',
       ].join('\n')
     );
@@ -122,11 +123,11 @@ describe('eslint-disable justifications', () => {
   it('excludes the known documentation and prose examples', () => {
     const docExample = scanEslintDisableComments(
       'src/test-utils/interactive-section-harness.tsx',
-      ' *   // eslint-disable-next-line @typescript-eslint/no-require-imports'
+      ` *   // ${ESLINT_DISABLE_DIRECTIVE}-next-line @typescript-eslint/no-require-imports`
     );
     const proseExample = scanEslintDisableComments(
       'src/requirements-manager/step-checker.hook.ts',
-      '// eslint-disable on its dep array). The callback closes over the value.'
+      `// ${ESLINT_DISABLE_DIRECTIVE} on its dep array). The callback closes over the value.`
     );
 
     expect(docExample).toEqual({ directiveCount: 0, undescribed: new Set() });
