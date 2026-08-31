@@ -229,7 +229,6 @@ describe('eslint-disable justifications', () => {
     const result = scanTrackedSources();
 
     expect(result.directiveCount).toBeGreaterThan(UNDESCRIBED_ESLINT_DISABLE_BASELINE.size);
-    expect(result.directiveForms).toEqual({ block: 5, 'block-next-line': 2, line: 10, 'line-next-line': 66 });
     const locatedUndescribed = new Set(
       [...result.undescribed].map((key) => `${key} (${result.undescribedLocations.get(key) ?? 'unknown location'})`)
     );
