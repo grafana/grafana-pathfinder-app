@@ -87,3 +87,5 @@ node .cursor/skills/review/scripts/concern-context.mjs <concern-id>
 The extractor joins this routing row with the concern purpose, bounded context, review questions, one-way doors, verification, related concerns, contract anchor, named invariants, and any pre-contract candidate. `npm run test:review-contract` validates that the two registries stay aligned.
 
 When authoring concerns, prefer editing an existing concern over adding one. Add a concern only after a missed review, recurring bug class, or important architectural blind spot. Tighten keywords or context before widening activation.
+
+On a subsystem or cross-cutting row, a trigger path is inert unless some keyword on the same row can co-fire on those files, because those categories never activate on paths alone. Add the narrowest keyword that names a real contract in the added files, or leave the path out of `trigger_paths` and load it as bounded context instead — never invent a keyword whose only purpose is to cover a path.
