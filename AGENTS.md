@@ -20,6 +20,8 @@ Never paste a raw control byte into a tracked file — write it as an escape (`\
 
 **Default to no comments.** Add one only when removing it would confuse a reader who can already read the surrounding code. The narrow band that earns one: counterintuitive-but-correct code, hidden invariants the type system can't express, external-bug workarounds (with an upstream link), and security or correctness warnings. If the comment won't fit on one short line, rename or restructure instead.
 
+Every `eslint-disable` directive requires a narrow explanation after `--`. Legacy directives without one are tracked by the shrink-only #1752 baseline and must not grow.
+
 **Trim on touch.** When editing a function, also trim bad-shape comments inside it and on adjacent declarations in the same file. Do not sweep whole files or grep the repo for cleanup — comment removal rides along on code changes, never as a standalone PR.
 
 The keep-list above is the whole of it. The eight bad shapes (QC8), with worked before/after examples, live in the `comment-hygiene` skill.
