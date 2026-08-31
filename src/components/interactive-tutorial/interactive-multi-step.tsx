@@ -14,7 +14,7 @@ import { logger } from '../../lib/logging';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
-import type { InteractiveElementData } from '../../types/interactive.types';
+import type { InteractiveElementData, InteractiveRequirementsData } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
@@ -78,8 +78,6 @@ interface MultiStepUiStateInput {
   isChecking: boolean;
   isEnabled: boolean;
 }
-
-type InteractiveRequirementsData = Omit<InteractiveElementData, 'targetAction'> & { targetAction: string };
 
 export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateValue {
   if (input.isExecuting) {
@@ -387,16 +385,18 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         for (let i = 0; i < internalActions.length; i++) {
           const action = internalActions[i]!;
 
-          if (!isInteractiveActionType(action.targetAction)) {
-            logger.error(`Unknown multi-step action: ${action.targetAction}`);
-            return false;
-          }
-          const targetAction = action.targetAction;
-
           // Check for cancellation before each action
           if (isCancelledRef.current) {
             break;
           }
+
+          if (!isInteractiveActionType(action.targetAction)) {
+            logger.error(`Unknown multi-step action: ${action.targetAction}`);
+            setFailedStepIndex(i);
+            setExecutionError(`Unsupported action "${action.targetAction}".`);
+            return false;
+          }
+          const targetAction = action.targetAction;
           setCurrentActionIndex(i);
 
           // Just-in-time requirements checking for this specific action

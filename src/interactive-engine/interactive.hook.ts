@@ -11,7 +11,11 @@ import { assertExhaustive } from '../lib/assert-exhaustive';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { useGuideRequirements, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
-import { InteractiveActionRequest, InteractiveElementData } from '../types/interactive.types';
+import {
+  InteractiveActionRequest,
+  InteractiveElementData,
+  InteractiveRequirementsData,
+} from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../global-state/panel-mode';
 import { InteractiveStateManager } from './interactive-state-manager';
@@ -44,8 +48,6 @@ export interface CheckResult {
   fixType?: string;
   targetHref?: string;
 }
-
-type InteractiveRequirementsData = Omit<InteractiveElementData, 'targetAction'> & { targetAction: string };
 
 function isValidInteractiveElement(data: InteractiveElementData): boolean {
   return Boolean(data.refTarget);
@@ -484,7 +486,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
                 break;
 
               case 'multistep':
-                logger.warn(`Unknown interactive action: ${targetAction}`);
+                logger.warn('multistep is executed by InteractiveMultiStep, not the element action path');
                 break;
 
               case 'noop':

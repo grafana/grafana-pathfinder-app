@@ -4,6 +4,7 @@ import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import type { InteractiveElementData } from '../../types/interactive.types';
 import { isInteractiveActionType } from '../../lib/interactive-action';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import {
   ButtonHandler,
   FocusHandler,
@@ -205,6 +206,7 @@ export function installLiveTabExecutor(
         break;
       default:
         logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
+        assertExhaustive(action.targetAction);
     }
   };
 

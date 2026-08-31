@@ -531,6 +531,27 @@ describe('useInteractiveElements', () => {
   });
 
   describe('Requirements Checking', () => {
+    it('rejects an element when DOM decoding returns no interactive data', async () => {
+      extractInteractiveDataFromElement.mockReturnValueOnce(null);
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+      const element = document.createElement('li');
+
+      const check = await result.current.checkElementRequirements(element);
+
+      expect(check).toEqual({
+        requirements: '',
+        pass: false,
+        error: [
+          {
+            requirement: 'data-targetaction',
+            pass: false,
+            error: 'Missing or unknown data-targetaction',
+          },
+        ],
+      });
+      expect(checkRequirements).not.toHaveBeenCalled();
+    });
+
     it('should check requirements for sequence elements', async () => {
       // Setup mock response for success case
       checkRequirements.mockResolvedValueOnce({

@@ -67,6 +67,9 @@ export interface InteractiveElementData {
   customData?: Record<string, string>;
 }
 
+/** Requirements also serve component-owned pseudo-actions such as `section`. */
+export type InteractiveRequirementsData = Omit<InteractiveElementData, 'targetAction'> & { targetAction: string };
+
 /**
  * Everything `executeInteractiveAction` needs, bundled by reference.
  *
