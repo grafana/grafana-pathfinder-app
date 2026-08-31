@@ -60,7 +60,7 @@ Dev server runs at http://localhost:3000 (admin/admin). Focused Jest runs need `
 
 ### Frontend tier model
 
-Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification. Two exist today, both requirement checks reaching `integrations/` through a dynamic import so the integration stays out of the requirements chunk when the feature is off: `checks/terminal.ts` for terminal connection status and `checks/coda.ts` for the sandbox session id and exec client.
+Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit accountable allowlist entry with a substantive reason and either a tracking issue for debt or the `by-design` marker for a permanent boundary exception. Two vertical exceptions exist today, both requirement checks reaching `integrations/` through a dynamic import so the integration stays out of the requirements chunk when the feature is off: `checks/terminal.ts` for terminal connection status and `checks/coda.ts` for the sandbox session id and exec client.
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`
 - **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`, `completion-records/`

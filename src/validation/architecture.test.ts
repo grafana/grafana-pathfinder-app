@@ -23,6 +23,7 @@ import {
   SRC_DIR,
   TIER_2_ENGINES,
   TIER_MAP,
+  ARCHITECTURE_BY_DESIGN,
   assertRatchet,
   findCycles,
   validateAllowedArchitectureEntries,
@@ -108,13 +109,13 @@ const ALLOWED_VERTICAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = 
     violation: 'requirements-manager/checks/terminal.ts -> integrations',
     reason:
       'The terminal requirement queries integration-owned connection state through a dynamic import, keeping terminal code out of the requirements chunk when disabled.',
-    tracking: '#603',
+    tracking: ARCHITECTURE_BY_DESIGN,
   },
   {
     violation: 'requirements-manager/checks/coda.ts -> integrations',
     reason:
       'The coda-exit-zero check needs the active sandbox session and Coda client; a dynamic import keeps the optional integration out of the requirements chunk.',
-    tracking: '#603',
+    tracking: ARCHITECTURE_BY_DESIGN,
   },
 ];
 const ALLOWED_VERTICAL_VIOLATIONS = new Set(ALLOWED_VERTICAL_VIOLATION_ENTRIES.map((entry) => entry.violation));
@@ -143,7 +144,7 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     violation: 'requirements-manager/checks/grafana-api.ts -> context-engine',
     reason:
       'The Grafana API requirement reuses the context engine query operation instead of maintaining a second API execution path.',
-    tracking: '#603',
+    tracking: '#1359',
   },
   {
     violation: 'requirements-manager/step-checker.hook.ts -> interactive-engine',
@@ -155,25 +156,25 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     violation: 'context-engine/context.service.ts -> docs-retrieval',
     reason:
       'Context assembly resolves documentation content through the docs retrieval engine while the engine boundary is paid down.',
-    tracking: '#603',
+    tracking: '#1359',
   },
   {
     violation: 'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
     reason:
       'Learning-journey document helpers delegate progress mutation to the learning-path coordinator rather than duplicating persistence logic.',
-    tracking: '#603',
+    tracking: '#1359',
   },
   {
     violation: 'requirements-manager/requirements-checker.hook.ts -> context-engine',
     reason:
       'Requirement checking consumes context-engine query results until the shared query boundary is extracted below both engines.',
-    tracking: '#603',
+    tracking: '#1359',
   },
   {
     violation: 'requirements-manager/step-checker.hook.ts -> context-engine',
     reason:
       'Step-level requirement checks consume context-engine query results until the shared query boundary is extracted below both engines.',
-    tracking: '#603',
+    tracking: '#1359',
   },
 ];
 const ALLOWED_LATERAL_VIOLATIONS = new Set(ALLOWED_LATERAL_VIOLATION_ENTRIES.map((entry) => entry.violation));
@@ -192,20 +193,20 @@ const ALLOWED_BARREL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
     violation: 'module.tsx -> hooks/usePathfinderPluginConfig',
     reason:
-      'The entry point bypasses the hooks barrel because that barrel pulls every hook and Zod-backed user storage into the initial module chunk.',
-    tracking: '#603',
+      'The entry point bypasses the hooks barrel because it pulls every hook and Zod-backed user storage into module.js, roughly doubling the bundle.',
+    tracking: ARCHITECTURE_BY_DESIGN,
   },
   {
     violation: 'module.tsx -> docs-retrieval/content-fetcher/package-resolver-registry',
     reason:
-      'The dependency-free registry leaf avoids statically importing the docs retrieval orchestrator and bundled guide index into the entry chunk.',
-    tracking: '#603',
+      'The dependency-free registry leaf avoids statically importing the docs retrieval orchestrator and bundled guide index into module.js.',
+    tracking: ARCHITECTURE_BY_DESIGN,
   },
   {
     violation: 'module.tsx -> package-engine/composite-resolver',
     reason:
-      'The composite resolver remains a direct dynamic-import target so package resolver implementations do not inflate the initial module chunk.',
-    tracking: '#603',
+      'Together with the docs retrieval barrel, the composite resolver grew module.js 6.2x (115 KB to 696 KB raw); it remains a direct dynamic-import target.',
+    tracking: ARCHITECTURE_BY_DESIGN,
   },
 ];
 const ALLOWED_BARREL_VIOLATIONS = new Set(ALLOWED_BARREL_VIOLATION_ENTRIES.map((entry) => entry.violation));
@@ -216,8 +217,8 @@ const ALLOWED_BARREL_VIOLATIONS = new Set(ALLOWED_BARREL_VIOLATION_ENTRIES.map((
  * a cluster splits or dissolves the SCC and changes/removes its key, which the
  * ratchet's stale-entry check surfaces.
  *
- * Each entry must carry a real `reason` and a `tracking` issue: a sibling test
- * ('every architectural allowlist entry is justified and tracked') enforces both so a new
+ * Each entry must carry a real `reason` and an accountability reference: a sibling test
+ * ('every architectural allowlist entry is justified and accountable') enforces both so a new
  * cycle can't be silenced with an empty rubber-stamp. `violation` is the SCC's
  * member files, sorted and joined by ' <-> ' (must match findCycles() output).
  *
@@ -236,7 +237,7 @@ const ALLOWED_CYCLES: readonly AllowedArchitectureEntry[] = [
     violation:
       'interactive-engine/index.ts <-> interactive-engine/interactive.hook.ts <-> interactive-engine/use-sequential-step-state.hook.ts <-> requirements-manager/index.ts <-> requirements-manager/step-checker.hook.ts',
     reason:
-      'Cross-engine interactive-engine <-> requirements-manager coupling; already tracked in ALLOWED_LATERAL_VIOLATIONS cluster A, structural.',
+      'Direct edges from interactive.hook.ts and use-sequential-step-state.hook.ts into requirements-manager, plus step-checker.hook.ts back into interactive-engine.',
     tracking: '#1359',
   },
 ];
@@ -347,7 +348,7 @@ describe('Import graph: vertical tier enforcement', () => {
       'ALLOWED_VERTICAL_VIOLATIONS',
       `Files in tier N may only import from tier N or lower. ` +
         `If this import is architecturally justified, add a structured entry to ` +
-        `ALLOWED_VERTICAL_VIOLATION_ENTRIES with a substantive reason and tracking issue. ` +
+        `ALLOWED_VERTICAL_VIOLATION_ENTRIES with a substantive reason and accountability reference. ` +
         `Otherwise, restructure the import to respect the tier boundary. ` +
         `See TIER_MAP in src/validation/import-graph.ts for the tier assignments.`
     );
@@ -374,7 +375,7 @@ describe('Inter-engine isolation: Tier 2 lateral imports', () => {
       'ALLOWED_LATERAL_VIOLATIONS',
       `Tier 2 engines must not import from other Tier 2 engines unless explicitly allowed. ` +
         `If this cross-engine import is architecturally justified, add a structured entry to ` +
-        `ALLOWED_LATERAL_VIOLATION_ENTRIES with a substantive reason and tracking issue. Otherwise, ` +
+        `ALLOWED_LATERAL_VIOLATION_ENTRIES with a substantive reason and accountability reference. Otherwise, ` +
         `extract the shared dependency to src/types/ or src/lib/, ` +
         `or use dependency injection.`
     );
@@ -427,7 +428,7 @@ describe('Barrel export discipline', () => {
         `  export { parseJsonGuide } from './json-parser';  to src/docs-retrieval/index.ts\n` +
         `then change the consumer to: import { parseJsonGuide } from '../../docs-retrieval';\n\n` +
         `If the barrel bypass is architecturally justified, add a structured entry to ` +
-        `ALLOWED_BARREL_VIOLATION_ENTRIES with a substantive reason and tracking issue.`
+        `ALLOWED_BARREL_VIOLATION_ENTRIES with a substantive reason and accountability reference.`
     );
   });
 });
@@ -464,27 +465,33 @@ describe('Import graph: circular dependencies', () => {
         `  Other options: invert the dependency, or use a dynamic import at the call site.\n\n` +
         `Only if the cycle is genuinely unavoidable, add an entry to ALLOWED_CYCLES. A sibling test ` +
         `requires a substantive 'reason' and a 'tracking' issue on every entry, so an empty rubber-stamp ` +
-        `will not pass. 'cycle' is the cluster's member files joined by ' <-> '.`
+        `will not pass. 'violation' is the cluster's member files joined by ' <-> '.`
     );
   });
 
-  it('every architectural allowlist entry is justified and tracked', () => {
+  it('every architectural allowlist entry is justified and accountable', () => {
     const allowlists = [
       ['ALLOWED_VERTICAL_VIOLATIONS', ALLOWED_VERTICAL_VIOLATION_ENTRIES],
       ['ALLOWED_LATERAL_VIOLATIONS', ALLOWED_LATERAL_VIOLATION_ENTRIES],
       ['ALLOWED_BARREL_VIOLATIONS', ALLOWED_BARREL_VIOLATION_ENTRIES],
       ['ALLOWED_CYCLES', ALLOWED_CYCLES],
     ] as const;
+    expect(allowlists.map(([name]) => name)).toEqual([
+      'ALLOWED_VERTICAL_VIOLATIONS',
+      'ALLOWED_LATERAL_VIOLATIONS',
+      'ALLOWED_BARREL_VIOLATIONS',
+      'ALLOWED_CYCLES',
+    ]);
     const errors = allowlists.flatMap(([name, entries]) =>
       validateAllowedArchitectureEntries(entries).map((error) => `${name}: ${error}`)
     );
 
     if (errors.length > 0) {
       throw new Error(
-        `Architectural allowlist entries must each carry a justification and a paydown tracking issue:\n` +
+        `Architectural allowlist entries must each carry a justification and an accountability reference:\n` +
           errors.map((e) => `  - ${e}`).join('\n') +
           `\n\nThis exists so a violation can't be silenced by pasting its key in with an empty comment. ` +
-          `Fill in a real 'reason' and 'tracking' issue, or — better — remove the exception instead (see the ` +
+          `Fill in a real 'reason' and either a 'tracking' issue or '${ARCHITECTURE_BY_DESIGN}', or — better — remove the exception instead (see the ` +
           `worked examples referenced by the sibling ratchet test).`
       );
     }

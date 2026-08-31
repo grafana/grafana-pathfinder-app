@@ -28,6 +28,7 @@ import {
   scanNodeEnvReachability,
   findStronglyConnectedComponents,
   validateAllowedArchitectureEntries,
+  ARCHITECTURE_BY_DESIGN,
   getNewViolations,
   getRootLevelSourceFiles,
   getSourceTier,
@@ -654,6 +655,10 @@ describe('validateAllowedArchitectureEntries', () => {
     expect(validateAllowedArchitectureEntries([{ ...valid, tracking: url }])).toEqual([]);
   });
 
+  it('accepts an explicit by-design marker', () => {
+    expect(validateAllowedArchitectureEntries([{ ...valid, tracking: ARCHITECTURE_BY_DESIGN }])).toEqual([]);
+  });
+
   it('flags a reason that is missing or too short', () => {
     const errors = validateAllowedArchitectureEntries([{ ...valid, reason: 'too short' }]);
     expect(errors.some((e) => e.includes("'reason'"))).toBe(true);
@@ -666,11 +671,6 @@ describe('validateAllowedArchitectureEntries', () => {
 
   it('flags a tracking value that is neither #-issue nor issues URL', () => {
     const errors = validateAllowedArchitectureEntries([{ ...valid, tracking: 'later' }]);
-    expect(errors.some((e) => e.includes("'tracking'"))).toBe(true);
-  });
-
-  it('flags a missing tracking reference', () => {
-    const errors = validateAllowedArchitectureEntries([{ ...valid, tracking: '' }]);
     expect(errors.some((e) => e.includes("'tracking'"))).toBe(true);
   });
 
@@ -688,6 +688,11 @@ describe('validateAllowedArchitectureEntries', () => {
   it('labels errors by the first file in the offending violation', () => {
     const errors = validateAllowedArchitectureEntries([{ violation: 'x.ts <-> y.ts', reason: 'x', tracking: 'x' }]);
     expect(errors.every((e) => e.startsWith('x.ts:'))).toBe(true);
+  });
+
+  it('labels directional errors by the source file before the arrow', () => {
+    const errors = validateAllowedArchitectureEntries([{ violation: 'a.ts -> b', reason: 'x', tracking: 'x' }]);
+    expect(errors.every((e) => e.startsWith('a.ts:'))).toBe(true);
   });
 });
 

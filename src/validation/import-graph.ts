@@ -585,8 +585,9 @@ export function findCycles(graph: ModuleGraph = buildModuleGraph()): string[][] 
 
 /**
  * A grandfathered architectural violation. Beyond the violation key, each
- * carries a justification and a paydown tracking issue so a new exception
- * cannot be silenced with an empty rubber-stamp comment.
+ * carries a justification and an accountability reference so a new exception
+ * cannot be silenced with an empty rubber-stamp comment. Permanent exceptions
+ * use the explicit by-design marker; debts point to a tracking issue.
  */
 export interface AllowedArchitectureEntry {
   violation: string;
@@ -594,14 +595,16 @@ export interface AllowedArchitectureEntry {
   tracking: string;
 }
 
+export const ARCHITECTURE_BY_DESIGN = 'by-design';
+
 const ARCHITECTURE_REASON_MIN_LENGTH = 20;
 const ARCHITECTURE_TRACKING_RE = /^#\d+$/;
 const ARCHITECTURE_TRACKING_URL_RE = /github\.com\/[^/]+\/[^/]+\/issues\/\d+/;
 
 /**
- * Validates that every architectural allowlist entry is justified and tracked: unique key,
- * a substantive `reason`, and a `tracking` issue (either `#1234` or a GitHub
- * issues URL). Returns a list of human-readable errors (empty when all pass).
+ * Validates that every architectural allowlist entry is justified and accountable: unique key,
+ * a substantive `reason`, and either the explicit `by-design` marker or a tracking issue
+ * (`#1234` or a GitHub issues URL). Returns human-readable errors (empty when all pass).
  */
 export function validateAllowedArchitectureEntries(entries: readonly AllowedArchitectureEntry[]): string[] {
   const errors: string[] = [];
@@ -616,9 +619,13 @@ export function validateAllowedArchitectureEntries(entries: readonly AllowedArch
     if (entry.reason.trim().length < ARCHITECTURE_REASON_MIN_LENGTH) {
       errors.push(`${label}: 'reason' is missing or too short — explain why the violation is tolerated.`);
     }
-    if (!ARCHITECTURE_TRACKING_RE.test(entry.tracking) && !ARCHITECTURE_TRACKING_URL_RE.test(entry.tracking)) {
+    if (
+      entry.tracking !== ARCHITECTURE_BY_DESIGN &&
+      !ARCHITECTURE_TRACKING_RE.test(entry.tracking) &&
+      !ARCHITECTURE_TRACKING_URL_RE.test(entry.tracking)
+    ) {
       errors.push(
-        `${label}: 'tracking' must be an issue reference ('#1234') or a GitHub issues URL, got '${entry.tracking}'.`
+        `${label}: 'tracking' must be '${ARCHITECTURE_BY_DESIGN}', an issue reference ('#1234'), or a GitHub issues URL, got '${entry.tracking}'.`
       );
     }
   }
