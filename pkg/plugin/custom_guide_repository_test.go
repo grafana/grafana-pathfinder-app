@@ -917,7 +917,7 @@ func TestCustomGuideHTTPClient_DecodeWarnSummaryOnAggregateBudget(t *testing.T) 
 		t.Fatalf("drainCustomGuides: %v", err)
 	}
 	if !logger.warnedWith("custom guide catalogue LIST truncated at aggregate budget") {
-		t.Fatal("aggregate-budget truncation warning did not use the drain's request-scoped logger")
+		t.Error("aggregate-budget truncation warning did not use the drain's request-scoped logger")
 	}
 
 	details, summaries := 0, 0
