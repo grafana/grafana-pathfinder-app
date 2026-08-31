@@ -415,6 +415,25 @@ test('a top-ranked gate above the packet envelope yields the slot instead of was
   assert.equal(plan.coverage['contract-evolution:guide-schema-and-contracts'], 'root');
 });
 
+test('a listed gate with no usable packet yields the slot to the gate that carries the evidence', () => {
+  for (const emptyPacket of [{ context: [] }, {}]) {
+    const { plan, chosen } = planWithGates([
+      {
+        concern_id: 'guide-schema-and-contracts',
+        touches_anchor_with_consumers: true,
+        prior_semantic_pr_count: 30,
+        ...emptyPacket,
+      },
+      firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: 21 }),
+    ]);
+
+    assert.equal(chosen, 'cli-and-e2e-runner');
+    assert.ok(plan.workers.find(({ kind }) => kind === 'contract_evolution').context_characters > 0);
+    assert.equal(plan.coverage['contract-evolution:guide-schema-and-contracts'], 'root');
+    assert.ok(plan.root.concern_ids.includes('contract-evolution:guide-schema-and-contracts'));
+  }
+});
+
 test('two fired gates for the same concern are rejected instead of collapsing one coverage key', () => {
   assert.throws(
     () => planWithGates([firedGate('cli-and-e2e-runner'), firedGate('cli-and-e2e-runner')]),

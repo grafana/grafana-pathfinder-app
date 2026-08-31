@@ -328,10 +328,16 @@ export function buildReviewPlan({ mode, concerns, contract_evolution = null, ske
   }
 
   const firedGates = firedContractGates(contract_evolution);
+  const listedGates = Array.isArray(contract_evolution);
   let specialistTaken = false;
   for (const gate of firedGates) {
     const context = normalizeContext(gate.context ?? [], 'contract evolution');
-    if (specialistTaken || !/^[a-z0-9-]+$/.test(gate.concern_id ?? '') || !fitsWorker(context)) {
+    if (
+      specialistTaken ||
+      !/^[a-z0-9-]+$/.test(gate.concern_id ?? '') ||
+      !fitsWorker(context) ||
+      (listedGates && context.length === 0)
+    ) {
       rootConcernIds.push(`contract-evolution:${gate.concern_id ?? 'unknown'}`);
       continue;
     }
