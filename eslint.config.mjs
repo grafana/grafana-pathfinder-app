@@ -135,6 +135,14 @@ export default defineConfig([
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['**/*.test.*', '**/*.spec.*'],
     rules: {
+      '@typescript-eslint/switch-exhaustiveness-check': [
+        'error',
+        {
+          allowDefaultCaseForExhaustiveSwitch: true,
+          considerDefaultExhaustiveForUnions: false,
+          requireDefaultForNonUnion: false,
+        },
+      ],
       'no-restricted-syntax': [
         'error',
         {

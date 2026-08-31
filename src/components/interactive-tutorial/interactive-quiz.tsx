@@ -5,6 +5,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 
 import { useStepChecker } from '../../requirements-manager';
 import { reportAppInteraction, UserInteraction, buildInteractiveStepProperties } from '../../lib/analytics';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
@@ -433,7 +434,10 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
         return styles.choiceIncorrect;
       case 'revealed':
         return styles.choiceRevealed;
+      case 'default':
+        return styles.choiceDefault;
       default:
+        assertExhaustive(state);
         return styles.choiceDefault;
     }
   };

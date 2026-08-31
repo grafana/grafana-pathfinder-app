@@ -12,6 +12,7 @@ import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
 import { renderMarkdown } from '@grafana/data';
 import DOMPurify from 'dompurify';
+import { assertExhaustive } from '../lib/assert-exhaustive';
 import {
   hasAssistantEnabled,
   type JsonGuide,
@@ -1175,7 +1176,17 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
       return block.title || '';
     case 'grot-guide':
       return block.welcome.title;
+    case 'divider':
+    case 'conditional':
+    case 'assistant':
+    case 'terminal-connect':
+    case 'code-block':
+    case 'collapsible':
+    case 'challenge':
+    case 'snippet-ref':
+      return '';
     default:
+      assertExhaustive(block);
       return '';
   }
 }

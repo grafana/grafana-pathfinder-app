@@ -18,6 +18,7 @@ import { isCssSelector } from '../../lib/dom/selector-detector';
 import { escapeCssAttributeValue } from '../../lib/dom/css-escape';
 import { querySelectorAllEnhanced } from '../../lib/dom/enhanced-selector';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 
 /**
  * Action replay system for attendees
@@ -74,7 +75,8 @@ export class ActionReplaySystem {
         });
       }
 
-      switch (event.type) {
+      const eventType = event.type;
+      switch (eventType) {
         case 'show_me':
           await this.handleShowMe(event as InteractiveStepEvent);
           break;
@@ -92,8 +94,23 @@ export class ActionReplaySystem {
           // Session end is handled at the UI level, just log it here
           break;
 
-        default:
+        case 'end':
+        case 'pause':
+        case 'resume':
+        case 'mode_change':
+        case 'chat_message':
+        case 'attendee_status':
+        case 'session_start':
+        case 'attendee_join':
+        case 'attendee_leave':
+        case 'sync_state':
+        case 'heartbeat':
+        case 'hand_raise':
           console.log(`[ActionReplay] Unhandled event type: ${event.type}`);
+          break;
+        default:
+          assertExhaustive(eventType);
+          console.log(`[ActionReplay] Unhandled event type: ${eventType}`);
       }
     } catch (error) {
       logger.error(`[ActionReplay] Error handling ${event.type}`, { error });

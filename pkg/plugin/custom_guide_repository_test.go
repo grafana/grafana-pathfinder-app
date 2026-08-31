@@ -758,8 +758,11 @@ func TestCustomGuideHTTPClient_NegativeStatsMemberReadsAsAbsent(t *testing.T) {
 // actually stored.
 func TestCustomGuideHTTPClient_MalformedCompositeFieldDropsOnlyThatField(t *testing.T) {
 	cases := map[string]struct {
-		manifest map[string]any
-		leaked   string
+		manifest       map[string]any
+		leaked         string
+		wantAuthorName string
+		wantAuthorTeam string
+		wantMilestone  string
 	}{
 		"malformed milestones": {
 			manifest: map[string]any{
@@ -768,7 +771,9 @@ func TestCustomGuideHTTPClient_MalformedCompositeFieldDropsOnlyThatField(t *test
 				"milestones": []any{"fe-alerting-01", 7},
 				"author":     map[string]any{"name": "Field engineering", "team": "field-eng"},
 			},
-			leaked: "fe-alerting-01",
+			leaked:         "fe-alerting-01",
+			wantAuthorName: "Field engineering",
+			wantAuthorTeam: "field-eng",
 		},
 		"malformed author": {
 			manifest: map[string]any{
@@ -777,7 +782,8 @@ func TestCustomGuideHTTPClient_MalformedCompositeFieldDropsOnlyThatField(t *test
 				"milestones": []any{"fe-alerting-01"},
 				"author":     map[string]any{"name": "Field engineering", "team": []string{"field-eng"}},
 			},
-			leaked: "Field engineering",
+			leaked:        "Field engineering",
+			wantMilestone: "fe-alerting-01",
 		},
 	}
 	for name, tc := range cases {
@@ -812,7 +818,24 @@ func TestCustomGuideHTTPClient_MalformedCompositeFieldDropsOnlyThatField(t *test
 			if got.Manifest.Type != "path" || got.Manifest.Repository != "app-platform" {
 				t.Errorf("the rest of the manifest was not preserved: %+v", got.Manifest)
 			}
+
+			if tc.wantAuthorName != "" {
+				if got.Manifest.Author == nil {
+					t.Fatal("valid author was dropped")
+				}
+				if got.Manifest.Author.Name != tc.wantAuthorName || got.Manifest.Author.Team != tc.wantAuthorTeam {
+					t.Errorf("valid author was not preserved: %+v", got.Manifest.Author)
+				}
+			}
+
+			if tc.wantMilestone != "" {
+				if len(got.Manifest.Milestones) != 1 || got.Manifest.Milestones[0] != tc.wantMilestone {
+					t.Errorf("valid milestones were not preserved: %+v", got.Manifest.Milestones)
+				}
+			}
+
 			raw, _ := json.Marshal(got)
+
 			if strings.Contains(string(raw), tc.leaked) {
 				t.Errorf("a half-decoded composite reached the wire: %s", raw)
 			}
