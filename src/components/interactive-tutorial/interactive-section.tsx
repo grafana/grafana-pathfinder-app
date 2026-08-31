@@ -628,22 +628,22 @@ export function InteractiveSection({
         }
       }
 
-      const { targetAction } = stepInfo;
-      if (targetAction === undefined || !isInteractiveActionType(targetAction)) {
-        logger.warn(`Unknown sequence action: ${targetAction ?? 'missing'}`);
-        return false;
-      }
-
       try {
-        // Execute the action using existing interactive logic
-        const actionOutcome = await executeInteractiveAction({
-          ...stepInfo,
-          targetAction,
-          buttonType: 'do',
-        });
-        if (actionOutcome === 'error') {
-          logger.warn(`Sequence action did not complete for ${stepInfo.stepId}`);
-          return false;
+        const { targetAction } = stepInfo;
+        if (targetAction !== undefined && isInteractiveActionType(targetAction)) {
+          const actionOutcome = await executeInteractiveAction({
+            ...stepInfo,
+            targetAction,
+            buttonType: 'do',
+          });
+          if (actionOutcome === 'error') {
+            logger.warn(`Sequence action did not complete for ${stepInfo.stepId}`);
+            return false;
+          }
+        } else {
+          // Preserve the legacy section-runner behavior for component-owned
+          // steps while their pause semantics are handled separately.
+          logger.warn(`Unknown interactive action: ${targetAction}`);
         }
 
         // Only run post-verification if explicitly specified
