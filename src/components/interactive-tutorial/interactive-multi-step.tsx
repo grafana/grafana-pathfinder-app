@@ -15,6 +15,7 @@ import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
 import type { InteractiveElementData } from '../../types/interactive.types';
+import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -78,6 +79,8 @@ interface MultiStepUiStateInput {
   isEnabled: boolean;
 }
 
+type InteractiveRequirementsData = Omit<InteractiveElementData, 'targetAction'> & { targetAction: string };
+
 export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateValue {
   if (input.isExecuting) {
     return STEP_STATES.EXECUTING;
@@ -104,12 +107,11 @@ export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateV
 async function checkActionRequirements(
   action: InternalAction,
   actionIndex: number,
-  checkRequirementsFromData: (data: InteractiveElementData) => Promise<any>
+  checkRequirementsFromData: (data: InteractiveRequirementsData) => Promise<any>
 ): Promise<{ pass: boolean; explanation?: string }> {
   if (!action.requirements) {
     return { pass: true };
   }
-
   try {
     // Create data structure compatible with checkRequirementsFromData
     const actionData = {
@@ -368,7 +370,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       // Only start blocking if we're not already in a blocking state (avoid double-blocking)
       if (!isNestedInSection) {
         // Create dummy data for blocking overlay
-        const dummyData = {
+        const dummyData: InteractiveElementData = {
           refTarget: `multistep-${multiStepId}`,
           targetAction: 'multistep',
           targetValue: undefined,
@@ -384,6 +386,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         // Execute each internal action in sequence
         for (let i = 0; i < internalActions.length; i++) {
           const action = internalActions[i]!;
+
+          if (!isInteractiveActionType(action.targetAction)) {
+            logger.error(`Unknown multi-step action: ${action.targetAction}`);
+            return false;
+          }
+          const targetAction = action.targetAction;
 
           // Check for cancellation before each action
           if (isCancelledRef.current) {
@@ -407,7 +415,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           // Execute the action (show first, then do)
           try {
             // Show mode (highlight what will be acted upon, with comment if available)
-            await executeInteractiveAction({ ...action, buttonType: 'show', fullScreenFallbackLocation });
+            await executeInteractiveAction({
+              ...action,
+              targetAction,
+              buttonType: 'show',
+              fullScreenFallbackLocation,
+            });
 
             // Delay between show and do with cancellation check
             for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
@@ -423,6 +436,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             // Do mode (actually perform the action)
             const doOutcome = await executeInteractiveAction({
               ...action,
+              targetAction,
               buttonType: 'do',
               fullScreenFallbackLocation,
             });

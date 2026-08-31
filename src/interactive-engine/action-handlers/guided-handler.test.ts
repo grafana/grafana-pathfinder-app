@@ -3,6 +3,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { querySelectorAllEnhanced } from '../../lib/dom';
 import { withFaroUserAction } from '../../lib/faro';
+import type { InteractiveElementData } from '../../types/interactive.types';
 
 jest.mock('../interactive-state-manager');
 jest.mock('../navigation-manager');
@@ -53,7 +54,7 @@ describe('GuidedHandler', () => {
 
   describe('execute', () => {
     it('should set state to running and then completed', async () => {
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: '#test',
         targetAction: 'guided',
         tagName: 'button',
@@ -68,7 +69,7 @@ describe('GuidedHandler', () => {
     });
 
     it('should call waitForReactUpdates when performGuided is false', async () => {
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: '#test',
         targetAction: 'guided',
         tagName: 'button',

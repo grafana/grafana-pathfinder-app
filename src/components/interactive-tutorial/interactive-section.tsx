@@ -82,6 +82,8 @@ import { sectionDoneStorage } from '../../lib/user-storage';
 import { INTERACTIVE_CONFIG, getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
 import type { InteractiveSectionProps, StepInfo } from '../../types/component-props.types';
+import type { InteractiveElementData } from '../../types/interactive.types';
+import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 import { getContentKey } from './get-content-key';
 import {
@@ -626,11 +628,17 @@ export function InteractiveSection({
         }
       }
 
+      const { targetAction } = stepInfo;
+      if (targetAction === undefined || !isInteractiveActionType(targetAction)) {
+        logger.warn(`Unknown sequence action: ${targetAction ?? 'missing'}`);
+        return false;
+      }
+
       try {
         // Execute the action using existing interactive logic
         const actionOutcome = await executeInteractiveAction({
           ...stepInfo,
-          targetAction: stepInfo.targetAction!,
+          targetAction,
           buttonType: 'do',
         });
         if (actionOutcome === 'error') {
@@ -767,15 +775,14 @@ export function InteractiveSection({
     }
 
     // Start section-level blocking (persists for entire section)
-    const dummyData = {
+    const dummyData: InteractiveElementData = {
       refTarget: `section-${sectionId}`,
-      targetAction: 'section',
+      targetAction: 'noop',
       targetValue: undefined,
       requirements: undefined,
       tagName: 'section',
       textContent: title || DEFAULT_INTERACTIVE_SECTION_TITLE,
       timestamp: Date.now(),
-      isPartOfSection: true,
     };
     startSectionBlocking(sectionId, dummyData, handleSectionCancel);
 
@@ -924,7 +931,10 @@ export function InteractiveSection({
 
             // First, show the step (highlight it) - skip for multi-step components OR if showMe is false
             if (!stepInfo.isMultiStep && stepInfo.showMe !== false) {
-              await executeInteractiveAction({ ...stepInfo, targetAction: stepInfo.targetAction!, buttonType: 'show' });
+              const targetAction = stepInfo.targetAction;
+              if (targetAction !== undefined && isInteractiveActionType(targetAction)) {
+                await executeInteractiveAction({ ...stepInfo, targetAction, buttonType: 'show' });
+              }
 
               // Wait for highlight to be visible and animation to complete
               // Check cancellation during wait
