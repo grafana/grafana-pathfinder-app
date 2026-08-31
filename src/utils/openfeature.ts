@@ -25,6 +25,8 @@ type FeatureFlag =
   | { valueType: 'number'; values: readonly number[]; defaultValue: number; trackingKey?: string }
   | { valueType: 'string'; values: readonly string[]; defaultValue: string; trackingKey?: string };
 
+export const EXPERIMENT_VARIANTS = ['excluded', 'control', 'treatment'] as const;
+
 /**
  * Experiment configuration returned by GOFF
  * Contains both the variant assignment and target pages for auto-open
@@ -33,8 +35,6 @@ type FeatureFlag =
  * @param pages - Target pages where sidebar should auto-open (for treatment)
  * @param resetCache - When toggled true, clears session storage to allow sidebar to auto-open again
  */
-export const EXPERIMENT_VARIANTS = ['excluded', 'control', 'treatment'] as const;
-
 export interface ExperimentConfig {
   variant: (typeof EXPERIMENT_VARIANTS)[number];
   pages: string[];
@@ -602,7 +602,7 @@ export function parseExperimentVariant(value: unknown): ExperimentConfig['varian
     return null;
   }
   const { variant } = value as Record<string, unknown>;
-  if (typeof variant !== 'string' || !VALID_VARIANTS.has(variant as ExperimentConfig['variant'])) {
+  if (typeof variant !== 'string' || !VALID_VARIANTS.has(variant)) {
     return null;
   }
   return variant as ExperimentConfig['variant'];
@@ -615,7 +615,7 @@ function classifyExperimentRejection(value: unknown): 'unknown_variant' | 'inval
     value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>).variant
       : undefined;
-  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant as ExperimentConfig['variant']);
+  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant);
   return isUnknownArm ? 'unknown_variant' : 'invalid_shape';
 }
 

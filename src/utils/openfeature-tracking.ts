@@ -35,20 +35,19 @@ function markReportedExposure(flagKey: string, variant: string): void {
 }
 
 /**
- * Variants for which we emit a FeatureFlagEvaluated exposure event.
+ * Experiment-arm membership and exposure policy at the analytics boundary.
  *
- * We intentionally skip 'excluded' (user isn't in the experiment) so the
- * event stream only contains real experiment exposures (control + treatment),
- * which is what downstream A/B analysis needs.
+ * Every valid arm is an own key; `false` keeps `excluded` out of the event
+ * stream while control and treatment emit the exposures used by A/B analysis.
  */
-const TRACKED_EXPERIMENT_VARIANTS = {
+const EXPERIMENT_VARIANT_EMITS_EXPOSURE = {
   excluded: false,
   control: true,
   treatment: true,
 } satisfies Record<ExperimentConfig['variant'], boolean>;
 
 function isExperimentVariant(variant: string): variant is ExperimentConfig['variant'] {
-  return Object.hasOwn(TRACKED_EXPERIMENT_VARIANTS, variant);
+  return Object.hasOwn(EXPERIMENT_VARIANT_EMITS_EXPOSURE, variant);
 }
 
 function extractExperimentVariant(value: JsonValue): ExperimentConfig['variant'] | null {
@@ -123,7 +122,7 @@ export function reportFeatureFlagExposure(flagKey: string, value: JsonValue): vo
   }
 
   const variant = extractExperimentVariant(value);
-  if (!variant || !TRACKED_EXPERIMENT_VARIANTS[variant]) {
+  if (!variant || !EXPERIMENT_VARIANT_EMITS_EXPOSURE[variant]) {
     return;
   }
 
