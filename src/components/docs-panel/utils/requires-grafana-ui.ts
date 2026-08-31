@@ -23,6 +23,7 @@
 
 import { isInteractiveBlockType, type InteractiveBlockType } from '../../../constants/json-guide-classification';
 import { GRAFANA_DRIVING_ACTIONS } from '../../../constants/interactive-actions';
+import { assertExhaustive } from '../../../lib/assert-exhaustive';
 import type { JsonBlock, JsonGuide, JsonInteractiveAction, JsonStep } from '../../../types/json-guide.types';
 
 type InteractiveBlock = Extract<JsonBlock, { type: InteractiveBlockType }>;
@@ -91,8 +92,7 @@ function blockRequiresGrafanaUi(block: JsonBlock): boolean {
       // unknown block type) fail safe in the never-hide-an-action direction:
       // an unknown container may nest Grafana-driving steps, so keep the
       // guide beside Grafana rather than full screen with dead buttons.
-      const unhandled: never = block;
-      void unhandled;
+      assertExhaustive(block);
       return true;
     }
   }

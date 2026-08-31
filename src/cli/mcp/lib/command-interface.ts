@@ -27,6 +27,8 @@
 
 import type { z } from 'zod';
 
+import { assertExhaustive } from '../../../lib/assert-exhaustive';
+
 import {
   renderGroupInterface,
   resolveParamPolicy,
@@ -294,7 +296,10 @@ function matchesValueType(flag: HelpJsonFlag, value: unknown): boolean {
       return typeof value === 'string' && (flag.enum?.includes(value) ?? false);
     case 'union':
       return (flag.unionOf ?? []).some((kind) => matchesPrimitiveKind(kind, value));
+    case 'string':
+      return typeof value === 'string';
     default:
+      assertExhaustive(flag.valueType);
       return typeof value === 'string';
   }
 }

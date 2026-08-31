@@ -8,15 +8,17 @@ import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { SnippetCatalogSchema } from '../../types/json-snippet.schema';
 import type { ContentJson, ManifestJson } from '../../types/package.types';
 import { validateGuideFromString, toLegacyResult } from '../../validation';
+import { readJsonFile } from '../../validation/package-io';
 import { validatePackage, validatePackageTree, type PackageValidationResult } from '../../validation/validate-package';
 import { defineCommand } from '../contracts';
 import { loadGuideFiles, loadBundledGuides, resolveCliPath, type LoadedGuide } from '../utils/file-loader';
 import { validatePackageState } from '../utils/package-io';
 import { manyIssuesOutcome, type CommandOutcome } from '../utils/output';
 
-type ValidateOptions = ValidateCliInput;
+type ValidateOptions = ValidateCliInput & { snippetCatalogIds?: ReadonlySet<string> };
 
 /**
  * Stable message code (defined in `validate-package.ts`) for the six
@@ -35,6 +37,22 @@ interface ValidationSummary {
   warnings: Array<{ file: string; warnings: string[] }>;
 }
 
+function loadSnippetCatalogIds(catalogPath: string): ReadonlySet<string> {
+  const absolutePath = resolveCliPath(catalogPath);
+  const read = readJsonFile(absolutePath, SnippetCatalogSchema);
+
+  if (!read.ok) {
+    const detail =
+      read.code === 'schema_validation'
+        ? read.issues?.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')
+        : read.message;
+
+    throw new Error(`Cannot use snippets catalog "${absolutePath}": ${detail ?? 'unknown error'}`);
+  }
+
+  return new Set(Object.keys(read.data));
+}
+
 function validateGuides(guides: LoadedGuide[], options: ValidateOptions): ValidationSummary {
   const summary: ValidationSummary = {
     totalFiles: guides.length,
@@ -46,7 +64,11 @@ function validateGuides(guides: LoadedGuide[], options: ValidateOptions): Valida
   };
 
   for (const guide of guides) {
-    const result = validateGuideFromString(guide.content, { strict: options.strict });
+    const result = validateGuideFromString(guide.content, {
+      strict: options.strict,
+      snippetCatalogIds: options.snippetCatalogIds,
+    });
+
     const legacy = toLegacyResult(result);
 
     if (result.isValid) {
@@ -163,7 +185,10 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
 
 function runPackageValidation(packageDir: string, options: ValidateOptions): CommandOutcome {
   const absoluteDir = resolveCliPath(packageDir);
-  const result = validatePackage(absoluteDir, { strict: options.strict });
+  const result = validatePackage(absoluteDir, {
+    strict: options.strict,
+    snippetCatalogIds: options.snippetCatalogIds,
+  });
 
   if (options.format === 'json') {
     console.log(JSON.stringify(result, null, 2));
@@ -178,7 +203,10 @@ function runPackageValidation(packageDir: string, options: ValidateOptions): Com
 
 function runPackagesValidation(rootDir: string, options: ValidateOptions): CommandOutcome {
   const absoluteRoot = resolveCliPath(rootDir);
-  const results = validatePackageTree(absoluteRoot, { strict: options.strict });
+  const results = validatePackageTree(absoluteRoot, {
+    strict: options.strict,
+    snippetCatalogIds: options.snippetCatalogIds,
+  });
 
   if (results.size === 0) {
     const message = `No package directories found under ${absoluteRoot}`;
@@ -249,7 +277,10 @@ function runFileValidation(guides: LoadedGuide[], options: ValidateOptions): Com
 }
 
 function runStdinValidation(input: string, options: ValidateOptions): CommandOutcome {
-  const result = validateGuideFromString(input, { strict: options.strict });
+  const result = validateGuideFromString(input, {
+    strict: options.strict,
+    snippetCatalogIds: options.snippetCatalogIds,
+  });
   const legacy = toLegacyResult(result);
 
   if (options.format === 'json') {
@@ -426,6 +457,11 @@ export const ValidateCliCommand = z.object({
     .describe('Validate a single package directory (expects content.json)')
     .meta({ role: 'io' }),
   packages: z.string().optional().describe('Validate a tree of package directories').meta({ role: 'io' }),
+  snippetsCatalog: z
+    .string()
+    .optional()
+    .describe('Validate snippet-ref IDs against this generated snippets catalog')
+    .meta({ role: 'io' }),
   verbose: z
     .boolean()
     .default(false)
@@ -443,28 +479,41 @@ export async function runValidateCli(args: ValidateCliInput): Promise<CommandOut
   const failed = (code: string, message: string): CommandOutcome => ({ status: 'error', code, message });
   try {
     const mode = resolveMode(args, args.files);
+
+    if (mode.kind === 'error') {
+      console.error(mode.message);
+      return failed('INVALID_OPTIONS', mode.message);
+    }
+
+    const options = args.snippetsCatalog
+      ? { ...args, snippetCatalogIds: loadSnippetCatalogIds(args.snippetsCatalog) }
+      : args;
+
     switch (mode.kind) {
-      case 'error':
-        console.error(mode.message);
-        return failed('INVALID_OPTIONS', mode.message);
       case 'stdin':
-        return runStdinValidation(await readStdin(), args);
+        return runStdinValidation(await readStdin(), options);
+
       case 'package':
-        return runPackageValidation(mode.path, args);
+        return runPackageValidation(mode.path, options);
+
       case 'packages':
-        return runPackagesValidation(mode.path, args);
+        return runPackagesValidation(mode.path, options);
+
       case 'bundled':
       case 'files': {
         const guides = mode.kind === 'bundled' ? loadBundledGuides() : loadGuideFiles(mode.paths);
+
         if (guides.length === 0) {
           const message =
             mode.kind === 'bundled'
               ? 'No bundled guides found in src/bundled-interactives/'
               : 'No valid JSON guide files found in the specified paths';
+
           console.error(message);
           return failed('NO_GUIDES', message);
         }
-        return runFileValidation(guides, args);
+
+        return runFileValidation(guides, options);
       }
     }
   } catch (error) {

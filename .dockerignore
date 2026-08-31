@@ -28,6 +28,7 @@ src/docs-retrieval
 src/global-state
 src/styles
 src/lib
+!src/lib/assert-exhaustive.ts
 !src/lib/guide-stats
 src/locales
 src/img
@@ -53,6 +54,6 @@ webpack.config.ts
 
 # Keep:
 # - package.json, package-lock.json, tsconfig.cli.json
-# - src/cli, src/types, src/validation, src/lib/guide-stats
+# - src/cli, src/types, src/validation, src/lib/assert-exhaustive.ts, src/lib/guide-stats
 # - scripts/cli-build-utils.js, scripts/docker-entrypoint.sh
 # - Dockerfile.cli
