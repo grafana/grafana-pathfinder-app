@@ -25,7 +25,7 @@ import {
   TIER_MAP,
   assertRatchet,
   findCycles,
-  validateAllowedCycleEntries,
+  validateAllowedArchitectureEntries,
   getAllFileImports,
   getRootLevelSourceFiles,
   getSourceTier,
@@ -35,7 +35,7 @@ import {
   resolveImportToRelative,
   scanNodeEnvReachability,
   toPosixPath,
-  type AllowedCycleEntry,
+  type AllowedArchitectureEntry,
 } from './import-graph';
 
 interface ResolvedImportContext {
@@ -103,15 +103,21 @@ function collectViolations(getViolationKey: (ctx: ResolvedImportContext) => stri
  * This list should only shrink as violations are resolved.
  * Adding new entries means the architecture is degrading.
  */
-const ALLOWED_VERTICAL_VIOLATIONS = new Set([
-  // Terminal requirement check needs to query terminal connection status from the integrations layer.
-  // The dynamic import minimizes coupling and makes terminal code tree-shakeable when disabled.
-  'requirements-manager/checks/terminal.ts -> integrations',
-  // coda-exit-zero runs a command against the caller's sandbox session, so it needs both the active
-  // session id and the Coda API client. Same dynamic-import treatment as terminal.ts above: keeps
-  // the Coda integration out of the requirements chunk when the feature is off.
-  'requirements-manager/checks/coda.ts -> integrations',
-]);
+const ALLOWED_VERTICAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'requirements-manager/checks/terminal.ts -> integrations',
+    reason:
+      'The terminal requirement queries integration-owned connection state through a dynamic import, keeping terminal code out of the requirements chunk when disabled.',
+    tracking: '#603',
+  },
+  {
+    violation: 'requirements-manager/checks/coda.ts -> integrations',
+    reason:
+      'The coda-exit-zero check needs the active sandbox session and Coda client; a dynamic import keeps the optional integration out of the requirements chunk.',
+    tracking: '#603',
+  },
+];
+const ALLOWED_VERTICAL_VIOLATIONS = new Set(ALLOWED_VERTICAL_VIOLATION_ENTRIES.map((entry) => entry.violation));
 
 /**
  * Known Tier 2 lateral violations.
@@ -120,19 +126,57 @@ const ALLOWED_VERTICAL_VIOLATIONS = new Set([
  * This list should only shrink as violations are resolved (Phase 2).
  * Adding new entries means inter-engine coupling is increasing.
  */
-const ALLOWED_LATERAL_VIOLATIONS = new Set([
-  // Cluster A: interactive-engine <-> requirements-manager cycle
-  'interactive-engine/interactive.hook.ts -> requirements-manager',
-  'interactive-engine/use-sequential-step-state.hook.ts -> requirements-manager',
-  'requirements-manager/checks/grafana-api.ts -> context-engine',
-  'requirements-manager/step-checker.hook.ts -> interactive-engine',
-  // Cluster B: context-engine -> docs-retrieval
-  'context-engine/context.service.ts -> docs-retrieval',
-  // Additional pre-existing cross-engine imports uncovered by AST parsing
-  'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
-  'requirements-manager/requirements-checker.hook.ts -> context-engine',
-  'requirements-manager/step-checker.hook.ts -> context-engine',
-]);
+const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'interactive-engine/interactive.hook.ts -> requirements-manager',
+    reason:
+      'Interactive execution delegates requirement checks to the requirements engine, forming the tracked cross-engine cycle.',
+    tracking: '#1359',
+  },
+  {
+    violation: 'interactive-engine/use-sequential-step-state.hook.ts -> requirements-manager',
+    reason:
+      'Sequential interactive state reads requirement completion from the requirements engine, forming the tracked cross-engine cycle.',
+    tracking: '#1359',
+  },
+  {
+    violation: 'requirements-manager/checks/grafana-api.ts -> context-engine',
+    reason:
+      'The Grafana API requirement reuses the context engine query operation instead of maintaining a second API execution path.',
+    tracking: '#603',
+  },
+  {
+    violation: 'requirements-manager/step-checker.hook.ts -> interactive-engine',
+    reason:
+      'The step checker coordinates interactive completion state and is one edge of the tracked requirements/interactive engine cycle.',
+    tracking: '#1359',
+  },
+  {
+    violation: 'context-engine/context.service.ts -> docs-retrieval',
+    reason:
+      'Context assembly resolves documentation content through the docs retrieval engine while the engine boundary is paid down.',
+    tracking: '#603',
+  },
+  {
+    violation: 'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
+    reason:
+      'Learning-journey document helpers delegate progress mutation to the learning-path coordinator rather than duplicating persistence logic.',
+    tracking: '#603',
+  },
+  {
+    violation: 'requirements-manager/requirements-checker.hook.ts -> context-engine',
+    reason:
+      'Requirement checking consumes context-engine query results until the shared query boundary is extracted below both engines.',
+    tracking: '#603',
+  },
+  {
+    violation: 'requirements-manager/step-checker.hook.ts -> context-engine',
+    reason:
+      'Step-level requirement checks consume context-engine query results until the shared query boundary is extracted below both engines.',
+    tracking: '#603',
+  },
+];
+const ALLOWED_LATERAL_VIOLATIONS = new Set(ALLOWED_LATERAL_VIOLATION_ENTRIES.map((entry) => entry.violation));
 
 /**
  * Known barrel bypass violations.
@@ -144,19 +188,27 @@ const ALLOWED_LATERAL_VIOLATIONS = new Set([
  * Phase 4a cleared all 15 original entries by re-exporting from barrels
  * and updating consumer import paths.
  */
-const ALLOWED_BARREL_VIOLATIONS = new Set<string>([
-  // module.tsx is the entry point: the hooks barrel drags every hook — and zod,
-  // via lib/user-storage — into module.js, roughly doubling it.
-  'module.tsx -> hooks/usePathfinderPluginConfig',
-  // module.tsx is the entry point: the docs-retrieval barrel statically imports
-  // the whole content-fetcher orchestrator (zod, dompurify, the bundled guide
-  // index), and package-engine's composite-resolver pulls in every resolver
-  // implementation. Both grew module.js 6.2x (115 KB -> 696 KB raw) before this
-  // was pinned; package-resolver-registry.ts is a dependency-free leaf module,
-  // and composite-resolver is reached via a dynamic import, not this barrel.
-  'module.tsx -> docs-retrieval/content-fetcher/package-resolver-registry',
-  'module.tsx -> package-engine/composite-resolver',
-]);
+const ALLOWED_BARREL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'module.tsx -> hooks/usePathfinderPluginConfig',
+    reason:
+      'The entry point bypasses the hooks barrel because that barrel pulls every hook and Zod-backed user storage into the initial module chunk.',
+    tracking: '#603',
+  },
+  {
+    violation: 'module.tsx -> docs-retrieval/content-fetcher/package-resolver-registry',
+    reason:
+      'The dependency-free registry leaf avoids statically importing the docs retrieval orchestrator and bundled guide index into the entry chunk.',
+    tracking: '#603',
+  },
+  {
+    violation: 'module.tsx -> package-engine/composite-resolver',
+    reason:
+      'The composite resolver remains a direct dynamic-import target so package resolver implementations do not inflate the initial module chunk.',
+    tracking: '#603',
+  },
+];
+const ALLOWED_BARREL_VIOLATIONS = new Set(ALLOWED_BARREL_VIOLATION_ENTRIES.map((entry) => entry.violation));
 
 /**
  * Known circular-dependency clusters (strongly-connected components of the
@@ -165,23 +217,23 @@ const ALLOWED_BARREL_VIOLATIONS = new Set<string>([
  * ratchet's stale-entry check surfaces.
  *
  * Each entry must carry a real `reason` and a `tracking` issue: a sibling test
- * ('every ALLOWED_CYCLES entry is justified and tracked') enforces both so a new
- * cycle can't be silenced with an empty rubber-stamp. `cycle` is the SCC's
+ * ('every architectural allowlist entry is justified and tracked') enforces both so a new
+ * cycle can't be silenced with an empty rubber-stamp. `violation` is the SCC's
  * member files, sorted and joined by ' <-> ' (must match findCycles() output).
  *
  * Populated with the baseline that existed when cycle detection was added, so
  * CI stays green while these are paid down opportunistically. See #1359.
  */
-const ALLOWED_CYCLES: readonly AllowedCycleEntry[] = [
+const ALLOWED_CYCLES: readonly AllowedArchitectureEntry[] = [
   {
-    cycle:
+    violation:
       'lib/analytics.ts <-> lib/logging.ts <-> lib/telemetry/bridge.ts <-> lib/telemetry/faro-adapter.ts <-> lib/telemetry/session.ts <-> security/url-validator.ts <-> utils/dev-mode.ts <-> utils/openfeature-tracking.ts <-> utils/openfeature.ts',
     reason:
       'Tier 1 telemetry + OpenFeature tangle spanning lib/security/utils; largest cluster, needs a dedicated extraction pass rather than a one-edge fix.',
     tracking: '#1359',
   },
   {
-    cycle:
+    violation:
       'interactive-engine/index.ts <-> interactive-engine/interactive.hook.ts <-> interactive-engine/use-sequential-step-state.hook.ts <-> requirements-manager/index.ts <-> requirements-manager/step-checker.hook.ts',
     reason:
       'Cross-engine interactive-engine <-> requirements-manager coupling; already tracked in ALLOWED_LATERAL_VIOLATIONS cluster A, structural.',
@@ -189,7 +241,7 @@ const ALLOWED_CYCLES: readonly AllowedCycleEntry[] = [
   },
 ];
 
-const ALLOWED_CYCLE_KEYS = new Set(ALLOWED_CYCLES.map((entry) => entry.cycle));
+const ALLOWED_CYCLE_KEYS = new Set(ALLOWED_CYCLES.map((entry) => entry.violation));
 
 /**
  * External packages proven safe to load and execute in plain Node — no
@@ -294,8 +346,9 @@ describe('Import graph: vertical tier enforcement', () => {
       'vertical tier violations',
       'ALLOWED_VERTICAL_VIOLATIONS',
       `Files in tier N may only import from tier N or lower. ` +
-        `If this import is architecturally justified, add it to ALLOWED_VERTICAL_VIOLATIONS ` +
-        `with a comment explaining why. Otherwise, restructure the import to respect the tier boundary. ` +
+        `If this import is architecturally justified, add a structured entry to ` +
+        `ALLOWED_VERTICAL_VIOLATION_ENTRIES with a substantive reason and tracking issue. ` +
+        `Otherwise, restructure the import to respect the tier boundary. ` +
         `See TIER_MAP in src/validation/import-graph.ts for the tier assignments.`
     );
   });
@@ -320,8 +373,9 @@ describe('Inter-engine isolation: Tier 2 lateral imports', () => {
       'Tier 2 lateral import violations',
       'ALLOWED_LATERAL_VIOLATIONS',
       `Tier 2 engines must not import from other Tier 2 engines unless explicitly allowed. ` +
-        `If this cross-engine import is architecturally justified, add it to ALLOWED_LATERAL_VIOLATIONS ` +
-        `with a comment explaining why. Otherwise, extract the shared dependency to src/types/ or src/lib/, ` +
+        `If this cross-engine import is architecturally justified, add a structured entry to ` +
+        `ALLOWED_LATERAL_VIOLATION_ENTRIES with a substantive reason and tracking issue. Otherwise, ` +
+        `extract the shared dependency to src/types/ or src/lib/, ` +
         `or use dependency injection.`
     );
   });
@@ -372,8 +426,8 @@ describe('Barrel export discipline', () => {
         `Example: for "components/Foo.tsx -> docs-retrieval/json-parser", add\n` +
         `  export { parseJsonGuide } from './json-parser';  to src/docs-retrieval/index.ts\n` +
         `then change the consumer to: import { parseJsonGuide } from '../../docs-retrieval';\n\n` +
-        `If the barrel bypass is architecturally justified, add it to ALLOWED_BARREL_VIOLATIONS ` +
-        `with a comment explaining why.`
+        `If the barrel bypass is architecturally justified, add a structured entry to ` +
+        `ALLOWED_BARREL_VIOLATION_ENTRIES with a substantive reason and tracking issue.`
     );
   });
 });
@@ -414,15 +468,23 @@ describe('Import graph: circular dependencies', () => {
     );
   });
 
-  it('every ALLOWED_CYCLES entry is justified and tracked', () => {
-    const errors = validateAllowedCycleEntries(ALLOWED_CYCLES);
+  it('every architectural allowlist entry is justified and tracked', () => {
+    const allowlists = [
+      ['ALLOWED_VERTICAL_VIOLATIONS', ALLOWED_VERTICAL_VIOLATION_ENTRIES],
+      ['ALLOWED_LATERAL_VIOLATIONS', ALLOWED_LATERAL_VIOLATION_ENTRIES],
+      ['ALLOWED_BARREL_VIOLATIONS', ALLOWED_BARREL_VIOLATION_ENTRIES],
+      ['ALLOWED_CYCLES', ALLOWED_CYCLES],
+    ] as const;
+    const errors = allowlists.flatMap(([name, entries]) =>
+      validateAllowedArchitectureEntries(entries).map((error) => `${name}: ${error}`)
+    );
 
     if (errors.length > 0) {
       throw new Error(
-        `ALLOWED_CYCLES entries must each carry a justification and a paydown tracking issue:\n` +
+        `Architectural allowlist entries must each carry a justification and a paydown tracking issue:\n` +
           errors.map((e) => `  - ${e}`).join('\n') +
-          `\n\nThis exists so a new cycle can't be silenced by pasting its key in with an empty comment. ` +
-          `Fill in a real 'reason' and 'tracking' issue, or — better — break the cycle instead (see the ` +
+          `\n\nThis exists so a violation can't be silenced by pasting its key in with an empty comment. ` +
+          `Fill in a real 'reason' and 'tracking' issue, or — better — remove the exception instead (see the ` +
           `worked examples referenced by the sibling ratchet test).`
       );
     }
