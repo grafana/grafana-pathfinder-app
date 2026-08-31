@@ -233,6 +233,25 @@ function publicWorker(worker) {
   };
 }
 
+function firedContractGates(contract_evolution) {
+  if (!contract_evolution) {
+    return [];
+  }
+  const gates = Array.isArray(contract_evolution) ? contract_evolution.filter(Boolean) : [contract_evolution];
+  for (const key of duplicateValues(gates.map((gate) => gate.concern_id ?? 'unknown'))) {
+    throw new Error(`fired contract gate ${key} must be unique`);
+  }
+  return [...gates].sort((left, right) => {
+    const leftId = String(left.concern_id ?? 'unknown');
+    const rightId = String(right.concern_id ?? 'unknown');
+    return (
+      Number(Boolean(right.touches_anchor_with_consumers)) - Number(Boolean(left.touches_anchor_with_consumers)) ||
+      (Number(right.prior_semantic_pr_count) || 0) - (Number(left.prior_semantic_pr_count) || 0) ||
+      (leftId < rightId ? -1 : leftId > rightId ? 1 : 0)
+    );
+  });
+}
+
 export function buildReviewPlan({ mode, concerns, contract_evolution = null, skeptic_batch_count = 0 }) {
   if (mode !== 'full' && mode !== 'incremental') {
     throw new Error('mode must be full or incremental');
@@ -292,18 +311,21 @@ export function buildReviewPlan({ mode, concerns, contract_evolution = null, ske
     }
   }
 
-  if (contract_evolution) {
-    const context = normalizeContext(contract_evolution.context ?? [], 'contract evolution');
-    if (!/^[a-z0-9-]+$/.test(contract_evolution.concern_id ?? '') || !fitsWorker(context)) {
-      rootConcernIds.push(`contract-evolution:${contract_evolution.concern_id ?? 'unknown'}`);
-    } else {
-      workers.push({
-        id: 'contract-evolution',
-        kind: 'contract_evolution',
-        concern_ids: [contract_evolution.concern_id],
-        context,
-      });
+  const firedGates = firedContractGates(contract_evolution);
+  let specialistTaken = false;
+  for (const gate of firedGates) {
+    const context = normalizeContext(gate.context ?? [], 'contract evolution');
+    if (specialistTaken || !/^[a-z0-9-]+$/.test(gate.concern_id ?? '') || !fitsWorker(context)) {
+      rootConcernIds.push(`contract-evolution:${gate.concern_id ?? 'unknown'}`);
+      continue;
     }
+    specialistTaken = true;
+    workers.push({
+      id: 'contract-evolution',
+      kind: 'contract_evolution',
+      concern_ids: [gate.concern_id],
+      context,
+    });
   }
 
   const publicWorkers = workers.map(publicWorker);
