@@ -394,10 +394,45 @@ test('a wrongly typed ranking field is rejected instead of being coerced into a 
       ]),
     /fired contract gate cli-and-e2e-runner must state prior_semantic_pr_count as a finite number/
   );
+});
+
+test('a listed gate with an invalid concern id fails loudly instead of losing the slot in silence', () => {
   assert.throws(
-    () => planWithGates(firedGate('ai-subsystem', { prior_semantic_pr_count: Number.NaN })),
-    /fired contract gate ai-subsystem must state prior_semantic_pr_count as a finite number/
+    () =>
+      planWithGates([
+        firedGate('guide_schema_and_contracts', {
+          touches_anchor_with_consumers: true,
+          prior_semantic_pr_count: 30,
+        }),
+        firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: 21 }),
+      ]),
+    /fired contract gate guide_schema_and_contracts must state concern_id as lowercase letters, digits, and hyphens/
   );
+});
+
+test('a malformed listed packet names the gate that has to be repaired', () => {
+  assert.throws(
+    () =>
+      planWithGates([
+        { ...firedGate('guide-schema-and-contracts'), context: [{ path: 'docs/design/anchor.md' }] },
+        firedGate('cli-and-e2e-runner'),
+      ]),
+    /each context entry for contract evolution guide-schema-and-contracts must include path and excerpt/
+  );
+});
+
+test('the singular object keeps its slot with an empty packet and ignores its dead ranking fields', () => {
+  const emptyPacket = planWithGates({ concern_id: 'ai-subsystem', context: [] });
+  assert.equal(emptyPacket.chosen, 'ai-subsystem');
+  assert.equal(emptyPacket.plan.workers.find(({ kind }) => kind === 'contract_evolution').context_characters, 0);
+
+  const deadFields = planWithGates({
+    concern_id: 'ai-subsystem',
+    context: [{ path: 'docs/design/PR_REVIEW.md', excerpt: 'contract' }],
+    touches_anchor_with_consumers: 'no',
+    prior_semantic_pr_count: null,
+  });
+  assert.equal(deadFields.chosen, 'ai-subsystem');
 });
 
 test('a top-ranked gate above the packet envelope yields the slot instead of wasting it', () => {

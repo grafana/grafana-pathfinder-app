@@ -233,14 +233,15 @@ function publicWorker(worker) {
   };
 }
 
-function validateGateRanking(gate, listed) {
+function validateGateRanking(gate) {
   const id = gate.concern_id ?? 'unknown';
-  const anchor = gate.touches_anchor_with_consumers;
-  const count = gate.prior_semantic_pr_count;
-  if (anchor === undefined ? listed : typeof anchor !== 'boolean') {
+  if (!/^[a-z0-9-]+$/.test(gate.concern_id ?? '')) {
+    throw new Error(`fired contract gate ${id} must state concern_id as lowercase letters, digits, and hyphens`);
+  }
+  if (typeof gate.touches_anchor_with_consumers !== 'boolean') {
     throw new Error(`fired contract gate ${id} must state touches_anchor_with_consumers as a boolean`);
   }
-  if (count === undefined ? listed : !Number.isFinite(count)) {
+  if (!Number.isFinite(gate.prior_semantic_pr_count)) {
     throw new Error(`fired contract gate ${id} must state prior_semantic_pr_count as a finite number`);
   }
 }
@@ -254,8 +255,8 @@ function firedContractGates(contract_evolution) {
   for (const key of duplicateValues(gates.map((gate) => gate.concern_id ?? 'unknown'))) {
     throw new Error(`fired contract gate ${key} must be unique`);
   }
-  for (const gate of gates) {
-    validateGateRanking(gate, listed);
+  for (const gate of listed ? gates : []) {
+    validateGateRanking(gate);
   }
   return [...gates].sort((left, right) => {
     const leftId = String(left.concern_id ?? 'unknown');
@@ -331,7 +332,7 @@ export function buildReviewPlan({ mode, concerns, contract_evolution = null, ske
   const listedGates = Array.isArray(contract_evolution);
   let specialistTaken = false;
   for (const gate of firedGates) {
-    const context = normalizeContext(gate.context ?? [], 'contract evolution');
+    const context = normalizeContext(gate.context ?? [], `contract evolution ${gate.concern_id ?? 'unknown'}`);
     if (
       specialistTaken ||
       !/^[a-z0-9-]+$/.test(gate.concern_id ?? '') ||
