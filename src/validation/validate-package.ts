@@ -61,6 +61,7 @@ export interface PackageValidationResult {
 
 export interface PackageValidationOptions {
   strict?: boolean;
+  snippetCatalogIds?: ReadonlySet<string>;
 }
 
 /**
@@ -112,6 +113,7 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
   contentResult = validateGuide(contentRead.parsed, {
     strict: options.strict,
     skipUnknownFieldCheck: false,
+    snippetCatalogIds: options.snippetCatalogIds,
   });
 
   if (!contentResult.isValid) {
