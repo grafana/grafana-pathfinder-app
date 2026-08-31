@@ -27,7 +27,7 @@ Build a plan input containing `mode`, routed concerns, and each packet's actual 
 node .cursor/skills/review/scripts/concern-context.mjs --plan <plan-file>
 ```
 
-Each routed entry is `{ id, context }`. Mark a dedicated security entry with `specialist: "security"`; pass a gated scan separately as `contract_evolution: { concern_id, context }`. When more than one gate fires, pass every fired gate as an array of those objects, each also carrying `touches_anchor_with_consumers` and the gate's own `prior_semantic_pr_count`.
+Each routed entry is `{ id, context }`. Mark a dedicated security entry with `specialist: "security"`; pass a gated scan separately as `contract_evolution: { concern_id, context }`. When more than one gate fires, pass every fired gate as an array of those objects, each also carrying `touches_anchor_with_consumers` and the gate's own `prior_semantic_pr_count`. The planner rejects a listed gate that omits either field, or states a non-boolean anchor flag or a non-finite count.
 
 Every concern must have an observation worker or `root` owner. Each worker packet is limited to eight files and 30,000 characters; `worker_count` and these caps exclude skeptic agents.
 

@@ -298,6 +298,8 @@ test('a packet above eight files or 30,000 characters stays with the root synthe
 const firedGate = (concern_id, extra = {}) => ({
   concern_id,
   context: [{ path: `docs/design/${concern_id}.md`, excerpt: 'contract' }],
+  touches_anchor_with_consumers: false,
+  prior_semantic_pr_count: 0,
   ...extra,
 });
 
@@ -352,7 +354,7 @@ test('two fired gates equal on anchor and history resolve by ascending concern i
   assert.equal(planWithGates([second, first]).chosen, 'cli-and-e2e-runner');
 });
 
-test('the losing gate never becomes a worker and the ranking fields are load-bearing', () => {
+test('the losing gate never becomes a worker and every listed gate must state both ranking fields', () => {
   const gates = [
     firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: 21 }),
     firedGate('guide-schema-and-contracts', { prior_semantic_pr_count: 30 }),
@@ -365,14 +367,44 @@ test('the losing gate never becomes a worker and the ranking fields are load-bea
     assert.ok(plan.coverage[`contract-evolution:${concern_id}`], concern_id);
   }
 
-  const withoutCounts = gates.map(({ concern_id, context }) => ({ concern_id, context }));
-  assert.equal(planWithGates(withoutCounts).chosen, 'cli-and-e2e-runner');
+  assert.throws(
+    () => planWithGates(gates.map(({ concern_id, context }) => ({ concern_id, context }))),
+    /fired contract gate cli-and-e2e-runner must state touches_anchor_with_consumers as a boolean/
+  );
+  assert.throws(
+    () => planWithGates(gates.map(({ prior_semantic_pr_count, ...gate }) => gate)),
+    /fired contract gate cli-and-e2e-runner must state prior_semantic_pr_count as a finite number/
+  );
+});
+
+test('a wrongly typed ranking field is rejected instead of being coerced into a rank', () => {
+  assert.throws(
+    () =>
+      planWithGates([
+        firedGate('cli-and-e2e-runner', { touches_anchor_with_consumers: 'no' }),
+        firedGate('guide-schema-and-contracts', { prior_semantic_pr_count: 30 }),
+      ]),
+    /fired contract gate cli-and-e2e-runner must state touches_anchor_with_consumers as a boolean/
+  );
+  assert.throws(
+    () =>
+      planWithGates([
+        firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: '30' }),
+        firedGate('guide-schema-and-contracts', { prior_semantic_pr_count: 21 }),
+      ]),
+    /fired contract gate cli-and-e2e-runner must state prior_semantic_pr_count as a finite number/
+  );
+  assert.throws(
+    () => planWithGates(firedGate('ai-subsystem', { prior_semantic_pr_count: Number.NaN })),
+    /fired contract gate ai-subsystem must state prior_semantic_pr_count as a finite number/
+  );
 });
 
 test('a top-ranked gate above the packet envelope yields the slot instead of wasting it', () => {
   const { plan, chosen } = planWithGates([
     {
       concern_id: 'guide-schema-and-contracts',
+      touches_anchor_with_consumers: false,
       prior_semantic_pr_count: 30,
       context: [{ path: 'docs/design/PR_REVIEW.md', excerpt: 'x'.repeat(30_001) }],
     },
@@ -406,10 +438,4 @@ test('the singular contract_evolution object keeps its worker id, coverage key, 
   const unnamed = planWithGates({ context: [] });
   assert.equal(unnamed.chosen, null);
   assert.equal(unnamed.plan.coverage['contract-evolution:unknown'], 'root');
-});
-
-test('the skill documents the multi-gate selection order and its per-gate fields', () => {
-  assert.match(skill, /touches_anchor_with_consumers/);
-  assert.match(skill, /prior_semantic_pr_count/);
-  assert.match(skill, /Only one specialist runs/);
 });

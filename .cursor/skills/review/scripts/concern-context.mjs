@@ -233,20 +233,36 @@ function publicWorker(worker) {
   };
 }
 
+function validateGateRanking(gate, listed) {
+  const id = gate.concern_id ?? 'unknown';
+  const anchor = gate.touches_anchor_with_consumers;
+  const count = gate.prior_semantic_pr_count;
+  if (anchor === undefined ? listed : typeof anchor !== 'boolean') {
+    throw new Error(`fired contract gate ${id} must state touches_anchor_with_consumers as a boolean`);
+  }
+  if (count === undefined ? listed : !Number.isFinite(count)) {
+    throw new Error(`fired contract gate ${id} must state prior_semantic_pr_count as a finite number`);
+  }
+}
+
 function firedContractGates(contract_evolution) {
   if (!contract_evolution) {
     return [];
   }
-  const gates = Array.isArray(contract_evolution) ? contract_evolution.filter(Boolean) : [contract_evolution];
+  const listed = Array.isArray(contract_evolution);
+  const gates = listed ? contract_evolution.filter(Boolean) : [contract_evolution];
   for (const key of duplicateValues(gates.map((gate) => gate.concern_id ?? 'unknown'))) {
     throw new Error(`fired contract gate ${key} must be unique`);
+  }
+  for (const gate of gates) {
+    validateGateRanking(gate, listed);
   }
   return [...gates].sort((left, right) => {
     const leftId = String(left.concern_id ?? 'unknown');
     const rightId = String(right.concern_id ?? 'unknown');
     return (
-      Number(Boolean(right.touches_anchor_with_consumers)) - Number(Boolean(left.touches_anchor_with_consumers)) ||
-      (Number(right.prior_semantic_pr_count) || 0) - (Number(left.prior_semantic_pr_count) || 0) ||
+      Number(right.touches_anchor_with_consumers === true) - Number(left.touches_anchor_with_consumers === true) ||
+      (right.prior_semantic_pr_count ?? 0) - (left.prior_semantic_pr_count ?? 0) ||
       (leftId < rightId ? -1 : leftId > rightId ? 1 : 0)
     );
   });
