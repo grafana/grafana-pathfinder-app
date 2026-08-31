@@ -14,6 +14,7 @@ import {
 } from '../../security';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { isJsonContentUrl, generateInteractiveLearningVariations, getContentUrls } from './url-utils';
 
@@ -78,7 +79,10 @@ export function generateUserFriendlyError(error: FetchError | undefined, url: st
       return 'Unable to connect. Please check your internet connection or try again later.';
     case 'server-error':
       return 'Server error occurred. Please try again later.';
+    case 'other':
+      return error.message || 'Failed to load content. Please try again.';
     default:
+      assertExhaustive(error.errorType);
       return error.message || 'Failed to load content. Please try again.';
   }
 }

@@ -10,6 +10,8 @@ It targets beginners and intermediate users learning Grafana, not experts after 
 
 Functional-first and pragmatic: small composable functions, immutable data and pure functions for core logic, side effects isolated at the edges rather than eliminated. React should read like the Grafana codebase.
 
+Use `assertExhaustive(value)` from `src/lib/assert-exhaustive.ts` in fail-safe `default` branches that preserve fallback behavior. Accept the stock ESLint missing-case message from `@typescript-eslint/switch-exhaustiveness-check`.
+
 ### Control characters in source
 
 Never paste a raw control byte into a tracked file — write it as an escape (`\x00`, not `\u0000`) or build it with `String.fromCharCode`. One raw byte makes `grep -r` and `rg` skip the whole file silently, returning a shorter result set that reads as complete. Tab, newline, and carriage return are fine. `src/validation/control-bytes.test.ts` enforces this over every tracked file, and its failure message explains the rest.

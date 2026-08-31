@@ -36,6 +36,7 @@ import {
   getLastVmOpts,
 } from './terminal-storage';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 
 interface TerminalPanelProps {
   /** Callback when panel is closed via X button */
@@ -385,7 +386,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
         return styles.statusConnecting;
       case 'error':
         return styles.statusError;
+      case 'disconnected':
+        return styles.statusDisconnected;
       default:
+        assertExhaustive(s);
         return styles.statusDisconnected;
     }
   };
@@ -398,7 +402,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
         return 'Connecting...';
       case 'error':
         return error || 'Error';
+      case 'disconnected':
+        return 'Disconnected';
       default:
+        assertExhaustive(s);
         return 'Disconnected';
     }
   };
