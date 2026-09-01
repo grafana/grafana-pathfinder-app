@@ -271,6 +271,8 @@ The Interactive Engine supports the following action types via the `targetAction
 - **hover** - Simulates hover interactions
 - **guided** - Guided mode where user manually performs actions
 - **sequence** - Executes multiple child actions sequentially
+- **multistep** - Executes an authored list of actions as one automated step
+- **popout** - Moves Pathfinder between sidebar and floating-panel modes
 - **noop** - Informational step with no interaction (displays comment only)
 
 ## Data Collected and Events
