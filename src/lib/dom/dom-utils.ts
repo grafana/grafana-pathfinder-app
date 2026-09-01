@@ -1,5 +1,6 @@
 import { InteractiveElementData } from '../../types/interactive.types';
 import { logger } from '../logging';
+import { isInteractiveActionType } from '../interactive-action';
 import { querySelectorAllEnhanced } from './enhanced-selector';
 import { resolveSelector } from './selector-resolver';
 import { isCssSelector } from './selector-detector';
@@ -25,10 +26,22 @@ export function getAllTextContent(element: Element): string {
   return text.trim();
 }
 
-/**
- * Extract interactive data from a DOM element
- */
-export function extractInteractiveDataFromElement(element: HTMLElement): InteractiveElementData {
+type RawInteractiveElementData = Omit<InteractiveElementData, 'targetAction'> & {
+  targetAction: string | null;
+};
+
+function decodeInteractiveElementData(raw: RawInteractiveElementData): InteractiveElementData | null {
+  if (raw.targetAction === null) {
+    return null;
+  }
+  if (!isInteractiveActionType(raw.targetAction)) {
+    logger.warn(`Unknown interactive action: ${raw.targetAction}`);
+    return null;
+  }
+  return { ...raw, targetAction: raw.targetAction };
+}
+
+export function extractInteractiveDataFromElement(element: HTMLElement): InteractiveElementData | null {
   const customData: Record<string, string> = {};
 
   // Extract all data-* attributes except the core ones
@@ -57,7 +70,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
   // by HTML convention; the resulting JS object uses camelCase, matching
   // the InteractiveElementData type.
   const refTarget = element.getAttribute('data-reftarget') || '';
-  const targetAction = element.getAttribute('data-targetaction') || '';
+  const targetAction = element.getAttribute('data-targetaction');
   const targetValue = element.getAttribute('data-targetvalue') || undefined;
   const targetState = element.getAttribute('data-targetstate') || undefined;
   const requirements = element.getAttribute('data-requirements') || undefined;
@@ -72,7 +85,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     logger.warn(`refTarget "${refTarget}" matches element text — check data-reftarget attribute`);
   }
 
-  return {
+  return decodeInteractiveElementData({
     refTarget,
     targetAction,
     targetValue,
@@ -90,7 +103,7 @@ export function extractInteractiveDataFromElement(element: HTMLElement): Interac
     parentTagName: element.parentElement?.tagName.toLowerCase() || undefined,
     timestamp: Date.now(),
     customData: Object.keys(customData).length > 0 ? customData : undefined,
-  };
+  });
 }
 
 /**
