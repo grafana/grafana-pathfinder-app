@@ -656,7 +656,9 @@ describe('validateAllowedArchitectureEntries', () => {
   });
 
   it('accepts an explicit by-design marker', () => {
-    expect(validateAllowedArchitectureEntries([{ ...valid, tracking: ARCHITECTURE_BY_DESIGN }])).toEqual([]);
+    expect(
+      validateAllowedArchitectureEntries([{ ...valid, tracking: ARCHITECTURE_BY_DESIGN }], { allowByDesign: true })
+    ).toEqual([]);
   });
 
   it('flags a reason that is missing or too short', () => {
