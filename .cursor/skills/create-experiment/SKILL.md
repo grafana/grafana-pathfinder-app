@@ -52,6 +52,8 @@ Three arms, always: `excluded` (not in the experiment), `control` (in it, curren
 
 `EXPERIMENT_VARIANTS` in `src/utils/openfeature.ts` is the runtime vocabulary and derives the TypeScript union. Adding an arm also requires an explicit policy in both total projections: `EXPERIMENT_VARIANT_EMITS_EXPOSURE` in `src/utils/openfeature-tracking.ts` and `EXPERIMENT_VARIANT_PRECEDENCE` in `src/lib/analytics.ts`. The compiler should fail until both decisions are made.
 
+The compiler does not cover the runtime arm gates in `src/utils/experiments/highlighted-guide-orchestrator.ts` and `src/context-engine/context.service.ts`; review both explicitly when adding an arm.
+
 ### 2. Create the experiment module
 
 Everything else goes in `src/utils/experiments/<experiment-name>.ts` so retirement is a directory delete.

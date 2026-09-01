@@ -185,6 +185,19 @@ describe('reportAppInteraction experiment enrichment', () => {
     expect(mockReportInteraction.mock.calls[0][1].variant).toBe('control');
   });
 
+  it.each([
+    ['control before treatment', ['control', 'treatment']],
+    ['treatment before control', ['treatment', 'control']],
+  ] as const)('rolls multiple experiments up to treatment with %s', (_order, variants) => {
+    bindExperimentsProvider(() =>
+      variants.map((variant) => ({ flag: HIGHLIGHTED, variant, pages: [], guideId: 'g' }))
+    );
+
+    reportAppInteraction(UserInteraction.SummaryClick, {});
+
+    expect(mockReportInteraction.mock.calls[0][1].variant).toBe('treatment');
+  });
+
   it('rolls variant up to excluded when every experiment is excluded', () => {
     bindExperimentsProvider(() => [{ flag: HIGHLIGHTED, variant: 'excluded', pages: [], guideId: 'g' }]);
 
