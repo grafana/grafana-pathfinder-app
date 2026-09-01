@@ -246,9 +246,9 @@ const ALLOWED_CYCLE_KEYS = new Set(ALLOWED_CYCLES.map((entry) => entry.violation
 
 const ARCHITECTURE_ALLOWLISTS = {
   ALLOWED_VERTICAL_VIOLATIONS: { entries: ALLOWED_VERTICAL_VIOLATION_ENTRIES, allowByDesign: true },
-  ALLOWED_LATERAL_VIOLATIONS: { entries: ALLOWED_LATERAL_VIOLATION_ENTRIES },
+  ALLOWED_LATERAL_VIOLATIONS: { entries: ALLOWED_LATERAL_VIOLATION_ENTRIES, allowByDesign: false },
   ALLOWED_BARREL_VIOLATIONS: { entries: ALLOWED_BARREL_VIOLATION_ENTRIES, allowByDesign: true },
-  ALLOWED_CYCLES: { entries: ALLOWED_CYCLES },
+  ALLOWED_CYCLES: { entries: ALLOWED_CYCLES, allowByDesign: false },
 } as const;
 
 /**
@@ -483,8 +483,8 @@ describe('Import graph: circular dependencies', () => {
       'ALLOWED_BARREL_VIOLATIONS',
       'ALLOWED_CYCLES',
     ]);
-    const errors = Object.entries(ARCHITECTURE_ALLOWLISTS).flatMap(([name, policy]) =>
-      validateAllowedArchitectureEntries(policy.entries, policy).map((error) => `${name}: ${error}`)
+    const errors = Object.entries(ARCHITECTURE_ALLOWLISTS).flatMap(([name, { entries, allowByDesign }]) =>
+      validateAllowedArchitectureEntries(entries, { allowByDesign }).map((error) => `${name}: ${error}`)
     );
 
     if (errors.length > 0) {
