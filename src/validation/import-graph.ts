@@ -603,10 +603,14 @@ const ARCHITECTURE_TRACKING_URL_RE = /github\.com\/[^/]+\/[^/]+\/issues\/\d+/;
 
 /**
  * Validates that every architectural allowlist entry is justified and accountable: unique key,
- * a substantive `reason`, and either the explicit `by-design` marker or a tracking issue
- * (`#1234` or a GitHub issues URL). Returns human-readable errors (empty when all pass).
+ * a substantive `reason`, and a tracking issue (`#1234` or a GitHub issues URL).
+ * Callers may explicitly allow `by-design` for permanent-boundary lists. Returns
+ * human-readable errors (empty when all pass).
  */
-export function validateAllowedArchitectureEntries(entries: readonly AllowedArchitectureEntry[]): string[] {
+export function validateAllowedArchitectureEntries(
+  entries: readonly AllowedArchitectureEntry[],
+  { allowByDesign = false }: { allowByDesign?: boolean } = {}
+): string[] {
   const errors: string[] = [];
 
   const keys = new Set(entries.map((entry) => entry.violation));
@@ -619,7 +623,9 @@ export function validateAllowedArchitectureEntries(entries: readonly AllowedArch
     if (entry.reason.trim().length < ARCHITECTURE_REASON_MIN_LENGTH) {
       errors.push(`${label}: 'reason' is missing or too short — explain why the violation is tolerated.`);
     }
-    if (
+    if (entry.tracking === ARCHITECTURE_BY_DESIGN && !allowByDesign) {
+      errors.push(`${label}: 'tracking' must point to an issue; '${ARCHITECTURE_BY_DESIGN}' is not allowed here.`);
+    } else if (
       entry.tracking !== ARCHITECTURE_BY_DESIGN &&
       !ARCHITECTURE_TRACKING_RE.test(entry.tracking) &&
       !ARCHITECTURE_TRACKING_URL_RE.test(entry.tracking)

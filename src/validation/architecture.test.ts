@@ -144,7 +144,7 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     violation: 'requirements-manager/checks/grafana-api.ts -> context-engine',
     reason:
       'The Grafana API requirement reuses the context engine query operation instead of maintaining a second API execution path.',
-    tracking: '#1359',
+    tracking: '#1763',
   },
   {
     violation: 'requirements-manager/step-checker.hook.ts -> interactive-engine',
@@ -156,25 +156,25 @@ const ALLOWED_LATERAL_VIOLATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
     violation: 'context-engine/context.service.ts -> docs-retrieval',
     reason:
       'Context assembly resolves documentation content through the docs retrieval engine while the engine boundary is paid down.',
-    tracking: '#1359',
+    tracking: '#1763',
   },
   {
     violation: 'docs-retrieval/learning-journey-helpers.ts -> learning-paths',
     reason:
       'Learning-journey document helpers delegate progress mutation to the learning-path coordinator rather than duplicating persistence logic.',
-    tracking: '#1359',
+    tracking: '#1763',
   },
   {
     violation: 'requirements-manager/requirements-checker.hook.ts -> context-engine',
     reason:
       'Requirement checking consumes context-engine query results until the shared query boundary is extracted below both engines.',
-    tracking: '#1359',
+    tracking: '#1763',
   },
   {
     violation: 'requirements-manager/step-checker.hook.ts -> context-engine',
     reason:
       'Step-level requirement checks consume context-engine query results until the shared query boundary is extracted below both engines.',
-    tracking: '#1359',
+    tracking: '#1763',
   },
 ];
 const ALLOWED_LATERAL_VIOLATIONS = new Set(ALLOWED_LATERAL_VIOLATION_ENTRIES.map((entry) => entry.violation));
@@ -243,6 +243,13 @@ const ALLOWED_CYCLES: readonly AllowedArchitectureEntry[] = [
 ];
 
 const ALLOWED_CYCLE_KEYS = new Set(ALLOWED_CYCLES.map((entry) => entry.violation));
+
+const ARCHITECTURE_ALLOWLISTS = {
+  ALLOWED_VERTICAL_VIOLATIONS: { entries: ALLOWED_VERTICAL_VIOLATION_ENTRIES, allowByDesign: true },
+  ALLOWED_LATERAL_VIOLATIONS: { entries: ALLOWED_LATERAL_VIOLATION_ENTRIES },
+  ALLOWED_BARREL_VIOLATIONS: { entries: ALLOWED_BARREL_VIOLATION_ENTRIES, allowByDesign: true },
+  ALLOWED_CYCLES: { entries: ALLOWED_CYCLES },
+} as const;
 
 /**
  * External packages proven safe to load and execute in plain Node — no
@@ -470,20 +477,14 @@ describe('Import graph: circular dependencies', () => {
   });
 
   it('every architectural allowlist entry is justified and accountable', () => {
-    const allowlists = [
-      ['ALLOWED_VERTICAL_VIOLATIONS', ALLOWED_VERTICAL_VIOLATION_ENTRIES],
-      ['ALLOWED_LATERAL_VIOLATIONS', ALLOWED_LATERAL_VIOLATION_ENTRIES],
-      ['ALLOWED_BARREL_VIOLATIONS', ALLOWED_BARREL_VIOLATION_ENTRIES],
-      ['ALLOWED_CYCLES', ALLOWED_CYCLES],
-    ] as const;
-    expect(allowlists.map(([name]) => name)).toEqual([
+    expect(Object.keys(ARCHITECTURE_ALLOWLISTS)).toEqual([
       'ALLOWED_VERTICAL_VIOLATIONS',
       'ALLOWED_LATERAL_VIOLATIONS',
       'ALLOWED_BARREL_VIOLATIONS',
       'ALLOWED_CYCLES',
     ]);
-    const errors = allowlists.flatMap(([name, entries]) =>
-      validateAllowedArchitectureEntries(entries).map((error) => `${name}: ${error}`)
+    const errors = Object.entries(ARCHITECTURE_ALLOWLISTS).flatMap(([name, policy]) =>
+      validateAllowedArchitectureEntries(policy.entries, policy).map((error) => `${name}: ${error}`)
     );
 
     if (errors.length > 0) {
@@ -491,10 +492,22 @@ describe('Import graph: circular dependencies', () => {
         `Architectural allowlist entries must each carry a justification and an accountability reference:\n` +
           errors.map((e) => `  - ${e}`).join('\n') +
           `\n\nThis exists so a violation can't be silenced by pasting its key in with an empty comment. ` +
-          `Fill in a real 'reason' and either a 'tracking' issue or '${ARCHITECTURE_BY_DESIGN}', or — better — remove the exception instead (see the ` +
+          `Fill in a real 'reason' and a tracking issue (or '${ARCHITECTURE_BY_DESIGN}' only where the list permits permanent exceptions), or — better — remove the exception instead (see the ` +
           `worked examples referenced by the sibling ratchet test).`
       );
     }
+  });
+
+  it('requires issue tracking for circular dependencies', () => {
+    expect(
+      validateAllowedArchitectureEntries([
+        {
+          violation: 'first.ts <-> second.ts',
+          reason: 'This cycle is deliberately left in place for the negative policy test.',
+          tracking: ARCHITECTURE_BY_DESIGN,
+        },
+      ])
+    ).toEqual([`first.ts: 'tracking' must point to an issue; '${ARCHITECTURE_BY_DESIGN}' is not allowed here.`]);
   });
 });
 
