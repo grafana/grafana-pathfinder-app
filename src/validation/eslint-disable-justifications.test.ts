@@ -5,7 +5,7 @@ import * as path from 'path';
 import { assertRatchet } from './import-graph';
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
-const SOURCE_EXTENSIONS = new Set(['.js', '.jsx', '.ts', '.tsx']);
+const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.jsx', '.mjs', '.ts', '.tsx']);
 const DIRECTIVE_PATTERN =
   /(?:\/\/\s*(eslint-disable-(?:next-line|line))|\/\*\s*(eslint-disable(?:-(?:next-line|line))?))(?=\s|\*\/|$)/;
 const JUSTIFICATION_SEPARATOR = ' -- ';
@@ -15,6 +15,7 @@ const ESLINT_DISABLE_DIRECTIVE = ['eslint', 'disable'].join('-');
  * Shrink-only baseline for #1752. Keys are `path::rule#occurrence`, where the
  * occurrence counts undescribed suppressions for that rule within the file.
  * Line numbers stay diagnostic-only so unrelated edits cannot invalidate it.
+ * A same-file replacement can retain a count key until this baseline reaches zero.
  */
 const UNDESCRIBED_ESLINT_DISABLE_BASELINE = new Set([
   'src/learning-paths/learning-paths.hook.ts::react-hooks/exhaustive-deps#1',
@@ -68,9 +69,8 @@ function directiveForm(lineDirective: string, blockDirective: string | undefined
     : prefix;
 }
 
-function directiveRule(line: string, match: RegExpMatchArray): string {
-  const remainder = line.slice((match.index ?? 0) + match[0].length);
-  const beforeJustification = remainder.split(JUSTIFICATION_SEPARATOR, 1)[0] ?? '';
+function directiveRule(afterDirective: string): string {
+  const beforeJustification = afterDirective.split(JUSTIFICATION_SEPARATOR, 1)[0] ?? '';
   return (
     beforeJustification
       .replace(/\*\/.*$/, '')
@@ -95,9 +95,10 @@ export function scanEslintDisableComments(relPath: string, content: string): Sca
     directiveCount++;
     const lineDirective = match[1] ?? '';
     const blockDirective = match[2];
+    const afterDirective = line.slice((match.index ?? 0) + match[0].length);
     directiveForms[directiveForm(lineDirective, blockDirective)]++;
-    if (!line.includes(JUSTIFICATION_SEPARATOR)) {
-      const baseKey = `${relPath}::${directiveRule(line, match)}`;
+    if (!afterDirective.includes(JUSTIFICATION_SEPARATOR)) {
+      const baseKey = `${relPath}::${directiveRule(afterDirective)}`;
       const occurrence = (occurrences.get(baseKey) ?? 0) + 1;
       occurrences.set(baseKey, occurrence);
       const key = `${baseKey}#${occurrence}`;
@@ -111,7 +112,7 @@ export function scanEslintDisableComments(relPath: string, content: string): Sca
 
 function trackedSourceFiles(): string[] {
   try {
-    return execFileSync('git', ['ls-files', '-z', 'src'], { cwd: REPO_ROOT })
+    return execFileSync('git', ['ls-files', '-z'], { cwd: REPO_ROOT })
       .toString('utf-8')
       .split('\0')
       .filter((relPath) => {
@@ -182,6 +183,15 @@ describe('eslint-disable justifications', () => {
       undescribed: new Set(),
       undescribedLocations: new Map(),
     });
+  });
+
+  it('does not treat a separator before the directive as its justification', () => {
+    const result = scanEslintDisableComments(
+      'scripts/example.ts',
+      `const command = 'git log -- src/'; // ${ESLINT_DISABLE_DIRECTIVE}-line no-restricted-syntax`
+    );
+
+    expect(result.undescribed).toEqual(new Set(['scripts/example.ts::no-restricted-syntax#1']));
   });
 
   it('keeps baseline keys stable across line shifts and counts repeated rules', () => {
