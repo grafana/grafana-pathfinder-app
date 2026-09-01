@@ -189,9 +189,7 @@ describe('reportAppInteraction experiment enrichment', () => {
     ['control before treatment', ['control', 'treatment']],
     ['treatment before control', ['treatment', 'control']],
   ] as const)('rolls multiple experiments up to treatment with %s', (_order, variants) => {
-    bindExperimentsProvider(() =>
-      variants.map((variant) => ({ flag: HIGHLIGHTED, variant, pages: [], guideId: 'g' }))
-    );
+    bindExperimentsProvider(() => variants.map((variant) => ({ flag: HIGHLIGHTED, variant, pages: [], guideId: 'g' })));
 
     reportAppInteraction(UserInteraction.SummaryClick, {});
 
