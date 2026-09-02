@@ -89,7 +89,7 @@ export interface ChallengeBlockProps {
 
   stepId?: string;
   isEligibleForChecking?: boolean;
-  onStepComplete?: (stepId: string) => void;
+  onStepComplete?: (stepId: string, skipStateUpdate?: boolean) => void;
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
@@ -226,7 +226,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 
   const checker = useStepChecker({
     requirements: requirements || '',
-    objectives: objectives || '',
+    objectives: '',
     targetAction: 'noop',
     refTarget: '',
     stepId,
@@ -643,7 +643,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
             Check again
           </Button>
         )}
-        {state === 'setup-failed' && (
+        {isEnabled && state === 'setup-failed' && (
           <Button variant="secondary" icon="sync" onClick={handleStart}>
             Try again
           </Button>
@@ -660,7 +660,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
             fill="text"
             onClick={() => {
               checker.markSkipped?.();
-              markComplete();
+              onStepComplete?.(stepId, true);
+              window.dispatchEvent(
+                new CustomEvent('interactive-action-completed', {
+                  detail: { stepId, blockType: 'challenge', state: 'completed' },
+                })
+              );
             }}
             disabled={disabled}
             data-testid={testIds.interactive.skipButton(stepId)}

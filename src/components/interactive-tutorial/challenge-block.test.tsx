@@ -689,21 +689,22 @@ describe('ChallengeBlock', () => {
       expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
     });
 
-    it('passes objectives to useStepChecker without auto-completing ChallengeBlock', () => {
+    it('passes objectives: "" to useStepChecker to prevent Phase 1 auto-completion and does not show solved UI', () => {
       mockTerminalCtx();
       render(<ChallengeBlock {...baseProps} objectives="obj-1" stepId="ch-2" />);
 
       expect(mockUseStepChecker).toHaveBeenCalledWith(
         expect.objectContaining({
-          objectives: 'obj-1',
+          objectives: '',
           stepId: 'ch-2',
         })
       );
       // Ensure challenge block is not solved until check passes
       expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
     });
 
-    it('renders Skip button when skippable is true and calls markSkipped on click', () => {
+    it('renders Skip button when skippable is true and calls markSkipped and onStepComplete(id, true) on click', () => {
       mockTerminalCtx();
       const onStepComplete = jest.fn();
 
@@ -715,7 +716,59 @@ describe('ChallengeBlock', () => {
       fireEvent.click(skipButton);
 
       expect(mockMarkSkipped).toHaveBeenCalled();
-      expect(onStepComplete).toHaveBeenCalledWith('ch-3');
+      expect(onStepComplete).toHaveBeenCalledWith('ch-3', true);
+    });
+
+    it('handles Skip correctly in standalone mode without onStepComplete or sectionId', () => {
+      mockTerminalCtx();
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          skippable={true}
+          stepId="ch-standalone"
+          onStepComplete={undefined}
+          sectionId={undefined}
+        />
+      );
+
+      const skipButton = screen.getByRole('button', { name: /skip/i });
+      fireEvent.click(skipButton);
+
+      expect(mockMarkSkipped).toHaveBeenCalled();
+      expect(mockUseStepChecker).toHaveBeenCalledWith(expect.objectContaining({ sectionId: undefined }));
+    });
+
+    it('hides Try again button when setup failed but isEnabled is false', async () => {
+      mockTerminalCtx({ status: 'connected', sessionId: null });
+      mockUseStepChecker.mockImplementation((props) => ({
+        isEnabled: true,
+        isCompleted: false,
+        explanation: null,
+        canSkip: Boolean(props.skippable),
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      }));
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} setupCommands={['echo one']} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+      });
+
+      // Now simulate requirements becoming unsatisfied (isEnabled -> false)
+      mockUseStepChecker.mockImplementation((props) => ({
+        isEnabled: false,
+        isCompleted: false,
+        explanation: 'Prerequisites unmet',
+        canSkip: Boolean(props.skippable),
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      }));
+
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['echo one']} />);
+
+      expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
     });
   });
 });
