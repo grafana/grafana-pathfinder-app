@@ -1046,6 +1046,8 @@ function convertTerminalConnectBlock(
 
 function convertChallengeBlock(block: JsonChallengeBlock, _path: string, stepContext?: StepContext): ConversionResult {
   const briefElements = parseMarkdownToElements(block.brief);
+  const requirements = block.requirements?.join(',') || undefined;
+  const objectives = block.objectives?.join(',') || undefined;
   const stepId = resolveStepId(block.id, stepContext, 'challenge', block.title);
 
   return {
@@ -1064,6 +1066,9 @@ function convertChallengeBlock(block: JsonChallengeBlock, _path: string, stepCon
         successCriteria: block.successCriteria,
         hintLevels: block.hintLevels,
         failureMessage: block.failureMessage,
+        requirements,
+        objectives,
+        skippable: block.skippable ?? false,
       },
       children: briefElements,
     },

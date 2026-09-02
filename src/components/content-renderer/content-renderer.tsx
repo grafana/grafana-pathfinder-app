@@ -1281,6 +1281,9 @@ function renderParsedElement(
           successCriteria={element.props.successCriteria}
           hintLevels={element.props.hintLevels}
           failureMessage={element.props.failureMessage}
+          requirements={element.props.requirements}
+          objectives={element.props.objectives}
+          skippable={element.props.skippable}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
         />

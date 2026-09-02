@@ -20,11 +20,23 @@ jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
   useCodaSessionEligibility: jest.fn(),
 }));
 
+const mockMarkSkipped = jest.fn();
+const mockUseStepChecker = jest.fn((props: { requirements?: string; objectives?: string; skippable?: boolean }) => ({
+  isEnabled: true,
+  isCompleted: false,
+  explanation: null as string | null,
+  canSkip: Boolean(props.skippable),
+  markSkipped: mockMarkSkipped,
+  resetStep: jest.fn(),
+}));
+
 jest.mock('../../requirements-manager', () => {
   const checkPostconditions = jest.fn();
   return {
     checkPostconditions,
+    validateInteractiveRequirements: jest.fn(),
     useGuideRequirements: () => ({ checkPostconditions }),
+    useStepChecker: (props: Parameters<typeof mockUseStepChecker>[0]) => mockUseStepChecker(props),
   };
 });
 
@@ -642,6 +654,68 @@ describe('ChallengeBlock', () => {
 
       const third = render(<ChallengeBlock {...baseProps} />);
       expect(third.getByTestId('challenge-block-challenge-1')).toBeInTheDocument();
+    });
+  });
+
+  describe('requirements, objectives, and skippable gating', () => {
+    beforeEach(() => {
+      mockMarkSkipped.mockClear();
+      mockUseStepChecker.mockImplementation((props) => ({
+        isEnabled: true,
+        isCompleted: false,
+        explanation: null,
+        canSkip: Boolean(props.skippable),
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      }));
+    });
+
+    it('renders requirement warning banner and hides Start button when disabled by requirements', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue({
+        isEnabled: false,
+        isCompleted: false,
+        explanation: 'Complete previous step first',
+        canSkip: false,
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      });
+
+      render(<ChallengeBlock {...baseProps} requirements="req-1" stepId="ch-1" />);
+
+      expect(screen.getByTestId('challenge-requirement-warning-ch-1')).toHaveTextContent(
+        'Complete previous step first'
+      );
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    it('passes objectives to useStepChecker without auto-completing ChallengeBlock', () => {
+      mockTerminalCtx();
+      render(<ChallengeBlock {...baseProps} objectives="obj-1" stepId="ch-2" />);
+
+      expect(mockUseStepChecker).toHaveBeenCalledWith(
+        expect.objectContaining({
+          objectives: 'obj-1',
+          stepId: 'ch-2',
+        })
+      );
+      // Ensure challenge block is not solved until check passes
+      expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
+    });
+
+    it('renders Skip button when skippable is true and calls markSkipped on click', () => {
+      mockTerminalCtx();
+      const onStepComplete = jest.fn();
+
+      render(<ChallengeBlock {...baseProps} skippable={true} stepId="ch-3" onStepComplete={onStepComplete} />);
+
+      const skipButton = screen.getByRole('button', { name: /skip/i });
+      expect(skipButton).toBeInTheDocument();
+
+      fireEvent.click(skipButton);
+
+      expect(mockMarkSkipped).toHaveBeenCalled();
+      expect(onStepComplete).toHaveBeenCalledWith('ch-3');
     });
   });
 });

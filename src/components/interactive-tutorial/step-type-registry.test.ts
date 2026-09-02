@@ -264,9 +264,15 @@ describe('step-type-registry', () => {
       expect(CHALLENGE_BLOCK_SCHEMA.refTarget).toBe('none');
     });
 
-    it('toStepInfoExtension marks isMultiStep=false and isGuided=false', () => {
+    it('toStepInfoExtension marks isMultiStep=false and isGuided=false and pausesSectionRun=true', () => {
       const ext = CHALLENGE_BLOCK_SCHEMA.toStepInfoExtension({ requirements: 'r', skippable: true });
-      expect(ext).toMatchObject({ isMultiStep: false, isGuided: false });
+      expect(ext).toMatchObject({
+        isMultiStep: false,
+        isGuided: false,
+        pausesSectionRun: true,
+        requirements: 'r',
+        skippable: true,
+      });
     });
 
     it('shares the quiz toEnhancedProps formula', () => {
