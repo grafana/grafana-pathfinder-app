@@ -91,6 +91,7 @@ test.describe('Shared guide runner', () => {
     }
 
     const terminationMonitor = createBrowserTerminationMonitor(page);
+    let previousGuideTab: { id: string; hadInteractiveSteps: boolean } | undefined;
     try {
       const outcome = await runSharedGuideChain(chainInput, {
         currentUrl: () => page.url(),
@@ -101,6 +102,8 @@ test.describe('Shared guide runner', () => {
             if (!session.valid) {
               return setupFailureResult(guide, session.failureKind === 'auth_expired', session.error);
             }
+            const previousTab = previousGuideTab;
+            const guideHasInteractiveSteps = countInteractiveBlocks(JSON.parse(guide.content)) > 0;
             const milestoneArtifactsDir = artifactsDir
               ? join(artifactsDir, `milestone-${String(index + 1).padStart(3, '0')}-${guide.id}`)
               : undefined;
@@ -109,8 +112,14 @@ test.describe('Shared guide runner', () => {
               startingLocation: transition.startingLocation,
               navigateToStartingLocation: transition.navigateToStartingLocation,
               replacePreviousGuide: index > 0,
-              previousGuideHadInteractiveSteps:
-                index > 0 && countInteractiveBlocks(JSON.parse(chainInput.guides[index - 1]!.content)) > 0,
+              previousGuideHadInteractiveSteps: previousTab?.hadInteractiveSteps ?? false,
+              previousGuideTabId: previousTab?.id,
+              onPreviousGuideCleared: () => {
+                previousGuideTab = undefined;
+              },
+              onGuideOpened: (tabId) => {
+                previousGuideTab = { id: tabId, hadInteractiveSteps: guideHasInteractiveSteps };
+              },
               allowReloadRecovery: index === 0,
               verbose,
               artifactsDir: milestoneArtifactsDir,

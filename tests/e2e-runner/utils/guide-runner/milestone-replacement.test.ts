@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { ElementHandle, Page } from '@playwright/test';
+import { testIds } from '../../../../src/constants/testIds';
+import { StorageKeys } from '../../../../src/lib/storage-keys';
 
 import { dismissBadgeCelebrations } from './badge-celebrations';
 import { E2E_GUIDE_URL, openLegacyE2EGuide, replacePreviousE2EGuide } from './milestone-replacement';
@@ -58,6 +60,14 @@ function replacementHarness(options: ReplacementHarnessOptions) {
       (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = '';
     }),
   };
+  const tabButton = {
+    count: jest.fn().mockResolvedValue(1),
+    click: jest.fn().mockImplementation(async () => {
+      operations.push('activate');
+      (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId = 'tab-1';
+      (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = E2E_GUIDE_URL;
+    }),
+  };
   const page = {
     evaluate: jest.fn().mockImplementation((callback, argument) => Promise.resolve(callback(argument))),
     waitForFunction: jest.fn().mockImplementation((callback, argument) => {
@@ -71,12 +81,14 @@ function replacementHarness(options: ReplacementHarnessOptions) {
       elementHandles: jest.fn().mockImplementation(() => Promise.resolve(handleQueues.shift() ?? [])),
     }),
     getByRole: jest.fn().mockReturnValue(resetButton),
-    getByTestId: jest.fn().mockReturnValue(closeButton),
+    getByTestId: jest.fn().mockImplementation((id: string) => {
+      return id === testIds.docsPanel.tab('tab-1') ? tabButton : closeButton;
+    }),
     reload: jest.fn(),
   } as unknown as Page;
   (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId = 'tab-1';
   (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = E2E_GUIDE_URL;
-  return { page, operations, resetButton, closeButton };
+  return { page, operations, resetButton, closeButton, tabButton };
 }
 
 function waitForOpenedGuide(): Promise<{ url: string; title: string }> {
@@ -85,6 +97,7 @@ function waitForOpenedGuide(): Promise<{ url: string; title: string }> {
       'pathfinder-auto-open-docs',
       (event) => {
         const detail = (event as CustomEvent<{ url: string; title: string }>).detail;
+        (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId = 'opened-tab';
         (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = detail.url;
         resolve(detail);
       },
@@ -95,6 +108,7 @@ function waitForOpenedGuide(): Promise<{ url: string; title: string }> {
 
 afterEach(() => {
   jest.clearAllMocks();
+  localStorage.clear();
   delete (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId;
   delete (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl;
 });
@@ -119,7 +133,6 @@ it('waits for reset synchronization before closing and detaches both step genera
 
 it('closes a zero-step guide directly when no Reset guide control exists', async () => {
   const harness = replacementHarness({ resetControlCount: 0, closeSteps: [] });
-
   await replacePreviousE2EGuide(harness.page, false);
 
   expect(harness.resetButton.click).not.toHaveBeenCalled();
@@ -138,14 +151,34 @@ it('opens a later guide when the prior milestone failed before tab activation', 
   const harness = replacementHarness({ resetControlCount: 0 });
   delete (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId;
   delete (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl;
+  const progressKeys = [
+    `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${E2E_GUIDE_URL}-section-1`,
+    `${StorageKeys.SECTION_COLLAPSE_PREFIX}${E2E_GUIDE_URL}-section-1`,
+    `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${E2E_GUIDE_URL}-section-1`,
+    `${StorageKeys.SECTION_DONE_PREFIX}${E2E_GUIDE_URL}-section-1`,
+  ];
+  progressKeys.forEach((key) => localStorage.setItem(key, JSON.stringify(['step-1'])));
+  localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ [E2E_GUIDE_URL]: 100, other: 50 }));
   const opened = waitForOpenedGuide();
-
-  await replacePreviousE2EGuide(harness.page, false);
+  await replacePreviousE2EGuide(harness.page, true);
   await openLegacyE2EGuide(harness.page, 'Later milestone');
 
   await expect(opened).resolves.toEqual({ url: E2E_GUIDE_URL, title: 'Later milestone' });
+  expect(progressKeys.every((key) => localStorage.getItem(key) === null)).toBe(true);
+  expect(JSON.parse(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION) ?? '{}')).toEqual({ other: 50 });
   expect(harness.operations).toEqual([]);
   expect(dismissBadgeCelebrations).not.toHaveBeenCalled();
+});
+
+it('reactivates and resets a prior E2E guide after browser globals reset', async () => {
+  const harness = replacementHarness({ resetControlCount: 1 });
+  delete (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId;
+  delete (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl;
+
+  await replacePreviousE2EGuide(harness.page, true, 'tab-1');
+
+  expect(harness.operations).toEqual(['activate', 'reset', 'close']);
+  expect(harness.tabButton.click).toHaveBeenCalledTimes(1);
 });
 
 it('opens only the exact legacy E2E URL', async () => {
@@ -160,7 +193,7 @@ it('opens only the exact legacy E2E URL', async () => {
   } as unknown as Page;
   const opened = waitForOpenedGuide();
 
-  await openLegacyE2EGuide(page, 'Milestone');
+  await expect(openLegacyE2EGuide(page, 'Milestone')).resolves.toBe('opened-tab');
 
   await expect(opened).resolves.toEqual({ url: 'bundled:e2e-test', title: 'Milestone' });
 });

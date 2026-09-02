@@ -9,6 +9,7 @@ import { countInteractiveBlocks } from './static-analysis';
 import { createBrowserTerminationMonitor, type BrowserTerminationMonitor } from './termination-monitor';
 import type { AllStepsResult, StepTestResult } from './types';
 import type { SessionValidationResult } from '../../auth/grafana-auth';
+import { ensureDocsPanelOpen } from './bootstrap';
 import { ensureGuidePanelOpen } from './panel-recovery';
 import { openLegacyE2EGuide, replacePreviousE2EGuide } from './milestone-replacement';
 
@@ -29,6 +30,9 @@ export interface RunGuideOnPageOptions {
   navigateToStartingLocation: boolean;
   replacePreviousGuide: boolean;
   previousGuideHadInteractiveSteps: boolean;
+  previousGuideTabId?: string;
+  onPreviousGuideCleared?: () => void;
+  onGuideOpened?: (tabId: string) => void;
   allowReloadRecovery: boolean;
   verbose: boolean;
   artifactsDir?: string;
@@ -54,15 +58,18 @@ export function parsePageGuide(path: string, content: string, plannedId?: string
 }
 
 async function loadGuide(page: Page, guide: PageGuide, options: RunGuideOnPageOptions): Promise<void> {
-  if (options.replacePreviousGuide) {
-    await replacePreviousE2EGuide(page, options.previousGuideHadInteractiveSteps);
-  }
   if (options.navigateToStartingLocation) {
     await page.goto(options.startingLocation, { waitUntil: 'domcontentloaded', timeout: HELP_READY_TIMEOUT_MS });
   }
   await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: HELP_READY_TIMEOUT_MS });
+  if (options.replacePreviousGuide) {
+    await ensureDocsPanelOpen(page);
+    await replacePreviousE2EGuide(page, options.previousGuideHadInteractiveSteps, options.previousGuideTabId);
+    options.onPreviousGuideCleared?.();
+  }
   await ensureGuidePanelOpen(page, guide.content, options.allowReloadRecovery);
-  await openLegacyE2EGuide(page, guide.title);
+  const tabId = await openLegacyE2EGuide(page, guide.title);
+  options.onGuideOpened?.(tabId);
   await page.getByTestId(testIds.docsPanel.loadingState).waitFor({ state: 'hidden', timeout: GUIDE_LOAD_TIMEOUT_MS });
 }
 

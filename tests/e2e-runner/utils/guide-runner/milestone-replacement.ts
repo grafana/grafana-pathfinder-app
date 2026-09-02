@@ -2,6 +2,7 @@ import type { ElementHandle, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
 import { StorageEvents } from '../../../../src/lib/event-names';
+import { StorageKeys } from '../../../../src/lib/storage-keys';
 import { dismissBadgeCelebrations } from './badge-celebrations';
 
 export const E2E_GUIDE_URL = 'bundled:e2e-test';
@@ -22,6 +23,100 @@ async function activeGuideTab(page: Page): Promise<{ id: string; url: string }> 
       url: typeof runtimeWindow.__DocsPluginActiveTabUrl === 'string' ? runtimeWindow.__DocsPluginActiveTabUrl : '',
     };
   });
+}
+
+async function clearSharedE2EProgress(page: Page): Promise<void> {
+  await page.evaluate(
+    ({ contentKey, eventName, keys }) => {
+      const prefixes = [keys.stepsPrefix, keys.collapsePrefix, keys.acknowledgedPrefix, keys.donePrefix].map(
+        (prefix) => `${prefix}${contentKey}-`
+      );
+      const keysToRemove: string[] = [];
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key && prefixes.some((prefix) => key.startsWith(prefix))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+      const completionValue = localStorage.getItem(keys.completion);
+      if (completionValue) {
+        try {
+          const completion = JSON.parse(completionValue);
+          if (completion && typeof completion === 'object' && !Array.isArray(completion)) {
+            delete completion[contentKey];
+            localStorage.setItem(keys.completion, JSON.stringify(completion));
+          }
+        } catch {
+          localStorage.removeItem(keys.completion);
+        }
+      }
+      window.dispatchEvent(new CustomEvent(eventName, { detail: { contentKey } }));
+    },
+    {
+      contentKey: E2E_GUIDE_URL,
+      eventName: StorageEvents.InteractiveProgressCleared,
+      keys: {
+        stepsPrefix: StorageKeys.INTERACTIVE_STEPS_PREFIX,
+        collapsePrefix: StorageKeys.SECTION_COLLAPSE_PREFIX,
+        acknowledgedPrefix: StorageKeys.SECTION_ACKNOWLEDGED_PREFIX,
+        donePrefix: StorageKeys.SECTION_DONE_PREFIX,
+        completion: StorageKeys.INTERACTIVE_COMPLETION,
+      },
+    }
+  );
+}
+
+async function activateE2EGuideTab(page: Page, tabId: string): Promise<void> {
+  const tab = page.getByTestId(testIds.docsPanel.tab(tabId));
+  const overflow = page.getByTestId(testIds.docsPanel.tabOverflowButton);
+  if ((await tab.count()) === 0) {
+    await Promise.race([
+      page.waitForFunction(
+        ({ expectedId, expectedUrl }) => {
+          const runtimeWindow = window as Window & {
+            __DocsPluginActiveTabId?: string;
+            __DocsPluginActiveTabUrl?: string;
+          };
+          return (
+            runtimeWindow.__DocsPluginActiveTabId === expectedId &&
+            runtimeWindow.__DocsPluginActiveTabUrl === expectedUrl
+          );
+        },
+        { expectedId: tabId, expectedUrl: E2E_GUIDE_URL },
+        { timeout: REPLACEMENT_TIMEOUT_MS }
+      ),
+      tab.waitFor({ state: 'visible', timeout: REPLACEMENT_TIMEOUT_MS }),
+      overflow.waitFor({ state: 'visible', timeout: REPLACEMENT_TIMEOUT_MS }),
+    ]);
+    const restoredActive = await activeGuideTab(page);
+    if (restoredActive.id === tabId && restoredActive.url === E2E_GUIDE_URL) {
+      return;
+    }
+  }
+  if ((await tab.count()) > 0) {
+    await tab.click({ timeout: REPLACEMENT_TIMEOUT_MS });
+  } else {
+    if ((await overflow.count()) === 0) {
+      throw new Error('The previous E2E guide tab is not available');
+    }
+    await overflow.click({ timeout: REPLACEMENT_TIMEOUT_MS });
+    await page.getByTestId(testIds.docsPanel.tabDropdownItem(tabId)).click({ timeout: REPLACEMENT_TIMEOUT_MS });
+  }
+  await page.waitForFunction(
+    ({ expectedId, expectedUrl }) => {
+      const runtimeWindow = window as Window & {
+        __DocsPluginActiveTabId?: string;
+        __DocsPluginActiveTabUrl?: string;
+      };
+      return (
+        runtimeWindow.__DocsPluginActiveTabId === expectedId && runtimeWindow.__DocsPluginActiveTabUrl === expectedUrl
+      );
+    },
+    { expectedId: tabId, expectedUrl: E2E_GUIDE_URL },
+    { timeout: REPLACEMENT_TIMEOUT_MS }
+  );
 }
 
 async function currentStepHandles(page: Page): Promise<StepHandle[]> {
@@ -101,7 +196,7 @@ async function resetInteractiveProgress(page: Page): Promise<void> {
   }
 }
 
-export async function openLegacyE2EGuide(page: Page, title: string): Promise<void> {
+export async function openLegacyE2EGuide(page: Page, title: string): Promise<string> {
   await page.evaluate(
     ({ guideTitle, url }) => {
       document.dispatchEvent(
@@ -117,14 +212,29 @@ export async function openLegacyE2EGuide(page: Page, title: string): Promise<voi
     E2E_GUIDE_URL,
     { timeout: REPLACEMENT_TIMEOUT_MS }
   );
-}
-export async function replacePreviousE2EGuide(page: Page, previousGuideHadInteractiveSteps: boolean): Promise<void> {
   const activeTab = await activeGuideTab(page);
-  if (activeTab.url !== E2E_GUIDE_URL) {
+  if (!activeTab.id || activeTab.url !== E2E_GUIDE_URL) {
+    throw new Error('The opened E2E guide tab did not publish its identity');
+  }
+  return activeTab.id;
+}
+export async function replacePreviousE2EGuide(
+  page: Page,
+  previousGuideHadInteractiveSteps: boolean,
+  previousGuideTabId?: string
+): Promise<void> {
+  let activeTab = await activeGuideTab(page);
+  const targetTabId = previousGuideTabId ?? (activeTab.url === E2E_GUIDE_URL ? activeTab.id : '');
+  if (!targetTabId) {
+    await clearSharedE2EProgress(page);
     return;
   }
-  if (!activeTab.id) {
-    throw new Error('The active E2E guide tab has no identifier');
+  if (activeTab.id !== targetTabId || activeTab.url !== E2E_GUIDE_URL) {
+    await activateE2EGuideTab(page, targetTabId);
+    activeTab = await activeGuideTab(page);
+  }
+  if (activeTab.id !== targetTabId || activeTab.url !== E2E_GUIDE_URL) {
+    throw new Error('The previous E2E guide tab did not become active');
   }
 
   await dismissBadgeCelebrations(page);
