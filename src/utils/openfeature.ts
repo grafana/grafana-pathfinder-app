@@ -25,6 +25,8 @@ type FeatureFlag =
   | { valueType: 'number'; values: readonly number[]; defaultValue: number; trackingKey?: string }
   | { valueType: 'string'; values: readonly string[]; defaultValue: string; trackingKey?: string };
 
+export const EXPERIMENT_VARIANTS = ['excluded', 'control', 'treatment'] as const;
+
 /**
  * Experiment configuration returned by GOFF
  * Contains both the variant assignment and target pages for auto-open
@@ -34,7 +36,7 @@ type FeatureFlag =
  * @param resetCache - When toggled true, clears session storage to allow sidebar to auto-open again
  */
 export interface ExperimentConfig {
-  variant: 'excluded' | 'control' | 'treatment';
+  variant: (typeof EXPERIMENT_VARIANTS)[number];
   pages: string[];
   resetCache?: boolean;
 }
@@ -186,7 +188,7 @@ const pathfinderFeatureFlags = {
    */
   'pathfinder.interactive-learning-banner-experiment': {
     valueType: 'object',
-    values: [{ variant: 'excluded' }, { variant: 'control' }, { variant: 'treatment' }],
+    values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
     defaultValue: { variant: 'excluded' },
     trackingKey: 'interactive_learning_banner_experiment',
   },
@@ -579,7 +581,7 @@ export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
   }
 };
 
-const VALID_VARIANTS: ReadonlySet<HighlightedGuideConfig['variant']> = new Set(['excluded', 'control', 'treatment']);
+const VALID_VARIANTS: ReadonlySet<string> = new Set(EXPERIMENT_VARIANTS);
 
 const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set(['docs-page', 'learning-journey', 'interactive']);
 
@@ -600,7 +602,7 @@ export function parseExperimentVariant(value: unknown): ExperimentConfig['varian
     return null;
   }
   const { variant } = value as Record<string, unknown>;
-  if (typeof variant !== 'string' || !VALID_VARIANTS.has(variant as ExperimentConfig['variant'])) {
+  if (typeof variant !== 'string' || !VALID_VARIANTS.has(variant)) {
     return null;
   }
   return variant as ExperimentConfig['variant'];
@@ -613,7 +615,7 @@ function classifyExperimentRejection(value: unknown): 'unknown_variant' | 'inval
     value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>).variant
       : undefined;
-  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant as ExperimentConfig['variant']);
+  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant);
   return isUnknownArm ? 'unknown_variant' : 'invalid_shape';
 }
 

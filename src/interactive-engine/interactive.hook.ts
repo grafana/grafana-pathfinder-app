@@ -7,10 +7,15 @@ import { USER_ACTION_TIMEOUT_LONG_MS, withFaroUserAction } from '../lib/faro';
 import { createInteractionName, UserInteraction } from '../lib/analytics';
 import type { SequenceRunResult, StepOutcome } from '../lib/telemetry';
 import { outcomeFromSequenceRun } from './outcome-classifier';
+import { assertExhaustive } from '../lib/assert-exhaustive';
 // eslint-disable-next-line no-restricted-imports -- [ratchet] ALLOWED_LATERAL_VIOLATIONS: interactive-engine -> requirements-manager
 import { useGuideRequirements, RequirementsCheckOptions } from '../requirements-manager';
 import { extractInteractiveDataFromElement } from '../lib/dom';
-import { InteractiveActionRequest, InteractiveElementData } from '../types/interactive.types';
+import {
+  InteractiveActionRequest,
+  InteractiveElementData,
+  InteractiveRequirementsData,
+} from '../types/interactive.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../global-state/panel-mode';
 import { InteractiveStateManager } from './interactive-state-manager';
@@ -44,15 +49,8 @@ export interface CheckResult {
   targetHref?: string;
 }
 
-/**
- * This function is a guard to ensure that the interactive element data is valid.  It can encapsulte
- * new rules and checks as we go.
- * @param data - The interactive element data
- * @returns boolean - true if the interactive element data is valid, false otherwise
- */
 function isValidInteractiveElement(data: InteractiveElementData): boolean {
-  // Double negative coerces string into boolean
-  return !!data.targetAction && !!data.refTarget;
+  return Boolean(data.refTarget);
 }
 
 export function useInteractiveElements(options: UseInteractiveElementsOptions = {}) {
@@ -229,7 +227,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
    * Core requirement checking logic using the new pure requirements utility
    */
   const checkRequirementsFromData = useCallback(
-    async (data: InteractiveElementData): Promise<InteractiveRequirementsCheck> => {
+    async (data: InteractiveRequirementsData): Promise<InteractiveRequirementsCheck> => {
       const options: RequirementsCheckOptions = {
         requirements: data.requirements || '',
         targetAction: data.targetAction,
@@ -378,6 +376,19 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
   const checkElementRequirements = useCallback(
     async (element: HTMLElement): Promise<InteractiveRequirementsCheck> => {
       const data = extractInteractiveDataFromElement(element);
+      if (data === null) {
+        return {
+          requirements: '',
+          pass: false,
+          error: [
+            {
+              requirement: 'data-targetaction',
+              pass: false,
+              error: 'Missing or unknown data-targetaction',
+            },
+          ],
+        };
+      }
       return checkRequirementsFromData(data);
     },
     [checkRequirementsFromData]
@@ -474,6 +485,10 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
                 sequenceResult = await interactiveSequence(elementData, isShowMode);
                 break;
 
+              case 'multistep':
+                logger.warn('multistep is executed by InteractiveMultiStep, not the element action path');
+                break;
+
               case 'noop':
                 // Noop actions are informational - no element interaction needed
                 // In show mode, briefly display the comment if provided
@@ -491,6 +506,7 @@ export function useInteractiveElements(options: UseInteractiveElementsOptions = 
 
               default:
                 logger.warn(`Unknown interactive action: ${targetAction}`);
+                assertExhaustive(targetAction);
             }
           } catch (error) {
             stateManager.handleError(error as Error, 'executeInteractiveAction', elementData, true);

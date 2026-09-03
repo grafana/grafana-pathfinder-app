@@ -8,6 +8,12 @@ import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-side
 import { FakeCrossTabTransport } from '../../test-utils/fake-cross-tab-transport';
 import type { CrossTabMessage } from '../../types/cross-tab.types';
 import { withFaroUserAction } from '../../lib/faro';
+import { isInteractiveActionType } from '../../lib/interactive-action';
+
+jest.mock('../../lib/interactive-action', () => {
+  const actual = jest.requireActual('../../lib/interactive-action');
+  return { ...actual, isInteractiveActionType: jest.fn(actual.isInteractiveActionType) };
+});
 
 jest.mock('../../requirements-manager', () => {
   const actual = jest.requireActual('../../requirements-manager');
@@ -430,11 +436,14 @@ describe('installLiveTabExecutor', () => {
     uninstall();
   });
 
-  it('ignores unsupported actions without throwing or routing', () => {
+  it('rejects an unsupported internal action at runAction without routing it', async () => {
     const transport = new FakeCrossTabTransport('live-self');
     const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+    (isInteractiveActionType as unknown as jest.Mock).mockReturnValueOnce(false);
 
-    expect(() => transport.emit(stampStepCommand('do', 'multistep', '#x'))).not.toThrow();
+    transport.emit(stampStepCommand('do', 'highlight', '#x'));
+
+    await waitFor(() => expect(isInteractiveActionType).toHaveBeenCalledWith('highlight'));
     expect(executeOf(FocusHandler)).not.toHaveBeenCalled();
     expect(executeOf(ButtonHandler)).not.toHaveBeenCalled();
     uninstall();
