@@ -267,29 +267,43 @@ is not hypothetical — `openTerminal` reconnects on a 100 ms timer, so a reconn
 
 ## Availability
 
-The terminal is optional, so `grafana-coda-app` is **not** a declared plugin dependency. Three gates
-must all pass for the panel to render:
+The terminal is optional, so `grafana-coda-app` is **not** a declared plugin dependency. Two gates
+must both pass for the panel to render:
 
-| Gate                              | Source                                                                        |
-| --------------------------------- | ----------------------------------------------------------------------------- |
-| `isDevMode`                       | `isDevModeEnabled(pluginConfig, userId)`                                      |
-| `jsonData.enableCodaTerminal`     | Pathfinder's own setting (default `false`)                                    |
-| Coda plugin installed and enabled | `useCodaPluginAvailable()` → `isAppPluginInstalled` then `isAppPluginEnabled` |
+| Gate                              | Source                                                                         |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| Pathfinder enablement             | `isCodaTerminalEnabled(pluginConfig, userId)` (`src/utils/coda-enablement.ts`) |
+| Coda plugin installed and enabled | `useCodaPluginAvailable()` → `isAppPluginInstalled` then `isAppPluginEnabled`  |
 
-The block editor palette needs the latter two. `CodaBackendStatus` on the configuration page reports
-which gate is unmet and links to `/plugins/grafana-coda-app`.
+The first gate is one expression, deliberately — the `pathfinder.coda-terminal` feature flag, or dev
+mode plus Pathfinder's own setting:
 
-**The probe is gated on the setting, not merely its consumer.** `useCodaPluginAvailability(shouldProbe)`
-takes the caller's own gate — `useCodaTerminalGate()` passes `enableCodaTerminal`, `docs-panel.tsx`
-passes `isDevMode && enableCodaTerminal`, `useCodaSessionEligibility(shouldLoad)` and `useCodaOptions`
-take the same gate — so a default installation asks nothing about Coda. And the question it asks when it
+```
+flag || (isDevModeEnabled(pluginConfig, userId) && enableCodaTerminal)
+```
+
+**Every caller shares it.** It used to be two expressions: `useCodaTerminalGate()` read
+`enableCodaTerminal` alone while `docs-panel.tsx` read `isDevMode && enableCodaTerminal`. On a stack
+with the setting on and dev mode off they disagreed — blocks reported `configured` and offered
+sandbox controls, `TerminalPanel` never mounted, and the learner reached the last rung of
+`codaUnavailableMessage` ("the sandbox terminal is not available here") with telemetry reason
+`panel-not-registered`. A new call site must go through `isCodaTerminalEnabled`, not rebuild the
+expression.
+
+The block editor palette needs the same two gates. `CodaBackendStatus` on the configuration page
+reports which gate is unmet and links to `/plugins/grafana-coda-app`.
+
+**The probe is gated on enablement, not merely its consumer.** `useCodaPluginAvailability(shouldProbe)`
+takes the caller's own gate — `useCodaTerminalGate()`, `docs-panel.tsx`,
+`useCodaSessionEligibility(shouldLoad)` and `useCodaOptions` all pass the same verdict — so a default
+installation asks nothing about Coda. And the question it asks when it
 does probe is "is the plugin installed", answered by `isAppPluginInstalled`: from boot data with no
 request, or from core's own plugin LIST when `pluginsUseMTPlugins` is on — either way cached once per
 page load and never a request to `/api/plugins/grafana-coda-app/*`. Only then does it ask
 `isAppPluginEnabled`, whose settings fetch is what 404s. Core logs that 404 twice to the console and pushes it into its own error tracking, which
 is why an absent optional plugin must never reach it.
 
-**Minimum Grafana version: 13.1 — for the terminal only.** The third gate calls `isAppPluginEnabled`
+**Minimum Grafana version: 13.1 — for the terminal only.** The second gate calls `isAppPluginEnabled`
 (and `isAppPluginInstalled`, which shares that floor),
 which core's `@grafana/runtime` did not export before 13.1 and which throws synchronously rather than
 rejecting when absent. Nothing else on the path needs it: `@grafana/coda-client` uses only
@@ -341,6 +355,11 @@ Pathfinder keeps exactly one Coda setting:
 | Key                  | Type    | Default | Description                                 |
 | -------------------- | ------- | ------- | ------------------------------------------- |
 | `enableCodaTerminal` | boolean | `false` | Whether Pathfinder shows terminal UI at all |
+
+It needs dev mode alongside it. The `pathfinder.coda-terminal` feature flag is the other way in,
+needing neither — see [`FEATURE_FLAGS.md`](FEATURE_FLAGS.md#pathfindercoda-terminal). The flag is
+display-only on the configuration page: the toggle reads as on and disabled, and a save still writes
+this setting's real value, so turning the flag off does not leave the stack enabled.
 
 Everything else is configured on the Coda plugin's own page:
 

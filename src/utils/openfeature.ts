@@ -192,6 +192,22 @@ const pathfinderFeatureFlags = {
     defaultValue: { variant: 'excluded' },
     trackingKey: 'interactive_learning_banner_experiment',
   },
+  /**
+   * Enables the Coda sandbox terminal on its own, without the dev-mode
+   * allowlist or `jsonData.enableCodaTerminal`. The app-config toggle reflects
+   * it as an on, disabled switch, and a save never persists the forced value —
+   * so turning this back off restores whatever the stack itself had set.
+   *
+   * Defaults to false because the Coda plugin is not a declared dependency:
+   * enabling this makes every page load probe for `grafana-coda-app`, which
+   * 404s on a stack that does not have it.
+   */
+  'pathfinder.coda-terminal': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'coda_terminal',
+  },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 
 // Helper to get typed keys from the flag definitions
