@@ -28,6 +28,7 @@ function stepHandle(): FakeStepHandle {
 
 interface ReplacementHarnessOptions {
   resetControlCount: number;
+  resetControlCountBeforeWait?: number;
   resetSteps?: FakeStepHandle[];
   closeSteps?: FakeStepHandle[];
 }
@@ -37,8 +38,17 @@ function replacementHarness(options: ReplacementHarnessOptions) {
   const resetSteps = options.resetSteps ?? [];
   const closeSteps = options.closeSteps ?? [];
   const handleQueues = [resetSteps, closeSteps];
+  let resetControlCount = options.resetControlCountBeforeWait ?? options.resetControlCount;
   const resetButton = {
-    count: jest.fn().mockResolvedValue(options.resetControlCount),
+    count: jest.fn().mockImplementation(() => Promise.resolve(resetControlCount)),
+    waitFor: jest.fn().mockImplementation(async () => {
+      resetControlCount = options.resetControlCount;
+      if (resetControlCount === 0) {
+        const error = new Error('The Reset guide control did not become visible');
+        error.name = 'TimeoutError';
+        throw error;
+      }
+    }),
     click: jest.fn().mockImplementation(async () => {
       operations.push('reset');
       resetSteps.forEach((step) => {
@@ -131,18 +141,30 @@ it('waits for reset synchronization before closing and detaches both step genera
   expect(dismissBadgeCelebrations).toHaveBeenCalledWith(harness.page);
 });
 
+it('waits for an interactive restored tab to render its Reset guide control', async () => {
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    resetControlCountBeforeWait: 0,
+  });
+
+  await replacePreviousE2EGuide(harness.page, true, 'tab-1');
+
+  expect(harness.resetButton.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 15_000 });
+  expect(harness.operations).toEqual(['reset', 'close']);
+});
+
 it('closes a zero-step guide directly when no Reset guide control exists', async () => {
   const harness = replacementHarness({ resetControlCount: 0, closeSteps: [] });
   await replacePreviousE2EGuide(harness.page, false);
 
+  expect(harness.resetButton.waitFor).not.toHaveBeenCalled();
   expect(harness.resetButton.click).not.toHaveBeenCalled();
   expect(harness.closeButton.click).toHaveBeenCalledTimes(1);
 });
 
 it('fails when an interactive guide has no Reset guide control', async () => {
   const harness = replacementHarness({ resetControlCount: 0 });
-
-  await expect(replacePreviousE2EGuide(harness.page, true)).rejects.toThrow('no Reset guide control');
+  await expect(replacePreviousE2EGuide(harness.page, true)).rejects.toMatchObject({ name: 'TimeoutError' });
 
   expect(harness.closeButton.click).not.toHaveBeenCalled();
 });

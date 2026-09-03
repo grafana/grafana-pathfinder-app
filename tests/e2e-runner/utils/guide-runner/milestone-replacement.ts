@@ -238,8 +238,11 @@ export async function replacePreviousE2EGuide(
   }
 
   await dismissBadgeCelebrations(page);
-  const stepsBeforeReset = await currentStepHandles(page);
   const resetButton = page.getByRole('button', { name: 'Reset guide', exact: true });
+  if (previousGuideHadInteractiveSteps) {
+    await resetButton.waitFor({ state: 'visible', timeout: REPLACEMENT_TIMEOUT_MS });
+  }
+  const stepsBeforeReset = await currentStepHandles(page);
   const resetControlCount = await resetButton.count();
   if (resetControlCount > 0) {
     try {
