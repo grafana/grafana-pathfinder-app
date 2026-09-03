@@ -294,3 +294,202 @@ test('a packet above eight files or 30,000 characters stays with the root synthe
   assert.equal(plan.workers.length, 0);
   assert.deepEqual(plan.root.concern_ids, ['security', 'correctness-and-reliability']);
 });
+
+const firedGate = (concern_id, extra = {}) => ({
+  concern_id,
+  context: [{ path: `docs/design/${concern_id}.md`, excerpt: 'contract' }],
+  touches_anchor_with_consumers: false,
+  prior_semantic_pr_count: 0,
+  ...extra,
+});
+
+function planWithGates(contract_evolution) {
+  const plan = buildReviewPlan({
+    mode: 'full',
+    concerns: [{ id: 'correctness-and-reliability', context: [{ path: 'src/example.ts', excerpt: 'x' }] }],
+    contract_evolution,
+  });
+  const specialist = plan.workers.find(({ kind }) => kind === 'contract_evolution');
+  return { plan, chosen: specialist ? specialist.concern_ids[0] : null };
+}
+
+test('two fired contract gates give one the specialist and name the other as root-owned', () => {
+  const gates = [
+    firedGate('guide-schema-and-contracts', { prior_semantic_pr_count: 30 }),
+    firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: 21 }),
+  ];
+  const { plan, chosen } = planWithGates(gates);
+
+  assert.equal(chosen, 'guide-schema-and-contracts');
+  assert.equal(plan.workers.filter(({ kind }) => kind === 'contract_evolution').length, 1);
+  assert.equal(plan.coverage['contract-evolution:guide-schema-and-contracts'], 'contract-evolution');
+  assert.equal(plan.coverage['contract-evolution:cli-and-e2e-runner'], 'root');
+  assert.ok(plan.root.concern_ids.includes('contract-evolution:cli-and-e2e-runner'));
+  assert.equal(planWithGates([...gates].reverse()).chosen, 'guide-schema-and-contracts');
+});
+
+test('an anchor with existing consumers outranks a higher prior semantic PR count', () => {
+  const higherCount = firedGate('guide-schema-and-contracts', { prior_semantic_pr_count: 30 });
+  const anchorTouch = firedGate('cli-and-e2e-runner', {
+    prior_semantic_pr_count: 21,
+    touches_anchor_with_consumers: true,
+  });
+
+  assert.equal(planWithGates([higherCount, anchorTouch]).chosen, 'cli-and-e2e-runner');
+  assert.equal(planWithGates([anchorTouch, higherCount]).chosen, 'cli-and-e2e-runner');
+  assert.equal(
+    planWithGates([
+      { ...higherCount, touches_anchor_with_consumers: true },
+      { ...anchorTouch, touches_anchor_with_consumers: false },
+    ]).chosen,
+    'guide-schema-and-contracts'
+  );
+});
+
+test('two fired gates equal on anchor and history resolve by ascending concern id in either order', () => {
+  const first = firedGate('cli-and-e2e-runner');
+  const second = firedGate('guide-schema-and-contracts');
+
+  assert.equal(planWithGates([first, second]).chosen, 'cli-and-e2e-runner');
+  assert.equal(planWithGates([second, first]).chosen, 'cli-and-e2e-runner');
+});
+
+test('the losing gate never becomes a worker and every listed gate must state both ranking fields', () => {
+  const gates = [
+    firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: 21 }),
+    firedGate('guide-schema-and-contracts', { prior_semantic_pr_count: 30 }),
+  ];
+  const { plan } = planWithGates(gates);
+
+  assert.ok(!plan.workers.flatMap(({ concern_ids }) => concern_ids).includes('cli-and-e2e-runner'));
+  assert.equal(Object.values(plan.coverage).filter((owner) => owner === 'contract-evolution').length, 1);
+  for (const { concern_id } of gates) {
+    assert.ok(plan.coverage[`contract-evolution:${concern_id}`], concern_id);
+  }
+
+  assert.throws(
+    () => planWithGates(gates.map(({ concern_id, context }) => ({ concern_id, context }))),
+    /fired contract gate cli-and-e2e-runner must state touches_anchor_with_consumers as a boolean/
+  );
+  assert.throws(
+    () => planWithGates(gates.map(({ prior_semantic_pr_count, ...gate }) => gate)),
+    /fired contract gate cli-and-e2e-runner must state prior_semantic_pr_count as a finite number/
+  );
+});
+
+test('a wrongly typed ranking field is rejected instead of being coerced into a rank', () => {
+  assert.throws(
+    () =>
+      planWithGates([
+        firedGate('cli-and-e2e-runner', { touches_anchor_with_consumers: 'no' }),
+        firedGate('guide-schema-and-contracts', { prior_semantic_pr_count: 30 }),
+      ]),
+    /fired contract gate cli-and-e2e-runner must state touches_anchor_with_consumers as a boolean/
+  );
+  assert.throws(
+    () =>
+      planWithGates([
+        firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: '30' }),
+        firedGate('guide-schema-and-contracts', { prior_semantic_pr_count: 21 }),
+      ]),
+    /fired contract gate cli-and-e2e-runner must state prior_semantic_pr_count as a finite number/
+  );
+});
+
+test('a listed gate with an invalid concern id fails loudly instead of losing the slot in silence', () => {
+  assert.throws(
+    () =>
+      planWithGates([
+        firedGate('guide_schema_and_contracts', {
+          touches_anchor_with_consumers: true,
+          prior_semantic_pr_count: 30,
+        }),
+        firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: 21 }),
+      ]),
+    /fired contract gate guide_schema_and_contracts must state concern_id as lowercase letters, digits, and hyphens/
+  );
+});
+
+test('a malformed listed packet names the gate that has to be repaired', () => {
+  assert.throws(
+    () =>
+      planWithGates([
+        { ...firedGate('guide-schema-and-contracts'), context: [{ path: 'docs/design/anchor.md' }] },
+        firedGate('cli-and-e2e-runner'),
+      ]),
+    /each context entry for contract evolution guide-schema-and-contracts must include path and excerpt/
+  );
+});
+
+test('the singular object keeps its slot with an empty packet and ignores its dead ranking fields', () => {
+  const emptyPacket = planWithGates({ concern_id: 'ai-subsystem', context: [] });
+  assert.equal(emptyPacket.chosen, 'ai-subsystem');
+  assert.equal(emptyPacket.plan.workers.find(({ kind }) => kind === 'contract_evolution').context_characters, 0);
+
+  const deadFields = planWithGates({
+    concern_id: 'ai-subsystem',
+    context: [{ path: 'docs/design/PR_REVIEW.md', excerpt: 'contract' }],
+    touches_anchor_with_consumers: 'no',
+    prior_semantic_pr_count: null,
+  });
+  assert.equal(deadFields.chosen, 'ai-subsystem');
+});
+
+test('a top-ranked gate above the packet envelope yields the slot instead of wasting it', () => {
+  const { plan, chosen } = planWithGates([
+    {
+      concern_id: 'guide-schema-and-contracts',
+      touches_anchor_with_consumers: false,
+      prior_semantic_pr_count: 30,
+      context: [{ path: 'docs/design/PR_REVIEW.md', excerpt: 'x'.repeat(30_001) }],
+    },
+    firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: 21 }),
+  ]);
+
+  assert.equal(chosen, 'cli-and-e2e-runner');
+  assert.equal(plan.coverage['contract-evolution:guide-schema-and-contracts'], 'root');
+});
+
+test('a listed gate with no usable packet yields the slot to the gate that carries the evidence', () => {
+  for (const emptyPacket of [{ context: [] }, {}]) {
+    const { plan, chosen } = planWithGates([
+      {
+        concern_id: 'guide-schema-and-contracts',
+        touches_anchor_with_consumers: true,
+        prior_semantic_pr_count: 30,
+        ...emptyPacket,
+      },
+      firedGate('cli-and-e2e-runner', { prior_semantic_pr_count: 21 }),
+    ]);
+
+    assert.equal(chosen, 'cli-and-e2e-runner');
+    assert.ok(plan.workers.find(({ kind }) => kind === 'contract_evolution').context_characters > 0);
+    assert.equal(plan.coverage['contract-evolution:guide-schema-and-contracts'], 'root');
+    assert.ok(plan.root.concern_ids.includes('contract-evolution:guide-schema-and-contracts'));
+  }
+});
+
+test('two fired gates for the same concern are rejected instead of collapsing one coverage key', () => {
+  assert.throws(
+    () => planWithGates([firedGate('cli-and-e2e-runner'), firedGate('cli-and-e2e-runner')]),
+    /fired contract gate cli-and-e2e-runner must be unique/
+  );
+});
+
+test('the singular contract_evolution object keeps its worker id, coverage key, and root overflow', () => {
+  const selected = planWithGates(firedGate('ai-subsystem'));
+  assert.equal(selected.chosen, 'ai-subsystem');
+  assert.equal(selected.plan.workers.find(({ kind }) => kind === 'contract_evolution').id, 'contract-evolution');
+  assert.equal(selected.plan.coverage['contract-evolution:ai-subsystem'], 'contract-evolution');
+
+  const oversized = planWithGates({
+    concern_id: 'ai-subsystem',
+    context: Array.from({ length: 9 }, (_, index) => ({ path: `docs/design/${index}.md`, excerpt: 'x' })),
+  });
+  assert.equal(oversized.chosen, null);
+  assert.equal(oversized.plan.coverage['contract-evolution:ai-subsystem'], 'root');
+
+  const unnamed = planWithGates({ context: [] });
+  assert.equal(unnamed.chosen, null);
+  assert.equal(unnamed.plan.coverage['contract-evolution:unknown'], 'root');
+});

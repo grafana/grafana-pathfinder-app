@@ -233,6 +233,42 @@ function publicWorker(worker) {
   };
 }
 
+function validateGateRanking(gate) {
+  const id = gate.concern_id ?? 'unknown';
+  if (!/^[a-z0-9-]+$/.test(gate.concern_id ?? '')) {
+    throw new Error(`fired contract gate ${id} must state concern_id as lowercase letters, digits, and hyphens`);
+  }
+  if (typeof gate.touches_anchor_with_consumers !== 'boolean') {
+    throw new Error(`fired contract gate ${id} must state touches_anchor_with_consumers as a boolean`);
+  }
+  if (!Number.isFinite(gate.prior_semantic_pr_count)) {
+    throw new Error(`fired contract gate ${id} must state prior_semantic_pr_count as a finite number`);
+  }
+}
+
+function firedContractGates(contract_evolution) {
+  if (!contract_evolution) {
+    return [];
+  }
+  const listed = Array.isArray(contract_evolution);
+  const gates = listed ? contract_evolution.filter(Boolean) : [contract_evolution];
+  for (const key of duplicateValues(gates.map((gate) => gate.concern_id ?? 'unknown'))) {
+    throw new Error(`fired contract gate ${key} must be unique`);
+  }
+  for (const gate of listed ? gates : []) {
+    validateGateRanking(gate);
+  }
+  return [...gates].sort((left, right) => {
+    const leftId = String(left.concern_id ?? 'unknown');
+    const rightId = String(right.concern_id ?? 'unknown');
+    return (
+      Number(right.touches_anchor_with_consumers === true) - Number(left.touches_anchor_with_consumers === true) ||
+      (right.prior_semantic_pr_count ?? 0) - (left.prior_semantic_pr_count ?? 0) ||
+      (leftId < rightId ? -1 : leftId > rightId ? 1 : 0)
+    );
+  });
+}
+
 export function buildReviewPlan({ mode, concerns, contract_evolution = null, skeptic_batch_count = 0 }) {
   if (mode !== 'full' && mode !== 'incremental') {
     throw new Error('mode must be full or incremental');
@@ -292,18 +328,27 @@ export function buildReviewPlan({ mode, concerns, contract_evolution = null, ske
     }
   }
 
-  if (contract_evolution) {
-    const context = normalizeContext(contract_evolution.context ?? [], 'contract evolution');
-    if (!/^[a-z0-9-]+$/.test(contract_evolution.concern_id ?? '') || !fitsWorker(context)) {
-      rootConcernIds.push(`contract-evolution:${contract_evolution.concern_id ?? 'unknown'}`);
-    } else {
-      workers.push({
-        id: 'contract-evolution',
-        kind: 'contract_evolution',
-        concern_ids: [contract_evolution.concern_id],
-        context,
-      });
+  const firedGates = firedContractGates(contract_evolution);
+  const listedGates = Array.isArray(contract_evolution);
+  let specialistTaken = false;
+  for (const gate of firedGates) {
+    const context = normalizeContext(gate.context ?? [], `contract evolution ${gate.concern_id ?? 'unknown'}`);
+    if (
+      specialistTaken ||
+      !/^[a-z0-9-]+$/.test(gate.concern_id ?? '') ||
+      !fitsWorker(context) ||
+      (listedGates && context.length === 0)
+    ) {
+      rootConcernIds.push(`contract-evolution:${gate.concern_id ?? 'unknown'}`);
+      continue;
     }
+    specialistTaken = true;
+    workers.push({
+      id: 'contract-evolution',
+      kind: 'contract_evolution',
+      concern_ids: [gate.concern_id],
+      context,
+    });
   }
 
   const publicWorkers = workers.map(publicWorker);
