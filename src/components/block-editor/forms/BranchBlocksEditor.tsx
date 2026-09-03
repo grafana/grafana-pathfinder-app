@@ -39,6 +39,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { BLOCK_TYPE_METADATA, INTERACTIVE_ACTIONS } from '../constants';
 import { COMMON_REQUIREMENTS } from '../../../constants/interactive-config';
+import { assertExhaustive } from '../../../lib/assert-exhaustive';
 import type { BlockType, JsonBlock, JsonInteractiveAction, BlockFormProps } from '../types';
 import {
   isMarkdownBlock,
@@ -296,7 +297,19 @@ export function createDefaultBlock(type: BlockType): JsonBlock {
       return { type: 'challenge', title: '', brief: '', successCriteria: '' };
     case 'callout':
       return { type: 'callout', title: '', content: '' };
+    case 'section':
+    case 'html':
+    case 'conditional':
+    case 'assistant':
+    case 'terminal':
+    case 'terminal-connect':
+    case 'code-block':
+    case 'grot-guide':
+    case 'collapsible':
+    case 'snippet-ref':
+      return { type: 'markdown', content: '' };
     default:
+      assertExhaustive(type);
       return { type: 'markdown', content: '' };
   }
 }
@@ -522,7 +535,24 @@ export function BranchBlocksEditor({
               : {};
           return { ...carried, type: 'callout', title: formTitle, content: formContent };
         }
+        case 'section':
+        case 'divider':
+        case 'html':
+        case 'multistep':
+        case 'guided':
+        case 'conditional':
+        case 'quiz':
+        case 'assistant':
+        case 'terminal':
+        case 'terminal-connect':
+        case 'code-block':
+        case 'grot-guide':
+        case 'collapsible':
+        case 'challenge':
+        case 'snippet-ref':
+          return createDefaultBlock(type);
         default:
+          assertExhaustive(type);
           return createDefaultBlock(type);
       }
     },
@@ -800,7 +830,29 @@ export function BranchBlocksEditor({
           </>
         );
 
+      case 'section':
+      case 'divider':
+      case 'html':
+      case 'multistep':
+      case 'guided':
+      case 'conditional':
+      case 'quiz':
+      case 'assistant':
+      case 'terminal':
+      case 'terminal-connect':
+      case 'code-block':
+      case 'grot-guide':
+      case 'collapsible':
+      case 'challenge':
+      case 'snippet-ref':
+        return (
+          <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+            This block type cannot be edited inline. To modify it, edit the JSON directly or use a dedicated editor for
+            this block type.
+          </div>
+        );
       default:
+        assertExhaustive(type);
         return (
           <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
             This block type cannot be edited inline. To modify it, edit the JSON directly or use a dedicated editor for

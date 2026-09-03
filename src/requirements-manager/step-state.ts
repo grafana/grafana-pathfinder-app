@@ -13,6 +13,7 @@
  */
 
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
+import { assertExhaustive } from '../lib/assert-exhaustive';
 
 /**
  * Step status enum representing all possible step states
@@ -169,12 +170,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
       return createInitialState({ canSkip: action.canSkip ?? state.canSkip });
 
     default: {
-      // Exhaustiveness check: if a new variant is added to `StepAction` and
-      // not handled above, this assignment fails to compile, surfacing the
-      // missing case at the type-check stage instead of silently returning
-      // the previous state at runtime.
-      const _exhaustive: never = action;
-      void _exhaustive;
+      assertExhaustive(action);
       return state;
     }
   }

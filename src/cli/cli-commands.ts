@@ -87,7 +87,13 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
   },
   validate: {
     positionals: ['files'],
-    placeholders: { files: 'files...', format: 'format', package: 'dir', packages: 'dir' },
+    placeholders: {
+      files: 'files...',
+      format: 'format',
+      package: 'dir',
+      packages: 'dir',
+      snippetsCatalog: 'file',
+    },
     inherits: ['format'],
   },
   e2e: {

@@ -37,7 +37,7 @@ Add to `pathfinderFeatureFlags` in `src/utils/openfeature.ts`. This is the one p
 ```typescript
 'pathfinder.<experiment-name>-experiment': {
   valueType: 'object',
-  values: [{ variant: 'excluded' }, { variant: 'control' }, { variant: 'treatment' }],
+  values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
   defaultValue: { variant: 'excluded' },
   trackingKey: '<experiment_name>_experiment',
 },
@@ -49,6 +49,10 @@ Add to `pathfinderFeatureFlags` in `src/utils/openfeature.ts`. This is the one p
 - Keep `defaultValue` an inline literal so the registry does not import your experiment module — that import direction causes a cycle (see step 3).
 
 Three arms, always: `excluded` (not in the experiment), `control` (in it, current behaviour), `treatment` (in it, new behaviour). `excluded` and `control` must render identically; the difference is only whether the user is counted.
+
+`EXPERIMENT_VARIANTS` in `src/utils/openfeature.ts` is the runtime vocabulary and derives the TypeScript union. Adding an arm also requires an explicit policy in both total projections: `EXPERIMENT_VARIANT_EMITS_EXPOSURE` in `src/utils/openfeature-tracking.ts` and `EXPERIMENT_VARIANT_PRECEDENCE` in `src/lib/analytics.ts`. The compiler should fail until both decisions are made.
+
+The compiler does not cover the runtime arm gates in `src/utils/experiments/highlighted-guide-orchestrator.ts` and `src/context-engine/context.service.ts`; review both explicitly when adding an arm.
 
 ### 2. Create the experiment module
 

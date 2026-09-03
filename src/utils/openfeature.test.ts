@@ -882,28 +882,31 @@ describe('openfeature', () => {
       });
     });
 
-    it.each(['excluded', 'control', 'treatment'])('passes the %p variant through unchanged', (variant) => {
+    it('passes every registered experiment variant through unchanged', () => {
       jest.isolateModules(() => {
         const mockOF = createMockOpenFeature();
         const mockReact = createMockReactSdk();
-        mockOF.mockClient.getObjectValue.mockReturnValue({
-          variant,
-          pages: ['/a/grafana-irm-app*'],
-          guideId: 'bundled:my-guide',
-          autoOpen: true,
-        });
         jest.doMock('@openfeature/web-sdk', () => mockOF);
         jest.doMock('@openfeature/react-sdk', () => mockReact);
 
-        const { getHighlightedGuideConfig } = require('./openfeature');
+        const { EXPERIMENT_VARIANTS, getHighlightedGuideConfig } = require('./openfeature');
 
-        expect(getHighlightedGuideConfig()).toEqual({
-          variant,
-          pages: ['/a/grafana-irm-app*'],
-          guideId: 'bundled:my-guide',
-          autoOpen: true,
-          resetCache: false,
-        });
+        for (const variant of EXPERIMENT_VARIANTS) {
+          mockOF.mockClient.getObjectValue.mockReturnValue({
+            variant,
+            pages: ['/a/grafana-irm-app*'],
+            guideId: 'bundled:my-guide',
+            autoOpen: true,
+          });
+
+          expect(getHighlightedGuideConfig()).toEqual({
+            variant,
+            pages: ['/a/grafana-irm-app*'],
+            guideId: 'bundled:my-guide',
+            autoOpen: true,
+            resetCache: false,
+          });
+        }
       });
     });
   });

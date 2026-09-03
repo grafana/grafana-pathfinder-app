@@ -15,6 +15,7 @@ import { detectUnknownFields } from './unknown-fields';
 import { validateBlockConditions, type ConditionIssue } from './condition-validator';
 import { customErrorMap } from './error-map';
 import { normalizeJsonGuideAliases } from './normalize-guide-aliases';
+import { validateSnippetReferences } from './snippet-references';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -33,8 +34,8 @@ export interface LegacyValidationResult {
 export interface ValidationOptions {
   strict?: boolean;
   skipUnknownFieldCheck?: boolean;
+  snippetCatalogIds?: ReadonlySet<string>;
 }
-
 /**
  * Convert a condition issue to a validation warning.
  */
@@ -107,6 +108,16 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
         type: 'suggestion',
       });
     }
+  }
+
+  const snippetReferenceErrors = validateSnippetReferences(result.data as JsonGuide, options.snippetCatalogIds);
+  if (snippetReferenceErrors.length > 0) {
+    return {
+      isValid: false,
+      errors: snippetReferenceErrors,
+      warnings: [...warnings, ...advisories],
+      guide: null,
+    };
   }
 
   // 5. Strict mode - promote all warnings to errors

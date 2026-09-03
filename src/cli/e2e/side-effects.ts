@@ -1,7 +1,9 @@
 import {
   isAssistantBlock,
+  isCalloutBlock,
   isChallengeBlock,
   isCodeBlockBlock,
+  isCollapsibleBlock,
   isConditionalBlock,
   isDividerBlock,
   isGrotGuideBlock,
@@ -159,6 +161,7 @@ function classifyBlocks(blocks: JsonBlock[] | undefined, path: string): SideEffe
 function classifyBlock(block: JsonBlock, path: string): SideEffectClassification {
   if (
     isMarkdownBlock(block) ||
+    isCalloutBlock(block) ||
     isDividerBlock(block) ||
     isHtmlBlock(block) ||
     isImageBlock(block) ||
@@ -181,6 +184,9 @@ function classifyBlock(block: JsonBlock, path: string): SideEffectClassification
     return classifySteps(block.steps, path);
   }
   if (isSectionBlock(block)) {
+    return classifyBlocks(block.blocks, `${path}.blocks`);
+  }
+  if (isCollapsibleBlock(block)) {
     return classifyBlocks(block.blocks, `${path}.blocks`);
   }
   if (isConditionalBlock(block)) {

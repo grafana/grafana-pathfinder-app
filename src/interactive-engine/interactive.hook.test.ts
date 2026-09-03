@@ -1,6 +1,7 @@
 import { renderHook, act } from '@testing-library/react';
 import { useInteractiveElements } from './interactive.hook';
 import { withFaroUserAction } from '../lib/faro';
+import type { InteractiveElementData } from '../types/interactive.types';
 
 jest.mock('../lib/faro', () => ({
   withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
@@ -510,7 +511,7 @@ describe('useInteractiveElements', () => {
     it('should prevent recursion', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: 'span#test1',
         targetAction: 'sequence',
         tagName: 'span',
@@ -530,6 +531,27 @@ describe('useInteractiveElements', () => {
   });
 
   describe('Requirements Checking', () => {
+    it('rejects an element when DOM decoding returns no interactive data', async () => {
+      extractInteractiveDataFromElement.mockReturnValueOnce(null);
+      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+      const element = document.createElement('li');
+
+      const check = await result.current.checkElementRequirements(element);
+
+      expect(check).toEqual({
+        requirements: '',
+        pass: false,
+        error: [
+          {
+            requirement: 'data-targetaction',
+            pass: false,
+            error: 'Missing or unknown data-targetaction',
+          },
+        ],
+      });
+      expect(checkRequirements).not.toHaveBeenCalled();
+    });
+
     it('should check requirements for sequence elements', async () => {
       // Setup mock response for success case
       checkRequirements.mockResolvedValueOnce({
@@ -609,7 +631,7 @@ describe('useInteractiveElements', () => {
     it('should check requirements from data', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: 'test-target',
         targetAction: 'highlight',
         targetValue: 'test-value',
@@ -783,22 +805,6 @@ describe('useInteractiveElements', () => {
       expect(outcome).toBe('error');
     });
 
-    it('should handle unknown action', async () => {
-      const { result } = renderHook(() => useInteractiveElements({ containerRef }));
-
-      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-
-      await act(async () => {
-        await result.current.executeInteractiveAction({
-          targetAction: 'unknown',
-          refTarget: 'test-target',
-          buttonType: 'do',
-        });
-      });
-
-      expect(consoleWarnSpy).toHaveBeenCalledWith('Unknown interactive action: unknown', '');
-    });
-
     it('should handle errors in executeInteractiveAction', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
@@ -892,7 +898,7 @@ describe('useInteractiveElements', () => {
     it('should handle empty requirements', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: 'test-target',
         targetAction: 'highlight',
         targetValue: 'test-value',
@@ -916,7 +922,7 @@ describe('useInteractiveElements', () => {
     it('should handle undefined requirements', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: 'test-target',
         targetAction: 'highlight',
         targetValue: 'test-value',
@@ -940,7 +946,7 @@ describe('useInteractiveElements', () => {
     it('should handle undefined textContent', async () => {
       const { result } = renderHook(() => useInteractiveElements({ containerRef }));
 
-      const data = {
+      const data: InteractiveElementData = {
         refTarget: 'test-target',
         targetAction: 'highlight',
         targetValue: 'test-value',

@@ -1,315 +1,244 @@
-# PR Review — Standards and Pattern Catalog
+# PR review standards and pattern catalog
 
-Canonical reference for what reviewers (human or agent) check against when reviewing a PR in this repository. Tool-neutral. Both Cursor and Claude Code skills load this document.
+This is the canonical reference for review observations, verification, contract evolution, publication, and language-specific checks. Orchestration lives in `.cursor/skills/review/SKILL.md`; routing lives in `docs/design/CONCERNS.md`; concern details are loaded with `concern-context.mjs`.
 
-The orchestration workflow that uses this catalog lives in `.cursor/skills/review/SKILL.md` (invoked via `/review`). The concern routing table lives in `docs/design/CONCERNS.md`; per-concern review guidance, one-way doors, and contract anchors live in `docs/design/CONCERN_DETAILS.md` and are extracted one concern at a time by `.cursor/skills/review/scripts/concern-context.mjs`.
+## Canonical observation
 
-## Reviewer output schema
+Every routed reviewer and supplemental check emits the same factual observation. Producers describe evidence; they never decide merge impact.
 
-Every reviewer (subsystem or cross-cutting) emits the same schema.
+```text
+finding_id
+concern_id
+kind                    defect | suggestion | nit
+severity                critical | high | medium | low
+confidence              high | medium | low
+title
+evidence                non-empty string array
+why_it_matters
+suggested_action
+reversibility           reversible | partially_reversible | irreversible_without_cleanup | unknown
+applies_to_files         string array
+origin                  regression | pre_existing | latent_reachable | latent_unreachable
+impact                  none | ordinary | security | data_loss | credential_exposure
+timing                  first_round | prior_unresolved | since_prior_head | late
+scope_effect            within_changed_surface | widens_changed_surface
+breaks_shipped_path     boolean
+induced                 boolean
+clearance_contradiction optional { claim, prior_reason, new_evidence }
+```
 
-If findings exist, include:
+`ordinary` is concrete, reachable behavior, contract, or rollback harm at the reviewed head. `none` means no current behavior or contract harm. `latent_reachable` means this PR makes a latent condition reachable; `latent_unreachable` remains unreachable. `induced` means the condition exists only because the author implemented optional earlier advice. `widens_changed_surface` means the action needs a new path, component, exported symbol, user-facing affordance, or unrelated changed path.
 
-- `concern_id`
-- `finding_id`
-- `severity`
-- `confidence`
-- `recommended_disposition` — `blocking | suggestion | nit`
-- `title`
-- `evidence`
-- `why_it_matters`
-- `suggested_action`
-- `reversibility`
-- `applies_to_files`
+When there are no observations, a reviewer emits `{ concern_id, status: "no_findings", reason: "not_applicable" | "reviewed_clean" }`.
 
-If no findings, include:
+### Severity and confidence
 
-- `concern_id`
-- `status: no_findings`
-- `reason: not_applicable | reviewed_clean`
+- `critical`: security exposure, severe rollback hazard, or production-breaking regression.
+- `high`: likely correctness bug, contract break, or missing verification on a high-risk semantic change.
+- `medium`: meaningful risk or ambiguity.
+- `low`: concrete non-blocking improvement or minor issue.
+- `high` confidence requires checked code or contract evidence; `medium` has partial evidence; `low` is plausible but uncertain.
 
-### Confidence guidance
+## Verification
 
-- `high`: clear invariant violation or likely regression with concrete evidence
-- `medium`: credible concern with partial evidence
-- `low`: plausible but uncertain risk that should usually be phrased as a question, not a defect
+Skeptics answer truth only:
 
-### Severity guidance
+```json
+{ "verdict": "confirmed", "reason": "<non-empty checked evidence>" }
+```
 
-- `critical`: security issue, severe rollback hazard, or clear production-breaking regression
-- `high`: likely correctness bug, contract break, or missing verification on a high-risk semantic change
-- `medium`: meaningful risk or ambiguity that should be resolved before merge if the PR is high leverage
-- `low`: useful question or non-blocking improvement with concrete evidence
+`verdict` is `confirmed`, `refuted`, or `uncertain`. No other field is accepted.
 
-### Author disposition guidance
+`review-policy.mjs` derives the lane from observation facts:
 
-- `blocking`: must be fixed or answered before merge
-- `suggestion`: concrete non-blocking improvement, including an optional question
-- `nit`: minor style or wording preference
+- A critical, high, or provisionally blocking defect gets two independent skeptics and one tiebreaker only when needed. It drops only on a two-of-three refutation majority.
+- A medium non-blocking defect gets one skeptic and an adjudicator only after a refuted or uncertain first verdict. It drops only when the adjudicator refutes.
+- A low non-blocking defect and every optional observation pass without verification.
 
-Severity describes impact; disposition describes the merge contract. A medium finding can be blocking when the ambiguity must be resolved before merge, and a high-risk observation can remain a suggestion when the PR does not create that risk. Reviewers recommend a disposition; the synthesizer owns the final value after verification and deduplication.
+Related findings with the same concern and evidence surface may share a packet in groups of four. The two independent skeptic roles never share an agent. Verification yields `needs_verification`, `established`, or `dropped`; it never yields a disposition.
 
-### Reversibility values
+## Disposition policy
 
-- `reversible`
-- `partially_reversible`
-- `irreversible_without_cleanup`
-- `unknown`
+For an established defect, `review-policy.mjs` applies this closed rule in order:
+
+1. PR-caused or newly reachable protected harm is `blocking`.
+2. A pre-existing or unreachable latent condition is `follow_up`, including protected harm.
+3. A condition induced by optional earlier advice is `follow_up`, unless rule 1 applies.
+4. A late finding is `follow_up`, unless rule 1 applies.
+5. A PR-caused one-way door is `blocking`.
+6. A condition with no current harm is `follow_up`.
+7. Every other confirmed regression or newly reachable condition is `blocking`.
+
+Protected harm is derived from either a `security`, `data_loss`, or `credential_exposure` impact, or `breaks_shipped_path: true`, combined with `regression` or `latent_reachable` origin. One-way-door status is derived from `reversibility`.
+
+Optional observations use the same facade. A scope-widening suggestion or nit becomes `follow_up`. At round three or later, a new suggestion or nit drops. A prior unresolved optional observation may carry by stable ID without new prose only when its finding ID and concern exactly match an entry in the facade's `prior_deferred` input. Before round three, optional work within the changed surface preserves its `suggestion` or `nit` kind.
+
+Every policy request, verification-batch request, and `ReviewReport` supplies an explicit integer round from 1 through 100. Missing or out-of-range values fail closed. Only the orchestrator derives a fallback when a version 1 marker supplies no reliable round.
+
+The facade returns only `needs_verification`, `final`, or `dropped`. A final result has one disposition and one stable reason. No downstream phase changes it.
+
+## Reconciliation
+
+After disposition and before publication, call `review-policy.mjs` with `operation: "reconcile"`:
+
+```text
+next_deferred = verified-unresolved(prior_deferred) union current_follow_up_ids
+next_cleared  = dedupe(current_cleared union prior_cleared)
+```
+
+A deferred entry leaves only when its stable ID appears in `verified_fixed_ids`. Every current follow-up must enter `current_follow_ups`. Clearances deduplicate by claim and retain at most 12 load-bearing entries; order current entries from most to least important before prior entries when pruning matters. Reconciliation and publication share one clearance schema: `concern_id` is a lowercase concern identifier, `claim` is one line of at most 200 characters, `reason` is one line of at most 300 characters, and neither text field may contain a review-state marker or HTML comment terminator. Reconciliation normalizes whitespace before deduplication and returns publication-ready clearance entries unchanged.
+
+A candidate that contradicts a prior clearance must carry its exact claim and reason plus checked new evidence. The facade rejects a contradiction that does not match prior state.
 
 ## Contract evolution packet
 
-Emitted by the contract evolution scan (`.cursor/skills/review/SKILL.md` §3b) when its deterministic gate fires. The packet gives diff-scoped reviewers and the synthesizer the temporal context they otherwise lack: whether the sequence of recent changes to a capability is converging on a contract or branching it.
-
-Required fields:
+Contract evolution is a conditional specialist scan. Its packet records:
 
 - `concern_id`
 - `origin_or_contract_anchor`
-- `recent_semantic_changes` — up to three entries with PR number, merge SHA, timestamp, and semantic summary
+- `recent_semantic_changes`: `{ pr, sha, timestamp, summary }[]`
 - `current_contract_owner`
 - `new_contract_delta`
 - `competing_owners_or_representations`
-- `history_status` — `complete | partial | unavailable`; defaults to the gate's value — upgrade `partial` to `complete` only after inspecting each unmapped or unclassified commit the gate reported and recording in `sources` why it is irrelevant to this capability
-- `use_ordinal` — `first | second | third_or_later`: this PR's position in the sequence of distinct PRs extending or reshaping the capability's contract surface, with the introducing PR as `first`; count PRs (the gate's distinct-PR history is the baseline evidence), not consumers or call sites. Count only PRs that extended or reshaped the specific contract surface at issue, not every semantic PR under the concern's paths — a scroll-position fix in the same directory does not advance the ordinal of an event-name contract. `third_or_later` plus a branching condition blocks, so over-counting manufactures blocking findings
-- `same_bug_count` — total bugs observed in this class, including the one this PR addresses; `0` when this PR does not address a bug in a previously seen class
-- `has_recorded_anchor` — `true` only when the concern has a row in the Contract anchors table in `docs/design/CONCERN_DETAILS.md`; pre-contract candidates do not count
-- `anchor_violated` — `true` only when the change contradicts an invariant stated in the recorded anchor; must be `false` when `has_recorded_anchor` is `false`
-- `branching_conditions`
-- `sources` — immutable same-repository PR, issue, and commit identifiers plus selection reasons
 - `verdict`
-- `finding` — required for `contract_missing`, `contract_branching`, and `insufficient_history`; contains `finding_id`, `title`, `evidence`, `why_it_matters`, `suggested_action`, `reversibility`, and `applies_to_files`. When the policy downgrades a clean verdict to `insufficient_history`, `contract-evolution-policy.mjs` synthesizes the finding — packets with clean verdicts never include one.
+- `history_status`
+- `use_ordinal`
+- `same_bug_count`
+- `has_recorded_anchor`
+- `anchor_violated`
+- `branching_conditions`
+- `sources`: immutable source IDs with selection reasons
+- `finding` for every non-clean verdict
 
-Also record the deterministic gate output or the router's explicitly labeled `discretionary_trigger`. Never present a subjective router judgment as a gate metric.
+Verdicts are `follows_contract`, `coherent_extension`, `contract_missing`, `contract_branching`, and `insufficient_history`. History is `complete`, `partial`, or `unavailable`. Use ordinal is `first`, `second`, or `third_or_later`.
 
-### Packet example
+The adapter preserves factual contract state:
 
-Emit exactly this shape — `contract-evolution-policy.mjs` validates strictly (field names, source `kind` enum, integer `pr`/`timestamp`, SHA-shaped `sha`, array-valued `evidence` and `applies_to_files`):
+| Evidence state                                                                   | Observation       |
+| -------------------------------------------------------------------------------- | ----------------- |
+| Follows the contract or extends one owner coherently                             | none              |
+| No owner                                                                         | medium suggestion |
+| Early branching without a mature tripwire                                        | medium suggestion |
+| Anchor violation, third-or-later use, or repeated bug plus a branching condition | high defect       |
+| Partial or unavailable history without an anchor                                 | low suggestion    |
 
-```json
-{
-  "concern_id": "analytics-and-telemetry",
-  "origin_or_contract_anchor": "No recorded anchor; pre-contract candidate row proposes a typed facade owner.",
-  "recent_semantic_changes": [
-    {
-      "pr": 1275,
-      "sha": "fc9be20d282ebef45f8e1580a7279497e030e5af",
-      "timestamp": 1783698004,
-      "summary": "Introduced vendor-direct telemetry calls across product tiers."
-    }
-  ],
-  "current_contract_owner": "lib/telemetry/facade.ts domain operations; vendor adapter internal.",
-  "new_contract_delta": "Adds a second event vocabulary defined locally in a consumer.",
-  "competing_owners_or_representations": ["local event names in consumer module"],
-  "history_status": "complete",
-  "use_ordinal": "second",
-  "same_bug_count": 0,
-  "has_recorded_anchor": false,
-  "anchor_violated": false,
-  "branching_conditions": ["a new event or payload vocabulary without central types"],
-  "sources": [
-    {
-      "kind": "pr",
-      "id": 1275,
-      "sha": "fc9be20d282ebef45f8e1580a7279497e030e5af",
-      "selection_reason": "Introducing PR for the capability."
-    }
-  ],
-  "verdict": "contract_branching",
-  "finding": {
-    "finding_id": "CE-example-1",
-    "title": "Event vocabulary branches away from the central types",
-    "evidence": ["consumer defines event names locally instead of importing the central type"],
-    "why_it_matters": "Consumers can disagree about the payload shape.",
-    "suggested_action": "Centralize the event type.",
-    "reversibility": "reversible",
-    "applies_to_files": ["src/example/consumer.ts"]
-  }
-}
-```
+The adapter emits a canonical observation for non-clean states. The shared policy alone decides disposition.
 
-Packets with clean verdicts (`follows_contract`, `coherent_extension`) omit `finding`.
-
-### Verdict values
-
-- `follows_contract`: the change conforms to a recorded anchor or a coherent reconstructed contract
-- `coherent_extension`: the change grows the contract surface in a way consistent with its established shape and ownership
-- `contract_missing`: the capability has no single owner; refs, events, storage, or browser state collectively implement an unmodeled contract
-- `contract_branching`: the change creates a new branch of the implicit contract — a competing owner, representation, or vocabulary
-- `insufficient_history`: no anchor exists and reliable history is insufficient for a contract verdict; never blocking
-
-### Branching conditions
-
-Record each applicable condition; conditions classify the delta but do not determine disposition by themselves:
-
-- another raw representation of an existing concept
-- another state or lifecycle owner for a concept that already has one
-- a new event or payload vocabulary without central types
-- vendor-specific calls (e.g. `pushFaro*`) from an additional product-domain consumer
-- ordering-sensitive bootstrap behavior
-- another patch for a bug class already visible in the recent history
-
-### Disposition table
-
-This table is the only source of disposition truth **for the contract evolution scan**. `.cursor/skills/review/scripts/contract-evolution-policy.mjs` implements it. Its `advisory` value is scan-internal vocabulary: `contract-evolution-policy.mjs` maps it to the author-facing `suggestion` when it converts a packet to a reviewer finding. The synthesizer still owns the final author disposition (see Author disposition guidance).
-
-| History and contract state                                             | Verdict                | Severity | Recommended disposition |
-| ---------------------------------------------------------------------- | ---------------------- | -------- | ----------------------- |
-| Complete history; change conforms                                      | `follows_contract`     | —        | none                    |
-| Complete history; one owner grows coherently                           | `coherent_extension`   | —        | none                    |
-| No owner, any use ordinal                                              | `contract_missing`     | medium   | advisory                |
-| First or second use, no anchor violation                               | `contract_branching`   | medium   | advisory                |
-| Recorded anchor is violated and a branching condition exists           | `contract_branching`   | high     | blocking                |
-| Third-or-later use and a branching condition exists                    | `contract_branching`   | high     | blocking                |
-| Second or later bug in the same class and a branching condition exists | `contract_branching`   | high     | blocking                |
-| Partial or unavailable history with no recorded anchor                 | `insufficient_history` | low      | advisory                |
-
-Every advisory or blocking packet is converted to the shared reviewer output schema before adversarial verification. Skeptics receive that finding, the relevant hunks, and the immutable sources recorded in the packet.
+Before asserting `contract_branching` or `contract_missing`, inspect the head implementation of every claimed competing owner. An anchor violation requires a recorded anchor. Incomplete history cannot establish a clean result unless an anchor supplies the missing contract.
 
 ## React reliability, security, and quality checks
 
-Scan the diff against the unified detection table below. Security rules (F1-F6) are always loaded; for any React pattern hit, resolve the code in `.cursor/rules/react-antipatterns.mdc` and then load the themed file it routes to, which holds the canonical Do/Don't and fix.
+Apply security rules F1–F6 to frontend changes. For a React hit, use `.cursor/rules/react-antipatterns.mdc` to load the matching themed rule. These severities feed observations, not dispositions.
 
-### Unified detection table
+| What to look for                                             | ID  | Sev      |
+| ------------------------------------------------------------ | --- | -------- |
+| Effect resource without cleanup                              | R1  | Critical |
+| Stale state read in a callback                               | R2  | High     |
+| Object or array literal in effect dependencies               | R3  | Critical |
+| Async effect without cancellation or mounted guard           | R4  | High     |
+| Direct state mutation                                        | R5  | Critical |
+| Risky tree without an error boundary                         | R6  | High     |
+| Search or filter effect without cancellation                 | R7  | High     |
+| Conditional hook call                                        | R8  | Critical |
+| Index key in a dynamic list                                  | R9  | Medium   |
+| Promise chain without error handling                         | R10 | High     |
+| Frequently changing context value                            | R11 | Medium   |
+| Inline value passed to a memoized child                      | R12 | Medium   |
+| Effect without a dependency array                            | R13 | Critical |
+| State and effect used for a derived value                    | R14 | Medium   |
+| DOM listener without cleanup                                 | R15 | High     |
+| Heavy synchronous render work                                | R16 | High     |
+| Nested mount-time fetch waterfall                            | R17 | High     |
+| Storage access in a render path or loop                      | R18 | Medium   |
+| Spinner as initial primary content                           | R19 | Medium   |
+| Image without dimensions or async content without a skeleton | R20 | Medium   |
+| External script without `defer` or `async`                   | R21 | Medium   |
+| Untrusted dynamic SVG without sanitization                   | F1  | Critical |
+| Raw HTML where React escaping is sufficient                  | F2  | High     |
+| URL string concatenation instead of `URL` APIs               | F3  | High     |
+| Raw HTML without Grafana sanitization                        | F4  | Critical |
+| Raw DOM or script sink                                       | F5  | Critical |
+| Unvalidated URL in `href` or `src`                           | F6  | High     |
+| New component over 400 lines or five responsibilities        | QC1 | Medium   |
+| State bag with more than ten unrelated properties            | QC2 | Medium   |
+| Duplicated logic across files                                | QC3 | Medium   |
+| Existing utility ignored for a reimplementation              | QC4 | Medium   |
+| `any` or missing contract types                              | QC5 | Medium   |
+| Missing tests for changed semantics                          | QC6 | High     |
+| Missing accessible name or keyboard interaction              | QC7 | Medium   |
+| Decorative, stale, or restating comments on touched code     | QC8 | Medium   |
 
-| What to look for                                                               | ID  | Sev      |
-| ------------------------------------------------------------------------------ | --- | -------- |
-| `useEffect` missing cleanup return (listeners, timers, subscriptions)          | R1  | Critical |
-| State read in callback without functional update or ref                        | R2  | High     |
-| Object/array literal in `useEffect` dependency array                           | R3  | Critical |
-| `fetch`/async in effect without `AbortController` or mounted flag              | R4  | High     |
-| `.push()`, `.splice()`, direct property assignment on state                    | R5  | Critical |
-| Risky component tree or route without `<ErrorBoundary>`                        | R6  | High     |
-| Search/filter effect without cancellation for rapid inputs                     | R7  | High     |
-| Hook call after conditional return or inside if/loop                           | R8  | Critical |
-| `key={index}` in dynamic (add/remove/reorder) list                             | R9  | Medium   |
-| Promise chain without `.catch()` or `try/catch`                                | R10 | High     |
-| Context provider with frequently-changing value                                | R11 | Medium   |
-| Inline function/object passed to `React.memo` child                            | R12 | Medium   |
-| `useEffect` without dependency array                                           | R13 | Critical |
-| `useState` + `useEffect` to sync derived value                                 | R14 | Medium   |
-| DOM listeners on ref without cleanup                                           | R15 | High     |
-| Heavy sync computation in render / `useMemo` / effect body                     | R16 | High     |
-| Nested components both fetching on mount (waterfall)                           | R17 | High     |
-| `localStorage` read/write in render path or loop                               | R18 | Medium   |
-| Loading spinner as initial render for primary content (LCP)                    | R19 | Medium   |
-| `<img>` without dimensions; async content without skeleton (CLS)               | R20 | Medium   |
-| External script without `defer`/`async`                                        | R21 | Medium   |
-| Untrusted/dynamic SVG without DOMPurify sanitization                           | F1  | Critical |
-| `dangerouslySetInnerHTML` where `{}` auto-escape would do                      | F2  | High     |
-| URL built via string concat instead of `new URL()` + searchParams              | F3  | High     |
-| `dangerouslySetInnerHTML` without `textUtil.sanitize()`                        | F4  | Critical |
-| F5 DOM sink lint failure, bypass, or equivalent raw DOM/script sink            | F5  | Critical |
-| URL in `href`/`src` without `textUtil.sanitizeUrl()` or scheme-allowlist check | F6  | High     |
-| New component > 400 lines or > 5 responsibilities                              | QC1 | Medium   |
-| New God object / state bag with > 10 unrelated props                           | QC2 | Medium   |
-| Copy-paste / duplicated logic across files                                     | QC3 | Medium   |
-| Existing utility or hook ignored in favor of re-impl                           | QC4 | Medium   |
-| Use of `any`; missing or unexported types                                      | QC5 | Medium   |
-| Missing tests for new functionality                                            | QC6 | High     |
-| Missing ARIA labels or keyboard navigation on interactive els                  | QC7 | Medium   |
-| Verbose / decorative / stale comments on changed code                          | QC8 | Medium   |
-
-### QC8 — Comment hygiene on changed code
-
-`AGENTS.md` §Comments carries the rule and the keep-list (always loaded in agent context). The eight shape titles and the canonical catalog with worked before/after examples live in the `comment-hygiene` skill (`.cursor/skills/comment-hygiene/SKILL.md`) — load it to cite a shape number, or when a QC8 call is borderline. This section is reviewer-specific scoping only.
-
-**Reviewer scoping rules:**
-
-- **Flag on changed lines only.** If a bad-shape comment appears in a hunk the PR is modifying, flag it. Do not flag bad-shape comments in untouched files or untouched functions — comment cleanup rides along on code changes, never as a standalone sweep.
-- **Also flag stale comments left in place inside functions the PR is modifying.** If the PR renames a symbol, alters a control flow, or changes a behavior, but leaves an adjacent comment describing the prior shape, the comment is now stale and should have been trimmed.
-- **Reference the shape number** (1-8) from the `comment-hygiene` catalog when reporting. Example: `QC8.2: defensive "Intentionally NOT" block above doWork()`.
-- **Severity is Medium and non-blocking.** A single bad-shape comment does not block merge. A PR running 3:1 comments-to-code that doesn't clear should be flagged for cleanup before merge.
-
-### Escalation pointers
-
-- **R1-R21 hit**: resolve the code in `.cursor/rules/react-antipatterns.mdc` (an index), then load the themed file its `Detail` column names — that file holds the canonical Do/Don't example and fix pattern. The index's one-line `Fix` cell is a reminder, not a substitute.
-- **F1-F6 hit**: load `.cursor/rules/frontend-security.mdc` for intent and remediation. For direct F5 sinks, `eslint.config.mjs` owns the mechanical catalog.
-- **QC8 hit**: load `.cursor/skills/comment-hygiene/SKILL.md` to cite the specific shape (1-8) and for the worked example when the call is borderline.
+For QC8, use the keep-list in `AGENTS.md`. Load `.cursor/skills/comment-hygiene/SKILL.md` only for a borderline call or to cite a shape number. Flag changed lines and stale adjacent comments inside a changed function, not untouched cleanup.
 
 ## Go backend checks
 
-For PRs touching `pkg/**/*.go`, also check:
+For `pkg/**/*.go` changes, also check:
 
-| What to look for                                      | ID  | Sev      |
-| ----------------------------------------------------- | --- | -------- |
-| Missing error handling (unchecked errors)             | G1  | High     |
-| Resource leak (unclosed connections, files, channels) | G2  | Critical |
-| Goroutine leak (no context cancellation)              | G3  | High     |
-| Data race potential (shared state without sync)       | G4  | Critical |
-| Unsafe input handling (unsanitized user input)        | G5  | High     |
-| Missing context propagation in handlers               | G6  | Medium   |
-| Hardcoded secrets or credentials                      | G7  | Critical |
+| What to look for               | ID  | Sev      |
+| ------------------------------ | --- | -------- |
+| Unchecked error                | G1  | High     |
+| Resource leak                  | G2  | Critical |
+| Goroutine without cancellation | G3  | High     |
+| Unsynchronized shared state    | G4  | Critical |
+| Unsafe input handling          | G5  | High     |
+| Missing context propagation    | G6  | Medium   |
+| Hardcoded secret or credential | G7  | Critical |
 
-**Verification commands:**
-
-- `npm run lint:go` — Go linter passes
-- `npm run test:go` — Go tests pass
-- `go build ./...` — Compiles successfully
-
-## Comment prefixes
-
-Reviewer-internal vocabulary for labelling findings before synthesis. The author-facing report carries only the three dispositions `review-report.mjs` accepts: a `[question]` becomes `blocking` or `suggestion` per the disposition guidance above, and `[security]` and `[react]` become the finding's `concern_id`.
-
-| Prefix         | Meaning                     |
-| -------------- | --------------------------- |
-| `[blocking]`   | Must fix before merge       |
-| `[suggestion]` | Nice to have                |
-| `[question]`   | Seeking clarification       |
-| `[nit]`        | Minor style preference      |
-| `[security]`   | Security concern (F1-F6)    |
-| `[react]`      | React anti-pattern (R1-R21) |
-
-## Disposition
-
-| Disposition            | Criteria                                |
-| ---------------------- | --------------------------------------- |
-| **Approve**            | Meets all standards, no blocking issues |
-| **Approve with minor** | Small suggestions, nothing blocking     |
-| **Request changes**    | Blocking issues must be addressed       |
+Verify `npm run lint:go`, `npm run test:go`, and `go build ./...`.
 
 ## Final review report
 
-The synthesizer emits this `ReviewReport` object after all supplemental checks finish:
+After policy and reconciliation, render one `ReviewReport`:
 
-| Field           | Type   | Rule                                                       |
-| --------------- | ------ | ---------------------------------------------------------- |
-| `pr_url`        | string | Full `https://github.com/<owner>/<repo>/pull/<number>` URL |
-| `pr_title`      | string | Current PR title; the renderer derives a one-line purpose  |
-| `reviewed_head` | string | Full 40-character commit SHA                               |
-| `findings`      | array  | Retained, verified, deduplicated author-facing findings    |
-| `assessment`    | object | Optional; defaults to complete. See Incomplete assessment  |
+| Field           | Rule                                               |
+| --------------- | -------------------------------------------------- |
+| `pr_url`        | Full GitHub pull request URL                       |
+| `pr_title`      | Current title; renderer derives a one-line summary |
+| `reviewed_head` | Full 40-character commit SHA                       |
+| `findings`      | Final author-facing findings                       |
+| `round`         | Explicit integer from 1 through 100                |
+| `deferred`      | Exact `next_deferred` from reconciliation          |
+| `cleared`       | Exact `next_cleared` from reconciliation           |
+| `assessment`    | Optional complete or incomplete status             |
 
-Each `findings` entry contains:
+Each finding contains only `id`, `concern_id`, `disposition`, `severity`, `title`, `problem`, `suggested_action`, and optional `reversibility`. Disposition is `blocking`, `follow_up`, `suggestion`, or `nit`. The report does not carry confidence, reviewer reasoning, or follow-up ownership.
 
-- `id` — stable across re-reviews, and unique within the report
-- `concern_id` — owning concern; rendered compactly and used to route an incremental re-review
-- `disposition` — `blocking | suggestion | nit`
-- `severity` — `critical | high | medium | low`; rendered compactly
-- `title`
-- `problem` — concise evidence and consequence written for the PR author, in one rendered line
-- `suggested_action` — the smallest change that resolves the finding
-- `reversibility` — optional; one of the four reversibility values. The renderer surfaces only `partially_reversible` and `irreversible_without_cleanup`, because only those change what the author must weigh
+`review-report.mjs` validates, sorts by disposition then severity, renders every retained finding, derives the verdict and counts, and emits exactly one marker plus one trailing operator recap. It performs no policy decisions.
 
-This is the complete author-facing vocabulary. `confidence`, skeptic reasoning, and every other reviewer-internal field stay in the debug trace — the renderer has no channel for them, so the synthesizer must not fold them into `problem` as prose.
+Rendering does not authorize publication. Present the complete output to the user and obtain explicit approval before posting it or otherwise mutating GitHub.
 
-Serialize the object to a temporary JSON file and render it with `.cursor/skills/review/scripts/review-report.mjs`. The script validates the schema, orders findings by disposition and then severity, derives the verdict and counts, and emits the final text. Never hand-format around it.
-
-### Incomplete assessment
-
-`assessment` is `{ "status": "complete" }` by default and may be omitted. Set `{ "status": "incomplete", "reason": "<one concise sentence>" }` only when the review could not be completed — a reviewer that could not run, history the scan could not resolve, or a center of gravity the concern registry does not model well enough to assert a merge contract over.
-
-An incomplete report states the reason, claims no mergeability, renders `Verdict: Review Incomplete`, lists any blockers found so far as findings rather than as a merge contract, and publishes no re-review state marker. A complete assessment with zero blockers still states that the PR is mergeable. Coverage gaps that do not undermine the merge claim stay in the debug trace.
-
-### Merge contract
-
-When blockers exist, lead with: `Fix this item and this PR is mergeable.` or `Fix these items and this PR is mergeable.` List every blocking ID before optional findings. Fixing those IDs is the complete merge contract for the reviewed head; a re-review checks them plus the incremental diff for newly introduced risks.
-
-Do not emit headings, summaries, or status lines for processors that returned no findings. Clean tech-debt, documentation-drift, instrumentation, security, contract-evolution, and other lens results remain silent. Avoid repeating the same finding under multiple concern headings unless the cross-concern interaction is itself the problem.
+An incomplete assessment needs one concise reason, claims no mergeability, and emits no marker. A complete report with no blockers says the PR is mergeable.
 
 ### Re-review state
 
-Immediately before the operator recap, a **complete** review emits a hidden `pathfinder-review-state` HTML comment containing version 1, `reviewed_head`, and each blocking finding's ID and owning concern. Only `review-report.mjs --parse-state` may consume it, and only from that trailing position: the parser accepts the marker solely when it occupies its own line directly above a well-formed operator recap, so a marker quoted inside a finding or appended after the recap is never read as state. It accepts either LF or CRLF line endings, because a body edited through the GitHub web UI comes back CRLF-encoded. A malformed, misplaced, or duplicated marker, or a non-ancestor head, disables the incremental fast path.
+The renderer writes version 2 only:
 
-An **incomplete** review emits no marker at all. Its coverage hole is exactly what an incremental baseline must not inherit, so every later review of that PR falls back to a full review.
+```json
+{
+  "version": 2,
+  "round": 3,
+  "reviewed_head": "<40 hex>",
+  "blocking_findings": [{ "id": "B1", "concern_id": "security" }],
+  "deferred": [{ "id": "F1", "concern_id": "documentation-alignment" }],
+  "cleared": [{ "claim": "...", "concern_id": "...", "reason": "..." }]
+}
+```
+
+When that complete value exceeds `MAX_MARKER`, it writes only:
+
+```json
+{
+  "version": 2,
+  "round": 3,
+  "reviewed_head": "<40 hex>",
+  "blocking_findings": [],
+  "deferred": [],
+  "cleared": [],
+  "truncated": true
+}
+```
+
+A truncated marker always forces a full next review. The parser keeps version 1 and legacy `Purpose` recap read compatibility, recap adjacency, strict shape checks, and fail-closed behavior for malformed, duplicated, forged, oversized, or misplaced state. Provenance and ancestor validation remain caller preconditions: suppressive state is honored only from the same reviewer's prior review and only when `reviewed_head` is an ancestor.
 
 ### Operator recap
 
@@ -317,13 +246,13 @@ The last four lines are always:
 
 ```text
 PR Review: https://github.com/grafana/grafana-pathfinder-app/pull/1702
-Purpose: add divider guide blocks
+Summary: add divider guide blocks
 Verdict: Request Changes
-1 blocking, 2 suggestions, 3 nits
+Results: 1 blocker, 5 non-blocking findings, 2 follow-ups
 ```
 
-`Purpose` contains no newline and is capped at 120 characters. The renderer chooses `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Nothing follows the count line.
+Nothing follows the results line. `Summary` is one line of at most 120 characters. `Verdict` is `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Results count current rendered findings: suggestions plus nits are non-blocking findings, and carried deferred IDs without repeated prose are not follow-ups.
 
 ### Debug trace
 
-Routing decisions, clean processor results, coverage gaps without an author action, verification drops, skeptic reasoning, call counts, and stage timings belong in an internal debug trace. Show it only when the user explicitly requests diagnostics.
+Keep routing decisions, clean results, refutations, skeptic reasons, policy reason codes, worker count, skeptic batch count, context characters, full-versus-incremental mode, and timings internal. Show the trace only when the user requests diagnostics.

@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { findTable, unquote } from './registry-table.mjs';
 
+const MAX_WORKER_FILES = 8;
+const MAX_WORKER_CHARACTERS = 30_000;
+
 function splitList(value, separator = ',') {
   if (!value) {
     return [];
@@ -78,6 +81,11 @@ export function extractConcernContext({ routingMarkdown, detailMarkdown, concern
   };
 }
 
+function workerConcernContext(context) {
+  const { id, purpose, review_questions, one_way_doors, verification, contract_anchor, named_invariants } = context;
+  return { id, purpose, review_questions, one_way_doors, verification, contract_anchor, named_invariants };
+}
+
 export function validateConcernRegistry({ routingMarkdown, detailMarkdown }) {
   const tables = registryTables(routingMarkdown, detailMarkdown);
   const errors = [];
@@ -128,8 +136,8 @@ export function validateConcernRegistry({ routingMarkdown, detailMarkdown }) {
       errors.push(`min_signals must be between 1 and 8 for ${id}`);
     }
     const maxContextFiles = Number(row.max);
-    if (!Number.isInteger(maxContextFiles) || maxContextFiles < 1 || maxContextFiles > 20) {
-      errors.push(`max_context_files must be between 1 and 20 for ${id}`);
+    if (!Number.isInteger(maxContextFiles) || maxContextFiles < 1 || maxContextFiles > MAX_WORKER_FILES) {
+      errors.push(`max_context_files must be between 1 and ${MAX_WORKER_FILES} for ${id}`);
     }
     if (splitList(row.trigger_paths).length === 0) {
       errors.push(`trigger_paths must not be empty for ${id}`);
@@ -177,9 +185,167 @@ export function validateConcernRegistry({ routingMarkdown, detailMarkdown }) {
   return errors;
 }
 
+function normalizeContext(context, concern) {
+  if (!Array.isArray(context)) {
+    throw new Error(`context must be an array for ${concern}`);
+  }
+  const byPath = new Map();
+  for (const entry of context) {
+    if (!entry || typeof entry.path !== 'string' || entry.path.length === 0 || typeof entry.excerpt !== 'string') {
+      throw new Error(`each context entry for ${concern} must include path and excerpt`);
+    }
+    const existing = byPath.get(entry.path);
+    if (existing === undefined) {
+      byPath.set(entry.path, entry.excerpt);
+    } else if (existing !== entry.excerpt) {
+      byPath.set(entry.path, `${existing}\n${entry.excerpt}`);
+    }
+  }
+  return [...byPath].map(([path, excerpt]) => ({ path, excerpt }));
+}
+
+function mergeContext(left, right) {
+  return normalizeContext([...left, ...right], 'worker packet');
+}
+
+function contextCharacters(context) {
+  return context.reduce((total, entry) => total + entry.path.length + entry.excerpt.length, 0);
+}
+
+function fitsWorker(context) {
+  return context.length <= MAX_WORKER_FILES && contextCharacters(context) <= MAX_WORKER_CHARACTERS;
+}
+
+function sharedFiles(left, right) {
+  const paths = new Set(left.map(({ path }) => path));
+  return right.filter(({ path }) => paths.has(path)).length;
+}
+
+function workerPacket(id, kind, concern) {
+  return { id, kind, concern_ids: [concern.id], context: concern.context };
+}
+
+function publicWorker(worker) {
+  return {
+    ...worker,
+    files: worker.context.map(({ path }) => path),
+    context_characters: contextCharacters(worker.context),
+  };
+}
+
+export function buildReviewPlan({ mode, concerns, contract_evolution = null, skeptic_batch_count = 0 }) {
+  if (mode !== 'full' && mode !== 'incremental') {
+    throw new Error('mode must be full or incremental');
+  }
+  if (!Array.isArray(concerns) || !Number.isInteger(skeptic_batch_count) || skeptic_batch_count < 0) {
+    throw new Error('concerns must be an array and skeptic_batch_count must be a non-negative integer');
+  }
+  const normalized = concerns.map((concern) => {
+    if (!concern || !/^[a-z0-9-]+$/.test(concern.id ?? '')) {
+      throw new Error('each routed concern must include an id');
+    }
+    return { ...concern, context: normalizeContext(concern.context ?? [], concern.id) };
+  });
+  const duplicate = normalized.find((concern, index) => normalized.findIndex(({ id }) => id === concern.id) !== index);
+  if (duplicate) {
+    throw new Error(`routed concern ${duplicate.id} must be unique`);
+  }
+
+  const generalLimit = mode === 'full' ? 2 : 1;
+  const workers = [];
+  const rootConcernIds = [];
+  const dispatchOrder = [...normalized].sort(
+    (left, right) => Number(right.specialist === 'security') - Number(left.specialist === 'security')
+  );
+  for (const concern of dispatchOrder) {
+    if (!fitsWorker(concern.context)) {
+      rootConcernIds.push(concern.id);
+      continue;
+    }
+    const dedicatedSecurity = concern.specialist === 'security';
+    const candidates = dedicatedSecurity
+      ? []
+      : workers
+          .filter(({ kind }) => kind === 'general')
+          .map((worker) => ({ worker, merged: mergeContext(worker.context, concern.context) }))
+          .filter(({ merged }) => fitsWorker(merged))
+          .sort(
+            (left, right) =>
+              sharedFiles(right.worker.context, concern.context) - sharedFiles(left.worker.context, concern.context)
+          );
+    if (candidates.length > 0) {
+      candidates[0].worker.concern_ids.push(concern.id);
+      candidates[0].worker.context = candidates[0].merged;
+      continue;
+    }
+    const generalCount = workers.filter(({ kind }) => kind === 'general' || kind === 'security').length;
+    if (generalCount < generalLimit) {
+      workers.push(
+        workerPacket(
+          dedicatedSecurity ? 'security' : `general-${generalCount + 1}`,
+          dedicatedSecurity ? 'security' : 'general',
+          concern
+        )
+      );
+    } else {
+      rootConcernIds.push(concern.id);
+    }
+  }
+
+  if (contract_evolution) {
+    const context = normalizeContext(contract_evolution.context ?? [], 'contract evolution');
+    if (!/^[a-z0-9-]+$/.test(contract_evolution.concern_id ?? '') || !fitsWorker(context)) {
+      rootConcernIds.push(`contract-evolution:${contract_evolution.concern_id ?? 'unknown'}`);
+    } else {
+      workers.push({
+        id: 'contract-evolution',
+        kind: 'contract_evolution',
+        concern_ids: [contract_evolution.concern_id],
+        context,
+      });
+    }
+  }
+
+  const publicWorkers = workers.map(publicWorker);
+  const totalLimit = mode === 'full' ? 3 : 2;
+  if (publicWorkers.length > totalLimit || publicWorkers.some((worker) => !fitsWorker(worker.context))) {
+    throw new Error('review plan exceeds its worker or context budget');
+  }
+  const coverage = Object.fromEntries([
+    ...publicWorkers.flatMap((worker) =>
+      worker.concern_ids.map((id) => [
+        worker.kind === 'contract_evolution' ? `contract-evolution:${id}` : id,
+        worker.id,
+      ])
+    ),
+    ...rootConcernIds.map((id) => [id, 'root']),
+  ]);
+  return {
+    mode,
+    workers: publicWorkers,
+    root: { synthesizes: true, concern_ids: rootConcernIds },
+    coverage,
+    debug: {
+      mode,
+      worker_count: publicWorkers.length,
+      skeptic_batch_count,
+      context_characters: {
+        cumulative: publicWorkers.reduce((total, worker) => total + worker.context_characters, 0),
+        maximum: Math.max(0, ...publicWorkers.map(({ context_characters }) => context_characters)),
+      },
+    },
+  };
+}
+
 function main() {
-  const concern = process.argv[2];
-  if (!concern || process.argv.length !== 3) {
+  if (process.argv[2] === '--plan' && process.argv.length === 4) {
+    const input = JSON.parse(readFileSync(process.argv[3], 'utf8'));
+    process.stdout.write(`${JSON.stringify(buildReviewPlan(input), null, 2)}\n`);
+    return;
+  }
+  const workerMode = process.argv[2] === '--worker';
+  const concern = workerMode ? process.argv[3] : process.argv[2];
+  if (!concern || process.argv.length !== (workerMode ? 4 : 3)) {
     throw new Error('Expected one concern id');
   }
   const routingMarkdown = readFileSync(
@@ -190,9 +356,8 @@ function main() {
     fileURLToPath(new URL('../../../../docs/design/CONCERN_DETAILS.md', import.meta.url)),
     'utf8'
   );
-  process.stdout.write(
-    `${JSON.stringify(extractConcernContext({ routingMarkdown, detailMarkdown, concern }), null, 2)}\n`
-  );
+  const context = extractConcernContext({ routingMarkdown, detailMarkdown, concern });
+  process.stdout.write(`${JSON.stringify(workerMode ? workerConcernContext(context) : context, null, 2)}\n`);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

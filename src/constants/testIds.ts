@@ -310,9 +310,6 @@ export const testIds = {
     importCancelButton: 'block-editor-import-cancel',
     importResetButton: 'block-editor-import-reset',
     importDropZone: 'block-editor-import-drop-zone',
-    metadataIdInput: 'block-editor-metadata-id',
-    metadataTitleInput: 'block-editor-metadata-title',
-    metadataSaveButton: 'block-editor-metadata-save',
     previewResetButton: 'block-editor-preview-reset',
   },
 

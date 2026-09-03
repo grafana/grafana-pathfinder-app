@@ -8,6 +8,7 @@ import {
   navmenuOpenCheck,
   getVisibleHighlightTarget,
 } from './dom-utils';
+import { INTERACTIVE_ACTION_TYPES } from '../../types/interactive.types';
 
 // Mock console methods to avoid noise in tests
 const originalConsoleWarn = console.warn;
@@ -113,30 +114,28 @@ describe('extractInteractiveDataFromElement', () => {
     });
   });
 
-  it('should handle missing attributes gracefully', () => {
+  it.each(INTERACTIVE_ACTION_TYPES)('decodes the known "%s" target action', (targetAction) => {
+    const element = document.createElement('div');
+    element.setAttribute('data-targetaction', targetAction);
+
+    expect(extractInteractiveDataFromElement(element)?.targetAction).toBe(targetAction);
+  });
+
+  it('returns null when data-targetaction is missing', () => {
     const element = document.createElement('div');
     element.textContent = 'Simple element';
 
     const result = extractInteractiveDataFromElement(element);
 
-    expect(result).toEqual({
-      refTarget: '',
-      targetAction: '',
-      targetValue: undefined,
-      requirements: undefined,
-      objectives: undefined,
-      skippable: false,
-      lazyRender: undefined,
-      scrollContainer: undefined,
-      openGuide: undefined,
-      tagName: 'div',
-      className: undefined,
-      id: undefined,
-      textContent: 'Simple element',
-      parentTagName: undefined,
-      timestamp: expect.any(Number),
-      customData: undefined,
-    });
+    expect(result).toBeNull();
+  });
+
+  it.each(['', 'unknown', 'quiz'])('rejects the unknown "%s" target action', (targetAction) => {
+    const element = document.createElement('div');
+    element.setAttribute('data-targetaction', targetAction);
+
+    expect(extractInteractiveDataFromElement(element)).toBeNull();
+    expect(console.warn).toHaveBeenCalledWith(`Unknown interactive action: ${targetAction}`, '');
   });
 
   it('should extract custom data attributes', () => {
@@ -148,7 +147,7 @@ describe('extractInteractiveDataFromElement', () => {
 
     const result = extractInteractiveDataFromElement(element);
 
-    expect(result.customData).toEqual({
+    expect(result?.customData).toEqual({
       'custom-attr': 'custom-value',
       'another-attr': 'another-value',
     });

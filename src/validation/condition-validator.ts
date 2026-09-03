@@ -15,6 +15,7 @@
 
 import { FixedRequirementType, ParameterizedRequirementPrefix } from '../types/requirements.types';
 import type { JsonGuide, JsonBlock, JsonStep } from '../types/json-guide.types';
+import { assertExhaustive } from '../lib/assert-exhaustive';
 
 // Maximum number of comma-separated components in a single condition string
 const MAX_CONDITION_COMPONENTS = 10;
@@ -166,6 +167,22 @@ function validateArgumentFormat(
         };
       }
       break;
+
+    case ParameterizedRequirementPrefix.HAS_PERMISSION:
+    case ParameterizedRequirementPrefix.HAS_DATASOURCE:
+    case ParameterizedRequirementPrefix.DATASOURCE_CONFIGURED:
+    case ParameterizedRequirementPrefix.HAS_PLUGIN:
+    case ParameterizedRequirementPrefix.PLUGIN_ENABLED:
+    case ParameterizedRequirementPrefix.HAS_DASHBOARD_NAMED:
+    case ParameterizedRequirementPrefix.HAS_FEATURE:
+    case ParameterizedRequirementPrefix.IN_ENVIRONMENT:
+    case ParameterizedRequirementPrefix.SECTION_COMPLETED:
+    case ParameterizedRequirementPrefix.VARIABLE:
+    case ParameterizedRequirementPrefix.CODA_EXIT_ZERO:
+      break;
+
+    default:
+      assertExhaustive(prefix);
   }
 
   return null;
