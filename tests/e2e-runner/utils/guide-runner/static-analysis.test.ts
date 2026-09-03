@@ -9,7 +9,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-import { countInteractiveBlocks } from './static-analysis';
+import { countInteractiveBlocks, estimateGuideTimeoutFromContent } from './static-analysis';
 
 const FIXTURES = join(__dirname, '../../fixtures');
 
@@ -107,5 +107,18 @@ describe('countInteractiveBlocks', () => {
       ],
     };
     expect(countInteractiveBlocks(guide)).toBe(2);
+  });
+});
+
+describe('estimateGuideTimeoutFromContent', () => {
+  it('adds the guided and multistep action budgets', () => {
+    const content = JSON.stringify({
+      blocks: [
+        { type: 'guided', steps: [{}, {}] },
+        { type: 'multistep', steps: [{}, {}, {}] },
+      ],
+    });
+
+    expect(estimateGuideTimeoutFromContent(content)).toBe(453_000);
   });
 });

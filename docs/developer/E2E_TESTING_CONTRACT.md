@@ -41,6 +41,51 @@ The source-level tripwires live in `src/components/docs-panel/docs-panel.contrac
 
 ---
 
+## Runner guide-load contract
+
+Both runner modes use the exact `bundled:e2e-test` URL. Shared execution does not add a plugin URL format.
+
+The installed plugin reads guide JSON from `StorageKeys.E2E_TEST_GUIDE`. No guide content or bearer token is stored in the URL.
+
+Before each later interactive milestone, the runner uses this replacement sequence:
+
+1. It publishes the completed milestone result.
+2. It navigates to the authored starting location when necessary.
+3. It opens the Pathfinder panel and restores the saved tab strip.
+4. It activates the exact E2E tab that the previous milestone opened.
+5. It dismisses Pathfinder badge celebrations.
+6. It clicks the existing `Reset guide` control.
+7. It waits for `interactive-progress-cleared` with content key `bundled:e2e-test`.
+8. It captures any step roots that appeared during reset.
+9. It closes the E2E guide tab.
+10. It waits until all pre-reset and current step roots detach.
+11. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
+12. It dispatches `pathfinder-auto-open-docs` with `bundled:e2e-test`.
+13. It records the new tab ID.
+14. It waits for the replacement content before step discovery.
+
+If a zero-step guide has no `Reset guide` control, the runner closes its tab directly.
+
+If the previous milestone opened no guide tab, the runner clears stored `bundled:e2e-test` progress. It then skips reset and close actions.
+
+A page reload can clear the active-tab globals. The recorded tab ID lets the runner reactivate a visible or overflowed E2E tab.
+
+The tab close control uses `docs-panel-tab-close-${tabId}`. This test ID is part of the shared runner contract.
+
+The standalone runner and first shared milestone can reload once during panel recovery. A later milestone never reloads during recovery.
+
+If later panel recovery fails, the runner reports infrastructure failure. It does not erase unsaved page state with a reload.
+
+The reset clears Pathfinder progress and its in-memory completion cache. It does not reload the Grafana page.
+
+The same page, browser context, cookies, session storage, form values, and application memory remain active.
+
+This is a runner-only contract. The installed Pathfinder frontend and `bundled:e2e-test` loader remain unchanged.
+
+If this handshake changes, update both runner specs, runner contract tests, and this document in one change.
+
+---
+
 ## Block editor header contract
 
 The block-editor header exposes two stable row testids that responsive e2e tests depend on to assert the two-row layout holds at narrow widths:

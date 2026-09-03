@@ -14,15 +14,17 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 
 ## Source map for agents
 
-- `src/cli/commands/e2e.ts` — Commander options, input resolution, dependency planning, pre-flight orchestration, clean-stack resets, cloud routing, and per-guide Playwright invocation.
+- `src/cli/commands/e2e.ts` — options, input resolution, dependency planning, pre-flight orchestration, environment routing, and Playwright invocation selection.
 - `src/cli/e2e/e2e-local-package.ts` — local path/journey manifest validation, repository loading, milestone expansion, target gating, and guide hydration.
-- `src/cli/e2e/e2e-runner-contract.ts` — environment-variable contract between the CLI process and Playwright runner.
+- `src/cli/e2e/e2e-runner-contract.ts` — environment variables and the validated shared-chain file contract.
 - `src/cli/e2e/e2e-package.ts` — remote package and repository resolution, content fetch, schema validation, side-effect classification, and pre-run skip reasons.
 - `src/cli/e2e/guide-chains.ts` — pure package graph planning across hard dependencies, capabilities, and recursive milestones, followed by leaf-guide hydration.
 - `src/cli/e2e/e2e-targets.ts` — manifest `testEnvironment` to concrete target URL or skip reason.
 - `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
-- `tests/e2e-runner/guide-runner.spec.ts` — browser-side guide loading, pre-flight checks, DOM discovery, step execution, and result file writing.
+- `tests/e2e-runner/guide-runner.spec.ts` — isolated, single-guide wrapper for the reusable guide lifecycle.
+- `tests/e2e-runner/shared-guide-runner.spec.ts` — one-test shared browser session for explicit path and journey selections.
 - `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, browser-termination monitoring, requirement fixing, artifact capture, and failure classification.
+- `tests/e2e-runner/utils/guide-runner/milestone-replacement.ts` — runner-only progress reset and legacy E2E tab replacement.
 - `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
 
 ## Quick start
@@ -144,12 +146,46 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
      - Handle requirements (Fix buttons with retry)
      - Click "Do it" button
      - Wait for completion indicator
-   - Session validated every 5 steps to detect expiry
+   - Session validated before each shared milestone and every 5 steps
 
 5. **Reporting**
    - Console output with real-time progress
    - JSON report when `--output` is specified; non-passing runs also write a default report under `--artifacts`
    - Failure artifacts in `--artifacts` directory
+
+### Shared path and journey sessions
+
+An explicit path or journey selection uses one Playwright test. The test owns one browser context and one primary page.
+
+The first runnable milestone navigates to its starting location. If it has no authored location, it starts at `/`.
+
+A later milestone keeps the current page when it has no authored location. This preserves forms, wizards, cookies, and in-memory application state.
+
+If a later milestone has an authored location, the runner compares the complete path, query, and fragment. It navigates only when these values differ.
+
+Before a later milestone, the runner publishes the prior result and dismisses celebrations. It then uses the existing `Reset guide` control.
+
+The runner waits for progress reset, then closes the tab. It waits for all pre-reset and current step roots to detach.
+
+The runner replaces `StorageKeys.E2E_TEST_GUIDE` and reopens the exact `bundled:e2e-test` URL. A zero-step guide without `Reset guide` closes directly.
+
+This flow is runner-only. It works with an installed Pathfinder plugin that supports only the existing `bundled:e2e-test` URL.
+
+An ordinary guide failure adds that guide to the blocked set. Later milestones still run unless a resolved `depends` edge names a blocked guide.
+
+If a dependency is blocked, the runner emits the existing `SKIPPED_PREREQ` result. Milestone order does not create a dependency.
+
+Authentication expiry or browser-session loss stops the chain. The runner writes zero-step authentication or infrastructure results for all unrun milestones.
+
+Only a 401, a 403, or a login redirect means authentication expired. Network errors, server errors, and browser loss are infrastructure outcomes.
+
+Each planned milestone produces one existing `E2ETestReport`. The reports remain in `MultiGuideReport.reports[]` execution order.
+
+The external report schema remains at `1.0.0`. Shared sessions do not add report fields.
+
+Standalone guides, multiple input files, bundled sweeps, and remote repository sweeps keep separate browser contexts. These modes do not share browser state.
+
+`doIt: false` remains show-only. Shared sessions preserve state from actions that the runner executes. They do not simulate omitted user actions.
 
 ## Requirements and skip behavior
 
@@ -271,7 +307,13 @@ When a step fails, the runner captures:
 - **DOM snapshot**: `{stepId}-dom.html` for selector debugging
 - **Console errors**: `{stepId}-console.json` when the step records console errors
 
-Artifacts are saved to the `--artifacts` directory (or a temp directory by default). With `--always-screenshot`, the runner also captures pre-step screenshots, success screenshots, and a final screenshot. `--trace` records a Playwright trace in a retained per-invocation output directory and surfaces the trace path in CLI output. Non-trace Playwright output directories are removed after each invocation. Trace capture is disabled for bearer-token-authenticated cloud runs because Playwright traces can contain authorization headers, cookies, and temporary credentials.
+Artifacts are saved to the `--artifacts` directory (or a temporary directory by default). Shared runs use one subdirectory per milestone.
+
+With `--always-screenshot`, the runner also captures pre-step screenshots, success screenshots, and a final screenshot.
+
+`--trace` records one Playwright trace for the invocation and shows its path. The runner removes non-trace Playwright output directories.
+
+Trace capture is disabled for bearer-token cloud runs. Traces can contain authorization headers, cookies, and temporary credentials.
 
 ## Guided-block test guide
 
@@ -321,9 +363,11 @@ Before running, the CLI builds an execution plan from a `repository.json` index 
 - Missing milestones, incompatible targets, and cycles crossing `depends` and `milestones` fail before Grafana provisioning or Playwright execution.
 - The metapackage cover `content.json` is not executed; only leaf guides are sent to Playwright.
 
-After a guide passes, the runner carries its final passed step location to the next guide in that chain. The location includes its path, query, and fragment. It must use the same origin as the Grafana target.
+For isolated guide invocations, the runner carries a passed guide's final location to the next guide. The location includes its path, query, and fragment.
 
 An explicit manifest `startingLocation` always takes precedence. A failed guide, a skipped final step, an unsafe final URL, or a zero-step guide does not replace the carried location. Each new chain starts without a carried location, so omitted metadata falls back to `/`.
+
+Explicit path and journey runs do not use this URL-only handoff. They keep the current page in one browser session.
 
 This ordering applies to every run. `--clean` additionally isolates each chain in its own environment (see below).
 
@@ -473,20 +517,22 @@ jobs:
 
 These variables are consumed by the CLI or passed to the spawned Playwright process. You generally do not need to set runner variables directly — the CLI sets them from its own flags and defaults.
 
-| Variable                | Description                                                                    | Default                 |
-| ----------------------- | ------------------------------------------------------------------------------ | ----------------------- |
-| `GUIDE_JSON_PATH`       | Path to JSON guide file                                                        | Required                |
-| `GRAFANA_URL`           | Grafana instance URL                                                           | `http://localhost:3000` |
-| `STARTING_LOCATION`     | Effective same-origin start path from the manifest, current chain, or `/`      | `/`                     |
-| `AUTH_STATE_FILE`       | Per-guide Playwright storage-state path for form-login auth                    | Temporary CLI path      |
-| `GRAFANA_TOKEN`         | Opaque Bearer credential sent only to the Grafana target origin                | Unset (form login)      |
-| `E2E_VERBOSE`           | Enable verbose logging                                                         | `false`                 |
-| `E2E_TRACE`             | Generate Playwright trace file                                                 | `false`                 |
-| `ABORT_FILE_PATH`       | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
-| `RESULTS_FILE_PATH`     | Path where the runner writes step results for JSON reporting                   | Temporary CLI path      |
-| `ARTIFACTS_DIR`         | Directory for screenshots, DOM snapshots, and related artifacts                | `/tmp/pathfinder-e2e-*` |
-| `ALWAYS_SCREENSHOT`     | Capture screenshots on success and failure                                     | `false`                 |
-| `E2E_TRACE_OUTPUT_FILE` | Path where the runner records the generated Playwright trace artifact location | Temporary CLI path      |
+| Variable                      | Description                                                                    | Default                 |
+| ----------------------------- | ------------------------------------------------------------------------------ | ----------------------- |
+| `GUIDE_JSON_PATH`             | Path to JSON guide file                                                        | Required                |
+| `E2E_CHAIN_INPUT_PATH`        | Path to validated input for an explicit path or journey                        | Shared runs only        |
+| `GRAFANA_URL`                 | Grafana instance URL                                                           | `http://localhost:3000` |
+| `STARTING_LOCATION`           | Effective same-origin start path from the manifest, current chain, or `/`      | `/`                     |
+| `AUTH_STATE_FILE`             | Per-invocation Playwright storage-state path for form-login auth               | Temporary CLI path      |
+| `GRAFANA_TOKEN`               | Opaque Bearer credential sent only to the Grafana target origin                | Unset (form login)      |
+| `E2E_VERBOSE`                 | Enable verbose logging                                                         | `false`                 |
+| `E2E_TRACE`                   | Generate Playwright trace file                                                 | `false`                 |
+| `ABORT_FILE_PATH`             | Path where the runner writes abort reason metadata                             | Temporary CLI path      |
+| `RESULTS_FILE_PATH`           | Path where the isolated runner writes step results                             | Temporary CLI path      |
+| `E2E_CHAIN_RESULTS_FILE_PATH` | Path where the shared runner atomically writes ordered milestone results       | Shared runs only        |
+| `ARTIFACTS_DIR`               | Directory for screenshots, DOM snapshots, and related artifacts                | `/tmp/pathfinder-e2e-*` |
+| `ALWAYS_SCREENSHOT`           | Capture screenshots on success and failure                                     | `false`                 |
+| `E2E_TRACE_OUTPUT_FILE`       | Path where the runner records the generated Playwright trace artifact location | Temporary CLI path      |
 
 For cloud targets, pass `--cloud-instance-admin-token host=ENV_VAR_NAME`; the named env var contains an admin service-account token for that exact host. The env var name is user-defined, for example `GRAFANA_PLAY_ADMIN_TOKEN`.
 
@@ -521,6 +567,30 @@ Use CLI output to determine where the fix belongs:
 | Infrastructure | Grafana, auth, networking, pool capacity, or environment setup failed  | Test environment or guide-health operators |
 
 When the failure is not clearly a runner or contract bug, avoid changing Pathfinder code just to make a guide pass. Update the guide, the test environment, or the backend guide-health platform instead.
+
+## Shared-session fixture
+
+The fixture at `tests/e2e-runner/fixtures/shared-session-path/` contains two milestones. The first milestone enters an unsaved configuration value.
+
+The second milestone requires the exact value without an authored starting location. Its observational step cannot create the missing state.
+
+The marker is `https://shared-session.invalid/exact-browser-marker`. It does not enter the page URL, local storage, or server configuration.
+
+Build the CLI before you run the fixture:
+
+```bash
+npm run build:cli
+node dist/cli/cli/index.js e2e \
+  --package tests/e2e-runner/fixtures/shared-session-path \
+  --repository tests/e2e-runner/fixtures/shared-session-path/repository.json
+```
+
+Use the verifier to run the shared path and the isolated negative case:
+
+```bash
+GRAFANA_URL=http://localhost:3000 \
+  bash tests/e2e-runner/fixtures/shared-session-path/verify.sh
+```
 
 ## Remote package-aware testing
 
