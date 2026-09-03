@@ -47,18 +47,17 @@ The **JSON** view edits the complete guide document. Invalid JSON or an invalid 
 
 The primary action button in the header follows the guide's lifecycle:
 
-| Current state           | Primary button    | What it does                                                                 |
-| ----------------------- | ----------------- | ---------------------------------------------------------------------------- |
-| Not saved               | **Save as draft** | Saves to the backend as a draft. Assigns a resource name if not already set. |
-| Draft — no changes      | **Publish**       | Makes the guide live in the docs panel.                                      |
-| Draft — unsaved changes | **Update draft**  | Saves the latest changes to the draft without publishing.                    |
-| Published               | **Update**        | Pushes the latest changes to the live published guide.                       |
+| Current state           | Primary button | What it does                                                                 |
+| ----------------------- | -------------- | ---------------------------------------------------------------------------- |
+| Not saved               | **Save**       | Saves to the backend as a draft. Assigns a resource name if not already set. |
+| Draft — no changes      | **Publish**    | Makes the guide live in the docs panel.                                      |
+| Draft — unsaved changes | **Save**       | Saves the latest changes to the draft without publishing.                    |
+| Published               | **Update**     | Pushes the latest changes to the live published guide.                       |
 
 The **•••** menu provides the alternative action:
 
-- When the primary is **Update draft** → the menu offers **Publish** (skip the draft update and go live directly).
+- When the guide is not saved or is a modified draft → the menu offers **Publish** (save and go live directly).
 - When published → the menu offers **Unpublish** (revert to draft, removing it from the docs panel).
-- When not saved → the menu offers **Publish** (save and go live in one step).
 
 Every save stamps a derived `spec.manifest`, so a guide authored here is a complete package rather than bare content. One consequence is worth knowing while authoring: when the first block that declares an `on-page:` requirement names an absolute path, and nothing navigates before it, that path is saved as the guide's starting location, and a reader who opens the guide somewhere else is prompted to navigate there first. Remove the requirement and the prompt goes with it. The prompt does not reach a guide opened from inside a learning path; [`EXTERNAL_API.md`](EXTERNAL_API.md#manifest) lists the launch routes it does reach. Which manifest fields the derivation owns, and which it inherits untouched, is under [external import](#external-import-ci--terraform--scripts).
 
