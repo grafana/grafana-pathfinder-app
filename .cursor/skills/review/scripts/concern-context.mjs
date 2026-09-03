@@ -252,8 +252,9 @@ function firedContractGates(contract_evolution) {
   }
   const listed = Array.isArray(contract_evolution);
   const gates = listed ? contract_evolution.filter(Boolean) : [contract_evolution];
-  for (const key of duplicateValues(gates.map((gate) => gate.concern_id ?? 'unknown'))) {
-    throw new Error(`fired contract gate ${key} must be unique`);
+  const duplicate = duplicateValues(gates.map((gate) => gate.concern_id ?? 'unknown'))[0];
+  if (duplicate !== undefined) {
+    throw new Error(`fired contract gate ${duplicate} must be unique`);
   }
   for (const gate of listed ? gates : []) {
     validateGateRanking(gate);
