@@ -239,6 +239,26 @@ export default defineConfig([
   },
 
   // ---------------------------------------------------------------------------
+  // Unreachable and vacuous code (Epic #603)
+  // `@grafana/eslint-config` does not extend eslint:recommended, so none of
+  // these ship by default. TypeScript's `noUnusedLocals` reports unused
+  // bindings inside a dead branch but never the dead branch itself, and a
+  // `@ts-expect-error` silences it entirely — so nothing else in the toolchain
+  // catches unreachable code. All five are at zero violations repo-wide, and
+  // `src/validation/dead-code-lint-config.test.ts` fails if a later config
+  // block downgrades or shadows them.
+  // ---------------------------------------------------------------------------
+  {
+    rules: {
+      'no-unreachable': 'error',
+      'no-unreachable-loop': 'error',
+      'no-constant-condition': 'error',
+      'no-dupe-else-if': 'error',
+      'no-useless-return': 'error',
+    },
+  },
+
+  // ---------------------------------------------------------------------------
   // Phase 5: Import boundary rules (Epic #603)
   // Encode the tier model as lint rules. Known violations have targeted
   // suppression comments referencing ALLOWED_*_VIOLATIONS in

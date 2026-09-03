@@ -172,6 +172,55 @@ describe('completion write cross-tab storage', () => {
   });
 });
 
+describe('completion write storage with localStorage unavailable', () => {
+  it('still drops an item from the volatile overlay when removeItem throws', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota exceeded');
+    });
+    store.put(item('volatile'));
+    expect(store.list().map((entry) => entry.id)).toEqual(['volatile']);
+
+    jest.spyOn(Storage.prototype, 'removeItem').mockImplementationOnce(() => {
+      throw new Error('storage blocked');
+    });
+
+    expect(() => store.remove('volatile')).not.toThrow();
+    expect(store.list()).toEqual([]);
+  });
+
+  it('still empties the volatile overlay when the prefix sweep throws', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota exceeded');
+    });
+    store.put(item('volatile'));
+
+    const key = jest.spyOn(Storage.prototype, 'key').mockImplementation(() => {
+      throw new Error('storage blocked');
+    });
+
+    expect(() => store.clear()).not.toThrow();
+    key.mockRestore();
+    expect(store.list()).toEqual([]);
+  });
+
+  it('drops the lease-persisted flag when releaseLease cannot read storage', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    expect(store.acquireLease(0).acquired).toBe(true);
+
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementationOnce(() => {
+      throw new Error('storage blocked');
+    });
+    expect(() => store.releaseLease()).not.toThrow();
+
+    // leasePersisted is cleared even though the read threw, so a lease that has
+    // since vanished no longer reads as takeover-or-clear and renewal proceeds.
+    localStorage.clear();
+    expect(store.renewLease(1)).toBe(true);
+  });
+});
+
 describe('completion write corruption recovery (CF-02)', () => {
   function itemKeyFor(id: string): string {
     const key = Object.keys(localStorage).find((k) => k.endsWith(`:item:${id}`));
