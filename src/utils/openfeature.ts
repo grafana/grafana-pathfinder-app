@@ -6,6 +6,15 @@ import { config } from '@grafana/runtime';
 import { TrackingHook, reportFeatureFlagExposure } from './openfeature-tracking';
 import { StorageKeys } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
+import {
+  EXPERIMENT_VARIANTS,
+  type ExperimentConfig,
+  type HighlightedGuideConfig,
+  type HighlightedGuideDocType,
+} from '../types/openfeature.types';
+
+export { EXPERIMENT_VARIANTS };
+export type { ExperimentConfig, HighlightedGuideConfig, HighlightedGuideDocType };
 
 // ============================================================================
 // TYPES
@@ -24,49 +33,6 @@ type FeatureFlag =
   | { valueType: 'object'; values: readonly JsonValue[]; defaultValue: JsonValue; trackingKey?: string }
   | { valueType: 'number'; values: readonly number[]; defaultValue: number; trackingKey?: string }
   | { valueType: 'string'; values: readonly string[]; defaultValue: string; trackingKey?: string };
-
-export const EXPERIMENT_VARIANTS = ['excluded', 'control', 'treatment'] as const;
-
-/**
- * Experiment configuration returned by GOFF
- * Contains both the variant assignment and target pages for auto-open
- *
- * @param variant - The experiment variant assignment
- * @param pages - Target pages where sidebar should auto-open (for treatment)
- * @param resetCache - When toggled true, clears session storage to allow sidebar to auto-open again
- */
-export interface ExperimentConfig {
-  variant: (typeof EXPERIMENT_VARIANTS)[number];
-  pages: string[];
-  resetCache?: boolean;
-}
-
-/**
- * Highlighted-guide experiment configuration
- *
- * Drives the once-per-browser A/B test that opens the Pathfinder sidebar on a
- * matched Grafana page and surfaces a specific guide in the Featured slot.
- * Both `control` and `treatment` arms keep Pathfinder visible (this is the
- * key difference from the existing `pathfinder.experiment-variant` flag, whose
- * `control` arm hides the sidebar).
- *
- * @param variant - 'control' and 'treatment' both trigger sidebar-open + injection; 'excluded' is no-op
- * @param pages - URL path patterns where the sidebar should open (empty array ⇒ no match, NOT all pages)
- * @param guideId - Doc id or shorthand: 'bundled:<id>' | 'api:<id>' | 'backend-guide:<id>' | full URL
- * @param autoOpen - When false, only the Featured-slot injection runs (no auto-open of the sidebar)
- * @param resetCache - When toggled true, clears the once-per-browser markers so auto-open re-fires
- * @param docType - Optional override for the Featured-card type. When omitted, `findDocPage`
- *                  infers the type from the URL pattern. Set explicitly when the inference is
- *                  wrong (e.g. a `/docs/learning-paths/...` URL that should open as a learning
- *                  journey, not a single docs page).
- */
-export type HighlightedGuideDocType = 'docs-page' | 'learning-journey' | 'interactive';
-
-export interface HighlightedGuideConfig extends ExperimentConfig {
-  guideId: string;
-  autoOpen: boolean;
-  docType?: HighlightedGuideDocType;
-}
 
 /**
  * Default highlighted-guide config when flag is not set or errors.

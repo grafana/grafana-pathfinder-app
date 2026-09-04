@@ -1,5 +1,6 @@
-import type { ResolvedPathfinderConfig } from '../hooks/usePathfinderPluginConfig';
-import type { HighlightedGuideConfig } from '../utils/openfeature';
+import type { ResolvedPathfinderConfig } from '../constants';
+
+import type { HighlightedGuideConfig } from './openfeature.types';
 
 interface ExposureMarker {
   key: string;

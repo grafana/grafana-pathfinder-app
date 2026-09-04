@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePluginContext } from '@grafana/data';
-import { DocsPluginConfig, getConfigWithDefaults } from '../constants';
+import { DocsPluginConfig, getConfigWithDefaults, type ResolvedPathfinderConfig } from '../constants';
 import { PATHFINDER_CONFIG_UPDATED_EVENT } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import pluginJson from '../plugin.json';
 import { fetchPluginJsonData } from '../utils/utils.plugin';
 
-export type ResolvedPathfinderConfig = ReturnType<typeof getConfigWithDefaults>;
+export type { ResolvedPathfinderConfig } from '../constants';
 
 export interface PathfinderPluginConfigState {
   config: ResolvedPathfinderConfig;
