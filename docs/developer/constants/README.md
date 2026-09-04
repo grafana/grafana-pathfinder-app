@@ -8,7 +8,6 @@ The constants directory is organized into specialized files that separate concer
 
 - **UI/DOM constants** for selectors and display configuration
 - **Interactive guide constants** for timing, behaviors, and action types
-- **Editor constants** for the WYSIWYG guide authoring experience
 - **Z-index constants** for overlay stacking management
 - **Test ID constants** for Playwright e2e testing selectors
 

@@ -6,10 +6,7 @@
  */
 
 // Types
-export type { RecordedStep, StepDefinition, SelectorInfo, ExtractedSelector } from './dev-tools.types';
-
-// Step parser utilities
-export { parseStepString, formatStepsToString, extractSelector } from './step-parser.util';
+export type { RecordedStep, SelectorInfo, ExtractedSelector } from './dev-tools.types';
 
 // Selector generator
 export type { SelectorGenerationResult } from './selector-generator.util';

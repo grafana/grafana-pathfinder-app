@@ -14,12 +14,6 @@ export interface RecordedStep {
   groupId?: string;
 }
 
-export interface StepDefinition {
-  action: string;
-  selector: string;
-  value?: string;
-}
-
 export interface SelectorInfo {
   method: string;
   isUnique: boolean;
