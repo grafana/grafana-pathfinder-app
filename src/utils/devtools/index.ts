@@ -8,16 +8,6 @@
 // Types
 export type { RecordedStep, StepDefinition, SelectorInfo, ExtractedSelector } from './dev-tools.types';
 
-// Tutorial exporter
-export type { MultistepGroup, ExportStep, ExportOptions } from './tutorial-exporter';
-export {
-  exportStepsToHTML,
-  combineStepsIntoMultistep,
-  combineStepsIntoGuided,
-  detectMultistepGroups,
-  exportAsFullHTML,
-} from './tutorial-exporter';
-
 // Step parser utilities
 export { parseStepString, formatStepsToString, extractSelector } from './step-parser.util';
 
