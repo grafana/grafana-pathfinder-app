@@ -83,6 +83,83 @@ boundary** — the learner has full shell access to the same VM. Use `PATHFINDER
 Classify failures with `isNotReady` / `isRoleForbidden` / `isUnavailable`, never by matching on the
 message. Several distinct failures share a status.
 
+## gcx credentials
+
+`terminal-connect` with `gcx: true` installs a Grafana credential into the VM after the terminal
+connects, so the `gcx` CLI in every sandbox image can talk to this Grafana as the learner.
+`provisionGcx(sessionId, { token? })` in `coda-api.ts` wraps the SDK call, because this module owns the
+only `CodaClient` instance.
+
+**Minting happens in the browser and cannot move into the plugin.** Grafana refuses to create a service
+account whose role exceeds the caller's own, and a plugin's managed service account has no basic role,
+so the backend can mint nothing usable — by design, not an oversight. Do not "simplify" this by asking
+the Coda backend to mint.
+
+**Never ship a mint-only UI.** `serviceaccounts:create` is Admin by default while sessions are open to
+Editors, so most people who can open a terminal cannot mint. `mint_forbidden` is a **branch** — reveal a
+token field — not an error to surface raw. Use `isMintForbidden`, never a status or message match.
+
+**Never treat an unread service account as an absent one.** Pathfinder names the mint account itself
+(`coda-gcx-u<userId>` in `gcx-service-account.ts`) because the client's login-derived default collides,
+and the client reuses an exact name match without checking its role. The preflight therefore fails
+closed: it compares against the caller's *live* role from `/api/user/orgs`, not `config.bootData`, and a
+lookup that cannot answer refuses — `mint_forbidden` for Grafana's own `403`, else the retryable
+`service_account_check_unavailable`. Do not restore a `catch { return; }` there.
+
+**Only a minted token's role and lifetime are ours to claim.** A pasted token is forwarded unchanged and
+opaque to us, so keep the role cap and the expiry claim attached to the mint path and ask for least
+privilege next to the field.
+
+**Do not complete the step on connection alone.** With `gcx` set, the step is done when the credential is
+in; ticking it off at `connected` marks success while every command it exists to enable would still fail
+unauthenticated.
+
+**Do Section must stop at a gcx step, via `pausesSectionRun`.** `executeInteractiveAction` has no
+`terminal-connect` case, so the runner takes its `default:` branch and *reports success* — and the step's
+own `executeStep` handle is not the guard, because `refTarget: 'none'` means no ref is ever attached to
+it. `TERMINAL_CONNECT_STEP_SCHEMA` therefore sets `pausesSectionRun: props.gcx === true`. See
+`.cursor/rules/tracked-step-types.mdc`.
+
+**A `404` on the credential route means an old plugin, not a bad session.** There is no capability flag
+for it — `features` is still `["exec.readyFile"]` — and the call only ever follows a session we just
+connected, so `session_not_found` there is read as "Coda plugin predates 1.3.0". Do not do version
+arithmetic on `pluginVersion` instead.
+
+**The flow is shared and lives in tier 3.** `useGcxCredential.hook.ts` and `GcxSetupPanel.tsx` sit in
+`integrations/coda/` because `TerminalPanel` (tier 3) cannot import from `components/` (tier 4). Do not
+move them up; add consumers instead. The hook takes `onReady` rather than calling `markComplete` itself —
+step semantics do not belong in it.
+
+**The credential state is module-scoped and keyed to the session.** `gcx-credential-store.ts`, not
+component state: the guide step and the toolbar offer the same install, and Grafana rejects a second
+`coda-<sessionId>` token on the name, so two independent copies would let one surface mint over the
+other. `onReady` fires for whichever surface installed it. `TerminalProvider` calls
+`invalidateGcxCredentialForSession` when the registered session id changes, because a reconnect
+provisions a fresh VM that holds no credential — reporting the old one would name a box that is gone. A
+`null` id is only a disconnect and does not discard it.
+
+**Never answer OSC 10/11/12.** xterm replies through `onData`, `onData` goes to the PTY, and a late reply
+is echoed by the shell as text. `TerminalPanel` registers suppressing handlers after `open()`; keep them.
+
+**A refusal must not dead-end a guide.** The terminal is connected either way, so offer "Continue
+without gcx" and let `is-terminal-active` steps proceed.
+
+## A connecting terminal must re-open the requirement
+
+`is-terminal-active` and `coda-exit-zero:` read live module state, so they can see a connection — but
+nothing tells them to look again when one arrives. The checker runs outside React, the heartbeat polls
+only DOM-fragile requirements, and retries are bounded. `TerminalProvider` therefore dispatches
+`TERMINAL_STATUS_CHANGED_EVENT` (declared with every other `pathfinder-*` window event in
+`lib/event-names.ts`) and `step-checker.hook.ts` rechecks blocked steps on it.
+
+**Only steps that read the terminal subscribe.** Every step in the guide holds one of these listeners and
+a reconnect is three status changes, so an ungated listener runs a full requirements check for every
+blocked step in the guide, three times, for a connect that concerns two of them.
+
+**Do not drop the event when a check is in flight.** It is a one-shot; a status that arrives mid-check is
+stored in `pendingTerminalRecheckRef` and drained when the check settles. `openTerminal` reconnects on a
+100 ms timer, so `disconnected → connecting → connected` really can land inside one check.
+
 ## Availability gating
 
 The terminal is optional, so `grafana-coda-app` is **not** a declared plugin dependency. Availability
@@ -90,17 +167,23 @@ is resolved at runtime:
 
 | Gate | Where |
 |------|-------|
-| `jsonData.enableCodaTerminal` | Pathfinder's own setting (default `false`) |
+| `isCodaTerminalEnabled(pluginConfig, userId)` | `src/utils/coda-enablement.ts` — `flag \|\| (isDevModeEnabled(…) && enableCodaTerminal)` |
 | `useCodaPluginAvailable()` | `isAppPluginInstalled('grafana-coda-app')` from boot data, then `isAppPluginEnabled` — cached per page load |
-| `isDevMode` | terminal panel only |
 
-`docs-panel.tsx` needs all three; `BlockPalette.tsx` needs the first two. `useCodaTerminalGate()`
-bundles the first two as one verdict (`checking` / `disabled` / `plugin-missing` / `configured`) for
-callers that need to *say* which one is unmet. Never assume the plugin is present — every failure path
-must degrade quietly.
+`useCodaTerminalGate()` bundles both as one verdict (`checking` / `disabled` / `plugin-missing` /
+`configured`) for callers that need to *say* which one is unmet. Never assume the plugin is present —
+every failure path must degrade quietly.
 
-**The first gate is enforced before the probe, not just around its consumer.** `enableCodaTerminal`
-is off by default, so an installation that never turned the terminal on asks nothing about Coda at all.
+**The first gate is one expression, and every caller shares it.** `docs-panel.tsx` used to read
+`isDevMode && enableCodaTerminal` while `useCodaTerminalGate()` read `enableCodaTerminal` alone, so on
+a stack with the setting on and dev mode off blocks reported `configured` and offered controls that
+dead-ended on "the sandbox terminal is not available here" (`panel-not-registered`). Route a new call
+site through `isCodaTerminalEnabled`; do not rebuild the expression. `pathfinder.coda-terminal` is the
+flag half — it enables Coda on its own, and on the configuration page it is display-only, so a save
+never persists the value it forces.
+
+**The first gate is enforced before the probe, not just around its consumer.** Both halves are off by
+default, so an installation that never turned the terminal on asks nothing about Coda at all.
 `useCodaPluginAvailability(shouldProbe)` and `useCodaSessionEligibility(shouldLoad)` take the caller's
 own gate — both parameters are **required**, so a new call site cannot reintroduce an ungated probe by
 omission — and `useCodaTerminalGate()` feeds `enabled` into the first. `useCodaOptions` reads the gate
@@ -119,7 +202,7 @@ served by core's own `@grafana/runtime` and does not exist before 13.1, where it
 rather than rejecting. Nothing else in the path needs it — the SDK uses only `getBackendSrv().fetch`
 and `getGrafanaLiveSrv` — so the sandbox would otherwise work on 12.3–13.0. This floor is deliberately
 **not** in `plugin.json`: `grafanaDependency` stays `>=12.3.0-0` because raising it would block the
-whole plugin from installing for an optional, dev-mode-gated feature. `isCodaProbeSupported()` is the
+whole plugin from installing for an optional, off-by-default feature. `isCodaProbeSupported()` is the
 one place that distinguishes "cannot ask" from "plugin absent"; anything that explains unavailability
 to an operator must call it, or it reports a missing plugin on a stack where the plugin is fine.
 
@@ -144,7 +227,9 @@ on a connection must check `isTerminalRegistered` or it hangs (issue #1541).
 
 | File | Purpose |
 |------|---------|
-| `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `sessionChannelAddress` |
+| `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `provisionGcx`, `sessionChannelAddress` |
+| `src/integrations/coda/gcx-credential-store.ts` | One gcx credential per session, shared by the step and the toolbar; session-keyed invalidation |
+| `src/integrations/coda/gcx-service-account.ts` | Names the mint account on the numeric user id, and the fail-closed role preflight before a mint |
 | `src/integrations/coda/useTerminalLive.hook.ts` | Live subscription, publish, animated provision progress bar, 35 s handshake timeout |
 | `src/integrations/coda/TerminalContext.tsx` | Shared context (`isTerminalRegistered`, `error`) + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` for the requirements checker |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |
@@ -185,6 +270,7 @@ migrated across plugins**, so operators must re-enter their enrollment key there
 | `vmTemplate` | `""` (→ `vm-aws`) | VM template to provision |
 | `vmApp` | `""` | App name for `vm-aws-sample-app` |
 | `vmScenario` | `""` | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
+| `gcx` | `false` | Also install a gcx credential — see above |
 
 ## Constraints
 

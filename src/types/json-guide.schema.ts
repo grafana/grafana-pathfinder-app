@@ -631,6 +631,7 @@ export const JsonTerminalConnectBlockSchema = z.object({
   vmTemplate: z.string().optional().describe('VM template to provision'),
   vmApp: z.string().optional().describe('App to launch in the VM'),
   vmScenario: z.string().optional().describe('Scenario to run in the VM'),
+  gcx: z.boolean().optional().describe('Also install a Grafana credential so the gcx CLI can be used'),
   ...AuthorAnnotatedSchema.shape,
 });
 
@@ -1317,6 +1318,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'vmTemplate',
     'vmApp',
     'vmScenario',
+    'gcx',
     'authorNote',
   ]),
   'code-block': new Set([

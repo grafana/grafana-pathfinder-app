@@ -20,6 +20,7 @@ import {
 } from '../../constants';
 import { fetchPluginJsonData, updatePluginSettings } from '../../utils/utils.plugin';
 import { isDevModeEnabled, toggleDevMode } from '../../utils/dev-mode';
+import { isCodaTerminalForcedByFlag } from '../../utils/coda-enablement';
 import { logger } from '../../lib/logging';
 import { config } from '@grafana/runtime';
 import { CodaBackendStatus } from './CodaBackendStatus';
@@ -106,6 +107,10 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
 
   // Check if dev mode is enabled for THIS user (synchronous)
   const devModeEnabledForUser = isDevModeEnabled(resolvedJsonData || {}, currentUserId);
+
+  // `state` stays untouched by the flag, so a save writes the stack's own value.
+  const codaForcedByFlag = isCodaTerminalForcedByFlag();
+  const codaTerminalShown = codaForcedByFlag || state.enableCodaTerminal;
   const [devModeToggling, setDevModeToggling] = useState<boolean>(false);
 
   // Assistant dev mode state
@@ -553,13 +558,16 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
           </FieldSet>
         )}
 
-        {/* Coda Terminal (interactive sandbox) - Dev Mode Only */}
-        {devModeEnabledForUser && (
+        {(devModeEnabledForUser || codaForcedByFlag) && (
           <FieldSet
             label={
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 Coda terminal (interactive sandbox)
-                <Badge text="Experimental - Dev Mode Only" color="orange" />
+                {codaForcedByFlag ? (
+                  <Badge text="Experimental - feature flag" color="blue" />
+                ) : (
+                  <Badge text="Experimental - Dev Mode Only" color="orange" />
+                )}
               </div>
             }
             className={s.marginTopXl}
@@ -568,7 +576,8 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
               <Switch
                 id="enable-coda-terminal"
                 data-testid={testIds.appConfig.codaTerminalToggle}
-                value={state.enableCodaTerminal}
+                value={codaTerminalShown}
+                disabled={codaForcedByFlag}
                 onChange={onToggleCodaTerminal}
               />
               <div className={s.toggleLabels}>
@@ -579,10 +588,16 @@ const ConfigurationForm = ({ plugin }: ConfigurationFormProps) => {
                   Show a collapsible terminal panel at the bottom of the Interactive learning sidebar for running
                   commands in a sandbox environment
                 </Text>
+                {codaForcedByFlag && (
+                  <Text variant="bodySmall" color="secondary">
+                    Turned on by the pathfinder.coda-terminal feature flag. This Grafana&rsquo;s own setting is left
+                    unchanged, so the terminal goes away again when the flag is turned off.
+                  </Text>
+                )}
               </div>
             </div>
 
-            <CodaBackendStatus enabled={state.enableCodaTerminal} className={s.marginTop} />
+            <CodaBackendStatus enabled={codaTerminalShown} className={s.marginTop} />
           </FieldSet>
         )}
 

@@ -116,6 +116,10 @@ export enum UserInteraction {
   AlignmentPromptConfirmed = 'alignment_prompt_confirmed',
   AlignmentPromptDismissed = 'alignment_prompt_dismissed',
 
+  // Sandbox gcx credentials
+  GcxCredentialInstalled = 'gcx_credential_installed',
+  GcxSetupSkipped = 'gcx_setup_skipped',
+
   // AI auto-heal
   AiFixOffered = 'ai_fix_offered',
   AiFixAccepted = 'ai_fix_accepted',

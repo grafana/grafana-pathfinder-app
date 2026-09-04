@@ -498,6 +498,7 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
 - `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
 - `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
+- `src/integrations/coda/GcxSetupPanel.contract.test.tsx` - gcx credential test IDs, source references, and the form's visibility states
 
 ### Pattern: Dual Assertion
 
@@ -647,6 +648,46 @@ await skipButton.click();
 // Wait for a terminal state before treating the step as skipped.
 await page.waitForSelector('[data-step-id="my-step"][data-test-step-state="completed"]');
 ```
+
+---
+
+### gcx credential setup
+
+A `terminal-connect` block with `gcx: true` does not finish at `connected`: the step stays incomplete
+until a credential is installed, so a runner that waits only for the connection hangs. The same form
+appears in the terminal toolbar's **gcx** modal, keyed by fixed ids rather than a step id.
+
+| Control                       | Step id (`testIds.interactive.*`)          | Toolbar id (`testIds.codaTerminal.*`) | Rendered when                                                         |
+| ----------------------------- | ------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------- |
+| Open the toolbar modal        | —                                          | `coda-terminal-gcx`                   | The terminal is connected                                             |
+| Mint a token                  | `interactive-gcx-mint-${stepId}`           | `coda-terminal-gcx-mint`              | No mint has been refused for this session yet                         |
+| Paste a token                 | `interactive-gcx-token-${stepId}`          | `coda-terminal-gcx-token`             | Always, while the form is shown — the paste path is primary           |
+| Pasted-token lifetime warning | `interactive-gcx-token-lifetime-${stepId}` | `coda-terminal-gcx-token-lifetime`    | Always, while the form is shown                                       |
+| Install the pasted token      | `interactive-gcx-install-${stepId}`        | `coda-terminal-gcx-install`           | Always, while the form is shown; disabled until the field has a value |
+| Continue without gcx          | `interactive-gcx-skip-${stepId}`           | — (dismiss the modal instead)         | Always, while the form is shown                                       |
+| Credential installed          | `interactive-gcx-ready-${stepId}`          | `coda-terminal-gcx-ready`             | A credential exists for this session                                  |
+| Set up again                  | —                                          | `coda-terminal-gcx-redo`              | A credential exists for this session                                  |
+| Refusal message               | `interactive-gcx-error-${stepId}`          | `coda-terminal-gcx-error`             | The last attempt was refused                                          |
+
+Lifecycle notes a runner has to honour:
+
+- **The whole form disappears while provisioning.** `state === 'provisioning'` renders a spinner and
+  nothing else, so mint, paste and install all detach mid-flight. Poll for the ready line or the error,
+  not for the control you just clicked.
+- **The step's controls are gated on the `gcx` flag, not on the store.** A `terminal-connect` step
+  without `gcx` never renders any of the step-scoped ids above, even while another surface is installing
+  a credential into the same session. It completes on its **Continue** button
+  (`interactive-terminal-skip-${stepId}`) as it always did.
+- **A credential belongs to one session.** After a reconnect the ready line detaches and the form
+  returns, because the new VM holds no credential.
+- **A held-back mint brings its own button back.** A mint whose preflight could not reach an answer is
+  retryable rather than refused, so the error appears _and_ the mint control re-attaches. Only a refusal
+  detaches it for the rest of the session.
+- **Skipping still completes the step.** "Continue without gcx" marks it complete, so
+  `data-test-step-state` reaches `completed` on that path too.
+
+The values and the visibility states above are pinned by
+`src/integrations/coda/GcxSetupPanel.contract.test.tsx`.
 
 ---
 

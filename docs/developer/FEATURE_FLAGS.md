@@ -105,17 +105,40 @@ See the privacy invariants in [`TELEMETRY.md`](TELEMETRY.md) for what masking do
 - **`true`**: Sidebar auto-opens on first page load per session
 - **`false`**: Sidebar only opens when the user explicitly requests it
 
-**Important**: The feature flag only sets the **initial/default value**. Users can always override it in plugin settings. The resolution priority is:
-
-1. User's saved preference in plugin settings (takes precedence)
-2. Feature flag value from MTFF
-3. `DEFAULT_OPEN_PANEL_ON_LAUNCH` constant (fallback)
+**Important**: the flag and the `openPanelOnLaunch` plugin setting are a plain OR — either one on is enough, and neither can veto the other (`setupConfigAutoOpen` in `src/utils/sidebar-auto-open.ts`). So on a stack where this flag is on, an admin who turns `openPanelOnLaunch` off does not stop the auto-open; only turning the flag off does. Nothing reads the flag into the setting's default, and `openPanelOnLaunch` falls back to `DEFAULT_OPEN_PANEL_ON_LAUNCH` on its own.
 
 **Behavior on launch**: When enabled, the sidebar auto-opens on each Grafana load (deferred past the onboarding flow as described below). There is no persistent "already shown" suppression — the toggle simply reflects whether the panel opens on launch. This config-driven auto-open lives in `src/utils/sidebar-auto-open.ts`.
 
 **Onboarding flow integration**: If a user first lands on the setup guide onboarding flow (`/a/grafana-setupguide-app/onboarding-flow`), the plugin defers auto-open. It listens for navigation events via `locationService.getHistory().listen()` (with a `popstate` fallback) and triggers auto-open when the user navigates away from onboarding to normal Grafana pages.
 
 **Tracking key**: `auto_open_sidebar`
+
+---
+
+### `pathfinder.coda-terminal`
+
+**Type**: Boolean
+
+**Purpose**: Turns the Coda sandbox terminal on for a stack without either of the two manual steps it otherwise needs — adding a user to the dev-mode allowlist, and ticking `enableCodaTerminal` on the configuration page (a section that is itself hidden behind dev mode). Nothing provisions those fields, so before this flag there was no way to enable Coda except by hand.
+
+**Default**: `false`
+
+**Behavior**:
+
+- **`true`**: `isCodaTerminalEnabled` returns true for every user on the stack, whatever dev mode and `enableCodaTerminal` say. The terminal panel mounts, sandbox-backed blocks (`terminal`, `terminal-connect`, `challenge`) offer their controls, and the block-editor palette lists the Coda block types.
+- **`false`**: enablement falls back to dev mode **and** `enableCodaTerminal`, both required.
+
+The effective gate is one accessor, `isCodaTerminalEnabled` in `src/utils/coda-enablement.ts`:
+
+```
+flag || (isDevModeEnabled(config, userId) && enableCodaTerminal)
+```
+
+**The default has to stay `false`.** The Coda app plugin is not a declared dependency, so enablement is what authorizes the runtime probe for it. On a stack without `grafana-coda-app`, that probe 404s on every page load — see the probe-discipline rule in [`CODA.md`](CODA.md#availability-gating).
+
+**On the configuration page the flag is display-only.** The Coda section appears without dev mode, with its toggle on and disabled, labelled as flag-driven. A save still writes the stack's own `enableCodaTerminal`, so turning the flag back off restores whatever the admin had set rather than leaving the stack silently enabled. `ConfigurationForm.coda-flag.test.tsx` pins that.
+
+**Tracking key**: `coda_terminal`
 
 ---
 

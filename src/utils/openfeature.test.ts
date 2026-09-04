@@ -133,6 +133,20 @@ describe('openfeature', () => {
         expect(pathfinderFeatureFlags['pathfinder.interactive-learning-banner-experiment'].trackingKey).toBe(
           'interactive_learning_banner_experiment'
         );
+        expect(pathfinderFeatureFlags['pathfinder.coda-terminal'].trackingKey).toBe('coda_terminal');
+      });
+    });
+
+    it('pathfinder.coda-terminal must default to false so no stack probes for the Coda plugin', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.coda-terminal'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.coda-terminal'].defaultValue).toBe(false);
       });
     });
 
