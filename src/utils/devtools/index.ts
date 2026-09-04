@@ -6,10 +6,10 @@
  */
 
 // Types
-export type { StepDefinition, SelectorInfo, ExtractedSelector } from './dev-tools.types';
+export type { RecordedStep, StepDefinition, SelectorInfo, ExtractedSelector } from './dev-tools.types';
 
 // Tutorial exporter
-export type { RecordedStep, MultistepGroup, ExportStep, ExportOptions } from './tutorial-exporter';
+export type { MultistepGroup, ExportStep, ExportOptions } from './tutorial-exporter';
 export {
   exportStepsToHTML,
   combineStepsIntoMultistep,

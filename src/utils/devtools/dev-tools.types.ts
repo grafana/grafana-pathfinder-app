@@ -2,6 +2,18 @@
  * Shared types for dev tools utilities and hooks
  */
 
+export interface RecordedStep {
+  action: string;
+  selector: string;
+  value?: string;
+  description: string;
+  isUnique?: boolean;
+  matchCount?: number;
+  contextStrategy?: string;
+  /** If set, this step is part of a group (e.g., modal interaction) */
+  groupId?: string;
+}
+
 export interface StepDefinition {
   action: string;
   selector: string;

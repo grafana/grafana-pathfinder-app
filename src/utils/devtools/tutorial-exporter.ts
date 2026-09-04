@@ -3,17 +3,9 @@
  * Converts recorded steps from the debug panel into tutorial-ready HTML format
  */
 
-export interface RecordedStep {
-  action: string;
-  selector: string;
-  value?: string;
-  description: string;
-  isUnique?: boolean;
-  matchCount?: number;
-  contextStrategy?: string;
-  /** If set, this step is part of a group (e.g., modal interaction) */
-  groupId?: string;
-}
+import type { RecordedStep } from './dev-tools.types';
+
+export type { RecordedStep };
 
 export interface MultistepGroup {
   type: 'multistep';

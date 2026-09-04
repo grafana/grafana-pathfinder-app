@@ -13,7 +13,7 @@ import React, { StrictMode } from 'react';
 import { renderHook, act } from '@testing-library/react';
 
 import { StorageKeys } from '../../../lib/storage-keys';
-import type { RecordedStep } from '../../../utils/devtools/tutorial-exporter';
+import type { RecordedStep } from '../../../utils/devtools';
 
 import { useRecordingPersistence, PersistedRecordingState } from './useRecordingPersistence';
 
