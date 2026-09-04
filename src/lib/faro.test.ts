@@ -36,6 +36,8 @@ const mockSetSession = jest.fn((session?: { id?: string; attributes?: Record<str
 });
 const mockPushMeasurement = jest.fn();
 const mockInstrumentationsAdd = jest.fn();
+const mockReplayPause = jest.fn();
+const mockReplayResume = jest.fn();
 const mockFaroInstance = {
   instrumentations: { add: mockInstrumentationsAdd },
   api: {
@@ -74,6 +76,12 @@ jest.mock('@grafana/faro-web-sdk', () => ({
 jest.mock('@grafana/faro-instrumentation-replay', () => ({
   ReplayInstrumentation: class ReplayInstrumentation {
     constructor(public readonly options: Record<string, unknown>) {}
+    pauseRecording() {
+      mockReplayPause();
+    }
+    resumeRecording() {
+      mockReplayResume();
+    }
   },
 }));
 
@@ -1173,6 +1181,7 @@ describe('passesActivityGate', () => {
   it('passes events when the panel mode is floating', () => {
     localStorage.setItem(PANEL_MODE_KEY, 'floating');
     const faro = freshFaro();
+    require('./telemetry/surface').reportPathfinderSurface('floating');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
@@ -1181,6 +1190,7 @@ describe('passesActivityGate', () => {
   it('passes the completion-write degradation event from an open surface', () => {
     localStorage.setItem(PANEL_MODE_KEY, 'floating');
     const faro = freshFaro();
+    require('./telemetry/surface').reportPathfinderSurface('floating');
     const item = completionWriteDegradedItem();
     expect(faro.filterPathfinderTelemetry(item)).toBe(item);
     expect(faro.passesActivityGate(item)).toBe(true);
@@ -1189,6 +1199,7 @@ describe('passesActivityGate', () => {
   it('passes events when the panel mode is fullscreen', () => {
     localStorage.setItem(PANEL_MODE_KEY, 'fullscreen');
     const faro = freshFaro();
+    require('./telemetry/surface').reportPathfinderSurface('fullscreen');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
@@ -1201,18 +1212,21 @@ describe('passesActivityGate', () => {
   it('passes events when the extension sidebar is docked by Pathfinder', () => {
     localStorage.setItem(DOCKED_KEY, JSON.stringify({ pluginId: pluginJson.id }));
     const faro = freshFaro();
+    require('./telemetry/surface').reportPathfinderSurface('sidebar');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
   it('recognizes the legacy plain-string docked format', () => {
     localStorage.setItem(DOCKED_KEY, pluginJson.id);
     const faro = freshFaro();
+    require('./telemetry/surface').reportPathfinderSurface('sidebar');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
   it('recognizes a componentTitle match from older Grafana versions', () => {
     localStorage.setItem(DOCKED_KEY, JSON.stringify({ componentTitle: 'Interactive learning' }));
     const faro = freshFaro();
+    require('./telemetry/surface').reportPathfinderSurface('sidebar');
     expect(faro.passesActivityGate(eventItem())).toBe(true);
   });
 
@@ -1228,6 +1242,7 @@ describe('passesActivityGate', () => {
     document.body.appendChild(el);
     try {
       const faro = freshFaro();
+      require('./telemetry/surface').reportPathfinderSurface('controller');
       expect(faro.passesActivityGate(eventItem())).toBe(true);
     } finally {
       el.remove();
@@ -1255,6 +1270,7 @@ describe('passesActivityGate', () => {
     root.appendChild(overlay);
     try {
       const faro = freshFaro();
+      require('./telemetry/surface').reportPathfinderSurface('kiosk');
       expect(faro.passesActivityGate(eventItem())).toBe(true);
     } finally {
       root.remove();
@@ -1322,6 +1338,15 @@ describe('passesActivityGate', () => {
 });
 
 describe('beforeSend wiring', () => {
+  it('keeps the activity gate closed for a persisted mode until the surface mounts', async () => {
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'floating');
+    const faro = freshFaro();
+    await faro.initFaro();
+    const { beforeSend } = mockInitializeFaro.mock.calls[0]![0];
+
+    expect(beforeSend(eventItem())).toBeNull();
+  });
+
   it('composes the activity gate with attribution filtering', async () => {
     const faro = freshFaro();
     await faro.initFaro();
@@ -1531,14 +1556,14 @@ describe('session replay activation', () => {
     expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
   });
 
-  it('records straight away when a surface was already open at init', async () => {
+  it('does not record from a persisted surface mode before it opens', async () => {
     localStorage.setItem(PANEL_MODE_KEY, 'floating');
     const faro = freshFaro();
 
     await faro.initFaro({ sessionReplay: true });
     await settleReplayImport();
 
-    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+    expect(mockInstrumentationsAdd).not.toHaveBeenCalled();
   });
 
   it('registers the recorder once, however often the surface changes', async () => {
@@ -1566,10 +1591,50 @@ describe('session replay activation', () => {
     expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
   });
 
-  it('masks all text and every input type', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+  it('pauses five seconds after closing and resumes immediately when reopened', async () => {
+    const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('sidebar');
+    await settleReplayImport();
+
+    mockReplayPause.mockClear();
+    mockReplayResume.mockClear();
+    jest.useFakeTimers();
+    surface.reportPathfinderSurface('closed');
+    jest.advanceTimersByTime(2_000);
+    surface.reportPathfinderSurface('sidebar');
+    expect(mockReplayPause).not.toHaveBeenCalled();
+    expect(mockReplayResume).toHaveBeenCalledTimes(1);
+
+    mockReplayResume.mockClear();
+    surface.reportPathfinderSurface('closed');
+    jest.advanceTimersByTime(5_000);
+    expect(mockReplayPause).toHaveBeenCalledTimes(1);
+
+    surface.reportPathfinderSurface('sidebar');
+    expect(mockReplayResume).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  it('swallows replay controller failures', async () => {
+    const { faro, surface } = freshFaroWithSurface();
+    await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('sidebar');
+    await settleReplayImport();
+
+    mockReplayPause.mockImplementationOnce(() => {
+      throw new Error('replay controller unavailable');
+    });
+    jest.useFakeTimers();
+    surface.reportPathfinderSurface('closed');
+    expect(() => jest.advanceTimersByTime(5_000)).not.toThrow();
+    jest.useRealTimers();
+  });
+
+  it('masks all text and every input type', async () => {
+    const { faro, surface } = freshFaroWithSurface();
+    await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     const options = addedOptions();
@@ -1579,9 +1644,9 @@ describe('session replay activation', () => {
   });
 
   it('captures no canvas, fonts, images, stylesheets or cross-origin iframes', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     expect(addedOptions()).toMatchObject({
@@ -1594,18 +1659,27 @@ describe('session replay activation', () => {
   });
 
   it('blocks the Coda terminal, which renders credentials verbatim', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     expect(addedOptions().blockSelector).toBe('[data-testid="coda-terminal-panel"], .xterm');
   });
 
-  it('scrubs events before they leave the recorder', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+  it('disables SDK inactivity resumption', async () => {
+    const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('floating');
+    await settleReplayImport();
+
+    expect(addedOptions().inactivityThresholdMs).toBe(0);
+  });
+
+  it('scrubs events before they leave the recorder', async () => {
+    const { faro, surface } = freshFaroWithSurface();
+    await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     const beforeSend = addedOptions().beforeSend as (event: unknown) => { data: { href: string } };
@@ -1615,10 +1689,10 @@ describe('session replay activation', () => {
   });
 
   it('reports a remote sampling rate that had to fall back', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
 
     await faro.initFaro({ sessionReplay: true, sessionReplaySamplingRate: 100 });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     expect(addedOptions().samplingRate).toBe(1);
@@ -1631,10 +1705,10 @@ describe('session replay activation', () => {
   });
 
   it('stays quiet when the remote sampling rate is honored', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
 
     await faro.initFaro({ sessionReplay: true, sessionReplaySamplingRate: 0.25 });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     expect(addedOptions().samplingRate).toBe(0.25);
@@ -1676,7 +1750,10 @@ describe('resolveSessionReplayOptions', () => {
 // A chunk fetch can fail transiently. Latching on the attempt rather than on
 // the activation would disable replay for the rest of the tab.
 describe('session replay activation failures', () => {
-  const activateSessionReplay = jest.fn<Promise<number>, [unknown, number | undefined]>();
+  const activateSessionReplay = jest.fn<
+    Promise<{ samplingRate: number; controller: { pause: jest.Mock; resume: jest.Mock } }>,
+    [unknown, number | undefined]
+  >();
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
   function freshFaroWithFailingReplay() {
@@ -1732,7 +1809,7 @@ describe('session replay activation failures', () => {
   it('latches once activation resolves, so a later open does not re-register', async () => {
     const { faro, surface } = freshFaroWithFailingReplay();
     activateSessionReplay.mockReset();
-    activateSessionReplay.mockResolvedValue(1);
+    activateSessionReplay.mockResolvedValue({ samplingRate: 1, controller: { pause: jest.fn(), resume: jest.fn() } });
     await faro.initFaro({ sessionReplay: true });
 
     surface.reportPathfinderSurface('sidebar');
@@ -1742,5 +1819,36 @@ describe('session replay activation failures', () => {
     await settle();
 
     expect(activateSessionReplay).toHaveBeenCalledTimes(1);
+  });
+
+  it('pauses immediately when activation resolves after the close deadline', async () => {
+    let resolveActivation!: (value: {
+      samplingRate: number;
+      controller: { pause: jest.Mock; resume: jest.Mock };
+    }) => void;
+    const controller = { pause: jest.fn(), resume: jest.fn() };
+    activateSessionReplay.mockReset();
+    activateSessionReplay.mockReturnValue(
+      new Promise((resolve) => {
+        resolveActivation = resolve;
+      })
+    );
+    const { faro, surface } = freshFaroWithFailingReplay();
+    await faro.initFaro({ sessionReplay: true });
+
+    jest.useFakeTimers();
+    surface.reportPathfinderSurface('sidebar');
+    for (let i = 0; i < 5; i++) {
+      await Promise.resolve();
+    }
+    expect(activateSessionReplay).toHaveBeenCalledTimes(1);
+    surface.reportPathfinderSurface('closed');
+    jest.advanceTimersByTime(5_000);
+    resolveActivation({ samplingRate: 1, controller });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(controller.pause).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
   });
 });

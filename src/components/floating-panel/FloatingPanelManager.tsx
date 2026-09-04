@@ -18,6 +18,7 @@ import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
 import { enrollInteractiveLearningBannerExperiment } from '../../utils/experiments/interactive-learning-banner';
 import { SkeletonLoader } from '../SkeletonLoader';
+import { reportPathfinderSurface } from '../../lib/telemetry/surface';
 
 // Lazy-loaded so the editor only ships when the user actually pops it out.
 const BlockEditor = lazy(() =>
@@ -124,6 +125,7 @@ function FloatingPanelInner() {
 
   // Fire panel-mounted event so auto-launch and MCP flows work
   useEffect(() => {
+    reportPathfinderSurface('floating');
     // Catch the synchronous `pathfinder-auto-launch-pending` signal — it fires
     // within the same microtask as pathfinder-panel-mounted, preventing the
     // fallback-to-sidebar effect from racing the 500ms delayed auto-launch emit.
