@@ -74,6 +74,8 @@ jest.mock('@grafana/faro-web-sdk', () => ({
 jest.mock('@grafana/faro-instrumentation-replay', () => ({
   ReplayInstrumentation: class ReplayInstrumentation {
     constructor(public readonly options: Record<string, unknown>) {}
+    pauseRecording() {}
+    resumeRecording() {}
   },
 }));
 
@@ -1531,14 +1533,14 @@ describe('session replay activation', () => {
     expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
   });
 
-  it('records straight away when a surface was already open at init', async () => {
+  it('does not record from a persisted surface mode before it opens', async () => {
     localStorage.setItem(PANEL_MODE_KEY, 'floating');
     const faro = freshFaro();
 
     await faro.initFaro({ sessionReplay: true });
     await settleReplayImport();
 
-    expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
+    expect(mockInstrumentationsAdd).not.toHaveBeenCalled();
   });
 
   it('registers the recorder once, however often the surface changes', async () => {
@@ -1567,9 +1569,9 @@ describe('session replay activation', () => {
   });
 
   it('masks all text and every input type', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     const options = addedOptions();
@@ -1579,9 +1581,9 @@ describe('session replay activation', () => {
   });
 
   it('captures no canvas, fonts, images, stylesheets or cross-origin iframes', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     expect(addedOptions()).toMatchObject({
@@ -1594,18 +1596,18 @@ describe('session replay activation', () => {
   });
 
   it('blocks the Coda terminal, which renders credentials verbatim', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     expect(addedOptions().blockSelector).toBe('[data-testid="coda-terminal-panel"], .xterm');
   });
 
   it('scrubs events before they leave the recorder', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     const beforeSend = addedOptions().beforeSend as (event: unknown) => { data: { href: string } };
@@ -1615,10 +1617,10 @@ describe('session replay activation', () => {
   });
 
   it('reports a remote sampling rate that had to fall back', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
 
     await faro.initFaro({ sessionReplay: true, sessionReplaySamplingRate: 100 });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     expect(addedOptions().samplingRate).toBe(1);
@@ -1631,10 +1633,10 @@ describe('session replay activation', () => {
   });
 
   it('stays quiet when the remote sampling rate is honored', async () => {
-    localStorage.setItem(PANEL_MODE_KEY, 'floating');
-    const faro = freshFaro();
+    const { faro, surface } = freshFaroWithSurface();
 
     await faro.initFaro({ sessionReplay: true, sessionReplaySamplingRate: 0.25 });
+    surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     expect(addedOptions().samplingRate).toBe(0.25);
@@ -1676,7 +1678,10 @@ describe('resolveSessionReplayOptions', () => {
 // A chunk fetch can fail transiently. Latching on the attempt rather than on
 // the activation would disable replay for the rest of the tab.
 describe('session replay activation failures', () => {
-  const activateSessionReplay = jest.fn<Promise<number>, [unknown, number | undefined]>();
+  const activateSessionReplay = jest.fn<
+    Promise<{ samplingRate: number; controller: { pause: jest.Mock; resume: jest.Mock } }>,
+    [unknown, number | undefined]
+  >();
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
   function freshFaroWithFailingReplay() {
@@ -1732,7 +1737,7 @@ describe('session replay activation failures', () => {
   it('latches once activation resolves, so a later open does not re-register', async () => {
     const { faro, surface } = freshFaroWithFailingReplay();
     activateSessionReplay.mockReset();
-    activateSessionReplay.mockResolvedValue(1);
+    activateSessionReplay.mockResolvedValue({ samplingRate: 1, controller: { pause: jest.fn(), resume: jest.fn() } });
     await faro.initFaro({ sessionReplay: true });
 
     surface.reportPathfinderSurface('sidebar');
