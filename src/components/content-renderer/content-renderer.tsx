@@ -295,7 +295,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         return; // This handler was created for different content
       }
       const detail = (event as CustomEvent).detail;
-      const currentTabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+      const currentTabUrl = window.__DocsPluginActiveTabUrl;
       if (detail?.completionPercentage >= 100 && detail?.contentKey && currentTabUrl) {
         // Only trigger if the event is for the current page (strict equality after normalization).
         // Bidirectional startsWith would produce false matches when URLs share a common prefix
@@ -345,7 +345,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   // (progress restoration) runs — prevents stale key from a previous milestone.
   useLayoutEffect(() => {
     try {
-      (window as any).__DocsPluginContentKey = content?.url || '';
+      window.__DocsPluginContentKey = content?.url || '';
     } catch {
       // no-op
     }

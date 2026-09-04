@@ -8,18 +8,10 @@ import { fetchPluginJsonData } from '../utils/utils.plugin';
 
 export type ResolvedPathfinderConfig = ReturnType<typeof getConfigWithDefaults>;
 
-interface PathfinderConfigWindow extends Window {
-  __pathfinderPluginConfig?: ResolvedPathfinderConfig;
-}
-
 export interface PathfinderPluginConfigState {
   config: ResolvedPathfinderConfig;
   /** `false` means "not known yet", which is distinct from an explicit all-defaults config. */
   isResolved: boolean;
-}
-
-function configWindow(): PathfinderConfigWindow {
-  return window as PathfinderConfigWindow;
 }
 
 let unresolvedState: PathfinderPluginConfigState | undefined;
@@ -48,7 +40,7 @@ function configEquals(a: ResolvedPathfinderConfig, b: ResolvedPathfinderConfig):
  * without re-reading the global.
  */
 export function publishPathfinderPluginConfig(jsonData: DocsPluginConfig): ResolvedPathfinderConfig {
-  const target = configWindow();
+  const target = window;
   const next = getConfigWithDefaults(jsonData);
   const current = target.__pathfinderPluginConfig;
 
@@ -82,7 +74,7 @@ export function refreshPathfinderPluginConfig(): Promise<ResolvedPathfinderConfi
 }
 
 function resolveState(contextState: PathfinderPluginConfigState | undefined): PathfinderPluginConfigState {
-  const published = configWindow().__pathfinderPluginConfig;
+  const published = window.__pathfinderPluginConfig;
   if (published) {
     return { config: published, isResolved: true };
   }
@@ -129,5 +121,5 @@ export function usePathfinderPluginConfig(): PathfinderPluginConfigState {
 export function __resetPathfinderPluginConfigForTests(): void {
   refreshInFlight = null;
   unresolvedState = undefined;
-  delete configWindow().__pathfinderPluginConfig;
+  delete window.__pathfinderPluginConfig;
 }

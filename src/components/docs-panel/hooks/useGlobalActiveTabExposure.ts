@@ -33,8 +33,8 @@ export function useGlobalActiveTabExposure({
 }: UseGlobalActiveTabExposureParams): void {
   React.useLayoutEffect(() => {
     try {
-      (window as any).__DocsPluginActiveTabId = activeTabId || '';
-      (window as any).__DocsPluginActiveTabUrl = activeTabCurrentUrl || activeTabBaseUrl || '';
+      window.__DocsPluginActiveTabId = activeTabId || '';
+      window.__DocsPluginActiveTabUrl = activeTabCurrentUrl || activeTabBaseUrl || '';
     } catch {
       // no-op
     }
