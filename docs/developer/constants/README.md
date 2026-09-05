@@ -8,7 +8,6 @@ The constants directory is organized into specialized files that separate concer
 
 - **UI/DOM constants** for selectors and display configuration
 - **Interactive guide constants** for timing, behaviors, and action types
-- **Editor constants** for the WYSIWYG guide authoring experience
 - **Z-index constants** for overlay stacking management
 - **Test ID constants** for Playwright e2e testing selectors
 
@@ -121,44 +120,6 @@ The constants directory is organized into specialized files that separate concer
 - `src/components/interactive-tutorial/interactive-guided.tsx` - gates its own click-triggered handoff, keyed off its internal actions' `targetAction`
 
 **Why It Exists**: The launch-surface classifier and the interactive engine's click-triggered handoff gate both need to answer "does this action need the live Grafana UI behind it?" — a single shared set means the two can't drift into disagreeing on which actions count.
-
----
-
-### `editor-config.ts` - WYSIWYG Editor Configuration
-
-**Purpose**: Configuration constants specific to the WYSIWYG interactive guide editor (not used in runtime guide execution).
-
-**Key Responsibilities**:
-
-- Define CSS class names and Tiptap node types for editor elements
-- Configure toolbar button labels, tooltips, and keyboard shortcuts
-- Provide default editor content and placeholder text
-- Set editor formatting preferences and timing constants
-
-**Key Exports**:
-
-- `CSS_CLASSES` - CSS classes for interactive elements in editor
-- `NODE_TYPES` - Tiptap node and mark type names
-- `HTML_TAGS` - HTML element tag names
-- `EDITOR_UI_LABELS` - Toolbar button labels, heading levels, format options, list types, tooltips
-- `EDITOR_DEFAULTS` - Initial content templates, placeholder text, default section IDs, download filename
-- `EDITOR_CONFIG` - Print width, tab width, whitespace sensitivity
-- `EDITOR_TIMING` - Auto-save debounce, saving indicator duration, download cleanup delay
-
-**Data Collected**: No data collection. This is pure configuration.
-
-**Used By**:
-
-- `src/components/block-editor/` - Block editor forms, hooks, and UI components
-- WYSIWYG editor implementation (Tiptap-based)
-- Guide authoring tools and development utilities
-
-**Critical Dependencies**:
-
-- **Tiptap Editor**: Node types and mark names must match Tiptap configuration
-- **Interactive Config**: Works alongside `interactive-config.ts` but is editor-specific (not used in runtime)
-
-**Why It Exists**: Separates editor-specific configuration from runtime guide configuration. The editor has different needs (authoring UI, content templates, formatting) than the runtime guide execution engine. This separation keeps concerns isolated and prevents editor-only constants from being bundled in runtime code.
 
 ---
 
@@ -300,15 +261,13 @@ The constants are organized in a multi-level hierarchy:
 1. **Plugin-Wide Configuration** (`/src/constants.ts`) - API endpoints, security, feature defaults, global settings
 2. **Interactive Engine Configuration** (`/src/constants/interactive-config.ts`) - Timing, behavior, action types, requirements
 3. **UI/DOM Configuration** (`/src/constants/selectors.ts`) - Selectors, class names, UI constants
-4. **Editor Configuration** (`/src/constants/editor-config.ts`) - Editor-specific settings (authoring only)
-5. **Styling Configuration** (`/src/constants/interactive-z-index.ts`) - Z-index stacking order
+4. **Styling Configuration** (`/src/constants/interactive-z-index.ts`) - Z-index stacking order
 
 This separation ensures:
 
-- **Clear Boundaries**: Plugin-level vs engine-level vs UI-level vs editor-level concerns
+- **Clear Boundaries**: Plugin-level vs engine-level vs UI-level concerns
 - **Type Safety**: All constants are strongly typed with TypeScript
 - **Maintainability**: Changes to one system don't ripple across unrelated systems
-- **Bundle Optimization**: Editor-only constants can be tree-shaken from runtime builds
 - **Security**: Security-critical constants are isolated and easy to audit
 
 ## Key Dependencies
@@ -323,7 +282,6 @@ This separation ensures:
 ### External Dependencies
 
 - **Grafana Runtime**: Plugin config stored in Grafana's jsonData, accessed via `@grafana/runtime`
-- **Tiptap Editor**: Editor node types in `editor-config.ts` must match Tiptap configuration
 - **Browser APIs**: Z-index values must account for Grafana's modal and portal z-index ranges
 
 ## Purpose
