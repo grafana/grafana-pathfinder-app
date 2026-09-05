@@ -1,16 +1,12 @@
 /**
- * `interactive.hook.test.ts`'s "Full-screen sidebar handoff gate" suite mocks
- * `global-state/panel-mode` wholesale, so it only proves the gate calls
- * `requestSidebarHandoffAndWait` with the right arguments — never that the
- * gate actually blocks on the REAL timing (the `pathfinder-sidebar-mounted`
- * event + settle delay, or the safety timeout) before letting the handler
- * run. `panel-mode.test.ts` tests that timing in isolation, but never through
- * the hook's gate. This file uses the real `panel-mode.ts` module with fake
- * timers to prove the composition holds.
+ * Full-screen handoff coverage lives here so the hook is exercised with the
+ * real panel-mode timing. This suite covers the handoff event payload, the
+ * completion guard applied to the handler data, and suppressed outcomes.
  */
 
 import { renderHook, act } from '@testing-library/react';
 import { useInteractiveElements } from './interactive.hook';
+import { REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
 
 jest.mock('../lib/faro', () => ({
   withFaroUserAction: jest.fn((_name: string, _attributes: unknown, work: () => unknown) => work()),
@@ -104,6 +100,7 @@ describe('executeInteractiveAction composed with the real requestSidebarHandoffA
 
   beforeEach(() => {
     jest.useFakeTimers();
+    jest.clearAllMocks();
     handlerCallOrder.length = 0;
     publishMock.mockClear();
     // panelModeManager reads/writes localStorage directly (StorageKeys.PANEL_MODE).
@@ -118,6 +115,8 @@ describe('executeInteractiveAction composed with the real requestSidebarHandoffA
 
   it('does not run the handler until pathfinder-sidebar-mounted fires and the settle delay elapses', async () => {
     const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+    const handoffListener = jest.fn();
+    document.addEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handoffListener as EventListener);
 
     let executePromise!: Promise<unknown>;
     act(() => {
@@ -144,8 +143,15 @@ describe('executeInteractiveAction composed with the real requestSidebarHandoffA
       jest.advanceTimersByTime(200);
     });
     await executePromise;
+    document.removeEventListener(REQUEST_SIDEBAR_HANDOFF_EVENT, handoffListener as EventListener);
 
     expect(handlerCallOrder).toEqual(['handler-executed']);
+    expect(handoffListener).toHaveBeenCalledTimes(1);
+    expect((handoffListener.mock.calls[0]![0] as CustomEvent).detail).toEqual({ targetPath: '/connections' });
+
+    const { ButtonHandler } = require('./action-handlers');
+    const buttonHandlerInstance = ButtonHandler.mock.results.at(-1)!.value;
+    expect(buttonHandlerInstance.execute.mock.calls[0]![0].skipCompletionOnEmptyTarget).toBe(true);
   });
 
   it('falls through to the handler via the safety timeout when the mount event never fires', async () => {
@@ -169,5 +175,27 @@ describe('executeInteractiveAction composed with the real requestSidebarHandoffA
     await executePromise;
 
     expect(handlerCallOrder).toEqual(['handler-executed']);
+  });
+
+  it('returns error when a handler suppresses completion', async () => {
+    localStorage.setItem('grafana-pathfinder-app-panel-mode', 'sidebar');
+    const { ButtonHandler } = require('./action-handlers');
+    ButtonHandler.mockImplementationOnce(() => ({
+      execute: jest.fn().mockImplementation(async (data: { completionSuppressed?: boolean }) => {
+        data.completionSuppressed = true;
+      }),
+    }));
+    const { result } = renderHook(() => useInteractiveElements({ containerRef }));
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.executeInteractiveAction({
+        targetAction: 'button',
+        refTarget: 'test-target',
+        buttonType: 'do',
+      });
+    });
+
+    expect(outcome).toBe('error');
   });
 });
