@@ -146,11 +146,13 @@ export interface DocsPluginConfig {
   enableTwoTabController?: boolean;
 }
 
+export type ResolvedPathfinderConfig = Omit<Required<DocsPluginConfig>, 'devModeUserIds'> & {
+  devModeUserIds: number[];
+};
+
 // Helper functions to get configuration values with defaults
 // Note: devModeUserIds remains as array (empty when dev mode is disabled)
-export const getConfigWithDefaults = (
-  config: DocsPluginConfig
-): Omit<Required<DocsPluginConfig>, 'devModeUserIds'> & { devModeUserIds: number[] } => ({
+export const getConfigWithDefaults = (config: DocsPluginConfig): ResolvedPathfinderConfig => ({
   recommenderServiceUrl:
     config.recommenderServiceUrl && !isKnownRecommenderUrl(config.recommenderServiceUrl)
       ? config.recommenderServiceUrl

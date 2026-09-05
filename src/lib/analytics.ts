@@ -277,7 +277,7 @@ export function reportAppInteraction(
     const experiments = activeExperiments && activeExperiments.length > 0 ? activeExperiments : null;
     const variant = experiments ? rollUpVariant(experiments) : null;
 
-    const kioskSessionId = (window as any).__pathfinderKioskSessionId as string | undefined;
+    const kioskSessionId = window.__pathfinderKioskSessionId;
 
     const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
@@ -584,8 +584,8 @@ export function enrichWithJourneyContext(
  */
 export function getSourceDocument(stepId?: string): { source_document: string; step_id: string } {
   try {
-    const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
-    const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
+    const tabUrl = window.__DocsPluginActiveTabUrl;
+    const contentKey = window.__DocsPluginContentKey;
     const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
 
     return {
@@ -696,8 +696,8 @@ export function buildInteractiveStepProperties(
  */
 export function getCurrentStepContext(): Record<string, number> {
   try {
-    const stepIndex = (window as any).__DocsPluginCurrentStepIndex as number | undefined;
-    const totalSteps = (window as any).__DocsPluginTotalSteps as number | undefined;
+    const stepIndex = window.__DocsPluginCurrentStepIndex;
+    const totalSteps = window.__DocsPluginTotalSteps;
 
     if (stepIndex === undefined || totalSteps === undefined) {
       return {};

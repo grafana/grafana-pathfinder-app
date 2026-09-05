@@ -240,8 +240,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     // remote packages — the Tier 3/4 injection point.
     //
     // Seed from the published global, not this surface's snapshot — the resolver is one app-wide singleton.
-    const resolverConfig = (window as unknown as { __pathfinderPluginConfig?: DocsPluginConfig })
-      .__pathfinderPluginConfig;
+    const resolverConfig = window.__pathfinderPluginConfig;
     setPackageResolver(createCompositeResolver(resolverConfig ?? pluginConfig));
 
     // Note: Tab restoration now happens from React component after storage is initialized
