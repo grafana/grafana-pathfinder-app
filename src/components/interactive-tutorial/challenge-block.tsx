@@ -12,7 +12,7 @@
  * on top of the UI gating.
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2, Alert } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -34,9 +34,10 @@ import {
   PATHFINDER_READY_FILE,
   type ExecResponse,
 } from '../../integrations/coda/coda-api';
-import { useGuideRequirements } from '../../requirements-manager';
+import { useGuideRequirements, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { testIds } from '../../constants/testIds';
 
 // The atomic temp+rename guarantees the gated coda-exit-zero check never
 // sees a partially-written gate file. The path is shared with that check
@@ -82,12 +83,17 @@ export interface ChallengeBlockProps {
   successCriteria: string;
   hintLevels?: ChallengeHintProps[];
   failureMessage?: string;
+  requirements?: string;
+  objectives?: string;
+  skippable?: boolean;
 
   stepId?: string;
-  onStepComplete?: (stepId: string) => void;
+  isEligibleForChecking?: boolean;
+  onStepComplete?: (stepId: string, skipStateUpdate?: boolean) => void;
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
+  disabled?: boolean;
 }
 
 let challengeCounter = 0;
@@ -135,6 +141,15 @@ const getStyles = (theme: GrafanaTheme2) => ({
       color: theme.colors.warning.text,
     },
   }),
+  requirementMessage: css({
+    padding: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    backgroundColor: theme.colors.warning.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.warning.border}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
   actions: css({
     display: 'flex',
     gap: theme.spacing(1),
@@ -181,9 +196,16 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   successCriteria,
   hintLevels = [],
   failureMessage,
+  requirements,
+  objectives,
+  skippable = false,
   stepId: providedStepId,
+  isEligibleForChecking = true,
   onStepComplete,
+  stepIndex,
+  totalSteps,
   sectionId,
+  disabled = false,
 }) => {
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
@@ -197,6 +219,23 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     return `challenge-${challengeCounter}`;
   });
   const stepId = providedStepId ?? generatedStepId;
+
+  useMemo(() => {
+    validateInteractiveRequirements({ requirements, stepId }, 'ChallengeBlock');
+  }, [requirements, stepId]);
+
+  const checker = useStepChecker({
+    requirements: requirements || '',
+    objectives: '',
+    targetAction: 'noop',
+    refTarget: '',
+    stepId,
+    isEligibleForChecking,
+    skippable,
+    sectionId,
+  });
+
+  const isEnabled = checker.isEnabled && !disabled;
 
   // Standard-mode challenges have no provisioning step to opt into — the
   // brief and Check my work are visible immediately. Coda-mode challenges
@@ -556,6 +595,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       <h4 className={styles.title}>{title}</h4>
       <div className={styles.brief}>{brief}</div>
 
+      {!isEnabled && !isCompleted && checker.explanation && (
+        <div className={styles.requirementMessage} data-testid={`challenge-requirement-warning-${stepId}`}>
+          {checker.explanation}
+        </div>
+      )}
+
       {state === 'setup-failed' && (
         <Alert title="Could not start the challenge" severity="error">
           {errorDetail || 'Unknown setup failure.'}
@@ -583,22 +628,22 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       )}
 
       <div className={styles.actions}>
-        {state === 'idle' && !configGateMessage && (
+        {isEnabled && state === 'idle' && !configGateMessage && (
           <Button variant="primary" icon="play" onClick={handleStart}>
             Start challenge
           </Button>
         )}
-        {state === 'ready' && (
+        {isEnabled && state === 'ready' && (
           <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
             Check my work
           </Button>
         )}
-        {state === 'failed-check' && (
+        {isEnabled && state === 'failed-check' && (
           <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
             Check again
           </Button>
         )}
-        {state === 'setup-failed' && (
+        {isEnabled && state === 'setup-failed' && (
           <Button variant="secondary" icon="sync" onClick={handleStart}>
             Try again
           </Button>
@@ -606,6 +651,26 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         {(state === 'connecting' || state === 'preparing') && (
           <Button variant="secondary" icon="times" onClick={handleCancel}>
             Cancel
+          </Button>
+        )}
+        {skippable && !isCompleted && (
+          <Button
+            size="sm"
+            variant="secondary"
+            fill="text"
+            onClick={() => {
+              checker.markSkipped?.();
+              onStepComplete?.(stepId, true);
+              window.dispatchEvent(
+                new CustomEvent('interactive-action-completed', {
+                  detail: { stepId, blockType: 'challenge', state: 'completed' },
+                })
+              );
+            }}
+            disabled={disabled}
+            data-testid={testIds.interactive.skipButton(stepId)}
+          >
+            Skip
           </Button>
         )}
       </div>

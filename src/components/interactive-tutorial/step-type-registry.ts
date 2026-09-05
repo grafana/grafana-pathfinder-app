@@ -298,6 +298,7 @@ export const CHALLENGE_BLOCK_SCHEMA: StepTypeSchema = {
     skippable: props.skippable,
     isMultiStep: false,
     isGuided: false,
+    pausesSectionRun: true,
   }),
   // Mirrors Quiz: challenges don't need isCurrentlyExecuting or
   // onStepReset — the block manages its own internal state machine.
