@@ -800,6 +800,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       isSkipped: false,
       completionReason: 'manual',
       explanation: 'Completed',
+      isSequentialBlock: false,
     });
     writeStoreCompletion('manual');
   }, [state, updateManager, writeStoreCompletion]);
@@ -820,6 +821,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       isSkipped: true,
       completionReason: 'skipped',
       explanation: 'Skipped due to requirements',
+      isSequentialBlock: false,
     });
     writeStoreCompletion('skipped');
 
@@ -872,6 +874,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         retryCount: 0,
         maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
         isRetrying: false,
+        isSequentialBlock: false,
       });
 
       // Recheck requirements after reset

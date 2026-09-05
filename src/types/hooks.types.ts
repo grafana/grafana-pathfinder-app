@@ -66,6 +66,8 @@ export interface UseStepCheckerReturn {
   isCompleted: boolean;
   isChecking: boolean;
   isSkipped?: boolean; // Whether this step was skipped due to failed requirements
+  /** True only when blocked by an unmet sequential dependency, never by this step's own failed requirements. */
+  isSequentialBlock?: boolean;
 
   // Retry state
   retryCount?: number; // Current retry attempt
