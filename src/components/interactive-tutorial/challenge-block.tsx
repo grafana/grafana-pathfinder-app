@@ -150,6 +150,18 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     color: theme.colors.text.secondary,
   }),
+  objectiveNote: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    backgroundColor: theme.colors.info.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.info.border}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
   actions: css({
     display: 'flex',
     gap: theme.spacing(1),
@@ -212,7 +224,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   const codaGate = useCodaTerminalGate();
   const codaEligibility = useCodaSessionEligibility(codaGate !== 'disabled');
   useReportSandboxUnavailable(codaGate, codaEligibility, !!terminalCtx?.isTerminalRegistered, 'challenge');
-  const { checkPostconditions } = useGuideRequirements();
+  const { checkPostconditions, checkRequirements } = useGuideRequirements();
 
   const [generatedStepId] = useState(() => {
     challengeCounter += 1;
@@ -236,6 +248,30 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   });
 
   const isEnabled = checker.isEnabled && !disabled;
+
+  // Objectives are probed read-only here, never through the gating checker:
+  // a satisfied objectives string on useStepChecker would SET_COMPLETED and
+  // persist to this block's store key, solving the challenge without successCriteria.
+  const [objectivesMet, setObjectivesMet] = useState(false);
+  useEffect(() => {
+    if (!objectives || objectives.trim() === '') {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await checkRequirements({ requirements: objectives, stepId, maxRetries: 0 });
+        if (!cancelled && result.pass) {
+          setObjectivesMet(true);
+        }
+      } catch {
+        // Informational probe — a failed check leaves the normal flow untouched.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [objectives, stepId, checkRequirements]);
 
   // Standard-mode challenges have no provisioning step to opt into — the
   // brief and Check my work are visible immediately. Coda-mode challenges
@@ -264,9 +300,10 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // tearing it down and the SDK deletes it on the way out.
   const staleSessionIdRef = useRef<string | null>(null);
 
-  const { completed: storedCompleted } = useStepCompletion(stepId, sectionId);
+  const { completed: storedCompleted, reason: storedReason } = useStepCompletion(stepId, sectionId);
   const isStandalone = !onStepComplete;
   const isCompleted = storedCompleted || state === 'solved';
+  const isSkipped = storedReason === 'skipped';
 
   const markComplete = useCallback(() => {
     if (storedCompleted) {
@@ -545,10 +582,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       // No setup is in flight yet — bail immediately. (Setup will see the
       // flag if it starts after this and skip out before running anything.)
       resetToIdle();
+    } else if (state === 'ready' || state === 'checking' || state === 'failed-check' || state === 'setup-failed') {
+      terminalCtx?.disconnect();
+      resetToIdle();
     }
     // For 'preparing': the in-flight runExec resolves first; the loop checks
     // cancelRequestedRef on the next iteration and calls resetToIdle itself.
-  }, [state, resetToIdle]);
+  }, [state, resetToIdle, terminalCtx]);
 
   // Standard mode never touches Coda, so it must never see a Coda gate.
   const configGateMessage = mode === 'coda' ? codaConfigGateMessage(codaGate, codaEligibility, SANDBOX_SUBJECT) : null;
@@ -584,7 +624,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         <h4 className={styles.title}>{title}</h4>
         <div className={styles.brief}>{brief}</div>
         <div className={styles.solved}>
-          <Icon name="check-circle" /> Challenge solved
+          <Icon name={isSkipped ? 'forward' : 'check-circle'} /> {isSkipped ? 'Challenge skipped' : 'Challenge solved'}
         </div>
       </div>
     );
@@ -595,9 +635,16 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       <h4 className={styles.title}>{title}</h4>
       <div className={styles.brief}>{brief}</div>
 
-      {!isEnabled && !isCompleted && checker.explanation && (
+      {objectivesMet && (
+        <div className={styles.objectiveNote} data-testid={`challenge-objectives-note-${stepId}`}>
+          <Icon name="info-circle" />
+          <span>Objective already met — Check my work is still required to finish the challenge.</span>
+        </div>
+      )}
+
+      {!isEnabled && !isCompleted && (
         <div className={styles.requirementMessage} data-testid={`challenge-requirement-warning-${stepId}`}>
-          {checker.explanation}
+          {checker.explanation || 'Checking requirements…'}
         </div>
       )}
 
@@ -628,39 +675,46 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       )}
 
       <div className={styles.actions}>
-        {isEnabled && state === 'idle' && !configGateMessage && (
+        {state === 'idle' && !configGateMessage && isEnabled && (
           <Button variant="primary" icon="play" onClick={handleStart}>
             Start challenge
           </Button>
         )}
-        {isEnabled && state === 'ready' && (
-          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+        {state === 'ready' && (
+          <Button variant="primary" icon="check" onClick={handleCheckMyWork} disabled={!isEnabled || disabled}>
             Check my work
           </Button>
         )}
-        {isEnabled && state === 'failed-check' && (
-          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+        {state === 'failed-check' && (
+          <Button variant="primary" icon="check" onClick={handleCheckMyWork} disabled={!isEnabled || disabled}>
             Check again
           </Button>
         )}
-        {isEnabled && state === 'setup-failed' && (
-          <Button variant="secondary" icon="sync" onClick={handleStart}>
+        {state === 'setup-failed' && (
+          <Button variant="secondary" icon="sync" onClick={handleStart} disabled={!isEnabled || disabled}>
             Try again
           </Button>
         )}
-        {(state === 'connecting' || state === 'preparing') && (
-          <Button variant="secondary" icon="times" onClick={handleCancel}>
-            Cancel
-          </Button>
-        )}
-        {skippable && !isCompleted && (
+        {mode === 'coda' &&
+          (state === 'connecting' ||
+            state === 'preparing' ||
+            state === 'ready' ||
+            state === 'checking' ||
+            state === 'failed-check' ||
+            state === 'setup-failed') && (
+            <Button variant="secondary" icon="times" onClick={handleCancel}>
+              Cancel
+            </Button>
+          )}
+        {skippable && !isCompleted && checker.isEnabled && state !== 'connecting' && state !== 'preparing' && (
           <Button
             size="sm"
             variant="secondary"
             fill="text"
             onClick={() => {
+              handleCancel();
               checker.markSkipped?.();
-              onStepComplete?.(stepId, true);
+              onStepComplete?.(stepId);
               window.dispatchEvent(
                 new CustomEvent('interactive-action-completed', {
                   detail: { stepId, blockType: 'challenge', state: 'completed' },
