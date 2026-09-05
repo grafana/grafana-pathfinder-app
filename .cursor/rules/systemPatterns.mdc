@@ -133,7 +133,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 
 **Tier 4 — UI:**
 
-- `components/` — React + Scenes UI. Major panels: `App/App.tsx` (root), `docs-panel/docs-panel.tsx` (~40 KB hub), `Home/`, `interactive-tutorial/`, `LearningPaths/`, `LiveSession/`, `block-editor/`, `floating-panel/`, `full-screen/`, `kiosk/`, `PrTester/`.
+- `components/` — React + Scenes UI. Major panels: `App/App.tsx` (root), `docs-panel/docs-panel.tsx` (the panel hub), `Home/`, `interactive-tutorial/`, `LearningPaths/`, `LiveSession/`, `block-editor/`, `floating-panel/`, `full-screen/`, `kiosk/`, `PrTester/`.
 - `pages/` — Grafana Scenes routing. Entries: `homePage.ts`, `docsPage.ts`. Both registered by `App.tsx`.
 
 **Excluded from tier analysis** (not subject to import-graph rules):
