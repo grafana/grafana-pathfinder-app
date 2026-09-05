@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
+import { FatalTransitionError } from './transition-error';
 
 // The runner opens one guide per browser context, and each guide-completed event awards at most three new badges.
 const MAX_BADGE_CELEBRATIONS = 3;
@@ -38,12 +39,14 @@ async function readToastText(toast: Locator, timeout: number, context: string): 
         return { state: 'gone' };
       }
     } catch (visibilityError) {
-      throw new Error(
+      throw new FatalTransitionError(
+        'badge-obstruction',
         `Badge celebration ${context} failed within ${boundedTimeout}ms: ${readReason}. Visibility recheck failed: ${errorReason(visibilityError)}`
       );
     }
 
-    throw new Error(
+    throw new FatalTransitionError(
+      'badge-obstruction',
       `Badge celebration ${context} failed within ${boundedTimeout}ms while the toast remained visible: ${readReason}`
     );
   }
@@ -109,22 +112,30 @@ export async function dismissBadgeCelebrations(page: Page): Promise<void> {
     const dismissButton = page.getByTestId(testIds.learningPaths.badgeToastDismiss).first();
 
     try {
-      await dismissButton.click({ timeout: BADGE_TRANSITION_TIMEOUT_MS });
+      await dismissButton.dispatchEvent('click', undefined, { timeout: BADGE_TRANSITION_TIMEOUT_MS });
     } catch (error) {
+      if (!(await isVisible(toast))) {
+        continue;
+      }
       const reason = errorReason(error);
-      throw new Error(
+      throw new FatalTransitionError(
+        'badge-obstruction',
         `Badge celebration dismissal failed on attempt ${attempt} of ${MAX_BADGE_CELEBRATIONS}: ${reason}`
       );
     }
 
     if (!(await waitForToastTransition(page, previousText, hasQueuedCelebration(previousText)))) {
-      throw new Error(
+      throw new FatalTransitionError(
+        'badge-obstruction',
         `Badge celebration remained visible after attempt ${attempt} of ${MAX_BADGE_CELEBRATIONS} (${BADGE_TRANSITION_TIMEOUT_MS}ms timeout)`
       );
     }
   }
 
   if (await waitForVisibleToast(page, toast)) {
-    throw new Error(`Badge celebration remained visible after ${MAX_BADGE_CELEBRATIONS} dismissal attempts`);
+    throw new FatalTransitionError(
+      'badge-obstruction',
+      `Badge celebration remained visible after ${MAX_BADGE_CELEBRATIONS} dismissal attempts`
+    );
   }
 }

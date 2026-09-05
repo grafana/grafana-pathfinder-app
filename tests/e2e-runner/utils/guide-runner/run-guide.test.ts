@@ -47,11 +47,6 @@ function page(events: string[]): Page {
     goto: jest.fn().mockImplementation(async () => {
       events.push('navigate');
     }),
-    locator: jest.fn().mockReturnValue({
-      waitFor: jest.fn().mockImplementation(async () => {
-        events.push('help-ready');
-      }),
-    }),
     getByTestId: jest.fn().mockReturnValue({
       waitFor: jest.fn().mockImplementation(async () => {
         events.push('content-ready');
@@ -66,7 +61,6 @@ function options(events: string[]): RunGuideOnPageOptions {
     startingLocation: '/later',
     navigateToStartingLocation: true,
     replacePreviousGuide: true,
-    previousGuideHadInteractiveSteps: true,
     previousGuideTabId: 'old-tab',
     onPreviousGuideCleared: () => {
       events.push('previous-cleared');
@@ -90,7 +84,7 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-it('restores and clears the recorded previous tab before opening a later guide', async () => {
+it('clears the recorded previous tab before navigation and guide loading', async () => {
   const events: string[] = [];
   const currentPage = page(events);
   ensureDocsPanelOpenMock.mockImplementation(async () => {
@@ -119,17 +113,69 @@ it('restores and clears the recorded previous tab before opening a later guide',
     options(events)
   );
 
-  expect(replacePreviousE2EGuideMock).toHaveBeenCalledWith(currentPage, true, 'old-tab');
+  expect(replacePreviousE2EGuideMock).toHaveBeenCalledWith(currentPage, 'old-tab');
   expect(events).toEqual([
-    'navigate',
-    'help-ready',
     'panel-restored',
     'previous-replaced',
     'previous-cleared',
+    'navigate',
     'guide-injected',
     'guide-opened',
     'opened:new-tab',
     'content-ready',
   ]);
   expect(result.outcome).toBe('passed');
+});
+
+it('keeps a pre-tab guide-load failure recoverable after previous state is cleared', async () => {
+  const events: string[] = [];
+  const currentPage = page(events);
+  const loadError = new Error('The guide panel did not open');
+  ensureDocsPanelOpenMock.mockResolvedValue({} as never);
+  replacePreviousE2EGuideMock.mockResolvedValue(undefined);
+  ensureGuidePanelOpenMock.mockRejectedValue(loadError);
+
+  await expect(
+    runGuideOnPage(
+      currentPage,
+      {
+        id: 'later',
+        title: 'Later guide',
+        path: '/later/content.json',
+        content: '{"id":"later","title":"Later guide","blocks":[]}',
+      },
+      options(events)
+    )
+  ).rejects.toBe(loadError);
+
+  expect(openLegacyE2EGuideMock).not.toHaveBeenCalled();
+});
+
+it('keeps a content-load failure recoverable after the new guide tab becomes active', async () => {
+  const events: string[] = [];
+  const loadError = new Error('Guide loading timed out');
+  const currentPage = {
+    ...page(events),
+    getByTestId: jest.fn().mockReturnValue({
+      waitFor: jest.fn().mockRejectedValue(loadError),
+    }),
+  } as unknown as Page;
+  ensureDocsPanelOpenMock.mockResolvedValue({} as never);
+  replacePreviousE2EGuideMock.mockResolvedValue(undefined);
+  ensureGuidePanelOpenMock.mockResolvedValue(undefined);
+  openLegacyE2EGuideMock.mockResolvedValue('new-tab');
+
+  await expect(
+    runGuideOnPage(
+      currentPage,
+      {
+        id: 'later',
+        title: 'Later guide',
+        path: '/later/content.json',
+        content: '{"id":"later","title":"Later guide","blocks":[]}',
+      },
+      options(events)
+    )
+  ).rejects.toBe(loadError);
+  expect(events).toContain('opened:new-tab');
 });

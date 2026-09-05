@@ -7,6 +7,7 @@ interface HarnessOptions {
   bootstrapStates?: Array<{ rawDockedValue: string | null; sidebarMounted: boolean }>;
   dockedValue?: string | null;
   helpExpanded?: boolean;
+  helpWaitError?: Error;
   helpMenuVisible?: boolean;
   panelWaitResults?: Array<'resolve' | Error>;
   openConfirmationResults?: Array<'resolve' | Error>;
@@ -37,6 +38,9 @@ function createHarness(options: HarnessOptions = {}) {
     waitFor: panelWaitFor,
   } as unknown as Locator;
   const helpButton = {
+    waitFor: options.helpWaitError
+      ? jest.fn().mockRejectedValue(options.helpWaitError)
+      : jest.fn().mockResolvedValue(undefined),
     click: jest.fn().mockImplementation(async () => options.onHelpClick?.()),
     getAttribute: jest.fn().mockResolvedValue(options.helpExpanded ? 'true' : 'false'),
   } as unknown as Locator;
@@ -89,6 +93,7 @@ function createHarness(options: HarnessOptions = {}) {
     page,
     panel,
     helpButton,
+    helpWaitFor: helpButton.waitFor as jest.Mock,
     panelIsVisible,
     panelWaitFor,
     evaluate,
@@ -160,25 +165,35 @@ describe('ensureDocsPanelOpen', () => {
   });
 
   it('does not treat an expanded generic Help menu as an open Pathfinder panel', async () => {
-    const { page, helpButton, panelWaitFor } = createHarness({
+    const { page, helpButton, helpWaitFor, panelWaitFor } = createHarness({
       helpExpanded: true,
       helpMenuVisible: true,
     });
 
     await ensureDocsPanelOpen(page);
+    expect(helpWaitFor).toHaveBeenCalledTimes(1);
+    expect(helpWaitFor.mock.calls[0]?.[0]).toEqual({
+      state: 'visible',
+      timeout: expect.any(Number),
+    });
+    expect(helpWaitFor.mock.calls[0]?.[0].timeout).toBeGreaterThan(0);
+    expect(helpWaitFor.mock.calls[0]?.[0].timeout).toBeLessThanOrEqual(20_000);
 
     expect(helpButton.click).toHaveBeenCalledTimes(1);
     expect(panelWaitFor).toHaveBeenCalledTimes(1);
   });
 
   it('returns when the panel becomes visible while waiting for plugin readiness', async () => {
-    const { page, panel, helpButton, panelWaitFor, waitForFunction } = createHarness({
+    const { page, panel, helpButton, helpWaitFor, panelWaitFor, waitForFunction } = createHarness({
       panelVisible: [false, true],
+      helpWaitError: new Error('Help is not available'),
     });
 
     await expect(ensureDocsPanelOpen(page)).resolves.toBe(panel);
 
     expect(waitForFunction).toHaveBeenCalledTimes(1);
+    expect(page.locator).not.toHaveBeenCalled();
+    expect(helpWaitFor).not.toHaveBeenCalled();
     expect(helpButton.click).not.toHaveBeenCalled();
     expect(panelWaitFor).not.toHaveBeenCalled();
   });
@@ -224,6 +239,7 @@ describe('ensureDocsPanelOpen', () => {
     });
     const { page, helpButton, panelWaitFor } = createHarness({
       bootstrapStates: [
+        { rawDockedValue: null, sidebarMounted: false },
         { rawDockedValue: null, sidebarMounted: false },
         { rawDockedValue: null, sidebarMounted: false },
         { rawDockedValue: pathfinderDocked, sidebarMounted: false },

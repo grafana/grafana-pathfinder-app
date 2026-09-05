@@ -1,6 +1,7 @@
 import type { TestResultsData } from '../../../src/cli/e2e/e2e-reporter';
 import { contentDigest, createMinimalResultsData } from '../../../src/cli/e2e/e2e-reporter';
 import type { E2EChainGuide, E2EChainInput, E2EChainPackageMetadata } from '../../../src/cli/e2e/e2e-runner-contract';
+import { isFatalTransitionError } from './guide-runner/transition-error';
 
 export interface MilestoneTransition {
   startingLocation: string;
@@ -100,12 +101,15 @@ function skippedPrerequisiteResult(
 export function unrunSharedSessionResult(
   guide: E2EChainGuide,
   targetUrl: string,
-  activeResult: TestResultsData
+  activeResult: TestResultsData,
+  fatalTransition: boolean
 ): TestResultsData {
   const authExpired = activeResult.abortReason === 'AUTH_EXPIRED' || activeResult.errorCode === 'AUTH_EXPIRED';
   const errorMessage = authExpired
     ? 'The shared browser session authentication expired before this milestone started.'
-    : 'The shared browser session ended before this milestone started.';
+    : fatalTransition
+      ? 'A fatal shared-browser transition error stopped this milestone before it started.'
+      : 'The shared browser session ended before this milestone started.';
   return createMinimalResultsData({
     guide: packageGuideMetadata(guide, guide.packageMetadata, targetUrl),
     outcome: authExpired ? 'aborted' : 'infrastructure_error',
@@ -152,10 +156,12 @@ export async function runSharedGuideChain(
     firstRunnable = false;
     let result: TestResultsData;
     let runnerFailed = false;
+    let fatalTransition = false;
     try {
       result = await executor.runGuide(guide, index, transition);
     } catch (error) {
       runnerFailed = true;
+      fatalTransition = isFatalTransitionError(error);
       result = createMinimalResultsData({
         guide: packageGuideMetadata(guide, guide.packageMetadata, input.targetUrl, transition.startingLocation),
         outcome: 'infrastructure_error',
@@ -169,7 +175,7 @@ export async function runSharedGuideChain(
     if (result.outcome !== 'passed') {
       blocked.add(guide.id);
     }
-    if (runnerFailed && !executor.browserSessionEnded()) {
+    if (runnerFailed && !fatalTransition && !executor.browserSessionEnded()) {
       continue;
     }
     if (!endsSharedSession(result)) {
@@ -178,7 +184,7 @@ export async function runSharedGuideChain(
 
     authExpired = result.abortReason === 'AUTH_EXPIRED' || result.errorCode === 'AUTH_EXPIRED';
     for (const unrun of input.guides.slice(index + 1)) {
-      results.push(unrunSharedSessionResult(unrun, input.targetUrl, result));
+      results.push(unrunSharedSessionResult(unrun, input.targetUrl, result, fatalTransition));
       executor.publish(results);
     }
     break;
