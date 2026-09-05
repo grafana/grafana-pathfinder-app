@@ -14,6 +14,7 @@ export enum FixedRequirementType {
   DASHBOARD_EXISTS = 'dashboard-exists',
   FORM_VALID = 'form-valid',
   IS_TERMINAL_ACTIVE = 'is-terminal-active',
+  HAS_ESCALATION_CHAINS = 'has-escalation-chains',
 }
 
 // Parameterized requirement prefixes
@@ -25,6 +26,7 @@ export enum ParameterizedRequirementPrefix {
   HAS_PLUGIN = 'has-plugin:',
   PLUGIN_ENABLED = 'plugin-enabled:',
   HAS_DASHBOARD_NAMED = 'has-dashboard-named:',
+  HAS_ESCALATION_CHAIN = 'has-escalation-chain:',
   ON_PAGE = 'on-page:',
   HAS_FEATURE = 'has-feature:',
   IN_ENVIRONMENT = 'in-environment:',
@@ -112,6 +114,7 @@ export const PARAMETERIZED_REQUIREMENT_EXAMPLES: ReadonlyArray<{ prefix: string;
   { prefix: 'datasource-configured:', example: 'datasource-configured:prometheus' },
   { prefix: 'plugin-enabled:', example: 'plugin-enabled:grafana-clock-panel' },
   { prefix: 'has-dashboard-named:', example: 'has-dashboard-named:Node Exporter Full' },
+  { prefix: 'has-escalation-chain:', example: 'has-escalation-chain:Production - Default' },
   { prefix: 'var-', example: 'var-policyAccepted:true' },
   { prefix: 'renderer:', example: 'renderer:pathfinder' },
   { prefix: 'coda-exit-zero:', example: 'coda-exit-zero:test -f /etc/myapp.conf' },
@@ -141,6 +144,7 @@ export const REQUIREMENT_DESCRIPTIONS: Readonly<Record<string, string>> = Object
   'dashboard-exists': 'At least one dashboard must exist',
   'form-valid': 'All required form fields must be filled correctly',
   'is-terminal-active': 'A terminal session must be active',
+  'has-escalation-chains': 'At least one IRM/OnCall escalation chain has one or more escalation steps configured',
   // Parameterized prefixes
   'has-permission:': 'User has a specific Grafana permission (e.g. has-permission:dashboards:write)',
   'has-role:': 'User has a specific org role (e.g. has-role:editor)',
@@ -149,6 +153,8 @@ export const REQUIREMENT_DESCRIPTIONS: Readonly<Record<string, string>> = Object
   'has-plugin:': 'A plugin with the given ID is installed (e.g. has-plugin:grafana-clock-panel)',
   'plugin-enabled:': 'A plugin with the given ID is installed and enabled',
   'has-dashboard-named:': 'A dashboard with the exact title (case-insensitive) exists',
+  'has-escalation-chain:':
+    'An IRM/OnCall escalation chain matching the given name (case-insensitive) has one or more escalation steps configured',
   'on-page:': 'Current URL path matches the given value (e.g. on-page:/explore)',
   'has-feature:': 'A Grafana feature toggle is enabled (e.g. has-feature:publicDashboards)',
   'in-environment:': 'Running in a specific environment (e.g. in-environment:cloud)',
