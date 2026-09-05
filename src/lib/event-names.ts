@@ -6,6 +6,45 @@ export const StorageEvents = {
 
 export type StorageEventName = (typeof StorageEvents)[keyof typeof StorageEvents];
 
+export type InteractiveProgressClearedDetail =
+  | { scope: 'section'; contentKey: string; sectionId: string }
+  | { scope: 'content'; contentKey: string }
+  | { scope: 'path'; pathId: string; contentKeys: string[] }
+  | { scope: 'global' };
+
+export function dispatchInteractiveProgressCleared(detail: InteractiveProgressClearedDetail): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail }));
+  }
+}
+
+export function isProgressClearForContent(
+  detail: InteractiveProgressClearedDetail | undefined,
+  contentKey: string
+): boolean {
+  switch (detail?.scope) {
+    case 'content':
+      return detail.contentKey === contentKey;
+    case 'path':
+      return Array.isArray(detail.contentKeys) && detail.contentKeys.includes(contentKey);
+    case 'global':
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function isProgressClearForSection(
+  detail: InteractiveProgressClearedDetail | undefined,
+  contentKey: string,
+  sectionId: string
+): boolean {
+  if (detail?.scope === 'section') {
+    return detail.contentKey === contentKey && detail.sectionId === sectionId;
+  }
+  return isProgressClearForContent(detail, contentKey);
+}
+
 // Dispatched by global-state/panel-mode's panelModeManager.setMode with
 // detail { mode, previous }; consumed by every Pathfinder surface.
 export const PANEL_MODE_CHANGE_EVENT = 'pathfinder-panel-mode-change';

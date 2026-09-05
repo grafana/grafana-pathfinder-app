@@ -98,7 +98,7 @@ describe('useContentReset', () => {
     expect(mockDispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'interactive-progress-cleared',
-        detail: { contentKey: 'progress-key-123' },
+        detail: { scope: 'content', contentKey: 'progress-key-123' },
       })
     );
 

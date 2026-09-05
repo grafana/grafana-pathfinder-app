@@ -22,7 +22,7 @@ import { FeedbackButton } from '../FeedbackButton/FeedbackButton';
 import { reportAppInteraction, UserInteraction, AnalyticsContentType } from '../../lib/analytics';
 import { logger } from '../../lib/logging';
 import { normalizeTelemetryUrl } from '../../lib/telemetry';
-import { StorageEvents } from '../../lib/event-names';
+import { dispatchInteractiveProgressCleared } from '../../lib/event-names';
 import {
   learningProgressStorage,
   journeyCompletionStorage,
@@ -358,11 +358,7 @@ export function MyLearningTab({ onOpenGuide }: MyLearningTabProps) {
       evictAllContentCaches();
 
       // Notify the context engine to refresh recommendations.
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
-          detail: { contentKey: '*' },
-        })
-      );
+      dispatchInteractiveProgressCleared({ scope: 'global' });
     }
   }, []);
 

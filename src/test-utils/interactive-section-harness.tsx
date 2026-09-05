@@ -49,9 +49,21 @@ export function setCheckRequirementsResult(result: typeof _checkRequirementsResu
 /** Configurable resolved outcome for `executeInteractiveAction`. Override
  *  per-test via `setExecuteInteractiveActionOutcome()`; reset in `resetSectionHarness()`. */
 let _executeInteractiveActionOutcome: 'ok' | 'error' = 'ok';
+let _executeInteractiveActionGate: Promise<void> | null = null;
 
 export function setExecuteInteractiveActionOutcome(outcome: 'ok' | 'error') {
   _executeInteractiveActionOutcome = outcome;
+}
+
+export function pauseExecuteInteractiveAction(): () => void {
+  let resume!: () => void;
+  _executeInteractiveActionGate = new Promise((resolve) => {
+    resume = resolve;
+  });
+  return () => {
+    _executeInteractiveActionGate = null;
+    resume();
+  };
 }
 
 /**
@@ -193,16 +205,18 @@ interface StepStubProps {
   stepId?: string;
   onStepComplete?: (stepId: string) => void;
   onStepReset?: (stepId: string) => void;
+  resetTrigger?: number;
   targetAction?: string;
   refTarget?: string;
   children?: React.ReactNode;
 }
 
-const StepStub: React.FC<StepStubProps> = ({ stepId, onStepComplete, onStepReset, children }) =>
+const StepStub: React.FC<StepStubProps> = ({ stepId, onStepComplete, onStepReset, resetTrigger, children }) =>
   React.createElement(
     'div',
     { 'data-testid': `step-stub-${stepId ?? 'anon'}` },
     React.createElement('span', null, children),
+    React.createElement('span', { 'data-testid': `harness-reset-trigger-${stepId ?? 'anon'}` }, resetTrigger ?? 0),
     React.createElement(
       'button',
       {
@@ -271,6 +285,9 @@ export function createInteractiveEngineMock() {
     useInteractiveElements: () => ({
       executeInteractiveAction: jest.fn(async (request: unknown) => {
         executeInteractiveActionCalls.push(request);
+        if (_executeInteractiveActionGate) {
+          await _executeInteractiveActionGate;
+        }
         return _executeInteractiveActionOutcome;
       }),
       startSectionBlocking: jest.fn(),
@@ -435,6 +452,7 @@ export function resetSectionHarness() {
   memoryStore.clear();
   _checkRequirementsResult = { pass: true, error: [] };
   _executeInteractiveActionOutcome = 'ok';
+  _executeInteractiveActionGate = null;
   executeInteractiveActionCalls.length = 0;
   _stableCheckRequirementsFromData?.mockClear();
   // The completion store keeps its own module-scope cache + hydration

@@ -18,7 +18,7 @@ import type {
   GuideMetadataEntry,
 } from '../types/learning-paths.types';
 
-import { StorageEvents } from '../lib/event-names';
+import { dispatchInteractiveProgressCleared, StorageEvents } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import {
   learningProgressStorage,
@@ -411,6 +411,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
         return;
       }
 
+      let clearedContentKeys: string[];
+
       if (path.url) {
         await milestoneCompletionStorage.clear(path.url);
 
@@ -433,6 +435,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
         await journeyCompletionStorage.clearMany(journeyKeys);
 
         milestoneKeys.forEach((key) => evictContentCache(key));
+        clearedContentKeys = milestoneKeys;
       } else {
         // No base URL: either a static bundled path (`bundled:<id>`) or an App
         // Platform path whose members are `backend-guide:<id>`. We can't tell
@@ -455,13 +458,10 @@ export function useLearningPaths(): UseLearningPathsReturn {
         contentKeys.forEach((key) => evictContentCache(key));
 
         await learningProgressStorage.removeCompletedGuides(path.guides);
+        clearedContentKeys = contentKeys;
       }
 
-      window.dispatchEvent(
-        new CustomEvent(StorageEvents.InteractiveProgressCleared, {
-          detail: { contentKey: '*', pathId },
-        })
-      );
+      dispatchInteractiveProgressCleared({ scope: 'path', pathId, contentKeys: clearedContentKeys });
 
       await loadProgress({ current: true });
     },
