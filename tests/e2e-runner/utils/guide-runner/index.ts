@@ -50,6 +50,8 @@ export {
 export { classifyError } from './classification';
 export { createBrowserTerminationMonitor } from './termination-monitor';
 export type { BrowserTermination, BrowserTerminationMonitor } from './termination-monitor';
+export { FatalTransitionError, isFatalTransitionError } from './transition-error';
+export type { FatalTransitionKind } from './transition-error';
 
 // ============================================
 // Artifact Collection

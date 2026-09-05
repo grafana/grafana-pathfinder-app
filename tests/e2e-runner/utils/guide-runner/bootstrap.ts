@@ -127,8 +127,17 @@ async function openDocsPanelAttempt(page: Page, timeoutMs: number): Promise<Loca
     undefined,
     { timeout: remainingTimeout(deadline) }
   );
+  if (await panel.isVisible()) {
+    return panel;
+  }
+  state = await readBootstrapState(page, false);
+  if (hasOpenSignal(state)) {
+    await panel.waitFor({ state: 'visible', timeout: remainingTimeout(deadline) });
+    return panel;
+  }
 
   const helpButton = page.locator('button[aria-label="Help"]');
+  await helpButton.waitFor({ state: 'visible', timeout: remainingTimeout(deadline) });
   for (let openAttempt = 0; openAttempt < MAX_HELP_OPEN_ATTEMPTS; openAttempt++) {
     if (await panel.isVisible()) {
       return panel;
