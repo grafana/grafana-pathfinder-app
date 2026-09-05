@@ -1169,7 +1169,7 @@ Coda mode:
 | `objectives`      | string[]                 | ❌       | —         | Objectives marked complete after this block                                        |
 | `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                     |
 
-`requirements`, `objectives`, and `skippable` gate challenge execution, track objective completion, and offer a skip control using the unified step checker runtime.
+`requirements` and `skippable` gate challenge execution and offer a skip control using the unified step checker runtime. `objectives` are evaluated and surfaced as an informational note, but only `successCriteria` (via Check my work) can complete a challenge.
 
 `hintLevels` is an array of objects, not an array of strings. Each entry is `{ "text": "..." }` with non-empty text, and hints are revealed one at a time in array order. Hints appear only once the challenge is ready to attempt or has failed a check, so a learner stuck waiting on VM provisioning cannot reach them.
 
