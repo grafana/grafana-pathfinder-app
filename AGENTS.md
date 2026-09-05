@@ -14,7 +14,7 @@ Use `assertExhaustive(value)` from `src/lib/assert-exhaustive.ts` in fail-safe `
 
 ### Control characters in source
 
-Never paste a raw control byte into a tracked file — write it as an escape (`\x00`, not `\u0000`) or build it with `String.fromCharCode`. One raw byte makes `grep -r` and `rg` skip the whole file silently, returning a shorter result set that reads as complete. Tab, newline, and carriage return are fine. `src/validation/control-bytes.test.ts` enforces this over every tracked file, and its failure message explains the rest.
+Never paste a raw control byte into a tracked file — write it as an escape (`\x00`, not `\u0000`) or build it with `String.fromCharCode`. One raw byte makes `grep -r` and `rg` skip the whole file silently, returning a shorter result set that reads as complete. Tab, newline, and carriage return are fine. `src/validation/control-bytes.test.ts` enforces this over every tracked file, and its failure message explains the rest. Invisible Unicode formatting and bidirectional control code points are also forbidden in tracked source text because they can change how code appears without changing its visible structure. The guard rejects U+00AD, U+200B, U+200E, U+200F, U+202A, U+202B, U+202C, U+202D, U+202E, U+2060, U+2066, U+2067, U+2068, U+2069, and U+FEFF. Escape or construct these characters intentionally instead of embedding them directly. `src/validation/unicode-format-characters.test.ts` enforces this rule.
 
 ### Comments
 
