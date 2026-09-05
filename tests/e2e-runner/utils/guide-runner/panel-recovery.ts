@@ -21,7 +21,6 @@ export async function ensureGuidePanelOpen(page: Page, content: string, allowRel
   await ensureDocsPanelOpen(page, {
     beforeRetry: async () => {
       await page.reload({ waitUntil: 'domcontentloaded', timeout: 10_000 });
-      await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 10_000 });
       await injectGuide(page, content);
     },
   });

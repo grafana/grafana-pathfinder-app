@@ -44,4 +44,5 @@ it('keeps reload recovery for standalone and first-milestone execution', async (
 
   expect(currentPage.reload).toHaveBeenCalledTimes(1);
   expect(currentPage.evaluate).toHaveBeenCalledTimes(2);
+  expect(currentPage.locator).not.toHaveBeenCalled();
 });

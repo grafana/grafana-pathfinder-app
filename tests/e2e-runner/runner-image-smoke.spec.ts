@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 
 import { expect, test } from '@playwright/test';
+import { testIds } from '../../src/constants/testIds';
+import { dismissBadgeCelebrations } from './utils/guide-runner/badge-celebrations';
 
 function browserProcessCommands(): string[] {
   return readdirSync('/proc', { withFileTypes: true })
@@ -24,4 +26,35 @@ test('launches the bundled full Chromium browser', async ({ page }) => {
 
   await page.setContent('<main>Pathfinder E2E runner</main>');
   await expect(page.getByRole('main')).toHaveText('Pathfinder E2E runner');
+});
+
+test('dismisses a moving badge toast through DOM event dispatch', async ({ page }) => {
+  await page.setContent(`
+    <style>
+      @keyframes badge-slide {
+        from { transform: translateX(0); }
+        to { transform: translateX(200px); }
+      }
+      [data-testid="${testIds.learningPaths.badgeToast}"] {
+        animation: badge-slide 1500ms linear;
+        position: fixed;
+      }
+    </style>
+    <div data-testid="${testIds.learningPaths.badgeToast}">
+      Badge unlocked!
+      <button data-testid="${testIds.learningPaths.badgeToastDismiss}">Dismiss</button>
+    </div>
+    <script>
+      document.querySelector('[data-testid="${testIds.learningPaths.badgeToastDismiss}"]').addEventListener('click', (event) => {
+        event.currentTarget.parentElement.remove();
+      });
+    </script>
+  `);
+  const toast = page.getByTestId(testIds.learningPaths.badgeToast);
+
+  await expect(toast).toBeVisible();
+  await expect(toast).toHaveCSS('animation-duration', '1.5s');
+  await dismissBadgeCelebrations(page);
+
+  await expect(toast).toHaveCount(0);
 });
