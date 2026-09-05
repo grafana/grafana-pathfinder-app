@@ -29,7 +29,7 @@ export function SelectorDebugPanel({ onOpenDocsPage, onOpenLearningJourney }: Se
   const handleLeaveDevMode = useCallback(async () => {
     try {
       // Get current user ID and user list from global config
-      const globalConfig = (window as any).__pathfinderPluginConfig;
+      const globalConfig = window.__pathfinderPluginConfig;
       const currentUserId = (window as any).grafanaBootData?.user?.id;
       const currentUserIds = globalConfig?.devModeUserIds ?? [];
 

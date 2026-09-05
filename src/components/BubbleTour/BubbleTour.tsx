@@ -81,9 +81,9 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
     };
 
     void resolveWithRetry(step.target, 'highlight').then((resolved) => {
-      const paint = () => {
+      const paint = (): Promise<void> => {
         if (cancelled) {
-          return;
+          return Promise.resolve();
         }
 
         if (resolved) {
@@ -117,7 +117,7 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
           onPrevious,
           options
         );
-        return;
+        return Promise.resolve();
       };
 
       // highlightWithComment awaits a scroll before it paints, so concurrent paints can

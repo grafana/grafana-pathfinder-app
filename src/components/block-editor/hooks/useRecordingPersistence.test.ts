@@ -17,6 +17,12 @@ import type { RecordedStep } from '../../../utils/devtools/tutorial-exporter';
 
 import { useRecordingPersistence, PersistedRecordingState } from './useRecordingPersistence';
 
+jest.mock('../../../lib/logging', () => ({
+  logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn(), debug: jest.fn() },
+}));
+
+const { logger } = jest.requireMock('../../../lib/logging');
+
 const STORAGE_KEY = StorageKeys.BLOCK_EDITOR_RECORDING_STATE;
 
 function defaultOpts(overrides: Partial<Parameters<typeof useRecordingPersistence>[0]> = {}) {
@@ -31,6 +37,7 @@ function defaultOpts(overrides: Partial<Parameters<typeof useRecordingPersistenc
 
 beforeEach(() => {
   localStorage.clear();
+  jest.clearAllMocks();
 });
 
 describe('useRecordingPersistence — save()', () => {
@@ -140,6 +147,53 @@ describe('useRecordingPersistence — restore on mount', () => {
     });
 
     expect(onRestore).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useRecordingPersistence — recording stops after a restore', () => {
+  function persistedState(): PersistedRecordingState {
+    return {
+      recordingIntoSection: 'section-2',
+      recordingIntoConditionalBranch: null,
+      recordingStartUrl: '/d/x',
+      recordedSteps: [],
+      savedAt: '2026-07-20T00:00:00.000Z',
+    };
+  }
+
+  it('leaves the persisted state in place', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState()));
+    const onRestore = jest.fn();
+
+    const { rerender } = renderHook(
+      (props: { recordingIntoSection: string | null }) => useRecordingPersistence(defaultOpts({ onRestore, ...props })),
+      { initialProps: { recordingIntoSection: 'section-2' as string | null } }
+    );
+    expect(onRestore).toHaveBeenCalledTimes(1);
+
+    rerender({ recordingIntoSection: null });
+
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).recordingIntoSection).toBe('section-2');
+  });
+
+  it('reports corrupt storage that the stop-time read discovers', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState()));
+    const onRestore = jest.fn();
+
+    const { rerender } = renderHook(
+      (props: { recordingIntoSection: string | null }) => useRecordingPersistence(defaultOpts({ onRestore, ...props })),
+      { initialProps: { recordingIntoSection: 'section-2' as string | null } }
+    );
+    expect(onRestore).toHaveBeenCalledTimes(1);
+    logger.error.mockClear();
+
+    localStorage.setItem(STORAGE_KEY, '{ not json');
+    rerender({ recordingIntoSection: null });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to load recording state from localStorage',
+      expect.objectContaining({ error: expect.any(Error) })
+    );
   });
 });
 

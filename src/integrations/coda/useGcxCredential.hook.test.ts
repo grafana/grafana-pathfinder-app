@@ -1,0 +1,483 @@
+/**
+ * The shared gcx flow, tested once here rather than twice through its two
+ * consumers. `terminal-connect-step.test.tsx` still exercises it end to end
+ * through the step; these cover the branches directly.
+ *
+ * Only the network-touching functions are stubbed — `toCodaError`,
+ * `isMintForbidden` and `codaErrorCodeMessage` stay real, because the
+ * classification is the behaviour under test.
+ */
+
+import { renderHook, act } from '@testing-library/react';
+import { CodaError } from '@grafana/coda-client';
+
+import { useGcxCredential } from './useGcxCredential.hook';
+import { invalidateGcxCredentialForSession, resetGcxCredentialStore, runGcxCredential } from './gcx-credential-store';
+
+const mockBackendFetch = jest.fn();
+jest.mock('@grafana/runtime', () => ({
+  getBackendSrv: () => ({ fetch: (...args: unknown[]) => mockBackendFetch(...args) }),
+  getGrafanaLiveSrv: () => ({}),
+  config: { bootData: { user: { id: 7, isSignedIn: true, login: 'admin', orgId: 1, orgRole: 'Admin' } } },
+}));
+
+/** The mint preflight reads Grafana directly, and it fails closed. */
+function preflightAnswers(answer: { data: unknown } | { error: unknown }) {
+  mockBackendFetch.mockImplementation(() => ({
+    subscribe: (observer: any) => {
+      if ('error' in answer) {
+        observer.error(answer.error);
+      } else {
+        observer.next({ data: answer.data });
+        observer.complete();
+      }
+      return undefined;
+    },
+  }));
+}
+
+jest.mock('../../lib/logging', () => ({
+  logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
+}));
+
+const mockReportAppInteraction = jest.fn();
+jest.mock('../../lib/analytics', () => ({
+  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
+  UserInteraction: { GcxCredentialInstalled: 'gcx_credential_installed' },
+}));
+
+const mockRecordDegradation = jest.fn();
+jest.mock('../../lib/telemetry', () => ({
+  recordGcxCredentialDegradation: (...args: unknown[]) => mockRecordDegradation(...args),
+}));
+
+const mockProvisionGcx = jest.fn();
+let mockCanMint = true;
+jest.mock('./coda-api', () => ({
+  ...jest.requireActual('./coda-api'),
+  provisionGcx: (...args: unknown[]) => mockProvisionGcx(...args),
+  canMintGrafanaToken: () => mockCanMint,
+}));
+
+/** Pathfinder names both, so neither is the client's login-derived default. */
+const MINT_OPTIONS = { serviceAccountName: 'coda-gcx-u7', tokenName: 'coda-s_abc' };
+
+const CREDENTIAL = {
+  path: '/home/ubuntu/.config/gcx/config.yaml',
+  contextName: 'coda',
+  server: 'https://g.example.com',
+};
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockCanMint = true;
+  mockProvisionGcx.mockReset();
+  mockBackendFetch.mockReset();
+  // Nothing holds the account name, which is the ordinary case for a first mint.
+  preflightAnswers({ data: { serviceAccounts: [] } });
+  // The state is module-scoped so the step and the toolbar share it.
+  resetGcxCredentialStore();
+});
+
+describe('useGcxCredential', () => {
+  it('starts idle and pending, offering to mint', () => {
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+    expect(result.current.state).toBe('idle');
+    expect(result.current.isPending).toBe(true);
+    expect(result.current.offerMint).toBe(true);
+    expect(result.current.mintLikely).toBe(true);
+    expect(result.current.credential).toBeNull();
+  });
+
+  it('installs a minted credential and calls onReady exactly once', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onReady = jest.fn();
+    const { result } = renderHook(() => useGcxCredential(onReady, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(mockProvisionGcx).toHaveBeenCalledWith('s_abc', MINT_OPTIONS);
+    expect(result.current.state).toBe('ready');
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.credential).toEqual(CREDENTIAL);
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(onReady).toHaveBeenCalledWith(CREDENTIAL);
+  });
+
+  it('passes a supplied token through instead of minting', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc', 'glsa_pasted');
+    });
+
+    expect(mockProvisionGcx).toHaveBeenCalledWith('s_abc', { token: 'glsa_pasted' });
+  });
+
+  it('treats mint_forbidden as a branch to the paste field, not a failure', async () => {
+    mockProvisionGcx.mockRejectedValue(new CodaError('no', 'mint_forbidden', 403));
+    const onReady = jest.fn();
+    const { result } = renderHook(() => useGcxCredential(onReady, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(result.current.state).toBe('needs-token');
+    expect(result.current.error).toMatch(/[Pp]aste/);
+    expect(result.current.isPending).toBe(true);
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it('reads a 404 on a live session as an old Coda plugin', async () => {
+    // The session connected moments ago, so it exists — and there is no
+    // capability flag that would let us feature-detect the route.
+    mockProvisionGcx.mockRejectedValue(new CodaError('Session not found', 'session_not_found', 404));
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(result.current.state).toBe('failed');
+    expect(result.current.error).toMatch(/too old/);
+    expect(result.current.error).toMatch(/1\.3\.0/);
+  });
+
+  it('uses the shared code sentence for any other refusal', async () => {
+    mockProvisionGcx.mockRejectedValue(new CodaError('nope', 'rate_limited', 429));
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(result.current.state).toBe('needs-token');
+    expect(result.current.error).toMatch(/Too many sandbox requests/);
+  });
+
+  it('refuses to call the backend without a session', async () => {
+    const { result } = renderHook(() => useGcxCredential(undefined, null));
+
+    await act(async () => {
+      await result.current.run(null);
+    });
+
+    expect(mockProvisionGcx).not.toHaveBeenCalled();
+    expect(result.current.state).toBe('failed');
+    expect(result.current.error).toMatch(/not connected/);
+  });
+
+  it('stops offering to mint once a run is under way', async () => {
+    mockCanMint = true;
+    mockProvisionGcx.mockRejectedValue(new CodaError('no', 'mint_forbidden', 403));
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    // `offerMint` is gated on `idle`, so a refused mint cannot be re-offered.
+    expect(result.current.offerMint).toBe(false);
+  });
+
+  it('reports minting as unlikely without withdrawing the offer', () => {
+    mockCanMint = false;
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+    expect(result.current.mintLikely).toBe(false);
+    expect(result.current.offerMint).toBe(true);
+  });
+
+  it('reset returns it to idle', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+    act(() => result.current.reset());
+
+    expect(result.current.state).toBe('idle');
+    expect(result.current.credential).toBeNull();
+    expect(result.current.error).toBeNull();
+  });
+
+  it('records the ladder rung it stopped on, and the install it completed', async () => {
+    mockProvisionGcx.mockRejectedValueOnce(new CodaError('no', 'mint_forbidden', 403));
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+    expect(mockRecordDegradation).toHaveBeenCalledWith('mint-forbidden');
+
+    mockProvisionGcx.mockResolvedValueOnce(CREDENTIAL);
+    await act(async () => {
+      await result.current.run('s_abc', 'glsa_pasted');
+    });
+    expect(mockReportAppInteraction).toHaveBeenCalledWith('gcx_credential_installed', { source: 'pasted' });
+  });
+});
+
+describe('state shared across surfaces', () => {
+  it('shows an install made on one surface to the other, without a second mint', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const step = renderHook(() => useGcxCredential(jest.fn(), 's_abc'));
+    const toolbar = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await toolbar.result.current.run('s_abc');
+    });
+
+    // Grafana rejects a second `coda-<sessionId>` token on the name, so the
+    // step must not still be offering to mint one.
+    expect(step.result.current.state).toBe('ready');
+    expect(step.result.current.offerMint).toBe(false);
+    expect(step.result.current.credential).toEqual(CREDENTIAL);
+  });
+
+  it('completes a step whose credential was installed from the toolbar', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onReady = jest.fn();
+    renderHook(() => useGcxCredential(onReady, 's_abc'));
+    const toolbar = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await toolbar.result.current.run('s_abc');
+    });
+
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(onReady).toHaveBeenCalledWith(CREDENTIAL);
+  });
+
+  it('forgets a credential when the terminal moves to another session', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+    expect(result.current.state).toBe('ready');
+
+    // A reconnect provisions a fresh VM, which holds no credential — reporting
+    // the old one as ready would name a box that no longer exists.
+    act(() => invalidateGcxCredentialForSession('s_def'));
+    expect(result.current.state).toBe('idle');
+    expect(result.current.credential).toBeNull();
+  });
+
+  it('keeps the credential across a disconnect that may reconnect to the same session', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    act(() => invalidateGcxCredentialForSession(null));
+    expect(result.current.state).toBe('ready');
+  });
+
+  it('names the account when a reused one outranks the caller, and still offers paste', async () => {
+    // Its own rung: unlike a plain role refusal, an operator can delete the
+    // account named in the message.
+    mockProvisionGcx.mockRejectedValue(
+      new CodaError(
+        'The sandbox service account coda-gcx-u7 holds a higher Grafana role',
+        'service_account_outranks_caller',
+        403
+      )
+    );
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(result.current.state).toBe('needs-token');
+    expect(result.current.error).toMatch(/coda-gcx-u7/);
+    expect(mockRecordDegradation).toHaveBeenCalledWith('account-outranks-caller');
+  });
+
+  it('never reaches the mint when the account cannot be read', async () => {
+    // The client reuses an exact name match without checking its role, so an
+    // unread account is an unknown role rather than an absent one — passing the
+    // name on regardless is the fail-open the preflight exists to prevent.
+    preflightAnswers({ error: new CodaError('nope', 'role_forbidden', 403) });
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(mockProvisionGcx).not.toHaveBeenCalled();
+    expect(result.current.state).toBe('needs-token');
+    expect(mockRecordDegradation).toHaveBeenCalledWith('mint-forbidden');
+  });
+
+  it('holds a mint back as retryable when the preflight cannot answer, keeping it on offer', async () => {
+    // Nothing here says the mint is disallowed, so the button has to come back
+    // — a refusal would send a transient 503 to the paste field for good.
+    preflightAnswers({ error: { status: 503 } });
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(mockProvisionGcx).not.toHaveBeenCalled();
+    expect(result.current.state).toBe('idle');
+    expect(result.current.offerMint).toBe(true);
+    expect(result.current.error).toMatch(/Try again/);
+    expect(mockRecordDegradation).toHaveBeenCalledWith('account-check-unavailable');
+  });
+
+  it('burns no token name on a refused preflight, so the retry asks for the first one', async () => {
+    preflightAnswers({ error: { status: 503 } });
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    preflightAnswers({ data: { serviceAccounts: [] } });
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(mockProvisionGcx).toHaveBeenCalledWith('s_abc', MINT_OPTIONS);
+  });
+
+  it('runs no preflight at all for a pasted token', async () => {
+    // There is no account to reason about: the token is forwarded unchanged.
+    preflightAnswers({ error: { status: 503 } });
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc', 'glsa_pasted');
+    });
+
+    expect(mockProvisionGcx).toHaveBeenCalledWith('s_abc', { token: 'glsa_pasted' });
+    expect(result.current.state).toBe('ready');
+  });
+
+  it('answers idle for a session other than the one installed into', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const here = renderHook(() => useGcxCredential(undefined, 's_abc'));
+    const elsewhere = renderHook(() => useGcxCredential(undefined, 's_other'));
+
+    await act(async () => {
+      await here.result.current.run('s_abc');
+    });
+
+    expect(here.result.current.state).toBe('ready');
+    expect(elsewhere.result.current.state).toBe('idle');
+    expect(elsewhere.result.current.credential).toBeNull();
+    expect(elsewhere.result.current.isPending).toBe(true);
+  });
+
+  it('does not complete a caller waiting on another session', async () => {
+    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
+    const onReady = jest.fn();
+    renderHook(() => useGcxCredential(onReady, 's_other'));
+    const toolbar = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await toolbar.result.current.run('s_abc');
+    });
+
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it('does not let an install that settles late publish over its replacement', async () => {
+    let settle: (value: unknown) => void = () => {};
+    mockProvisionGcx.mockReturnValueOnce(new Promise((resolve) => (settle = resolve)));
+    const onReady = jest.fn();
+    const step = renderHook(() => useGcxCredential(onReady, 's_def'));
+
+    const inFlight = act(async () => {
+      void runGcxCredential('s_abc');
+      await Promise.resolve();
+    });
+    await inFlight;
+
+    // The terminal reconnects to a fresh VM while s_abc is still provisioning.
+    act(() => invalidateGcxCredentialForSession('s_def'));
+
+    await act(async () => {
+      settle(CREDENTIAL);
+      await Promise.resolve();
+    });
+
+    expect(step.result.current.state).toBe('idle');
+    expect(step.result.current.credential).toBeNull();
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  it('asks for a fresh token name on a repeat mint for the same session', async () => {
+    mockProvisionGcx.mockRejectedValueOnce(new CodaError('nope', 'credential_write_failed', 500));
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+    expect(mockProvisionGcx).toHaveBeenNthCalledWith(1, 's_abc', MINT_OPTIONS);
+
+    // Grafana rejects a duplicate token name even once the first has expired,
+    // so "Set up again" has to ask for one nothing holds.
+    act(() => result.current.reset());
+    mockProvisionGcx.mockResolvedValueOnce(CREDENTIAL);
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+
+    expect(mockProvisionGcx).toHaveBeenNthCalledWith(2, 's_abc', {
+      serviceAccountName: 'coda-gcx-u7',
+      tokenName: 'coda-s_abc-2',
+    });
+  });
+
+  it('starts token names over for a new session', async () => {
+    mockProvisionGcx.mockRejectedValue(new CodaError('nope', 'credential_write_failed', 500));
+    const { result } = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      await result.current.run('s_abc');
+    });
+    act(() => invalidateGcxCredentialForSession('s_def'));
+    await act(async () => {
+      await result.current.run('s_def');
+    });
+
+    expect(mockProvisionGcx).toHaveBeenNthCalledWith(2, 's_def', {
+      serviceAccountName: 'coda-gcx-u7',
+      tokenName: 'coda-s_def',
+    });
+  });
+
+  it('declines a concurrent run rather than minting twice', async () => {
+    let settle: (value: unknown) => void = () => {};
+    mockProvisionGcx.mockReturnValueOnce(new Promise((resolve) => (settle = resolve)));
+    const step = renderHook(() => useGcxCredential(undefined, 's_abc'));
+    const toolbar = renderHook(() => useGcxCredential(undefined, 's_abc'));
+
+    await act(async () => {
+      void step.result.current.run('s_abc');
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await toolbar.result.current.run('s_abc');
+    });
+
+    expect(mockProvisionGcx).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      settle(CREDENTIAL);
+    });
+  });
+});

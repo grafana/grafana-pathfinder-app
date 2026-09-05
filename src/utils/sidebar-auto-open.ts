@@ -73,7 +73,7 @@ function setupOnboardingFlowListener(): void {
     if (history) {
       const unlisten = history.listen(checkLocationChange);
       detach = unlisten;
-      (window as any).__pathfinderAutoOpenUnlisten = unlisten;
+      window.__pathfinderAutoOpenUnlisten = unlisten;
       return;
     }
   } catch {

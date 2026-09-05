@@ -284,7 +284,7 @@ plugin.init = function (meta: AppPluginMeta<DocsPluginConfig>) {
   // Mount kiosk mode overlay manager if enabled and no ?doc= param
   // (skip kiosk in tabs opened via tile deep links so the overlay doesn't reappear)
   if (config.enableKioskMode && !docsParam) {
-    (window as any).__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
+    window.__pathfinderKioskConfig = { rulesUrl: config.kioskRulesUrl };
     document.dispatchEvent(new CustomEvent('pathfinder-kiosk-ready'));
 
     if (!document.getElementById('pathfinder-kiosk-root')) {

@@ -6,6 +6,7 @@ export interface BrowserTermination {
 
 export interface BrowserTerminationMonitor {
   termination: Promise<BrowserTermination>;
+  isTerminated(): boolean;
   expectPageClose(): void;
   dispose(): void;
 }
@@ -39,6 +40,9 @@ export function createBrowserTerminationMonitor(page: Page): BrowserTerminationM
 
   return {
     termination,
+    isTerminated() {
+      return terminated;
+    },
     expectPageClose() {
       expectedPageClose = true;
     },

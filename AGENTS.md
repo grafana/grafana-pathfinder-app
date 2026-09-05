@@ -14,11 +14,13 @@ Use `assertExhaustive(value)` from `src/lib/assert-exhaustive.ts` in fail-safe `
 
 ### Control characters in source
 
-Never paste a raw control byte into a tracked file — write it as an escape (`\x00`, not `\u0000`) or build it with `String.fromCharCode`. One raw byte makes `grep -r` and `rg` skip the whole file silently, returning a shorter result set that reads as complete. Tab, newline, and carriage return are fine. `src/validation/control-bytes.test.ts` enforces this over every tracked file, and its failure message explains the rest.
+Never paste a raw control byte into a tracked file — write it as an escape (`\x00`, not `\u0000`) or build it with `String.fromCharCode`. One raw byte makes `grep -r` and `rg` skip the whole file silently, returning a shorter result set that reads as complete. Tab, newline, and carriage return are fine. `src/validation/control-bytes.test.ts` enforces this over every tracked file, and its failure message explains the rest. Invisible Unicode formatting and bidirectional control code points are also forbidden in tracked source text because they can change how code appears without changing its visible structure. The guard rejects U+00AD, U+200B, U+200E, U+200F, U+202A, U+202B, U+202C, U+202D, U+202E, U+2060, U+2066, U+2067, U+2068, U+2069, and U+FEFF. Escape or construct these characters intentionally instead of embedding them directly. `src/validation/unicode-format-characters.test.ts` enforces this rule.
 
 ### Comments
 
 **Default to no comments.** Add one only when removing it would confuse a reader who can already read the surrounding code. The narrow band that earns one: counterintuitive-but-correct code, hidden invariants the type system can't express, external-bug workarounds (with an upstream link), and security or correctness warnings. If the comment won't fit on one short line, rename or restructure instead.
+
+Every `eslint-disable` directive requires a narrow explanation after `--`. `src/validation/eslint-disable-justifications.test.ts` enforces this; legacy directives without one are tracked by `UNDESCRIBED_ESLINT_DISABLE_BASELINE` and must not grow.
 
 **Trim on touch.** When editing a function, also trim bad-shape comments inside it and on adjacent declarations in the same file. Do not sweep whole files or grep the repo for cleanup — comment removal rides along on code changes, never as a standalone PR.
 
@@ -60,7 +62,7 @@ Dev server runs at http://localhost:3000 (admin/admin). Focused Jest runs need `
 
 ### Frontend tier model
 
-Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit allowlist entry with justification. Two exist today, both requirement checks reaching `integrations/` through a dynamic import so the integration stays out of the requirements chunk when the feature is off: `checks/terminal.ts` for terminal connection status and `checks/coda.ts` for the sandbox session id and exec client.
+Imports flow **downward only** to avoid cycles. Cross-tier rules are enforced by ESLint and `src/validation/architecture.test.ts`; exceptions require an explicit accountable allowlist entry with a substantive reason and either a tracking issue for debt or the `by-design` marker for a permanent boundary exception. Two vertical exceptions exist today, both requirement checks reaching `integrations/` through a dynamic import so the integration stays out of the requirements chunk when the feature is off: `checks/terminal.ts` for terminal connection status and `checks/coda.ts` for the sandbox session id and exec client.
 
 - **Tier 0 — Types & constants**: `types/`, `constants/`
 - **Tier 1 — Support**: `lib/`, `security/`, `styles/`, `global-state/`, `utils/`, `validation/`, `recovery/`, `completion-records/`

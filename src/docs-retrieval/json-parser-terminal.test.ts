@@ -158,3 +158,43 @@ describe('json-parser terminal block', () => {
     expect(sectionEl!.props.autoCollapse).toBeUndefined();
   });
 });
+
+describe('json-parser terminal-connect gcx field', () => {
+  function parseConnectBlock(block: Record<string, unknown>) {
+    const result = parseJsonGuide(
+      JSON.stringify({
+        id: 'test-gcx',
+        title: 'gcx test',
+        blocks: [{ type: 'terminal-connect', content: 'Connect', ...block }],
+      })
+    );
+    expect(result.isValid).toBe(true);
+    return result.data!.elements.find((el) => el.type === 'terminal-connect-step')!;
+  }
+
+  it('carries gcx through to the step props', () => {
+    expect(parseConnectBlock({ gcx: true }).props.gcx).toBe(true);
+  });
+
+  it('leaves gcx undefined when the author did not ask for it', () => {
+    // Undefined, not false: the component owns the default, and a parser that
+    // invented one would make "unset" indistinguishable from "opted out".
+    expect(parseConnectBlock({}).props.gcx).toBeUndefined();
+  });
+
+  it('keeps gcx alongside the VM options rather than replacing them', () => {
+    const el = parseConnectBlock({ gcx: true, vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
+    expect(el.props).toMatchObject({ gcx: true, vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
+  });
+
+  it('rejects a non-boolean gcx rather than coercing it', () => {
+    const result = parseJsonGuide(
+      JSON.stringify({
+        id: 'test-gcx-bad',
+        title: 'gcx test',
+        blocks: [{ type: 'terminal-connect', content: 'Connect', gcx: 'yes' }],
+      })
+    );
+    expect(result.isValid).toBe(false);
+  });
+});

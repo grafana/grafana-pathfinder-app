@@ -41,6 +41,51 @@ The source-level tripwires live in `src/components/docs-panel/docs-panel.contrac
 
 ---
 
+## Runner guide-load contract
+
+Both runner modes use the exact `bundled:e2e-test` URL. Shared execution does not add a plugin URL format.
+
+The installed plugin reads guide JSON from `StorageKeys.E2E_TEST_GUIDE`. No guide content or bearer token is stored in the URL.
+
+Before each later interactive milestone, the runner uses this replacement sequence:
+
+1. It publishes the completed milestone result.
+2. It navigates to the authored starting location when necessary.
+3. It opens the Pathfinder panel and restores the saved tab strip.
+4. It activates the exact E2E tab that the previous milestone opened.
+5. It dismisses Pathfinder badge celebrations.
+6. It clicks the existing `Reset guide` control.
+7. It waits for `interactive-progress-cleared` with content key `bundled:e2e-test`.
+8. It captures any step roots that appeared during reset.
+9. It closes the E2E guide tab.
+10. It waits until all pre-reset and current step roots detach.
+11. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
+12. It dispatches `pathfinder-auto-open-docs` with `bundled:e2e-test`.
+13. It records the new tab ID.
+14. It waits for the replacement content before step discovery.
+
+If a zero-step guide has no `Reset guide` control, the runner closes its tab directly.
+
+If the previous milestone opened no guide tab, the runner clears stored `bundled:e2e-test` progress. It then skips reset and close actions.
+
+A page reload can clear the active-tab globals. The recorded tab ID lets the runner reactivate a visible or overflowed E2E tab.
+
+The tab close control uses `docs-panel-tab-close-${tabId}`. This test ID is part of the shared runner contract.
+
+The standalone runner and first shared milestone can reload once during panel recovery. A later milestone never reloads during recovery.
+
+If later panel recovery fails, the runner reports infrastructure failure. It does not erase unsaved page state with a reload.
+
+The reset clears Pathfinder progress and its in-memory completion cache. It does not reload the Grafana page.
+
+The same page, browser context, cookies, session storage, form values, and application memory remain active.
+
+This is a runner-only contract. The installed Pathfinder frontend and `bundled:e2e-test` loader remain unchanged.
+
+If this handshake changes, update both runner specs, runner contract tests, and this document in one change.
+
+---
+
 ## Block editor header contract
 
 The block-editor header exposes two stable row testids that responsive e2e tests depend on to assert the two-row layout holds at narrow widths:
@@ -453,6 +498,7 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
 - `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
 - `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
+- `src/integrations/coda/GcxSetupPanel.contract.test.tsx` - gcx credential test IDs, source references, and the form's visibility states
 
 ### Pattern: Dual Assertion
 
@@ -602,6 +648,46 @@ await skipButton.click();
 // Wait for a terminal state before treating the step as skipped.
 await page.waitForSelector('[data-step-id="my-step"][data-test-step-state="completed"]');
 ```
+
+---
+
+### gcx credential setup
+
+A `terminal-connect` block with `gcx: true` does not finish at `connected`: the step stays incomplete
+until a credential is installed, so a runner that waits only for the connection hangs. The same form
+appears in the terminal toolbar's **gcx** modal, keyed by fixed ids rather than a step id.
+
+| Control                       | Step id (`testIds.interactive.*`)          | Toolbar id (`testIds.codaTerminal.*`) | Rendered when                                                         |
+| ----------------------------- | ------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------- |
+| Open the toolbar modal        | —                                          | `coda-terminal-gcx`                   | The terminal is connected                                             |
+| Mint a token                  | `interactive-gcx-mint-${stepId}`           | `coda-terminal-gcx-mint`              | No mint has been refused for this session yet                         |
+| Paste a token                 | `interactive-gcx-token-${stepId}`          | `coda-terminal-gcx-token`             | Always, while the form is shown — the paste path is primary           |
+| Pasted-token lifetime warning | `interactive-gcx-token-lifetime-${stepId}` | `coda-terminal-gcx-token-lifetime`    | Always, while the form is shown                                       |
+| Install the pasted token      | `interactive-gcx-install-${stepId}`        | `coda-terminal-gcx-install`           | Always, while the form is shown; disabled until the field has a value |
+| Continue without gcx          | `interactive-gcx-skip-${stepId}`           | — (dismiss the modal instead)         | Always, while the form is shown                                       |
+| Credential installed          | `interactive-gcx-ready-${stepId}`          | `coda-terminal-gcx-ready`             | A credential exists for this session                                  |
+| Set up again                  | —                                          | `coda-terminal-gcx-redo`              | A credential exists for this session                                  |
+| Refusal message               | `interactive-gcx-error-${stepId}`          | `coda-terminal-gcx-error`             | The last attempt was refused                                          |
+
+Lifecycle notes a runner has to honour:
+
+- **The whole form disappears while provisioning.** `state === 'provisioning'` renders a spinner and
+  nothing else, so mint, paste and install all detach mid-flight. Poll for the ready line or the error,
+  not for the control you just clicked.
+- **The step's controls are gated on the `gcx` flag, not on the store.** A `terminal-connect` step
+  without `gcx` never renders any of the step-scoped ids above, even while another surface is installing
+  a credential into the same session. It completes on its **Continue** button
+  (`interactive-terminal-skip-${stepId}`) as it always did.
+- **A credential belongs to one session.** After a reconnect the ready line detaches and the form
+  returns, because the new VM holds no credential.
+- **A held-back mint brings its own button back.** A mint whose preflight could not reach an answer is
+  retryable rather than refused, so the error appears _and_ the mint control re-attaches. Only a refusal
+  detaches it for the rest of the session.
+- **Skipping still completes the step.** "Continue without gcx" marks it complete, so
+  `data-test-step-state` reaches `completed` on that path too.
+
+The values and the visibility states above are pinned by
+`src/integrations/coda/GcxSetupPanel.contract.test.tsx`.
 
 ---
 

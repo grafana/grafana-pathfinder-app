@@ -172,6 +172,13 @@ export const testIds = {
     terminalConnectStep: (stepId: string) => `interactive-terminal-connect-${stepId}`,
     terminalSkipButton: (stepId: string) => `interactive-terminal-skip-${stepId}`,
     terminalCopyButton: (stepId: string) => `interactive-terminal-copy-${stepId}`,
+    gcxMintButton: (stepId: string) => `interactive-gcx-mint-${stepId}`,
+    gcxTokenInput: (stepId: string) => `interactive-gcx-token-${stepId}`,
+    gcxTokenLifetime: (stepId: string) => `interactive-gcx-token-lifetime-${stepId}`,
+    gcxInstallButton: (stepId: string) => `interactive-gcx-install-${stepId}`,
+    gcxSkipButton: (stepId: string) => `interactive-gcx-skip-${stepId}`,
+    gcxReady: (stepId: string) => `interactive-gcx-ready-${stepId}`,
+    gcxError: (stepId: string) => `interactive-gcx-error-${stepId}`,
     lazyScrollRetryButton: (stepId: string) => `interactive-lazy-retry-${stepId}`,
   },
 
@@ -389,6 +396,14 @@ export const testIds = {
     searchPrev: 'coda-terminal-search-prev',
     searchNext: 'coda-terminal-search-next',
     searchClose: 'coda-terminal-search-close',
+    gcxButton: 'coda-terminal-gcx',
+    gcxMint: 'coda-terminal-gcx-mint',
+    gcxToken: 'coda-terminal-gcx-token',
+    gcxTokenLifetime: 'coda-terminal-gcx-token-lifetime',
+    gcxInstall: 'coda-terminal-gcx-install',
+    gcxReady: 'coda-terminal-gcx-ready',
+    gcxRedo: 'coda-terminal-gcx-redo',
+    gcxError: 'coda-terminal-gcx-error',
   },
 
   // Home Page

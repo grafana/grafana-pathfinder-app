@@ -177,6 +177,13 @@ export default defineConfig([
             'Use DOM methods for structure, or sanitizeDocumentationHTML() if HTML structure is required.',
         },
         {
+          selector:
+            "MemberExpression[object.type='TSAsExpression'][object.expression.name='window'][object.typeAnnotation.type='TSAnyKeyword'][property.name=/^__/]",
+          message:
+            'Do not bypass the typed Pathfinder window-global contract with window as any. ' +
+            'Declare the global in src/types/window-globals.ts and access it through window directly.',
+        },
+        {
           selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
           message:
             'Avoid insertAdjacentHTML() — it parses strings as HTML and risks XSS (F5). ' +
@@ -235,6 +242,26 @@ export default defineConfig([
             'draggable={false} to suppress native drag is acceptable.',
         },
       ],
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Unreachable and vacuous code (Epic #603)
+  // `@grafana/eslint-config` does not extend eslint:recommended, so none of
+  // these ship by default. TypeScript's `noUnusedLocals` reports unused
+  // bindings inside a dead branch but never the dead branch itself, and a
+  // `@ts-expect-error` silences it entirely — so nothing else in the toolchain
+  // catches unreachable code. All five are at zero violations repo-wide, and
+  // `src/validation/dead-code-lint-config.test.ts` fails if a later config
+  // block downgrades or shadows them.
+  // ---------------------------------------------------------------------------
+  {
+    rules: {
+      'no-unreachable': 'error',
+      'no-unreachable-loop': 'error',
+      'no-constant-condition': 'error',
+      'no-dupe-else-if': 'error',
+      'no-useless-return': 'error',
     },
   },
 

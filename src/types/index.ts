@@ -38,5 +38,8 @@ export * from './v1-recommender.types';
 // Learning paths and badges types
 export * from './learning-paths.types';
 
+// Feature flag and experiment contracts
+export * from './openfeature.types';
+
 // Re-export content types from docs-retrieval for convenience
 export * from './content.types';

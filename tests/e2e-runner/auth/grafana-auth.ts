@@ -67,6 +67,7 @@ import type { Page } from '@playwright/test';
 // ============================================
 // Types
 // ============================================
+export type AuthFailureKind = 'auth_expired' | 'infrastructure_error';
 
 /**
  * Result of an authentication operation.
@@ -77,6 +78,7 @@ export interface AuthResult {
 
   /** Error message if authentication failed */
   error?: string;
+  failureKind?: AuthFailureKind;
 
   /** Duration of the auth operation in ms */
   durationMs?: number;
@@ -95,15 +97,11 @@ export interface AuthResult {
 /**
  * Result of session validation.
  */
-export interface SessionValidationResult {
-  /** Whether the session is valid */
-  valid: boolean;
+export type SessionValidationResult =
+  { valid: true; expiresIn?: number } | { valid: false; failureKind: AuthFailureKind; error: string };
 
-  /** Error message if session is invalid */
-  error?: string;
-
-  /** Time until session expires (if known), in seconds */
-  expiresIn?: number;
+export function authFailureKindForStatus(status: number): AuthFailureKind {
+  return status === 401 || status === 403 ? 'auth_expired' : 'infrastructure_error';
 }
 
 /**
@@ -268,6 +266,7 @@ export const pluginE2EAuthStrategy: AuthStrategy = {
       if (currentUrl.includes('/login')) {
         return {
           success: false,
+          failureKind: 'auth_expired',
           error:
             'Authentication failed - redirected to login page. Ensure @grafana/plugin-e2e is configured correctly.',
           durationMs: Date.now() - startTime,
@@ -275,10 +274,11 @@ export const pluginE2EAuthStrategy: AuthStrategy = {
       }
 
       // Fetch user info to confirm authentication
-      const userResponse = await page.request.get(`${grafanaUrl}/api/user`);
+      const userResponse = await page.request.get(new URL('/api/user', grafanaUrl).toString());
       if (!userResponse.ok()) {
         return {
           success: false,
+          failureKind: authFailureKindForStatus(userResponse.status()),
           error: `Authentication check failed: /api/user returned ${userResponse.status()}`,
           durationMs: Date.now() - startTime,
         };
@@ -300,6 +300,7 @@ export const pluginE2EAuthStrategy: AuthStrategy = {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return {
         success: false,
+        failureKind: 'infrastructure_error',
         error: `Authentication failed: ${errorMessage}`,
         durationMs: Date.now() - startTime,
       };
@@ -308,8 +309,7 @@ export const pluginE2EAuthStrategy: AuthStrategy = {
 
   async validateSession(page: Page): Promise<SessionValidationResult> {
     try {
-      // Lightweight check using fetch in browser context (preserves session cookies)
-      const isValid = await page.evaluate(async () => {
+      const result = await page.evaluate(async () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
 
@@ -317,26 +317,37 @@ export const pluginE2EAuthStrategy: AuthStrategy = {
           const response = await fetch('/api/user', {
             signal: controller.signal,
           });
+          return { kind: 'response' as const, status: response.status, url: response.url };
+        } catch (error) {
+          return {
+            kind: 'error' as const,
+            message: error instanceof Error ? error.message : 'Unknown session validation error',
+          };
+        } finally {
           clearTimeout(timeoutId);
-          return response.ok;
-        } catch {
-          clearTimeout(timeoutId);
-          return false;
         }
       });
 
-      if (isValid) {
+      if (result.kind === 'error') {
+        return { valid: false, failureKind: 'infrastructure_error', error: result.message };
+      }
+      const redirectedToLogin = new URL(result.url, page.url()).pathname.startsWith('/login');
+      if (result.status >= 200 && result.status < 300 && !redirectedToLogin) {
         return { valid: true };
       }
 
       return {
         valid: false,
-        error: 'Session validation failed - /api/user returned non-OK response',
+        failureKind: redirectedToLogin ? 'auth_expired' : authFailureKindForStatus(result.status),
+        error: redirectedToLogin
+          ? 'Session validation failed: redirected to login'
+          : `Session validation failed: /api/user returned ${result.status}`,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return {
         valid: false,
+        failureKind: 'infrastructure_error',
         error: `Session validation error: ${errorMessage}`,
       };
     }
