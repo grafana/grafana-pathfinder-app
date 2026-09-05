@@ -247,6 +247,16 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     sectionId,
   });
 
+  const [hasResolvedOnce, setHasResolvedOnce] = useState(false);
+  const wasCheckingRef = useRef(false);
+  useEffect(() => {
+    if (checker.isChecking) {
+      wasCheckingRef.current = true;
+    } else if (wasCheckingRef.current && !hasResolvedOnce) {
+      setHasResolvedOnce(true);
+    }
+  }, [checker.isChecking, hasResolvedOnce]);
+
   const isEnabled = checker.isEnabled && !disabled;
 
   // Objectives are probed read-only here, never through the gating checker:
@@ -554,6 +564,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         stepId,
         maxRetries: 0,
       });
+      if (cancelRequestedRef.current) {
+        return;
+      }
       if (result.pass) {
         setState('solved');
         markComplete();
@@ -563,6 +576,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         setState('failed-check');
       }
     } catch (err) {
+      if (cancelRequestedRef.current) {
+        return;
+      }
       // Unexpected pipeline failure (network blip, requirements bug). Surface it
       // as a failed check so the user can retry instead of being stuck on a
       // spinner with no action available.
@@ -582,13 +598,20 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       // No setup is in flight yet — bail immediately. (Setup will see the
       // flag if it starts after this and skip out before running anything.)
       resetToIdle();
-    } else if (state === 'ready' || state === 'checking' || state === 'failed-check' || state === 'setup-failed') {
+    } else if (
+      mode === 'coda' &&
+      (state === 'ready' || state === 'checking' || state === 'failed-check' || state === 'setup-failed')
+    ) {
       terminalCtx?.disconnect();
+      resetToIdle();
+    } else if (state === 'ready' || state === 'checking' || state === 'failed-check' || state === 'setup-failed') {
+      // Standard mode never touches Coda, so it must never see a Coda gate —
+      // and must never tear down a session another step may be using.
       resetToIdle();
     }
     // For 'preparing': the in-flight runExec resolves first; the loop checks
     // cancelRequestedRef on the next iteration and calls resetToIdle itself.
-  }, [state, resetToIdle, terminalCtx]);
+  }, [state, resetToIdle, terminalCtx, mode]);
 
   // Standard mode never touches Coda, so it must never see a Coda gate.
   const configGateMessage = mode === 'coda' ? codaConfigGateMessage(codaGate, codaEligibility, SANDBOX_SUBJECT) : null;
@@ -706,27 +729,32 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
               Cancel
             </Button>
           )}
-        {skippable && !isCompleted && checker.isEnabled && state !== 'connecting' && state !== 'preparing' && (
-          <Button
-            size="sm"
-            variant="secondary"
-            fill="text"
-            onClick={() => {
-              handleCancel();
-              checker.markSkipped?.();
-              onStepComplete?.(stepId);
-              window.dispatchEvent(
-                new CustomEvent('interactive-action-completed', {
-                  detail: { stepId, blockType: 'challenge', state: 'completed' },
-                })
-              );
-            }}
-            disabled={disabled}
-            data-testid={testIds.interactive.skipButton(stepId)}
-          >
-            Skip
-          </Button>
-        )}
+        {skippable &&
+          !isCompleted &&
+          hasResolvedOnce &&
+          !checker.isSequentialBlock &&
+          state !== 'connecting' &&
+          state !== 'preparing' && (
+            <Button
+              size="sm"
+              variant="secondary"
+              fill="text"
+              onClick={() => {
+                handleCancel();
+                checker.markSkipped?.();
+                onStepComplete?.(stepId);
+                window.dispatchEvent(
+                  new CustomEvent('interactive-action-completed', {
+                    detail: { stepId, blockType: 'challenge', state: 'completed' },
+                  })
+                );
+              }}
+              disabled={disabled}
+              data-testid={testIds.interactive.skipButton(stepId)}
+            >
+              Skip
+            </Button>
+          )}
       </div>
 
       {hintLevels.length > 0 && (state === 'ready' || state === 'failed-check') && (
