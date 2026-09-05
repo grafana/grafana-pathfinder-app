@@ -10,6 +10,7 @@ The project uses several GitHub Actions workflows for different release scenario
 
 - **Trigger**: Push of version tags matching pattern `v*` (e.g., `v1.0.0`)
 - **Process**:
+  - Pins the Go toolchain via `build-plugin`'s `go-version` input (its own internal setup-go step defaults to 1.25 and would otherwise drift behind `go.mod`)
   - Uses `grafana/plugin-actions/build-plugin` action
   - Builds the plugin for distribution
   - Plugin signing is available but currently commented out
@@ -98,22 +99,25 @@ npm run sign           # Sign plugin for distribution
 
 ### For Official Releases
 
-1. Update version in `package.json`
-2. Create and push version tag (`git tag v1.1.32 && git push origin v1.1.32`)
-3. GitHub Actions automatically builds and creates release
-4. Optionally sign plugin for distribution
+Releases are prepared on a dedicated `release/v<version>` branch, not on `main` directly — see [`/release-prep`](../../.cursor/skills/release-prep/SKILL.md) for the full rationale and workflow. Cutting the branch the moment prep starts freezes the release's scope: anything merged to `main` afterward rolls into the next release instead of racing this one.
+
+1. Fetch `origin/main` and cut `release/v<version>` from its current tip
+2. Update version in `package.json` (and `package-lock.json`), and draft the CHANGELOG entry (skip if one was already merged to `main` independently)
+3. Push the branch, then create and push the version tag against it (`git tag v1.1.32 release/v1.1.32 && git push origin v1.1.32`)
+4. GitHub Actions automatically builds and creates release from the tagged commit
+5. Optionally sign plugin for distribution
 
 ### For Development Deployments
 
 1. Run the manual publish workflow
-2. Select the `dev` environment and the branch to deploy
+2. Select the `dev` environment and the branch to deploy — use the `release/v<version>` branch for an actual release, not `main`, since the `branch` input re-resolves live and `main` may have moved since the release was cut
 3. Monitor via Slack channel `#pathfinder-app-release`
 
 ### For Production Deployments
 
 1. Use manual publish workflow
 2. Select target environment (ops/prod)
-3. Choose branch to deploy from
+3. Choose the `release/v<version>` branch to deploy from — not `main`, for the same reason as above
 4. Monitor deployment via Argo Workflow
 
 ## Monitoring and Notifications
@@ -205,7 +209,7 @@ The CLI is not bundled into the plugin tarball. Webpack only enters from `src/mo
 
 ### Common Issues
 
-- **Build Failures**: Check GitHub Actions logs for specific error messages
+- **Build Failures**: Check GitHub Actions logs for specific error messages. `release.yml` passes `go-version` to `grafana/plugin-actions/build-plugin` to match `go.mod`'s minimum — a separate top-level `setup-go` step doesn't work here, since `build-plugin` runs its own internal `setup-go` (default Go 1.25) afterward and silently overwrites it. Without the input pinned, `mage` fails with `go.mod requires go >= X (running go Y; GOTOOLCHAIN=local)`.
 - **Deployment Issues**: Verify environment permissions and Argo Workflow status
 - **Version Conflicts**: Ensure `package.json` version matches expected format
 
