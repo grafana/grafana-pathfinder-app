@@ -91,6 +91,7 @@ export interface StepInfo {
   targetValue?: string;
   targetState?: boolean | string;
   targetComment?: string; // Optional comment to show during execution
+  openGuide?: string; // Guide to open in sidebar after navigation
   requirements?: ConditionInput;
   postVerify?: string;
   skippable?: boolean; // Whether this step can be skipped

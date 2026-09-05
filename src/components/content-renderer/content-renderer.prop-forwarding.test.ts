@@ -23,7 +23,7 @@ import type { JsonGuide } from '../../types/json-guide.types';
  * JSON guide gets silence. Documented here rather than fixed so this tripwire
  * can land without changing runtime behaviour; shrinking this list is the fix.
  */
-const KNOWN_UNFORWARDED = ['formHint', 'openGuide', 'validateInput'];
+const KNOWN_UNFORWARDED: string[] = [];
 
 /** Exercises every author-settable field on an interactive block. */
 const GUIDE = {
