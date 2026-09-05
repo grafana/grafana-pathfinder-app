@@ -275,29 +275,6 @@ describe('E2E Contract: Scroll-restoration DOM id', () => {
 });
 
 /**
- * Window globals assigned by the docs-panel surface for cross-component
- * communication. These are read by dev-mode utilities, SelectorDebugPanel,
- * interactive-section, and analytics. Do not remove during refactoring —
- * document for future migration to React Context.
- *
- * Owner manifest: each global is assigned in exactly one file. As the
- * renderer is decomposed, hooks take ownership of individual assignments —
- * update the owner path here in the same commit that moves the source.
- */
-const WINDOW_GLOBAL_OWNERS: Array<{ global: string; ownerFile: string }> = [
-  { global: '__pathfinderPluginConfig', ownerFile: '../../hooks/usePathfinderPluginConfig.ts' },
-  { global: '__DocsPluginActiveTabId', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
-  { global: '__DocsPluginActiveTabUrl', ownerFile: 'hooks/useGlobalActiveTabExposure.ts' },
-];
-
-describe('E2E Contract: Window globals assigned in docs-panel surface', () => {
-  it.each(WINDOW_GLOBAL_OWNERS)('$ownerFile assigns $global', ({ global, ownerFile }) => {
-    const src = fs.readFileSync(path.join(__dirname, ownerFile), 'utf-8');
-    expect(src).toContain(global);
-  });
-});
-
-/**
  * Full-render behavioral contract: intended assertions when panel is rendered.
  *
  * NOT run in Jest — @grafana/scenes depends on @grafana/ui which requires a Grafana

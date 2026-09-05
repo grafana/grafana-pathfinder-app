@@ -1,9 +1,10 @@
 import type React from 'react';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
+import { TERMINAL_STATUS_CHANGED_EVENT } from '../lib/event-names';
 
 // Raise the per-test timeout from jest's 5000ms default. This file exercises
 // real timer-driven fix flows (`timeoutManager.setTimeout(fix-recheck-…)`,
@@ -884,5 +885,117 @@ describe('requiresDomElement', () => {
   it('is false when no requirements are set', async () => {
     const { result } = await renderStepChecker({});
     expect(result.current.requiresDomElement).toBe(false);
+  });
+});
+
+describe('terminal status change recheck', () => {
+  // The requirements checker runs outside React and cannot observe the Coda
+  // terminal connecting. The heartbeat watchdog only polls DOM-fragile
+  // requirements (navmenu-open, exists-reftarget, on-page:), so before this
+  // event a step blocked on `is-terminal-active` kept its answer for the whole
+  // guide — and since provisioning takes about a minute, that answer is always
+  // "not connected".
+  async function renderBlockedTerminalStep() {
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-terminal-active',
+      error: [failedRequirement({ requirement: 'is-terminal-active' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-terminal-active' });
+    // Wait out the retry loop. In the real app a VM takes about a minute to
+    // provision, so by the time it connects every terminal step has long since
+    // stopped checking and settled on "blocked" — which is the state this event
+    // exists to break, and the state the `!isChecking` guard below needs.
+    await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+    expect(rendered.result.current.isEnabled).toBe(false);
+    return rendered;
+  }
+
+  it('rechecks a blocked step when the terminal reports a status change', async () => {
+    const rendered = await renderBlockedTerminalStep();
+    const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'is-terminal-active', error: [] });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBeGreaterThan(callsWhileBlocked);
+    expect(rendered.result.current.isEnabled).toBe(true);
+  });
+
+  it('acts on a status change that arrived mid-check, once the check settles', async () => {
+    // A reconnect flips disconnected → connecting → connected inside ~100ms, so
+    // the decisive status can land while a check is running. Dropping it would
+    // leave the step blocked for good, because the event never comes again.
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-terminal-active',
+      error: [failedRequirement({ requirement: 'is-terminal-active' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-terminal-active' });
+
+    // Fire while the very first check is still in flight.
+    expect(rendered.result.current.isChecking).toBe(true);
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'is-terminal-active', error: [] });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(rendered.result.current.isEnabled).toBe(true), { timeout: 10000 });
+  });
+
+  it('stops rechecking once the listener is torn down', async () => {
+    const rendered = await renderBlockedTerminalStep();
+    rendered.unmount();
+    const callsAfterUnmount = mockCheckRequirements.mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBe(callsAfterUnmount);
+  });
+
+  it('leaves a step that does not read the terminal alone', async () => {
+    // Every step in the guide holds one of these listeners, and a reconnect is
+    // three status changes, so an ungated listener means a full requirements
+    // check for every blocked step in the guide, three times over.
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-admin',
+      error: [failedRequirement({ requirement: 'is-admin' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-admin' });
+    await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+    const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBe(callsWhileBlocked);
+  });
+
+  it('subscribes a step whose objectives read the terminal, not only its requirements', async () => {
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-admin',
+      error: [failedRequirement({ requirement: 'is-admin' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-admin', objectives: 'coda-exit-zero:test -f /tmp/x' });
+    await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+    const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBeGreaterThan(callsWhileBlocked);
   });
 });

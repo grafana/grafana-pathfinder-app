@@ -15,7 +15,7 @@ function contextScene() {
   // Scene construction is outside Grafana's plugin context provider, so read the
   // config `plugin.init` publishes. An empty config here reads as "dev mode off"
   // and makes the model prune authorized Dev Tools tabs during restore.
-  const config = getConfigWithDefaults((window as any).__pathfinderPluginConfig || {});
+  const config = getConfigWithDefaults(window.__pathfinderPluginConfig || {});
 
   return new EmbeddedScene({
     body: new SceneFlexLayout({
