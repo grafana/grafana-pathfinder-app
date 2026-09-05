@@ -168,6 +168,7 @@ export function installLiveTabExecutor(
       targetValue: action.targetValue,
       targetState: action.targetState,
       targetComment: action.targetComment,
+      openGuide: action.openGuide,
       tagName: 'button',
       textContent: `${isShow ? 'Show me' : 'Do'}: ${action.refTarget ?? ''}`,
       timestamp: Date.now(),

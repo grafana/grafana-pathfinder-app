@@ -12,9 +12,21 @@ describe('validateCrossTabMessage', () => {
       phase: 'do',
       stepId: 's1',
       runId: 'run-1',
-      action: { targetAction: 'button', refTarget: 'Save' },
+      action: { targetAction: 'navigate', refTarget: '/dashboards', openGuide: 'bundled:guide' },
     });
     expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it('rejects a step-command with a non-string openGuide', () => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 's1',
+      runId: 'run-1',
+      action: { targetAction: 'navigate', refTarget: '/dashboards', openGuide: 42 },
+    });
+
+    expect(validateCrossTabMessage(message)).toBeNull();
   });
 
   it('accepts a well-formed heartbeat', () => {
