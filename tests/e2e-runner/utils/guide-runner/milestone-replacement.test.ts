@@ -152,13 +152,13 @@ function replacementHarness(options: ReplacementHarnessOptions) {
   return { page, operations, resetButton, closeButton, tabButton };
 }
 
-function waitForOpenedGuide(): Promise<{ url: string; title: string }> {
+function waitForOpenedGuide(tabId = 'opened-tab'): Promise<{ url: string; title: string }> {
   return new Promise((resolve) => {
     document.addEventListener(
       'pathfinder-auto-open-docs',
       (event) => {
         const detail = (event as CustomEvent<{ url: string; title: string }>).detail;
-        (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId = 'opened-tab';
+        (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId = tabId;
         (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = detail.url;
         resolve(detail);
       },
@@ -251,11 +251,11 @@ it('accepts and clears safe residue recreated after reset acknowledgment', async
   await replacePreviousE2EGuide(harness.page);
 
   expect(harness.operations).toEqual(['reset', 'close']);
-  expect(harness.page.waitForTimeout).toHaveBeenCalledTimes(19);
+  expect(harness.page.waitForTimeout).toHaveBeenCalledTimes(4);
   expectMatchingStorageEmpty();
 });
 
-it('ignores and preserves a hybrid-storage timestamp companion after legacy reset', async () => {
+it('ignores and removes a hybrid-storage timestamp companion after legacy reset', async () => {
   seedStoredCompletion();
   const timestampKey = `${E2E_STORAGE_KEYS.steps}__timestamp`;
   localStorage.setItem(timestampKey, '1757060000000');
@@ -265,7 +265,7 @@ it('ignores and preserves a hybrid-storage timestamp companion after legacy rese
 
   expect(harness.operations).toEqual(['reset', 'close']);
   expectMatchingStorageEmpty();
-  expect(localStorage.getItem(timestampKey)).toBe('1757060000000');
+  expect(localStorage.getItem(timestampKey)).toBeNull();
 });
 
 it('preserves malformed shared completion data and requires the reset path', async () => {
@@ -370,6 +370,9 @@ it('fails fatally when previous guide steps remain attached', async () => {
   await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
     name: 'FatalTransitionError',
     kind: 'step-detach-failed',
+    message: expect.stringContaining(
+      'The previous E2E guide tab did not close cleanly: Prior E2E guide steps did not detach before replacement'
+    ),
   });
 });
 
@@ -398,6 +401,41 @@ it('recovers a known E2E tab identity at the open wait boundary', async () => {
   const opened = waitForOpenedGuide();
 
   await expect(openLegacyE2EGuide(page, 'Milestone')).resolves.toBe('opened-tab');
+
+  await expect(opened).resolves.toEqual({ url: E2E_GUIDE_URL, title: 'Milestone' });
+});
+
+it('fails fatally when an active E2E tab does not publish an ID', async () => {
+  const page = {
+    evaluate: jest.fn().mockImplementation((callback, argument) => Promise.resolve(callback(argument))),
+    waitForFunction: jest.fn().mockResolvedValue(undefined),
+  } as unknown as Page;
+  const opened = waitForOpenedGuide('');
+
+  await expect(openLegacyE2EGuide(page, 'Milestone')).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'guide-load-ambiguous',
+  });
+
+  await expect(opened).resolves.toEqual({ url: E2E_GUIDE_URL, title: 'Milestone' });
+});
+
+it('reports when the active tab changes before E2E identity confirmation', async () => {
+  const page = {
+    evaluate: jest.fn().mockImplementation((callback, argument) => Promise.resolve(callback(argument))),
+    waitForFunction: jest.fn().mockImplementation((callback, argument) => {
+      if (!callback(argument)) {
+        return Promise.reject(new Error('Condition not met'));
+      }
+      (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = 'bundled:other';
+      return Promise.resolve(undefined);
+    }),
+  } as unknown as Page;
+  const opened = waitForOpenedGuide();
+
+  await expect(openLegacyE2EGuide(page, 'Milestone')).rejects.toThrow(
+    'The active tab changed before the E2E guide identity was confirmed: bundled:other'
+  );
 
   await expect(opened).resolves.toEqual({ url: E2E_GUIDE_URL, title: 'Milestone' });
 });

@@ -187,6 +187,8 @@ The reset acknowledgment proves cache eviction. Direct residue cleanup does not 
 
 After teardown, the runner navigates only when the authored location differs. Then it prepares the panel and opens the next guide.
 
+Panel bootstrap keeps a 50-second readiness budget. This matches the maximum combined Help and panel budget from the previous flow.
+
 This flow is runner-only. It works with an installed Pathfinder plugin that supports only the existing `bundled:e2e-test` URL.
 
 An ordinary guide failure adds that guide to the blocked set. Later milestones still run unless a resolved `depends` edge names a blocked guide.
@@ -421,6 +423,7 @@ The environment is reset **between dependency chains**, not between every guide.
 | Fix button timeout         | 10s              | Per fix operation                                                                           |
 | Max fix attempts           | 3                | Retry limit before giving up                                                                |
 | Requirements settle window | 1s               | Poll budget before an unmet read with no Fix button counts as terminal                      |
+| Panel bootstrap            | 50s              | Bounds plugin readiness, Help fallback, and panel opening                                   |
 | Scroll into view           | 5s               | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
 | Late completion check      | 2s               | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
 | Skip sync                  | 5s               | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |

@@ -39,6 +39,8 @@ The Grafana-owned Help button and `grafana.navigation.extensionSidebarDocked` st
 
 The runner waits for Help only after Pathfinder readiness signals do not prove that the panel is ready. Bootstrap owns this fallback.
 
+Each bootstrap attempt has a 50-second readiness budget. This matches the maximum combined Help and panel budget from the previous flow.
+
 The source-level tripwires live in `src/components/docs-panel/docs-panel.contract.test.tsx` and `src/components/docs-panel/docs-panel.auto-open-event.test.tsx`.
 
 ---
@@ -91,6 +93,8 @@ The legacy UI reset clears Pathfinder progress and its in-memory completion cach
 The legacy product reload can recreate matching storage without completed step IDs. The runner accepts this state only after tab closure.
 
 The runner then removes the safe residue. Stored completion that remains after the bounded check is a fatal transition error.
+
+Hybrid `__timestamp` keys are not completion evidence. Residue cleanup removes them to match the product reset.
 
 Direct no-completion cleanup does not evict the mounted cache. It is not a general mounted-progress reset.
 

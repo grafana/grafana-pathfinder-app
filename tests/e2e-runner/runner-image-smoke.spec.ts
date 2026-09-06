@@ -36,7 +36,7 @@ test('dismisses a moving badge toast through DOM event dispatch', async ({ page 
         to { transform: translateX(200px); }
       }
       [data-testid="${testIds.learningPaths.badgeToast}"] {
-        animation: badge-slide 1500ms linear;
+        animation: badge-slide 10s linear;
         position: fixed;
       }
     </style>
@@ -53,7 +53,7 @@ test('dismisses a moving badge toast through DOM event dispatch', async ({ page 
   const toast = page.getByTestId(testIds.learningPaths.badgeToast);
 
   await expect(toast).toBeVisible();
-  await expect(toast).toHaveCSS('animation-duration', '1.5s');
+  await expect(toast).toHaveCSS('animation-duration', '10s');
   await dismissBadgeCelebrations(page);
 
   await expect(toast).toHaveCount(0);

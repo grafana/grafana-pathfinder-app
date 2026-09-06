@@ -4,17 +4,18 @@ import { testIds } from '../../../../src/constants/testIds';
 import { StorageEvents } from '../../../../src/lib/event-names';
 import { StorageKeys } from '../../../../src/lib/storage-keys';
 import { dismissBadgeCelebrations } from './badge-celebrations';
-import { FatalTransitionError } from './transition-error';
+import { FatalTransitionError, type FatalTransitionKind } from './transition-error';
 
 export const E2E_GUIDE_URL = 'bundled:e2e-test';
 
 const STEP_SELECTOR = '[data-testid^="interactive-step-"]';
 const REPLACEMENT_TIMEOUT_MS = 15_000;
-const RESET_POSTCONDITION_ATTEMPTS = 20;
-const RESET_POSTCONDITION_POLL_MS = 50;
+const RESET_POSTCONDITION_ATTEMPTS = 5;
+const RESET_POSTCONDITION_POLL_MS = 250;
 const HYBRID_STORAGE_TIMESTAMP_SUFFIX = '__timestamp';
 
 type StepHandle = ElementHandle<HTMLElement | SVGElement>;
+type WrappedTransitionKind = Exclude<FatalTransitionKind, 'badge-obstruction' | 'step-detach-failed'>;
 
 interface E2EProgressStorageState {
   hasStoredCompletion: boolean;
@@ -102,7 +103,7 @@ async function inspectE2EProgressStorage(page: Page): Promise<E2EProgressStorage
   );
 }
 
-async function waitForAcknowledgedResetPostcondition(page: Page): Promise<void> {
+async function requireStoredCompletionStaysAbsent(page: Page): Promise<void> {
   for (let attempt = 1; attempt <= RESET_POSTCONDITION_ATTEMPTS; attempt++) {
     const storage = await inspectE2EProgressStorage(page);
     if (storage.hasStoredCompletion) {
@@ -129,14 +130,14 @@ async function requireEmptyE2EProgressStorage(page: Page): Promise<void> {
 
 async function clearNoCompletionResidue(page: Page): Promise<void> {
   await page.evaluate(
-    ({ contentKey, keys, timestampSuffix }) => {
+    ({ contentKey, keys }) => {
       const prefixes = [keys.stepsPrefix, keys.collapsePrefix, keys.acknowledgedPrefix, keys.donePrefix].map(
         (prefix) => `${prefix}${contentKey}-`
       );
       const keysToRemove: string[] = [];
       for (let index = 0; index < localStorage.length; index++) {
         const key = localStorage.key(index);
-        if (key && !key.endsWith(timestampSuffix) && prefixes.some((prefix) => key.startsWith(prefix))) {
+        if (key && prefixes.some((prefix) => key.startsWith(prefix))) {
           keysToRemove.push(key);
         }
       }
@@ -164,7 +165,6 @@ async function clearNoCompletionResidue(page: Page): Promise<void> {
         donePrefix: StorageKeys.SECTION_DONE_PREFIX,
         completion: StorageKeys.INTERACTIVE_COMPLETION,
       },
-      timestampSuffix: HYBRID_STORAGE_TIMESTAMP_SUFFIX,
     }
   );
 }
@@ -223,13 +223,9 @@ async function activateE2EGuideTab(page: Page, tabId: string): Promise<void> {
 async function currentStepHandles(page: Page): Promise<StepHandle[]> {
   return page.locator(STEP_SELECTOR).elementHandles();
 }
-function transitionFailure(
-  kind: 'guide-load-ambiguous' | 'reset-ambiguous' | 'tab-close-failed',
-  message: string,
-  error: unknown
-): FatalTransitionError {
+function transitionFailure(kind: WrappedTransitionKind, message: string, error: unknown): FatalTransitionError {
   if (error instanceof FatalTransitionError) {
-    return error;
+    return new FatalTransitionError(error.kind, `${message}: ${error.message}`);
   }
   const reason = error instanceof Error ? error.message : String(error);
   return new FatalTransitionError(kind, `${message}: ${reason}`);
@@ -344,7 +340,9 @@ export async function openLegacyE2EGuide(page: Page, title: string): Promise<str
     throw new FatalTransitionError('guide-load-ambiguous', 'The opened E2E guide tab did not publish its identity');
   }
   if (!activeTab.id || activeTab.url !== E2E_GUIDE_URL) {
-    throw new Error('The opened E2E guide tab did not publish its identity');
+    throw new Error(
+      `The active tab changed before the E2E guide identity was confirmed: ${activeTab.url || 'no active URL'}`
+    );
   }
   return activeTab.id;
 }
@@ -429,7 +427,7 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
   }
   if (storage.hasStoredCompletion) {
     try {
-      await waitForAcknowledgedResetPostcondition(page);
+      await requireStoredCompletionStaysAbsent(page);
       await clearNoCompletionResidue(page);
       const postCleanupStorage = await inspectE2EProgressStorage(page);
       if (postCleanupStorage.hasStoredCompletion) {
