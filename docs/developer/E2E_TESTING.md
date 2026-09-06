@@ -171,6 +171,8 @@ If no completed step IDs exist, the runner removes namespaced residue and the E2
 
 This direct cleanup does not evict a mounted completion cache. It is not a general reset for mounted guide progress.
 
+If no prior tab opened, the runner applies this cleanup regardless of stored completion. It removes a malformed shared percentage record.
+
 If completed step IDs exist, the runner uses the accessible `Reset guide` control. This path supports installed plugins without a stable reset test ID.
 
 The runner waits for `interactive-progress-cleared`. This acknowledgment proves that the legacy reset cleared storage and evicted the completion cache.
@@ -200,9 +202,11 @@ A fatal transition error also stops the chain while the browser remains open. Fa
 - The prior tab does not close.
 - Prior step roots do not detach.
 - A badge celebration remains as an obstruction.
-- A new guide tab becomes active, but its load does not finish.
+- An active E2E tab does not publish a usable tab ID.
 
-A load error before new-tab activation remains recoverable after prior teardown. Later soft-ordered milestones can continue.
+A load error remains recoverable before tab activation or after the runner records the new tab ID.
+
+Prior teardown has already removed ambiguous state. Later soft-ordered milestones can continue.
 
 Only a 401, a 403, or a login redirect means authentication expired. Network errors, server errors, and browser loss are infrastructure outcomes.
 

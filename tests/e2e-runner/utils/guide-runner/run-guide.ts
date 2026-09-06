@@ -12,7 +12,6 @@ import type { SessionValidationResult } from '../../auth/grafana-auth';
 import { ensureDocsPanelOpen } from './bootstrap';
 import { ensureGuidePanelOpen } from './panel-recovery';
 import { openLegacyE2EGuide, replacePreviousE2EGuide } from './milestone-replacement';
-import { FatalTransitionError } from './transition-error';
 
 const GUIDE_LOAD_TIMEOUT_MS = 15_000;
 const NAVIGATION_TIMEOUT_MS = 30_000;
@@ -69,18 +68,10 @@ async function loadGuide(page: Page, guide: PageGuide, options: RunGuideOnPageOp
   await ensureGuidePanelOpen(page, guide.content, options.allowReloadRecovery);
   const tabId = await openLegacyE2EGuide(page, guide.title);
   options.onGuideOpened?.(tabId);
-  try {
-    await page.getByTestId(testIds.docsPanel.loadingState).waitFor({
-      state: 'hidden',
-      timeout: GUIDE_LOAD_TIMEOUT_MS,
-    });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new FatalTransitionError(
-      'guide-load-ambiguous',
-      `The E2E guide tab became active but its content did not finish loading: ${reason}`
-    );
-  }
+  await page.getByTestId(testIds.docsPanel.loadingState).waitFor({
+    state: 'hidden',
+    timeout: GUIDE_LOAD_TIMEOUT_MS,
+  });
 }
 
 function toResultsData(

@@ -4,7 +4,6 @@ import { ensureDocsPanelOpen } from './bootstrap';
 import { openLegacyE2EGuide, replacePreviousE2EGuide } from './milestone-replacement';
 import { ensureGuidePanelOpen } from './panel-recovery';
 import { runGuideOnPage, type RunGuideOnPageOptions } from './run-guide';
-import { FatalTransitionError } from './transition-error';
 jest.mock('../console-reporter', () => ({
   printDetailedSummary: jest.fn(),
   printDiscoveryResults: jest.fn(),
@@ -152,12 +151,13 @@ it('keeps a pre-tab guide-load failure recoverable after previous state is clear
   expect(openLegacyE2EGuideMock).not.toHaveBeenCalled();
 });
 
-it('makes a load failure fatal after the new guide tab becomes active', async () => {
+it('keeps a content-load failure recoverable after the new guide tab becomes active', async () => {
   const events: string[] = [];
+  const loadError = new Error('Guide loading timed out');
   const currentPage = {
     ...page(events),
     getByTestId: jest.fn().mockReturnValue({
-      waitFor: jest.fn().mockRejectedValue(new Error('Guide loading timed out')),
+      waitFor: jest.fn().mockRejectedValue(loadError),
     }),
   } as unknown as Page;
   ensureDocsPanelOpenMock.mockResolvedValue({} as never);
@@ -165,18 +165,17 @@ it('makes a load failure fatal after the new guide tab becomes active', async ()
   ensureGuidePanelOpenMock.mockResolvedValue(undefined);
   openLegacyE2EGuideMock.mockResolvedValue('new-tab');
 
-  const loading = runGuideOnPage(
-    currentPage,
-    {
-      id: 'later',
-      title: 'Later guide',
-      path: '/later/content.json',
-      content: '{"id":"later","title":"Later guide","blocks":[]}',
-    },
-    options(events)
-  );
-
-  await expect(loading).rejects.toBeInstanceOf(FatalTransitionError);
-  await expect(loading).rejects.toMatchObject({ kind: 'guide-load-ambiguous' });
+  await expect(
+    runGuideOnPage(
+      currentPage,
+      {
+        id: 'later',
+        title: 'Later guide',
+        path: '/later/content.json',
+        content: '{"id":"later","title":"Later guide","blocks":[]}',
+      },
+      options(events)
+    )
+  ).rejects.toBe(loadError);
   expect(events).toContain('opened:new-tab');
 });

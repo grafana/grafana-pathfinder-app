@@ -70,9 +70,9 @@ Before each later runnable milestone, the runner uses this replacement sequence:
 
 The runner uses stored completion for the reset decision. It does not use the authored interactive-block count.
 
-Malformed shared completion JSON is ambiguous. The runner preserves the raw record and requires the legacy reset path.
+Malformed shared completion JSON is ambiguous while a prior tab remains active. The runner preserves it and requires the legacy reset path.
 
-If the previous milestone opened no tab, the no-completion cleanup remains safe. Stored completion without a reset control is a fatal transition error.
+If no prior tab opened, the runner clears stored E2E residue before it continues. It removes an unusable shared completion record.
 
 A page reload can clear the active-tab globals. The recorded tab ID lets the runner reactivate a visible or overflowed E2E tab.
 
@@ -82,7 +82,9 @@ The standalone runner and first shared milestone can reload once during panel re
 
 If later panel recovery fails before new-tab activation, the chain can continue. Prior teardown has already removed the ambiguous state.
 
-If a new tab is active when loading fails, the runner stops the chain. The same rule applies after reset, close, or detach errors.
+If the new tab publishes its ID, a content-load failure remains recoverable. The next milestone can close that recorded tab.
+
+If an active E2E tab has no usable ID, the runner stops the chain. The same rule applies after reset, close, or detach errors.
 
 The legacy UI reset clears Pathfinder progress and its in-memory completion cache. It does not reload the Grafana page.
 

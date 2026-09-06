@@ -151,7 +151,7 @@ async function clearNoCompletionResidue(page: Page): Promise<void> {
             localStorage.setItem(keys.completion, JSON.stringify(completion));
           }
         } catch {
-          // The shared record cannot be changed safely without a valid object.
+          localStorage.removeItem(keys.completion);
         }
       }
     },
@@ -331,12 +331,11 @@ export async function openLegacyE2EGuide(page: Page, title: string): Promise<str
     );
   } catch (error) {
     const activeTab = await activeGuideTab(page);
+    if (activeTab.id && activeTab.url === E2E_GUIDE_URL) {
+      return activeTab.id;
+    }
     if (activeTab.url === E2E_GUIDE_URL) {
-      throw transitionFailure(
-        'guide-load-ambiguous',
-        'The new E2E guide tab became active before guide loading failed',
-        error
-      );
+      throw transitionFailure('guide-load-ambiguous', 'The new E2E guide tab has no usable identity', error);
     }
     throw error;
   }
@@ -361,12 +360,6 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
   }
   const targetTabId = previousGuideTabId ?? (activeTab.url === E2E_GUIDE_URL ? activeTab.id : '');
   if (!targetTabId) {
-    if (storage.hasStoredCompletion) {
-      throw new FatalTransitionError(
-        'reset-ambiguous',
-        'The previous E2E guide has stored completion but no tab with a Reset guide control'
-      );
-    }
     try {
       await clearNoCompletionResidue(page);
       await requireEmptyE2EProgressStorage(page);

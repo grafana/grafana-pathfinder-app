@@ -302,18 +302,33 @@ it('opens a later guide when the prior milestone failed before tab activation', 
   expect(dismissBadgeCelebrations).not.toHaveBeenCalled();
 });
 
-it('fails fatally when stored completion remains after pre-tab loading failed', async () => {
+it('clears stored completion when the prior milestone failed before tab activation', async () => {
   seedStoredCompletion();
   const harness = replacementHarness({ resetControlCount: 0 });
   delete (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId;
   delete (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl;
+  await replacePreviousE2EGuide(harness.page);
 
-  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
-    name: 'FatalTransitionError',
-    kind: 'reset-ambiguous',
-  });
+  expectMatchingStorageEmpty();
+  expect(harness.operations).toEqual([]);
+  expect(dismissBadgeCelebrations).not.toHaveBeenCalled();
+});
 
-  expect(localStorage.getItem(E2E_STORAGE_KEYS.steps)).not.toBeNull();
+it('repairs malformed shared completion when no prior tab opened', async () => {
+  const malformedCompletion = '{"other-guide":50';
+  const unrelatedStepKey = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}bundled:other-guide-section-1`;
+  localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, malformedCompletion);
+  localStorage.setItem(unrelatedStepKey, JSON.stringify(['other-step']));
+  const harness = replacementHarness({ resetControlCount: 0 });
+  delete (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId;
+  delete (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl;
+
+  await replacePreviousE2EGuide(harness.page);
+
+  expect(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION)).toBeNull();
+  expect(localStorage.getItem(unrelatedStepKey)).toBe(JSON.stringify(['other-step']));
+  expect(harness.operations).toEqual([]);
+  expect(dismissBadgeCelebrations).not.toHaveBeenCalled();
 });
 
 it('reactivates and resets a prior E2E guide after browser globals reset', async () => {
@@ -373,6 +388,18 @@ it('opens only the exact legacy E2E URL', async () => {
   await expect(openLegacyE2EGuide(page, 'Milestone')).resolves.toBe('opened-tab');
 
   await expect(opened).resolves.toEqual({ url: 'bundled:e2e-test', title: 'Milestone' });
+});
+
+it('recovers a known E2E tab identity at the open wait boundary', async () => {
+  const page = {
+    evaluate: jest.fn().mockImplementation((callback, argument) => Promise.resolve(callback(argument))),
+    waitForFunction: jest.fn().mockRejectedValue(new Error('Open wait timed out')),
+  } as unknown as Page;
+  const opened = waitForOpenedGuide();
+
+  await expect(openLegacyE2EGuide(page, 'Milestone')).resolves.toBe('opened-tab');
+
+  await expect(opened).resolves.toEqual({ url: E2E_GUIDE_URL, title: 'Milestone' });
 });
 
 it('has no unique URL helper or docs-retrieval import in the runner', () => {
