@@ -177,7 +177,7 @@ describe('ensureDocsPanelOpen', () => {
       timeout: expect.any(Number),
     });
     expect(helpWaitFor.mock.calls[0]?.[0].timeout).toBeGreaterThan(0);
-    expect(helpWaitFor.mock.calls[0]?.[0].timeout).toBeLessThanOrEqual(50_000);
+    expect(helpWaitFor.mock.calls[0]?.[0].timeout).toBeLessThanOrEqual(20_000);
 
     expect(helpButton.click).toHaveBeenCalledTimes(1);
     expect(panelWaitFor).toHaveBeenCalledTimes(1);
@@ -297,7 +297,7 @@ describe('ensureDocsPanelOpen', () => {
     expect((window as Window & { __pathfinderE2ESidebarMounted?: boolean }).__pathfinderE2ESidebarMounted).toBe(false);
   });
 
-  it('uses a fresh 50-second bound for each of at most two bootstrap attempts', async () => {
+  it('uses a fresh 20-second bound for each of at most two bootstrap attempts', async () => {
     let now = 1_000;
     jest.spyOn(Date, 'now').mockImplementation(() => now);
     const beforeRetry = jest.fn().mockImplementation(async () => {
@@ -311,12 +311,12 @@ describe('ensureDocsPanelOpen', () => {
 
     expect(beforeRetry).toHaveBeenCalledTimes(1);
     expect(helpButton.click).toHaveBeenCalledTimes(2);
-    expect(helpButton.click).toHaveBeenNthCalledWith(1, { timeout: 50_000 });
-    expect(helpButton.click).toHaveBeenNthCalledWith(2, { timeout: 50_000 });
+    expect(helpButton.click).toHaveBeenNthCalledWith(1, { timeout: 20_000 });
+    expect(helpButton.click).toHaveBeenNthCalledWith(2, { timeout: 20_000 });
     expect(panelWaitFor).toHaveBeenCalledTimes(2);
-    expect(panelWaitFor).toHaveBeenNthCalledWith(1, { state: 'visible', timeout: 50_000 });
-    expect(panelWaitFor).toHaveBeenNthCalledWith(2, { state: 'visible', timeout: 50_000 });
-    expect(waitForFunction.mock.calls.map((call) => call[2]?.timeout)).toEqual([50_000, 2_000, 50_000, 2_000]);
+    expect(panelWaitFor).toHaveBeenNthCalledWith(1, { state: 'visible', timeout: 20_000 });
+    expect(panelWaitFor).toHaveBeenNthCalledWith(2, { state: 'visible', timeout: 20_000 });
+    expect(waitForFunction.mock.calls.map((call) => call[2]?.timeout)).toEqual([20_000, 2_000, 20_000, 2_000]);
   });
 
   it('uses the explicit timeout independently for both bootstrap attempts', async () => {

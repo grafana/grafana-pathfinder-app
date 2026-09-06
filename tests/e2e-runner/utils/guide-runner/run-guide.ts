@@ -15,6 +15,7 @@ import { openLegacyE2EGuide, replacePreviousE2EGuide } from './milestone-replace
 
 const GUIDE_LOAD_TIMEOUT_MS = 15_000;
 const NAVIGATION_TIMEOUT_MS = 30_000;
+const POST_NAVIGATION_PANEL_TIMEOUT_MS = 30_000;
 const STEP_SELECTOR = '[data-testid^="interactive-step-"]';
 
 export interface PageGuide {
@@ -65,7 +66,12 @@ async function loadGuide(page: Page, guide: PageGuide, options: RunGuideOnPageOp
   if (options.navigateToStartingLocation) {
     await page.goto(options.startingLocation, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
   }
-  await ensureGuidePanelOpen(page, guide.content, options.allowReloadRecovery);
+  await ensureGuidePanelOpen(
+    page,
+    guide.content,
+    options.allowReloadRecovery,
+    options.navigateToStartingLocation ? POST_NAVIGATION_PANEL_TIMEOUT_MS : undefined
+  );
   const tabId = await openLegacyE2EGuide(page, guide.title);
   options.onGuideOpened?.(tabId);
   await page.getByTestId(testIds.docsPanel.loadingState).waitFor({

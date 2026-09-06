@@ -46,3 +46,22 @@ it('keeps reload recovery for standalone and first-milestone execution', async (
   expect(currentPage.evaluate).toHaveBeenCalledTimes(2);
   expect(currentPage.locator).not.toHaveBeenCalled();
 });
+
+it('forwards an explicit timeout through reload recovery', async () => {
+  const currentPage = page();
+  ensureDocsPanelOpenMock.mockImplementation(async (_page, options) => {
+    await options?.beforeRetry?.();
+    return {} as never;
+  });
+
+  await ensureGuidePanelOpen(currentPage, '{"id":"first"}', true, 30_000);
+
+  expect(ensureDocsPanelOpenMock).toHaveBeenCalledWith(
+    currentPage,
+    expect.objectContaining({
+      timeoutMs: 30_000,
+      beforeRetry: expect.any(Function),
+    })
+  );
+  expect(currentPage.reload).toHaveBeenCalledTimes(1);
+});

@@ -39,7 +39,7 @@ The Grafana-owned Help button and `grafana.navigation.extensionSidebarDocked` st
 
 The runner waits for Help only after Pathfinder readiness signals do not prove that the panel is ready. Bootstrap owns this fallback.
 
-Each bootstrap attempt has a 50-second readiness budget. This matches the maximum combined Help and panel budget from the previous flow.
+The default bootstrap budget is 20 seconds. Post-navigation guide loading uses 30 seconds for each attempt.
 
 The source-level tripwires live in `src/components/docs-panel/docs-panel.contract.test.tsx` and `src/components/docs-panel/docs-panel.auto-open-event.test.tsx`.
 

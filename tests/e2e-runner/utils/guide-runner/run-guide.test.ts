@@ -114,6 +114,12 @@ it('clears the recorded previous tab before navigation and guide loading', async
   );
 
   expect(replacePreviousE2EGuideMock).toHaveBeenCalledWith(currentPage, 'old-tab');
+  expect(ensureGuidePanelOpenMock).toHaveBeenCalledWith(
+    currentPage,
+    '{"id":"later","title":"Later guide","blocks":[]}',
+    false,
+    30_000
+  );
   expect(events).toEqual([
     'panel-restored',
     'previous-replaced',
