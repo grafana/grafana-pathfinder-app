@@ -1,0 +1,21 @@
+# To run locally
+# npx @techdocs/cli serve -v -c ./mkdocs.yml
+#
+site_name: 'Grafana Pathfinder internal documentation'
+repo_url: https://github.com/grafana/grafana-pathfinder-app
+edit_uri: edit/main/docs
+
+# Explicit so the techdocs-rewrite-relative-links action knows the docs root
+docs_dir: docs
+
+# docs/sources is the product documentation, already published to grafana.com
+exclude_docs: |
+  sources/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+
+plugins:
+  - techdocs-core

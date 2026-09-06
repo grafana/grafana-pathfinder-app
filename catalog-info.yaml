@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: grafana-pathfinder-app
+  title: grafana-pathfinder-app
+  description: |
+    Grafana Pathfinder brings contextual documentation and interactive tutorials directly into Grafana.
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    github.com/project-slug: grafana/grafana-pathfinder-app
+spec:
+  type: library
+  owner: group:default/pathfinder
+  lifecycle: production

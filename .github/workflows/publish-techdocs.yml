@@ -1,0 +1,40 @@
+name: Publish TechDocs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'catalog-info.yaml'
+      - '.github/workflows/publish-techdocs.yml'
+  workflow_dispatch:
+    inputs:
+      instance:
+        description: EngHub instance to publish to
+        required: true
+        type: choice
+        default: 'ops'
+        options:
+          - 'dev'
+          - 'ops'
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.ref }}'
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  publish-docs:
+    uses: grafana/shared-workflows/.github/workflows/publish-techdocs.yaml@main
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      namespace: default
+      kind: component
+      name: grafana-pathfinder-app
+      rewrite-relative-links: true
+      instance: ${{ github.event.inputs.instance || 'ops' }}
