@@ -5,8 +5,7 @@
  * providing common operations like extracting selectors, filtering by action type, etc.
  */
 
-import type { RecordedStep } from './tutorial-exporter';
-import type { ExtractedSelector } from './dev-tools.types';
+import type { ExtractedSelector, RecordedStep } from './dev-tools.types';
 
 /**
  * Extract structured selector information from recorded steps

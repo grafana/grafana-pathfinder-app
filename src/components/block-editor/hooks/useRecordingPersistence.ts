@@ -7,7 +7,7 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { RECORDING_STATE_STORAGE_KEY } from '../constants';
-import type { RecordedStep } from '../../../utils/devtools/tutorial-exporter';
+import type { RecordedStep } from '../../../utils/devtools';
 import { logger } from '../../../lib/logging';
 
 /**
