@@ -1587,14 +1587,16 @@ describe('session replay activation', () => {
     expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps recording after Pathfinder is closed again', async () => {
+  it('does not re-register the recorder when Pathfinder closes', async () => {
     const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
 
     surface.reportPathfinderSurface('sidebar');
     await settleReplayImport();
+    jest.useFakeTimers();
     surface.reportPathfinderSurface('closed');
-    await settleReplayImport();
+    jest.advanceTimersByTime(5_000);
+    jest.useRealTimers();
 
     expect(mockInstrumentationsAdd).toHaveBeenCalledTimes(1);
   });
@@ -1616,7 +1618,9 @@ describe('session replay activation', () => {
 
     mockReplayResume.mockClear();
     surface.reportPathfinderSurface('closed');
-    jest.advanceTimersByTime(5_000);
+    jest.advanceTimersByTime(4_999);
+    expect(mockReplayPause).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
     expect(mockReplayPause).toHaveBeenCalledTimes(1);
 
     surface.reportPathfinderSurface('sidebar');
@@ -1856,6 +1860,40 @@ describe('session replay activation failures', () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    expect(controller.pause).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  it('pauses after the remaining delay when activation resolves inside the close window', async () => {
+    let resolveActivation!: (value: {
+      samplingRate: number;
+      controller: { pause: jest.Mock; resume: jest.Mock };
+    }) => void;
+    const controller = { pause: jest.fn(), resume: jest.fn() };
+    activateSessionReplay.mockReset();
+    activateSessionReplay.mockReturnValue(
+      new Promise((resolve) => {
+        resolveActivation = resolve;
+      })
+    );
+    const { faro, surface } = freshFaroWithFailingReplay();
+    await faro.initFaro({ sessionReplay: true });
+
+    jest.useFakeTimers();
+    surface.reportPathfinderSurface('sidebar');
+    for (let i = 0; i < 5; i++) {
+      await Promise.resolve();
+    }
+    surface.reportPathfinderSurface('closed');
+    jest.advanceTimersByTime(2_000);
+    resolveActivation({ samplingRate: 1, controller });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(controller.pause).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(2_999);
+    expect(controller.pause).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
     expect(controller.pause).toHaveBeenCalledTimes(1);
     jest.useRealTimers();
   });
