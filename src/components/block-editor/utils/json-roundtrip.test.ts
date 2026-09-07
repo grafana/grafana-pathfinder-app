@@ -120,8 +120,8 @@ describe('JSON Round-trip Conversion', () => {
             reftarget: '[data-testid="submit-btn"]',
             content: 'Click the submit button',
             tooltip: 'This will submit the form',
-            requirements: ['on-page:/dashboard'],
-            objectives: ['exists-reftarget'],
+            requirements: ['on-page:/dashboard', 'exists-reftarget'],
+            objectives: ['has-dashboard-named:Example'],
             skippable: true,
             hint: 'Look for the blue button',
           },
@@ -135,8 +135,8 @@ describe('JSON Round-trip Conversion', () => {
       expect(block.reftarget).toBe('[data-testid="submit-btn"]');
       expect(block.content).toBe('Click the submit button');
       expect(block.tooltip).toBe('This will submit the form');
-      expect(block.requirements).toEqual(['on-page:/dashboard']);
-      expect(block.objectives).toEqual(['exists-reftarget']);
+      expect(block.requirements).toEqual(['on-page:/dashboard', 'exists-reftarget']);
+      expect(block.objectives).toEqual(['has-dashboard-named:Example']);
       expect(block.skippable).toBe(true);
       expect(block.hint).toBe('Look for the blue button');
     });

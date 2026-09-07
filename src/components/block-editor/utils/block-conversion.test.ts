@@ -225,7 +225,7 @@ describe('getConversionWarning', () => {
         reftarget: '[data-testid="btn"]',
         content: 'Test',
         requirements: ['is-admin', 'is-editor'],
-        objectives: ['exists-reftarget'],
+        objectives: ['has-dashboard-named:Example'],
         skippable: true,
       };
       const warning = getConversionWarning(source, 'markdown');
@@ -347,10 +347,10 @@ describe('convertBlockType', () => {
         type: 'interactive',
         action: 'noop',
         content: 'Test',
-        objectives: ['exists-reftarget'],
+        objectives: ['has-dashboard-named:Example'],
       };
       const result = convertBlockType(source, 'guided');
-      expect((result as { objectives?: string[] }).objectives).toEqual(['exists-reftarget']);
+      expect((result as { objectives?: string[] }).objectives).toEqual(['has-dashboard-named:Example']);
     });
 
     it('should preserve skippable field', () => {
