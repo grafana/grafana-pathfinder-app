@@ -47,7 +47,10 @@ export class OnlineCdnSnippetResolver implements SnippetResolver, SnippetCatalog
         return {
           ok: false,
           id: snippetId,
-          error: { code: 'network-error', message: `Snippet fetch failed: HTTP ${response.status}` },
+          error: {
+            code: response.status === 404 ? 'not-found' : 'network-error',
+            message: `Snippet fetch failed: HTTP ${response.status}`,
+          },
         };
       }
       const raw = await response.json();
