@@ -163,11 +163,31 @@ A later milestone keeps the current page when it has no authored location. This 
 
 If a later milestone has an authored location, the runner compares the complete path, query, and fragment. It navigates only when these values differ.
 
-Before a later milestone, the runner publishes the prior result and dismisses celebrations. It then uses the existing `Reset guide` control.
+Before a later milestone, the runner publishes the prior result. It opens the current panel and activates the recorded E2E tab.
 
-The runner waits for progress reset, then closes the tab. It waits for all pre-reset and current step roots to detach.
+The runner dismisses badge celebrations and inspects stored E2E step completion. It does not use the authored block count for this decision.
 
-The runner replaces `StorageKeys.E2E_TEST_GUIDE` and reopens the exact `bundled:e2e-test` URL. A zero-step guide without `Reset guide` closes directly.
+If no completed step IDs exist, the runner removes namespaced residue and the E2E percentage entry. Then it closes the tab.
+
+This direct cleanup does not evict a mounted completion cache. It is not a general reset for mounted guide progress.
+
+If no prior tab opened, the runner applies this cleanup regardless of stored completion. It removes a malformed shared percentage record.
+
+If completed step IDs exist, the runner uses the accessible `Reset guide` control. This path supports installed plugins without a stable reset test ID.
+
+The runner waits for `interactive-progress-cleared`. This acknowledgment proves that the legacy reset cleared storage and evicted the completion cache.
+
+The runner closes the prior tab and waits for all captured step roots to detach. This teardown occurs before navigation.
+
+The product reload can recreate matching storage without completed step IDs. The runner accepts this safe state after tab closure.
+
+The runner requires completed step IDs to remain absent during a bounded check. Then it removes the recreated residue.
+
+The reset acknowledgment proves cache eviction. Direct residue cleanup does not make this claim.
+
+After teardown, the runner navigates only when the authored location differs. Then it prepares the panel and opens the next guide.
+
+Panel bootstrap uses 20 seconds by default. Post-navigation guide loading uses 30 seconds for each attempt.
 
 This flow is runner-only. It works with an installed Pathfinder plugin that supports only the existing `bundled:e2e-test` URL.
 
@@ -176,6 +196,19 @@ An ordinary guide failure adds that guide to the blocked set. Later milestones s
 If a dependency is blocked, the runner emits the existing `SKIPPED_PREREQ` result. Milestone order does not create a dependency.
 
 Authentication expiry or browser-session loss stops the chain. The runner writes zero-step authentication or infrastructure results for all unrun milestones.
+
+A fatal transition error also stops the chain while the browser remains open. Fatal errors include these conditions:
+
+- Stored completion has no usable legacy reset control.
+- Stored completion remains after acknowledged reset and tab closure.
+- The prior tab does not close.
+- Prior step roots do not detach.
+- A badge celebration remains as an obstruction.
+- An active E2E tab does not publish a usable tab ID.
+
+A load error remains recoverable before tab activation or after the runner records the new tab ID.
+
+Prior teardown has already removed ambiguous state. Later soft-ordered milestones can continue.
 
 Only a 401, a 403, or a login redirect means authentication expired. Network errors, server errors, and browser loss are infrastructure outcomes.
 
@@ -390,6 +423,7 @@ The environment is reset **between dependency chains**, not between every guide.
 | Fix button timeout         | 10s              | Per fix operation                                                                           |
 | Max fix attempts           | 3                | Retry limit before giving up                                                                |
 | Requirements settle window | 1s               | Poll budget before an unmet read with no Fix button counts as terminal                      |
+| Panel bootstrap            | 20s or 30s       | Uses 30s after navigation and 20s for same-page panel opening                               |
 | Scroll into view           | 5s               | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
 | Late completion check      | 2s               | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
 | Skip sync                  | 5s               | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |

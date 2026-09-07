@@ -11,7 +11,7 @@ import {
 } from '../../src/cli/e2e/e2e-runner-contract';
 import { installScopedBearerTokenRoute } from './auth/scoped-bearer-token';
 import { createBrowserTerminationMonitor } from './utils/guide-runner';
-import { countInteractiveBlocks, estimateGuideTimeoutFromContent } from './utils/guide-runner/static-analysis';
+import { estimateGuideTimeoutFromContent } from './utils/guide-runner/static-analysis';
 import { parsePageGuide, runGuideOnPage } from './utils/guide-runner/run-guide';
 import { createRunnerSessionValidator, RunnerPreflightError, runRunnerPreflight } from './utils/runner-preflight';
 import { runSharedGuideChain } from './utils/shared-chain';
@@ -91,7 +91,7 @@ test.describe('Shared guide runner', () => {
     }
 
     const terminationMonitor = createBrowserTerminationMonitor(page);
-    let previousGuideTab: { id: string; hadInteractiveSteps: boolean } | undefined;
+    let previousGuideTabId: string | undefined;
     try {
       const outcome = await runSharedGuideChain(chainInput, {
         currentUrl: () => page.url(),
@@ -102,8 +102,7 @@ test.describe('Shared guide runner', () => {
             if (!session.valid) {
               return setupFailureResult(guide, session.failureKind === 'auth_expired', session.error);
             }
-            const previousTab = previousGuideTab;
-            const guideHasInteractiveSteps = countInteractiveBlocks(JSON.parse(guide.content)) > 0;
+            const previousTabId = previousGuideTabId;
             const milestoneArtifactsDir = artifactsDir
               ? join(artifactsDir, `milestone-${String(index + 1).padStart(3, '0')}-${guide.id}`)
               : undefined;
@@ -112,13 +111,12 @@ test.describe('Shared guide runner', () => {
               startingLocation: transition.startingLocation,
               navigateToStartingLocation: transition.navigateToStartingLocation,
               replacePreviousGuide: index > 0,
-              previousGuideHadInteractiveSteps: previousTab?.hadInteractiveSteps ?? false,
-              previousGuideTabId: previousTab?.id,
+              previousGuideTabId: previousTabId,
               onPreviousGuideCleared: () => {
-                previousGuideTab = undefined;
+                previousGuideTabId = undefined;
               },
               onGuideOpened: (tabId) => {
-                previousGuideTab = { id: tabId, hadInteractiveSteps: guideHasInteractiveSteps };
+                previousGuideTabId = tabId;
               },
               allowReloadRecovery: index === 0,
               verbose,

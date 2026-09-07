@@ -54,7 +54,6 @@ test.describe('Guide runner', () => {
       startingLocation,
       navigateToStartingLocation: true,
       replacePreviousGuide: false,
-      previousGuideHadInteractiveSteps: false,
       allowReloadRecovery: true,
       verbose,
       artifactsDir: process.env[E2E_ENV.ARTIFACTS_DIR],
