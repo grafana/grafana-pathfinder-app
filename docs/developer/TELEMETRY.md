@@ -73,7 +73,7 @@ Privacy protection is split between enforced normalization and caller discipline
 
 ## Gating and environments
 
-Faro initializes only when `resolveFaroEnvironment()` resolves: Grafana Cloud with analytics enabled, on `.grafana.com` / `.grafana.net` / `.grafana-ops.net` / `.grafana-dev.net` hosts, and only when the default-on `pathfinder.frontend-telemetry` flag is set. Local development sends nothing unless `localStorage['pathfinder.faro.local'] = 'true'` in a dev build. The activity gate drops everything except errors until Pathfinder is opened, so collector sessions mean "used Pathfinder or Pathfinder errored", not "loaded a Grafana page".
+Faro initializes only when `resolveFaroEnvironment()` resolves: Grafana Cloud with analytics enabled, on `.grafana.com` / `.grafana.net` / `.grafana-ops.net` / `.grafana-dev.net` hosts, and only when the default-on `pathfinder.frontend-telemetry` flag is set. Local development sends nothing unless `localStorage['pathfinder.faro.local'] = 'true'` in a dev build. The activity gate drops everything except errors until a Pathfinder surface reports itself on mount — a persisted panel mode alone no longer opens it — so collector sessions mean "used Pathfinder or Pathfinder errored", not "loaded a Grafana page".
 
 Session replay adds a second remote switch (`pathfinder.session-replay`, also default-on) plus a volume dial (`pathfinder.session-replay-sampling-rate`, default `1`, range-checked at the point of use), but no new environment gate: it is registered from inside `initFaro`, after the `resolveFaroEnvironment()` early return, so a self-hosted or OSS Grafana never reaches it — such an instance does not construct a Faro instance in the first place, and the rrweb chunk is never fetched. The first Pathfinder surface open latches the activity gate and starts recording; closing the panel pauses recording after five seconds, while reopening resumes it immediately.
 
@@ -81,10 +81,12 @@ Two consequences of it being default-on. Recordings are only viewable on a stack
 
 ### Stopping a recording
 
-**Both replay flags are read once, during plugin bootstrap.** OFREP visibility refresh is off, and the recorder has no removal path, so flipping either flag — or reverting the plugin — reaches a tab only on its next page load. A tab that was already recording keeps recording until it is closed or reloaded. Deliberate: re-evaluating the flag mid-session would mean either polling it or tearing the recorder down live, and a torn-down rrweb leaves a mutation stream with no snapshot to apply it to.
+**Both replay flags are read once, during plugin bootstrap.** OFREP visibility refresh is off, and the recorder is never removed from the Faro instance, so flipping either flag — or reverting the plugin — reaches a tab only on its next page load. Deliberate: re-evaluating a flag mid-session would mean polling it, and neither flag is worth a poll.
+
+The recorder does stop and start within a session, but on the surface lifecycle rather than on the flags. Closing the last Pathfinder surface pauses recording five seconds later, and reopening resumes it immediately. A pause stops rrweb outright and the resume emits a fresh full-DOM snapshot, so each open yields a playable clip rather than orphaned mutations. `inactivityThresholdMs` is deliberately `0`, which turns the SDK's own idle auto-pause off: its paired auto-resume rebinds document-wide interaction listeners and would restart recording on the first mouse move while Pathfinder was closed. Surface state is the sole pause authority — which also means an open panel on an idle tab keeps recording where the SDK default would have paused it after 60 seconds.
 
 What that means operationally:
 
-- **The kill switch is "no new recordings"**, not "recording stops now". Budget for the tail of long-lived tabs — a dashboard left open overnight is the worst case.
+- **The kill switch is "no new recordings"**, not "recording stops now". Budget for the tail of long-lived tabs, now bounded by Pathfinder use rather than tab lifetime: a tab with no surface open stops five seconds after the last close, so the worst case is a docked sidebar left open on an auto-refreshing dashboard overnight.
 - **Recordings already ingested are not undone by the flip.** Removing them is a collector-side deletion request against the Frontend Observability app, not something a flag or a release can do.
 - If a recording must stop immediately on a known stack, the only in-band lever is a plugin release plus a forced reload; otherwise the flag flip plus natural page turnover is the mechanism.
