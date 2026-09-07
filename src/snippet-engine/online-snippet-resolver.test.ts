@@ -72,10 +72,18 @@ describe('OnlineCdnSnippetResolver.resolve', () => {
     expect(global.fetch).toHaveBeenCalledWith(`${SNIPPETS_BASE}/..%2F..%2Fetc%2Fpasswd.json`, expect.anything());
   });
 
-  it('returns a network-error failure on a non-ok HTTP response (no throw)', async () => {
+  it('returns a not-found failure on a 404 response (no throw)', async () => {
     mockFetchResolved({ ok: false, status: 404 });
 
     const result = await createOnlineSnippetResolver().resolve('missing');
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not-found' } });
+  });
+
+  it('returns a network-error failure on a server error (no throw)', async () => {
+    mockFetchResolved({ ok: false, status: 500 });
+
+    const result = await createOnlineSnippetResolver().resolve('datasource-picker');
 
     expect(result).toMatchObject({ ok: false, error: { code: 'network-error' } });
   });
