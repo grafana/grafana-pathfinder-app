@@ -79,7 +79,9 @@ export function buildBackendGuideContent(
     blocks: decodeAppPlatformGuideBlocks(guideResource.spec.blocks as JsonBlock[]),
   };
 
-  const validationResult = validateGuide(guide);
+  // allowDuplicateHeading: this is a runtime render path — an already-published
+  // guide with a duplicate leading heading must keep rendering, not disappear.
+  const validationResult = validateGuide(guide, { allowDuplicateHeading: true });
   if (!validationResult.isValid) {
     const errorMessage = validationResult.errors[0]?.message || 'Schema validation failed';
     return {

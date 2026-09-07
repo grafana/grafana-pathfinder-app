@@ -713,41 +713,56 @@ describe('JsonGuideSchema', () => {
   });
 
   describe('leading heading duplicates title', () => {
-    it('should warn when blocks[0] starts with a heading matching the title exactly', () => {
+    it('should error when blocks[0] starts with a heading matching the title exactly', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Create your first dashboard',
         blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
       });
       const result = validateGuideFromString(guide);
-      expect(result.isValid).toBe(true);
-      const warning = result.warnings.find(
-        (w) => w.type === 'suggestion' && w.message.includes('duplicates the guide title')
-      );
-      expect(warning).toBeDefined();
-      expect(warning?.path).toEqual(['blocks', 0]);
+      expect(result.isValid).toBe(false);
+      const error = result.errors.find((e) => e.message.includes('duplicates the guide title'));
+      expect(error).toBeDefined();
+      expect(error?.path).toEqual(['blocks', 0]);
     });
 
-    it('should warn when the title has a trailing suffix the heading lacks', () => {
+    it('should error when the title has a trailing suffix the heading lacks', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Create your first dashboard in Grafana Cloud',
         blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
       });
       const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
-      expect(warning).toBeDefined();
+      expect(result.isValid).toBe(false);
+      const error = result.errors.find((e) => e.message.includes('duplicates the guide title'));
+      expect(error).toBeDefined();
     });
 
-    it('should warn when the heading has trailing punctuation the title lacks', () => {
+    it('should error when the heading has trailing punctuation the title lacks', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Welcome to Grafana',
         blocks: [{ type: 'markdown', content: '# Welcome to Grafana!\n\nTour time.' }],
       });
       const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
+      expect(result.isValid).toBe(false);
+      const error = result.errors.find((e) => e.message.includes('duplicates the guide title'));
+      expect(error).toBeDefined();
+    });
+
+    it('should stay a warning when allowDuplicateHeading is set, for runtime guide loaders', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
+      });
+      const result = validateGuideFromString(guide, { allowDuplicateHeading: true });
+      expect(result.isValid).toBe(true);
+      const warning = result.warnings.find(
+        (w) => w.type === 'suggestion' && w.message.includes('duplicates the guide title')
+      );
       expect(warning).toBeDefined();
+      expect(warning?.path).toEqual(['blocks', 0]);
     });
 
     it('should not warn when the first heading is unrelated to the title', () => {
@@ -783,16 +798,15 @@ describe('JsonGuideSchema', () => {
       expect(warning).toBeUndefined();
     });
 
-    it('should stay a warning in strict mode instead of promoting to an error', () => {
+    it('should error regardless of strict mode', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Create your first dashboard',
         blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
       });
       const result = validateGuideFromString(guide, { strict: true });
-      expect(result.isValid).toBe(true);
-      expect(result.errors).toHaveLength(0);
-      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(true);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(true);
     });
   });
 

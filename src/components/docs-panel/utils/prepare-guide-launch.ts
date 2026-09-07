@@ -105,7 +105,9 @@ export async function prepareGuideLaunch(
     return { ok: false, error: 'Guide content could not be parsed', errorCode: 'unparseable' };
   }
 
-  const validation = validateGuide(guide);
+  // allowDuplicateHeading: this is a runtime render path — an already-published
+  // guide with a duplicate leading heading must keep rendering, not disappear.
+  const validation = validateGuide(guide, { allowDuplicateHeading: true });
   if (!validation.isValid) {
     logger.error('[PrepareGuideLaunch] Guide content failed schema validation', {
       content_url: normalizeTelemetryUrl(url),

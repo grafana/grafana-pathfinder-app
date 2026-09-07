@@ -230,7 +230,9 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
           return { content: rawContent };
         }
 
-        const validationResult = validateGuide(parsed);
+        // allowDuplicateHeading: this is a runtime render path — an already-published
+        // guide with a duplicate leading heading must keep rendering, not disappear.
+        const validationResult = validateGuide(parsed, { allowDuplicateHeading: true });
 
         if (!validationResult.isValid) {
           // Use the first error message for the main error
