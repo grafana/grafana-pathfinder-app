@@ -131,11 +131,12 @@ upload in that case; rename the package instead.
 
 The CRD's block schema is generated from `_blockFields` / `#Block` /
 `#NestedBlock` / `#Step` in `kinds/interactiveguide.cue`. A field the app
-accepts and that file does not declare is **silently pruned**: there is
-no 422 and no warning from the API, the write returns 200, and the field
-is gone on the next GET. Blocks nested three or more levels deep fall
-under `x-kubernetes-preserve-unknown-fields` and survive; anything
-shallower does not.
+accepts and that file does not declare is **silently pruned**. The API can emit
+a `Warning` response header, but there is no 422 or error body; the write may
+still return 200 or 201, and the field is gone on the next GET.
+`getBackendSrv()` does not surface that header to callers. Blocks nested three
+or more levels deep fall under `x-kubernetes-preserve-unknown-fields` and
+survive; anything shallower does not.
 
 The gap is currently the `input` block: `defaultValue`, which costs the
 input its prefilled value, and the whole `dataCheck*` family
