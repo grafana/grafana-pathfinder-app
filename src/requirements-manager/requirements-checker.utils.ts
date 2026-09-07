@@ -1,3 +1,4 @@
+import { checkVerdict, combineCheckVerdicts } from '../lib/check-verdict';
 import { conditionTokens, conditionLabel } from '../lib/condition-input';
 /**
  * Requirements checking — router and retry harness.
@@ -18,7 +19,12 @@ import { conditionTokens, conditionLabel } from '../lib/condition-input';
 
 import { reftargetExistsCheck, navmenuOpenCheck, formValidCheck } from '../lib/dom';
 import { sectionCompletedCheck } from './checks/section-completed-check';
-import { isValidRequirement, type CheckResultError, type ConditionInput } from '../types/requirements.types';
+import {
+  isValidRequirement,
+  type CheckResultError,
+  type ConditionInput,
+  type CheckVerdict,
+} from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { logger } from '../lib/logging';
 import { TimeoutManager } from '../utils/timeout-manager';
@@ -44,6 +50,7 @@ import { terminalActiveCheck } from './checks/terminal';
 import { codaExitZeroCheck } from './checks/coda';
 
 export interface RequirementsCheckResult {
+  verdict?: CheckVerdict;
   requirements: string;
   pass: boolean;
   error: CheckResultError[];
@@ -131,24 +138,30 @@ const CHECK_HANDLERS: readonly CheckHandler[] = [
 
 export { CHECK_HANDLERS };
 
-async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<CheckResultError> {
+async function routeUnifiedCheck(check: string, ctx: CheckContext, mode: CheckMode): Promise<CheckResultError> {
   // Type-safe validation with helpful developer feedback
-  if (!isValidRequirement(check)) {
+  if (!isValidRequirement(check) || check.endsWith(':') || check === 'var-') {
     logger.warn(
       `Unknown requirement type: '${check}'. Check the requirement syntax and ensure it's supported. Allowing step to proceed.`
     );
 
     return {
       requirement: check,
-      pass: true,
-      error: `Warning: Unknown requirement type '${check}' - step allowed to proceed`,
+      pass: mode === 'pre',
+      verdict: 'invalid',
+      error: `Warning: Unknown requirement type '${check}' - ${mode === 'pre' ? 'step allowed to proceed' : 'verification refused'}`,
       context: null,
     };
   }
 
   const handler = CHECK_HANDLERS.find((h) => h.match(check));
   if (handler) {
-    return handler.run(check, ctx);
+    try {
+      const result = await handler.run(check, ctx);
+      return { ...result, verdict: checkVerdict(result) };
+    } catch (error) {
+      return { requirement: check, pass: false, verdict: 'unavailable', error: String(error) };
+    }
   }
 
   // Should never be reached due to the validation above, but keep as a fallback.
@@ -158,8 +171,9 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
 
   return {
     requirement: check,
-    pass: true,
-    error: `Warning: Unexpected requirement type '${check}' - step allowed to proceed`,
+    pass: mode === 'pre',
+    verdict: 'invalid',
+    error: `Warning: Unexpected requirement type '${check}' - ${mode === 'pre' ? 'step allowed to proceed' : 'verification refused'}`,
     context: null,
   };
 }
@@ -171,11 +185,12 @@ async function runUnifiedChecks(
 ): Promise<RequirementsCheckResult> {
   const checks = conditionTokens(checksString);
 
-  const results = await Promise.all(checks.map((check) => routeUnifiedCheck(check, ctx)));
+  const results = await Promise.all(checks.map((check) => routeUnifiedCheck(check, ctx, mode)));
 
   return {
     requirements: conditionLabel(checksString),
     pass: results.every((r) => r.pass),
+    verdict: combineCheckVerdicts(results),
     error: results,
   };
 }
@@ -203,6 +218,7 @@ async function executeChecksWithRetry(
     return {
       requirements: conditionLabel(requirements),
       pass: true,
+      verdict: 'satisfied',
       error: [],
     };
   }
@@ -272,6 +288,7 @@ async function executeChecksWithRetry(
     return {
       requirements: conditionLabel(requirements),
       pass: false,
+      verdict: 'unavailable',
       error: [
         {
           requirement: conditionLabel(requirements),

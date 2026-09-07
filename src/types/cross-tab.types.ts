@@ -35,6 +35,7 @@ interface CrossTabEnvelope {
 // able to reshape the wire silently. A compile-time guard in
 // cross-tab.types.test.ts forces a conscious update here when they diverge.
 export interface RemoteRequirementError {
+  verdict?: 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
   requirement: string;
   pass: boolean;
   error?: string;
@@ -46,6 +47,7 @@ export interface RemoteRequirementError {
 }
 
 export interface RemoteRequirementResult {
+  verdict?: 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
   requirements: string;
   pass: boolean;
   error: RemoteRequirementError[];
@@ -316,6 +318,13 @@ function isValidFixRequirement(message: Record<string, unknown>): boolean {
 // requirement-result / fix-result are replies the controller feeds into its
 // requirements-state path; validate the reply shape so a malformed result can't
 // resolve a pending request with garbage.
+function isOptionalVerdict(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === 'string' && ['satisfied', 'unsatisfied', 'unavailable', 'invalid'].includes(value))
+  );
+}
+
 function isValidRequirementResult(message: Record<string, unknown>): boolean {
   if (typeof message.requestId !== 'string' || typeof message.stepId !== 'string' || !isRecord(message.result)) {
     return false;
@@ -323,12 +332,14 @@ function isValidRequirementResult(message: Record<string, unknown>): boolean {
   const result = message.result;
   return (
     typeof result.requirements === 'string' &&
+    isOptionalVerdict(result.verdict) &&
     typeof result.pass === 'boolean' &&
     Array.isArray(result.error) &&
     result.error.every(
       (e) =>
         isRecord(e) &&
         typeof e.requirement === 'string' &&
+        isOptionalVerdict(e.verdict) &&
         typeof e.pass === 'boolean' &&
         isOptionalString(e.error) &&
         isOptionalString(e.fixType) &&

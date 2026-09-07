@@ -1,3 +1,4 @@
+import { combineCheckVerdicts } from '../lib/check-verdict';
 import { conditionTokens, conditionLabel } from '../lib/condition-input';
 /**
  * Unified hook for checking both tutorial-specific requirements and objectives
@@ -104,6 +105,7 @@ function mergeRequirementResults(
   return {
     requirements: conditionLabel(requirements),
     pass: present.every((part) => part.pass),
+    verdict: combineCheckVerdicts(present),
     error: present.flatMap((part) => part.error ?? []),
   };
 }

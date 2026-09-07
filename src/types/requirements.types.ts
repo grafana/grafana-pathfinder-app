@@ -1,3 +1,5 @@
+export type CheckVerdict = 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
+
 export type ConditionInput = string | readonly string[];
 
 /**
@@ -65,6 +67,7 @@ export const isValidRequirement = (req: string): req is ValidRequirement => {
  * importing each other (#1359).
  */
 export interface CheckResultError {
+  verdict?: CheckVerdict;
   requirement: string;
   pass: boolean;
   error?: string;
