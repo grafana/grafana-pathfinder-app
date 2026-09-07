@@ -503,7 +503,3 @@ const showExistingFeature = useBooleanFlag('pathfinder.existing-feature', true);
 - [OpenFeature React SDK](https://openfeature.dev/docs/reference/technologies/client/web/)
 - [OFREP Web Provider](https://github.com/open-feature/js-sdk-contrib/tree/main/libs/providers/ofrep-web)
 - Source: `src/utils/openfeature.ts`
-
-### Verified outcomes pilot
-
-`pathfinder.verified-outcomes` defaults to `false` and enables the first-dashboard guide's separate resource-verification panel. It does not change guide completion arithmetic. For local QA, run `window.__pathfinderExperiment.setOverride('pathfinder.verified-outcomes', true)` and reload. Disable the override to return to the existing experience. A production rollout requires the corresponding MTFF registration; this change only registers the client flag and keeps rollout off.

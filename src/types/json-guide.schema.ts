@@ -1,4 +1,3 @@
-import { GuideOutcomesSchema } from './outcome.schema';
 /**
  * Zod Schemas for JSON Guide Types
  *
@@ -1148,7 +1147,6 @@ export const JsonGuideSchemaStrict = z.object({
   id: z.string().min(1, 'Guide id is required'),
   title: z.string().min(1, 'Guide title is required'),
   blocks: z.array(JsonBlockSchema),
-  outcomes: GuideOutcomesSchema.optional(),
 });
 
 /**
@@ -1187,7 +1185,7 @@ type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_conditionalSectionC
  * `Record<string, …>` so callers can index with an unvalidated `block.type`.
  */
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
-  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks', 'outcomes']),
+  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks']),
   _step: new Set([
     'id',
     'action',
