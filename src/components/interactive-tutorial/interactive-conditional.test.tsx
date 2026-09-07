@@ -3,6 +3,7 @@ import { createTheme } from '@grafana/data';
 import { act, render, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
+import { ImageRenderer } from '../../docs-retrieval';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { InteractiveConditional } from './interactive-conditional';
 import { wrapSectionChildrenForNumbering } from './section-numbering';
@@ -221,6 +222,47 @@ describe('InteractiveConditional', () => {
     expect(getComputedStyle(item).display).toBe('none');
   });
 
+  it('retains an occupied numbering slot when re-evaluation empties the branch', async () => {
+    checkRequirementsFromData.mockResolvedValue({ pass: true, requirements: '', error: [] });
+    const { container } = render(
+      <div className={getInteractiveStyles(createTheme())}>
+        <ol className="interactive-section-content">
+          {wrapSectionChildrenForNumbering(
+            <InteractiveConditional
+              conditions={['live-collapse']}
+              whenTrueChildren={[{ type: 'p', props: {}, children: ['Visible branch'] }]}
+              whenFalseChildren={[]}
+              renderElement={(_element, childKey) => <p key={childKey}>Visible branch</p>}
+              keyPrefix="live-collapse"
+            />
+          )}
+        </ol>
+      </div>
+    );
+    const item = container.querySelector('ol > li') as HTMLLIElement;
+
+    await act(async () => {
+      jest.runAllTimers();
+    });
+
+    expect(item).toHaveTextContent('Visible branch');
+
+    checkRequirementsFromData.mockResolvedValue({ pass: false, requirements: '', error: [] });
+    await act(async () => {
+      document.dispatchEvent(new CustomEvent('interactive-action-completed', { detail: {} }));
+      jest.advanceTimersByTime(300);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Visible branch')).not.toBeInTheDocument();
+    });
+
+    expect(item.querySelector('[data-section-numbering-retained="true"]')).toHaveAttribute('hidden');
+    expect(item).toHaveAttribute('data-numbered', 'true');
+    expect(getComputedStyle(item).display).not.toBe('none');
+    expect(getComputedStyle(item).counterIncrement).toBe('step-counter');
+  });
+
   it('keeps passive and interactive branches aligned under one number', async () => {
     render(
       <div className={getInteractiveStyles(createTheme())}>
@@ -259,6 +301,35 @@ describe('InteractiveConditional', () => {
     });
     const interactive = screen.getByText('Interactive branch');
     expect(getComputedStyle(interactive).paddingLeft).not.toBe('calc(18px)');
+  });
+
+  it('aligns media branch children as passive content', async () => {
+    const { container } = render(
+      <div className={getInteractiveStyles(createTheme())}>
+        <ol className="interactive-section-content">
+          {wrapSectionChildrenForNumbering(
+            <InteractiveConditional
+              conditions={['media-branch']}
+              whenTrueChildren={[]}
+              whenFalseChildren={[{ type: 'img', props: {}, children: [] }]}
+              renderElement={(_element, childKey) => (
+                <ImageRenderer key={childKey} src="/branch.png" alt="Branch media" baseUrl="" />
+              )}
+              keyPrefix="media-branch"
+            />
+          )}
+        </ol>
+      </div>
+    );
+
+    await act(async () => {
+      jest.runAllTimers();
+    });
+
+    const image = screen.getByRole('img', { name: 'Branch media' });
+    expect(image).toHaveClass('section-numbering-plain');
+    expect(getComputedStyle(image).paddingLeft).toBe('calc(18px)');
+    expect(container.querySelectorAll('ol > li[data-numbered="true"]')).toHaveLength(1);
   });
 
   it.each([
@@ -352,6 +423,7 @@ describe('InteractiveConditional', () => {
     const innerItems = innerList?.querySelectorAll(':scope > li[data-numbered="true"]');
     expect(innerItems).toHaveLength(1);
     expect(innerItems?.[0]).toHaveTextContent('Inner content');
+    expect(innerItems?.[0]?.querySelector('p')).not.toHaveClass('section-numbering-plain');
     expect(container.querySelectorAll('ol.interactive-section-content')).toHaveLength(2);
   });
 });

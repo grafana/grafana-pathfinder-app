@@ -7,6 +7,7 @@ import { isValidRequirement } from '../../types/requirements.types';
 import { InteractiveSection } from './interactive-section';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { logger } from '../../lib/logging';
+import { shouldNumberSectionChild } from './section-numbering';
 
 export interface InteractiveConditionalProps {
   conditions: string[];
@@ -26,7 +27,10 @@ function conditionsKeyNeedsDomWatch(conditionsKey: string): boolean {
 }
 
 function markPlainNumberingChild(child: React.ReactNode): React.ReactNode {
-  if (!React.isValidElement<{ className?: string }>(child) || typeof child.type !== 'string') {
+  if (
+    !React.isValidElement<{ className?: string }>(child) ||
+    (typeof child.type !== 'string' && shouldNumberSectionChild(child))
+  ) {
     return child;
   }
 
@@ -48,6 +52,7 @@ export function InteractiveConditional({
 }: InteractiveConditionalProps) {
   const [conditionsPassed, setConditionsPassed] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
+  const [hasOccupiedNumberingSlot, setHasOccupiedNumberingSlot] = useState(false);
   const { checkRequirementsFromData } = useInteractiveElements();
 
   // Stable string identity for `conditions`. The parent passes a fresh array
@@ -84,6 +89,8 @@ export function InteractiveConditional({
   // checker callback below is not rebuilt on every parent render.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on conditionsKey, which is the serialization of conditions
   const requirements = useMemo(() => conditions, [conditionsKey]);
+  const whenTrueHasChildren = whenTrueChildren.length > 0;
+  const whenFalseHasChildren = whenFalseChildren.length > 0;
 
   const evaluateConditions = useCallback(
     async (options?: { isReevaluation?: boolean }) => {
@@ -117,6 +124,9 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
+        if (result.pass ? whenTrueHasChildren : whenFalseHasChildren) {
+          setHasOccupiedNumberingSlot(true);
+        }
         setConditionsPassed(result.pass);
         setIsChecking(false);
       } catch (error) {
@@ -124,11 +134,14 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
+        if (whenFalseHasChildren) {
+          setHasOccupiedNumberingSlot(true);
+        }
         setConditionsPassed(false);
         setIsChecking(false);
       }
     },
-    [requirements, checkRequirementsFromData, description, refTarget]
+    [requirements, checkRequirementsFromData, description, refTarget, whenTrueHasChildren, whenFalseHasChildren]
   );
 
   const needsDomWatch = conditionsKeyNeedsDomWatch(conditionsKey);
@@ -259,13 +272,10 @@ export function InteractiveConditional({
   const sectionConfig = conditionsPassed ? whenTrueSectionConfig : whenFalseSectionConfig;
 
   if (childrenToRender.length === 0) {
-    return null;
+    return hasOccupiedNumberingSlot ? <span hidden data-section-numbering-retained="true" /> : null;
   }
 
   const branchKey = conditionsPassed ? 'true' : 'false';
-  const renderedChildren = childrenToRender.map((child, index) =>
-    markPlainNumberingChild(renderElement(child, `${keyPrefix}-${branchKey}-${index}`))
-  );
 
   // Section display preserves its own execution and numbering scope.
   if (display === 'section') {
@@ -293,11 +303,15 @@ export function InteractiveConditional({
           objectives={sectionObjectives}
           className="conditional-section"
         >
-          {renderedChildren}
+          {childrenToRender.map((child, index) => renderElement(child, `${keyPrefix}-${branchKey}-${index}`))}
         </InteractiveSection>
       </div>
     );
   }
+
+  const renderedChildren = childrenToRender.map((child, index) =>
+    markPlainNumberingChild(renderElement(child, `${keyPrefix}-${branchKey}-${index}`))
+  );
 
   return (
     <div

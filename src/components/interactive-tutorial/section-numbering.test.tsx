@@ -11,7 +11,7 @@ import { CodeBlockStep } from './code-block-step';
 import { InteractiveConditional } from './interactive-conditional';
 import { InputBlock } from './input-block';
 import { GrotGuideBlock } from './grot-guide-block';
-import { ImageRenderer, VideoRenderer, YouTubeVideoRenderer } from '../../docs-retrieval';
+import { ImageRenderer, VideoRenderer, VimeoVideoRenderer, YouTubeVideoRenderer } from '../../docs-retrieval';
 
 describe('shouldNumberSectionChild', () => {
   describe('content blocks — numbered', () => {
@@ -86,6 +86,9 @@ describe('shouldNumberSectionChild', () => {
     });
     it('does not number YouTubeVideoRenderer', () => {
       expect(shouldNumberSectionChild(<YouTubeVideoRenderer src="https://youtu.be/x" />)).toBe(false);
+    });
+    it('does not number VimeoVideoRenderer', () => {
+      expect(shouldNumberSectionChild(<VimeoVideoRenderer src="https://vimeo.com/123" />)).toBe(false);
     });
   });
 
@@ -164,5 +167,32 @@ describe('wrapSectionChildrenForNumbering', () => {
     expect(item.props['data-numbered']).toBe('true');
     expect(item.props['data-step']).toBe('true');
     expect(item.props.children.type).toBe(InteractiveConditional);
+  });
+
+  it('keeps adjacent conditionals and an interactive step in one numbered sequence', () => {
+    const conditional = (key: string) => (
+      <InteractiveConditional
+        conditions={[]}
+        whenTrueChildren={[]}
+        whenFalseChildren={[]}
+        renderElement={() => null}
+        keyPrefix={key}
+        key={key}
+      />
+    );
+    const items = React.Children.toArray(
+      wrapSectionChildrenForNumbering([
+        conditional('first-conditional'),
+        <InteractiveStep key="step" targetAction="highlight" refTarget=".target" />,
+        conditional('second-conditional'),
+      ])
+    ) as Array<React.ReactElement<{ 'data-numbered'?: string; children: React.ReactElement }>>;
+
+    expect(items.map((item) => item.props['data-numbered'])).toEqual(['true', 'true', 'true']);
+    expect(items.map((item) => item.props.children.type)).toEqual([
+      InteractiveConditional,
+      InteractiveStep,
+      InteractiveConditional,
+    ]);
   });
 });

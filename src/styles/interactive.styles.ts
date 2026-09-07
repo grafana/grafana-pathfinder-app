@@ -359,9 +359,20 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
   },
 
-  // Empty conditional branches do not consume a number.
+  // Conditionals that resolve empty before showing content do not consume a number.
   '.interactive-section-content > li[data-numbered="true"]:empty': {
     display: 'none',
+  },
+
+  // Once visible, a conditional keeps its counter slot so later steps do not renumber.
+  '.interactive-section-content > li[data-numbered="true"]:has(> [data-section-numbering-retained="true"])': {
+    height: 0,
+    overflow: 'hidden',
+    padding: 0,
+
+    '&::before': {
+      display: 'none',
+    },
   },
 
   // Passive conditional children lack the horizontal padding supplied by step cards.
