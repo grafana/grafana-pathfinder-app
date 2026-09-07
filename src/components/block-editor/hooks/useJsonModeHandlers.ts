@@ -15,6 +15,13 @@ import type { ViewMode, JsonModeState, PositionedError, EditorBlock, JsonGuide }
 import { parseAndValidateGuide } from '../utils/block-import';
 
 /**
+ * A guide already open in the editor must stay escapable: a duplicated leading
+ * heading is a hard error at import time, but downgrading it here keeps the
+ * exit and undo paths usable for guides that already carry one.
+ */
+const EXIT_VALIDATION_OPTIONS = { allowDuplicateHeading: true } as const;
+
+/**
  * Minimal interface for editor functionality needed by this hook.
  */
 export interface JsonModeEditorInterface {
@@ -138,7 +145,7 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
         return;
       }
 
-      const result = parseAndValidateGuide(jsonModeState.json);
+      const result = parseAndValidateGuide(jsonModeState.json, EXIT_VALIDATION_OPTIONS);
       if (!result.isValid) {
         setJsonValidationErrors(result.errors);
         setIsJsonValid(false);
@@ -186,7 +193,7 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
         return null;
       }
       // Re-validate the original JSON (should be valid, but be safe)
-      const result = parseAndValidateGuide(prev.originalJson);
+      const result = parseAndValidateGuide(prev.originalJson, EXIT_VALIDATION_OPTIONS);
       setIsJsonValid(result.isValid);
       setJsonValidationErrors(result.errors);
       return { ...prev, json: prev.originalJson };

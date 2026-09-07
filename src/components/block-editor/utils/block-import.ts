@@ -6,7 +6,7 @@
  */
 
 import type { JsonGuide } from '../types';
-import { validateGuideFromString } from '../../../validation';
+import { validateGuideFromString, type ValidationOptions } from '../../../validation';
 import { addPositionsToErrors, type PositionedError } from './json-position';
 
 /**
@@ -84,10 +84,11 @@ export function validateFile(file: File): { isValid: boolean; errors: string[] }
  * Errors include line/column positions for Monaco markers.
  *
  * @param jsonString - JSON string to parse
+ * @param options - Validation options; omit for the strict authoring default
  * @returns Validation result with parsed guide if valid
  */
-export function parseAndValidateGuide(jsonString: string): ImportValidationResult {
-  const result = validateGuideFromString(jsonString);
+export function parseAndValidateGuide(jsonString: string, options?: ValidationOptions): ImportValidationResult {
+  const result = validateGuideFromString(jsonString, options);
 
   // Enrich errors with line/column positions using jsonc-parser
   const errorsWithPositions = addPositionsToErrors(
