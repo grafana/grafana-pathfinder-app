@@ -120,6 +120,51 @@ describe('useJsonModeHandlers — duplicate leading heading', () => {
     expect(result.current.jsonMode.jsonValidationErrors).toHaveLength(0);
   });
 
+  it('does not report an error while the author edits a guide with a duplicate heading', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(duplicateHeadingGuide));
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('json');
+    });
+
+    const edited = JSON.stringify(
+      { ...duplicateHeadingGuide, description: 'Now with a description' },
+      null,
+      2
+    );
+    act(() => {
+      result.current.jsonMode.handleJsonChange(edited);
+    });
+
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+    expect(result.current.jsonMode.jsonValidationErrors).toHaveLength(0);
+  });
+
+  it('restores a JSON-mode session for a guide with a duplicate heading without flagging it', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
+
+    act(() => {
+      result.current.jsonMode.restoreJsonMode(duplicateHeadingGuide, ['b1']);
+    });
+
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+    expect(result.current.jsonMode.jsonValidationErrors).toHaveLength(0);
+  });
+
+  it('still reports schema errors while editing', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(duplicateHeadingGuide));
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('json');
+    });
+    act(() => {
+      result.current.jsonMode.handleJsonChange(JSON.stringify({ id: 'no-title-guide', blocks: [] }));
+    });
+
+    expect(result.current.jsonMode.isJsonValid).toBe(false);
+    expect(result.current.jsonMode.jsonValidationErrors).not.toHaveLength(0);
+  });
+
   it('still blocks exit for a genuinely broken guide', () => {
     const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
 

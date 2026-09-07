@@ -38,9 +38,11 @@ export interface ValidationOptions {
   /**
    * When true, a leading heading in blocks[0] that duplicates the guide title
    * stays a warning instead of failing validation. Runtime guide loaders set
-   * this so an already-published guide keeps rendering; authoring gates (the
-   * CLI `validate` command, the block editor) leave it unset so the error
-   * blocks before the guide ships.
+   * this so an already-published guide keeps rendering, and the block editor's
+   * JSON mode sets it so a guide already open stays editable. The gates that
+   * decide whether a guide ships — the CLI `validate` command, guide import
+   * and export, and the editor's lint panel — leave it unset so the error
+   * blocks first.
    */
   allowDuplicateHeading?: boolean;
 }

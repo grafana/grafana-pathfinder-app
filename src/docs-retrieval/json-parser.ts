@@ -122,9 +122,7 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
     return { isValid: false, errors, warnings };
   }
 
-  // Zod validation replaces manual checks. allowDuplicateHeading: this is a
-  // runtime render path — an already-published guide with a duplicate leading
-  // heading must keep rendering, not disappear.
+  // Zod validation replaces manual checks
   const validationResult = validateGuide(guide, { allowDuplicateHeading: true });
   if (!validationResult.isValid) {
     return {
