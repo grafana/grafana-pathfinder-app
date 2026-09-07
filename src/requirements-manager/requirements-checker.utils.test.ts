@@ -1116,4 +1116,13 @@ describe('structured check verdicts', () => {
     expect(await checkRequirements(options)).toMatchObject({ pass: true, verdict: 'invalid' });
     expect(await checkPostconditions(options)).toMatchObject({ pass: false, verdict: 'invalid' });
   });
+
+  // A known prefix with an empty argument passes `isValidRequirement`, so the
+  // router's own rule is the only thing that marks it invalid. `useStepChecker`
+  // reads this verdict to decide completion, so it is a load-bearing contract.
+  it.each(['has-dashboard-named:', 'var-'])('marks the empty-argument token %s invalid', async (token) => {
+    const options = { requirements: [token], maxRetries: 0 };
+    expect(await checkRequirements(options)).toMatchObject({ pass: true, verdict: 'invalid' });
+    expect(await checkPostconditions(options)).toMatchObject({ pass: false, verdict: 'invalid' });
+  });
 });

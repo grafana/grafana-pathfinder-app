@@ -1,6 +1,3 @@
-import { decideStepCheck } from './step-decision';
-import { combineCheckVerdicts } from '../lib/check-verdict';
-import { conditionTokens, conditionLabel } from '../lib/condition-input';
 /**
  * Unified hook for checking both tutorial-specific requirements and objectives
  * Combines and replaces useStepRequirements and useStepObjectives
@@ -12,6 +9,9 @@ import { conditionTokens, conditionLabel } from '../lib/condition-input';
  * 4. Smart performance: skip requirements if objectives are satisfied
  */
 
+import { decideStepCheck } from './step-decision';
+import { checkVerdict, combineCheckVerdicts } from '../lib/check-verdict';
+import { conditionTokens, conditionLabel, hasConditionPrefix, hasConditionToken } from '../lib/condition-input';
 import { useReducer, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { subscribeProgressEvent } from '../global-state/progress-events';
@@ -36,12 +36,7 @@ import { stepReducer, createInitialState, toLegacyState, type StepAction } from 
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
 import { TERMINAL_STATUS_CHANGED_EVENT } from '../lib/event-names';
-import {
-  FixedRequirementType,
-  ParameterizedRequirementPrefix,
-  isValidRequirement,
-  type ConditionInput,
-} from '../types/requirements.types';
+import { FixedRequirementType, ParameterizedRequirementPrefix, type ConditionInput } from '../types/requirements.types';
 import { logger } from '../lib/logging';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
@@ -497,8 +492,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
 
       if (decision === 'check-objectives') {
-        const objectiveTokens = conditionTokens(objectives);
-        const validObjectives = objectiveTokens.length > 0 && objectiveTokens.every(isValidRequirement);
         let objectivesPassed = false;
         try {
           const objectivesResult = await checkRequirementsWithStateUpdatesRef.current(
@@ -514,7 +507,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
               /* no-op: objectives don't surface retry state to the UI */
             }
           );
-          objectivesPassed = validObjectives && objectivesResult.pass;
+          // Only an explicit `satisfied` verdict is completion evidence. `pass`
+          // alone fails open for invalid tokens in `pre` mode, which is correct
+          // for prerequisites but must never auto-complete a step.
+          objectivesPassed = checkVerdict(objectivesResult) === 'satisfied';
         } catch (objectivesError) {
           // Unavailable objectives must not prevent prerequisite checking.
           logger.warn('Objectives check failed; falling through to requirements', { error: objectivesError });
@@ -953,7 +949,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         detail.kind === 'section' &&
         detail.completed &&
         !state.isCompleted &&
-        requirements?.includes('section-completed:')
+        hasConditionPrefix(requirements, ParameterizedRequirementPrefix.SECTION_COMPLETED)
       ) {
         checkStep();
       }
@@ -1078,9 +1074,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     };
     const readsTerminalStatus = [requirements, objectivesRef.current].some(
       (clause) =>
-        typeof clause === 'string' &&
-        (clause.includes(FixedRequirementType.IS_TERMINAL_ACTIVE) ||
-          clause.includes(ParameterizedRequirementPrefix.CODA_EXIT_ZERO))
+        hasConditionToken(clause, FixedRequirementType.IS_TERMINAL_ACTIVE) ||
+        hasConditionPrefix(clause, ParameterizedRequirementPrefix.CODA_EXIT_ZERO)
     );
     if (readsTerminalStatus) {
       window.addEventListener(TERMINAL_STATUS_CHANGED_EVENT, handleTerminalStatusChange);
@@ -1117,10 +1112,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     }
 
     // Only run when not completed and requirements are fragile.
-    const req = requirements || '';
+    const reqTokens = conditionTokens(requirements);
     const isFragile = INTERACTIVE_CONFIG.requirements.heartbeat.onlyForFragile
-      ? req.includes('navmenu-open') || req.includes('exists-reftarget') || req.includes('on-page:')
-      : !!req;
+      ? hasConditionToken(requirements, FixedRequirementType.NAVMENU_OPEN) ||
+        hasConditionToken(requirements, FixedRequirementType.EXISTS_REFTARGET) ||
+        hasConditionPrefix(requirements, ParameterizedRequirementPrefix.ON_PAGE)
+      : reqTokens.length > 0;
 
     // A controller's fragile step often starts blocked; poll the live tab while
     // blocked too so the warning surfaces and later clears. In-tab keeps the
