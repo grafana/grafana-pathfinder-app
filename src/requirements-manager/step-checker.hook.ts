@@ -33,7 +33,7 @@ import { stepReducer, createInitialState, toLegacyState, type StepAction } from 
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
 import { TERMINAL_STATUS_CHANGED_EVENT } from '../lib/event-names';
-import { FixedRequirementType, ParameterizedRequirementPrefix } from '../types/requirements.types';
+import { FixedRequirementType, ParameterizedRequirementPrefix, isValidRequirement } from '../types/requirements.types';
 import { logger } from '../lib/logging';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
@@ -512,6 +512,11 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       // strand the step in an error state on slow networks. Treat any objectives
       // failure here as "objectives unmet" and continue.
       if (objectives && objectives.trim() !== '') {
+        const objectiveTokens = objectives
+          .split(',')
+          .map((token) => token.trim())
+          .filter(Boolean);
+        const validObjectives = objectiveTokens.length > 0 && objectiveTokens.every(isValidRequirement);
         let objectivesPassed = false;
         try {
           const objectivesResult = await checkRequirementsWithStateUpdatesRef.current(
@@ -527,7 +532,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
               /* no-op: objectives don't surface retry state to the UI */
             }
           );
-          objectivesPassed = objectivesResult.pass;
+          objectivesPassed = validObjectives && objectivesResult.pass;
         } catch (objectivesError) {
           // Timeout or unexpected error: log and fall through. The outer `catch`
           // is reserved for failures in Phase 2/3, where erroring is the correct

@@ -999,3 +999,17 @@ describe('terminal status change recheck', () => {
     expect(mockCheckRequirements.mock.calls.length).toBeGreaterThan(callsWhileBlocked);
   });
 });
+
+describe('objective validation at execution time', () => {
+  it.each(['has-dashbord-named:Example', 'Learn to build a dashboard', ', ,'])(
+    'does not auto-complete the invalid objective %s even if a legacy checker passes it',
+    async (objectives) => {
+      const { result } = await renderStepChecker({ objectives });
+      await act(async () => {
+        await result.current.checkStep();
+      });
+      expect(result.current.isCompleted).toBe(false);
+      expect(result.current.completionReason).not.toBe('objectives');
+    }
+  );
+});
