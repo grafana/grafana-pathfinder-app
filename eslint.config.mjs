@@ -192,7 +192,14 @@ export default defineConfig([
         },
         {
           selector:
-            "MemberExpression[object.type='TSAsExpression'][object.expression.type='TSAsExpression'][object.expression.expression.type='Identifier'][object.expression.expression.name='window']",
+            "MemberExpression[object.type='TSAsExpression'][object.expression.type='TSAsExpression'][object.expression.expression.type='Identifier'][object.expression.expression.name='window'][property.name=/^__/]",
+          message:
+            'Do not bypass the typed Pathfinder window-global contract with a window cast. ' +
+            'Declare the global in src/types/window-globals.ts and access it through window directly.',
+        },
+        {
+          selector:
+            "MemberExpression[object.type='TSAsExpression'][object.expression.type='TSAsExpression'][object.expression.expression.type='Identifier'][object.expression.expression.name='window'][computed=true][property.type='Literal'][property.value=/^__/]",
           message:
             'Do not bypass the typed Pathfinder window-global contract with a window cast. ' +
             'Declare the global in src/types/window-globals.ts and access it through window directly.',
