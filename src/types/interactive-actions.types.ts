@@ -1,9 +1,9 @@
-import type { ConditionInput } from './requirements.types';
 /**
  * Interactive action type definitions
  * Centralized types for internal actions used in multi-step and guided components
  */
 
+import type { ConditionInput } from './requirements.types';
 /**
  * Base internal action interface (flexible)
  * Used for multi-step sequences where action types may vary

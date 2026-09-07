@@ -1,4 +1,3 @@
-import type { ConditionInput } from './requirements.types';
 /**
  * Type definitions for Collaborative Live Learning Sessions
  *
@@ -7,6 +6,7 @@ import type { ConditionInput } from './requirements.types';
  * to attendees in real-time.
  */
 
+import type { ConditionInput } from './requirements.types';
 // ============================================================================
 // Core Session Types
 // ============================================================================

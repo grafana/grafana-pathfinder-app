@@ -1,5 +1,3 @@
-import type { ConditionInput } from '../types/requirements.types';
-import { conditionTokens } from '../lib/condition-input';
 // Requirements that probe THIS tab's live DOM / URL / navigation and therefore
 // cannot be evaluated from a controller tab driving a different Grafana tab.
 // Session / permission requirements (is-admin, has-datasources, dashboard-exists,
@@ -9,6 +7,8 @@ import { conditionTokens } from '../lib/condition-input';
 // DOM/URL/navigation-probing requirement is added to the requirements checker,
 // add its id here too, or it will be (wrongly) evaluated against the controller
 // tab instead of stripped (F-1063-2).
+import type { ConditionInput } from '../types/requirements.types';
+import { conditionTokens } from '../lib/condition-input';
 export const TAB_LOCAL_REQUIREMENTS = ['exists-reftarget', 'navmenu-open', 'on-page', 'form-valid'];
 
 function isTabLocal(token: string): boolean {

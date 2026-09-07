@@ -1,10 +1,10 @@
-import type { ConditionInput } from '../../types/requirements.types';
 /**
  * The datasource picker when its author asked a failing check to block. The
  * advisory form of the same check stays passive inside `InputBlock`; only this
  * one is a tracked step, so only this one can hold a section up.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { Alert, Button, Combobox, Field, Icon, useStyles2, type ComboboxOption } from '@grafana/ui';

@@ -1,9 +1,9 @@
-import type { ConditionInput } from './requirements.types';
 /**
  * Component prop type definitions
  * Centralized prop interfaces for components used across the application
  */
 
+import type { ConditionInput } from './requirements.types';
 import React from 'react';
 
 // ============================================================================

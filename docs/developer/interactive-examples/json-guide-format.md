@@ -194,7 +194,7 @@ A single interactive step with "Show me" and "Do it" buttons.
   "content": "Click on **Dashboards** to view your dashboards.",
   "tooltip": "The Dashboards section shows all your visualization panels.",
   "requirements": ["navmenu-open"],
-  "objectives": ["visited-dashboards"],
+  "objectives": ["on-page:/dashboards"],
   "skippable": true,
   "hint": "Open the navigation menu first"
 }
@@ -209,7 +209,7 @@ A single interactive step with "Show me" and "Do it" buttons.
 | `targetstate`     | string   | ❌       | —                   | Desired end state for a toggle target (see below)                  |
 | `tooltip`         | string   | ❌       | —                   | Tooltip shown on highlight (supports markdown)                     |
 | `requirements`    | string[] | ❌       | —                   | Conditions that must be met                                        |
-| `objectives`      | string[] | ❌       | —                   | Objectives marked complete after this step                         |
+| `objectives`      | string[] | ❌       | —                   | Conditions that auto-complete this step when already satisfied     |
 | `skippable`       | boolean  | ❌       | `false`             | Allow skipping if requirements fail                                |
 | `hint`            | string   | ❌       | —                   | Hint shown when step cannot be completed                           |
 | `formHint`        | string   | ❌       | —                   | Hint shown when form validation fails (formfill only)              |
@@ -397,7 +397,7 @@ Groups related interactive steps into a sequence with "Do Section" functionality
   "id": "explore-tour",
   "title": "Explore the Interface",
   "requirements": ["is-logged-in"],
-  "objectives": ["completed-tour"],
+  "objectives": ["section-completed:intro"],
   "blocks": [
     {
       "type": "interactive",
@@ -415,13 +415,13 @@ Groups related interactive steps into a sequence with "Do Section" functionality
 }
 ```
 
-| Field          | Type        | Required | Description                         |
-| -------------- | ----------- | -------- | ----------------------------------- |
-| `id`           | string      | ❌       | HTML id for the section             |
-| `title`        | string      | ❌       | Section heading                     |
-| `blocks`       | JsonBlock[] | ✅       | Nested blocks (usually interactive) |
-| `requirements` | string[]    | ❌       | Section-level requirements          |
-| `objectives`   | string[]    | ❌       | Objectives for the entire section   |
+| Field          | Type        | Required | Description                               |
+| -------------- | ----------- | -------- | ----------------------------------------- |
+| `id`           | string      | ❌       | HTML id for the section                   |
+| `title`        | string      | ❌       | Section heading                           |
+| `blocks`       | JsonBlock[] | ✅       | Nested blocks (usually interactive)       |
+| `requirements` | string[]    | ❌       | Section-level requirements                |
+| `objectives`   | string[]    | ❌       | Conditions that auto-complete the section |
 
 #### Collapsible Block
 
@@ -508,7 +508,7 @@ When `display` is `"section"`, each branch can have its own section configuratio
   "display": "section",
   "whenTrueSectionConfig": {
     "title": "Explore your logs",
-    "objectives": ["viewed-logs"]
+    "objectives": ["has-datasource:loki"]
   },
   "whenFalseSectionConfig": {
     "title": "Set up Loki",
@@ -533,11 +533,11 @@ When `display` is `"section"`, each branch can have its own section configuratio
 
 **ConditionalSectionConfig:**
 
-| Field          | Type     | Description                       |
-| -------------- | -------- | --------------------------------- |
-| `title`        | string   | Section title for this branch     |
-| `requirements` | string[] | Requirements that must be met     |
-| `objectives`   | string[] | Objectives tracked for completion |
+| Field          | Type     | Description                               |
+| -------------- | -------- | ----------------------------------------- |
+| `title`        | string   | Section title for this branch             |
+| `requirements` | string[] | Requirements that must be met             |
+| `objectives`   | string[] | Conditions that auto-complete the section |
 
 **Multiple Conditions:**
 
@@ -592,7 +592,7 @@ Executes multiple actions **automatically** when user clicks "Do it".
 | `content`      | string     | ✅       | Description shown to user         |
 | `steps`        | JsonStep[] | ✅       | Sequence of steps to execute      |
 | `requirements` | string[]   | ❌       | Requirements for the entire block |
-| `objectives`   | string[]   | ❌       | Objectives tracked                |
+| `objectives`   | string[]   | ❌       | Conditions that auto-complete it  |
 | `skippable`    | boolean    | ❌       | Allow skipping                    |
 
 Individual steps accept `targetstate` too, and a sequence is where toggles bite
@@ -650,7 +650,7 @@ Highlights elements and **waits for user** to perform actions.
 | `stepTimeout`   | number     | ❌       | Timeout per step in ms (default: 30000)         |
 | `completeEarly` | boolean    | ❌       | Persist completion from the final action signal |
 | `requirements`  | string[]   | ❌       | Requirements for the block                      |
-| `objectives`    | string[]   | ❌       | Objectives tracked                              |
+| `objectives`    | string[]   | ❌       | Conditions that auto-complete it                |
 | `skippable`     | boolean    | ❌       | Allow skipping                                  |
 
 Steps accept `targetstate` here too, with the meaning adjusted for a step the
@@ -1007,7 +1007,7 @@ A code snippet with copy-to-clipboard and (in supported contexts) an Insert butt
 | `language`     | string   | ❌       | Syntax highlighting language (e.g., `promql`, `logql`, `yaml`, `json`) |
 | `reftarget`    | string   | ✅       | Verified CSS selector of the target Monaco editor                      |
 | `requirements` | string[] | ❌       | Conditions that must be met for this step                              |
-| `objectives`   | string[] | ❌       | Objectives marked complete after this step                             |
+| `objectives`   | string[] | ❌       | Conditions that auto-complete this step when already satisfied         |
 | `skippable`    | boolean  | ❌       | Allow skipping                                                         |
 
 #### Terminal Block
@@ -1191,7 +1191,7 @@ Coda mode:
 | `hintLevels`      | `{ text: string }[]`     | ❌       | `[]`      | Progressive hints revealed on demand                                               |
 | `failureMessage`  | string                   | ❌       | —         | Message shown when the success check fails, replacing the checker's own error text |
 | `requirements`    | string[]                 | ❌       | —         | Prerequisite conditions for the challenge                                          |
-| `objectives`      | string[]                 | ❌       | —         | Objectives marked complete after this block                                        |
+| `objectives`      | string[]                 | ❌       | —         | Conditions that auto-complete this block when already satisfied                    |
 | `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                     |
 
 `requirements`, `objectives`, and `skippable` are accepted by the schema, but the challenge runtime does not receive them yet — the block always renders, never contributes to objective tracking, and shows no skip control. Do not rely on them to gate a challenge or to credit an objective.

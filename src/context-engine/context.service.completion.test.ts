@@ -1,4 +1,3 @@
-import { getBackendSrv } from '@grafana/runtime';
 /**
  * Tests for completion percentage storage selection in ContextService.
  *
@@ -11,6 +10,7 @@ import { getBackendSrv } from '@grafana/runtime';
  * incorrectly read from journeyCompletionStorage.
  */
 
+import { getBackendSrv } from '@grafana/runtime';
 import { ContextService } from './context.service';
 import { interactiveCompletionStorage } from '../lib/user-storage';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';

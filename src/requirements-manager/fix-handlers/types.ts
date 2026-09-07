@@ -1,4 +1,3 @@
-import type { ConditionInput } from '../../types/requirements.types';
 /**
  * Fix handler interfaces.
  *
@@ -11,6 +10,7 @@ import type { ConditionInput } from '../../types/requirements.types';
  * handlers come before catch-all ones in the array.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import type { FixTypeValue } from '../fix-types';
 
 /**

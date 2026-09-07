@@ -1,9 +1,9 @@
-import type { ConditionInput } from './requirements.types';
 /**
  * Hook-related type definitions
  * Centralized interfaces for React hooks across the application
  */
 
+import type { ConditionInput } from './requirements.types';
 // ============================================================================
 // STEP CHECKER HOOKS
 // ============================================================================

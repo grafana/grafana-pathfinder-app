@@ -1,4 +1,3 @@
-import type { CheckResultError } from '../../types/requirements.types';
 /**
  * Section completion check — `section-completed:<sectionId>` requirement.
  *
@@ -24,6 +23,7 @@ import type { CheckResultError } from '../../types/requirements.types';
  *     that complete via paths that bypass the section component.
  */
 
+import type { CheckResultError } from '../../types/requirements.types';
 import { getContentKey } from '../../global-state/content-key';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';

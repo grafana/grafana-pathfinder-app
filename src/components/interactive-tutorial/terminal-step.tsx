@@ -1,4 +1,3 @@
-import type { ConditionInput } from '../../types/requirements.types';
 /**
  * TerminalStep Component
  *
@@ -7,6 +6,7 @@ import type { ConditionInput } from '../../types/requirements.types';
  * the same way InteractiveStep does.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';

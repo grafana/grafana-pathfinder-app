@@ -1,4 +1,3 @@
-import type { ConditionInput } from '../../types/requirements.types';
 /**
  * Input Block Renderer
  *
@@ -6,6 +5,7 @@ import type { ConditionInput } from '../../types/requirements.types';
  * Supports text input, boolean (checkbox), and datasource picker types.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { css } from '@emotion/css';
 import { Button, Input, Checkbox, Field, useStyles2, Alert, Icon, Combobox, type ComboboxOption } from '@grafana/ui';

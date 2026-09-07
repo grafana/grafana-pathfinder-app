@@ -1,5 +1,3 @@
-import { checkVerdict, combineCheckVerdicts } from '../lib/check-verdict';
-import { conditionTokens, conditionLabel } from '../lib/condition-input';
 /**
  * Requirements checking — router and retry harness.
  *
@@ -17,6 +15,8 @@ import { conditionTokens, conditionLabel } from '../lib/condition-input';
  *   3. Add the requirement string to `isValidRequirement` in `types/requirements.types.ts`
  */
 
+import { checkVerdict, combineCheckVerdicts } from '../lib/check-verdict';
+import { conditionTokens, conditionLabel } from '../lib/condition-input';
 import { reftargetExistsCheck, navmenuOpenCheck, formValidCheck } from '../lib/dom';
 import { sectionCompletedCheck } from './checks/section-completed-check';
 import {

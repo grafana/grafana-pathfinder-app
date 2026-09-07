@@ -1,4 +1,3 @@
-import type { ConditionInput } from '../types/requirements.types';
 /**
  * User storage abstraction for the Grafana Docs Plugin
  *
@@ -36,6 +35,7 @@ import type { ConditionInput } from '../types/requirements.types';
  * SECURITY NOTE: Data is NOT encrypted. Do not store sensitive information.
  */
 
+import type { ConditionInput } from '../types/requirements.types';
 import { AppEvents } from '@grafana/data';
 import { getAppEvents, usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';

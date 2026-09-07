@@ -1,4 +1,3 @@
-import type { ConditionInput } from '../../../types/requirements.types';
 /**
  * `useSectionRequirements` — owns section-level requirements polling.
  *
@@ -25,6 +24,7 @@ import type { ConditionInput } from '../../../types/requirements.types';
  * requirement and triggers a recheck afterwards.
  */
 
+import type { ConditionInput } from '../../../types/requirements.types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getRequirementExplanation, dispatchFix } from '../../../requirements-manager';
 import { subscribeProgressEvent } from '../../../global-state/progress-events';
