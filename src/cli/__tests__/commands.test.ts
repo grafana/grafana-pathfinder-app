@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Readable } from 'stream';
 
 import { Command } from 'commander';
 
@@ -801,6 +802,45 @@ describe('runValidate', () => {
     expect(JSON.stringify(summary.errors)).toContain('duplicates the guide title');
     expect(summary.filesWithWarnings).toBe(1);
     expect(JSON.stringify(summary.warnings)).toContain('unknownField');
+  });
+
+  it('prints independent warnings in stdin text output even when the guide is invalid', async () => {
+    const guide = JSON.stringify({
+      id: 'dup-heading-stdin',
+      title: 'Create your first dashboard',
+      blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nHi', unknownField: true }],
+    });
+
+    const originalStdin = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+    Object.defineProperty(process, 'stdin', {
+      value: Readable.from([Buffer.from(guide, 'utf-8')]),
+      configurable: true,
+    });
+
+    const lines: string[] = [];
+    const spy = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      lines.push(args.join(' '));
+    });
+    let outcome;
+    try {
+      outcome = await runValidateCli({
+        files: [],
+        bundled: false,
+        stdin: true,
+        strict: false,
+        format: 'text',
+        verbose: false,
+      });
+    } finally {
+      spy.mockRestore();
+      Object.defineProperty(process, 'stdin', originalStdin);
+    }
+
+    const output = lines.join('\n');
+    expect(outcome.status).toBe('error');
+    expect(output).toContain('Invalid guide');
+    expect(output).toContain('duplicates the guide title');
+    expect(output).toContain('unknownField');
   });
 
   it('surfaces structured issues for a broken artifact', () => {
