@@ -1,13 +1,3 @@
-/**
- * Section numbering — issue #841
- *
- * Every content block inside a section should be numbered sequentially,
- * regardless of whether it's interactive. Media and wrapper blocks
- * (image / video / conditional) render in the same list but without a number,
- * so an image between two steps doesn't break the 1-2-3 sequence and isn't
- * itself numbered as "step 2".
- */
-
 import React from 'react';
 import { render } from '@testing-library/react';
 import { shouldNumberSectionChild, wrapSectionChildrenForNumbering } from './interactive-section';
@@ -68,6 +58,17 @@ describe('shouldNumberSectionChild', () => {
         'GrotGuideBlock',
         <GrotGuideBlock key="gg" welcome={{ title: 'w', body: '', bodyHtml: '', ctas: [] }} screens={[]} />,
       ],
+      [
+        'InteractiveConditional',
+        <InteractiveConditional
+          conditions={[]}
+          whenTrueChildren={[]}
+          whenFalseChildren={[]}
+          renderElement={() => null}
+          keyPrefix="k"
+          key="conditional"
+        />,
+      ],
       ['markdown <p>', <p key="md">Some markdown</p>],
       ['markdown <div class="markdown-block">', <div key="mb" className="markdown-block" />],
       ['raw HTML <ul>', <ul key="ul" />],
@@ -76,7 +77,7 @@ describe('shouldNumberSectionChild', () => {
     });
   });
 
-  describe('media and wrapper blocks — not numbered', () => {
+  describe('media blocks — not numbered', () => {
     it('does not number ImageRenderer', () => {
       expect(shouldNumberSectionChild(<ImageRenderer src="/x.png" alt="x" baseUrl="" />)).toBe(false);
     });
@@ -85,19 +86,6 @@ describe('shouldNumberSectionChild', () => {
     });
     it('does not number YouTubeVideoRenderer', () => {
       expect(shouldNumberSectionChild(<YouTubeVideoRenderer src="https://youtu.be/x" />)).toBe(false);
-    });
-    it('does not number InteractiveConditional', () => {
-      expect(
-        shouldNumberSectionChild(
-          <InteractiveConditional
-            conditions={[]}
-            whenTrueChildren={[]}
-            whenFalseChildren={[]}
-            renderElement={() => null}
-            keyPrefix="k"
-          />
-        )
-      ).toBe(false);
     });
   });
 
@@ -154,5 +142,27 @@ describe('wrapSectionChildrenForNumbering', () => {
     const items = container.querySelectorAll('ol > li');
     expect(items[0]?.querySelector('[data-testid="md"]')).not.toBeNull();
     expect(items[1]?.querySelector('img')).not.toBeNull();
+  });
+
+  it('wraps a section-display conditional as one numbered item', () => {
+    const conditional = (
+      <InteractiveConditional
+        conditions={[]}
+        display="section"
+        whenTrueChildren={[]}
+        whenFalseChildren={[]}
+        renderElement={() => null}
+        keyPrefix="conditional"
+      />
+    );
+    const item = React.Children.toArray(wrapSectionChildrenForNumbering(conditional))[0] as React.ReactElement<{
+      'data-numbered'?: string;
+      'data-step'?: string;
+      children: React.ReactElement;
+    }>;
+
+    expect(item.props['data-numbered']).toBe('true');
+    expect(item.props['data-step']).toBe('true');
+    expect(item.props.children.type).toBe(InteractiveConditional);
   });
 });

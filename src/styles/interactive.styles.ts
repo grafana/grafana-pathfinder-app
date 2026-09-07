@@ -359,6 +359,20 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
   },
 
+  // Empty conditional branches do not consume a number.
+  '.interactive-section-content > li[data-numbered="true"]:empty': {
+    display: 'none',
+  },
+
+  // Passive conditional children lack the horizontal padding supplied by step cards.
+  '.interactive-section-content > li[data-numbered="true"] .interactive-conditional > .section-numbering-plain': {
+    paddingLeft: `calc(${theme.spacing(2)} + 2px)`,
+
+    '&:first-child': {
+      paddingTop: theme.spacing(2),
+    },
+  },
+
   '.interactive-section-description': {
     padding: `0 ${theme.spacing(2)} ${theme.spacing(1.5)}`,
     color: theme.colors.text.secondary,
@@ -376,8 +390,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     counterReset: 'step-counter', // Initialize counter
 
     // Every direct child sits in a wrapper <li>. Only li[data-numbered="true"]
-    // participates in the sequential numbering — media (image/video) and wrapper
-    // (conditional) blocks render without a number. See issue #841.
+    // participates in the sequential numbering; media render without a number.
     '& > li': {
       listStyle: 'none',
     },

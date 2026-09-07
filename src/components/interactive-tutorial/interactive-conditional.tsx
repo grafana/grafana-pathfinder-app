@@ -1,13 +1,3 @@
-/**
- * Interactive Conditional Component
- *
- * Evaluates conditions and renders the appropriate branch (whenTrue or whenFalse).
- * Re-evaluates when relevant state changes (datasources, plugins, page location, etc.).
- * Supports two display modes:
- * - 'inline' (default): Renders children directly without wrapper
- * - 'section': Renders children inside an InteractiveSection with full "Do Section" functionality
- */
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useInteractiveElements } from '../../interactive-engine';
 import type { ParsedElement } from '../../docs-retrieval';
@@ -17,39 +7,33 @@ import { isValidRequirement } from '../../types/requirements.types';
 import { InteractiveSection } from './interactive-section';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { logger } from '../../lib/logging';
-import { markSkipsSectionNumbering } from './skip-section-numbering';
 
 export interface InteractiveConditionalProps {
-  /** Conditions to evaluate (uses same syntax as requirements) */
   conditions: string[];
-  /** Optional description (shown in debug mode, not to users) */
   description?: string;
-  /** Display mode: 'inline' (default) or 'section' for section-styled rendering */
   display?: ConditionalDisplayMode;
-  /** Target element for exists-reftarget condition (CSS selector or button text) */
   refTarget?: string;
-  /** Section config for the 'pass' branch (only used when display is 'section') */
   whenTrueSectionConfig?: ConditionalSectionConfig;
-  /** Section config for the 'fail' branch (only used when display is 'section') */
   whenFalseSectionConfig?: ConditionalSectionConfig;
-  /** Children to render when ALL conditions pass */
   whenTrueChildren: ParsedElement[];
-  /** Children to render when ANY condition fails */
   whenFalseChildren: ParsedElement[];
-  /** Function to render a ParsedElement to React */
   renderElement: (element: ParsedElement, key: string) => React.ReactNode;
-  /** Key prefix for rendered children */
   keyPrefix: string;
 }
 
-/** True when conditions may flip after DOM updates (e.g. viz picker opens). */
 function conditionsKeyNeedsDomWatch(conditionsKey: string): boolean {
   return conditionsKey.includes('exists-reftarget');
 }
 
-/**
- * Interactive conditional component that evaluates conditions and renders appropriate branch
- */
+function markPlainNumberingChild(child: React.ReactNode): React.ReactNode {
+  if (!React.isValidElement<{ className?: string }>(child) || typeof child.type !== 'string') {
+    return child;
+  }
+
+  const className = [child.props.className, 'section-numbering-plain'].filter(Boolean).join(' ');
+  return React.cloneElement(child, { className });
+}
+
 export function InteractiveConditional({
   conditions,
   description,
@@ -72,14 +56,12 @@ export function InteractiveConditional({
   // serialized form is referentially stable as long as the values are.
   const conditionsKey = useMemo(() => JSON.stringify(conditions), [conditions]);
 
-  // Generate a stable ID for this conditional (derived from the stable key).
   const conditionalId = useMemo(
     () => conditionsKey.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 50) || 'unknown',
     [conditionsKey]
   );
 
-  // Track mounted state to prevent state updates after unmount
-  // REACT: Track mounted state (R4)
+  // REACT: prevent post-unmount updates (R4)
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -103,7 +85,6 @@ export function InteractiveConditional({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on conditionsKey, which is the serialization of conditions
   const requirements = useMemo(() => conditions, [conditionsKey]);
 
-  // Function to evaluate conditions
   const evaluateConditions = useCallback(
     async (options?: { isReevaluation?: boolean }) => {
       if (!isMountedRef.current) {
@@ -120,8 +101,6 @@ export function InteractiveConditional({
       const myRunId = runIdRef.current;
 
       try {
-        // Create requirement data for checking
-        // Use provided refTarget for exists-reftarget condition, fallback to placeholder
         const requirementData = {
           requirements: requirements,
           targetAction: 'conditional',
@@ -145,7 +124,6 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
-        // Default to false branch on error
         setConditionsPassed(false);
         setIsChecking(false);
       }
@@ -175,14 +153,12 @@ export function InteractiveConditional({
     }, delay);
   }, [needsDomWatch]);
 
-  // Evaluate on mount and re-evaluate when relevant events occur
   useEffect(() => {
     // Initial evaluation (deferred to avoid synchronous setState in effect)
     const initialCheckTimeout = setTimeout(() => {
       evaluateRef.current();
     }, 0);
 
-    // Listen for events that might change condition results
     const handleDataSourcesChanged = () => {
       scheduleReevaluation();
     };
@@ -195,7 +171,6 @@ export function InteractiveConditional({
       scheduleReevaluation();
     };
 
-    // Re-evaluate after interactive steps complete - the step may have changed UI state
     // `interactive-action-completed` is dispatched from two places with two
     // different targets: interactive-state-manager fires on `document`, while
     // challenge-block fires on `window`. Subscribe to both so conditional
@@ -269,7 +244,6 @@ export function InteractiveConditional({
     };
   }, [needsDomWatch]);
 
-  // Show loading state while checking
   if (isChecking && conditionsPassed === null) {
     return (
       <div className="interactive-conditional loading" data-testid={testIds.interactive.conditional(conditionalId)}>
@@ -281,19 +255,20 @@ export function InteractiveConditional({
     );
   }
 
-  // Select the appropriate branch and config based on condition result
   const childrenToRender = conditionsPassed ? whenTrueChildren : whenFalseChildren;
   const sectionConfig = conditionsPassed ? whenTrueSectionConfig : whenFalseSectionConfig;
 
-  // If the selected branch has no children, skip rendering entirely
   if (childrenToRender.length === 0) {
     return null;
   }
 
-  // Render as section if display mode is 'section'
-  // Uses the full InteractiveSection component for "Do Section" button, step tracking, etc.
+  const branchKey = conditionsPassed ? 'true' : 'false';
+  const renderedChildren = childrenToRender.map((child, index) =>
+    markPlainNumberingChild(renderElement(child, `${keyPrefix}-${branchKey}-${index}`))
+  );
+
+  // Section display preserves its own execution and numbering scope.
   if (display === 'section') {
-    // Extract config values, using defaults if not provided
     const sectionTitle = sectionConfig?.title || (conditionsPassed ? 'When conditions pass' : 'When conditions fail');
     // Collapse an empty array to undefined the way every json-parser converter
     // does: `[]` is truthy, and a truthy empty condition list makes
@@ -318,15 +293,12 @@ export function InteractiveConditional({
           objectives={sectionObjectives}
           className="conditional-section"
         >
-          {childrenToRender.map((child, index) =>
-            renderElement(child, `${keyPrefix}-${conditionsPassed ? 'true' : 'false'}-${index}`)
-          )}
+          {renderedChildren}
         </InteractiveSection>
       </div>
     );
   }
 
-  // Render inline (default)
   return (
     <div
       className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}`}
@@ -334,14 +306,9 @@ export function InteractiveConditional({
       data-conditions={conditions.join(', ')}
       data-passed={String(conditionsPassed)}
     >
-      {childrenToRender.map((child, index) =>
-        renderElement(child, `${keyPrefix}-${conditionsPassed ? 'true' : 'false'}-${index}`)
-      )}
+      {renderedChildren}
     </div>
   );
 }
 
 InteractiveConditional.displayName = 'InteractiveConditional';
-
-// Wrapper block: sits in a section's list without a step number.
-markSkipsSectionNumbering(InteractiveConditional);
