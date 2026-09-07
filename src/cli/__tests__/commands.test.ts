@@ -766,7 +766,7 @@ describe('runValidate', () => {
     }
   });
 
-  it('reports a file\'s independent warnings even when the file is invalid', async () => {
+  it("reports a file's independent warnings even when the file is invalid", async () => {
     const dir = tempDir();
     const file = path.join(dir, 'guide.json');
     fs.writeFileSync(

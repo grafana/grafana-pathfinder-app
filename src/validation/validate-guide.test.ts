@@ -842,9 +842,7 @@ describe('JsonGuideSchema', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Create your first dashboard',
-        blocks: [
-          { type: 'markdown', content: '# Create your first dashboard\n\nWelcome!', unknownField: true },
-        ],
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!', unknownField: true }],
       });
       const result = validateGuideFromString(guide, { strict: true });
       expect(result.isValid).toBe(false);
