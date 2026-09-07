@@ -14,7 +14,13 @@ import {
   TRACKED_RESOURCE_HOSTNAMES,
 } from './filtering';
 import { buildTelemetryIdentity } from './identity';
-import { getPathfinderSurface, isPathfinderOpen, onPathfinderSurfaceChange } from './surface';
+import {
+  getPathfinderSurface,
+  hasReportedPathfinderSurface,
+  isPathfinderOpen,
+  onPathfinderSurfaceChange,
+} from './surface';
+import type { SessionReplayController } from './replay';
 import { stampSessionExperiments } from './session';
 import { registerTelemetryBridge } from './bridge';
 import { normalizeTelemetryUrl } from './url';
@@ -149,27 +155,78 @@ export function resolveSessionReplayOptions(enabled: boolean, samplingRate: numb
 // because a failure that isn't transient would otherwise re-import on every
 // sidebar toggle for the life of the page.
 const MAX_REPLAY_ACTIVATION_ATTEMPTS = 3;
+const REPLAY_CLOSE_PAUSE_DELAY_MS = 5_000;
+
+function callReplayController(controller: SessionReplayController | null, method: 'pause' | 'resume'): void {
+  guardTelemetry(() => {
+    const action = controller?.[method];
+    if (typeof action === 'function') {
+      action();
+    }
+  });
+}
 
 // The same open that latches passesActivityGate starts the recording, so the
 // first thing rrweb emits is already past the gate — markPathfinderActive in
 // stampSurface is what makes that hold even if the surface closes again before
-// the chunk lands. The trailing start() covers the surface having reported
-// itself while the SDK chunk was still loading.
+// the chunk lands.
 function startSessionReplayOnFirstOpen(faro: Faro, samplingRate?: number): void {
   let attempts = 0;
   let activating = false;
   let started = false;
+  let controller: SessionReplayController | null = null;
+  let pauseTimer: ReturnType<typeof setTimeout> | undefined;
+  let pauseDeadline: number | undefined;
+  const schedulePause = () => {
+    if (controller === null || pauseDeadline === undefined || pauseTimer !== undefined) {
+      return;
+    }
+    const delay = Math.max(0, pauseDeadline - Date.now());
+    if (delay === 0) {
+      if (!isPathfinderOpen()) {
+        callReplayController(controller, 'pause');
+      }
+      return;
+    }
+    pauseTimer = setTimeout(() => {
+      pauseTimer = undefined;
+      if (!isPathfinderOpen()) {
+        callReplayController(controller, 'pause');
+      }
+    }, delay);
+  };
+  const handleSurfaceChange = (surface: ReturnType<typeof getPathfinderSurface>) => {
+    if (surface !== 'closed') {
+      pauseDeadline = undefined;
+      if (pauseTimer !== undefined) {
+        clearTimeout(pauseTimer);
+        pauseTimer = undefined;
+      }
+      callReplayController(controller, 'resume');
+      start();
+      return;
+    }
+    pauseDeadline ??= Date.now() + REPLAY_CLOSE_PAUSE_DELAY_MS;
+    schedulePause();
+  };
   const start = () => {
-    if (started || activating || attempts >= MAX_REPLAY_ACTIVATION_ATTEMPTS || !isPathfinderOpen()) {
+    if (
+      started ||
+      activating ||
+      attempts >= MAX_REPLAY_ACTIVATION_ATTEMPTS ||
+      !hasReportedPathfinderSurface() ||
+      !isPathfinderOpen()
+    ) {
       return;
     }
     activating = true;
     attempts++;
     void import('./replay')
       .then(({ activateSessionReplay }) => activateSessionReplay(faro, samplingRate))
-      .then((resolvedRate) => {
+      .then(({ samplingRate: resolvedRate, controller: replayController }) => {
         started = true;
-        unsubscribe();
+        controller = replayController;
+        handleSurfaceChange(getPathfinderSurface());
         if (samplingRate !== undefined && resolvedRate !== samplingRate) {
           pushFaroEvent(TELEMETRY_EVENTS.sessionReplaySamplingFallback, {
             reason: typeof samplingRate === 'number' ? 'out_of_range' : 'not_a_number',
@@ -179,14 +236,11 @@ function startSessionReplayOnFirstOpen(faro: Faro, samplingRate?: number): void 
       .catch(() => {
         activating = false;
         const exhausted = attempts >= MAX_REPLAY_ACTIVATION_ATTEMPTS;
-        if (exhausted) {
-          unsubscribe();
-        }
         pushFaroEvent(TELEMETRY_EVENTS.sessionReplayActivationFailed, { exhausted: String(exhausted) });
       });
   };
-  const unsubscribe = onPathfinderSurfaceChange(start);
-  start();
+  onPathfinderSurfaceChange(handleSurfaceChange);
+  handleSurfaceChange(getPathfinderSurface());
 }
 
 async function stampFaroUser(): Promise<void> {
