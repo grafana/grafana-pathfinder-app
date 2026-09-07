@@ -808,6 +808,50 @@ describe('JsonGuideSchema', () => {
       expect(result.isValid).toBe(false);
       expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(true);
     });
+
+    it('should report the duplicate heading and an unresolved snippet reference together', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [
+          { type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' },
+          { type: 'snippet-ref', snippetId: 'missing-snippet' },
+        ],
+      });
+      const result = validateGuideFromString(guide, { snippetCatalogIds: new Set(['known-snippet']) });
+      expect(result.isValid).toBe(false);
+      expect(result.errors.map((e) => e.code)).toEqual(['duplicate_heading', 'unknown_snippet_ref']);
+    });
+
+    it('should not promote the downgraded heading advisory to an error in strict mode', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
+      });
+      const result = validateGuideFromString(guide, { allowDuplicateHeading: true, strict: true });
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(true);
+    });
+
+    it('should keep the downgraded heading advisory in warnings when another error fails the guide', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [
+          { type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' },
+          { type: 'snippet-ref', snippetId: 'missing-snippet' },
+        ],
+      });
+      const result = validateGuideFromString(guide, {
+        allowDuplicateHeading: true,
+        snippetCatalogIds: new Set(['known-snippet']),
+      });
+      expect(result.isValid).toBe(false);
+      expect(result.errors.map((e) => e.code)).toEqual(['unknown_snippet_ref']);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(true);
+    });
   });
 
   describe('collapsible block - presentational-only restriction', () => {

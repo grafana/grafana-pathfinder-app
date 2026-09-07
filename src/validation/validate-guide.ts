@@ -106,6 +106,7 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
 
   // A leading heading in blocks[0] that duplicates the guide title always
   // renders as a second, redundant <h1> — see `allowDuplicateHeading` above.
+  const advisories: ValidationWarning[] = [];
   const firstBlock = (result.data as JsonGuide).blocks[0];
   let duplicateHeadingError: ValidationError | null = null;
   if (firstBlock?.type === 'markdown') {
@@ -113,23 +114,20 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
     if (leadingHeading && headingDuplicatesTitle(leadingHeading, result.data.title)) {
       const message = `blocks[0] starts with a heading ("${leadingHeading}") that duplicates the guide title — the title is already rendered separately; remove this heading.`;
       if (options.allowDuplicateHeading) {
-        warnings.push({ message, path: ['blocks', 0], type: 'suggestion' });
+        advisories.push({ message, path: ['blocks', 0], type: 'suggestion' });
       } else {
         duplicateHeadingError = { message, path: ['blocks', 0], code: 'duplicate_heading' };
       }
     }
   }
 
-  if (duplicateHeadingError) {
-    return { isValid: false, errors: [duplicateHeadingError], warnings, guide: null };
-  }
-
   const snippetReferenceErrors = validateSnippetReferences(result.data as JsonGuide, options.snippetCatalogIds);
-  if (snippetReferenceErrors.length > 0) {
+  const errors = duplicateHeadingError ? [duplicateHeadingError, ...snippetReferenceErrors] : snippetReferenceErrors;
+  if (errors.length > 0) {
     return {
       isValid: false,
-      errors: snippetReferenceErrors,
-      warnings,
+      errors,
+      warnings: [...warnings, ...advisories],
       guide: null,
     };
   }
@@ -139,11 +137,11 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
     return {
       isValid: false,
       errors: warnings.map((w) => ({ message: w.message, path: w.path, code: 'strict' })),
-      warnings: [],
+      warnings: advisories,
       guide: null,
     };
   }
-  return { isValid: true, errors: [], warnings, guide: result.data as JsonGuide };
+  return { isValid: true, errors: [], warnings: [...warnings, ...advisories], guide: result.data as JsonGuide };
 }
 
 export function validateGuideFromString(jsonString: string, options: ValidationOptions = {}): ValidationResult {
