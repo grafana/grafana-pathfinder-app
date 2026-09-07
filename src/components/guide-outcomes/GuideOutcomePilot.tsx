@@ -9,6 +9,7 @@ import { hashString } from '../../lib/hash.util';
 import { createUserStorage } from '../../lib/user-storage';
 import { createOutcomeEvidenceStore, type OutcomeEvidenceStore } from '../../lib/outcomes/outcome-evidence';
 import { useOutcomeCheck } from './use-outcome-check';
+import { OutcomeAssistantContext } from '../../integrations/assistant-integration';
 
 export const VERIFIED_OUTCOMES_FLAG = 'pathfinder.verified-outcomes';
 const PilotSchema = z.object({ id: z.literal('first-dashboard-cloud'), outcomes: GuideOutcomesSchema });
@@ -31,6 +32,14 @@ function OutcomeRow({
   const state = useOutcomeCheck(scope, outcome, store);
   return (
     <section aria-label={outcome.label}>
+      <OutcomeAssistantContext
+        guideRevision={scope.guideRevision}
+        outcome={outcome}
+        resourceUid={state.resourceUid}
+        checking={state.checking}
+        result={state.result}
+        lastVerifiedAt={state.historical?.verifiedAt}
+      />
       <Field label={outcome.label}>
         <Combobox
           aria-label={outcome.label}
