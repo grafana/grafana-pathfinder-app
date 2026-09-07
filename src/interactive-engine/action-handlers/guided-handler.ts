@@ -552,7 +552,7 @@ export class GuidedHandler {
     refTarget?: string // E2E contract: selector for current target (data-test-refTarget)
   ): Promise<void> {
     // Use custom comment if provided, otherwise generate default message
-    const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
+    const message = customComment || this.getActionMessage(actionType);
 
     // Build step info for progress display in comment tooltip
     const stepInfo = {
@@ -608,11 +608,7 @@ export class GuidedHandler {
   /**
    * Generate user-friendly message for each action type
    */
-  private getActionMessage(
-    actionType: 'hover' | 'button' | 'highlight' | 'formfill',
-    stepIndex: number,
-    totalSteps: number
-  ): string {
+  private getActionMessage(actionType: 'hover' | 'button' | 'highlight' | 'formfill'): string {
     // Step number is now shown in checkbox list, so just show the instruction
     switch (actionType) {
       case 'hover':

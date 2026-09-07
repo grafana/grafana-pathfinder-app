@@ -14,7 +14,6 @@ import type { JsonGuidedBlock, JsonMarkdownBlock, JsonMultistepBlock } from '../
 jest.mock('./forms/MarkdownBlockForm', () => ({
   MarkdownBlockForm: ({
     onSwitchBlockType,
-    initialData,
   }: {
     onSwitchBlockType?: (type: string, warning?: ConversionWarning) => void;
     initialData?: { type: string };

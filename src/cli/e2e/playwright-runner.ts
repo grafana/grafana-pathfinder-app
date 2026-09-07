@@ -569,7 +569,7 @@ export async function runPlaywrightTests(guide: LoadedGuide, options: RunGuideOp
       if (options.verbose) {
         console.log(`   🗑️  Cleaned up temp directory: ${tempDir}`);
       }
-    } catch (cleanupError) {
+    } catch {
       console.warn(`Warning: Failed to clean up temp directory: ${tempDir}`);
     }
   }

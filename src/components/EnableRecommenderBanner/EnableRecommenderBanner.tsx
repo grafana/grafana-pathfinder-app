@@ -1,6 +1,5 @@
 import React from 'react';
-// @ts-expect-error - Icon kept available as core Grafana UI component
-import { Button, Alert, Icon, useStyles2, Tooltip } from '@grafana/ui';
+import { Button, Alert, useStyles2, Tooltip } from '@grafana/ui';
 import { GrafanaTheme2, usePluginContext } from '@grafana/data';
 import { css } from '@emotion/css';
 import { config, locationService } from '@grafana/runtime';

@@ -636,7 +636,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
   }, [contentRef, theme, activeTab?.content, activeTab?.baseUrl, activeTab?.title, model]);
 }
 
-function createImageLightbox(imageSrc: string, imageAlt: string, theme: GrafanaTheme2) {
+function createImageLightbox(imageSrc: string, imageAlt: string, _theme: GrafanaTheme2) {
   // Prevent multiple modals
   if (document.querySelector('.journey-image-modal')) {
     return;

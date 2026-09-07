@@ -266,6 +266,58 @@ export default defineConfig([
   },
 
   // ---------------------------------------------------------------------------
+  // Unused bindings (Epic #603)
+  // `@grafana/eslint-config` turns this rule off in favour of TypeScript's
+  // `noUnusedLocals`, which this repo does inherit. But that flag is a *locals*
+  // flag: it is structurally blind to unused function parameters
+  // (`noUnusedParameters` is a separate flag, unset in our config chain) and no
+  // compiler flag at all reports an unused `catch` binding. A `@ts-expect-error`
+  // also silences the compiler while leaving this rule intact. A leading
+  // underscore is the escape hatch for a binding that must exist but is
+  // deliberately unread; `ignoreRestSiblings` keeps omit-style destructures
+  // (`const { drop, ...rest } = obj`) legal, since the sibling's only job is to
+  // stay out of `rest`. `src/validation/unused-bindings-lint-config.test.ts`
+  // fails if a later config block downgrades the rule at the probe's own path;
+  // it cannot see a block that narrows the rule away from some other subtree.
+  // ---------------------------------------------------------------------------
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'after-used',
+          argsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Grandfathered from the rule above (#1815).
+  // These three step components destructure props that `step-type-registry.ts`
+  // provably injects — `interactive-section.symmetry.tripwire.test.tsx` pins
+  // the per-type prop surface — and then never read them. Deleting the
+  // bindings would erase the only in-code evidence of that gap, and an `_`
+  // prefix would mark a real defect as deliberate, so the rule is off here
+  // until #1815 either honours each prop or removes it from the props type.
+  // Nothing else belongs in this list: it exists to be emptied.
+  // ---------------------------------------------------------------------------
+  {
+    files: [
+      'src/components/interactive-tutorial/code-block-step.tsx',
+      'src/components/interactive-tutorial/terminal-step.tsx',
+      'src/components/interactive-tutorial/terminal-connect-step.tsx',
+    ],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+
+  // ---------------------------------------------------------------------------
   // Phase 5: Import boundary rules (Epic #603)
   // Encode the tier model as lint rules. Known violations have targeted
   // suppression comments referencing ALLOWED_*_VIOLATIONS in
