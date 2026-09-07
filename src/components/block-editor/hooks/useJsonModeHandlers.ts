@@ -15,12 +15,6 @@ import type { ViewMode, JsonModeState, PositionedError, EditorBlock, JsonGuide }
 import { parseAndValidateGuide } from '../utils/block-import';
 
 /**
- * A guide already open in the editor must stay editable and escapable, so this
- * session downgrades the duplicate-heading check that import still enforces.
- */
-const JSON_MODE_VALIDATION_OPTIONS = { allowDuplicateHeading: true } as const;
-
-/**
  * Minimal interface for editor functionality needed by this hook.
  */
 export interface JsonModeEditorInterface {
@@ -144,7 +138,9 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
         return;
       }
 
-      const result = parseAndValidateGuide(jsonModeState.json, JSON_MODE_VALIDATION_OPTIONS);
+      // A pre-existing guide whose only fault is a duplicate leading heading is
+      // stuck here until the author removes it — tracked by #1811.
+      const result = parseAndValidateGuide(jsonModeState.json);
       if (!result.isValid) {
         setJsonValidationErrors(result.errors);
         setIsJsonValid(false);
@@ -167,7 +163,7 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
   // Handle JSON text changes - update state and validate
   const handleJsonChange = useCallback((newJson: string) => {
     setJsonModeState((prev) => (prev ? { ...prev, json: newJson } : null));
-    const result = parseAndValidateGuide(newJson, JSON_MODE_VALIDATION_OPTIONS);
+    const result = parseAndValidateGuide(newJson);
     setIsJsonValid(result.isValid);
     setJsonValidationErrors(result.errors);
   }, []);
@@ -179,7 +175,7 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
       originalBlockIds: blockIds ?? [],
       originalJson: json,
     };
-    const result = parseAndValidateGuide(restoredState.json, JSON_MODE_VALIDATION_OPTIONS);
+    const result = parseAndValidateGuide(restoredState.json);
     setJsonModeState(restoredState);
     setJsonValidationErrors(result.errors);
     setIsJsonValid(result.isValid);
@@ -192,7 +188,7 @@ export function useJsonModeHandlers(options: UseJsonModeHandlersOptions): UseJso
         return null;
       }
       // Re-validate the original JSON (should be valid, but be safe)
-      const result = parseAndValidateGuide(prev.originalJson, JSON_MODE_VALIDATION_OPTIONS);
+      const result = parseAndValidateGuide(prev.originalJson);
       setIsJsonValid(result.isValid);
       setJsonValidationErrors(result.errors);
       return { ...prev, json: prev.originalJson };

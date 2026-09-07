@@ -38,11 +38,9 @@ export interface ValidationOptions {
   /**
    * When true, a leading heading in blocks[0] that duplicates the guide title
    * stays a warning instead of failing validation. Runtime guide loaders set
-   * this so an already-published guide keeps rendering, and the block editor's
-   * JSON mode sets it so a guide already open stays editable. The gates that
-   * decide whether a guide ships — the CLI `validate` command, guide import
-   * and export, and the editor's lint panel — leave it unset so the error
-   * blocks first.
+   * this so an already-published guide keeps rendering; authoring gates (the
+   * CLI `validate` command, the block editor) leave it unset so the error
+   * blocks before the guide ships.
    */
   allowDuplicateHeading?: boolean;
 }
@@ -110,8 +108,8 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
   // second, redundant <h1> wherever the title is rendered separately — see
   // `allowDuplicateHeading` above.
   const advisories: ValidationWarning[] = [];
+  const errors: ValidationError[] = [];
   const firstBlock = (result.data as JsonGuide).blocks[0];
-  let duplicateHeadingError: ValidationError | null = null;
   if (firstBlock?.type === 'markdown') {
     const leadingHeading = extractLeadingH1(firstBlock.content);
     if (leadingHeading && headingDuplicatesTitle(leadingHeading, result.data.title)) {
@@ -119,15 +117,12 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
       if (options.allowDuplicateHeading) {
         advisories.push({ message, path: ['blocks', 0], type: 'suggestion' });
       } else {
-        duplicateHeadingError = { message, path: ['blocks', 0], code: 'duplicate_heading' };
+        errors.push({ message, path: ['blocks', 0], code: 'duplicate_heading' });
       }
     }
   }
 
-  const snippetReferenceErrors = validateSnippetReferences(result.data as JsonGuide, options.snippetCatalogIds);
-  const errors: ValidationError[] = duplicateHeadingError
-    ? [duplicateHeadingError, ...snippetReferenceErrors]
-    : [...snippetReferenceErrors];
+  errors.push(...validateSnippetReferences(result.data as JsonGuide, options.snippetCatalogIds));
 
   // 5. Strict mode - promote all warnings to errors
   if (options.strict && warnings.length > 0) {
