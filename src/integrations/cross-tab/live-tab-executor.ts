@@ -28,6 +28,7 @@ import {
   type CrossTabPayload,
   type FixRequirementMessage,
   type RemoteRequirementResult,
+  type WireMirrors,
   type StepCommandMessage,
 } from '../../types/cross-tab.types';
 import * as pairingManager from '../../lib/pairing-manager';
@@ -79,10 +80,10 @@ export const DEFAULT_PACING: ExecutorPacing = {
 // F-1056-4: the tier-0 wire mirror (RemoteRequirementResult) and the tier-2 real
 // result (RequirementsCheckResult) must stay structurally interchangeable in BOTH
 // directions — evaluateRequirements posts the real type as the mirror, and the
-// controller reads the mirror back as the real type. Drift in either type makes
-// this assignment fail to compile.
-type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
-const _resultMirrorIsExact: MutuallyAssignable<RemoteRequirementResult, RequirementsCheckResult> = true;
+// controller reads the mirror back as the real type. `WireMirrors` also compares
+// the key set and the required-key set, because mutual assignability alone
+// cannot see a field added as optional on one side only.
+const _resultMirrorIsExact: WireMirrors<RemoteRequirementResult, RequirementsCheckResult> = true;
 void _resultMirrorIsExact;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
