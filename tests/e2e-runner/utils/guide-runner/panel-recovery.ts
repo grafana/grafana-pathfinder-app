@@ -12,16 +12,25 @@ async function injectGuide(page: Page, content: string): Promise<void> {
   );
 }
 
-export async function ensureGuidePanelOpen(page: Page, content: string, allowReloadRecovery: boolean): Promise<void> {
+export async function ensureGuidePanelOpen(
+  page: Page,
+  content: string,
+  allowReloadRecovery: boolean,
+  timeoutMs?: number
+): Promise<void> {
   await injectGuide(page, content);
   if (!allowReloadRecovery) {
-    await ensureDocsPanelOpen(page);
+    if (timeoutMs === undefined) {
+      await ensureDocsPanelOpen(page);
+    } else {
+      await ensureDocsPanelOpen(page, { timeoutMs });
+    }
     return;
   }
   await ensureDocsPanelOpen(page, {
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
     beforeRetry: async () => {
       await page.reload({ waitUntil: 'domcontentloaded', timeout: 10_000 });
-      await page.locator('button[aria-label="Help"]').waitFor({ state: 'visible', timeout: 10_000 });
       await injectGuide(page, content);
     },
   });

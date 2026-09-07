@@ -7,6 +7,7 @@ import {
 } from '../../../src/cli/e2e/e2e-reporter';
 import type { E2EChainInput } from '../../../src/cli/e2e/e2e-runner-contract';
 import { MultiGuideReportSchema } from '../../../src/cli/e2e/schemas/e2e-report.schema';
+import { FatalTransitionError } from './guide-runner/transition-error';
 import { resolveMilestoneTransition, runSharedGuideChain } from './shared-chain';
 
 function input(): E2EChainInput {
@@ -92,7 +93,7 @@ describe('shared guide chain', () => {
     expect(publish).toHaveBeenCalledTimes(3);
   });
 
-  it('continues after a guide error while the browser session remains available', async () => {
+  it('continues after a pre-tab guide-load error while the browser session remains available', async () => {
     const runGuide = jest
       .fn()
       .mockRejectedValueOnce(new Error('Guide steps did not render'))
@@ -111,6 +112,27 @@ describe('shared guide chain', () => {
       ['second', 'passed', 'UNKNOWN'],
       ['dependent', 'skipped', 'SKIPPED_PREREQ'],
     ]);
+  });
+
+  it('stops after a fatal transition while the browser session remains available', async () => {
+    const runGuide = jest
+      .fn()
+      .mockRejectedValueOnce(new FatalTransitionError('reset-ambiguous', 'The previous tab reset is ambiguous'));
+
+    const outcome = await runSharedGuideChain(input(), {
+      currentUrl: () => 'http://localhost:3000/current',
+      browserSessionEnded: () => false,
+      runGuide,
+      publish: jest.fn(),
+    });
+
+    expect(runGuide).toHaveBeenCalledTimes(1);
+    expect(outcome.results.map((item) => [item.guide.id, item.outcome, item.errorCode])).toEqual([
+      ['first', 'infrastructure_error', 'REPORT_MISSING'],
+      ['second', 'infrastructure_error', 'REPORT_MISSING'],
+      ['dependent', 'infrastructure_error', 'REPORT_MISSING'],
+    ]);
+    expect(outcome.results.slice(1).every((item) => item.errorMessage?.includes('fatal shared-browser'))).toBe(true);
   });
 
   it('stops after a guide error when the browser session ended', async () => {

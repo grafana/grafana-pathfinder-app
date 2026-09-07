@@ -5,7 +5,7 @@ import {
   type Faro,
   type TransportItem,
 } from '@grafana/faro-web-sdk';
-import { activateSessionReplay, resolveSamplingRate } from './replay';
+import { activateSessionReplay, resolveSamplingRate, type SessionReplayController } from './replay';
 
 class CaptureTransport extends BaseTransport {
   readonly name = '@pathfinder/replay-lifecycle-transport';
@@ -24,6 +24,7 @@ class CaptureTransport extends BaseTransport {
 describe('session replay lifecycle across session-attribute stamps', () => {
   const transport = new CaptureTransport();
   let faro: Faro;
+  let controller: SessionReplayController;
 
   const recordingEvents = () =>
     transport.items
@@ -47,7 +48,7 @@ describe('session replay lifecycle across session-attribute stamps', () => {
       batching: { enabled: false },
       dedupe: false,
     });
-    await activateSessionReplay(faro);
+    ({ controller } = await activateSessionReplay(faro));
   });
 
   it('starts recording exactly once', () => {
@@ -87,5 +88,21 @@ describe('session replay lifecycle across session-attribute stamps', () => {
     stampSurface('fullscreen');
     expect(faro.api.getSession()?.id).toBe(id);
     expect(faro.api.getSession()?.attributes?.['surface']).toBe('fullscreen');
+  });
+
+  // pauseRecording/resumeRecording are `private` in the SDK and reached through
+  // a cast, so the compiler checks nothing and the unit mock defines the names
+  // it asserts against. This drives the real recorder: rename either upstream
+  // and this goes red instead of the pause silently never firing in production.
+  it('pauses and resumes the real recorder through the surface controller', () => {
+    controller.pause();
+    expect(recordingEvents()).toEqual(['faro.session_recording.started', 'faro.session_recording.paused']);
+
+    controller.resume();
+    expect(recordingEvents()).toEqual([
+      'faro.session_recording.started',
+      'faro.session_recording.paused',
+      'faro.session_recording.resumed',
+    ]);
   });
 });

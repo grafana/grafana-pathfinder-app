@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { KioskOverlay } from './KioskOverlay';
 import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../../lib/telemetry/surface';
+import { sidebarState } from '../../global-state/sidebar';
 
 interface KioskModeManagerProps {
   rulesUrl: string;
@@ -20,7 +21,11 @@ export const KioskModeManager: React.FC<KioskModeManagerProps> = ({ rulesUrl }) 
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
-    reportPathfinderSurfaceClosed('kiosk');
+    if (sidebarState.getIsSidebarMounted()) {
+      reportPathfinderSurface('sidebar');
+    } else {
+      reportPathfinderSurfaceClosed('kiosk');
+    }
   }, []);
 
   useEffect(() => {
