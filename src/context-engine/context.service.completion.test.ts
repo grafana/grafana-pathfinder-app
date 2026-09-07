@@ -1,3 +1,4 @@
+import { getBackendSrv } from '@grafana/runtime';
 /**
  * Tests for completion percentage storage selection in ContextService.
  *
@@ -383,4 +384,30 @@ describe('ContextService: Completion Percentage Storage Selection', () => {
       }
     });
   });
+});
+
+describe('strict verification reads', () => {
+  it.each(['datasources', 'plugins', 'dashboards'] as const)(
+    'preserves errors for %s verification only',
+    async (kind) => {
+      const fetch = (throwOnError: boolean) => {
+        switch (kind) {
+          case 'datasources':
+            return ContextService.fetchDataSources({ throwOnError });
+          case 'plugins':
+            return ContextService.fetchPlugins({ throwOnError });
+          case 'dashboards':
+            return ContextService.fetchDashboardsByName('Example', { throwOnError });
+        }
+      };
+      jest
+        .mocked(getBackendSrv)
+        .mockReturnValueOnce({ get: jest.fn().mockRejectedValue(new Error('Offline')) } as never);
+      await expect(fetch(false)).resolves.toEqual([]);
+      jest
+        .mocked(getBackendSrv)
+        .mockReturnValueOnce({ get: jest.fn().mockRejectedValue(new Error('Offline')) } as never);
+      await expect(fetch(true)).rejects.toThrow('Offline');
+    }
+  );
 });
