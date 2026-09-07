@@ -1,3 +1,4 @@
+import { decideStepCheck } from './step-decision';
 import { combineCheckVerdicts } from '../lib/check-verdict';
 import { conditionTokens, conditionLabel } from '../lib/condition-input';
 /**
@@ -465,12 +466,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    * 3. Requirements (validate if eligible)
    */
   const checkStep = useCallback(async () => {
-    // Prevent infinite loops by checking if we're already in the right state
     if (state.isChecking) {
       return;
     }
 
-    // REACT: Check mounted before starting async operation (R4)
     if (!isMountedRef.current) {
       return;
     }
@@ -478,48 +477,26 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     // Prevent checking too soon after becoming enabled (let DOM settle)
     const timeSinceEnabled = Date.now() - enabledTimestampRef.current;
     if (state.isEnabled && timeSinceEnabled < 200) {
-      // Skip this check - DOM might not be settled yet
       return;
     }
 
     safeDispatch({ type: 'START_CHECK' });
 
     try {
-      // PHASE 0: Honor the alignment pause as a global freeze.
-      //
-      // The implied-0th-step alignment prompt asks the user whether to navigate
-      // to the guide's `startingLocation` before step 1's checks should
-      // produce any UI. `isEligibleForChecking` is already gated against this
-      // pause (see line ~104), but that gate only blocks Phase 2 — and Phase 1
-      // (objectives) runs first. If the user's current page coincidentally
-      // satisfies the objectives selector, Phase 1 would auto-complete the
-      // step and dispatch `SET_COMPLETED` *before* the eligibility gate ever
-      // ran, bypassing the pause entirely (and racing the user's redirect
-      // decision).
-      //
-      // Dispatch a blocked state (rather than just returning) so the existing
-      // "AlignmentPendingContext gate" contract holds — `isEnabled` stays
-      // false while the prompt is up, matching what the requirements-only
-      // path already produces via Phase 2.
-      if (isAlignmentPausedRef.current) {
+      const decisionInput = {
+        alignmentPaused: isAlignmentPausedRef.current,
+        hasObjectives: conditionTokens(objectives).length > 0,
+        hasRequirements: conditionTokens(requirements).length > 0,
+      };
+      let decision = decideStepCheck({ ...decisionInput, eligible: isEligibleRef.current });
+      if (decision === 'blocked') {
         const blockedState = createBlockedState(stepId);
         safeDispatch(actionFromBaseStepState(blockedState));
         updateManager(blockedState);
         return;
       }
 
-      // PHASE 1: Check objectives first (they always win).
-      // Same checker as requirements; just no retries and a short timeout — objectives are
-      // a snapshot of "is this already done?", not a target to wait for.
-      //
-      // Failures inside this block (including the 3s `timeoutMs` rejection from
-      // `checkRequirementsWithStateUpdates`) must NOT abort `checkStep`. The legacy
-      // `checkConditions` swallowed timeouts and returned `{ pass: false }`, allowing
-      // the flow to fall through to eligibility (Phase 2) and requirements (Phase 3).
-      // Letting an objectives-check rejection propagate to the outer `catch` would
-      // strand the step in an error state on slow networks. Treat any objectives
-      // failure here as "objectives unmet" and continue.
-      if (conditionTokens(objectives).length > 0) {
+      if (decision === 'check-objectives') {
         const objectiveTokens = conditionTokens(objectives);
         const validObjectives = objectiveTokens.length > 0 && objectiveTokens.every(isValidRequirement);
         let objectivesPassed = false;
@@ -539,37 +516,30 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           );
           objectivesPassed = validObjectives && objectivesResult.pass;
         } catch (objectivesError) {
-          // Timeout or unexpected error: log and fall through. The outer `catch`
-          // is reserved for failures in Phase 2/3, where erroring is the correct
-          // user-facing outcome.
+          // Unavailable objectives must not prevent prerequisite checking.
           logger.warn('Objectives check failed; falling through to requirements', { error: objectivesError });
         }
 
-        if (objectivesPassed) {
-          const finalState = createObjectivesCompletedState(skippable);
-          // REACT: Check mounted before state update (R4)
-          if (isMountedRef.current) {
-            dispatch(actionFromBaseStepState(finalState));
-            prevIsEnabledRef.current = true;
-            enabledTimestampRef.current = Date.now();
-            updateManager(finalState);
-          }
-          return;
-        }
+        decision = decideStepCheck({ ...decisionInput, eligible: isEligibleRef.current, objectivesPassed });
       }
 
-      // PHASE 2: Check eligibility (sequential dependencies)
-      // CRITICAL: Use ref to get the LATEST eligibility value, not the stale closure value
-      const currentEligibility = isEligibleRef.current;
-      if (!currentEligibility) {
+      if (decision === 'completed') {
+        const finalState = createObjectivesCompletedState(skippable);
+        if (isMountedRef.current) {
+          dispatch(actionFromBaseStepState(finalState));
+          prevIsEnabledRef.current = true;
+          enabledTimestampRef.current = Date.now();
+          updateManager(finalState);
+        }
+        return;
+      }
+      if (decision === 'blocked') {
         const blockedState = createBlockedState(stepId);
         safeDispatch(actionFromBaseStepState(blockedState));
         updateManager(blockedState);
         return;
       }
-
-      // PHASE 3: Check requirements (only if objectives not met and eligible)
-      if (conditionTokens(requirements).length > 0) {
+      if (decision === 'check-requirements') {
         const requirementsResult = await checkRequirementsWithStateUpdatesRef.current(
           {
             requirements: requirements ?? [],
@@ -590,7 +560,6 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           skippable
         );
 
-        // REACT: Check mounted before state update (R4)
         if (!isMountedRef.current) {
           return;
         }
@@ -613,10 +582,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         return;
       }
 
-      // PHASE 4: No conditions - always enabled
       const enabledState = createEnabledState(skippable);
 
-      // REACT: Check mounted before state update (R4)
       if (!isMountedRef.current) {
         return;
       }
