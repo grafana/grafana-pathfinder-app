@@ -104,8 +104,9 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
     warnings.push({ message: 'Guide has no blocks', path: ['blocks'], type: 'suggestion' });
   }
 
-  // A leading heading in blocks[0] that duplicates the guide title always
-  // renders as a second, redundant <h1> — see `allowDuplicateHeading` above.
+  // A leading heading in blocks[0] that duplicates the guide title renders as a
+  // second, redundant <h1> wherever the title is rendered separately — see
+  // `allowDuplicateHeading` above.
   const advisories: ValidationWarning[] = [];
   const firstBlock = (result.data as JsonGuide).blocks[0];
   let duplicateHeadingError: ValidationError | null = null;
@@ -122,25 +123,20 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
   }
 
   const snippetReferenceErrors = validateSnippetReferences(result.data as JsonGuide, options.snippetCatalogIds);
-  const errors = duplicateHeadingError ? [duplicateHeadingError, ...snippetReferenceErrors] : snippetReferenceErrors;
-  if (errors.length > 0) {
-    return {
-      isValid: false,
-      errors,
-      warnings: [...warnings, ...advisories],
-      guide: null,
-    };
-  }
+  const errors: ValidationError[] = duplicateHeadingError
+    ? [duplicateHeadingError, ...snippetReferenceErrors]
+    : [...snippetReferenceErrors];
 
   // 5. Strict mode - promote all warnings to errors
   if (options.strict && warnings.length > 0) {
-    return {
-      isValid: false,
-      errors: warnings.map((w) => ({ message: w.message, path: w.path, code: 'strict' })),
-      warnings: advisories,
-      guide: null,
-    };
+    errors.push(...warnings.map((w) => ({ message: w.message, path: w.path, code: 'strict' })));
+    return { isValid: false, errors, warnings: advisories, guide: null };
   }
+
+  if (errors.length > 0) {
+    return { isValid: false, errors, warnings: [...warnings, ...advisories], guide: null };
+  }
+
   return { isValid: true, errors: [], warnings: [...warnings, ...advisories], guide: result.data as JsonGuide };
 }
 

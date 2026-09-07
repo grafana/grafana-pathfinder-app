@@ -765,37 +765,40 @@ describe('JsonGuideSchema', () => {
       expect(warning?.path).toEqual(['blocks', 0]);
     });
 
-    it('should not warn when the first heading is unrelated to the title', () => {
+    it('should not flag when the first heading is unrelated to the title', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Guide editor tutorial',
         blocks: [{ type: 'markdown', content: "# Welcome to the guide editor!\n\nLet's get started." }],
       });
       const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
-      expect(warning).toBeUndefined();
+      expect(result.isValid).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(false);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(false);
     });
 
-    it('should not warn when the first heading is an h2', () => {
+    it('should not flag when the first heading is an h2', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Prometheus & Grafana 101',
         blocks: [{ type: 'markdown', content: '## Prerequisites\n\nYou will need a running Grafana instance.' }],
       });
       const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
-      expect(warning).toBeUndefined();
+      expect(result.isValid).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(false);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(false);
     });
 
-    it('should not warn when the first block is not markdown', () => {
+    it('should not flag when the first block is not markdown', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Create your first dashboard',
         blocks: [{ type: 'html', content: '<h1>Create your first dashboard</h1>' }],
       });
       const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
-      expect(warning).toBeUndefined();
+      expect(result.isValid).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(false);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(false);
     });
 
     it('should error regardless of strict mode', () => {
@@ -833,6 +836,20 @@ describe('JsonGuideSchema', () => {
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
       expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(true);
+    });
+
+    it('should still promote other warnings in strict mode alongside the heading error', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [
+          { type: 'markdown', content: '# Create your first dashboard\n\nWelcome!', unknownField: true },
+        ],
+      });
+      const result = validateGuideFromString(guide, { strict: true });
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some((e) => e.code === 'duplicate_heading')).toBe(true);
+      expect(result.errors.some((e) => e.code === 'strict' && e.message.includes('unknownField'))).toBe(true);
     });
 
     it('should keep the downgraded heading advisory in warnings when another error fails the guide', () => {

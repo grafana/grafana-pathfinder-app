@@ -73,13 +73,14 @@ function validateGuides(guides: LoadedGuide[], options: ValidateOptions): Valida
 
     if (result.isValid) {
       summary.validFiles++;
-      if (result.warnings.length > 0) {
-        summary.filesWithWarnings++;
-        summary.warnings.push({ file: guide.path, warnings: legacy.warnings });
-      }
     } else {
       summary.invalidFiles++;
       summary.errors.push({ file: guide.path, errors: legacy.errors });
+    }
+
+    if (result.warnings.length > 0) {
+      summary.filesWithWarnings++;
+      summary.warnings.push({ file: guide.path, warnings: legacy.warnings });
     }
   }
 
