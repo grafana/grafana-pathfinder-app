@@ -111,8 +111,8 @@ class ContinuousReplayInstrumentation extends ReplayInstrumentation {
   }
 
   public pauseRecordingForSurface(): void {
-    // The replay SDK keeps these controls private; this adapter is the narrow
-    // boundary that lets Pathfinder follow its surface lifecycle.
+    // Private in the SDK, so unchecked by the compiler; names verified at 2.11.0
+    // and asserted against the real recorder in replay-lifecycle.test.ts.
     (this as unknown as { pauseRecording: () => void }).pauseRecording();
   }
 

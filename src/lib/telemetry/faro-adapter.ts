@@ -159,10 +159,7 @@ const REPLAY_CLOSE_PAUSE_DELAY_MS = 5_000;
 
 function callReplayController(controller: SessionReplayController | null, method: 'pause' | 'resume'): void {
   guardTelemetry(() => {
-    const action = controller?.[method];
-    if (typeof action === 'function') {
-      action();
-    }
+    controller?.[method]?.();
   });
 }
 
