@@ -51,6 +51,31 @@ describe('window-global lint contract', () => {
     expect(violation?.severity).toBe(2);
   });
 
+  it('rejects a nested window cast with a computed Pathfinder global', () => {
+    const messages = lintProbe(`
+const name = '__DocsPluginContentKey';
+void (window as unknown as Record<string, unknown>)[name];
+`);
+    const violation = messages.find(
+      (message) =>
+        message.ruleId === 'no-restricted-syntax' && message.message.includes('typed Pathfinder window-global contract')
+    );
+
+    expect(messages.filter((message) => message.fatal)).toEqual([]);
+    expect(violation?.severity).toBe(2);
+  });
+
+  it('rejects a computed window as any cast for a Pathfinder global', () => {
+    const messages = lintProbe(`void (window as any)['__DocsPluginContentKey'];`);
+    const violation = messages.find(
+      (message) =>
+        message.ruleId === 'no-restricted-syntax' && message.message.includes('typed Pathfinder window-global contract')
+    );
+
+    expect(messages.filter((message) => message.fatal)).toEqual([]);
+    expect(violation?.severity).toBe(2);
+  });
+
   it('allows typed access and unrelated window casts', () => {
     const messages = lintProbe(`
 window.__pathfinderPluginConfig = undefined;
