@@ -277,8 +277,9 @@ export default defineConfig([
   // deliberately unread; `ignoreRestSiblings` keeps omit-style destructures
   // (`const { drop, ...rest } = obj`) legal, since the sibling's only job is to
   // stay out of `rest`. `src/validation/unused-bindings-lint-config.test.ts`
-  // fails if a later config block downgrades the rule at the probe's own path;
-  // it cannot see a block that narrows the rule away from some other subtree.
+  // fails if a later config block downgrades the rule at the probe's own path,
+  // and separately resolves the effective severity for every file under `src/`
+  // so a block that narrows the rule away from any other subtree fails too.
   // ---------------------------------------------------------------------------
   {
     files: ['src/**/*.{ts,tsx}'],
@@ -304,7 +305,9 @@ export default defineConfig([
   // bindings would erase the only in-code evidence of that gap, and an `_`
   // prefix would mark a real defect as deliberate, so the rule is off here
   // until #1815 either honours each prop or removes it from the props type.
-  // Nothing else belongs in this list: it exists to be emptied.
+  // Nothing else belongs in this list: it exists to be emptied, and
+  // `unused-bindings-lint-config.test.ts` pins both the file list and the
+  // bindings each one exempts, so the baseline can neither grow nor drift.
   // ---------------------------------------------------------------------------
   {
     files: [
