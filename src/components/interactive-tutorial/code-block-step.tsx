@@ -6,6 +6,7 @@
  * Participates in section step counting and sequential execution the same way InteractiveStep does.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -25,8 +26,8 @@ export interface CodeBlockStepProps {
   code: string;
   language?: string;
   refTarget: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   skippable?: boolean;
   hints?: string;
   children?: React.ReactNode;

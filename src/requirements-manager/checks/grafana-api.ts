@@ -26,6 +26,7 @@ export async function hasPermissionCheck(check: string): Promise<CheckResultErro
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Permission check failed: ${error}`,
@@ -83,6 +84,7 @@ export async function hasRoleCheck(check: string): Promise<CheckResultError> {
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Role check failed: ${error}`,
@@ -139,6 +141,7 @@ export async function hasDataSourceCheck(check: string): Promise<CheckResultErro
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Data source check failed: ${error}`,
@@ -154,7 +157,7 @@ export async function hasDataSourceCheck(check: string): Promise<CheckResultErro
 export async function hasPluginCheck(check: string): Promise<CheckResultError> {
   try {
     const pluginId = check.replace('has-plugin:', '');
-    const plugins = await ContextService.fetchPlugins();
+    const plugins = await ContextService.fetchPlugins({ throwOnError: true });
     const pluginExists = plugins.some((plugin) => plugin.id === pluginId);
 
     return {
@@ -172,6 +175,7 @@ export async function hasPluginCheck(check: string): Promise<CheckResultError> {
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Plugin check failed: ${error}`,
@@ -186,7 +190,7 @@ export async function hasPluginCheck(check: string): Promise<CheckResultError> {
 export async function hasDashboardNamedCheck(check: string): Promise<CheckResultError> {
   try {
     const dashboardName = check.replace('has-dashboard-named:', '');
-    const dashboards = await ContextService.fetchDashboardsByName(dashboardName);
+    const dashboards = await ContextService.fetchDashboardsByName(dashboardName, { throwOnError: true });
     const dashboardExists = dashboards.some(
       (dashboard) => dashboard.title.toLowerCase() === dashboardName.toLowerCase()
     );
@@ -206,6 +210,7 @@ export async function hasDashboardNamedCheck(check: string): Promise<CheckResult
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Dashboard check failed: ${error}`,
@@ -249,6 +254,7 @@ export async function isLoggedInCheck(check: string): Promise<CheckResultError> 
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Login check failed: ${error}`,
@@ -287,6 +293,7 @@ export async function isEditorCheck(check: string): Promise<CheckResultError> {
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Editor check failed: ${error}`,
@@ -300,7 +307,7 @@ export async function isEditorCheck(check: string): Promise<CheckResultError> {
  */
 export async function hasDatasourcesCheck(check: string): Promise<CheckResultError> {
   try {
-    const dataSources = await ContextService.fetchDataSources();
+    const dataSources = await ContextService.fetchDataSources({ throwOnError: true });
     return {
       requirement: check,
       pass: dataSources.length > 0,
@@ -309,6 +316,7 @@ export async function hasDatasourcesCheck(check: string): Promise<CheckResultErr
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Failed to check data sources: ${error}`,
@@ -323,7 +331,7 @@ export async function hasDatasourcesCheck(check: string): Promise<CheckResultErr
 export async function pluginEnabledCheck(check: string): Promise<CheckResultError> {
   try {
     const pluginId = check.replace('plugin-enabled:', '');
-    const plugins = await ContextService.fetchPlugins();
+    const plugins = await ContextService.fetchPlugins({ throwOnError: true });
 
     // Find the specific plugin
     const plugin = plugins.find((p) => p.id === pluginId);
@@ -358,6 +366,7 @@ export async function pluginEnabledCheck(check: string): Promise<CheckResultErro
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Plugin enabled check failed: ${error}`,
@@ -389,6 +398,7 @@ export async function dashboardExistsCheck(check: string): Promise<CheckResultEr
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Dashboard existence check failed: ${error}`,
@@ -404,7 +414,7 @@ export async function dashboardExistsCheck(check: string): Promise<CheckResultEr
 export async function datasourceConfiguredCheck(check: string): Promise<CheckResultError> {
   try {
     const dsRequirement = check.replace('datasource-configured:', '').toLowerCase();
-    const dataSources = await ContextService.fetchDataSources();
+    const dataSources = await ContextService.fetchDataSources({ throwOnError: true });
 
     if (dataSources.length === 0) {
       return {
@@ -480,6 +490,7 @@ export async function datasourceConfiguredCheck(check: string): Promise<CheckRes
     } catch (testError) {
       // If test fails, it might still be configured but unreachable
       return {
+        verdict: 'unavailable',
         requirement: check,
         pass: false,
         error: `Data source configuration test failed: ${testError}`,
@@ -497,6 +508,7 @@ export async function datasourceConfiguredCheck(check: string): Promise<CheckRes
     }
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Data source configuration check failed: ${error}`,

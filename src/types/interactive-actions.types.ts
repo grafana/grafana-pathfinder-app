@@ -3,6 +3,7 @@
  * Centralized types for internal actions used in multi-step and guided components
  */
 
+import type { ConditionInput } from './requirements.types';
 /**
  * Base internal action interface (flexible)
  * Used for multi-step sequences where action types may vary
@@ -13,7 +14,7 @@ export interface InternalAction {
   targetValue?: string;
   /** Desired end state for a toggle target; see `lib/dom/toggle-state`. */
   targetState?: boolean | string;
-  requirements?: string;
+  requirements?: ConditionInput;
   targetComment?: string; // Optional comment to display during this step
 }
 

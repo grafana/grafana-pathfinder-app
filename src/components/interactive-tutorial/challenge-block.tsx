@@ -474,7 +474,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setErrorDetail('');
     try {
       const result = await checkPostconditions({
-        requirements: successCriteria,
+        requirements: [successCriteria],
         stepId,
         maxRetries: 0,
       });

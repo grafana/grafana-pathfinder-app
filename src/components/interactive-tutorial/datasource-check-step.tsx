@@ -4,6 +4,7 @@
  * one is a tracked step, so only this one can hold a section up.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { Alert, Button, Combobox, Field, Icon, useStyles2, type ComboboxOption } from '@grafana/ui';
@@ -28,7 +29,7 @@ export interface DatasourceCheckStepProps {
   failureMessage?: string;
   timeFrom?: string;
   timeTo?: string;
-  requirements?: string;
+  requirements?: ConditionInput;
   skippable?: boolean;
   hints?: string;
   children?: React.ReactNode;

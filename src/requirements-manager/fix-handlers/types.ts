@@ -10,6 +10,7 @@
  * handlers come before catch-all ones in the array.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import type { FixTypeValue } from '../fix-types';
 
 /**
@@ -32,7 +33,7 @@ export interface FixContext {
   targetHref?: string;
   scrollContainer?: string;
   /** Raw requirements string from the step; used by the navigation handler's legacy fallback. */
-  requirements?: string;
+  requirements?: ConditionInput;
   stepId: string;
   /** May be null if the lazy `import('../interactive-engine')` has not yet resolved. */
   navigationManager: FixHandlerNavigationManager | null;

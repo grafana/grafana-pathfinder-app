@@ -23,16 +23,12 @@
  *     that complete via paths that bypass the section component.
  */
 
+import type { CheckResultError } from '../../types/requirements.types';
 import { getContentKey } from '../../global-state/content-key';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
 
-export async function sectionCompletedCheck(check: string): Promise<{
-  requirement: string;
-  pass: boolean;
-  error?: string;
-  context?: Record<string, unknown> | null;
-}> {
+export async function sectionCompletedCheck(check: string): Promise<CheckResultError> {
   try {
     const rawId = check.replace('section-completed:', '');
     const sectionId = rawId.startsWith('section-') ? rawId : `section-${rawId}`;
@@ -64,6 +60,7 @@ export async function sectionCompletedCheck(check: string): Promise<{
   } catch (error) {
     logger.error('Section completion check error', { error });
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Section completion check failed: ${error}`,

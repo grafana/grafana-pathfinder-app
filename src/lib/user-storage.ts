@@ -35,6 +35,7 @@
  * SECURITY NOTE: Data is NOT encrypted. Do not store sensitive information.
  */
 
+import type { ConditionInput } from '../types/requirements.types';
 import { AppEvents } from '@grafana/data';
 import { getAppEvents, usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';
@@ -1355,7 +1356,7 @@ export interface PersistedBundledStep {
     contextStrategy?: string;
   };
   interactiveComment?: string;
-  requirements?: string;
+  requirements?: ConditionInput;
 }
 
 export interface PersistedSectionInfo {
@@ -1363,7 +1364,7 @@ export interface PersistedSectionInfo {
   sectionTitle?: string;
   description?: string;
   interactiveComment?: string;
-  requirements?: string;
+  requirements?: ConditionInput;
 }
 
 export const fullScreenModeStorage = {
