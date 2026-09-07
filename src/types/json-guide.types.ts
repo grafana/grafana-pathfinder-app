@@ -1,3 +1,4 @@
+import type { GuideOutcome } from './outcome.types';
 /**
  * JSON Guide Type Definitions
  *
@@ -20,6 +21,7 @@ export interface JsonGuide {
   title: string;
   /** Content blocks that make up the guide */
   blocks: JsonBlock[];
+  outcomes?: GuideOutcome[];
 }
 
 // ============ BLOCK UNION ============

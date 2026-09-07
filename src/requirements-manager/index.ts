@@ -61,3 +61,5 @@ export type { FixTypeValue } from './fix-types';
 // Fix dispatch — shared by step-checker and section-level requirements.
 export { dispatchFix } from './fix-registry';
 export type { FixContext, FixResult } from './fix-handlers';
+
+export { listOutcomeResources, verifyGrafanaOutcome } from './grafana-outcomes';

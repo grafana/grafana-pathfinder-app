@@ -1,6 +1,15 @@
 {
   "id": "first-dashboard-cloud",
   "title": "Create your first dashboard in Grafana Cloud",
+  "outcomes": [
+    {
+      "id": "testdata-health",
+      "label": "TestData responds successfully",
+      "kind": "datasource-health",
+      "datasourceType": "grafana-testdata-datasource"
+    },
+    { "id": "dashboard-saved", "label": "A dashboard is saved", "kind": "dashboard-saved" }
+  ],
   "blocks": [
     {
       "type": "markdown",

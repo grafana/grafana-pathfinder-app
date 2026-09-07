@@ -1,3 +1,4 @@
+import type { GuideOutcome } from './outcome.types';
 /**
  * Package Type Definitions
  *
@@ -23,6 +24,7 @@ export interface ContentJson {
   id: string;
   title: string;
   blocks: JsonBlock[];
+  outcomes?: GuideOutcome[];
 }
 
 // ============ DEPENDENCY TYPES ============

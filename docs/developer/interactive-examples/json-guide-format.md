@@ -1569,3 +1569,9 @@ The prescriptive coupling checklist and the limits of the automated drift checks
 - [Selectors reference](./selectors-reference.md) — targeting DOM elements with the enhanced selector engine
 - [Requirements reference](./requirements-reference.md) — pre-condition and post-condition system
 - [Guided interactions](./guided-interactions.md) — user-performed action mode
+
+## Verified outcome pilot
+
+The bundled `first-dashboard-cloud` guide declares optional root-level `outcomes`. Each declaration has a unique `id`, a sentence-case `label`, and a `kind` (`datasource-health` or `dashboard-saved`). Data source outcomes may constrain selection with `datasourceType`. Both single-file and package content schemas validate these declarations. This pilot is supported for JSON content; publishing these fields through App Platform is outside its scope.
+
+`pathfinder.verified-outcomes` is off by default. When enabled, a separate panel lets a signed-in user select resources by UID, check outcomes, cancel checks, and retry unavailable checks. Dashboard selection searches Grafana rather than assuming the first page is exhaustive. These are API checks, independent of guide progress, manual completion, and skipping. Historical evidence is scoped to the user, organisation, source URL, and SHA-256 content revision; it does not assert that a resource remains healthy after it was checked. Failed checks do not erase history. Outcome storage is bounded and best effort; it is not a certification record or an authorisation boundary.
