@@ -9,9 +9,11 @@
  * compiler flag at all reports an unused `catch` binding. These tests drive
  * the real ESLint API over the repository's own `eslint.config.mjs`, so a
  * later config block that downgrades or shadows the rule at the probe's own
- * path fails here. It cannot detect a block that narrows the rule away from a
- * different subtree via `files` or `ignores` — the grandfather list in
- * `eslint.config.mjs` is that kind of narrowing, and #1815 tracks emptying it.
+ * path fails here. The in-memory probes are linted at one synthetic path, so
+ * they cannot see a block that narrows the rule away from a different subtree
+ * via `files` or `ignores`; the `GRANDFATHERED` suite below covers exactly
+ * that, by resolving the effective rule severity for every file under `src/`
+ * and pinning both the narrowed set and the bindings it exempts.
  */
 
 import { execFileSync } from 'child_process';
@@ -123,6 +125,117 @@ function lintProbe(source: string): LintMessage[] {
   return JSON.parse(stdout);
 }
 
+/**
+ * Every binding the grandfather block in `eslint.config.mjs` exempts (#1815).
+ *
+ * Whoever clears #1815 updates this list in the same pull request: the
+ * assertion below is strict equality in both directions, so a new unused
+ * binding fails as growth and a fixed one fails as drift until it is removed
+ * here. The nineteenth grandfathered binding — `objectives` in
+ * `interactive-step.tsx` — is deliberately absent: it uses an inline
+ * `eslint-disable-next-line`, which ESLint's own unused-disable-directive
+ * reporting self-clears once the binding becomes used.
+ */
+const GRANDFATHERED: Record<string, string[]> = {
+  'src/components/interactive-tutorial/code-block-step.tsx': [
+    'hints',
+    'onStepReset',
+    'resetTrigger',
+    'sectionTitle',
+    'stepIndex',
+    'totalSteps',
+  ],
+  'src/components/interactive-tutorial/terminal-connect-step.tsx': [
+    'isEligibleForChecking',
+    'onStepReset',
+    'resetTrigger',
+    'sectionTitle',
+    'stepIndex',
+    'totalSteps',
+  ],
+  'src/components/interactive-tutorial/terminal-step.tsx': [
+    'hints',
+    'onStepReset',
+    'resetTrigger',
+    'sectionTitle',
+    'stepIndex',
+    'totalSteps',
+  ],
+};
+
+/**
+ * Resolves the rule's effective severity for every file under `src/` through
+ * ESLint's own config resolver, then re-enables it over the grandfathered
+ * files to recover the bindings the block hides. Asking the resolver rather
+ * than reading `eslint.config.mjs` catches narrowing by `ignores` as well as
+ * by `files`, and reports what ESLint actually applies.
+ */
+const GRANDFATHER_RUNNER = `
+import { ESLint } from 'eslint';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const RULE = ${JSON.stringify(RULE)};
+const OPTIONS = ['error', {
+  args: 'after-used',
+  argsIgnorePattern: '^_',
+  caughtErrors: 'all',
+  caughtErrorsIgnorePattern: '^_',
+  ignoreRestSiblings: true,
+}];
+
+function walk(dir, found = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(full, found);
+    } else if (/\\.tsx?$/.test(entry.name)) {
+      found.push(full);
+    }
+  }
+  return found;
+}
+
+const resolver = new ESLint({ cwd: process.cwd() });
+const exempted = [];
+for (const file of walk(path.join(process.cwd(), 'src'))) {
+  const config = await resolver.calculateConfigForFile(file);
+  const entry = config.rules?.[RULE];
+  const severity = Array.isArray(entry) ? entry[0] : entry;
+  if (severity !== 2 && severity !== 'error') {
+    exempted.push(path.relative(process.cwd(), file));
+  }
+}
+exempted.sort();
+
+const reinstated = new ESLint({
+  cwd: process.cwd(),
+  overrideConfig: { files: exempted, rules: { [RULE]: OPTIONS } },
+});
+const bindings = {};
+for (const result of exempted.length ? await reinstated.lintFiles(exempted) : []) {
+  const file = path.relative(process.cwd(), result.filePath);
+  bindings[file] = result.messages
+    .filter((message) => message.ruleId === RULE)
+    .map((message) => /^'([^']+)'/.exec(message.message)?.[1])
+    .filter(Boolean)
+    .sort();
+}
+
+process.stdout.write(JSON.stringify({ exempted, bindings }));
+`;
+
+type GrandfatherProbe = { exempted: string[]; bindings: Record<string, string[]> };
+
+function probeGrandfathered(): GrandfatherProbe {
+  const stdout = execFileSync(process.execPath, ['--input-type=module', '-e', GRANDFATHER_RUNNER], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  return JSON.parse(stdout);
+}
+
 describe('unused-bindings lint ratchet', () => {
   let violations: LintMessage[];
   let clean: LintMessage[];
@@ -159,5 +272,24 @@ describe('unused-bindings lint ratchet', () => {
     const reported = clean.filter((message) => message.ruleId === RULE).map((message) => `${message.message}`);
 
     expect(reported).toEqual([]);
+  });
+});
+
+describe('grandfathered exemptions (#1815)', () => {
+  let probe: GrandfatherProbe;
+
+  beforeAll(() => {
+    probe = probeGrandfathered();
+  }, 180_000);
+
+  it('exempts exactly the enumerated files, so a fourth cannot be added silently', () => {
+    expect(probe.exempted).toEqual(Object.keys(GRANDFATHERED).sort());
+  });
+
+  // Strict equality both ways: a new unused binding in one of these files is
+  // growth and must fail; clearing one is progress and must also fail, so the
+  // baseline shrinks with #1815 instead of drifting out of date.
+  it('exempts exactly the enumerated bindings, so the baseline can neither grow nor drift', () => {
+    expect(probe.bindings).toEqual(GRANDFATHERED);
   });
 });
