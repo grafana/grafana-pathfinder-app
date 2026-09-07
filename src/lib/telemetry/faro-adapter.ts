@@ -68,6 +68,7 @@ export async function initFaro(options?: InitFaroOptions): Promise<void> {
 
   faroInstance = initializeFaro({
     url: COLLECTOR_URL,
+    requestCompression: true,
     globalObjectKey: GLOBAL_OBJECT_KEY,
     // Isolate from Grafana core's own Faro instance and other app plugins' —
     // without this, initializing here would clobber the global object Grafana

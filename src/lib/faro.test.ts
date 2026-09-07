@@ -56,6 +56,7 @@ const mockFaroInstance = {
 };
 interface CapturedFaroConfig {
   isolate: boolean;
+  requestCompression: boolean;
   app: { name: string; version: string; environment: string };
   sessionTracking: { samplingRate?: number; persistent: boolean };
   instrumentations: Array<{ constructor: { name: string } }>;
@@ -517,6 +518,13 @@ describe('initFaro', () => {
     await faro.initFaro();
     const calledWith = mockInitializeFaro.mock.calls[0]![0];
     expect(calledWith.sessionTracking.persistent).toBe(false);
+  });
+
+  it('enables Faro request compression', async () => {
+    const faro = freshFaro();
+    await faro.initFaro();
+    const calledWith = mockInitializeFaro.mock.calls[0]![0];
+    expect(calledWith.requestCompression).toBe(true);
   });
 
   it('sets no samplingRate — every engaged session sends (the SDK default of 1 applies)', async () => {
