@@ -1,3 +1,4 @@
+import type { ConditionInput } from './requirements.types';
 /**
  * Component prop type definitions
  * Centralized prop interfaces for components used across the application
@@ -13,8 +14,8 @@ import React from 'react';
  * Base props shared by all interactive components
  */
 export interface BaseInteractiveProps {
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   hints?: string;
   onComplete?: () => void;
   disabled?: boolean;
@@ -90,7 +91,7 @@ export interface StepInfo {
   targetValue?: string;
   targetState?: boolean | string;
   targetComment?: string; // Optional comment to show during execution
-  requirements?: string;
+  requirements?: ConditionInput;
   postVerify?: string;
   skippable?: boolean; // Whether this step can be skipped
   showMe?: boolean; // Whether to show the "Show me" button and phase

@@ -1,3 +1,4 @@
+import { conditionTokens, conditionLabel } from '../lib/condition-input';
 /**
  * Unified hook for checking both tutorial-specific requirements and objectives
  * Combines and replaces useStepRequirements and useStepObjectives
@@ -33,7 +34,12 @@ import { stepReducer, createInitialState, toLegacyState, type StepAction } from 
 import { useInteractiveElements, useSequentialStepState } from '../interactive-engine';
 import { INTERACTIVE_CONFIG, isFirstStep } from '../constants/interactive-config';
 import { TERMINAL_STATUS_CHANGED_EVENT } from '../lib/event-names';
-import { FixedRequirementType, ParameterizedRequirementPrefix, isValidRequirement } from '../types/requirements.types';
+import {
+  FixedRequirementType,
+  ParameterizedRequirementPrefix,
+  isValidRequirement,
+  type ConditionInput,
+} from '../types/requirements.types';
 import { logger } from '../lib/logging';
 import { useTimeoutManager } from '../utils/timeout-manager';
 import { useIsAlignmentPaused } from '../global-state/alignment-pending-context';
@@ -91,12 +97,12 @@ function actionFromBaseStepState(s: LegacyStateShape): StepAction {
 
 /** Conjunction of partial verdicts, reported against the original requirements string. */
 function mergeRequirementResults(
-  requirements: string,
+  requirements: ConditionInput,
   parts: Array<RequirementsCheckResult | undefined>
 ): RequirementsCheckResult {
   const present = parts.filter((part): part is RequirementsCheckResult => part !== undefined);
   return {
-    requirements,
+    requirements: conditionLabel(requirements),
     pass: present.every((part) => part.pass),
     error: present.flatMap((part) => part.error ?? []),
   };
@@ -235,7 +241,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   const checkRequirementsWithStateUpdates = useCallback(
     async (
       options: {
-        requirements: string;
+        requirements: ConditionInput;
         targetAction?: string;
         refTarget?: string;
         stepId?: string;
@@ -273,13 +279,13 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       const attemptCheck = async (retryCount: number): Promise<RequirementsCheckResult> => {
         // REACT: Check mounted before state updates to prevent updates after unmount (R4)
         if (!isMountedRef.current) {
-          return { requirements: requirements || '', pass: false, error: [] };
+          return { requirements: conditionLabel(requirements), pass: false, error: [] };
         }
 
         // Update state with current retry info
         onStateUpdate(retryCount, maxRetries, retryCount > 0);
 
-        const checkHere = (localRequirements: string) =>
+        const checkHere = (localRequirements: ConditionInput) =>
           checkRequirements({
             requirements: localRequirements,
             targetAction,
@@ -314,8 +320,8 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             };
 
             const [guideScopedResult, remainingResult] = await Promise.all([
-              guideScoped ? checkHere(guideScoped) : undefined,
-              remaining ? checkOnLiveTab() : undefined,
+              conditionTokens(guideScoped).length ? checkHere(guideScoped) : undefined,
+              conditionTokens(remaining).length ? checkOnLiveTab() : undefined,
             ]);
             result = mergeRequirementResults(requirements, [guideScopedResult, remainingResult]);
           } else {
@@ -347,7 +353,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
         } catch (error) {
           // REACT: Check mounted before retry (R4)
           if (!isMountedRef.current) {
-            return { requirements: requirements || '', pass: false, error: [] };
+            return { requirements: conditionLabel(requirements), pass: false, error: [] };
           }
 
           // On error, retry if we have attempts left
@@ -355,18 +361,18 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
             await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.requirements.retryDelay));
             // Check mounted again after delay
             if (!isMountedRef.current) {
-              return { requirements: requirements || '', pass: false, error: [] };
+              return { requirements: conditionLabel(requirements), pass: false, error: [] };
             }
             return attemptCheck(retryCount + 1);
           }
 
           // No more retries, return error
           return {
-            requirements: requirements || '',
+            requirements: conditionLabel(requirements),
             pass: false,
             error: [
               {
-                requirement: requirements || 'unknown',
+                requirement: conditionLabel(requirements) || 'unknown',
                 pass: false,
                 error: `Requirements check failed after ${maxRetries + 1} attempts: ${error}`,
               },
@@ -511,17 +517,14 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       // Letting an objectives-check rejection propagate to the outer `catch` would
       // strand the step in an error state on slow networks. Treat any objectives
       // failure here as "objectives unmet" and continue.
-      if (objectives && objectives.trim() !== '') {
-        const objectiveTokens = objectives
-          .split(',')
-          .map((token) => token.trim())
-          .filter(Boolean);
+      if (conditionTokens(objectives).length > 0) {
+        const objectiveTokens = conditionTokens(objectives);
         const validObjectives = objectiveTokens.length > 0 && objectiveTokens.every(isValidRequirement);
         let objectivesPassed = false;
         try {
           const objectivesResult = await checkRequirementsWithStateUpdatesRef.current(
             {
-              requirements: objectives,
+              requirements: objectives ?? [],
               targetAction: targetAction || 'button',
               refTarget: refTarget || stepId,
               stepId,
@@ -564,10 +567,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       }
 
       // PHASE 3: Check requirements (only if objectives not met and eligible)
-      if (requirements && requirements.trim() !== '') {
+      if (conditionTokens(requirements).length > 0) {
         const requirementsResult = await checkRequirementsWithStateUpdatesRef.current(
           {
-            requirements,
+            requirements: requirements ?? [],
             targetAction: targetAction || 'button',
             refTarget: refTarget || stepId,
             stepId,
@@ -578,7 +581,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
           }
         );
 
-        const requirementsState = createRequirementsState(requirementsResult, requirements, hints, skippable);
+        const requirementsState = createRequirementsState(
+          requirementsResult,
+          conditionLabel(requirements),
+          hints,
+          skippable
+        );
 
         // REACT: Check mounted before state update (R4)
         if (!isMountedRef.current) {
@@ -623,7 +631,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       updateManager(enabledState);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to check step conditions';
-      const errorState = createErrorState(errorMessage, requirements || objectives, hints, skippable);
+      const errorState = createErrorState(errorMessage, conditionLabel(requirements || objectives), hints, skippable);
       safeDispatch(actionFromBaseStepState(errorState));
       updateManager(errorState);
     }
@@ -645,12 +653,12 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
   // result into the FSM so a regressed prerequisite re-surfaces, and return
   // whether the action may proceed.
   const revalidate = useCallback(async (): Promise<boolean> => {
-    if (!requirements || requirements.trim() === '') {
+    if (conditionTokens(requirements).length === 0) {
       return true;
     }
     const result = await checkRequirementsWithStateUpdates(
       {
-        requirements,
+        requirements: requirements ?? [],
         targetAction: targetAction || 'button',
         refTarget: refTarget || stepId,
         stepId,
@@ -663,7 +671,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     if (!isMountedRef.current) {
       return result.pass;
     }
-    const requirementsState = createRequirementsState(result, requirements, hints, skippable);
+    const requirementsState = createRequirementsState(result, conditionLabel(requirements), hints, skippable);
     safeDispatch(actionFromBaseStepState(requirementsState));
     updateManager(requirementsState);
     prevIsEnabledRef.current = result.pass;
@@ -1035,7 +1043,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
       // Recheck if:
       // 1. Step is blocked (not enabled) - might become enabled after navigation
       // 2. Step is enabled with objectives - objectives might be satisfied after navigation
-      const hasObjectives = currentObjectives && currentObjectives.trim() !== '';
+      const hasObjectives = conditionTokens(currentObjectives).length > 0;
       const shouldRecheck = !isCompleted && !isChecking && (!isEnabled || hasObjectives);
 
       if (shouldRecheck) {

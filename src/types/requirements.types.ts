@@ -79,7 +79,7 @@ export interface CheckResultError {
 
 // Type-safe requirement checker options
 export interface TypeSafeRequirementsCheckOptions {
-  requirements: string; // We keep this as string for backward compatibility, but validate at runtime
+  requirements: ConditionInput;
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;

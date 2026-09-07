@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
@@ -50,8 +51,8 @@ interface InteractiveMultiStepProps {
   className?: string;
   disabled?: boolean;
   hints?: string;
-  requirements?: string; // Overall requirements for the multi-step
-  objectives?: string; // Overall objectives for the multi-step
+  requirements?: ConditionInput; // Overall requirements for the multi-step
+  objectives?: ConditionInput; // Overall objectives for the multi-step
   onComplete?: () => void;
   skippable?: boolean; // Whether this multi-step can be skipped if requirements fail
   completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)

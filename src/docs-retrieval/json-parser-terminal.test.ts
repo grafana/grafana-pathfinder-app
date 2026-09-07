@@ -62,7 +62,7 @@ describe('json-parser terminal block', () => {
 
     const terminalEl = result.data!.elements.find((el) => el.type === 'terminal-step');
     expect(terminalEl).toBeDefined();
-    expect(terminalEl!.props.requirements).toBe('is-terminal-active');
+    expect(terminalEl!.props.requirements).toEqual(['is-terminal-active']);
     expect(terminalEl!.props.skippable).toBe(true);
     expect(terminalEl!.props.hints).toBe('Connect first');
   });
@@ -197,4 +197,26 @@ describe('json-parser terminal-connect gcx field', () => {
     );
     expect(result.isValid).toBe(false);
   });
+});
+
+it('preserves comma-containing objective and prerequisite tokens', () => {
+  const parsed = parseJsonGuide(
+    JSON.stringify({
+      id: 'comma',
+      title: 'Comma',
+      blocks: [
+        {
+          type: 'interactive',
+          action: 'button',
+          reftarget: 'button',
+          content: 'Save',
+          requirements: ['has-dashboard-named:CPU, memory'],
+          objectives: ['has-dashboard-named:CPU, memory'],
+        },
+      ],
+    })
+  );
+  const step = parsed.data!.elements.find((element) => element.type === 'interactive-step');
+  expect(step?.props.requirements).toEqual(['has-dashboard-named:CPU, memory']);
+  expect(step?.props.objectives).toEqual(['has-dashboard-named:CPU, memory']);
 });

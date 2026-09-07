@@ -48,7 +48,7 @@ interface ControllerChannel {
   ) => Promise<RemoteRequirementResult | null>;
   requestFix: (
     stepId: string,
-    opts: { requirements: string; fixType?: string; targetHref?: string; scrollContainer?: string }
+    opts: { requirements: ConditionInput; fixType?: string; targetHref?: string; scrollContainer?: string }
   ) => Promise<FixOutcome>;
   awaitStepComplete: (stepId: string, runId: string) => Promise<boolean>;
   cancelStepComplete: (stepId: string, runId: string) => void;

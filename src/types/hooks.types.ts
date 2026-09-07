@@ -1,3 +1,4 @@
+import type { ConditionInput } from './requirements.types';
 /**
  * Hook-related type definitions
  * Centralized interfaces for React hooks across the application
@@ -12,8 +13,8 @@
  * Unified hook for checking tutorial-specific requirements and objectives
  */
 export interface UseStepCheckerProps {
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   hints?: string;
   stepId: string;
   targetAction?: string; // Pass through to requirements checking

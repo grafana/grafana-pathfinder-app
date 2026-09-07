@@ -122,7 +122,7 @@ export interface FixRequirementMessage extends CrossTabEnvelope, Partial<Control
   kind: 'fix-requirement';
   requestId: string;
   stepId: string;
-  requirements: string;
+  requirements: ConditionInput;
   fixType?: string;
   targetHref?: string;
   scrollContainer?: string;
@@ -305,7 +305,8 @@ function isValidFixRequirement(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
     typeof message.stepId === 'string' &&
-    typeof message.requirements === 'string' &&
+    (typeof message.requirements === 'string' ||
+      (Array.isArray(message.requirements) && message.requirements.every((token) => typeof token === 'string'))) &&
     isOptionalString(message.fixType) &&
     isOptionalString(message.targetHref) &&
     isOptionalString(message.scrollContainer)
