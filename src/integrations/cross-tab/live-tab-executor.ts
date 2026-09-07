@@ -1,3 +1,4 @@
+import { conditionLabel } from '../../lib/condition-input';
 import { config, getAppEvents } from '@grafana/runtime';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
 import { waitForReactUpdates } from '../../lib/async-utils';
@@ -329,9 +330,9 @@ export function installLiveTabExecutor(
         requestId: message.requestId,
         stepId: message.stepId,
         result: {
-          requirements: message.requirements,
+          requirements: conditionLabel(message.requirements),
           pass: false,
-          error: [{ requirement: message.requirements, pass: false, error: `${error}` }],
+          error: [{ requirement: conditionLabel(message.requirements), pass: false, error: `${error}` }],
         },
       });
     }

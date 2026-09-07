@@ -215,3 +215,22 @@ describe('RemoteRequirementError wire mirror', () => {
     expect(back).toBe(local);
   });
 });
+
+describe('condition array transport', () => {
+  it('accepts intact condition arrays', () => {
+    const message = envelope({
+      kind: 'check-requirements',
+      requestId: 'r',
+      stepId: 's',
+      requirements: ['has-dashboard-named:CPU, memory'],
+    });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+  it('rejects non-string condition entries', () => {
+    expect(
+      validateCrossTabMessage(
+        envelope({ kind: 'check-requirements', requestId: 'r', stepId: 's', requirements: ['is-admin', {}] })
+      )
+    ).toBeNull();
+  });
+});

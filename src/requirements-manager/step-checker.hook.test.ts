@@ -1,3 +1,4 @@
+import { conditionLabel } from '../lib/condition-input';
 import type React from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useStepChecker } from './index';
@@ -475,8 +476,9 @@ describe('useStepChecker priority ordering (regression)', () => {
     mockCheckRequirements.mockImplementation(({ requirements }) =>
       Promise.resolve({
         pass: requirements === 'has-datasources',
-        requirements: requirements || '',
-        error: requirements === 'has-datasources' ? [] : [failedRequirement({ requirement: requirements || '' })],
+        requirements: conditionLabel(requirements),
+        error:
+          requirements === 'has-datasources' ? [] : [failedRequirement({ requirement: conditionLabel(requirements) })],
       })
     );
 
@@ -498,8 +500,8 @@ describe('useStepChecker priority ordering (regression)', () => {
     mockCheckRequirements.mockImplementation(({ requirements }) =>
       Promise.resolve({
         pass: false,
-        requirements: requirements || '',
-        error: [failedRequirement({ requirement: requirements || '' })],
+        requirements: conditionLabel(requirements),
+        error: [failedRequirement({ requirement: conditionLabel(requirements) })],
       })
     );
 
@@ -528,7 +530,7 @@ describe('useStepChecker priority ordering (regression)', () => {
           error: [failedRequirement({ requirement: 'has-datasources' })],
         });
       }
-      return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
+      return Promise.resolve({ pass: true, requirements: conditionLabel(requirements), error: [] });
     });
 
     const { result } = await renderStepChecker({
@@ -563,7 +565,7 @@ describe('useStepChecker priority ordering (regression)', () => {
         // Hang forever; the hook's 3s Promise.race timeout will reject for us.
         return new Promise(() => {});
       }
-      return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
+      return Promise.resolve({ pass: true, requirements: conditionLabel(requirements), error: [] });
     });
 
     try {

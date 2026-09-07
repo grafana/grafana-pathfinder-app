@@ -1,3 +1,4 @@
+import type { ConditionInput } from './requirements.types';
 import type { InternalAction } from './interactive-actions.types';
 
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
@@ -104,7 +105,7 @@ export interface CheckRequirementsMessage extends CrossTabEnvelope, Partial<Cont
   kind: 'check-requirements';
   requestId: string;
   stepId: string;
-  requirements: string;
+  requirements: ConditionInput;
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
@@ -292,7 +293,8 @@ function isValidCheckRequirements(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
     typeof message.stepId === 'string' &&
-    typeof message.requirements === 'string' &&
+    (typeof message.requirements === 'string' ||
+      (Array.isArray(message.requirements) && message.requirements.every((token) => typeof token === 'string'))) &&
     isOptionalString(message.targetAction) &&
     isOptionalString(message.refTarget) &&
     isOptionalString(message.targetValue)

@@ -1,3 +1,4 @@
+import { conditionTokens, conditionLabel } from '../lib/condition-input';
 /**
  * Requirements checking — router and retry harness.
  *
@@ -17,7 +18,7 @@
 
 import { reftargetExistsCheck, navmenuOpenCheck, formValidCheck } from '../lib/dom';
 import { sectionCompletedCheck } from './checks/section-completed-check';
-import { isValidRequirement, type CheckResultError } from '../types/requirements.types';
+import { isValidRequirement, type CheckResultError, type ConditionInput } from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { logger } from '../lib/logging';
 import { TimeoutManager } from '../utils/timeout-manager';
@@ -49,7 +50,7 @@ export interface RequirementsCheckResult {
 }
 
 export interface RequirementsCheckOptions {
-  requirements: string;
+  requirements: ConditionInput;
   /** Guide scope for var-* checks; omit only for compatibility callers outside a renderer tree. */
   guideId?: string;
   targetAction?: string;
@@ -164,19 +165,16 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
 }
 
 async function runUnifiedChecks(
-  checksString: string,
+  checksString: ConditionInput,
   mode: CheckMode,
   ctx: CheckContext
 ): Promise<RequirementsCheckResult> {
-  const checks: string[] = checksString
-    .split(',')
-    .map((c) => c.trim())
-    .filter(Boolean);
+  const checks = conditionTokens(checksString);
 
   const results = await Promise.all(checks.map((check) => routeUnifiedCheck(check, ctx)));
 
   return {
-    requirements: checksString,
+    requirements: conditionLabel(checksString),
     pass: results.every((r) => r.pass),
     error: results,
   };
@@ -203,14 +201,14 @@ async function executeChecksWithRetry(
 
   if (!requirements) {
     return {
-      requirements,
+      requirements: conditionLabel(requirements),
       pass: true,
       error: [],
     };
   }
 
-  const timeoutKey = `${checkType}-retry-${requirements}-${retryCount}`;
-  const errorTimeoutKey = `${checkType}-retry-error-${requirements}-${retryCount}`;
+  const timeoutKey = `${checkType}-retry-${JSON.stringify(requirements)}-${retryCount}`;
+  const errorTimeoutKey = `${checkType}-retry-error-${JSON.stringify(requirements)}-${retryCount}`;
 
   try {
     const result = await runUnifiedChecks(requirements, mode, {
@@ -272,11 +270,11 @@ async function executeChecksWithRetry(
     // If we've exhausted retries, return error result
     const checkTypeName = checkType.charAt(0).toUpperCase() + checkType.slice(1);
     return {
-      requirements,
+      requirements: conditionLabel(requirements),
       pass: false,
       error: [
         {
-          requirement: requirements,
+          requirement: conditionLabel(requirements),
           pass: false,
           error: `${checkTypeName} check failed after ${maxRetries + 1} attempts: ${error}`,
           context: { error: String(error), retryCount, maxRetries },

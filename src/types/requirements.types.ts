@@ -1,3 +1,5 @@
+export type ConditionInput = string | readonly string[];
+
 /**
  * Type-safe requirement definitions for compile-time checking
  * This prevents unknown requirement types from reaching runtime

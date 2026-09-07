@@ -1091,3 +1091,13 @@ describe('CHECK_HANDLERS routing parity', () => {
     expect(CHECK_HANDLERS.find((h) => h.match('not-a-real-check'))).toBeUndefined();
   });
 });
+
+describe('condition array execution', () => {
+  it('passes an entire dashboard name to the Grafana check', async () => {
+    jest.mocked(ContextService.fetchDashboardsByName).mockResolvedValue([{ title: 'CPU, memory' }] as never);
+    const result = await checkRequirements({ requirements: ['has-dashboard-named:CPU, memory'], maxRetries: 0 });
+    expect(ContextService.fetchDashboardsByName).toHaveBeenCalledWith('CPU, memory');
+    expect(result.error).toHaveLength(1);
+    expect(result.pass).toBe(true);
+  });
+});

@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../types/requirements.types';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CrossTabTransport, createSenderId } from '../lib/cross-tab-transport';
 import {
@@ -42,7 +43,7 @@ interface ControllerChannel {
   post: (payload: CrossTabPayload) => void;
   requestRequirementCheck: (
     stepId: string,
-    requirements: string,
+    requirements: ConditionInput,
     opts?: { targetAction?: string; refTarget?: string; targetValue?: string }
   ) => Promise<RemoteRequirementResult | null>;
   requestFix: (
