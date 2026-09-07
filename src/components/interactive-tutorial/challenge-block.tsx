@@ -34,6 +34,7 @@ import {
   PATHFINDER_READY_FILE,
   type ExecResponse,
 } from '../../integrations/coda/coda-api';
+import type { ConditionInput } from '../../types/requirements.types';
 import { useGuideRequirements, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
@@ -83,8 +84,8 @@ export interface ChallengeBlockProps {
   successCriteria: string;
   hintLevels?: ChallengeHintProps[];
   failureMessage?: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   skippable?: boolean;
 
   stepId?: string;
@@ -237,7 +238,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   }, [requirements, stepId]);
 
   const checker = useStepChecker({
-    requirements: requirements || '',
+    requirements,
     objectives: '',
     targetAction: 'noop',
     refTarget: '',
@@ -264,7 +265,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // persist to this block's store key, solving the challenge without successCriteria.
   const [objectivesMet, setObjectivesMet] = useState(false);
   useEffect(() => {
-    if (!objectives || objectives.trim() === '') {
+    if (!objectives || objectives.length === 0) {
       return;
     }
     let cancelled = false;

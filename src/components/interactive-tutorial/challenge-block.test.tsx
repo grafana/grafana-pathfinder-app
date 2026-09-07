@@ -8,6 +8,7 @@ import { useCodaSessionEligibility, useCodaTerminalGate } from '../../integratio
 import { execInSession } from '../../integrations/coda/coda-api';
 import { checkPostconditions, checkRequirements } from '../../requirements-manager';
 import { useStepCompletion } from '../../global-state/completion-store';
+import type { ConditionInput } from '../../types/requirements.types';
 
 jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: jest.fn(),
@@ -22,16 +23,18 @@ jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
 }));
 
 const mockMarkSkipped = jest.fn();
-const mockUseStepChecker = jest.fn((props: { requirements?: string; objectives?: string; skippable?: boolean }) => ({
-  isEnabled: true,
-  isSequentialBlock: false,
-  isCompleted: false,
-  isChecking: false,
-  explanation: null as string | null | undefined,
-  canSkip: Boolean(props.skippable),
-  markSkipped: mockMarkSkipped,
-  resetStep: jest.fn(),
-}));
+const mockUseStepChecker = jest.fn(
+  (props: { requirements?: ConditionInput; objectives?: ConditionInput; skippable?: boolean }) => ({
+    isEnabled: true,
+    isSequentialBlock: false,
+    isCompleted: false,
+    isChecking: false,
+    explanation: null as string | null | undefined,
+    canSkip: Boolean(props.skippable),
+    markSkipped: mockMarkSkipped,
+    resetStep: jest.fn(),
+  })
+);
 
 jest.mock('../../requirements-manager', () => {
   const checkPostconditions = jest.fn();
@@ -780,7 +783,7 @@ describe('ChallengeBlock', () => {
         resetStep: jest.fn(),
       });
 
-      render(<ChallengeBlock {...baseProps} requirements="req-1" stepId="ch-1" />);
+      render(<ChallengeBlock {...baseProps} requirements={['req-1']} stepId="ch-1" />);
 
       expect(screen.getByTestId('challenge-requirement-warning-ch-1')).toHaveTextContent(
         'Complete previous step first'
@@ -790,7 +793,7 @@ describe('ChallengeBlock', () => {
 
     it('passes objectives: "" to useStepChecker to prevent Phase 1 auto-completion and does not show solved UI', () => {
       mockTerminalCtx();
-      render(<ChallengeBlock {...baseProps} objectives="obj-1" stepId="ch-2" />);
+      render(<ChallengeBlock {...baseProps} objectives={['obj-1']} stepId="ch-2" />);
 
       expect(mockUseStepChecker).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -967,14 +970,14 @@ describe('ChallengeBlock', () => {
         <ChallengeBlock
           {...baseProps}
           mode="standard"
-          objectives="has-dashboard-named:My Dashboard"
+          objectives={['has-dashboard-named:My Dashboard']}
           stepId="ch-objectives"
         />
       );
 
       await waitFor(() => {
         expect(mockedCheckRequirements).toHaveBeenCalledWith(
-          expect.objectContaining({ requirements: 'has-dashboard-named:My Dashboard' })
+          expect.objectContaining({ requirements: ['has-dashboard-named:My Dashboard'] })
         );
       });
       expect(screen.getByText(/objective already met/i)).toBeInTheDocument();
@@ -1084,7 +1087,7 @@ describe('ChallengeBlock', () => {
         resetStep: jest.fn(),
       });
 
-      render(<ChallengeBlock {...baseProps} requirements="req-1" stepId="ch-recheck" />);
+      render(<ChallengeBlock {...baseProps} requirements={['req-1']} stepId="ch-recheck" />);
 
       const banner = screen.getByTestId('challenge-requirement-warning-ch-recheck');
       expect(banner.textContent).not.toBe('');

@@ -1191,7 +1191,7 @@ Coda mode:
 | `hintLevels`      | `{ text: string }[]`     | ❌       | `[]`      | Progressive hints revealed on demand                                               |
 | `failureMessage`  | string                   | ❌       | —         | Message shown when the success check fails, replacing the checker's own error text |
 | `requirements`    | string[]                 | ❌       | —         | Prerequisite conditions for the challenge                                          |
-| `objectives`      | string[]                 | ❌       | —         | Conditions that auto-complete this block when already satisfied                    |
+| `objectives`      | string[]                 | ❌       | —         | Conditions evaluated and surfaced as an informational note                         |
 | `skippable`       | boolean                  | ❌       | `false`   | Allow skipping                                                                     |
 
 `requirements` and `skippable` gate challenge execution and offer a skip control using the unified step checker runtime. `objectives` are evaluated and surfaced as an informational note, but only `successCriteria` (via Check my work) can complete a challenge.

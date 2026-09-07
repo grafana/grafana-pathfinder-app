@@ -56,7 +56,7 @@ describe('json-parser challenge block', () => {
           brief: 'Alloy is misconfigured. Restore metric collection.',
           successCriteria: 'has-dashboard-named:My Dashboard',
           requirements: ['is-terminal-active', 'is-logged-in'],
-          objectives: ['Understand Alloy scraping', 'Read collector dashboards'],
+          objectives: ['is-terminal-active', 'is-logged-in'],
           skippable: true,
         },
       ],
@@ -67,8 +67,56 @@ describe('json-parser challenge block', () => {
 
     const challengeEl = result.data!.elements.find((el) => el.type === 'challenge-block');
     expect(challengeEl).toBeDefined();
-    expect(challengeEl!.props.requirements).toBe('is-terminal-active,is-logged-in');
-    expect(challengeEl!.props.objectives).toBe('Understand Alloy scraping,Read collector dashboards');
+    expect(challengeEl!.props.requirements).toEqual(['is-terminal-active', 'is-logged-in']);
+    expect(challengeEl!.props.objectives).toEqual(['is-terminal-active', 'is-logged-in']);
     expect(challengeEl!.props.skippable).toBe(true);
+  });
+
+  it('drops prose objectives while preserving valid condition vocabulary', () => {
+    const guide = JSON.stringify({
+      id: 'test-challenge-prose-objectives',
+      title: 'Challenge with prose objectives',
+      blocks: [
+        {
+          type: 'challenge',
+          mode: 'standard',
+          title: 'Fix the broken scrape',
+          brief: 'Alloy is misconfigured.',
+          successCriteria: 'has-dashboard-named:My Dashboard',
+          objectives: ['Understand Alloy scraping', 'is-logged-in'],
+        },
+      ],
+    });
+
+    const result = parseJsonGuide(guide);
+    expect(result.isValid).toBe(true);
+
+    const challengeEl = result.data!.elements.find((el) => el.type === 'challenge-block');
+    expect(challengeEl).toBeDefined();
+    expect(challengeEl!.props.objectives).toEqual(['is-logged-in']);
+  });
+
+  it('drops all prose objectives yielding undefined', () => {
+    const guide = JSON.stringify({
+      id: 'test-challenge-all-prose-objectives',
+      title: 'Challenge with all prose objectives',
+      blocks: [
+        {
+          type: 'challenge',
+          mode: 'standard',
+          title: 'Fix the broken scrape',
+          brief: 'Alloy is misconfigured.',
+          successCriteria: 'has-dashboard-named:My Dashboard',
+          objectives: ['Understand Alloy scraping', 'Read collector dashboards'],
+        },
+      ],
+    });
+
+    const result = parseJsonGuide(guide);
+    expect(result.isValid).toBe(true);
+
+    const challengeEl = result.data!.elements.find((el) => el.type === 'challenge-block');
+    expect(challengeEl).toBeDefined();
+    expect(challengeEl!.props.objectives).toBeUndefined();
   });
 });
