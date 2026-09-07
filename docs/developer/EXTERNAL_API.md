@@ -134,9 +134,11 @@ The CRD's block schema is generated from `_blockFields` / `#Block` /
 accepts and that file does not declare is **silently pruned**. The API can emit
 a `Warning` response header, but there is no 422 or error body; the write may
 still return 200 or 201, and the field is gone on the next GET.
-`getBackendSrv()` does not surface that header to callers. Blocks nested three
-or more levels deep fall under `x-kubernetes-preserve-unknown-fields` and
-survive; anything shallower does not.
+`getBackendSrv().fetch()` exposes it through `FetchResponse.headers`; the
+`get`/`post`/`put`/`delete` shorthand helpers return only the parsed body.
+Blocks nested three or more levels deep fall under
+`x-kubernetes-preserve-unknown-fields` and survive; anything shallower does
+not.
 
 The gap is currently the `input` block: `defaultValue`, which costs the
 input its prefilled value, and the whole `dataCheck*` family
@@ -315,10 +317,9 @@ or a declared value with an invalid type or value, returns a
 
 Unknown fields are **not rejected by default**. Kubernetes prunes them and
 may still return `200 OK` or `201 Created`. The API can emit a `Warning`
-response header, but callers that do not inspect headers receive no signal;
-`getBackendSrv()` does not surface it. For manifest extensions,
-`spec.manifest.additionalFields` is the only durable home for keys the CRD
-does not declare.
+response header, but callers that do not inspect headers receive no signal.
+For manifest extensions, `spec.manifest.additionalFields` is the only durable
+home for keys the CRD does not declare.
 
 ### Manifest
 
