@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 /**
  * CodeBlockStep Component
  *
@@ -25,8 +26,8 @@ export interface CodeBlockStepProps {
   code: string;
   language?: string;
   refTarget: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   skippable?: boolean;
   hints?: string;
   children?: React.ReactNode;

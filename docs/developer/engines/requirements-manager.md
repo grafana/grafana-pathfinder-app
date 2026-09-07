@@ -479,3 +479,9 @@ Check results are cached during retry cycles to avoid redundant API calls.
 - `docs/developer/interactive-examples/requirements-reference.md` - Requirements reference
 - `docs/developer/engines/interactive-engine.md` - Interactive engine documentation
 - `src/constants/interactive-config.ts` - Configuration options
+
+## Structured check verdicts
+
+Checks report `satisfied`, `unsatisfied`, `unavailable`, or `invalid`. A missing resource is unsatisfied; an API read that cannot complete is unavailable. Verification uses strict context-service reads so network failures are not converted into empty resource lists. Recommendation callers retain their availability-first fallback.
+
+The legacy `pass` field remains available. Unknown prerequisite tokens retain the existing fail-open policy, with an `invalid` verdict; postcondition verification refuses them. Only an explicit `satisfied` verdict is outcome evidence. Condition arrays preserve parameter commas; comma-separated strings remain a legacy input boundary, and result labels are for display only.

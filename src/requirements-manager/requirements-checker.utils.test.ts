@@ -1091,3 +1091,29 @@ describe('CHECK_HANDLERS routing parity', () => {
     expect(CHECK_HANDLERS.find((h) => h.match('not-a-real-check'))).toBeUndefined();
   });
 });
+
+describe('condition array execution', () => {
+  it('passes an entire dashboard name to the Grafana check', async () => {
+    jest.mocked(ContextService.fetchDashboardsByName).mockResolvedValue([{ title: 'CPU, memory' }] as never);
+    const result = await checkRequirements({ requirements: ['has-dashboard-named:CPU, memory'], maxRetries: 0 });
+    expect(ContextService.fetchDashboardsByName).toHaveBeenCalledWith('CPU, memory', { throwOnError: true });
+    expect(result.error).toHaveLength(1);
+    expect(result.pass).toBe(true);
+  });
+});
+
+describe('structured check verdicts', () => {
+  it('distinguishes missing dashboards from unavailable reads', async () => {
+    jest.mocked(ContextService.fetchDashboardsByName).mockResolvedValueOnce([]);
+    const missing = await checkPostconditions({ requirements: ['has-dashboard-named:Example'], maxRetries: 0 });
+    expect(missing).toMatchObject({ pass: false, verdict: 'unsatisfied' });
+    jest.mocked(ContextService.fetchDashboardsByName).mockRejectedValueOnce(new Error('Offline'));
+    const unavailable = await checkPostconditions({ requirements: ['has-dashboard-named:Example'], maxRetries: 0 });
+    expect(unavailable).toMatchObject({ pass: false, verdict: 'unavailable' });
+  });
+  it('refuses invalid verification while retaining the legacy prerequisite fallback', async () => {
+    const options = { requirements: ['has-dashbord-named:Example'], maxRetries: 0 };
+    expect(await checkRequirements(options)).toMatchObject({ pass: true, verdict: 'invalid' });
+    expect(await checkPostconditions(options)).toMatchObject({ pass: false, verdict: 'invalid' });
+  });
+});

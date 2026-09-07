@@ -41,13 +41,6 @@ export interface InteractiveConditionalProps {
   keyPrefix: string;
 }
 
-/**
- * Parse conditions array into a requirements string for the checker
- */
-function conditionsToRequirementsString(conditions: string[]): string {
-  return conditions.join(',');
-}
-
 /** True when conditions may flip after DOM updates (e.g. viz picker opens). */
 function conditionsKeyNeedsDomWatch(conditionsKey: string): boolean {
   return conditionsKey.includes('exists-reftarget');
@@ -76,7 +69,7 @@ export function InteractiveConditional({
   // on every render (parsed from JSON), so keying effects off the array would
   // tear down and re-attach the MutationObserver on every parent render. The
   // joined string is referentially stable as long as the underlying values are.
-  const conditionsKey = useMemo(() => conditions.join(','), [conditions]);
+  const conditionsKey = useMemo(() => JSON.stringify(conditions), [conditions]);
 
   // Generate a stable ID for this conditional (derived from the stable key).
   const conditionalId = useMemo(
@@ -105,7 +98,7 @@ export function InteractiveConditional({
   const reevalTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Convert conditions to requirements string format
-  const requirementsString = conditionsToRequirementsString(conditions);
+  const requirements = useMemo<string[]>(() => JSON.parse(conditionsKey), [conditionsKey]);
 
   // Function to evaluate conditions
   const evaluateConditions = useCallback(
@@ -127,7 +120,7 @@ export function InteractiveConditional({
         // Create requirement data for checking
         // Use provided refTarget for exists-reftarget condition, fallback to placeholder
         const requirementData = {
-          requirements: requirementsString,
+          requirements: requirements,
           targetAction: 'conditional',
           refTarget: refTarget || 'conditional-block',
           targetValue: undefined,
@@ -154,7 +147,7 @@ export function InteractiveConditional({
         setIsChecking(false);
       }
     },
-    [requirementsString, checkRequirementsFromData, description, refTarget]
+    [requirements, checkRequirementsFromData, description, refTarget]
   );
 
   const needsDomWatch = conditionsKeyNeedsDomWatch(conditionsKey);
@@ -299,8 +292,8 @@ export function InteractiveConditional({
   if (display === 'section') {
     // Extract config values, using defaults if not provided
     const sectionTitle = sectionConfig?.title || (conditionsPassed ? 'When conditions pass' : 'When conditions fail');
-    const sectionRequirements = sectionConfig?.requirements?.join(',');
-    const sectionObjectives = sectionConfig?.objectives?.join(',');
+    const sectionRequirements = sectionConfig?.requirements;
+    const sectionObjectives = sectionConfig?.objectives;
 
     return (
       <div

@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
@@ -102,8 +103,8 @@ interface InteractiveGuidedProps {
   className?: string;
   disabled?: boolean;
   hints?: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   onComplete?: () => void;
   skippable?: boolean;
   completeEarly?: boolean;

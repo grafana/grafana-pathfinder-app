@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../types/requirements.types';
 /**
  * User storage abstraction for the Grafana Docs Plugin
  *
@@ -1355,7 +1356,7 @@ export interface PersistedBundledStep {
     contextStrategy?: string;
   };
   interactiveComment?: string;
-  requirements?: string;
+  requirements?: ConditionInput;
 }
 
 export interface PersistedSectionInfo {
@@ -1363,7 +1364,7 @@ export interface PersistedSectionInfo {
   sectionTitle?: string;
   description?: string;
   interactiveComment?: string;
-  requirements?: string;
+  requirements?: ConditionInput;
 }
 
 export const fullScreenModeStorage = {

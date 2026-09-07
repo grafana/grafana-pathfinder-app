@@ -530,6 +530,42 @@ describe('installLiveTabExecutor', () => {
     );
     uninstall();
   });
+  it('preserves commas in condition arrays on the live tab', async () => {
+    (checkRequirements as jest.Mock).mockResolvedValue({
+      requirements: ['has-dashboard-named:CPU, memory'],
+      pass: false,
+      error: [{ requirement: 'navmenu-open', pass: false, canFix: true, fixType: 'navigation' }],
+    });
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'check-requirements',
+      requestId: 'r1',
+      stepId: 's1',
+      requirements: ['has-dashboard-named:CPU, memory'],
+    });
+
+    await waitFor(() =>
+      expect(checkRequirements).toHaveBeenCalledWith(
+        expect.objectContaining({ requirements: ['has-dashboard-named:CPU, memory'] })
+      )
+    );
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({
+          kind: 'requirement-result',
+          requestId: 'r1',
+          stepId: 's1',
+          result: expect.objectContaining({ pass: false }),
+        })
+      )
+    );
+    uninstall();
+  });
 
   it('runs a fix-requirement against the live tab and replies with the outcome', async () => {
     (dispatchFix as jest.Mock).mockResolvedValue({ ok: true });

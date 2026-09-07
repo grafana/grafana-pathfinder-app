@@ -1,3 +1,5 @@
+import { checkVerdict, combineCheckVerdicts } from '../lib/check-verdict';
+import { conditionTokens, conditionLabel } from '../lib/condition-input';
 /**
  * Requirements checking — router and retry harness.
  *
@@ -17,7 +19,12 @@
 
 import { reftargetExistsCheck, navmenuOpenCheck, formValidCheck } from '../lib/dom';
 import { sectionCompletedCheck } from './checks/section-completed-check';
-import { isValidRequirement, type CheckResultError } from '../types/requirements.types';
+import {
+  isValidRequirement,
+  type CheckResultError,
+  type ConditionInput,
+  type CheckVerdict,
+} from '../types/requirements.types';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { logger } from '../lib/logging';
 import { TimeoutManager } from '../utils/timeout-manager';
@@ -43,13 +50,14 @@ import { terminalActiveCheck } from './checks/terminal';
 import { codaExitZeroCheck } from './checks/coda';
 
 export interface RequirementsCheckResult {
+  verdict?: CheckVerdict;
   requirements: string;
   pass: boolean;
   error: CheckResultError[];
 }
 
 export interface RequirementsCheckOptions {
-  requirements: string;
+  requirements: ConditionInput;
   /** Guide scope for var-* checks; omit only for compatibility callers outside a renderer tree. */
   guideId?: string;
   targetAction?: string;
@@ -130,24 +138,30 @@ const CHECK_HANDLERS: readonly CheckHandler[] = [
 
 export { CHECK_HANDLERS };
 
-async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<CheckResultError> {
+async function routeUnifiedCheck(check: string, ctx: CheckContext, mode: CheckMode): Promise<CheckResultError> {
   // Type-safe validation with helpful developer feedback
-  if (!isValidRequirement(check)) {
+  if (!isValidRequirement(check) || check.endsWith(':') || check === 'var-') {
     logger.warn(
       `Unknown requirement type: '${check}'. Check the requirement syntax and ensure it's supported. Allowing step to proceed.`
     );
 
     return {
       requirement: check,
-      pass: true,
-      error: `Warning: Unknown requirement type '${check}' - step allowed to proceed`,
+      pass: mode === 'pre',
+      verdict: 'invalid',
+      error: `Warning: Unknown requirement type '${check}' - ${mode === 'pre' ? 'step allowed to proceed' : 'verification refused'}`,
       context: null,
     };
   }
 
   const handler = CHECK_HANDLERS.find((h) => h.match(check));
   if (handler) {
-    return handler.run(check, ctx);
+    try {
+      const result = await handler.run(check, ctx);
+      return { ...result, verdict: checkVerdict(result) };
+    } catch (error) {
+      return { requirement: check, pass: false, verdict: 'unavailable', error: String(error) };
+    }
   }
 
   // Should never be reached due to the validation above, but keep as a fallback.
@@ -157,27 +171,26 @@ async function routeUnifiedCheck(check: string, ctx: CheckContext): Promise<Chec
 
   return {
     requirement: check,
-    pass: true,
-    error: `Warning: Unexpected requirement type '${check}' - step allowed to proceed`,
+    pass: mode === 'pre',
+    verdict: 'invalid',
+    error: `Warning: Unexpected requirement type '${check}' - ${mode === 'pre' ? 'step allowed to proceed' : 'verification refused'}`,
     context: null,
   };
 }
 
 async function runUnifiedChecks(
-  checksString: string,
+  checksString: ConditionInput,
   mode: CheckMode,
   ctx: CheckContext
 ): Promise<RequirementsCheckResult> {
-  const checks: string[] = checksString
-    .split(',')
-    .map((c) => c.trim())
-    .filter(Boolean);
+  const checks = conditionTokens(checksString);
 
-  const results = await Promise.all(checks.map((check) => routeUnifiedCheck(check, ctx)));
+  const results = await Promise.all(checks.map((check) => routeUnifiedCheck(check, ctx, mode)));
 
   return {
-    requirements: checksString,
+    requirements: conditionLabel(checksString),
     pass: results.every((r) => r.pass),
+    verdict: combineCheckVerdicts(results),
     error: results,
   };
 }
@@ -203,14 +216,15 @@ async function executeChecksWithRetry(
 
   if (!requirements) {
     return {
-      requirements,
+      requirements: conditionLabel(requirements),
       pass: true,
+      verdict: 'satisfied',
       error: [],
     };
   }
 
-  const timeoutKey = `${checkType}-retry-${requirements}-${retryCount}`;
-  const errorTimeoutKey = `${checkType}-retry-error-${requirements}-${retryCount}`;
+  const timeoutKey = `${checkType}-retry-${JSON.stringify(requirements)}-${retryCount}`;
+  const errorTimeoutKey = `${checkType}-retry-error-${JSON.stringify(requirements)}-${retryCount}`;
 
   try {
     const result = await runUnifiedChecks(requirements, mode, {
@@ -272,11 +286,12 @@ async function executeChecksWithRetry(
     // If we've exhausted retries, return error result
     const checkTypeName = checkType.charAt(0).toUpperCase() + checkType.slice(1);
     return {
-      requirements,
+      requirements: conditionLabel(requirements),
       pass: false,
+      verdict: 'unavailable',
       error: [
         {
-          requirement: requirements,
+          requirement: conditionLabel(requirements),
           pass: false,
           error: `${checkTypeName} check failed after ${maxRetries + 1} attempts: ${error}`,
           context: { error: String(error), retryCount, maxRetries },
@@ -310,7 +325,7 @@ export async function checkPostconditions(options: RequirementsCheckOptions): Pr
  */
 export function validateInteractiveRequirements(
   props: {
-    requirements?: string;
+    requirements?: ConditionInput;
     refTarget?: string;
     stepId?: string;
     originalHTML?: string;
@@ -325,7 +340,7 @@ export function validateInteractiveRequirements(
   }
 
   // Check if requirements include 'exists-reftarget'
-  const requirementList = requirements.split(',').map((r) => r.trim());
+  const requirementList = conditionTokens(requirements);
   const hasExistsReftarget = requirementList.includes('exists-reftarget');
 
   // If 'exists-reftarget' is present but no refTarget, this is an impossible configuration

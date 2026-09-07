@@ -100,3 +100,5 @@ export type {
 // Re-export tool types from @grafana/assistant v0.1.7+ for custom tool creation
 export { createTool } from '@grafana/assistant';
 export type { InlineToolRunnable, ToolInvokeOptions, ToolOutput } from '@grafana/assistant';
+
+export { OutcomeAssistantContext } from './OutcomeAssistantContext';

@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { css, cx, keyframes } from '@emotion/css';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
@@ -33,7 +34,7 @@ export interface InteractiveQuizProps {
   /** Max attempts for max-attempts mode */
   maxAttempts?: number;
   /** Requirements for this quiz */
-  requirements?: string;
+  requirements?: ConditionInput;
   /** Whether quiz can be skipped */
   skippable?: boolean;
   /**

@@ -1,3 +1,4 @@
+import { GuideOutcomesSchema } from './outcome.schema';
 /**
  * Zod Schemas for Package Types
  *
@@ -64,6 +65,7 @@ export const ContentJsonSchema = z.object({
   id: packageIdSchema,
   title: z.string().min(1, 'Content title is required'),
   blocks: z.array(JsonBlockSchema),
+  outcomes: GuideOutcomesSchema.optional(),
 });
 
 // ============ DEPENDENCY SCHEMAS ============

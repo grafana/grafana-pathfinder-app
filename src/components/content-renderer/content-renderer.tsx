@@ -1,3 +1,4 @@
+import { GuideOutcomePilot } from '../guide-outcomes/GuideOutcomePilot';
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -440,6 +441,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
           beforeContent={beforeContent}
           fullScreenFallbackLocation={fullScreenFallbackLocation}
         />
+        <GuideOutcomePilot content={processedContent} guideId={content.url} />
       </GuideRequirementsProvider>
     </GuideResponseProvider>
   );

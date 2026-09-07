@@ -1,3 +1,4 @@
+import type { ConditionInput } from './requirements.types';
 import type { InternalAction } from './interactive-actions.types';
 
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
@@ -34,6 +35,7 @@ interface CrossTabEnvelope {
 // able to reshape the wire silently. A compile-time guard in
 // cross-tab.types.test.ts forces a conscious update here when they diverge.
 export interface RemoteRequirementError {
+  verdict?: 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
   requirement: string;
   pass: boolean;
   error?: string;
@@ -45,6 +47,7 @@ export interface RemoteRequirementError {
 }
 
 export interface RemoteRequirementResult {
+  verdict?: 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
   requirements: string;
   pass: boolean;
   error: RemoteRequirementError[];
@@ -104,7 +107,7 @@ export interface CheckRequirementsMessage extends CrossTabEnvelope, Partial<Cont
   kind: 'check-requirements';
   requestId: string;
   stepId: string;
-  requirements: string;
+  requirements: ConditionInput;
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
@@ -121,7 +124,7 @@ export interface FixRequirementMessage extends CrossTabEnvelope, Partial<Control
   kind: 'fix-requirement';
   requestId: string;
   stepId: string;
-  requirements: string;
+  requirements: ConditionInput;
   fixType?: string;
   targetHref?: string;
   scrollContainer?: string;
@@ -292,7 +295,8 @@ function isValidCheckRequirements(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
     typeof message.stepId === 'string' &&
-    typeof message.requirements === 'string' &&
+    (typeof message.requirements === 'string' ||
+      (Array.isArray(message.requirements) && message.requirements.every((token) => typeof token === 'string'))) &&
     isOptionalString(message.targetAction) &&
     isOptionalString(message.refTarget) &&
     isOptionalString(message.targetValue)
@@ -303,7 +307,8 @@ function isValidFixRequirement(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
     typeof message.stepId === 'string' &&
-    typeof message.requirements === 'string' &&
+    (typeof message.requirements === 'string' ||
+      (Array.isArray(message.requirements) && message.requirements.every((token) => typeof token === 'string'))) &&
     isOptionalString(message.fixType) &&
     isOptionalString(message.targetHref) &&
     isOptionalString(message.scrollContainer)
@@ -313,6 +318,13 @@ function isValidFixRequirement(message: Record<string, unknown>): boolean {
 // requirement-result / fix-result are replies the controller feeds into its
 // requirements-state path; validate the reply shape so a malformed result can't
 // resolve a pending request with garbage.
+function isOptionalVerdict(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === 'string' && ['satisfied', 'unsatisfied', 'unavailable', 'invalid'].includes(value))
+  );
+}
+
 function isValidRequirementResult(message: Record<string, unknown>): boolean {
   if (typeof message.requestId !== 'string' || typeof message.stepId !== 'string' || !isRecord(message.result)) {
     return false;
@@ -320,12 +332,14 @@ function isValidRequirementResult(message: Record<string, unknown>): boolean {
   const result = message.result;
   return (
     typeof result.requirements === 'string' &&
+    isOptionalVerdict(result.verdict) &&
     typeof result.pass === 'boolean' &&
     Array.isArray(result.error) &&
     result.error.every(
       (e) =>
         isRecord(e) &&
         typeof e.requirement === 'string' &&
+        isOptionalVerdict(e.verdict) &&
         typeof e.pass === 'boolean' &&
         isOptionalString(e.error) &&
         isOptionalString(e.fixType) &&
