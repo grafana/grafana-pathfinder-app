@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 /**
  * Fix handler interfaces.
  *
@@ -32,7 +33,7 @@ export interface FixContext {
   targetHref?: string;
   scrollContainer?: string;
   /** Raw requirements string from the step; used by the navigation handler's legacy fallback. */
-  requirements?: string;
+  requirements?: ConditionInput;
   stepId: string;
   /** May be null if the lazy `import('../interactive-engine')` has not yet resolved. */
   navigationManager: FixHandlerNavigationManager | null;

@@ -97,7 +97,7 @@ describe('input block → parsed element type', () => {
     });
   });
 
-  it('flattens requirements to the comma-separated form the checker takes', () => {
+  it('preserves requirement arrays for the checker', () => {
     const element = firstOf([
       picker({
         dataCheckQuery: 'up',
@@ -105,7 +105,7 @@ describe('input block → parsed element type', () => {
         requirements: ['is-admin', 'has-datasource:prometheus'],
       }),
     ]);
-    expect(element.props.requirements).toBe('is-admin,has-datasource:prometheus');
+    expect(element.props.requirements).toEqual(['is-admin', 'has-datasource:prometheus']);
   });
 
   it('defaults skippable to false, so a blocking check really blocks', () => {

@@ -1,3 +1,4 @@
+import type { ConditionInput } from './requirements.types';
 /**
  * Type definitions for Collaborative Live Learning Sessions
  *
@@ -137,7 +138,7 @@ export interface InteractiveAction {
     targetAction: string;
     refTarget?: string;
     targetValue?: string;
-    requirements?: string;
+    requirements?: ConditionInput;
   }>;
 }
 

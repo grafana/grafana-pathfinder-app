@@ -308,7 +308,7 @@ export async function checkPostconditions(options: RequirementsCheckOptions): Pr
  */
 export function validateInteractiveRequirements(
   props: {
-    requirements?: string;
+    requirements?: ConditionInput;
     refTarget?: string;
     stepId?: string;
     originalHTML?: string;
@@ -323,7 +323,7 @@ export function validateInteractiveRequirements(
   }
 
   // Check if requirements include 'exists-reftarget'
-  const requirementList = requirements.split(',').map((r) => r.trim());
+  const requirementList = conditionTokens(requirements);
   const hasExistsReftarget = requirementList.includes('exists-reftarget');
 
   // If 'exists-reftarget' is present but no refTarget, this is an impossible configuration

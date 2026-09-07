@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 /**
  * Input Block Renderer
  *
@@ -39,7 +40,7 @@ export interface InputBlockProps {
   /** Message shown when validation fails */
   validationMessage?: string;
   /** Requirements for this input */
-  requirements?: string;
+  requirements?: ConditionInput;
   /** Whether input can be skipped */
   skippable?: boolean;
   /** Children elements (rendered prompt content) */

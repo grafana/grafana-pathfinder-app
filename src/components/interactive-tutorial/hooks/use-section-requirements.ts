@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../../types/requirements.types';
 /**
  * `useSectionRequirements` — owns section-level requirements polling.
  *
@@ -46,7 +47,7 @@ interface SectionRequirementsResult {
 }
 
 interface SectionRequirementsData {
-  requirements: string;
+  requirements: ConditionInput;
   targetAction: string;
   refTarget: string;
   targetValue: string | undefined;
@@ -66,7 +67,7 @@ export interface SectionRequirementsStatus {
 }
 
 export interface UseSectionRequirementsArgs {
-  requirements: string | undefined;
+  requirements: ConditionInput | undefined;
   sectionId: string;
   title: string | undefined;
   hints?: string;

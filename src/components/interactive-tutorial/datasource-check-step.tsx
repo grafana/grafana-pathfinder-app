@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 /**
  * The datasource picker when its author asked a failing check to block. The
  * advisory form of the same check stays passive inside `InputBlock`; only this
@@ -28,7 +29,7 @@ export interface DatasourceCheckStepProps {
   failureMessage?: string;
   timeFrom?: string;
   timeTo?: string;
-  requirements?: string;
+  requirements?: ConditionInput;
   skippable?: boolean;
   hints?: string;
   children?: React.ReactNode;

@@ -1,3 +1,5 @@
+import type { ConditionInput } from '../types/requirements.types';
+import { conditionTokens } from '../lib/condition-input';
 // Requirements that probe THIS tab's live DOM / URL / navigation and therefore
 // cannot be evaluated from a controller tab driving a different Grafana tab.
 // Session / permission requirements (is-admin, has-datasources, dashboard-exists,
@@ -13,16 +15,12 @@ function isTabLocal(token: string): boolean {
   return TAB_LOCAL_REQUIREMENTS.some((id) => token === id || token.startsWith(`${id}:`));
 }
 
-export function stripTabLocalRequirements(requirements: string | undefined): string | undefined {
+export function stripTabLocalRequirements(requirements: ConditionInput | undefined): ConditionInput | undefined {
   if (!requirements) {
     return requirements;
   }
-  return requirements
-    .split(',')
-    .map((token) => token.trim())
-    .filter(Boolean)
-    .filter((token) => !isTabLocal(token))
-    .join(',');
+  const tokens = conditionTokens(requirements).filter((token) => !isTabLocal(token));
+  return typeof requirements === 'string' ? tokens.join(',') : tokens;
 }
 
 // Requirements answered from per-guide state that only the renderer owning the
@@ -38,17 +36,14 @@ function isGuideScoped(token: string): boolean {
   return GUIDE_SCOPED_REQUIREMENT_PREFIXES.some((prefix) => token.startsWith(prefix));
 }
 
-export function splitGuideScopedRequirements(requirements: string | undefined): {
-  guideScoped: string;
-  remaining: string;
+export function splitGuideScopedRequirements(requirements: ConditionInput | undefined): {
+  guideScoped: ConditionInput;
+  remaining: ConditionInput;
 } {
-  const tokens = (requirements ?? '')
-    .split(',')
-    .map((token) => token.trim())
-    .filter(Boolean);
-
-  return {
-    guideScoped: tokens.filter(isGuideScoped).join(','),
-    remaining: tokens.filter((token) => !isGuideScoped(token)).join(','),
-  };
+  const tokens = conditionTokens(requirements);
+  const guideScoped = tokens.filter(isGuideScoped);
+  const remaining = tokens.filter((token) => !isGuideScoped(token));
+  return typeof requirements === 'string' || requirements === undefined
+    ? { guideScoped: guideScoped.join(','), remaining: remaining.join(',') }
+    : { guideScoped, remaining };
 }
