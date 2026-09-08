@@ -608,6 +608,35 @@ describe('ChallengeBlock', () => {
       expect(mockMarkSkipped).toHaveBeenCalled();
       expect(disconnect).not.toHaveBeenCalled();
     });
+
+    it('skip in standard mode resets to ready rather than idle when completion is cleared', () => {
+      mockTerminalCtx({ status: 'disconnected' });
+
+      // Drive the checker through one check cycle so Skip is legitimately shown.
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: true }));
+      const skipProps = {
+        ...baseProps,
+        mode: 'standard' as const,
+        skippable: true,
+        stepId: 'ch-std-skip-reset',
+        successCriteria: 'has-dashboard-named:My Dashboard',
+      };
+      const { rerender } = render(<ChallengeBlock {...skipProps} />);
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: false }));
+      rerender(<ChallengeBlock {...skipProps} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      mockedUseStepCompletion.mockReturnValue({ completed: true, reason: 'skipped' });
+      rerender(<ChallengeBlock {...skipProps} />);
+      expect(screen.getByText(/challenge skipped/i)).toBeInTheDocument();
+
+      mockedUseStepCompletion.mockReturnValue({ completed: false, reason: null });
+      rerender(<ChallengeBlock {...skipProps} />);
+
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
   });
 
   // Issue #1541: TerminalProvider mounts unconditionally while TerminalPanel —

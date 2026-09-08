@@ -338,8 +338,8 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setupStartedRef.current = false;
     setSetupProgress(null);
     setErrorDetail('');
-    setState('idle');
-  }, []);
+    setState(mode === 'standard' ? 'ready' : 'idle');
+  }, [mode]);
 
   // Every exec is pinned to the session the caller resolved, never to whatever
   // the last render happened to hold: starting a challenge against a different
