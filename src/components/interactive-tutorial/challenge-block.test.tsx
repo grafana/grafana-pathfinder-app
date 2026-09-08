@@ -139,6 +139,7 @@ interface MockCheckerOverrides {
   isChecking?: boolean;
   explanation?: string | null | undefined;
   canSkip?: boolean;
+  resetStep?: jest.Mock;
 }
 
 function mockCheckerState(overrides: MockCheckerOverrides = {}) {
@@ -654,6 +655,40 @@ describe('ChallengeBlock', () => {
 
       expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    it('clears latched cancel on subsequent Check my work so retry succeeds after Skip in standard mode', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        error: [],
+      });
+
+      const skipProps = {
+        ...baseProps,
+        mode: 'standard' as const,
+        skippable: true,
+        stepId: 'ch-std-skip-retry',
+        successCriteria: 'has-dashboard-named:My Dashboard',
+      };
+      const { rerender } = render(<ChallengeBlock {...skipProps} />);
+
+      // Skip sets cancelRequestedRef.current = true via handleCancel
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      // Simulate store cleared on subsequent retry
+      mockedUseStepCompletion.mockReturnValue({ completed: false, reason: null });
+      rerender(<ChallengeBlock {...skipProps} />);
+
+      // Check my work should clear cancelRequestedRef and reach solved, not stay stuck on Checking
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/checking your work/i)).not.toBeInTheDocument();
     });
   });
 
@@ -1441,6 +1476,31 @@ describe('ChallengeBlock', () => {
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
       });
+    });
+
+    it('resets local state and checker when resetTrigger increments after a skip', () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      const mockResetStep = jest.fn();
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled', resetStep: mockResetStep }));
+
+      const skipProps = {
+        ...baseProps,
+        mode: 'standard' as const,
+        skippable: true,
+        stepId: 'ch-reset-trigger',
+        resetTrigger: 0,
+      };
+      const { rerender } = render(<ChallengeBlock {...skipProps} />);
+
+      // Skip the challenge
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      // Parent section clears completion store and increments resetTrigger
+      mockedUseStepCompletion.mockReturnValue({ completed: false, reason: null });
+      rerender(<ChallengeBlock {...skipProps} resetTrigger={1} />);
+
+      expect(mockResetStep).toHaveBeenCalledWith({ skipStoreWrite: true });
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
     });
   });
 });

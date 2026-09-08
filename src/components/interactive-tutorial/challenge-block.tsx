@@ -99,6 +99,7 @@ export interface ChallengeBlockProps {
   totalSteps?: number;
   sectionId?: string;
   disabled?: boolean;
+  resetTrigger?: number;
 }
 
 let challengeCounter = 0;
@@ -221,6 +222,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   onStepComplete,
   sectionId,
   disabled = false,
+  resetTrigger,
 }) => {
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
@@ -249,6 +251,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     skippable,
     sectionId,
   });
+  const { resetStep: checkerResetStep } = checker;
 
   const isEnabled = checker.isEnabled && !disabled;
 
@@ -358,6 +361,20 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setErrorDetail('');
     setState(mode === 'standard' ? 'ready' : 'idle');
   }, [mode]);
+
+  // Handle reset trigger from parent section.
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset challenge state when parent section increments resetTrigger */
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      cancelRequestedRef.current = false;
+      setHintsRevealed(0);
+      resetToIdle();
+      if (checkerResetStep) {
+        checkerResetStep({ skipStoreWrite: true });
+      }
+    }
+  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps -- reset challenge state only when parent section increments resetTrigger
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Every exec is pinned to the session the caller resolved, never to whatever
   // the last render happened to hold: starting a challenge against a different
@@ -577,6 +594,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   }, [terminalCtx, codaGate, codaEligibility, vmTemplate, vmScenario, vmApp, runSetup, resetToIdle]);
 
   const handleCheckMyWork = useCallback(async () => {
+    cancelRequestedRef.current = false;
     setState('checking');
     setErrorDetail('');
     try {
