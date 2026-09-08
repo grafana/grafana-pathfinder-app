@@ -5,6 +5,7 @@ import type { PathfinderE2EControlV1 } from '../../../types/window-globals';
 import { resetGuideProgress } from './resetGuideProgress';
 
 export const E2E_GUIDE_URL = 'bundled:e2e-test';
+// Bump only when the control shape or reset completion guarantees become incompatible with existing runners.
 export const PATHFINDER_E2E_CONTROL_VERSION = 1;
 
 interface UseE2EResetGuideCapabilityParams {

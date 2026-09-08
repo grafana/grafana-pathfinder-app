@@ -13,6 +13,7 @@ const REPLACEMENT_TIMEOUT_MS = 15_000;
 const RESET_POSTCONDITION_ATTEMPTS = 5;
 const RESET_POSTCONDITION_POLL_MS = 250;
 const HYBRID_STORAGE_TIMESTAMP_SUFFIX = '__timestamp';
+// Bump only when the control shape or reset completion guarantees become incompatible with existing runners.
 const PATHFINDER_E2E_CONTROL_VERSION = 1;
 
 type StepHandle = ElementHandle<HTMLElement | SVGElement>;
