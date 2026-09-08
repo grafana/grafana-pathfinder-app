@@ -11,6 +11,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 WORKDIR /app
 
 COPY package.json package-lock.json .npmrc ./
+COPY vendor/faro-instrumentation-replay-2.11.0-2265.tar.gz ./vendor/
 RUN npm ci --no-audit --no-fund \
     && npx playwright install --with-deps chromium \
     && npm cache clean --force \
