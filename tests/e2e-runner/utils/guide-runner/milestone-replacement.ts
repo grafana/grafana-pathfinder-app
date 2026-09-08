@@ -13,8 +13,8 @@ const REPLACEMENT_TIMEOUT_MS = 15_000;
 const RESET_POSTCONDITION_ATTEMPTS = 5;
 const RESET_POSTCONDITION_POLL_MS = 250;
 const HYBRID_STORAGE_TIMESTAMP_SUFFIX = '__timestamp';
-// Bump only when the control shape or reset completion guarantees become incompatible with existing runners.
-const PATHFINDER_E2E_CONTROL_VERSION = 1;
+// Add a version only after this runner implements that version's control contract.
+const SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS: readonly number[] = [1];
 
 type StepHandle = ElementHandle<HTMLElement | SVGElement>;
 type WrappedTransitionKind = Exclude<FatalTransitionKind, 'badge-obstruction' | 'step-detach-failed'>;
@@ -121,7 +121,7 @@ async function requireStoredCompletionStaysAbsent(page: Page): Promise<void> {
 }
 
 async function resetWithE2ECapability(page: Page): Promise<boolean> {
-  const result = await page.evaluate(async (expectedVersion) => {
+  const result = await page.evaluate(async (supportedVersions) => {
     const control = (
       window as Window & {
         __pathfinderE2E?: {
@@ -133,7 +133,7 @@ async function resetWithE2ECapability(page: Page): Promise<boolean> {
     if (!control) {
       return { status: 'unavailable' } as const;
     }
-    if (control.version !== expectedVersion) {
+    if (typeof control.version !== 'number' || !supportedVersions.includes(control.version)) {
       return { status: 'unsupported', version: String(control.version) } as const;
     }
     if (typeof control.resetActiveGuide !== 'function') {
@@ -148,7 +148,7 @@ async function resetWithE2ECapability(page: Page): Promise<boolean> {
         message: error instanceof Error ? error.message : String(error),
       } as const;
     }
-  }, PATHFINDER_E2E_CONTROL_VERSION);
+  }, SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS);
 
   if (result.status === 'unavailable') {
     return false;
