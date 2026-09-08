@@ -37,7 +37,8 @@ node -v && npm -v && go version && docker --version && mage --version
 ### Build and run
 
 ```bash
-npm install            # installs frontend deps and triggers husky hook setup
+npm install            # frontend deps only; .npmrc sets ignore-scripts=true
+npm run prepare        # install the husky git hooks (once, after a fresh clone)
 npm run build:all      # frontend + Linux/ARM64 backend (what docker-compose mounts)
 npm run server         # build:all + docker compose up --build
 ```
@@ -96,7 +97,9 @@ The project ships with `.eslintrc`, `.prettierrc.js`, and `tsconfig.json` config
 - **Prettier — Code formatter** (`esbenp.prettier-vscode`) — set as default formatter, format on save.
 - **Go** (`golang.go`) — for backend work.
 
-A husky pre-commit hook runs `lint-staged`, which applies Prettier to staged `.ts`/`.tsx`/`.js`/`.json`/`.yaml`/`.md` files automatically.
+A husky pre-commit hook runs `lint-staged`, which applies `eslint --fix` then Prettier to
+staged `.ts`/`.tsx`/`.js`/`.mjs` files, and Prettier alone to staged
+`.json`/`.yaml`/`.md` files.
 
 ## First-week reading list
 
@@ -135,7 +138,7 @@ go install github.com/magefile/mage@latest
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-### Husky pre-commit hook fails
+### Husky pre-commit hook fails or blocks the commit
 
 `npm run check` reproduces the failure locally. Fix the root cause; do not bypass with `--no-verify`.
 
