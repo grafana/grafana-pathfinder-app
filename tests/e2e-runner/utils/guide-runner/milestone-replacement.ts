@@ -13,6 +13,7 @@ const REPLACEMENT_TIMEOUT_MS = 15_000;
 const RESET_POSTCONDITION_ATTEMPTS = 5;
 const RESET_POSTCONDITION_POLL_MS = 250;
 const HYBRID_STORAGE_TIMESTAMP_SUFFIX = '__timestamp';
+const PATHFINDER_E2E_CONTROL_VERSION = 1;
 
 type StepHandle = ElementHandle<HTMLElement | SVGElement>;
 type WrappedTransitionKind = Exclude<FatalTransitionKind, 'badge-obstruction' | 'step-detach-failed'>;
@@ -116,6 +117,54 @@ async function requireStoredCompletionStaysAbsent(page: Page): Promise<void> {
       await page.waitForTimeout(RESET_POSTCONDITION_POLL_MS);
     }
   }
+}
+
+async function resetWithE2ECapability(page: Page): Promise<boolean> {
+  const result = await page.evaluate(async (expectedVersion) => {
+    const control = (
+      window as Window & {
+        __pathfinderE2E?: {
+          version?: unknown;
+          resetActiveGuide?: unknown;
+        };
+      }
+    ).__pathfinderE2E;
+    if (!control) {
+      return { status: 'unavailable' } as const;
+    }
+    if (control.version !== expectedVersion) {
+      return { status: 'unsupported', version: String(control.version) } as const;
+    }
+    if (typeof control.resetActiveGuide !== 'function') {
+      return { status: 'rejected', message: 'resetActiveGuide is not callable' } as const;
+    }
+    try {
+      await control.resetActiveGuide();
+      return { status: 'reset' } as const;
+    } catch (error) {
+      return {
+        status: 'rejected',
+        message: error instanceof Error ? error.message : String(error),
+      } as const;
+    }
+  }, PATHFINDER_E2E_CONTROL_VERSION);
+
+  if (result.status === 'unavailable') {
+    return false;
+  }
+  if (result.status === 'unsupported') {
+    throw new FatalTransitionError(
+      'reset-ambiguous',
+      `The Pathfinder E2E reset control has unsupported version ${result.version}`
+    );
+  }
+  if (result.status === 'rejected') {
+    throw new FatalTransitionError(
+      'reset-ambiguous',
+      `The Pathfinder E2E reset control rejected reset: ${result.message}`
+    );
+  }
+  return true;
 }
 
 async function requireEmptyE2EProgressStorage(page: Page): Promise<void> {
@@ -380,7 +429,17 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
 
   await dismissBadgeCelebrations(page);
   let stepsBeforeReset: StepHandle[] = [];
-  if (storage.hasStoredCompletion) {
+  let usedE2ECapability = false;
+  try {
+    usedE2ECapability = await resetWithE2ECapability(page);
+    if (usedE2ECapability) {
+      await requireEmptyE2EProgressStorage(page);
+    }
+  } catch (error) {
+    throw transitionFailure('reset-ambiguous', 'The plugin-owned E2E reset failed', error);
+  }
+
+  if (!usedE2ECapability && storage.hasStoredCompletion) {
     const resetButton = page.getByRole('button', { name: 'Reset guide', exact: true });
     try {
       await resetButton.waitFor({ state: 'visible', timeout: REPLACEMENT_TIMEOUT_MS });
@@ -394,7 +453,7 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
         error
       );
     }
-  } else {
+  } else if (!usedE2ECapability) {
     try {
       await clearNoCompletionResidue(page);
       await requireEmptyE2EProgressStorage(page);

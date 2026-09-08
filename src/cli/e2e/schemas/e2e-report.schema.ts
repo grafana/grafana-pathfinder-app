@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const E2E_REPORT_SCHEMA_VERSION = '1.0.0' as const;
+export const E2E_REPORT_SCHEMA_VERSION = '1.1.0' as const;
 
 export const E2E_REPORT_SCHEMA_ID =
   `https://grafana.com/schemas/pathfinder/e2e-test-report-${E2E_REPORT_SCHEMA_VERSION}.json` as const;
@@ -31,10 +31,18 @@ export const E2EErrorCodeSchema = z.enum([
   'PLAYWRIGHT_SPAWN_FAILED',
   'NO_CAPACITY',
   'REPORT_MISSING',
+  'TRANSITION_FAILED',
   'UNKNOWN',
 ]);
 
 export const ErrorClassificationSchema = z.enum(['content-drift', 'product-regression', 'infrastructure', 'unknown']);
+export const E2ETransitionKindSchema = z.enum([
+  'badge-obstruction',
+  'guide-load-ambiguous',
+  'reset-ambiguous',
+  'tab-close-failed',
+  'step-detach-failed',
+]);
 
 // ============================================
 // Shared sub-schemas
@@ -152,6 +160,7 @@ export const E2ETestReportSchema = z
     schemaVersion: z.literal(E2E_REPORT_SCHEMA_VERSION),
     outcome: E2EExecutionOutcomeSchema,
     errorCode: E2EErrorCodeSchema.optional(),
+    transitionKind: E2ETransitionKindSchema.optional(),
     errorMessage: z.string().optional(),
     runner: RunnerProvenanceSchema,
     startedAt: z.iso.datetime(),
@@ -226,6 +235,7 @@ export const MultiGuideReportSchema = z
 
 export type E2EExecutionOutcome = z.infer<typeof E2EExecutionOutcomeSchema>;
 export type E2EErrorCode = z.infer<typeof E2EErrorCodeSchema>;
+export type E2ETransitionKind = z.infer<typeof E2ETransitionKindSchema>;
 export type ErrorClassification = z.infer<typeof ErrorClassificationSchema>;
 export type RunnerProvenance = z.infer<typeof RunnerProvenanceSchema>;
 export type ReportTarget = z.infer<typeof ReportTargetSchema>;

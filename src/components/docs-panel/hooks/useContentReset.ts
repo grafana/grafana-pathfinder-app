@@ -18,11 +18,9 @@ import {
   enrichWithStepContext,
 } from '../../../lib/analytics';
 import { logger } from '../../../lib/logging';
-import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
-import { StorageEvents } from '../../../lib/event-names';
-import { evictContentCache } from '../../../global-state/completion-store';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
+import { resetGuideProgress } from './resetGuideProgress';
 
 interface UseContentResetOptions {
   model: DocsPanelModelOperations;
@@ -56,24 +54,16 @@ export function useContentReset({ model }: UseContentResetOptions) {
         );
 
         // Step 2: Clear storage (async, sequential)
-        await interactiveStepStorage.clearAllForContent(progressKey);
-        await interactiveCompletionStorage.clear(progressKey);
-
         // Step 2b: Evict the completion store's in-memory cache for this
         // content key. Without this, `useStepCompletion` / `useSectionCompletion`
         // subscribers would keep returning the prior completion snapshot
         // until the section components remount — the storage clear alone
         // doesn't invalidate the in-memory state.
-        evictContentCache(progressKey);
-
         // Step 3: Dispatch cross-component event.
         // Notifies the recommendations panel to refresh and `useGuideProgressState`
         // to clear its `hasInteractiveProgress` flag for this contentKey.
-        window.dispatchEvent(
-          new CustomEvent(StorageEvents.InteractiveProgressCleared, {
-            detail: { contentKey: progressKey },
-          })
-        );
+
+        await resetGuideProgress(progressKey);
 
         // Step 4: Reload content to reset UI state. `internal_reload` is
         // aligned-by-construction, so the implied-0th-step evaluator won't

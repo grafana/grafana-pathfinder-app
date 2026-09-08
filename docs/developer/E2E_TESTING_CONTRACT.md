@@ -57,18 +57,36 @@ Before each later runnable milestone, the runner uses this replacement sequence:
 2. It opens the Pathfinder panel at the prior location.
 3. It activates the exact E2E tab that the previous milestone opened.
 4. It dismisses Pathfinder badge celebrations through bounded DOM event dispatch.
-5. It inspects stored step completion for `bundled:e2e-test`.
-6. If completion exists, it captures step roots and clicks the existing `Reset guide` control.
-7. It waits for `interactive-progress-cleared`.
-8. If completion does not exist, it clears only namespaced residue and the E2E percentage entry.
-9. It captures current step roots and closes the E2E guide tab.
-10. It waits until all captured step roots detach.
-11. After the acknowledged reset, it requires completed step IDs to remain absent during a bounded post-close check.
-12. It removes matching residue that the legacy product reload recreated.
-13. It navigates to the authored starting location only when necessary.
-14. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
-15. It dispatches `pathfinder-auto-open-docs` and records the new tab ID.
-16. It waits for the replacement content before step discovery.
+5. If `window.__pathfinderE2E` exists, it requires version 1 and calls `resetActiveGuide()`.
+6. It requires empty E2E progress storage before tab closure.
+7. If the control is absent, it uses the legacy reset sequence below.
+8. It captures current step roots and closes the E2E guide tab.
+9. It waits until all captured step roots detach.
+10. It navigates to the authored starting location only when necessary.
+11. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
+12. It dispatches `pathfinder-auto-open-docs` and records the new tab ID.
+13. It waits for the replacement content before step discovery.
+
+The plugin exposes `window.__pathfinderE2E` only while the exact `bundled:e2e-test` guide is active.
+
+Version 1 contains one parameterless method: `resetActiveGuide(): Promise<void>`.
+
+The method clears step, collapse, acknowledgment, done, percentage, and in-memory completion state. It emits `interactive-progress-cleared`.
+
+The method does not reload guide content or Grafana. It preserves other guide progress and all non-progress application state.
+
+The plugin removes the control when another tab becomes active or the panel unmounts.
+
+An unsupported version or rejected reset is a fatal transition error. The runner does not use the legacy path in these cases.
+
+If the control is absent, the runner uses this legacy sequence:
+
+1. It inspects stored step completion for `bundled:e2e-test`.
+2. If completion exists, it captures step roots and clicks `Reset guide`.
+3. It waits for `interactive-progress-cleared`.
+4. If completion does not exist, it clears namespaced residue and the E2E percentage entry.
+5. After tab closure, it requires completed step IDs to remain absent during a bounded check.
+6. It removes matching residue that the legacy product reload recreated.
 
 The runner uses stored completion for the reset decision. It does not use the authored interactive-block count.
 
@@ -78,7 +96,9 @@ If no prior tab opened, the runner clears stored E2E residue before it continues
 
 A page reload can clear the active-tab globals. The recorded tab ID lets the runner reactivate a visible or overflowed E2E tab.
 
-The tab close control uses `docs-panel-tab-close-${tabId}`. This test ID is part of the shared runner contract.
+The tab close control uses `docs-panel-tab-close-${tabId}`. The reset control uses `docs-panel-reset-guide-button`.
+
+Both test IDs are part of the shared runner contract.
 
 The standalone runner and first shared milestone can reload once during panel recovery. A later milestone never reloads during recovery.
 
@@ -100,7 +120,11 @@ Direct no-completion cleanup does not evict the mounted cache. It is not a gener
 
 The same page, browser context, cookies, session storage, form values, and application memory remain active.
 
-This is a runner-only contract. The installed Pathfinder frontend and `bundled:e2e-test` loader remain unchanged.
+The legacy fallback remains until all supported Pathfinder versions provide reset control version 1.
+
+Fatal transitions use report error code `TRANSITION_FAILED`. The optional `transitionKind` uses the runner's bounded fatal-transition values.
+
+The same code and kind appear on each unrun milestone that the fatal transition stops.
 
 If this handshake changes, update both runner specs, runner contract tests, and this document in one change.
 

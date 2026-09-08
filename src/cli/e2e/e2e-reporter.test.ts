@@ -149,6 +149,41 @@ describe('versioned report contract', () => {
     expect(fail.outcome).toBe('failed');
     expect(fail.errorCode).toBe('MANDATORY_FAILURE');
   });
+
+  it('includes typed fatal transition metadata', () => {
+    const report = generateReport({
+      ...ranGuide('transition-failed'),
+      outcome: 'infrastructure_error',
+      errorCode: 'TRANSITION_FAILED',
+      transitionKind: 'tab-close-failed',
+      errorMessage: 'The prior guide tab did not close',
+      results: [],
+      aborted: true,
+    });
+
+    expect(report).toMatchObject({
+      schemaVersion: '1.1.0',
+      outcome: 'infrastructure_error',
+      errorCode: 'TRANSITION_FAILED',
+      transitionKind: 'tab-close-failed',
+    });
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+    expect(E2ETestReportSchema.safeParse({ ...report, transitionKind: 'unknown-transition' }).success).toBe(false);
+  });
+
+  it('accepts a current report without transitionKind', () => {
+    const report = generateReport({
+      ...ranGuide('missing-report'),
+      outcome: 'infrastructure_error',
+      errorCode: 'REPORT_MISSING',
+      errorMessage: 'The runner did not write a report',
+      results: [],
+      aborted: true,
+    });
+
+    expect(report.transitionKind).toBeUndefined();
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+  });
 });
 
 describe('report outcome classification', () => {
@@ -235,7 +270,7 @@ describe('writeReport self-validation', () => {
   });
 
   it('still writes a diagnostic report when validation fails', () => {
-    const invalid = { schemaVersion: '1.0.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
+    const invalid = { schemaVersion: '1.1.0', outcome: 'not-a-real-outcome' } as unknown as E2ETestReport;
     const out = join(dir, 'report.json');
 
     const schemaValid = writeReport(invalid, out);

@@ -229,6 +229,41 @@ describe('shared Playwright chain', () => {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it('copies transition metadata to missing milestones during partial-result recovery', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'pathfinder-chain-transition-'));
+    try {
+      const transitionFailure = createMinimalResultsData({
+        guide: { id: 'first', title: 'First', path: '/first.json' },
+        outcome: 'infrastructure_error',
+        errorCode: 'TRANSITION_FAILED',
+        transitionKind: 'reset-ambiguous',
+        errorMessage: 'The reset failed',
+      });
+      const paths = {
+        abortFilePath: join(tempRoot, 'abort.json'),
+        resultsFilePath: join(tempRoot, 'results.json'),
+        traceOutputFilePath: join(tempRoot, 'trace.txt'),
+      };
+      writeFileSync(paths.resultsFilePath, JSON.stringify([transitionFailure]));
+
+      const result = processPlaywrightChainResults(
+        1,
+        { trace: false, targetUrl: 'http://localhost:3000' },
+        paths,
+        guides
+      );
+
+      expect(result.resultsData[1]).toMatchObject({
+        outcome: 'infrastructure_error',
+        errorCode: 'TRANSITION_FAILED',
+        transitionKind: 'reset-ambiguous',
+        results: [],
+      });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('resolveStartingUrl', () => {

@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { ElementHandle, Page } from '@playwright/test';
+
+import { E2E_ENV } from '../../../../src/cli/e2e/e2e-runner-contract';
 import { testIds } from '../../../../src/constants/testIds';
 import { StorageKeys } from '../../../../src/lib/storage-keys';
 
@@ -71,6 +73,11 @@ interface ReplacementHarnessOptions {
   resetRecreatesResidue?: boolean;
   closeError?: Error;
   closeDetachesSteps?: boolean;
+  capability?: {
+    version: number;
+    rejects?: Error;
+    clearsStorage?: boolean;
+  };
 }
 
 function replacementHarness(options: ReplacementHarnessOptions) {
@@ -149,6 +156,25 @@ function replacementHarness(options: ReplacementHarnessOptions) {
   } as unknown as Page;
   (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId = 'tab-1';
   (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = E2E_GUIDE_URL;
+  if (options.capability) {
+    const capability = options.capability;
+    (
+      window as Window & {
+        __pathfinderE2E?: { version: number; resetActiveGuide(): Promise<void> };
+      }
+    ).__pathfinderE2E = {
+      version: capability.version,
+      resetActiveGuide: jest.fn().mockImplementation(async () => {
+        operations.push('capability-reset');
+        if (capability.rejects) {
+          throw capability.rejects;
+        }
+        if (capability.clearsStorage !== false) {
+          clearMatchingE2EStorage();
+        }
+      }),
+    };
+  }
   return { page, operations, resetButton, closeButton, tabButton };
 }
 
@@ -173,6 +199,83 @@ afterEach(() => {
   localStorage.clear();
   delete (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId;
   delete (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl;
+  delete window.__pathfinderE2E;
+});
+
+it('prefers the plugin reset capability and verifies empty storage before close', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 0,
+    capability: { version: 1 },
+  });
+
+  await replacePreviousE2EGuide(harness.page);
+
+  expect(harness.operations).toEqual(['capability-reset', 'close']);
+  expect(harness.resetButton.waitFor).not.toHaveBeenCalled();
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expectMatchingStorageEmpty();
+});
+
+it('uses the plugin reset capability when only no-completion residue exists', async () => {
+  seedNoCompletionResidue();
+  const harness = replacementHarness({
+    resetControlCount: 0,
+    capability: { version: 1 },
+  });
+
+  await replacePreviousE2EGuide(harness.page);
+
+  expect(harness.operations).toEqual(['capability-reset', 'close']);
+  expectMatchingStorageEmpty();
+});
+
+it('fails fatally when the plugin reset capability rejects reset', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: 1, rejects: new Error('Reset failed') },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('Reset failed'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
+});
+
+it('fails fatally for an unsupported plugin reset capability version', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: 2 },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('unsupported version 2'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
+});
+
+it('fails fatally when the plugin reset capability leaves scoped storage', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: 1, clearsStorage: false },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('still has matching progress storage'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
 });
 
 it('waits for reset synchronization before closing and detaches both step generations', async () => {

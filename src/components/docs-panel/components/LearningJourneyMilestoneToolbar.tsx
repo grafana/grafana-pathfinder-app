@@ -211,7 +211,12 @@ export function LearningJourneyMilestoneToolbar({
     <Menu>
       {externalUrl && <Menu.Item label={t('docsPanel.open', 'Open')} icon="external-link-alt" onClick={handleOpen} />}
       {showReset && (
-        <Menu.Item label={t('docsPanel.resetGuide', 'Reset guide')} icon="history-alt" onClick={handleReset} />
+        <Menu.Item
+          label={t('docsPanel.resetGuide', 'Reset guide')}
+          icon="history-alt"
+          testId={testIds.docsPanel.resetGuideButton}
+          onClick={handleReset}
+        />
       )}
       {(externalUrl || showReset) && <Menu.Divider />}
       <Menu.Item

@@ -325,6 +325,10 @@ export function countGuideStatuses(results: GuideRunResult[]): Record<GuideStatu
 
 /** Short parenthetical reason for a guide's per-line listing, if any. */
 export function guideResultReason(result: GuideRunResult): string {
+  if (result.resultsData?.errorCode === 'TRANSITION_FAILED') {
+    const kind = result.resultsData.transitionKind ?? 'unknown';
+    return ` (transition failed: ${kind})`;
+  }
   if (result.status === 'skipped_prereq' && result.failedPrerequisite) {
     return ` (prerequisite "${result.failedPrerequisite}" failed)`;
   }

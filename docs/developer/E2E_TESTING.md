@@ -165,17 +165,27 @@ If a later milestone has an authored location, the runner compares the complete 
 
 Before a later milestone, the runner publishes the prior result. It opens the current panel and activates the recorded E2E tab.
 
-The runner dismisses badge celebrations and inspects stored E2E step completion. It does not use the authored block count for this decision.
+The runner dismisses badge celebrations and checks for `window.__pathfinderE2E`.
 
-If no completed step IDs exist, the runner removes namespaced residue and the E2E percentage entry. Then it closes the tab.
+If version 1 is available, the runner calls `resetActiveGuide()`. This parameterless operation resets only `bundled:e2e-test`.
+
+The operation clears step, collapse, acknowledgment, done, percentage, and in-memory completion state. It emits `interactive-progress-cleared`.
+
+The operation does not reload the guide or Grafana. The runner requires empty E2E progress storage before it closes the tab.
+
+An unsupported control version or a rejected reset is fatal. An absent control starts the legacy fallback.
+
+The fallback inspects stored E2E step completion. It does not use the authored block count.
+
+If no completed step IDs exist, the fallback removes namespaced residue and the E2E percentage entry. Then it closes the tab.
 
 This direct cleanup does not evict a mounted completion cache. It is not a general reset for mounted guide progress.
 
-If no prior tab opened, the runner applies this cleanup regardless of stored completion. It removes a malformed shared percentage record.
+If no prior tab opened, the runner applies direct cleanup regardless of stored completion. It removes a malformed shared percentage record.
 
-If completed step IDs exist, the runner uses the accessible `Reset guide` control. This path supports installed plugins without a stable reset test ID.
+If completed step IDs exist, the fallback uses the accessible `Reset guide` control. This path supports older installed plugins.
 
-The runner waits for `interactive-progress-cleared`. This acknowledgment proves that the legacy reset cleared storage and evicted the completion cache.
+The fallback waits for `interactive-progress-cleared`. This acknowledgment proves that storage and the completion cache were cleared.
 
 The runner closes the prior tab and waits for all captured step roots to detach. This teardown occurs before navigation.
 
@@ -189,7 +199,7 @@ After teardown, the runner navigates only when the authored location differs. Th
 
 Panel bootstrap uses 20 seconds by default. Post-navigation guide loading uses 30 seconds for each attempt.
 
-This flow is runner-only. It works with an installed Pathfinder plugin that supports only the existing `bundled:e2e-test` URL.
+The legacy fallback remains during plugin rollout. It supports Pathfinder versions that only provide the existing `bundled:e2e-test` URL.
 
 An ordinary guide failure adds that guide to the blocked set. Later milestones still run unless a resolved `depends` edge names a blocked guide.
 
@@ -212,9 +222,11 @@ Prior teardown has already removed ambiguous state. Later soft-ordered milestone
 
 Only a 401, a 403, or a login redirect means authentication expired. Network errors, server errors, and browser loss are infrastructure outcomes.
 
-Each planned milestone produces one existing `E2ETestReport`. The reports remain in `MultiGuideReport.reports[]` execution order.
+Each planned milestone produces one `E2ETestReport`. The reports remain in `MultiGuideReport.reports[]` execution order.
 
-The external report schema remains at `1.0.0`. Shared sessions do not add report fields.
+The external report schema is `1.1.0`. Fatal transition reports use `TRANSITION_FAILED` and an optional bounded `transitionKind`.
+
+The runner copies the transition code and kind to each unrun milestone. `REPORT_MISSING` remains for missing reports and lost browser sessions.
 
 Standalone guides, multiple input files, bundled sweeps, and remote repository sweeps keep separate browser contexts. These modes do not share browser state.
 
@@ -270,7 +282,7 @@ Use `--output report.json` to generate a structured report:
 
 ```json
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "outcome": "passed",
   "runner": {
     "name": "pathfinder-e2e-runner",
@@ -302,7 +314,8 @@ The report contract's single source of truth is the Zod schema in `src/cli/e2e/s
 Key contract fields:
 
 - `outcome`: one of `passed`, `failed`, `aborted`, `skipped`, `infrastructure_error`, or `configuration_error`. Multi-guide reports surface `aborted` when any guide's session expired.
-- `errorCode`: structured failure code present on non-passing reports. Notable values: `TIER_MISMATCH` (guide requires a different environment tier), `SKIPPED_PREREQ` (a prerequisite guide failed), `REPORT_MISSING` (Playwright exited but wrote no results file), `AUTH_EXPIRED`, `NO_CAPACITY`, `PLAYWRIGHT_SPAWN_FAILED`.
+- `errorCode`: structured failure code on non-passing reports. `TRANSITION_FAILED` identifies a fatal shared-browser transition. `REPORT_MISSING` identifies a missing report or lost browser session. Other notable values include `TIER_MISMATCH`, `SKIPPED_PREREQ`, `AUTH_EXPIRED`, `NO_CAPACITY`, and `PLAYWRIGHT_SPAWN_FAILED`.
+- `transitionKind`: optional fatal-transition detail. Values cover badge obstruction, guide-load ambiguity, reset ambiguity, tab-close errors, and step-detach errors.
 - `guide.contentDigest`: SHA-256 digest of the exact guide content executed
 - `guide.sourceUrl`: remote package source URL when available
 - `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
@@ -440,7 +453,7 @@ If the backstop expires, the runner closes the page and reports an infrastructur
 
 During step execution, the runner also watches for page crash, page close, context close, and browser disconnect events. An unexpected event stops the active work and writes an `infrastructure_error` report with completed prior steps.
 
-These outcomes use report schema `1.0.0`. They do not add new report error codes.
+These outcomes use report schema `1.1.0`. Fatal shared-browser transitions use `TRANSITION_FAILED`.
 
 ## Troubleshooting
 

@@ -127,10 +127,10 @@ describe('shared guide chain', () => {
     });
 
     expect(runGuide).toHaveBeenCalledTimes(1);
-    expect(outcome.results.map((item) => [item.guide.id, item.outcome, item.errorCode])).toEqual([
-      ['first', 'infrastructure_error', 'REPORT_MISSING'],
-      ['second', 'infrastructure_error', 'REPORT_MISSING'],
-      ['dependent', 'infrastructure_error', 'REPORT_MISSING'],
+    expect(outcome.results.map((item) => [item.guide.id, item.outcome, item.errorCode, item.transitionKind])).toEqual([
+      ['first', 'infrastructure_error', 'TRANSITION_FAILED', 'reset-ambiguous'],
+      ['second', 'infrastructure_error', 'TRANSITION_FAILED', 'reset-ambiguous'],
+      ['dependent', 'infrastructure_error', 'TRANSITION_FAILED', 'reset-ambiguous'],
     ]);
     expect(outcome.results.slice(1).every((item) => item.errorMessage?.includes('fatal shared-browser'))).toBe(true);
   });
@@ -202,7 +202,7 @@ describe('shared guide chain', () => {
 
     const report = generateMultiGuideReport(outcome.results, undefined, { id: 'test-path', type: 'path' });
 
-    expect(report.schemaVersion).toBe('1.0.0');
+    expect(report.schemaVersion).toBe('1.1.0');
     expect(report.reports.map((item) => item.guide.id)).toEqual(['first', 'second', 'dependent']);
     expect(MultiGuideReportSchema.safeParse(report).success).toBe(true);
   });

@@ -5,6 +5,7 @@ export type { UseTabOverflowResult } from './useTabOverflow';
 export { useScrollPositionPreservation } from './useScrollPositionPreservation';
 export type { UseScrollPositionPreservationResult } from './useScrollPositionPreservation';
 export { useContentReset } from './useContentReset';
+export { useE2EResetGuideCapability } from './useE2EResetGuideCapability';
 export { useCustomGuideCatalogueOnOpen } from './useCustomGuideCatalogueOnOpen';
 export { useDevModeLogger } from './useDevModeLogger';
 export type { LogSession } from './useDevModeLogger';
