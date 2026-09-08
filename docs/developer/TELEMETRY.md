@@ -85,8 +85,6 @@ Two consequences of it being default-on. Recordings are only viewable on a stack
 
 The recorder does stop and start within a session, but on the surface lifecycle rather than on the flags. Closing the last Pathfinder surface pauses recording five seconds later, and reopening resumes it immediately. A pause stops rrweb outright and the resume emits a fresh full-DOM snapshot, so each open yields a playable clip rather than orphaned mutations. `inactivityThresholdMs` is deliberately `0`, which turns the SDK's own idle auto-pause off: its paired auto-resume rebinds document-wide interaction listeners and would restart recording on the first mouse move while Pathfinder was closed. Surface state is the sole pause authority — which also means an open panel on an idle tab keeps recording where the SDK default would have paused it after 60 seconds.
 
-This branch demonstrates the public `ReplayInstrumentation.pauseRecording()` and `resumeRecording()` API from [Faro PR #2265](https://github.com/grafana/faro-web-sdk/pull/2265). Until that PR is released, the dependency is a temporary, pinned package built from commit `1eb5e2748b748667591848d9a7e92ff0e4e5c98b` and stored under `vendor/`; remove the package override after the released SDK includes the API.
-
 What that means operationally:
 
 - **The kill switch is "no new recordings"**, not "recording stops now". Budget for the tail of long-lived tabs, now bounded by Pathfinder use rather than tab lifetime: a tab with no surface open stops five seconds after the last close, so the worst case is a docked sidebar left open on an auto-refreshing dashboard overnight.
