@@ -51,11 +51,51 @@ describe('window-global lint contract', () => {
     expect(violation?.severity).toBe(2);
   });
 
+  it('rejects a nested window cast with an identifier-named Pathfinder global', () => {
+    const messages = lintProbe(`
+const __DocsPluginContentKey = '__DocsPluginContentKey';
+void (window as unknown as Record<string, unknown>)[__DocsPluginContentKey];
+`);
+    const violation = messages.find(
+      (message) =>
+        message.ruleId === 'no-restricted-syntax' && message.message.includes('typed Pathfinder window-global contract')
+    );
+
+    expect(messages.filter((message) => message.fatal)).toEqual([]);
+    expect(violation?.severity).toBe(2);
+  });
+
+  it('rejects a nested window cast with a string-literal Pathfinder global', () => {
+    const messages = lintProbe(`void (window as unknown as Record<string, unknown>)['__DocsPluginContentKey'];`);
+    const violation = messages.find(
+      (message) =>
+        message.ruleId === 'no-restricted-syntax' && message.message.includes('typed Pathfinder window-global contract')
+    );
+
+    expect(messages.filter((message) => message.fatal)).toEqual([]);
+    expect(violation?.severity).toBe(2);
+  });
+
+  it('rejects a computed window as any cast for a Pathfinder global', () => {
+    const messages = lintProbe(`void (window as any)['__DocsPluginContentKey'];`);
+    const violation = messages.find(
+      (message) =>
+        message.ruleId === 'no-restricted-syntax' && message.message.includes('typed Pathfinder window-global contract')
+    );
+
+    expect(messages.filter((message) => message.fatal)).toEqual([]);
+    expect(violation?.severity).toBe(2);
+  });
+
   it('allows typed access and unrelated window casts', () => {
     const messages = lintProbe(`
 window.__pathfinderPluginConfig = undefined;
 const bootData = (window as any).grafanaBootData;
+const nestedBootData = (window as unknown as { grafanaBootData: unknown }).grafanaBootData;
+const nestedComputedBootData = (window as unknown as Record<string, unknown>)['grafanaBootData'];
 void bootData;
+void nestedBootData;
+void nestedComputedBootData;
 `);
     const violations = messages.filter(
       (message) =>
