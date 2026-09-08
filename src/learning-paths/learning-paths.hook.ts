@@ -403,7 +403,6 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [progress]
   );
 
-  // Reset a path's progress (clears guides and interactive steps, keeps badges)
   const resetPath = useCallback(
     async (pathId: string): Promise<void> => {
       const path = paths.find((p) => p.id === pathId);
@@ -435,11 +434,9 @@ export function useLearningPaths(): UseLearningPathsReturn {
         await journeyCompletionStorage.clearMany(journeyKeys);
 
         milestoneKeys.forEach((key) => evictContentCache(key));
-        clearedContentKeys = milestoneKeys;
+        clearedContentKeys = [...new Set([...journeyKeys, ...milestoneKeys])];
       } else {
-        // No base URL: either a static bundled path (`bundled:<id>`) or an App
-        // Platform path whose members are `backend-guide:<id>`. We can't tell
-        // them apart from `path.guides` alone, so clear both content schemes.
+        // Member IDs do not distinguish bundled from App Platform content.
         const pathKeys = [`bundled:${path.id}`, `backend-guide:${path.id}`];
         const contentKeys = [
           ...pathKeys,

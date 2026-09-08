@@ -20,6 +20,8 @@ import React from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
+import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { sectionDoneStorage } from '../../lib/user-storage';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -371,6 +373,87 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
         window.removeEventListener('interactive-progress-cleared', handler);
       }
     });
+  });
+
+  describe('section completion notifications', () => {
+    it('clears the persisted done bit before notifying dependent sections of a reset', async () => {
+      renderNoGateSection();
+      await click(complete(STEP_NOGATE));
+      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+
+      let resolveClear!: () => void;
+      const pendingClear = new Promise<void>((resolve) => {
+        resolveClear = resolve;
+      });
+      jest.mocked(sectionDoneStorage.clear).mockImplementationOnce(async (contentKey, sectionId) => {
+        await pendingClear;
+        memoryStore.delete(`section-done::${contentKey}::${sectionId}`);
+      });
+      const sectionEvents: boolean[] = [];
+      const unsubscribe = subscribeProgressEvent((detail) => {
+        if (detail.kind === 'section' && detail.sectionId === SECTION_NOGATE) {
+          sectionEvents.push(detail.completed);
+        }
+      });
+
+      try {
+        await click(redo(STEP_NOGATE));
+        expect(sectionDoneStorage.clear).toHaveBeenLastCalledWith(NON_PREVIEW_KEY, SECTION_NOGATE);
+        expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_NOGATE}`)).toBe(true);
+        expect(sectionEvents).toEqual([]);
+
+        await act(async () => {
+          resolveClear();
+          await pendingClear;
+        });
+
+        expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_NOGATE}`)).toBeUndefined();
+        expect(sectionEvents).toEqual([false]);
+      } finally {
+        resolveClear();
+        unsubscribe();
+      }
+    });
+
+    it.each(['recompletes', 'unmounts'])(
+      'drops a pending reset notification when the section %s',
+      async (transition) => {
+        const view = renderNoGateSection();
+        await click(complete(STEP_NOGATE));
+        await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+
+        let resolveClear!: () => void;
+        const pendingClear = new Promise<void>((resolve) => {
+          resolveClear = resolve;
+        });
+        jest.mocked(sectionDoneStorage.clear).mockReturnValueOnce(pendingClear);
+        const sectionEvents: boolean[] = [];
+        const unsubscribe = subscribeProgressEvent((detail) => {
+          if (detail.kind === 'section' && detail.sectionId === SECTION_NOGATE) {
+            sectionEvents.push(detail.completed);
+          }
+        });
+
+        try {
+          await click(redo(STEP_NOGATE));
+          if (transition === 'recompletes') {
+            await click(complete(STEP_NOGATE));
+          } else {
+            view.unmount();
+          }
+
+          await act(async () => {
+            resolveClear();
+            await pendingClear;
+          });
+
+          expect(sectionEvents).toEqual(transition === 'recompletes' ? [true] : []);
+        } finally {
+          resolveClear();
+          unsubscribe();
+        }
+      }
+    );
   });
 
   describe('guide-wide progress reset', () => {

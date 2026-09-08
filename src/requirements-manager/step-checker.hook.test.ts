@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { checkRequirements } from './requirements-checker.utils';
+import { dispatchProgress } from '../global-state/progress-events';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
 
 // Raise the per-test timeout from jest's 5000ms default. This file exercises
@@ -105,6 +106,77 @@ beforeEach(() => {
     requirements: '',
     error: [],
   });
+});
+
+describe('useStepChecker section dependencies', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('reblocks when a prerequisite section resets and enables again when it completes', async () => {
+    const requirements = 'section-completed:setup';
+    const { result } = await renderStepChecker({ requirements });
+    expect(result.current.isEnabled).toBe(true);
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(250);
+    });
+    mockCheckRequirements.mockClear();
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements,
+      error: [failedRequirement({ requirement: requirements })],
+    });
+
+    await act(async () => {
+      dispatchProgress({ kind: 'step', stepId: 'setup-step', completed: true, reason: 'manual' });
+      dispatchProgress({ kind: 'guide', contentKey: 'guide-a', percentage: 100, hasProgress: true });
+    });
+    expect(mockCheckRequirements).not.toHaveBeenCalled();
+    expect(result.current.isEnabled).toBe(true);
+
+    await act(async () => {
+      dispatchProgress({ kind: 'section', sectionId: 'section-setup', completed: false });
+      await jest.advanceTimersByTimeAsync(1000);
+    });
+    expect(result.current.isEnabled).toBe(false);
+    expect(result.current.isCompleted).toBe(false);
+
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements, error: [] });
+    await act(async () => {
+      dispatchProgress({ kind: 'section', sectionId: 'section-setup', completed: true });
+    });
+    expect(result.current.isEnabled).toBe(true);
+  });
+
+  it.each([
+    { requirements: 'is-admin', completed: false },
+    { requirements: 'section-completed:setup', completed: true },
+  ])(
+    'ignores section events for requirements=$requirements, completed=$completed',
+    async ({ requirements, completed }) => {
+      const { result } = await renderStepChecker({ requirements });
+      if (completed) {
+        act(() => result.current.markCompleted());
+      }
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(250);
+      });
+      mockCheckRequirements.mockClear();
+
+      await act(async () => {
+        dispatchProgress({ kind: 'section', sectionId: 'section-setup', completed: false });
+        dispatchProgress({ kind: 'section', sectionId: 'section-setup', completed: true });
+      });
+
+      expect(mockCheckRequirements).not.toHaveBeenCalled();
+      expect(result.current.isCompleted).toBe(completed);
+    }
+  );
 });
 
 // =============================================================================
