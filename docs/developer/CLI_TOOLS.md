@@ -152,7 +152,8 @@ The validator performs these checks in order:
 2. **Schema compliance** - Types, nesting depth, field names
 3. **Unknown fields** - Warns on unrecognized fields (forward compatibility)
 4. **Condition syntax** - Validates requirements/objectives mini-grammar
-5. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
+5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (the title is rendered separately). This is an error, so the command fails; remove the heading from the block.
+6. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
 
 Example output with condition warnings:
 
@@ -161,6 +162,8 @@ Example output with condition warnings:
   Warning: blocks[2].requirements[0]: Unknown condition type 'typo-requirement'
   Warning: blocks[5].objectives[0]: 'has-datasource:' requires an argument
 ```
+
+Warnings are reported for a file even when that file also has errors.
 
 In strict mode (`--strict`), warnings become errors and cause the command to fail.
 

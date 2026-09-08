@@ -72,6 +72,77 @@ describe('useJsonModeHandlers — JSON paste then preview', () => {
   });
 });
 
+const duplicateHeadingGuide: JsonGuide = {
+  id: 'dup-heading-guide',
+  title: 'Create your first dashboard',
+  blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
+};
+
+describe('useJsonModeHandlers — duplicate leading heading', () => {
+  it('blocks leaving JSON mode for a guide whose blocks[0] duplicates the title', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('json');
+    });
+    act(() => {
+      result.current.jsonMode.handleJsonChange(JSON.stringify(duplicateHeadingGuide, null, 2));
+    });
+    expect(result.current.jsonMode.isJsonValid).toBe(false);
+    expect(
+      result.current.jsonMode.jsonValidationErrors.some((e) => e.message.includes('duplicates the guide title'))
+    ).toBe(true);
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('edit');
+    });
+
+    expect(result.current.editor.state.viewMode).toBe('json');
+  });
+
+  it('lets the author leave once the duplicated heading is removed', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('json');
+    });
+    act(() => {
+      result.current.jsonMode.handleJsonChange(JSON.stringify(duplicateHeadingGuide, null, 2));
+    });
+    act(() => {
+      result.current.jsonMode.handleJsonChange(
+        JSON.stringify({ ...duplicateHeadingGuide, blocks: [{ type: 'markdown', content: 'Welcome!' }] }, null, 2)
+      );
+    });
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('edit');
+    });
+
+    expect(result.current.editor.state.viewMode).toBe('edit');
+    expect(result.current.jsonMode.isJsonValid).toBe(true);
+    expect(result.current.jsonMode.jsonValidationErrors).toHaveLength(0);
+  });
+
+  it('still blocks exit for a genuinely broken guide', () => {
+    const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('json');
+    });
+    act(() => {
+      result.current.jsonMode.handleJsonChange('{ invalid');
+    });
+
+    act(() => {
+      result.current.jsonMode.handleViewModeChange('edit');
+    });
+
+    expect(result.current.editor.state.viewMode).toBe('json');
+    expect(result.current.jsonMode.isJsonValid).toBe(false);
+  });
+});
+
 describe('useJsonModeHandlers — restoreJsonMode', () => {
   it('seeds jsonModeState from the given guide so the JSON pane has something to render', () => {
     const { result } = renderHook(() => useEditorAndJsonMode(oldGuide));
