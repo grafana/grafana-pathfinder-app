@@ -75,6 +75,7 @@ interface ReplacementHarnessOptions {
   capability?: {
     version: number;
     rejects?: Error;
+    hangs?: boolean;
     clearsStorage?: boolean;
   };
 }
@@ -168,6 +169,9 @@ function replacementHarness(options: ReplacementHarnessOptions) {
         if (capability.rejects) {
           throw capability.rejects;
         }
+        if (capability.hangs) {
+          return new Promise<void>(() => undefined);
+        }
         if (capability.clearsStorage !== false) {
           clearMatchingE2EStorage();
         }
@@ -243,6 +247,30 @@ it('fails fatally when the plugin reset capability rejects reset', async () => {
   });
   expect(harness.resetButton.click).not.toHaveBeenCalled();
   expect(harness.closeButton.click).not.toHaveBeenCalled();
+});
+
+it('fails fatally when the plugin reset capability does not settle', async () => {
+  jest.useFakeTimers();
+  try {
+    seedStoredCompletion();
+    const harness = replacementHarness({
+      resetControlCount: 1,
+      capability: { version: 1, hangs: true },
+    });
+
+    const rejection = expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+      name: 'FatalTransitionError',
+      kind: 'reset-ambiguous',
+      message: expect.stringContaining('did not complete within 15000ms'),
+    });
+    await jest.advanceTimersByTimeAsync(15_000);
+    await rejection;
+
+    expect(harness.resetButton.click).not.toHaveBeenCalled();
+    expect(harness.closeButton.click).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 it('fails fatally for an unsupported plugin reset capability version', async () => {

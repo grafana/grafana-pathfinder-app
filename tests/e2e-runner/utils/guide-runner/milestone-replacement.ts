@@ -121,34 +121,53 @@ async function requireStoredCompletionStaysAbsent(page: Page): Promise<void> {
 }
 
 async function resetWithE2ECapability(page: Page): Promise<boolean> {
-  const result = await page.evaluate(async (supportedVersions) => {
-    const control = (
-      window as Window & {
-        __pathfinderE2E?: {
-          version?: unknown;
-          resetActiveGuide?: unknown;
-        };
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const result = await Promise.race([
+    page.evaluate(async (supportedVersions) => {
+      const control = (
+        window as Window & {
+          __pathfinderE2E?: {
+            version?: unknown;
+            resetActiveGuide?: unknown;
+          };
+        }
+      ).__pathfinderE2E;
+      if (!control) {
+        return { status: 'unavailable' } as const;
       }
-    ).__pathfinderE2E;
-    if (!control) {
-      return { status: 'unavailable' } as const;
+      if (typeof control.version !== 'number' || !supportedVersions.includes(control.version)) {
+        return { status: 'unsupported', version: String(control.version) } as const;
+      }
+      if (typeof control.resetActiveGuide !== 'function') {
+        return { status: 'rejected', message: 'resetActiveGuide is not callable' } as const;
+      }
+      try {
+        await control.resetActiveGuide();
+        return { status: 'reset' } as const;
+      } catch (error) {
+        return {
+          status: 'rejected',
+          message: error instanceof Error ? error.message : String(error),
+        } as const;
+      }
+    }, SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS),
+    new Promise<never>((_, reject) => {
+      timeout = setTimeout(
+        () =>
+          reject(
+            new FatalTransitionError(
+              'reset-ambiguous',
+              `The Pathfinder E2E reset control did not complete within ${REPLACEMENT_TIMEOUT_MS}ms`
+            )
+          ),
+        REPLACEMENT_TIMEOUT_MS
+      );
+    }),
+  ]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
     }
-    if (typeof control.version !== 'number' || !supportedVersions.includes(control.version)) {
-      return { status: 'unsupported', version: String(control.version) } as const;
-    }
-    if (typeof control.resetActiveGuide !== 'function') {
-      return { status: 'rejected', message: 'resetActiveGuide is not callable' } as const;
-    }
-    try {
-      await control.resetActiveGuide();
-      return { status: 'reset' } as const;
-    } catch (error) {
-      return {
-        status: 'rejected',
-        message: error instanceof Error ? error.message : String(error),
-      } as const;
-    }
-  }, SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS);
+  });
 
   if (result.status === 'unavailable') {
     return false;
