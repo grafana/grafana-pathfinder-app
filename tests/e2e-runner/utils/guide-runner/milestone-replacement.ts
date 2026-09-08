@@ -367,8 +367,15 @@ async function clearProgressResetProbe(page: Page): Promise<void> {
     .catch(() => undefined);
 }
 
+function legacyResetGuideControl(page: Page) {
+  return page
+    .getByTestId(testIds.docsPanel.resetGuideButton)
+    .or(page.getByRole('button', { name: 'Reset guide', exact: true }))
+    .first();
+}
+
 async function resetInteractiveProgress(page: Page): Promise<void> {
-  const resetButton = page.getByTestId(testIds.docsPanel.resetGuideButton);
+  const resetButton = legacyResetGuideControl(page);
   await armProgressResetProbe(page);
   try {
     await resetButton.click({ timeout: REPLACEMENT_TIMEOUT_MS });
@@ -467,7 +474,7 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
   }
 
   if (!usedE2ECapability && storage.hasStoredCompletion) {
-    const resetButton = page.getByTestId(testIds.docsPanel.resetGuideButton);
+    const resetButton = legacyResetGuideControl(page);
     try {
       await resetButton.waitFor({ state: 'visible', timeout: REPLACEMENT_TIMEOUT_MS });
       stepsBeforeReset = await currentStepHandles(page);

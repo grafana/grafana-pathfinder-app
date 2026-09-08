@@ -66,6 +66,7 @@ function expectMatchingStorageEmpty(): void {
 interface ReplacementHarnessOptions {
   resetControlCount: number;
   resetControlCountBeforeWait?: number;
+  resetTestIdAvailable?: boolean;
   resetSteps?: FakeStepHandle[];
   closeSteps?: FakeStepHandle[];
   resetClearsStorage?: boolean;
@@ -89,34 +90,51 @@ function replacementHarness(options: ReplacementHarnessOptions) {
   const handleQueues = [resetSteps, closeSteps];
   let resetControlCount = options.resetControlCountBeforeWait ?? options.resetControlCount;
   let activeEvaluationCount = 0;
-  const resetButton = {
-    count: jest.fn().mockImplementation(() => Promise.resolve(resetControlCount)),
-    waitFor: jest.fn().mockImplementation(async () => {
-      resetControlCount = options.resetControlCount;
-      if (resetControlCount === 0) {
-        const error = new Error('The Reset guide control did not become visible');
-        error.name = 'TimeoutError';
-        throw error;
-      }
-    }),
-    click: jest.fn().mockImplementation(async () => {
-      operations.push('reset');
-      resetSteps.forEach((step) => {
-        step.connected = false;
-      });
-      if (options.resetClearsStorage !== false) {
-        clearMatchingE2EStorage();
-      }
-      window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: E2E_GUIDE_URL },
-        })
-      );
-      if (options.resetRecreatesResidue) {
-        seedNoCompletionResidue();
-      }
-    }),
+  const waitForReset = async () => {
+    resetControlCount = options.resetControlCount;
+    if (resetControlCount === 0) {
+      const error = new Error('The Reset guide control did not become visible');
+      error.name = 'TimeoutError';
+      throw error;
+    }
   };
+  const clickReset = async () => {
+    operations.push('reset');
+    resetSteps.forEach((step) => {
+      step.connected = false;
+    });
+    if (options.resetClearsStorage !== false) {
+      clearMatchingE2EStorage();
+    }
+    window.dispatchEvent(
+      new CustomEvent('interactive-progress-cleared', {
+        detail: { contentKey: E2E_GUIDE_URL },
+      })
+    );
+    if (options.resetRecreatesResidue) {
+      seedNoCompletionResidue();
+    }
+  };
+  const testIdResetButton = {
+    count: jest
+      .fn()
+      .mockImplementation(() => Promise.resolve(options.resetTestIdAvailable === false ? 0 : resetControlCount)),
+    waitFor: jest.fn().mockImplementation(waitForReset),
+    click: jest.fn().mockImplementation(clickReset),
+    or: jest.fn(),
+    first: jest.fn(),
+  };
+  const roleResetButton = {
+    count: jest.fn().mockImplementation(() => Promise.resolve(resetControlCount)),
+    waitFor: jest.fn().mockImplementation(waitForReset),
+    click: jest.fn().mockImplementation(clickReset),
+    or: jest.fn(),
+    first: jest.fn(),
+  };
+  const resetButton = options.resetTestIdAvailable === false ? roleResetButton : testIdResetButton;
+  testIdResetButton.or.mockReturnValue(resetButton);
+  testIdResetButton.first.mockReturnValue(testIdResetButton);
+  roleResetButton.first.mockReturnValue(roleResetButton);
   const closeButton = {
     click: jest.fn().mockImplementation(async () => {
       if (options.closeError) {
@@ -158,13 +176,13 @@ function replacementHarness(options: ReplacementHarnessOptions) {
     locator: jest.fn().mockReturnValue({
       elementHandles: jest.fn().mockImplementation(() => Promise.resolve(handleQueues.shift() ?? [])),
     }),
-    getByRole: jest.fn(),
+    getByRole: jest.fn().mockReturnValue(roleResetButton),
     getByTestId: jest.fn().mockImplementation((id: string) => {
       if (id === testIds.docsPanel.tab('tab-1')) {
         return tabButton;
       }
       if (id === testIds.docsPanel.resetGuideButton) {
-        return resetButton;
+        return testIdResetButton;
       }
       return closeButton;
     }),
@@ -203,7 +221,16 @@ function replacementHarness(options: ReplacementHarnessOptions) {
       }
     ).__pathfinderE2E = control;
   }
-  return { page, operations, resetButton, closeButton, tabButton, activeEvaluationCount: () => activeEvaluationCount };
+  return {
+    page,
+    operations,
+    resetButton,
+    testIdResetButton,
+    roleResetButton,
+    closeButton,
+    tabButton,
+    activeEvaluationCount: () => activeEvaluationCount,
+  };
 }
 
 function waitForOpenedGuide(tabId = 'opened-tab'): Promise<{ url: string; title: string }> {
@@ -427,10 +454,25 @@ it('waits for an interactive restored tab to render its Reset guide control', as
 
   await replacePreviousE2EGuide(harness.page, 'tab-1');
   expect(harness.page.getByTestId).toHaveBeenCalledWith(testIds.docsPanel.resetGuideButton);
-  expect(harness.page.getByRole).not.toHaveBeenCalled();
+  expect(harness.page.getByRole).toHaveBeenCalledWith('button', { name: 'Reset guide', exact: true });
 
   expect(harness.resetButton.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 15_000 });
   expect(harness.operations).toEqual(['reset', 'close']);
+});
+it('uses the accessible Reset guide control when the legacy plugin has no reset test ID', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    resetTestIdAvailable: false,
+  });
+
+  await replacePreviousE2EGuide(harness.page);
+
+  expect(harness.testIdResetButton.waitFor).not.toHaveBeenCalled();
+  expect(harness.roleResetButton.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 15_000 });
+  expect(harness.roleResetButton.click).toHaveBeenCalledTimes(1);
+  expect(harness.operations).toEqual(['reset', 'close']);
+  expectMatchingStorageEmpty();
 });
 
 it('clears no-completion residue and closes without requiring Reset guide', async () => {

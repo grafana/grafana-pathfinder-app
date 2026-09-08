@@ -104,6 +104,8 @@ The tab close control uses `docs-panel-tab-close-${tabId}`. The reset control us
 
 Both test IDs are part of the shared runner contract.
 
+For plugin versions that predate this test ID, the legacy reset locator also accepts the exact accessible name `Reset guide`.
+
 The standalone runner and first shared milestone can reload once during panel recovery. A later milestone never reloads during recovery.
 
 If later panel recovery fails before new-tab activation, the chain can continue. Prior teardown has already removed the ambiguous state.
