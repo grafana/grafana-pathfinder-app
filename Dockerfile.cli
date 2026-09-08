@@ -30,7 +30,6 @@ WORKDIR /build
 # .npmrc travels with the manifests so the supply-chain settings
 # (ignore-scripts, allow-git, min-release-age) apply to `npm ci` below.
 COPY package.json package-lock.json .npmrc tsconfig.cli.json ./
-COPY vendor/faro-instrumentation-replay-2.11.0-2265.tar.gz ./vendor/
 COPY scripts/cli-build-utils.js scripts/
 COPY src/cli ./src/cli
 # Copy the entire types/ tree — tsconfig.cli.json scopes the compile to the
