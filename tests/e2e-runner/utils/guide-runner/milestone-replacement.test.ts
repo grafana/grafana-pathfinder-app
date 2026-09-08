@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { ElementHandle, Page } from '@playwright/test';
 
-import { E2E_ENV } from '../../../../src/cli/e2e/e2e-runner-contract';
 import { testIds } from '../../../../src/constants/testIds';
 import { StorageKeys } from '../../../../src/lib/storage-keys';
 
