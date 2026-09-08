@@ -37,6 +37,8 @@ The guide runner must establish a ready Pathfinder panel before it can load guid
 
 The Grafana-owned Help button and `grafana.navigation.extensionSidebarDocked` storage entry are recovery hints, not Pathfinder-owned contracts. A docs-panel or sidebar refactor must preserve the four Pathfinder signals above, or update the guide runner, contract tests, and this document in the same change.
 
+Pathfinder-owned window globals are declared in `src/types/window-globals.ts`; add new globals there and access them through `window` directly.
+
 The runner waits for Help only after Pathfinder readiness signals do not prove that the panel is ready. Bootstrap owns this fallback.
 
 The default bootstrap budget is 20 seconds. Post-navigation guide loading uses 30 seconds for each attempt.
@@ -550,7 +552,7 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 
 - `src/components/interactive-tutorial/data-attributes.contract.test.tsx` - React component attributes
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
-- `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
+- `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, bootstrap signals, scroll-restoration)
 - `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
 - `src/integrations/coda/GcxSetupPanel.contract.test.tsx` - gcx credential test IDs, source references, and the form's visibility states
 
