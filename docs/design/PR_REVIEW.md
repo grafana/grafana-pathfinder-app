@@ -208,6 +208,8 @@ Each finding contains only `id`, `concern_id`, `disposition`, `severity`, `title
 
 `review-report.mjs` validates, sorts by disposition then severity, renders every retained finding, derives the verdict and counts, and emits exactly one marker plus one trailing operator recap. It performs no policy decisions.
 
+Findings render under flat `Blockers:`, `Follow-ups:`, and `Suggestions & nits:` labels, each an independently numbered list, suggestions before nits, empty labels omitted. There is no section preamble and no Markdown heading; `## Review incomplete` is the one heading the renderer emits, and only for that mode.
+
 Rendering does not authorize publication. Present the complete output to the user and obtain explicit approval before posting it or otherwise mutating GitHub.
 
 An incomplete assessment needs one concise reason, claims no mergeability, and emits no marker. A complete report with no blockers says the PR is mergeable.
