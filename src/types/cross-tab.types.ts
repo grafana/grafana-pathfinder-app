@@ -210,7 +210,11 @@ export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Se
 // Same-build assumption: the controller and live tabs are the same plugin
 // build in the same browser/origin/session, so there is no protocol-version
 // negotiation. Cross-version compatibility is not a goal; a mismatched build
-// is out of scope. See docs/developer/CROSS_TAB_CONTROLLER.md.
+// is out of scope. Requirement traffic is one concrete case: check-requirements
+// can now carry array-shaped guide requirements/objectives, and fix-requirement
+// also accepts ConditionInput. Older validators accept only strings and drop
+// these commands; the controller then times out and falls back locally. See
+// docs/developer/CROSS_TAB_CONTROLLER.md.
 
 // Recognized interactive action verbs. Kept as a literal set (not derived
 // from InteractiveAction) so the receive gate stays decoupled from the

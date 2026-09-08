@@ -155,7 +155,11 @@ Defense in depth on top of authentication:
 - **Same-build / same-origin / one-session assumption.** Controller and live
   tabs are the same plugin build in the same browser profile and session; there
   is no protocol-version negotiation and cross-version compatibility is not a
-  goal.
+  goal. Requirement traffic is a concrete example: `check-requirements` can now
+  carry array-shaped guide `requirements` and `objectives`, and
+  `fix-requirement` also accepts a `ConditionInput` in its `requirements` field.
+  An older validator that accepts only strings drops the command; the controller
+  times out and falls back to its local-only check.
 
 ### Known limitations / future work
 
