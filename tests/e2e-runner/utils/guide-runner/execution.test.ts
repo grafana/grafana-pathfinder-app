@@ -79,17 +79,14 @@ import type { StepTestResult, TestableStep } from './types';
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
-    stepKind: overrides.stepKind ?? (overrides.isGuided === false ? 'plain' : 'guided'),
+    stepKind: 'guided',
     stepId: 'test-step-1',
     index: 0,
     skippable: false,
     hasDoItButton: true,
     hasShowMeButton: false,
     isPreCompleted: false,
-    isMultistep: false,
-    internalActionCount: 0,
-    isGuided: true,
-    guidedStepCount: 1,
+    actionCount: 1,
     locator: {} as unknown as TestableStep['locator'],
     ...overrides,
   };
@@ -265,8 +262,8 @@ describe('hard step deadline', () => {
   });
 
   it('adds a second step budget and overhead to the inner operation timeout', () => {
-    const simple = createTestableStep({ isGuided: false });
-    const guided = createTestableStep({ isGuided: true, guidedStepCount: 3 });
+    const simple = createTestableStep({ stepKind: 'plain', actionCount: 0 });
+    const guided = createTestableStep({ stepKind: 'guided', actionCount: 3 });
 
     expect(calculateStepDeadline(simple)).toBe(calculateStepTimeout(simple) * 2 + STEP_OVERHEAD_TIMEOUT_MS);
     expect(calculateStepDeadline(guided)).toBe(calculateStepTimeout(guided) * 2 + STEP_OVERHEAD_TIMEOUT_MS);
@@ -299,7 +296,7 @@ describe('hard step deadline', () => {
           );
         })
     );
-    const result = executeStep(page, createTestableStep({ isGuided: false }), {
+    const result = executeStep(page, createTestableStep({ stepKind: 'plain', actionCount: 0 }), {
       timeout: 50,
       deadlineMs: 100,
     });
@@ -334,7 +331,7 @@ describe('hard step deadline', () => {
     });
 
     const result = await executeAllSteps(page, [
-      createTestableStep({ skippable: true, isGuided: false, guidedStepCount: undefined }),
+      createTestableStep({ skippable: true, stepKind: 'plain', actionCount: 0 }),
       createTestableStep({ stepId: 'next-step', isPreCompleted: true }),
     ]);
 
@@ -764,7 +761,7 @@ describe('executeStep - skip sync sequential-flow regression', () => {
       stepLocator,
       extra: { on: jest.fn(), off: jest.fn(), url: jest.fn().mockReturnValue('http://localhost:3000/') },
     });
-    const step = createTestableStep({ skippable: true, isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ skippable: true, stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -789,7 +786,7 @@ describe('executeStep - skip sync sequential-flow regression', () => {
       stepLocator,
       extra: { on: jest.fn(), off: jest.fn(), url: jest.fn().mockReturnValue('http://localhost:3000/') },
     });
-    const step = createTestableStep({ skippable: true, isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ skippable: true, stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -809,7 +806,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -829,7 +826,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -846,7 +843,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -862,7 +859,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const lateResult = await executeStep(page, step, {});
     const otherSkippableFailure: StepTestResult = {
@@ -899,7 +896,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 
@@ -924,7 +921,7 @@ describe('executeStep - late completion/detachment precheck', () => {
       off: jest.fn(),
       url: jest.fn().mockReturnValue('http://localhost:3000/'),
     } as unknown as Page;
-    const step = createTestableStep({ isGuided: false, guidedStepCount: undefined });
+    const step = createTestableStep({ stepKind: 'plain', actionCount: 0 });
 
     const result = await executeStep(page, step, {});
 

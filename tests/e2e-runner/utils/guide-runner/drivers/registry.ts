@@ -13,29 +13,25 @@ import type { StepDriver, StepDriverInspection } from './types';
 async function inspectPlain(page: Page, root: Locator, stepId: string): Promise<StepDriverInspection> {
   return {
     ...(await inspectCommonStep(page, root, stepId)),
-    isMultistep: false,
-    internalActionCount: 0,
-    isGuided: false,
+    actionCount: 0,
   };
 }
 
 async function inspectMultistep(page: Page, root: Locator, stepId: string): Promise<StepDriverInspection> {
   const common = await inspectCommonStep(page, root, stepId);
   const rawActions = await root.getAttribute('data-internal-actions');
-  let internalActionCount = 3;
+  let actionCount = 3;
   if (rawActions) {
     try {
       const actions = JSON.parse(rawActions);
-      internalActionCount = Array.isArray(actions) ? actions.length : 0;
+      actionCount = Array.isArray(actions) ? actions.length : 0;
     } catch {
-      internalActionCount = 3;
+      actionCount = 3;
     }
   }
   return {
     ...common,
-    isMultistep: true,
-    internalActionCount,
-    isGuided: false,
+    actionCount,
   };
 }
 
@@ -45,10 +41,7 @@ async function inspectGuided(page: Page, root: Locator, stepId: string): Promise
   const parsedTotal = rawTotal ? Number.parseInt(rawTotal, 10) : Number.NaN;
   return {
     ...common,
-    isMultistep: false,
-    internalActionCount: 0,
-    isGuided: true,
-    guidedStepCount: Number.isFinite(parsedTotal) && parsedTotal >= 1 ? parsedTotal : 1,
+    actionCount: Number.isFinite(parsedTotal) && parsedTotal >= 1 ? parsedTotal : 1,
   };
 }
 
@@ -89,17 +82,13 @@ const drivers = [
   supportedDriver(
     'multistep',
     inspectMultistep,
-    (step) =>
-      DEFAULT_STEP_TIMEOUT_MS +
-      (step.internalActionCount > 0 ? step.internalActionCount * TIMEOUT_PER_MULTISTEP_ACTION_MS : 0),
+    (step) => DEFAULT_STEP_TIMEOUT_MS + (step.actionCount > 0 ? step.actionCount * TIMEOUT_PER_MULTISTEP_ACTION_MS : 0),
     executeStandardStep
   ),
   supportedDriver(
     'guided',
     inspectGuided,
-    (step) =>
-      DEFAULT_STEP_TIMEOUT_MS +
-      (step.guidedStepCount && step.guidedStepCount > 0 ? step.guidedStepCount * TIMEOUT_PER_GUIDED_SUBSTEP_MS : 0),
+    (step) => DEFAULT_STEP_TIMEOUT_MS + (step.actionCount > 0 ? step.actionCount * TIMEOUT_PER_GUIDED_SUBSTEP_MS : 0),
     executeGuidedStep
   ),
   unsupportedDriver('quiz'),

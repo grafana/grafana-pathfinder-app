@@ -250,6 +250,47 @@ async function buildFailureArtifacts(
   return artifacts ?? (preScreenshotPath ? { screenshotPre: preScreenshotPath } : undefined);
 }
 
+interface StepExecutionOptions {
+  timeout?: number;
+  deadlineMs?: number;
+  verbose?: boolean;
+  artifactsDir?: string;
+  alwaysScreenshot?: boolean;
+  onDeadline?(): void;
+}
+
+interface AllStepsOptions extends StepExecutionOptions {
+  stopOnMandatoryFailure?: boolean;
+  sessionCheckInterval?: number;
+  sessionValidator?: (page: Page) => Promise<SessionValidationResult>;
+  onStepComplete?: OnStepCompleteCallback;
+}
+
+export type BoundedSettlement<T> =
+  { status: 'fulfilled'; value: T } | { status: 'rejected'; reason: unknown } | { status: 'timed_out' };
+
+export async function settleWithin<T>(work: Promise<T>, timeoutMs: number): Promise<BoundedSettlement<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work.then(
+        (value): BoundedSettlement<T> => ({ status: 'fulfilled', value }),
+        (reason): BoundedSettlement<T> => ({ status: 'rejected', reason })
+      ),
+      new Promise<BoundedSettlement<T>>((resolve) => {
+        timer = setTimeout(() => resolve({ status: 'timed_out' }), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function closePageWithin(page: Page, timeoutMs: number): Promise<void> {
+  await settleWithin(page.close({ runBeforeUnload: false }), timeoutMs);
+}
 async function executeStepCore(
   page: Page,
   step: TestableStep,

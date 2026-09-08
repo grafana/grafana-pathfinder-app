@@ -6,7 +6,6 @@ import {
   BUTTON_APPEAR_TIMEOUT_MS,
   BUTTON_ENABLE_TIMEOUT_MS,
   COMPLETION_POLL_INTERVAL_MS,
-  DEFAULT_STEP_TIMEOUT_MS,
   GUIDED_SUBSTEP_ADVANCE_POLL_MS,
   POST_CLICK_SETTLE_DELAY_MS,
   SKIP_SYNC_TIMEOUT_MS,
@@ -57,7 +56,7 @@ export async function inspectCommonStep(
   page: Page,
   root: Locator,
   stepId: string
-): Promise<Omit<StepDriverInspection, 'isMultistep' | 'internalActionCount' | 'isGuided' | 'guidedStepCount'>> {
+): Promise<Omit<StepDriverInspection, 'actionCount'>> {
   const targetAction = (await root.getAttribute('data-targetaction')) ?? undefined;
   const refTarget = (await root.getAttribute('data-reftarget')) ?? undefined;
   const hasDoItButton = (await page.getByTestId(testIds.interactive.doItButton(stepId)).count()) > 0;
@@ -207,5 +206,3 @@ export async function clickSkipButtonAndSync(
     await page.waitForTimeout(Math.min(GUIDED_SUBSTEP_ADVANCE_POLL_MS, Math.max(1, deadline - Date.now())));
   }
 }
-
-export const defaultTimeout = (): number => DEFAULT_STEP_TIMEOUT_MS;

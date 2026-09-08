@@ -22,10 +22,6 @@ import type { TestableStep } from '../types';
 import { startStepAction, waitForCompletion } from './shared';
 import type { StepDriverExecutionContext, StepDriverExecutionResult } from './types';
 
-// ============================================
-// Guided Step Execution (Phase 3)
-// ============================================
-
 const GUIDED_WAIT_EXECUTING_MS = 5000;
 
 export async function waitForGuidedExecutionStart(
@@ -138,8 +134,7 @@ async function waitForSubstepAdvance(
   let lastIndex: string | null = null;
 
   while (Date.now() < deadline) {
-    // Unmount mid-wait is a completion signal (section auto-collapse on final substep);
-    // a bare getAttribute on a detached locator blocks until the global test timeout.
+    // Count first because Playwright waits for attributes on a missing locator.
     if ((await stepLocator.count()) === 0) {
       return;
     }
@@ -241,7 +236,6 @@ export async function waitForFormfillSettle(
     }
     await page.waitForTimeout(GUIDED_SUBSTEP_ADVANCE_POLL_MS);
   }
-  // No valid state on step element (e.g. guided step may not set form-state); proceed to waitForSubstepAdvance
 }
 
 export type GuidedCommentBoxWaitOutcome = 'ready' | 'completed' | 'detached';
@@ -264,17 +258,11 @@ export async function waitForGuidedCommentBoxReady(
       return 'ready';
     }
 
-    // Check detachment via an immediate, successful count() BEFORE any bounded
-    // attribute read. In real Playwright, getAttribute() on a missing element
-    // auto-waits up to its own timeout, so an already-detached step must be
-    // caught here first or it would burn the full remaining budget for
-    // nothing. A count() error is not caught: it propagates as designed.
+    // Count first because Playwright waits for attributes on a missing locator.
     if ((await stepLocator.count()) === 0) {
       return 'detached';
     }
 
-    // Bound this read by the remaining budget so a stuck-but-attached locator
-    // can't exceed this wait's own deadline.
     let state: string | null;
     try {
       state = await stepLocator.getAttribute('data-test-step-state', { timeout: remainingMs });
@@ -310,20 +298,15 @@ export async function runGuidedSubstepLoop(
   let stepLocator = options.stepLocator;
   const { perSubstepTimeoutMs, verbose = false, artifactsDir } = options;
   const commentBoxDeadlineMs = options.commentBoxDeadlineMs ?? Date.now() + GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS;
-  const guidedStepCount = step.guidedStepCount ?? 1;
+  const actionCount = Math.max(1, step.actionCount);
 
-  const captureLoopArtifacts = async (context: string) => {
+  const captureLoopArtifacts = async () => {
     if (artifactsDir) {
       await captureFailureArtifacts(page, step.stepId, [], artifactsDir).catch(() => {});
     }
   };
 
-  // Step unmount mid-loop is a completion signal (section auto-collapse, or
-  // navigation unmounted it). Re-resolving the locator handles reload (e.g. a
-  // completeEarly action). A query error is NOT treated as detachment here:
-  // callers already synchronize on navigation before calling this, so a fault
-  // at this point (closed page, destroyed context, unrelated query error)
-  // is a genuine failure and must propagate rather than be reported as success.
+  // Re-resolve after navigation, but propagate locator errors as execution failures.
   const stepDetached = async (): Promise<boolean> => {
     stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
     return (await stepLocator.count()) === 0;
@@ -339,22 +322,22 @@ export async function runGuidedSubstepLoop(
       return { completed: true };
     }
     if (state === 'error') {
-      await captureLoopArtifacts('error-state');
+      await captureLoopArtifacts();
       throw new Error('Guided step entered error state');
     }
     if (state === 'cancelled') {
-      await captureLoopArtifacts('cancelled-state');
+      await captureLoopArtifacts();
       throw new Error('Guided step was cancelled');
     }
     if (state !== 'executing') {
-      await captureLoopArtifacts(`unexpected-state-${state}`);
+      await captureLoopArtifacts();
       throw new Error(`Unexpected guided step state: ${state}`);
     }
     const indexStr = await stepLocator.getAttribute('data-test-substep-index');
 
     const currentIndex = indexStr != null ? parseInt(indexStr, 10) : 0;
     const safeIndex = Number.isNaN(currentIndex) ? 0 : currentIndex;
-    if (safeIndex >= guidedStepCount) {
+    if (safeIndex >= actionCount) {
       return { completed: false };
     }
 
@@ -368,7 +351,7 @@ export async function runGuidedSubstepLoop(
         Math.max(1, commentBoxDeadlineMs - Date.now())
       );
     } catch (err) {
-      await captureLoopArtifacts('comment-box-not-visible');
+      await captureLoopArtifacts();
       throw err;
     }
     if (commentBoxOutcome === 'completed' || commentBoxOutcome === 'detached') {
@@ -380,7 +363,7 @@ export async function runGuidedSubstepLoop(
     const targetValue = await commentBox.getAttribute('data-test-target-value');
 
     if (verbose) {
-      console.log(`   📍 Guided substep ${safeIndex + 1}/${guidedStepCount} action=${action}`);
+      console.log(`   📍 Guided substep ${safeIndex + 1}/${actionCount} action=${action}`);
     }
 
     try {
@@ -408,11 +391,7 @@ export async function runGuidedSubstepLoop(
           page.off('framenavigated', onFrameNavigated);
         }
         if (navigated || urlBefore !== page.url()) {
-          // The action reloaded/navigated the page (e.g. a completeEarly install).
-          // The pre-navigation locator is stale, so wait for the new document to
-          // settle before re-resolving the step locator against it. A failed/timed
-          // out load is a genuine failure (broken reload) and must propagate, not
-          // be swallowed into a false "completed" result.
+          // Navigation invalidates the old locator, so wait for the new document.
           await page.waitForLoadState('domcontentloaded', { timeout: GUIDED_RELOAD_LOAD_TIMEOUT_MS });
           stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
         }
@@ -438,7 +417,7 @@ export async function runGuidedSubstepLoop(
         throw new Error(`Guided step: unknown data-test-action "${action}"`);
       }
     } catch (err) {
-      await captureLoopArtifacts(`substep-${safeIndex}-${action}`);
+      await captureLoopArtifacts();
       throw err;
     }
 

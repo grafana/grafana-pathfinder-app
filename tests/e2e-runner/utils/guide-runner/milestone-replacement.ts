@@ -4,11 +4,10 @@ import { testIds } from '../../../../src/constants/testIds';
 import { StorageEvents } from '../../../../src/lib/event-names';
 import { StorageKeys } from '../../../../src/lib/storage-keys';
 import { dismissBadgeCelebrations } from './badge-celebrations';
+import { STEP_ROOT_SELECTOR } from './constants';
 import { FatalTransitionError, type FatalTransitionKind } from './transition-error';
 
 export const E2E_GUIDE_URL = 'bundled:e2e-test';
-
-const STEP_SELECTOR = '[data-testid^="interactive-step-"]';
 const REPLACEMENT_TIMEOUT_MS = 15_000;
 const RESET_POSTCONDITION_ATTEMPTS = 5;
 const RESET_POSTCONDITION_POLL_MS = 250;
@@ -297,7 +296,7 @@ async function activateE2EGuideTab(page: Page, tabId: string): Promise<void> {
 }
 
 async function currentStepHandles(page: Page): Promise<StepHandle[]> {
-  return page.locator(STEP_SELECTOR).elementHandles();
+  return page.locator(STEP_ROOT_SELECTOR).elementHandles();
 }
 function transitionFailure(kind: WrappedTransitionKind, message: string, error: unknown): FatalTransitionError {
   if (error instanceof FatalTransitionError) {

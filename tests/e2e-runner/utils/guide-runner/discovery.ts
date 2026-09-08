@@ -100,12 +100,9 @@ export async function discoverStepsFromDOM(page: Page): Promise<StepDiscoveryRes
 }
 
 export function withExecutedCoverage(coverage: StepCoverage, results: StepTestResult[]): StepCoverage {
-  const executedStepIds = new Set(
-    results.filter((result) => result.status !== 'not_reached').map((result) => result.stepId)
-  );
   return {
     ...coverage,
-    executed: executedStepIds.size,
+    executed: results.filter((result) => result.status !== 'not_reached').length,
   };
 }
 

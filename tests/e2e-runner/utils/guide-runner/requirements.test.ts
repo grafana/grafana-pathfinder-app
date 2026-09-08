@@ -49,9 +49,7 @@ function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep
     hasDoItButton: true,
     hasShowMeButton: false,
     isPreCompleted: false,
-    isMultistep: false,
-    internalActionCount: 0,
-    isGuided: false,
+    actionCount: 0,
     locator: {} as unknown as TestableStep['locator'],
     ...overrides,
   };

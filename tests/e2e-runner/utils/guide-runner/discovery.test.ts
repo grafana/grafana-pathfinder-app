@@ -49,6 +49,16 @@ describe('discoverStepsFromDOM', () => {
         'data-targetaction': 'button',
       }),
       root({
+        'data-test-step-kind': 'multistep',
+        'data-test-step-id': 'multi-1',
+        'data-internal-actions': '[{},{}]',
+      }),
+      root({
+        'data-test-step-kind': 'guided',
+        'data-test-step-id': 'guided-1',
+        'data-test-substep-total': '3',
+      }),
+      root({
         'data-test-step-kind': 'quiz',
         'data-test-step-id': 'quiz-1',
       }),
@@ -56,12 +66,15 @@ describe('discoverStepsFromDOM', () => {
 
     const result = await discoverStepsFromDOM(page);
 
-    expect(result.steps).toHaveLength(1);
-    expect(result.steps[0]).toMatchObject({ stepKind: 'plain', stepId: 'plain-1', index: 0 });
+    expect(result.steps.map(({ stepKind, stepId, actionCount }) => ({ stepKind, stepId, actionCount }))).toEqual([
+      { stepKind: 'plain', stepId: 'plain-1', actionCount: 0 },
+      { stepKind: 'multistep', stepId: 'multi-1', actionCount: 2 },
+      { stepKind: 'guided', stepId: 'guided-1', actionCount: 3 },
+    ]);
     expect(result.coverage).toEqual({
       contractSource: 'current',
-      rendered: 2,
-      supported: 1,
+      rendered: 4,
+      supported: 3,
       executed: 0,
       unsupported: 1,
       unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
@@ -88,10 +101,10 @@ describe('discoverStepsFromDOM', () => {
     const result = await discoverStepsFromDOM(page);
 
     expect(result.coverage.contractSource).toBe('legacy');
-    expect(result.steps.map(({ stepKind, stepId }) => ({ stepKind, stepId }))).toEqual([
-      { stepKind: 'plain', stepId: 'plain-1' },
-      { stepKind: 'multistep', stepId: 'multi-1' },
-      { stepKind: 'guided', stepId: 'guided-1' },
+    expect(result.steps.map(({ stepKind, stepId, actionCount }) => ({ stepKind, stepId, actionCount }))).toEqual([
+      { stepKind: 'plain', stepId: 'plain-1', actionCount: 0 },
+      { stepKind: 'multistep', stepId: 'multi-1', actionCount: 2 },
+      { stepKind: 'guided', stepId: 'guided-1', actionCount: 3 },
     ]);
   });
 

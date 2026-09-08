@@ -6,6 +6,7 @@ import { testIds } from '../../../../src/constants/testIds';
 import { StorageKeys } from '../../../../src/lib/storage-keys';
 
 import { dismissBadgeCelebrations } from './badge-celebrations';
+import { STEP_ROOT_SELECTOR } from './constants';
 import { E2E_GUIDE_URL, openLegacyE2EGuide, replacePreviousE2EGuide } from './milestone-replacement';
 import { FatalTransitionError } from './transition-error';
 
@@ -441,6 +442,7 @@ it('waits for reset synchronization before closing and detaches both step genera
   expectMatchingStorageEmpty();
   expect(resetStep.dispose).toHaveBeenCalledTimes(1);
   expect(closeStep.dispose).toHaveBeenCalledTimes(1);
+  expect(harness.page.locator).toHaveBeenCalledWith(STEP_ROOT_SELECTOR);
   expect(harness.page.reload).not.toHaveBeenCalled();
   expect(dismissBadgeCelebrations).toHaveBeenCalledWith(harness.page);
 });

@@ -9,10 +9,7 @@ export interface StepDriverInspection {
   hasShowMeButton: boolean;
   isPreCompleted: boolean;
   targetAction?: string;
-  isMultistep: boolean;
-  internalActionCount: number;
-  isGuided: boolean;
-  guidedStepCount?: number;
+  actionCount: number;
   refTarget?: string;
 }
 

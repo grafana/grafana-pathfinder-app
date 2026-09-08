@@ -47,6 +47,7 @@ export {
   SKIP_SYNC_TIMEOUT_MS,
   CURRENT_STEP_SELECTOR,
   LEGACY_STEP_SELECTOR,
+  STEP_ROOT_SELECTOR,
 } from './constants';
 
 // ============================================

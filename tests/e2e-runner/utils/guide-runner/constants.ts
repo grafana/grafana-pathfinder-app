@@ -19,6 +19,7 @@ export const CURRENT_STEP_SELECTOR = '[data-test-step-kind][data-test-step-id]';
  */
 export const LEGACY_STEP_SELECTOR =
   '[data-testid^="interactive-step-"]:not([data-testid^="interactive-step-completed-"])';
+export const STEP_ROOT_SELECTOR = `${CURRENT_STEP_SELECTOR}, ${LEGACY_STEP_SELECTOR}`;
 
 /**
  * Prefix to strip from data-testid to get the step ID.
@@ -52,7 +53,7 @@ export const TIMEOUT_PER_MULTISTEP_ACTION_MS = 5000;
 
 /**
  * Additional timeout per guided substep (Phase 3).
- * Guided steps run a substep loop; total step timeout = base + guidedStepCount * this.
+ * Guided steps run a substep loop; the driver scales this by its action count.
  */
 export const TIMEOUT_PER_GUIDED_SUBSTEP_MS = 30000;
 
