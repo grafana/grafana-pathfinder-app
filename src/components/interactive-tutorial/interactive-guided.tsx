@@ -234,6 +234,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // also clobber the first run's listeners via guidedHandler's shared
     // `cleanupListeners()`. A ref closes that window.
     const isExecutingRef = useRef(false);
+    const resetGenerationRef = useRef(0);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [failedStepIndex, setFailedStepIndex] = useState(-1);
     const [currentStepStatus, setCurrentStepStatus] = useState<'waiting' | 'timeout' | 'completed'>('waiting');
@@ -288,17 +289,23 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       };
     }, [guidedHandler]);
 
-    // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
+        resetGenerationRef.current += 1;
+        if (isExecutingRef.current) {
+          guidedHandler.cancel();
+        }
+        controllerCancelledRef.current = true;
+        controllerChannel?.cancelStepComplete(renderedStepId, activeRunIdRef.current);
         persistReset();
         // eslint-disable-next-line react-hooks/set-state-in-effect -- reset local UI state when the parent bumps resetTrigger, alongside the persistReset store write
         setExecutionError(null);
         setCurrentStepIndex(0);
+        setFailedStepIndex(-1);
         setCurrentStepStatus('waiting');
         setWasCancelled(false);
       }
-    }, [resetTrigger, persistReset]);
+    }, [resetTrigger, persistReset, guidedHandler, controllerChannel, renderedStepId]);
 
     // Single source of truth: the completion store.
     const isCompleted = storedCompleted;
@@ -352,6 +359,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         return false;
       }
       isExecutingRef.current = true;
+      const resetGeneration = resetGenerationRef.current;
+      const wasReset = () => resetGeneration !== resetGenerationRef.current;
 
       try {
         if (checker.completionReason === 'objectives') {
@@ -365,24 +374,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           return true;
         }
 
-        // Guided steps never route through executeInteractiveAction's own gate
-        // (see interactive.hook.ts), so a guided step needs the same full-screen
-        // -> sidebar handoff applied here directly, keyed off its inner actions'
-        // targetAction rather than the 'guided' container tag itself. Uses the
-        // shared predicate (not a local reimplementation) so this can't drift
-        // from the hook's own gate condition.
+        // Guided actions bypass the interactive hook, so they need its handoff gate here.
         if (internalActions.some((action) => isGrafanaDrivingHandoffNeeded(action.targetAction))) {
           await requestSidebarHandoffAndWait({ targetPath: fullScreenFallbackLocation });
         }
+        if (wasReset()) {
+          return false;
+        }
 
-        // Deliberately no isMountedRef bail-out here: the handoff's own
-        // navigation unmounts this full-screen instance on every successful
-        // run, not just a stale/raced one — bailing out here would mean the
-        // guided step never actually executes after docking, breaking the
-        // same continue-after-the-wait contract simple steps and code-block
-        // Insert already honor. isExecutingRef (untouched by the unmount
-        // cleanup effect) already fully serializes re-entrant calls on its
-        // own, so there's no race left for a mounted-check to guard against.
+        // A successful full-screen handoff unmounts this instance; the run must continue after docking.
         setIsExecuting(true);
         setExecutionError(null);
         setCurrentStepIndex(0);
@@ -391,10 +391,13 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         setWasCancelled(false);
         // Commit execution before overlay creation so idle controls and the overlay never overlap.
         await waitForReactUpdates();
+        if (wasReset()) {
+          return false;
+        }
 
         let completionPersisted = false;
         const completeStep = () => {
-          if (completionPersisted) {
+          if (completionPersisted || wasReset()) {
             return;
           }
           persistCompletion();
@@ -409,6 +412,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
         try {
           for (let i = 0; i < internalActions.length; i++) {
+            if (wasReset()) {
+              return false;
+            }
             const action = internalActions[i];
             setCurrentStepIndex(i);
             setCurrentStepStatus('waiting');
@@ -422,13 +428,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               stepTimeout,
               completeBeforeActionEffect
             );
+            if (wasReset()) {
+              return false;
+            }
 
             if (result === 'completed' || result === 'skipped') {
               if (completeEarly && i === internalActions.length - 1) {
                 completeStep();
               }
               setCurrentStepStatus('completed');
-              // Brief visual feedback before moving to next step
               await new Promise((resolve) => setTimeout(resolve, 500));
             } else if (result === 'timeout') {
               setCurrentStepStatus('timeout');
@@ -444,9 +452,15 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
               return false;
             }
           }
+          if (wasReset()) {
+            return false;
+          }
           completeStep();
           return true;
         } catch (error) {
+          if (wasReset()) {
+            return false;
+          }
           logger.error(`Guided execution failed: ${stepId}`, { error });
           const errorMessage = error instanceof Error ? error.message : 'Guided execution failed';
           setExecutionError(errorMessage);
@@ -660,12 +674,16 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // that per click on top of its staged replay, so we keep the entry gate
         // only and let each sub-action fail on the live tab if a prereq regressed.
         controllerCancelledRef.current = false;
+        const resetGeneration = resetGenerationRef.current;
         const runId = crypto.randomUUID();
         activeRunIdRef.current = runId;
         setIsExecuting(true);
         // Subscribe before posting so the first progress tick the live tab emits
         // can't arrive before we're listening.
         const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index) => {
+          if (resetGeneration !== resetGenerationRef.current) {
+            return;
+          }
           setCurrentStepIndex(index);
           setCurrentStepStatus('waiting');
         });
@@ -682,6 +700,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         });
         try {
           const finished = await controllerChannel.awaitStepComplete(renderedStepId, runId);
+          if (resetGeneration !== resetGenerationRef.current) {
+            return;
+          }
           if (finished) {
             persistCompletion();
             if (onStepComplete && stepId) {

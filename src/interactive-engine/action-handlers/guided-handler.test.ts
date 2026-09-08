@@ -290,29 +290,123 @@ describe('GuidedHandler', () => {
       expect(result).toBe('completed');
     });
 
-    it('does not complete after cancellation wins before a later click', async () => {
-      document.body.innerHTML = '<button id="install">Install</button>';
-      const button = document.querySelector<HTMLButtonElement>('#install')!;
-      const onActionCompleted = jest.fn();
-      const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
-      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
-      mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
-        document.dispatchEvent(new CustomEvent('guided-step-cancelled', { detail: { stepIndex: 0 } }));
-        button.click();
-      });
+    it.each(['event', 'handler'] as const)(
+      'does not complete after %s cancellation wins before a later click',
+      async (source) => {
+        document.body.innerHTML = '<button id="install">Install</button>';
+        const button = document.querySelector<HTMLButtonElement>('#install')!;
+        const onActionCompleted = jest.fn();
+        const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+        (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+        mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
+          if (source === 'handler') {
+            guidedHandler.cancel();
+          } else {
+            document.dispatchEvent(new CustomEvent('guided-step-cancelled', { detail: { stepIndex: 0 } }));
+          }
+          button.click();
+        });
 
-      const result = await guidedHandler.executeGuidedStep(
-        { targetAction: 'highlight', refTarget: '#install' },
-        0,
-        1,
-        100,
-        onActionCompleted
-      );
+        const result = await guidedHandler.executeGuidedStep(
+          { targetAction: 'highlight', refTarget: '#install' },
+          0,
+          1,
+          100,
+          onActionCompleted
+        );
 
-      expect(result).toBe('cancelled');
-      expect(onActionCompleted).not.toHaveBeenCalled();
-      expect(clearIntervalSpy).toHaveBeenCalled();
-      clearIntervalSpy.mockRestore();
+        expect(result).toBe('cancelled');
+        expect(onActionCompleted).not.toHaveBeenCalled();
+        expect(clearIntervalSpy).toHaveBeenCalled();
+        clearIntervalSpy.mockRestore();
+      }
+    );
+
+    it.each(['navigation expansion', 'navigation opening', 'scrolling'] as const)(
+      'stops cancelled setup during %s and allows a fresh run',
+      async (phase) => {
+        const refTarget = "a[data-testid='data-testid Nav menu item'][href='/alerting/list']";
+        document.body.innerHTML = `<a data-testid="data-testid Nav menu item" href="/alerting/list">Alert rules</a>`;
+        const target = document.querySelector<HTMLAnchorElement>(refTarget)!;
+        target.addEventListener('click', (event) => event.preventDefault());
+        (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [target], usedFallback: false });
+        const onActionCompleted = jest.fn();
+        let resumeSetup!: () => void;
+        const setupWait = new Promise<void>((resolve) => {
+          resumeSetup = resolve;
+        });
+        let notifySetupStarted!: () => void;
+        const setupStarted = new Promise<void>((resolve) => {
+          notifySetupStarted = resolve;
+        });
+        const pauseSetup = async () => {
+          notifySetupStarted();
+          await setupWait;
+        };
+        if (phase === 'navigation expansion') {
+          mockNavigationManager.expandParentNavigationSection.mockImplementationOnce(async () => {
+            await pauseSetup();
+            return true;
+          });
+        } else if (phase === 'navigation opening') {
+          mockNavigationManager.ensureNavigationOpen.mockImplementationOnce(pauseSetup);
+        } else {
+          mockNavigationManager.ensureElementVisible.mockImplementationOnce(pauseSetup);
+        }
+        const action = { targetAction: 'highlight' as const, refTarget, isSkippable: true };
+        const cancelledRun = guidedHandler.executeGuidedStep(action, 0, 1, 100, onActionCompleted);
+        await setupStarted;
+
+        guidedHandler.cancel();
+        resumeSetup();
+
+        await expect(cancelledRun).resolves.toBe('cancelled');
+        expect(mockNavigationManager.highlightWithComment).not.toHaveBeenCalled();
+        document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        expect(onActionCompleted).not.toHaveBeenCalled();
+
+        mockNavigationManager.highlightWithComment.mockImplementationOnce(async () => {
+          target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          return target;
+        });
+        await expect(guidedHandler.executeGuidedStep(action, 0, 1, 100, onActionCompleted)).resolves.toBe('completed');
+        expect(onActionCompleted).toHaveBeenCalledTimes(1);
+      }
+    );
+
+    it('stops target lookup retries when cancelled', async () => {
+      jest.useFakeTimers();
+      try {
+        let notifyLookupStarted!: () => void;
+        const lookupStarted = new Promise<void>((resolve) => {
+          notifyLookupStarted = resolve;
+        });
+        (querySelectorAllEnhanced as jest.Mock).mockImplementation(() => {
+          notifyLookupStarted();
+          return { elements: [], usedFallback: false };
+        });
+        const onActionCompleted = jest.fn();
+        const cancelledRun = guidedHandler.executeGuidedStep(
+          { targetAction: 'highlight', refTarget: '#missing' },
+          0,
+          1,
+          10_000,
+          onActionCompleted
+        );
+        await lookupStarted;
+        await jest.advanceTimersByTimeAsync(0);
+        expect(jest.getTimerCount()).toBe(1);
+
+        guidedHandler.cancel();
+
+        await expect(cancelledRun).resolves.toBe('cancelled');
+        expect(querySelectorAllEnhanced).toHaveBeenCalledTimes(1);
+        expect(mockNavigationManager.highlightWithComment).not.toHaveBeenCalled();
+        expect(onActionCompleted).not.toHaveBeenCalled();
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('does not complete after skip wins before a later click', async () => {
