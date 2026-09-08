@@ -722,6 +722,7 @@ describe('step-state', () => {
       const legacy = toLegacyState(state);
 
       expect(legacy).toEqual({
+        status: 'enabled',
         isEnabled: true,
         isCompleted: false,
         isChecking: false,
@@ -812,6 +813,7 @@ describe('step-state', () => {
       for (const state of states) {
         const legacy = toLegacyState(state);
 
+        expect(legacy.status).toBe(state.status);
         expect(legacy.isEnabled).toBe(deriveIsEnabled(state));
         expect(legacy.isCompleted).toBe(deriveIsCompleted(state));
         expect(legacy.isChecking).toBe(deriveIsChecking(state));

@@ -3,7 +3,7 @@
  * Centralized interfaces for React hooks across the application
  */
 
-import type { ConditionInput } from './requirements.types';
+import type { ConditionInput, StepStatus } from './requirements.types';
 // ============================================================================
 // STEP CHECKER HOOKS
 // ============================================================================
@@ -63,6 +63,7 @@ export interface UseStepCheckerProps {
  */
 export interface UseStepCheckerReturn {
   // Unified state
+  status: StepStatus;
   isEnabled: boolean;
   isCompleted: boolean;
   isChecking: boolean;

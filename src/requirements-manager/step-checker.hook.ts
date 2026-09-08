@@ -423,7 +423,7 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
    * Update manager with unified state for cross-step propagation
    */
   const updateManager = useCallback(
-    (newState: typeof state) => {
+    (newState: LegacyStateShape | typeof state) => {
       if (managerRef.current) {
         managerRef.current.updateStep(stepId, {
           isEnabled: newState.isEnabled,

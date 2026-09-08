@@ -38,6 +38,8 @@ import type { ConditionInput } from '../../types/requirements.types';
 import { useGuideRequirements, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { checkVerdict } from '../../lib/check-verdict';
+import { conditionTokens } from '../../lib/condition-input';
 import { testIds } from '../../constants/testIds';
 
 // The atomic temp+rename guarantees the gated coda-exit-zero check never
@@ -90,7 +92,8 @@ export interface ChallengeBlockProps {
 
   stepId?: string;
   isEligibleForChecking?: boolean;
-  onStepComplete?: (stepId: string, skipStateUpdate?: boolean) => void;
+  onStepComplete?: (stepId: string) => void;
+  // Accepted from content-renderer for parity with other blocks; unused locally.
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
@@ -215,8 +218,6 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   stepId: providedStepId,
   isEligibleForChecking = true,
   onStepComplete,
-  stepIndex,
-  totalSteps,
   sectionId,
   disabled = false,
 }) => {
@@ -248,41 +249,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     sectionId,
   });
 
-  const [hasResolvedOnce, setHasResolvedOnce] = useState(false);
-  const wasCheckingRef = useRef(false);
-  useEffect(() => {
-    if (checker.isChecking) {
-      wasCheckingRef.current = true;
-    } else if (wasCheckingRef.current && !hasResolvedOnce) {
-      setHasResolvedOnce(true);
-    }
-  }, [checker.isChecking, hasResolvedOnce]);
-
   const isEnabled = checker.isEnabled && !disabled;
-
-  // Objectives are probed read-only here, never through the gating checker:
-  // a satisfied objectives string on useStepChecker would SET_COMPLETED and
-  // persist to this block's store key, solving the challenge without successCriteria.
-  const [objectivesMet, setObjectivesMet] = useState(false);
-  useEffect(() => {
-    if (!objectives || objectives.length === 0) {
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const result = await checkRequirements({ requirements: objectives, stepId, maxRetries: 0 });
-        if (!cancelled && result.pass) {
-          setObjectivesMet(true);
-        }
-      } catch {
-        // Informational probe — a failed check leaves the normal flow untouched.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [objectives, stepId, checkRequirements]);
 
   // Standard-mode challenges have no provisioning step to opt into — the
   // brief and Check my work are visible immediately. Coda-mode challenges
@@ -310,11 +277,60 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // against it: if this challenge asked for a different VM, openTerminal is
   // tearing it down and the SDK deletes it on the way out.
   const staleSessionIdRef = useRef<string | null>(null);
+  const provisionedSessionIdRef = useRef<string | null>(null);
 
   const { completed: storedCompleted, reason: storedReason } = useStepCompletion(stepId, sectionId);
   const isStandalone = !onStepComplete;
   const isCompleted = storedCompleted || state === 'solved';
   const isSkipped = storedReason === 'skipped';
+
+  // Objectives are probed read-only here, never through the gating checker:
+  // a satisfied objectives string on useStepChecker would SET_COMPLETED and
+  // persist to this block's store key, solving the challenge without successCriteria.
+  const [objectivesMet, setObjectivesMet] = useState(false);
+  useEffect(() => {
+    const safeObjectives = conditionTokens(objectives).filter((token) => !token.startsWith('coda-exit-zero:'));
+    const isReadyForProbe =
+      isEligibleForChecking &&
+      isEnabled &&
+      !isCompleted &&
+      (mode === 'standard'
+        ? state === 'ready' || state === 'failed-check'
+        : (state === 'ready' || state === 'failed-check') &&
+          terminalCtx?.status === 'connected' &&
+          Boolean(terminalCtx?.sessionId) &&
+          terminalCtx?.sessionId === provisionedSessionIdRef.current);
+
+    if (!isReadyForProbe || safeObjectives.length === 0) {
+      setObjectivesMet((prev) => (prev ? false : prev));
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await checkRequirements({ requirements: safeObjectives, stepId, maxRetries: 0 });
+        if (!cancelled) {
+          setObjectivesMet(checkVerdict(result) === 'satisfied');
+        }
+      } catch {
+        // Informational probe — a failed check leaves the normal flow untouched.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    objectives,
+    stepId,
+    checkRequirements,
+    isEligibleForChecking,
+    isEnabled,
+    isCompleted,
+    mode,
+    state,
+    terminalCtx?.status,
+    terminalCtx?.sessionId,
+  ]);
 
   const markComplete = useCallback(() => {
     if (storedCompleted) {
@@ -336,6 +352,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 
   const resetToIdle = useCallback(() => {
     setupStartedRef.current = false;
+    provisionedSessionIdRef.current = null;
     setSetupProgress(null);
     setErrorDetail('');
     setState(mode === 'standard' ? 'ready' : 'idle');
@@ -357,6 +374,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       }
       setupStartedRef.current = true;
       cancelRequestedRef.current = false;
+      provisionedSessionIdRef.current = sessionId;
       setState('preparing');
 
       // Two paths: a single bash script (preferred, allows multi-line / heredocs
@@ -364,15 +382,15 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       // both are set.
       const useScript = !!setupScript && setupScript.trim().length > 0;
       // +1 for the sentinel write that always follows successful setup.
-      const totalSteps = useScript ? 2 : setupCommands.length + 1;
-      setSetupProgress({ current: 0, total: totalSteps });
+      const totalStepsToRun = useScript ? 2 : setupCommands.length + 1;
+      setSetupProgress({ current: 0, total: totalStepsToRun });
       try {
         if (useScript) {
           if (cancelRequestedRef.current) {
             resetToIdle();
             return;
           }
-          setSetupProgress({ current: 1, total: totalSteps });
+          setSetupProgress({ current: 1, total: totalStepsToRun });
           // 120s timeout — apt-get / systemctl restart / service-startup waits
           // are realistic and need the headroom. Backend hard-caps at the same
           // value, so we just request it.
@@ -392,7 +410,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
               resetToIdle();
               return;
             }
-            setSetupProgress({ current: i + 1, total: totalSteps });
+            setSetupProgress({ current: i + 1, total: totalStepsToRun });
             const cmd = setupCommands[i]!;
             const result = await runExec(sessionId, cmd, 30000);
             if (cancelRequestedRef.current) {
@@ -414,7 +432,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
           resetToIdle();
           return;
         }
-        setSetupProgress({ current: totalSteps, total: totalSteps });
+        setSetupProgress({ current: totalStepsToRun, total: totalStepsToRun });
         const sentinel = await runExec(sessionId, SENTINEL_WRITE_COMMAND, 5000);
         if (cancelRequestedRef.current) {
           resetToIdle();
@@ -537,6 +555,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     // challenge wants a different VM, openTerminal replaces it and the SDK
     // deletes it. The effect below must not start setup against it either.
     staleSessionIdRef.current = terminalCtx.sessionId;
+    provisionedSessionIdRef.current = null;
     setState('connecting');
     const vmOpts =
       vmTemplate || vmScenario || vmApp
@@ -603,7 +622,11 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       mode === 'coda' &&
       (state === 'ready' || state === 'checking' || state === 'failed-check' || state === 'setup-failed')
     ) {
-      terminalCtx?.disconnect();
+      const liveSessionId = terminalCtx?.sessionId;
+      const isOwner = Boolean(provisionedSessionIdRef.current) && provisionedSessionIdRef.current === liveSessionId;
+      if (isOwner) {
+        terminalCtx?.disconnect();
+      }
       resetToIdle();
     } else if (state === 'ready' || state === 'checking' || state === 'failed-check' || state === 'setup-failed') {
       // Standard mode never touches Coda, so it must never see a Coda gate —
@@ -732,7 +755,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
           )}
         {skippable &&
           !isCompleted &&
-          hasResolvedOnce &&
+          checker.status !== 'idle' &&
           !checker.isSequentialBlock &&
           state !== 'connecting' &&
           state !== 'preparing' && (

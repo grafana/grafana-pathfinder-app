@@ -14,11 +14,9 @@
 
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { assertExhaustive } from '../lib/assert-exhaustive';
+import type { StepStatus } from '../types/requirements.types';
 
-/**
- * Step status enum representing all possible step states
- */
-export type StepStatus = 'idle' | 'checking' | 'blocked' | 'enabled' | 'completed';
+export type { StepStatus };
 
 /**
  * Reason why a step was completed
@@ -225,6 +223,7 @@ export function deriveIsRetrying(state: StepState): boolean {
  */
 export function toLegacyState(state: StepState) {
   return {
+    status: state.status,
     isEnabled: deriveIsEnabled(state),
     isCompleted: deriveIsCompleted(state),
     isChecking: deriveIsChecking(state),

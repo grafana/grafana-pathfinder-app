@@ -8,7 +8,11 @@ import { useCodaSessionEligibility, useCodaTerminalGate } from '../../integratio
 import { execInSession } from '../../integrations/coda/coda-api';
 import { checkPostconditions, checkRequirements } from '../../requirements-manager';
 import { useStepCompletion } from '../../global-state/completion-store';
-import type { ConditionInput } from '../../types/requirements.types';
+import type { ConditionInput, StepStatus } from '../../types/requirements.types';
+
+const { useStepChecker: realUseStepChecker } = jest.requireActual<
+  typeof import('../../requirements-manager/step-checker.hook')
+>('../../requirements-manager/step-checker.hook');
 
 jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: jest.fn(),
@@ -24,7 +28,8 @@ jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
 
 const mockMarkSkipped = jest.fn();
 const mockUseStepChecker = jest.fn(
-  (props: { requirements?: ConditionInput; objectives?: ConditionInput; skippable?: boolean }) => ({
+  (props: { requirements?: ConditionInput; objectives?: ConditionInput; skippable?: boolean }): any => ({
+    status: 'enabled' as StepStatus,
     isEnabled: true,
     isSequentialBlock: false,
     isCompleted: false,
@@ -39,11 +44,16 @@ const mockUseStepChecker = jest.fn(
 jest.mock('../../requirements-manager', () => {
   const checkPostconditions = jest.fn();
   const checkRequirements = jest.fn();
+  const defaultManager = {
+    subscribe: () => () => {},
+    getSnapshot: () => new Map(),
+  };
   return {
     checkRequirements,
     checkPostconditions,
     validateInteractiveRequirements: jest.fn(),
     useGuideRequirements: () => ({ checkPostconditions, checkRequirements }),
+    useRequirementsManager: () => ({ manager: defaultManager }),
     useStepChecker: (props: Parameters<typeof mockUseStepChecker>[0]) => mockUseStepChecker(props),
   };
 });
@@ -85,6 +95,7 @@ function setBackend(post: jest.Mock): void {
 interface MockCtxOverrides {
   status?: 'disconnected' | 'connecting' | 'connected' | 'error';
   openTerminal?: jest.Mock;
+  disconnect?: jest.Mock;
   sessionId?: string | null;
   error?: string | null;
   isTerminalRegistered?: boolean;
@@ -96,7 +107,7 @@ function mockTerminalCtx(overrides: MockCtxOverrides = {}): { openTerminal: jest
   const openTerminal =
     overrides.openTerminal ??
     jest.fn().mockResolvedValue(overrides.sessionId === undefined ? SESSION_ID : overrides.sessionId);
-  const disconnect = jest.fn();
+  const disconnect = overrides.disconnect ?? jest.fn();
   mockedUseTerminalContext.mockReturnValue({
     status: overrides.status ?? 'disconnected',
     sessionId: overrides.sessionId === undefined ? SESSION_ID : overrides.sessionId,
@@ -121,6 +132,7 @@ const baseProps = {
 };
 
 interface MockCheckerOverrides {
+  status?: StepStatus;
   isEnabled?: boolean;
   isSequentialBlock?: boolean;
   isCompleted?: boolean;
@@ -131,6 +143,7 @@ interface MockCheckerOverrides {
 
 function mockCheckerState(overrides: MockCheckerOverrides = {}) {
   return {
+    status: overrides.status ?? (overrides.isChecking ? ('checking' as StepStatus) : ('enabled' as StepStatus)),
     isEnabled: true,
     isSequentialBlock: false,
     isCompleted: false,
@@ -146,6 +159,17 @@ function mockCheckerState(overrides: MockCheckerOverrides = {}) {
 beforeEach(() => {
   jest.clearAllMocks();
   resetChallengeCounter();
+  mockUseStepChecker.mockImplementation((props) => ({
+    status: 'enabled' as StepStatus,
+    isEnabled: true,
+    isSequentialBlock: false,
+    isCompleted: false,
+    isChecking: false,
+    explanation: null as string | null | undefined,
+    canSkip: Boolean(props.skippable),
+    markSkipped: mockMarkSkipped,
+    resetStep: jest.fn(),
+  }));
   mockedUseCodaTerminalGate.mockReturnValue('configured');
   mockedUseCodaSessionEligibility.mockReturnValue({ state: 'eligible' });
   mockedUseStepCompletion.mockReturnValue({ completed: false, reason: null });
@@ -591,8 +615,7 @@ describe('ChallengeBlock', () => {
     it('skip in standard mode never disconnects the shared terminal session', () => {
       const { disconnect } = mockTerminalCtx({ status: 'disconnected' });
 
-      // Drive the checker through one check cycle so Skip is legitimately shown.
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: true }));
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
       const skipProps = {
         ...baseProps,
         mode: 'standard' as const,
@@ -600,9 +623,7 @@ describe('ChallengeBlock', () => {
         stepId: 'ch-std-skip',
         successCriteria: 'has-dashboard-named:My Dashboard',
       };
-      const { rerender } = render(<ChallengeBlock {...skipProps} />);
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: false }));
-      rerender(<ChallengeBlock {...skipProps} />);
+      render(<ChallengeBlock {...skipProps} />);
       fireEvent.click(screen.getByRole('button', { name: /skip/i }));
 
       expect(mockMarkSkipped).toHaveBeenCalled();
@@ -612,8 +633,7 @@ describe('ChallengeBlock', () => {
     it('skip in standard mode resets to ready rather than idle when completion is cleared', () => {
       mockTerminalCtx({ status: 'disconnected' });
 
-      // Drive the checker through one check cycle so Skip is legitimately shown.
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: true }));
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
       const skipProps = {
         ...baseProps,
         mode: 'standard' as const,
@@ -622,8 +642,6 @@ describe('ChallengeBlock', () => {
         successCriteria: 'has-dashboard-named:My Dashboard',
       };
       const { rerender } = render(<ChallengeBlock {...skipProps} />);
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: false }));
-      rerender(<ChallengeBlock {...skipProps} />);
 
       fireEvent.click(screen.getByRole('button', { name: /skip/i }));
 
@@ -788,6 +806,7 @@ describe('ChallengeBlock', () => {
     beforeEach(() => {
       mockMarkSkipped.mockClear();
       mockUseStepChecker.mockImplementation((props) => ({
+        status: 'enabled' as StepStatus,
         isEnabled: true,
         isSequentialBlock: false,
         isCompleted: false,
@@ -802,6 +821,7 @@ describe('ChallengeBlock', () => {
     it('renders requirement warning banner and hides Start button when disabled by requirements', () => {
       mockTerminalCtx();
       mockUseStepChecker.mockReturnValue({
+        status: 'blocked' as StepStatus,
         isEnabled: false,
         isSequentialBlock: false,
         isCompleted: false,
@@ -839,12 +859,9 @@ describe('ChallengeBlock', () => {
       mockTerminalCtx();
       const onStepComplete = jest.fn();
 
-      // Drive the checker through one check cycle so Skip is legitimately shown.
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: true }));
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
       const skipProps = { ...baseProps, skippable: true, stepId: 'ch-3', onStepComplete };
-      const { rerender } = render(<ChallengeBlock {...skipProps} />);
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: false }));
-      rerender(<ChallengeBlock {...skipProps} />);
+      render(<ChallengeBlock {...skipProps} />);
 
       const skipButton = screen.getByRole('button', { name: /skip/i });
       expect(skipButton).toBeInTheDocument();
@@ -859,6 +876,7 @@ describe('ChallengeBlock', () => {
       mockTerminalCtx();
       // canSkip echoes the skippable prop through SET_BLOCKED, so the gate is isSequentialBlock.
       mockUseStepChecker.mockReturnValue({
+        status: 'blocked' as StepStatus,
         isEnabled: false,
         isSequentialBlock: true,
         isCompleted: false,
@@ -877,11 +895,9 @@ describe('ChallengeBlock', () => {
     it('still offers Skip when this step’s own requirements fail (not a sequential block)', () => {
       mockTerminalCtx();
       // Resolve as requirement-failed rather than sequentially blocked.
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: true }));
-      const ownReqsProps = { ...baseProps, skippable: true, stepId: 'ch-own-reqs' };
-      const { rerender } = render(<ChallengeBlock {...ownReqsProps} />);
       mockUseStepChecker.mockReturnValue(
         mockCheckerState({
+          status: 'blocked',
           isEnabled: false,
           isSequentialBlock: false,
           isCompleted: false,
@@ -890,19 +906,20 @@ describe('ChallengeBlock', () => {
           canSkip: true,
         })
       );
-      rerender(<ChallengeBlock {...ownReqsProps} />);
+      render(<ChallengeBlock {...baseProps} skippable={true} stepId="ch-own-reqs" />);
 
       expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
     });
 
-    it('hides Skip while the checker is still mid-check, even when not sequentially blocked', () => {
+    it('hides Skip while the checker is idle (unresolved), even when not sequentially blocked', () => {
       mockTerminalCtx();
       mockUseStepChecker.mockReturnValue(
         mockCheckerState({
+          status: 'idle',
           isEnabled: false,
           isSequentialBlock: false,
           isCompleted: false,
-          isChecking: true,
+          isChecking: false,
           explanation: undefined,
           canSkip: true,
         })
@@ -913,14 +930,15 @@ describe('ChallengeBlock', () => {
       expect(screen.queryByRole('button', { name: /skip/i })).not.toBeInTheDocument();
     });
 
-    it('shows Skip once an in-flight check resolves as not blocked', () => {
+    it('shows Skip once an unresolved check resolves as not blocked', () => {
       mockTerminalCtx();
       mockUseStepChecker.mockReturnValue(
         mockCheckerState({
+          status: 'idle',
           isEnabled: false,
           isSequentialBlock: false,
           isCompleted: false,
-          isChecking: true,
+          isChecking: false,
           explanation: undefined,
           canSkip: true,
         })
@@ -932,6 +950,7 @@ describe('ChallengeBlock', () => {
 
       mockUseStepChecker.mockReturnValue(
         mockCheckerState({
+          status: 'enabled',
           isEnabled: true,
           isSequentialBlock: false,
           isCompleted: false,
@@ -945,21 +964,18 @@ describe('ChallengeBlock', () => {
       expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
     });
 
-    it('keeps Skip visible during a later heartbeat recheck after resolving once', () => {
+    it('keeps Skip visible during a later heartbeat recheck', () => {
       mockTerminalCtx();
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: true }));
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
       const recheckProps = { ...baseProps, skippable: true, stepId: 'ch-recheck-skip' };
       const { rerender } = render(<ChallengeBlock {...recheckProps} />);
+      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
 
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: false }));
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'checking', isChecking: true }));
       rerender(<ChallengeBlock {...recheckProps} />);
       expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
 
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: true }));
-      rerender(<ChallengeBlock {...recheckProps} />);
-      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
-
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: false }));
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled', isChecking: false }));
       rerender(<ChallengeBlock {...recheckProps} />);
       expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
     });
@@ -1014,10 +1030,185 @@ describe('ChallengeBlock', () => {
       expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
     });
 
+    it('does not display objective already met note when check verdict is invalid even if pass is true', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'has-role:',
+        pass: true,
+        verdict: 'invalid',
+        error: [{ requirement: 'has-role:', pass: false, verdict: 'invalid', error: 'Invalid requirement: has-role:' }],
+      });
+
+      render(
+        <ChallengeBlock {...baseProps} mode="standard" objectives={['has-role:']} stepId="ch-invalid-objective" />
+      );
+
+      await waitFor(() => {
+        expect(mockedCheckRequirements).toHaveBeenCalledWith(expect.objectContaining({ requirements: ['has-role:'] }));
+      });
+      expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+    });
+
+    it('clears objective already met note when a subsequent probe resolution returns unsatisfied', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValueOnce({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          objectives={['has-dashboard-named:My Dashboard']}
+          stepId="ch-dynamic-objectives"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/objective already met/i)).toBeInTheDocument();
+      });
+
+      mockedCheckRequirements.mockResolvedValueOnce({
+        requirements: 'has-dashboard-named:Updated Dashboard',
+        pass: false,
+        verdict: 'unsatisfied',
+        error: [
+          {
+            requirement: 'has-dashboard-named:Updated Dashboard',
+            pass: false,
+            verdict: 'unsatisfied',
+            error: 'Dashboard not found',
+          },
+        ],
+      });
+
+      rerender(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          objectives={['has-dashboard-named:Updated Dashboard']}
+          stepId="ch-dynamic-objectives"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+      });
+    });
+
+    it('never invokes checkRequirements with coda-exit-zero tokens in objectives', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'coda-exit-zero:something',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          objectives={['coda-exit-zero:something']}
+          stepId="ch-coda-exit-zero-objective"
+        />
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockedCheckRequirements).not.toHaveBeenCalled();
+      expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+    });
+
+    it('filters out coda-exit-zero from mixed objectives before probing', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          objectives={['has-dashboard-named:My Dashboard', 'coda-exit-zero:something']}
+          stepId="ch-mixed-objectives"
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockedCheckRequirements).toHaveBeenCalledWith(
+          expect.objectContaining({ requirements: ['has-dashboard-named:My Dashboard'] })
+        );
+      });
+
+      expect(mockedCheckRequirements).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          requirements: expect.arrayContaining([expect.stringContaining('coda-exit-zero')]),
+        })
+      );
+      await waitFor(() => {
+        expect(screen.getByText(/objective already met/i)).toBeInTheDocument();
+      });
+    });
+
+    it('does not probe objectives when isEligibleForChecking is false', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          isEligibleForChecking={false}
+          objectives={['has-dashboard-named:My Dashboard']}
+          stepId="ch-ineligible-objectives"
+        />
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockedCheckRequirements).not.toHaveBeenCalled();
+      expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+    });
+
+    it('does not probe objectives in Coda mode while idle', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="coda"
+          objectives={['has-dashboard-named:My Dashboard']}
+          stepId="ch-coda-idle-objectives"
+        />
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockedCheckRequirements).not.toHaveBeenCalled();
+      expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+    });
+
     it('handles Skip correctly in standalone mode without onStepComplete or sectionId', () => {
       mockTerminalCtx();
-      // Drive the checker through one check cycle so Skip is legitimately shown.
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: true }));
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
       const standaloneProps = {
         ...baseProps,
         skippable: true,
@@ -1025,9 +1216,7 @@ describe('ChallengeBlock', () => {
         onStepComplete: undefined,
         sectionId: undefined,
       };
-      const { rerender } = render(<ChallengeBlock {...standaloneProps} />);
-      mockUseStepChecker.mockReturnValue(mockCheckerState({ isChecking: false }));
-      rerender(<ChallengeBlock {...standaloneProps} />);
+      render(<ChallengeBlock {...standaloneProps} />);
 
       const skipButton = screen.getByRole('button', { name: /skip/i });
       fireEvent.click(skipButton);
@@ -1036,9 +1225,49 @@ describe('ChallengeBlock', () => {
       expect(mockUseStepChecker).toHaveBeenCalledWith(expect.objectContaining({ sectionId: undefined }));
     });
 
+    it('renders Skip for a skippable challenge with no requirements using real useStepChecker', async () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockImplementation((props) => realUseStepChecker(props as any));
+
+      render(
+        <ChallengeBlock {...baseProps} requirements={undefined} skippable={true} stepId="ch-no-reqs-regression" />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
+      });
+    });
+
+    it('renders Skip when status transitions directly from idle to enabled without an intermediate checking commit', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'idle',
+          isEnabled: false,
+          isChecking: false,
+        })
+      );
+
+      const skipProps = { ...baseProps, requirements: undefined, skippable: true, stepId: 'ch-fast-path' };
+      const { rerender } = render(<ChallengeBlock {...skipProps} />);
+      expect(screen.queryByRole('button', { name: /skip/i })).not.toBeInTheDocument();
+
+      // Hook resolves directly to enabled without any intermediate isChecking: true commit
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'enabled',
+          isEnabled: true,
+          isChecking: false,
+        })
+      );
+      rerender(<ChallengeBlock {...skipProps} />);
+      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
+    });
+
     it('keeps Try again (disabled) and offers Cancel when setup failed but isEnabled is false', async () => {
       mockTerminalCtx({ status: 'connected', sessionId: null });
       mockUseStepChecker.mockImplementation((props) => ({
+        status: 'enabled' as StepStatus,
         isEnabled: true,
         isSequentialBlock: false,
         isCompleted: false,
@@ -1058,6 +1287,7 @@ describe('ChallengeBlock', () => {
 
       // Now simulate requirements becoming unsatisfied (isEnabled -> false)
       mockUseStepChecker.mockImplementation((props) => ({
+        status: 'blocked' as StepStatus,
         isEnabled: false,
         isSequentialBlock: false,
         isCompleted: false,
@@ -1087,6 +1317,7 @@ describe('ChallengeBlock', () => {
       });
 
       mockUseStepChecker.mockImplementation((props) => ({
+        status: 'blocked' as StepStatus,
         isEnabled: false,
         isSequentialBlock: false,
         isCompleted: false,
@@ -1106,6 +1337,7 @@ describe('ChallengeBlock', () => {
     it('renders a fallback message while a requirements recheck has no explanation yet', () => {
       mockTerminalCtx();
       mockUseStepChecker.mockReturnValue({
+        status: 'checking' as StepStatus,
         isEnabled: false,
         isSequentialBlock: false,
         isCompleted: false,
@@ -1121,6 +1353,94 @@ describe('ChallengeBlock', () => {
       const banner = screen.getByTestId('challenge-requirement-warning-ch-recheck');
       expect(banner.textContent).not.toBe('');
       expect(banner).toHaveTextContent(/checking requirements/i);
+    });
+
+    it('does not disconnect terminal on skip when this challenge does not own the session', () => {
+      const { disconnect } = mockTerminalCtx({
+        status: 'connected',
+        sessionId: 'session-opened-by-other-step',
+      });
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+
+      const skipProps = {
+        ...baseProps,
+        mode: 'coda' as const,
+        skippable: true,
+        stepId: 'ch-coda-skip-non-owner',
+      };
+      render(<ChallengeBlock {...skipProps} />);
+
+      const skipButton = screen.getByRole('button', { name: /skip/i });
+      fireEvent.click(skipButton);
+
+      expect(mockMarkSkipped).toHaveBeenCalled();
+      expect(disconnect).not.toHaveBeenCalled();
+    });
+
+    it('disconnects terminal on skip when this challenge owns the session', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const { disconnect } = mockTerminalCtx({ status: 'connected', sessionId: 'ch-session-owned-skip' });
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} skippable={true} stepId="ch-coda-skip-owned" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      const skipButton = screen.getByRole('button', { name: /skip/i });
+      fireEvent.click(skipButton);
+
+      expect(mockMarkSkipped).toHaveBeenCalled();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not disconnect terminal on cancel when the live session belongs to another step', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const { disconnect } = mockTerminalCtx({ status: 'connected', sessionId: 'ch-session-1' });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-other-step" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      // Another step opened a new session in the shared terminal context
+      mockTerminalCtx({ status: 'connected', sessionId: 'session-opened-by-other-step', disconnect });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-other-step" />);
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('disconnects terminal on cancel when this challenge owns the live session', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const { disconnect } = mockTerminalCtx({ status: 'connected', sessionId: 'ch-session-owned' });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-owned" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
     });
   });
 });
