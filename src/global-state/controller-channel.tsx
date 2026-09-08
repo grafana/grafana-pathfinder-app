@@ -57,6 +57,7 @@ interface ControllerChannel {
 
 interface PendingRequest {
   resolve: (value: RemoteRequirementResult | FixOutcome | null) => void;
+  fallback: RemoteRequirementResult | FixOutcome | null;
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -197,7 +198,7 @@ export function ControllerChannelProvider({
     const failAllPending = () => {
       pending.forEach((entry) => {
         clearTimeout(entry.timer);
-        entry.resolve(null);
+        entry.resolve(entry.fallback);
       });
       pending.clear();
       stepDone.forEach((resolve) => resolve(false));
@@ -318,7 +319,11 @@ export function ControllerChannelProvider({
           pendingRef.current.delete(requestId);
           resolve(fallback);
         }, REQUEST_TIMEOUT_MS);
-        pendingRef.current.set(requestId, { resolve: resolve as PendingRequest['resolve'], timer });
+        pendingRef.current.set(requestId, {
+          resolve: resolve as PendingRequest['resolve'],
+          fallback,
+          timer,
+        });
         post({ ...payload, requestId });
       });
     },
