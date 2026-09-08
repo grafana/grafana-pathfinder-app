@@ -24,6 +24,7 @@ import {
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { logger } from '../../lib/logging';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 const SANDBOX_SUBJECT = 'This step runs its command in a Coda sandbox VM';
 
@@ -277,6 +278,7 @@ export const TerminalStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        {...getTrackedStepRootAttributes('terminal', renderedStepId)}
         data-test-step-state={stepState}
         data-testid={testIds.interactive.terminalStep(renderedStepId)}
       >
