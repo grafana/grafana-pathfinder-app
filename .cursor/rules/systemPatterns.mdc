@@ -133,7 +133,7 @@ Compact catalogue. For each subsystem: purpose, entry point (file an agent shoul
 
 **Tier 4 — UI:**
 
-- `components/` — React + Scenes UI. Major panels: `App/App.tsx` (root), `docs-panel/docs-panel.tsx` (~40 KB hub), `Home/`, `interactive-tutorial/`, `LearningPaths/`, `LiveSession/`, `block-editor/`, `floating-panel/`, `full-screen/`, `kiosk/`, `PrTester/`.
+- `components/` — React + Scenes UI. Major panels: `App/App.tsx` (root), `docs-panel/docs-panel.tsx` (the panel hub), `Home/`, `interactive-tutorial/`, `LearningPaths/`, `LiveSession/`, `block-editor/`, `floating-panel/`, `full-screen/`, `kiosk/`, `PrTester/`.
 - `pages/` — Grafana Scenes routing. Entries: `homePage.ts`, `docsPage.ts`. Both registered by `App.tsx`.
 
 **Excluded from tier analysis** (not subject to import-graph rules):
@@ -150,10 +150,11 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 
 | Producer                              | Consumer                                  | Contract                                                       |
 | ------------------------------------- | ----------------------------------------- | -------------------------------------------------------------- |
-| `bundled-interactives/repository.json` | `package-engine/loader.ts`               | Fallback content when online CDN unavailable                   |
+| `bundled-interactives/repository.json` | `package-engine/resolver.ts`             | Bundled package catalogue for the first resolver tier          |
 | `docs-retrieval` (`fetchUnifiedContent`) | `context-engine`, `components/docs-panel` | Multi-strategy fetch returns parsed guide                    |
 | `context-engine` (`getRecommendations`) | `components/docs-panel`, `Home`          | Returns scored `Recommendation[]` from recommender or bundled  |
-| `package-engine` (`createCompositeResolver`) | `docs-retrieval`, `context-engine`  | Bundled-first fallback chain                                   |
+| `package-engine` (`createCompositeResolver`) | `docs-retrieval`, `context-engine`  | Bundled → (recommender when enabled, otherwise CDN) → App Platform |
+| `lib/custom-guide-repository-client.ts` (`fetchCustomGuideRepository`) | `utils/usePublishedGuides.ts`, `learning-paths/app-platform-paths.ts` | Shared App Platform catalogue for published custom guides and learning paths |
 | `requirements-manager` (`useGuideRequirements`) | `interactive-engine`, `components/interactive-tutorial` | Prereq verification scoped to the renderer's guide id |
 | `interactive-engine` (`useInteractiveElements`) | `components/interactive-tutorial`     | Action execution + auto-completion detection                |
 | `lib/dom` (`resolveSelector`)          | `interactive-engine`                     | Selector pipeline: detect → generate → validate → retry        |

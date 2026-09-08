@@ -1,3 +1,4 @@
+import type { ConditionInput } from './requirements.types';
 import type { InternalAction } from './interactive-actions.types';
 
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
@@ -28,12 +29,31 @@ interface CrossTabEnvelope {
   timestamp: number;
 }
 
+type SetsEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+
+type RequiredKeysOf<T> = { [K in keyof T]-?: Record<never, never> extends Pick<T, K> ? never : K }[keyof T];
+
+/**
+ * Both directions of assignability, plus equality of the key set and of the
+ * required-key set.
+ *
+ * Mutual assignability alone is blind to an optional-only difference: a type
+ * carrying an extra `foo?` stays mutually assignable with one that lacks it, so
+ * an optional wire field could be added on one side only and still compile.
+ * Comparing `keyof` catches the added key; comparing the required-key set
+ * catches a field that merely changed between required and optional.
+ */
+export type WireMirrors<A, B> = SetsEqual<A, B> &
+  SetsEqual<keyof A, keyof B> &
+  SetsEqual<RequiredKeysOf<A>, RequiredKeysOf<B>>;
+
 // Deliberate re-statement (not an alias) of CheckResultError /
 // RequirementsCheckResult: this is a wire contract, and the two tabs on a
 // channel may run different plugin versions, so the internal type must not be
 // able to reshape the wire silently. A compile-time guard in
 // cross-tab.types.test.ts forces a conscious update here when they diverge.
 export interface RemoteRequirementError {
+  verdict?: 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
   requirement: string;
   pass: boolean;
   error?: string;
@@ -45,6 +65,7 @@ export interface RemoteRequirementError {
 }
 
 export interface RemoteRequirementResult {
+  verdict?: 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
   requirements: string;
   pass: boolean;
   error: RemoteRequirementError[];
@@ -104,7 +125,7 @@ export interface CheckRequirementsMessage extends CrossTabEnvelope, Partial<Cont
   kind: 'check-requirements';
   requestId: string;
   stepId: string;
-  requirements: string;
+  requirements: ConditionInput;
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
@@ -121,7 +142,7 @@ export interface FixRequirementMessage extends CrossTabEnvelope, Partial<Control
   kind: 'fix-requirement';
   requestId: string;
   stepId: string;
-  requirements: string;
+  requirements: ConditionInput;
   fixType?: string;
   targetHref?: string;
   scrollContainer?: string;
@@ -279,8 +300,26 @@ function isOptionalTargetState(value: unknown): boolean {
 
 const MAX_PAIRING_FIELD_LENGTH = 512;
 
+// A real guide authors a handful of conditions, each a short token. The
+// channel is same-origin and forgeable, and this walk runs before the
+// signature gate, so bound both the arity and each element rather than
+// iterating whatever a sender supplies.
+const MAX_CONDITION_TOKENS = 32;
+const MAX_CONDITION_TOKEN_LENGTH = 512;
+
 function isBoundedString(value: unknown, maxLength: number): boolean {
   return typeof value === 'string' && value.length <= maxLength;
+}
+
+function isBoundedConditionInput(value: unknown): boolean {
+  if (isBoundedString(value, MAX_CONDITION_TOKENS * MAX_CONDITION_TOKEN_LENGTH)) {
+    return true;
+  }
+  return (
+    Array.isArray(value) &&
+    value.length <= MAX_CONDITION_TOKENS &&
+    value.every((token) => isBoundedString(token, MAX_CONDITION_TOKEN_LENGTH))
+  );
 }
 
 // check-requirements / fix-requirement are SIDE-EFFECTING on the live tab —
@@ -292,7 +331,7 @@ function isValidCheckRequirements(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
     typeof message.stepId === 'string' &&
-    typeof message.requirements === 'string' &&
+    isBoundedConditionInput(message.requirements) &&
     isOptionalString(message.targetAction) &&
     isOptionalString(message.refTarget) &&
     isOptionalString(message.targetValue)
@@ -303,7 +342,7 @@ function isValidFixRequirement(message: Record<string, unknown>): boolean {
   return (
     typeof message.requestId === 'string' &&
     typeof message.stepId === 'string' &&
-    typeof message.requirements === 'string' &&
+    isBoundedConditionInput(message.requirements) &&
     isOptionalString(message.fixType) &&
     isOptionalString(message.targetHref) &&
     isOptionalString(message.scrollContainer)
@@ -313,6 +352,13 @@ function isValidFixRequirement(message: Record<string, unknown>): boolean {
 // requirement-result / fix-result are replies the controller feeds into its
 // requirements-state path; validate the reply shape so a malformed result can't
 // resolve a pending request with garbage.
+function isOptionalVerdict(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === 'string' && ['satisfied', 'unsatisfied', 'unavailable', 'invalid'].includes(value))
+  );
+}
+
 function isValidRequirementResult(message: Record<string, unknown>): boolean {
   if (typeof message.requestId !== 'string' || typeof message.stepId !== 'string' || !isRecord(message.result)) {
     return false;
@@ -320,12 +366,14 @@ function isValidRequirementResult(message: Record<string, unknown>): boolean {
   const result = message.result;
   return (
     typeof result.requirements === 'string' &&
+    isOptionalVerdict(result.verdict) &&
     typeof result.pass === 'boolean' &&
     Array.isArray(result.error) &&
     result.error.every(
       (e) =>
         isRecord(e) &&
         typeof e.requirement === 'string' &&
+        isOptionalVerdict(e.verdict) &&
         typeof e.pass === 'boolean' &&
         isOptionalString(e.error) &&
         isOptionalString(e.fixType) &&

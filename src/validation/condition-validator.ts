@@ -227,9 +227,13 @@ export function validateConditionString(conditionString: string, path: Array<str
 }
 
 /**
- * Validate an array of condition strings.
+ * Validate an array of condition tokens.
  *
- * @param conditions - Array of condition strings (each may be comma-separated)
+ * Each element is ONE condition, so a comma inside an element belongs to the
+ * parameter value (`has-dashboard-named:CPU, memory`). Only the legacy
+ * comma-separated string form still splits — see `validateConditionString`.
+ *
+ * @param conditions - Array of condition tokens (one condition per element)
  * @param basePath - JSON path to the array (e.g., ['blocks', 2, 'requirements'])
  * @returns Array of all validation issues found
  */
@@ -243,9 +247,20 @@ export function validateConditions(
 
   const allIssues: ConditionIssue[] = [];
 
+  if (conditions.length > MAX_CONDITION_COMPONENTS) {
+    allIssues.push({
+      condition: conditions.join(','),
+      message: `Condition has ${conditions.length} components, maximum is ${MAX_CONDITION_COMPONENTS}`,
+      code: 'too_many_components',
+      path: basePath,
+    });
+  }
+
   for (let i = 0; i < conditions.length; i++) {
-    const issues = validateConditionString(conditions[i]!, [...basePath, i]);
-    allIssues.push(...issues);
+    const issue = validateSingleCondition(conditions[i]!, [...basePath, i]);
+    if (issue) {
+      allIssues.push(issue);
+    }
   }
 
   return allIssues;

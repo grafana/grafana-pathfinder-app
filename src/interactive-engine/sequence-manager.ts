@@ -1,3 +1,4 @@
+import { conditionLabel } from '../lib/condition-input';
 import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
@@ -93,7 +94,7 @@ export class SequenceManager {
     logger.warn(
       `${context.stepName} ${context.stepIndex + 1} failed after ${this.MAX_RETRIES} retries, stopping sequence`
     );
-    const requirement = (context.data.requirements ?? '').slice(0, MAX_REQUIREMENT_CONTEXT_LENGTH);
+    const requirement = conditionLabel(context.data.requirements).slice(0, MAX_REQUIREMENT_CONTEXT_LENGTH);
     if (lastFailure === 'action') {
       recordSequenceActionError(requirement, this.MAX_RETRIES, classifySequenceError(lastError));
       return 'failed_action';

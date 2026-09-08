@@ -6,6 +6,7 @@
  * the same way InteractiveStep does.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { testIds } from '../../constants/testIds';
@@ -28,8 +29,8 @@ const SANDBOX_SUBJECT = 'This step runs its command in a Coda sandbox VM';
 
 export interface TerminalStepProps {
   command: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   skippable?: boolean;
   hints?: string;
   children?: React.ReactNode;

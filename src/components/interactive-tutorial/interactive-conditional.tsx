@@ -13,6 +13,7 @@ import { useInteractiveElements } from '../../interactive-engine';
 import type { ParsedElement } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import type { ConditionalDisplayMode, ConditionalSectionConfig } from '../../types/json-guide.types';
+import { isValidRequirement } from '../../types/requirements.types';
 import { InteractiveSection } from './interactive-section';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { logger } from '../../lib/logging';
@@ -39,13 +40,6 @@ export interface InteractiveConditionalProps {
   renderElement: (element: ParsedElement, key: string) => React.ReactNode;
   /** Key prefix for rendered children */
   keyPrefix: string;
-}
-
-/**
- * Parse conditions array into a requirements string for the checker
- */
-function conditionsToRequirementsString(conditions: string[]): string {
-  return conditions.join(',');
 }
 
 /** True when conditions may flip after DOM updates (e.g. viz picker opens). */
@@ -75,8 +69,8 @@ export function InteractiveConditional({
   // Stable string identity for `conditions`. The parent passes a fresh array
   // on every render (parsed from JSON), so keying effects off the array would
   // tear down and re-attach the MutationObserver on every parent render. The
-  // joined string is referentially stable as long as the underlying values are.
-  const conditionsKey = useMemo(() => conditions.join(','), [conditions]);
+  // serialized form is referentially stable as long as the values are.
+  const conditionsKey = useMemo(() => JSON.stringify(conditions), [conditions]);
 
   // Generate a stable ID for this conditional (derived from the stable key).
   const conditionalId = useMemo(
@@ -104,8 +98,10 @@ export function InteractiveConditional({
   // new schedule supersedes an older one. setTimeouts pile up otherwise.
   const reevalTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  // Convert conditions to requirements string format
-  const requirementsString = conditionsToRequirementsString(conditions);
+  // Value-stable view of `conditions`, keyed off the serialized form so the
+  // checker callback below is not rebuilt on every parent render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on conditionsKey, which is the serialization of conditions
+  const requirements = useMemo(() => conditions, [conditionsKey]);
 
   // Function to evaluate conditions
   const evaluateConditions = useCallback(
@@ -127,7 +123,7 @@ export function InteractiveConditional({
         // Create requirement data for checking
         // Use provided refTarget for exists-reftarget condition, fallback to placeholder
         const requirementData = {
-          requirements: requirementsString,
+          requirements: requirements,
           targetAction: 'conditional',
           refTarget: refTarget || 'conditional-block',
           targetValue: undefined,
@@ -154,7 +150,7 @@ export function InteractiveConditional({
         setIsChecking(false);
       }
     },
-    [requirementsString, checkRequirementsFromData, description, refTarget]
+    [requirements, checkRequirementsFromData, description, refTarget]
   );
 
   const needsDomWatch = conditionsKeyNeedsDomWatch(conditionsKey);
@@ -299,8 +295,12 @@ export function InteractiveConditional({
   if (display === 'section') {
     // Extract config values, using defaults if not provided
     const sectionTitle = sectionConfig?.title || (conditionsPassed ? 'When conditions pass' : 'When conditions fail');
-    const sectionRequirements = sectionConfig?.requirements?.join(',');
-    const sectionObjectives = sectionConfig?.objectives?.join(',');
+    // Collapse an empty array to undefined the way every json-parser converter
+    // does: `[]` is truthy, and a truthy empty condition list makes
+    // `useSectionRequirements` install a recheck loop for nothing.
+    const sectionRequirements = sectionConfig?.requirements?.length ? sectionConfig.requirements : undefined;
+    const executableSectionObjectives = sectionConfig?.objectives?.filter(isValidRequirement);
+    const sectionObjectives = executableSectionObjectives?.length ? executableSectionObjectives : undefined;
 
     return (
       <div

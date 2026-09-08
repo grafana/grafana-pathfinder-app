@@ -208,7 +208,7 @@ describe('buildOptionForField', () => {
     // pointer at the requirement vocabulary is `CLI_VIEW`'s to add, and is asserted
     // where that view is (contracts.test.ts).
     const requirements = buildOptionForField('requirements', shape.requirements!)!.description;
-    expect(requirements).toBe('Prerequisite conditions (e.g., on-page:/dashboards, is-admin)');
+    expect(requirements).toBe('Prerequisite conditions, one condition per entry (e.g., on-page:/dashboards)');
   });
 
   it('prefers a caller-supplied description over the schema wording', () => {

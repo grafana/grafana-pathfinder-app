@@ -429,7 +429,15 @@ export function setMilestoneCompletionPercentage(journeyBaseUrl: string, percent
   persistJourneyCompletionPercentage(journeyBaseUrl, percentage);
 }
 
+function isBackendGuideJourney(journeyBaseUrl: string): boolean {
+  return journeyBaseUrl.startsWith('backend-guide:');
+}
+
 function persistJourneyCompletionPercentage(journeyBaseUrl: string, percentage: number): string | undefined {
+  if (isBackendGuideJourney(journeyBaseUrl)) {
+    return undefined;
+  }
+
   // Fire and forget - storage handles errors internally
   journeyCompletionStorage.set(journeyBaseUrl, percentage);
 
@@ -447,6 +455,10 @@ export async function setJourneyCompletionPercentageAsync(
   percentage: number,
   context?: CompletionContext
 ): Promise<void> {
+  if (isBackendGuideJourney(journeyBaseUrl)) {
+    return;
+  }
+
   await journeyCompletionStorage.set(journeyBaseUrl, percentage);
 
   // Update learning paths progress when a bundled guide reaches 100%
@@ -672,6 +684,10 @@ export async function markMilestoneDone(
   if (expectedMilestoneIds && expectedMilestoneIds.length > 0) {
     const completed = await milestoneCompletionStorage.getCompleted(journeyBaseUrl);
     if (expectedMilestoneIds.every((id) => completed.has(id))) {
+      if (journeyBaseUrl.startsWith('backend-guide:')) {
+        await journeyCompletionStorage.set(journeyBaseUrl, 100);
+      }
+
       const { getPathsData } = await import('../learning-paths');
       const normalizedBase = journeyBaseUrl.replace(/\/+$/, '');
       const path = getPathsData().paths.find((p) => p.url && normalizedBase === p.url.replace(/\/+$/, ''));

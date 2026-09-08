@@ -19,8 +19,21 @@
  */
 
 import { panelModeManager, type PendingGuide } from '../../global-state/panel-mode';
-import type { CombinedLearningJourneyPanel } from './docs-panel';
 import type { LaunchSource } from '../../recovery';
+import type { LearningJourneyTab } from '../../types/content-panel.types';
+import type { OpenDocsOptions, OpenLearningJourneyOptions } from './types';
+
+export interface PendingGuidePanel {
+  state: {
+    tabs: Array<Pick<LearningJourneyTab, 'id'>>;
+    activeTabId: string;
+  };
+  setActiveTab(tabId: string): void;
+  openEditorTab(): void;
+  openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string>;
+  openLearningJourney(url: string, title?: string, options?: OpenLearningJourneyOptions): Promise<string>;
+  restoreTabsAsync(): Promise<void>;
+}
 
 /**
  * Apply a consumed pending guide to the receiving panel model.
@@ -38,11 +51,7 @@ import type { LaunchSource } from '../../recovery';
  *    a recognised journey URL would create a flat 'docs' tab.
  * 4. Otherwise → plain `openDocsPage` (auto-detects interactive content).
  */
-export function openPendingGuide(
-  panel: CombinedLearningJourneyPanel,
-  pending: PendingGuide,
-  source: LaunchSource
-): void {
+export function openPendingGuide(panel: PendingGuidePanel, pending: PendingGuide, source: LaunchSource): void {
   if (pending.tabId && panel.state.tabs.some((tab) => tab.id === pending.tabId)) {
     // Restore already made it active and kicked off its content load, so
     // re-selecting it would only risk a second fetch for the same tab.
@@ -85,7 +94,7 @@ export function openPendingGuide(
  * Returns true when a pending guide was consumed.
  */
 export function consumePendingGuideOnMount(
-  panel: CombinedLearningJourneyPanel,
+  panel: PendingGuidePanel,
   fallbackSource: LaunchSource,
   markInFlight: () => void
 ): boolean {
@@ -115,7 +124,7 @@ export function consumePendingGuideOnMount(
  * Returns true when a pending guide was consumed.
  */
 export async function initializePanelTabsOnMount(
-  panel: CombinedLearningJourneyPanel,
+  panel: PendingGuidePanel,
   fallbackSource: LaunchSource,
   markInFlight: () => void
 ): Promise<boolean> {

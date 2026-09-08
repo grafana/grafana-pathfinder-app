@@ -68,7 +68,7 @@ import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.s
 import { getInteractiveStyles } from '../../styles/interactive.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import { config, getAppEvents, locationService } from '@grafana/runtime';
-import { coerceLaunchSource, evaluateAlignment, resolveStartingLocation, type LaunchSource } from '../../recovery';
+import { coerceLaunchSource, type LaunchSource } from '../../recovery';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
 import { panelModeManager } from '../../global-state/panel-mode';
@@ -93,12 +93,16 @@ import {
   RECOMMENDATIONS_TAB_ID,
   DEVTOOLS_TAB_ID,
   EDITOR_TAB_ID,
-  getGuideStripTabs,
   isNonContentTab,
   findCurrentMilestoneIndex,
   isCurrentUserEditor,
   resolveTabGates,
   didGateClose,
+  closeTabState,
+  pruneGatedTabState,
+  projectPersistedTabs,
+  resolveDocsLoadAlignment,
+  buildDocsLoadSuccessPatch,
   type TabGates,
 } from './utils';
 import { DEFAULT_GUIDE_TITLE } from '../block-editor/editor-chrome-status';
@@ -122,12 +126,7 @@ import {
 } from './hooks';
 
 // Import centralized types
-import {
-  LearningJourneyTab,
-  PersistedTabData,
-  CombinedPanelState,
-  PackageOpenInfo,
-} from '../../types/content-panel.types';
+import { LearningJourneyTab, CombinedPanelState, PackageOpenInfo } from '../../types/content-panel.types';
 import { getPackageRenderType } from '../../types/package.types';
 import type { RawContent } from '../../types/content.types';
 import type { DocsPanelModelOperations, OpenDocsOptions, OpenLearningJourneyOptions } from './types';
@@ -313,7 +312,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    */
   public pruneGatedTabs(): void {
     const pruned = this.pruneUnauthorizedGatedTabs(this.state.tabs, this.state.activeTabId);
-    if (!pruned.didPrune) {
+    if (!pruned.changed) {
       return;
     }
     this.setState({ tabs: pruned.tabs, activeTabId: pruned.activeTabId });
@@ -327,44 +326,13 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
    * observed gate closure apart from a first read of an unresolved config.
    * Storage is only rewritten for the former — see `didGateClose`.
    */
-  private pruneUnauthorizedGatedTabs(
-    tabs: LearningJourneyTab[],
-    activeTabId: string
-  ): { tabs: LearningJourneyTab[]; activeTabId: string; didPrune: boolean; gateClosed: boolean } {
+  private pruneUnauthorizedGatedTabs(tabs: LearningJourneyTab[], activeTabId: string) {
     const gates = resolveTabGates(this.state.pluginConfig);
     const gateClosed = didGateClose(this._tabGates, gates);
     this._tabGates = gates;
 
-    const pruned = this.withoutUnauthorizedGatedTabs(tabs, activeTabId, gates.allowEditor, gates.allowDevTools);
+    const pruned = pruneGatedTabState({ tabs, activeTabId }, gates);
     return { ...pruned, gateClosed };
-  }
-
-  private withoutUnauthorizedGatedTabs(
-    tabs: LearningJourneyTab[],
-    activeTabId: string,
-    allowEditor: boolean,
-    allowDevTools: boolean
-  ): { tabs: LearningJourneyTab[]; activeTabId: string; didPrune: boolean } {
-    const nextTabs = tabs.filter((t) => {
-      if (t.type === 'editor' && !allowEditor) {
-        return false;
-      }
-      if (t.type === 'devtools' && !allowDevTools) {
-        return false;
-      }
-      return true;
-    });
-
-    if (nextTabs.length === tabs.length) {
-      return { tabs, activeTabId, didPrune: false };
-    }
-
-    const removedActive = !nextTabs.some((t) => t.id === activeTabId);
-    return {
-      tabs: nextTabs,
-      activeTabId: removedActive ? RECOMMENDATIONS_TAB_ID : activeTabId,
-      didPrune: true,
-    };
   }
 
   private generateTabId(): string {
@@ -401,19 +369,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
   private async writeTabsToStorage(): Promise<void> {
     try {
-      // Save user-opened tabs (recommendations home is always present and not persisted)
-      const tabsToSave: PersistedTabData[] = this.state.tabs
-        .filter((tab) => tab.type !== 'recommendations')
-        .map((tab) => ({
-          id: tab.id,
-          title: tab.title,
-          baseUrl: tab.baseUrl,
-          currentUrl: tab.currentUrl,
-          type: tab.type,
-          packageInfo: tab.packageInfo,
-        }));
-
-      // Save both tabs and active tab
+      const tabsToSave = projectPersistedTabs(this.state.tabs);
       await Promise.all([tabStorage.setTabs(tabsToSave), tabStorage.setActiveTab(this.state.activeTabId)]);
     } catch (error) {
       logger.error('Failed to save tabs to storage', { error });
@@ -674,39 +630,15 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public closeTab(tabId: string) {
-    const currentTabs = this.state.tabs;
-    const closing = currentTabs.find((t) => t.id === tabId);
-    // Unclosable chrome is a kind rule (type), not an identity check.
-    if (!closing || closing.type === 'recommendations') {
+    const nextState = closeTabState(this.state, tabId);
+    if (!nextState.changed) {
       return;
     }
 
-    const newTabs = currentTabs.filter((t) => t.id !== tabId);
-    let newActiveTabId = this.state.activeTabId;
-
-    // Closing a background tab must not move focus — the user may be sitting on
-    // another tab and closing a guide from the overflow menu.
-    if (this.state.activeTabId === tabId) {
-      // Adjacency walks the rendered strip, not raw tab state: the
-      // recommendations rail holds no strip slot, so handing it focus would
-      // leave no visible tab marked active. A tab outside the strip closed via
-      // Ctrl+W has no neighbours of its own, so it inherits the last strip tab
-      // instead of sending the user home. Recommendations is the empty-strip
-      // fallback.
-      const stripTabs = getGuideStripTabs(currentTabs);
-      const closedIndex = stripTabs.findIndex((t) => t.id === tabId);
-      const replacement =
-        closedIndex === -1
-          ? stripTabs[stripTabs.length - 1]
-          : (stripTabs[closedIndex + 1] ?? stripTabs[closedIndex - 1]);
-      newActiveTabId = replacement?.id ?? RECOMMENDATIONS_TAB_ID;
-    }
-
     this.setState({
-      tabs: newTabs,
-      activeTabId: newActiveTabId,
+      tabs: nextState.tabs,
+      activeTabId: nextState.activeTabId,
     });
-
     this.saveTabsToStorage();
   }
 
@@ -921,57 +853,21 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       // Check if fetch succeeded or failed
       if (result.content) {
         const fetchedContent = result.content;
-
-        const pathContext = fetchedContent.metadata.learningJourney
-          ? { learningJourney: fetchedContent.metadata.learningJourney }
-          : undefined;
-
-        // Implied 0th step: decide whether to prompt the user to navigate to
-        // the guide's declared starting location before step 1 begins.
-        // Two manifests can describe this launch and they are not equally complete.
-        // `packageInfo` comes from the catalogue proxy, whose Go `customGuideManifest`
-        // declares no starting location, so the key is dropped at the wire boundary;
-        // the loader's manifest on the fetched content carries it intact. Passing both
-        // keeps `packageInfo` authoritative wherever it actually declares a value and
-        // only falls back where it previously resolved to null — so a guide opened
-        // from inside a learning path gets the same prompt as the same guide opened
-        // standalone.
-        const startingLocation = resolveStartingLocation(
-          url,
-          [packageInfo?.packageManifest, fetchedContent.metadata.packageManifest],
-          { isAdmin: currentUserIsAdmin() }
-        );
         const currentPath = locationService.getLocation().pathname;
-        const evaluation = evaluateAlignment({
+        const alignmentDecision = resolveDocsLoadAlignment({
+          requestedUrl: url,
+          packageManifest: packageInfo?.packageManifest,
+          fetchedManifest: fetchedContent.metadata.packageManifest,
           currentPath,
-          startingLocation,
-          launchSource: launchSource ?? undefined,
+          launchSource,
+          isAdmin: currentUserIsAdmin(),
+          isFullScreen: panelModeManager.getMode() === 'fullscreen',
         });
-        const isFullScreenMode = panelModeManager.getMode() === 'fullscreen';
-        const pendingAlignment =
-          !isFullScreenMode && evaluation.shouldPrompt && startingLocation
-            ? {
-                startingLocation,
-                currentPath,
-                launchSource: launchSource ?? 'unknown',
-                decidedAt: Date.now(),
-              }
-            : undefined;
+        const pendingAlignment = alignmentDecision ? { ...alignmentDecision, decidedAt: Date.now() } : undefined;
 
-        const finalTab = this.finishTabSuccess(tabId, (t) => ({
-          content: fetchedContent,
-          baseUrl: t.baseUrl || fetchedContent.url,
-          currentUrl: fetchedContent.url || url,
-          type:
-            packageInfo != null
-              ? getPackageRenderType(packageInfo.packageManifest)
-              : fetchedContent.type === 'interactive'
-                ? 'interactive'
-                : t.type,
-          packageInfo: packageInfo ?? t.packageInfo,
-          pathContext,
-          pendingAlignment,
-        }));
+        const finalTab = this.finishTabSuccess(tabId, (tab) =>
+          buildDocsLoadSuccessPatch({ tab, requestedUrl: url, fetchedContent, packageInfo, pendingAlignment })
+        );
 
         if (pendingAlignment) {
           reportAppInteraction(UserInteraction.AlignmentPromptShown, {

@@ -131,11 +131,14 @@ upload in that case; rename the package instead.
 
 The CRD's block schema is generated from `_blockFields` / `#Block` /
 `#NestedBlock` / `#Step` in `kinds/interactiveguide.cue`. A field the app
-accepts and that file does not declare is **silently pruned**: there is
-no 422 and no warning from the API, the write returns 200, and the field
-is gone on the next GET. Blocks nested three or more levels deep fall
-under `x-kubernetes-preserve-unknown-fields` and survive; anything
-shallower does not.
+accepts and that file does not declare is **silently pruned**. The API can emit
+a `Warning` response header, but there is no 422 or error body; the write may
+still return 200 or 201, and the field is gone on the next GET.
+`getBackendSrv().fetch()` exposes it through `FetchResponse.headers`; the
+`get`/`post`/`put`/`delete` shorthand helpers return only the parsed body.
+Blocks nested three or more levels deep fall under
+`x-kubernetes-preserve-unknown-fields` and survive; anything shallower does
+not.
 
 The gap is currently the `input` block: `defaultValue`, which costs the
 input its prefilled value, and the whole `dataCheck*` family
@@ -308,9 +311,15 @@ The wire format is the standard Kubernetes envelope:
 | `spec.blocks`              | yes      | Array of content blocks. The full schema is owned by the CUE definition in [grafana-pathfinder-backend/kinds/interactiveguide.cue](https://github.com/grafana/grafana-pathfinder-backend/blob/main/kinds/interactiveguide.cue) — that file is the source of truth. |
 | `spec.manifest`            | no       | Package metadata: grouping, sequencing, dependencies. Absent for content-only guides. See [Manifest](#manifest).                                                                                                                                                   |
 
-The CRD schema **is the validator**. Submit unknown fields and you'll
-get a `422 Unprocessable Entity` with a K8s `Status` envelope explaining
-which field is wrong.
+The CRD validates declared fields. A required declared field that is missing,
+or a declared value with an invalid type or value, returns a
+`422 Unprocessable Entity` with a K8s `Status` envelope.
+
+Unknown fields are **not rejected by default**. Kubernetes prunes them and
+may still return `200 OK` or `201 Created`. The API can emit a `Warning`
+response header, but callers that do not inspect headers receive no signal.
+For manifest extensions, `spec.manifest.additionalFields` is the only durable
+home for keys the CRD does not declare.
 
 ### Manifest
 
@@ -326,7 +335,7 @@ and what makes a path a path.
 | `author`           | no       | `{ name?, team? }`. The CRD declares no other keys; `upsert-learning-path.sh` moves any it finds (`email`, `github`, …) to `additionalFields.author` instead of dropping them. |
 | `category`         | no       | Free-form grouping label.                                                                                                                                                      |
 | `depends`          | no       | CNF (AND of ORs): an **array of arrays**. A single dependency is a singleton clause — `[["a"], ["b"]]` is "a AND b", `[["a","b"]]` is "a OR b". A bare string is not accepted. |
-| `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. Anything not typed above goes here.                                                                            |
+| `additionalFields` | no       | Free-form escape hatch, `x-kubernetes-preserve-unknown-fields`. This is the only durable home for manifest keys not declared above.                                            |
 
 `recommends`, `suggests`, `provides`, `targeting`, `testEnvironment`,
 `startingLocation`, and the generated `stats` stamp have no typed home yet, so
@@ -370,11 +379,10 @@ these:
 | Standalone guide from the Custom guides list | Yes              |
 | `?doc=api:<id>` share link                   | Yes              |
 | Auto-dock tab restore                        | Yes              |
-| Path **member** opened from a path card      | No               |
+| Path **member** opened from a path card      | Yes              |
 | Path **cover page** opened from a path card  | No               |
 
-Both path rows read "No", but for two different reasons, and only one of them is
-a transport problem.
+The two path rows differ, and only the cover page is a transport problem.
 
 **Path cover page — the value never arrives.** `packageInfoForPath`
 (`src/components/docs-panel/CustomGuidesSection.tsx`) builds the cover's
@@ -384,20 +392,26 @@ no `additionalFields`, so `encoding/json` drops the key at the wire boundary
 before the reader ever sees it. Promoting `startingLocation` to a typed CUE field
 is the fix for this one.
 
-**Path member — the value arrives intact and is then shadowed.** `openMember`
+**Path member — the value arrives intact and survives the seam.** `openMember`
 opens `member.url`, which `resolvePackageMilestones` takes from the resolution's
 `contentUrl` — `backend-guide:<memberId>` for an App Platform package
 (`src/package-engine/app-platform-resolver.ts`). So the member's own resource is
 fetched through the `backend-guide:` loader, whose `buildLoaderManifest` spreads
-`spec.manifest` through with `additionalFields` intact. The value is at the
-reader. It is then discarded at the panel seam: `openMember` also passes the
-PATH's `packageInfo`, and `docs-panel.tsx` reads `packageInfo?.packageManifest`
-ahead of `fetchedContent.metadata.packageManifest`, so the stripped catalogue
-manifest — truthy, and therefore never falling back — wins over the complete
-one. The CUE
-promotion does NOT fix this: the problem is precedence, not transport. Worse,
-once the path's `startingLocation` is a typed field it would win at that same
-seam and prompt a member towards the cover's entry page. Tracked as
+`spec.manifest` through with `additionalFields` intact. `openMember` also passes
+the PATH's `packageInfo`, and `resolveDocsLoadAlignment`
+(`src/components/docs-panel/utils/docs-load-finalizer.ts`) offers
+`packageInfo?.packageManifest` ahead of `fetchedContent.metadata.packageManifest`.
+Precedence is per-declaration rather than per-manifest:
+`resolveStartingLocation` (`src/recovery/starting-location.ts`) walks the
+candidates in order and stops only at one that declares `startingLocation` or
+`additionalFields.startingLocation`. The catalogue manifest declares neither, so
+resolution falls through to the member's own manifest and the member's starting
+location wins.
+
+The CUE promotion is not neutral here. Once the path's `startingLocation` is a
+typed field the catalogue manifest WOULD declare it, it would settle resolution
+at the first candidate, and a member would be prompted towards the cover's entry
+page. Tracked as
 [#1681](https://github.com/grafana/grafana-pathfinder-app/issues/1681).
 
 Promoting a key out of `additionalFields` into a real CUE field is additive and
@@ -532,14 +546,14 @@ The aggregator returns standard Kubernetes `Status` envelopes:
 
 Common cases:
 
-| HTTP | Reason        | When                                                                         |
-| ---- | ------------- | ---------------------------------------------------------------------------- |
-| 401  | -             | Missing or invalid Bearer token.                                             |
-| 403  | -             | Token's role is too low for the operation (need Editor for writes).          |
-| 404  | NotFound      | The named guide doesn't exist (or, on listing, the namespace doesn't exist). |
-| 409  | AlreadyExists | POST against a name that already exists. Use PUT to update.                  |
-| 409  | Conflict      | Stale `resourceVersion` on PUT. Re-GET and retry.                            |
-| 422  | Invalid       | Spec failed CRD validation — message names the offending field.              |
+| HTTP | Reason        | When                                                                                             |
+| ---- | ------------- | ------------------------------------------------------------------------------------------------ |
+| 401  | -             | Missing or invalid Bearer token.                                                                 |
+| 403  | -             | Token's role is too low for the operation (need Editor for writes).                              |
+| 404  | NotFound      | The named guide doesn't exist (or, on listing, the namespace doesn't exist).                     |
+| 409  | AlreadyExists | POST against a name that already exists. Use PUT to update.                                      |
+| 409  | Conflict      | Stale `resourceVersion` on PUT. Re-GET and retry.                                                |
+| 422  | Invalid       | A required declared field is missing, or a declared value is invalid; the message identifies it. |
 
 ## Choosing this vs. the editor
 
