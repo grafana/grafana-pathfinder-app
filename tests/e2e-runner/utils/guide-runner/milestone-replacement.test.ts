@@ -158,9 +158,15 @@ function replacementHarness(options: ReplacementHarnessOptions) {
     locator: jest.fn().mockReturnValue({
       elementHandles: jest.fn().mockImplementation(() => Promise.resolve(handleQueues.shift() ?? [])),
     }),
-    getByRole: jest.fn().mockReturnValue(resetButton),
+    getByRole: jest.fn(),
     getByTestId: jest.fn().mockImplementation((id: string) => {
-      return id === testIds.docsPanel.tab('tab-1') ? tabButton : closeButton;
+      if (id === testIds.docsPanel.tab('tab-1')) {
+        return tabButton;
+      }
+      if (id === testIds.docsPanel.resetGuideButton) {
+        return resetButton;
+      }
+      return closeButton;
     }),
     reload: jest.fn(),
   } as unknown as Page;
@@ -420,6 +426,8 @@ it('waits for an interactive restored tab to render its Reset guide control', as
   });
 
   await replacePreviousE2EGuide(harness.page, 'tab-1');
+  expect(harness.page.getByTestId).toHaveBeenCalledWith(testIds.docsPanel.resetGuideButton);
+  expect(harness.page.getByRole).not.toHaveBeenCalled();
 
   expect(harness.resetButton.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 15_000 });
   expect(harness.operations).toEqual(['reset', 'close']);

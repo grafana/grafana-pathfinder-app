@@ -5,6 +5,7 @@ import { interactiveCompletionStorage, interactiveStepStorage } from '../../../l
 export async function resetGuideProgress(contentKey: string): Promise<void> {
   await interactiveStepStorage.clearAllForContent(contentKey);
   await interactiveCompletionStorage.clear(contentKey);
+  // Storage removal does not invalidate mounted completion-store subscribers.
   evictContentCache(contentKey);
   window.dispatchEvent(
     new CustomEvent(StorageEvents.InteractiveProgressCleared, {
