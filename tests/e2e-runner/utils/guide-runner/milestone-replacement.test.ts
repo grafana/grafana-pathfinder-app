@@ -76,6 +76,7 @@ interface ReplacementHarnessOptions {
     version: number;
     rejects?: Error;
     hangs?: boolean;
+    settlesAfterMs?: number;
     clearsStorage?: boolean;
   };
 }
@@ -86,6 +87,7 @@ function replacementHarness(options: ReplacementHarnessOptions) {
   const closeSteps = options.closeSteps ?? [];
   const handleQueues = [resetSteps, closeSteps];
   let resetControlCount = options.resetControlCountBeforeWait ?? options.resetControlCount;
+  let activeEvaluationCount = 0;
   const resetButton = {
     count: jest.fn().mockImplementation(() => Promise.resolve(resetControlCount)),
     waitFor: jest.fn().mockImplementation(async () => {
@@ -137,7 +139,14 @@ function replacementHarness(options: ReplacementHarnessOptions) {
     }),
   };
   const page = {
-    evaluate: jest.fn().mockImplementation((callback, argument) => Promise.resolve(callback(argument))),
+    evaluate: jest.fn().mockImplementation(async (callback, argument) => {
+      activeEvaluationCount++;
+      try {
+        return await callback(argument);
+      } finally {
+        activeEvaluationCount--;
+      }
+    }),
     waitForFunction: jest.fn().mockImplementation((callback, argument) => {
       if (!callback(argument)) {
         return Promise.reject(new Error('Condition not met'));
@@ -166,11 +175,16 @@ function replacementHarness(options: ReplacementHarnessOptions) {
       version: capability.version,
       resetActiveGuide: jest.fn().mockImplementation(async () => {
         operations.push('capability-reset');
-        if (capability.rejects) {
-          throw capability.rejects;
-        }
         if (capability.hangs) {
           return new Promise<void>(() => undefined);
+        }
+        if (capability.settlesAfterMs !== undefined) {
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, capability.settlesAfterMs);
+          });
+        }
+        if (capability.rejects) {
+          throw capability.rejects;
         }
         if (capability.clearsStorage !== false) {
           clearMatchingE2EStorage();
@@ -178,7 +192,7 @@ function replacementHarness(options: ReplacementHarnessOptions) {
       }),
     };
   }
-  return { page, operations, resetButton, closeButton, tabButton };
+  return { page, operations, resetButton, closeButton, tabButton, activeEvaluationCount: () => activeEvaluationCount };
 }
 
 function waitForOpenedGuide(tabId = 'opened-tab'): Promise<{ url: string; title: string }> {
@@ -265,7 +279,39 @@ it('fails fatally when the plugin reset capability does not settle', async () =>
     });
     await jest.advanceTimersByTimeAsync(15_000);
     await rejection;
+    expect(harness.activeEvaluationCount()).toBe(0);
 
+    expect(harness.resetButton.click).not.toHaveBeenCalled();
+    expect(harness.closeButton.click).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('observes a plugin reset rejection that occurs after the timeout', async () => {
+  jest.useFakeTimers();
+  try {
+    seedStoredCompletion();
+    const harness = replacementHarness({
+      resetControlCount: 1,
+      capability: {
+        version: 1,
+        rejects: new Error('Late reset failure'),
+        settlesAfterMs: 16_000,
+      },
+    });
+
+    const rejection = expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+      name: 'FatalTransitionError',
+      kind: 'reset-ambiguous',
+      message: expect.stringContaining('did not complete within 15000ms'),
+    });
+    await jest.advanceTimersByTimeAsync(15_000);
+    await rejection;
+    expect(harness.activeEvaluationCount()).toBe(0);
+
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(harness.activeEvaluationCount()).toBe(0);
     expect(harness.resetButton.click).not.toHaveBeenCalled();
     expect(harness.closeButton.click).not.toHaveBeenCalled();
   } finally {

@@ -121,9 +121,8 @@ async function requireStoredCompletionStaysAbsent(page: Page): Promise<void> {
 }
 
 async function resetWithE2ECapability(page: Page): Promise<boolean> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  const result = await Promise.race([
-    page.evaluate(async (supportedVersions) => {
+  const result = await page.evaluate(
+    async ({ supportedVersions, timeoutMs }) => {
       const control = (
         window as Window & {
           __pathfinderE2E?: {
@@ -141,33 +140,35 @@ async function resetWithE2ECapability(page: Page): Promise<boolean> {
       if (typeof control.resetActiveGuide !== 'function') {
         return { status: 'rejected', message: 'resetActiveGuide is not callable' } as const;
       }
+      let timeout: number | undefined;
       try {
-        await control.resetActiveGuide();
-        return { status: 'reset' } as const;
-      } catch (error) {
-        return {
-          status: 'rejected',
-          message: error instanceof Error ? error.message : String(error),
-        } as const;
+        return await Promise.race([
+          (async () => {
+            try {
+              await control.resetActiveGuide();
+              return { status: 'reset' } as const;
+            } catch (error) {
+              return {
+                status: 'rejected',
+                message: error instanceof Error ? error.message : String(error),
+              } as const;
+            }
+          })(),
+          new Promise<{ status: 'timed_out' }>((resolve) => {
+            timeout = window.setTimeout(() => resolve({ status: 'timed_out' }), timeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timeout !== undefined) {
+          window.clearTimeout(timeout);
+        }
       }
-    }, SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS),
-    new Promise<never>((_, reject) => {
-      timeout = setTimeout(
-        () =>
-          reject(
-            new FatalTransitionError(
-              'reset-ambiguous',
-              `The Pathfinder E2E reset control did not complete within ${REPLACEMENT_TIMEOUT_MS}ms`
-            )
-          ),
-        REPLACEMENT_TIMEOUT_MS
-      );
-    }),
-  ]).finally(() => {
-    if (timeout) {
-      clearTimeout(timeout);
+    },
+    {
+      supportedVersions: SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS,
+      timeoutMs: REPLACEMENT_TIMEOUT_MS,
     }
-  });
+  );
 
   if (result.status === 'unavailable') {
     return false;
@@ -182,6 +183,12 @@ async function resetWithE2ECapability(page: Page): Promise<boolean> {
     throw new FatalTransitionError(
       'reset-ambiguous',
       `The Pathfinder E2E reset control rejected reset: ${result.message}`
+    );
+  }
+  if (result.status === 'timed_out') {
+    throw new FatalTransitionError(
+      'reset-ambiguous',
+      `The Pathfinder E2E reset control did not complete within ${REPLACEMENT_TIMEOUT_MS}ms`
     );
   }
   return true;
