@@ -85,8 +85,12 @@ If the control is absent, the runner uses this legacy sequence:
 2. If completion exists, it captures step roots and clicks `Reset guide`.
 3. It waits for `interactive-progress-cleared`.
 4. If completion does not exist, it clears namespaced residue and the E2E percentage entry.
-5. After tab closure, it requires completed step IDs to remain absent during a bounded check.
-6. It removes matching residue that the legacy product reload recreated.
+
+If the prior guide had stored completion, the runner performs a bounded post-close check after either reset path.
+
+Completed step IDs must remain absent.
+
+It then removes matching safe residue.
 
 The runner uses stored completion for the reset decision. It does not use the authored interactive-block count.
 
@@ -112,7 +116,7 @@ The legacy UI reset clears Pathfinder progress and its in-memory completion cach
 
 The legacy product reload can recreate matching storage without completed step IDs. The runner accepts this state only after tab closure.
 
-The runner then removes the safe residue. Stored completion that remains after the bounded check is a fatal transition error.
+Stored completion that remains after the bounded check is a fatal transition error.
 
 Hybrid `__timestamp` keys are not completion evidence. Residue cleanup removes them to match the product reset.
 

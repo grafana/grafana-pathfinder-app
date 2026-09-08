@@ -525,7 +525,7 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
     } catch (error) {
       throw transitionFailure(
         'reset-ambiguous',
-        'The acknowledged legacy reset did not reach a safe post-close state',
+        'The previous E2E guide reset did not reach a safe post-close state',
         error
       );
     }

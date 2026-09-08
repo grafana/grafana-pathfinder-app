@@ -73,7 +73,8 @@ interface ReplacementHarnessOptions {
   closeError?: Error;
   closeDetachesSteps?: boolean;
   capability?: {
-    version: number;
+    version: unknown;
+    resetActiveGuide?: unknown;
     rejects?: Error;
     hangs?: boolean;
     settlesAfterMs?: number;
@@ -167,30 +168,34 @@ function replacementHarness(options: ReplacementHarnessOptions) {
   (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = E2E_GUIDE_URL;
   if (options.capability) {
     const capability = options.capability;
-    (
-      window as Window & {
-        __pathfinderE2E?: { version: number; resetActiveGuide(): Promise<void> };
-      }
-    ).__pathfinderE2E = {
+    const control: { version: unknown; resetActiveGuide?: unknown } = {
       version: capability.version,
-      resetActiveGuide: jest.fn().mockImplementation(async () => {
-        operations.push('capability-reset');
-        if (capability.hangs) {
-          return new Promise<void>(() => undefined);
-        }
-        if (capability.settlesAfterMs !== undefined) {
-          await new Promise<void>((resolve) => {
-            window.setTimeout(resolve, capability.settlesAfterMs);
-          });
-        }
-        if (capability.rejects) {
-          throw capability.rejects;
-        }
-        if (capability.clearsStorage !== false) {
-          clearMatchingE2EStorage();
-        }
-      }),
     };
+    const defaultReset = jest.fn().mockImplementation(async () => {
+      operations.push('capability-reset');
+      if (capability.hangs) {
+        return new Promise<void>(() => undefined);
+      }
+      if (capability.settlesAfterMs !== undefined) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, capability.settlesAfterMs);
+        });
+      }
+      if (capability.rejects) {
+        throw capability.rejects;
+      }
+      if (capability.clearsStorage !== false) {
+        clearMatchingE2EStorage();
+      }
+    });
+    control.resetActiveGuide = Object.prototype.hasOwnProperty.call(capability, 'resetActiveGuide')
+      ? capability.resetActiveGuide
+      : defaultReset;
+    (
+      window as unknown as {
+        __pathfinderE2E?: { version: unknown; resetActiveGuide?: unknown };
+      }
+    ).__pathfinderE2E = control;
   }
   return { page, operations, resetButton, closeButton, tabButton, activeEvaluationCount: () => activeEvaluationCount };
 }
@@ -231,6 +236,7 @@ it('prefers the plugin reset capability and verifies empty storage before close'
   expect(harness.operations).toEqual(['capability-reset', 'close']);
   expect(harness.resetButton.waitFor).not.toHaveBeenCalled();
   expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.page.waitForTimeout).toHaveBeenCalledTimes(4);
   expectMatchingStorageEmpty();
 });
 
@@ -335,6 +341,41 @@ it('fails fatally for an unsupported plugin reset capability version', async () 
   expect(harness.closeButton.click).not.toHaveBeenCalled();
 });
 
+it('fails fatally for a non-numeric plugin reset capability version', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: '1' },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('unsupported version 1'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['missing', undefined],
+  ['non-callable', 'reset'],
+])('fails fatally when the plugin reset capability method is %s', async (_description, resetActiveGuide) => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: 1, resetActiveGuide },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('resetActiveGuide is not callable'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
+});
+
 it('fails fatally when the plugin reset capability leaves scoped storage', async () => {
   seedStoredCompletion();
   const harness = replacementHarness({
@@ -413,7 +454,10 @@ it('fails fatally when legacy reset leaves stored completion after tab close', a
   const replacement = replacePreviousE2EGuide(harness.page);
 
   await expect(replacement).rejects.toBeInstanceOf(FatalTransitionError);
-  await expect(replacement).rejects.toMatchObject({ kind: 'reset-ambiguous' });
+  await expect(replacement).rejects.toMatchObject({
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('The previous E2E guide reset did not reach a safe post-close state'),
+  });
 
   expect(harness.operations).toEqual(['reset', 'close']);
   expect(harness.closeButton.click).toHaveBeenCalledTimes(1);

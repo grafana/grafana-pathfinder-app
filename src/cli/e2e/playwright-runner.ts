@@ -293,7 +293,10 @@ export function processPlaywrightChainResults(
         : 'REPORT_MISSING';
   const transitionKind = errorCode === 'TRANSITION_FAILED' ? lastPartialResult?.transitionKind : undefined;
   const errorMessage =
-    abortContent?.message ?? 'The shared Playwright process ended before this milestone produced a result report.';
+    abortContent?.message ??
+    (fatalTransition
+      ? 'A fatal shared-browser transition error stopped this milestone before it started.'
+      : 'The shared Playwright process ended before this milestone produced a result report.');
 
   for (const guide of guides.slice(resultsData.length)) {
     resultsData.push(

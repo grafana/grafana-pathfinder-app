@@ -18,11 +18,13 @@ describe('useE2EResetGuideCapability', () => {
     mockResetGuideProgress.mockResolvedValue(undefined);
     resetContentKeyForTests();
     delete window.__pathfinderE2E;
+    delete window.__DocsPluginActiveTabUrl;
   });
 
   afterEach(() => {
     resetContentKeyForTests();
     delete window.__pathfinderE2E;
+    delete window.__DocsPluginActiveTabUrl;
   });
 
   it('exposes version 1 only for the exact E2E guide URL', () => {
@@ -53,6 +55,20 @@ describe('useE2EResetGuideCapability', () => {
 
   it('uses the parameterless reset operation without reloading content', async () => {
     setActiveTabUrl(E2E_GUIDE_URL);
+    renderHook(() =>
+      useE2EResetGuideCapability({
+        activeTabCurrentUrl: E2E_GUIDE_URL,
+        activeTabBaseUrl: E2E_GUIDE_URL,
+      })
+    );
+
+    await act(() => window.__pathfinderE2E?.resetActiveGuide());
+
+    expect(mockResetGuideProgress).toHaveBeenCalledWith(E2E_GUIDE_URL);
+  });
+
+  it('uses the production active-tab window global for the reset guard', async () => {
+    window.__DocsPluginActiveTabUrl = E2E_GUIDE_URL;
     renderHook(() =>
       useE2EResetGuideCapability({
         activeTabCurrentUrl: E2E_GUIDE_URL,
