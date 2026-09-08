@@ -63,7 +63,10 @@ test('truth adjudication preserves the bounded high-risk and medium lanes', () =
   const high = observation({ severity: 'high' });
   assert.equal(deriveVerificationLane(high, false), 'high_risk');
   assert.deepEqual(advanceReviewPolicy({ observation: high, round: 1 }).dispatch, { role: 'skeptic', count: 2 });
-  assert.equal(advanceReviewPolicy({ observation: high, verdicts: [confirmed], round: 1 }).dispatch.count, 0);
+  assert.deepEqual(advanceReviewPolicy({ observation: high, verdicts: [confirmed], round: 1 }).dispatch, {
+    role: 'skeptic',
+    count: 1,
+  });
   assert.equal(
     advanceReviewPolicy({ observation: high, verdicts: [confirmed, uncertain], round: 1 }).dispatch.role,
     'tiebreaker'

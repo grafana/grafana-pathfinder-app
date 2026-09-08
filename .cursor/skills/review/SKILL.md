@@ -19,6 +19,8 @@ For each activated concern, root runs the full packet for routing:
 node .cursor/skills/review/scripts/concern-context.mjs <concern-id>
 ```
 
+A packet's `load_docs` and `load_code` are an index of where evidence lives, not a read list. Open only what a changed hunk actually implicates.
+
 Before dispatch, run `node .cursor/skills/review/scripts/concern-context.mjs --worker <concern-id>`. Do not load `docs/design/CONCERN_DETAILS.md` wholesale. Give an observation worker only that compact packet, relevant hunks, and minimum supporting excerpts.
 
 Build a plan input containing `mode`, routed concerns, and each packet's actual `{ path, excerpt }` context. Validate it before dispatch:
@@ -27,18 +29,18 @@ Build a plan input containing `mode`, routed concerns, and each packet's actual 
 node .cursor/skills/review/scripts/concern-context.mjs --plan <plan-file>
 ```
 
-Each routed entry is `{ id, context }`. Mark a dedicated security entry with `specialist: "security"`; pass a gated scan separately as `contract_evolution: { concern_id, context }`. When more than one gate fires, pass every fired gate as an array of those objects, each also carrying `touches_anchor_with_consumers` and the gate's own `prior_semantic_pr_count`. The planner rejects a listed gate that omits either field, or states a `concern_id` outside lowercase letters, digits, and hyphens, a non-boolean anchor flag, or a non-finite count. The singular object form ignores both ranking fields, because one gate ranks against nothing.
+Each routed entry is `{ id, category, context }`, where `category` is the packet's own `always-on`, `subsystem`, or `cross-cutting` value; the planner rejects any other value and treats a missing one as `always-on`. Mark a dedicated security entry with `specialist: "security"`; pass a gated scan separately as `contract_evolution: { concern_id, context }`. When more than one gate fires, pass every fired gate as an array of those objects, each also carrying `touches_anchor_with_consumers` and the gate's own `prior_semantic_pr_count`. The planner rejects a listed gate that omits either field, or states a `concern_id` outside lowercase letters, digits, and hyphens, a non-boolean anchor flag, or a non-finite count. The singular object form ignores both ranking fields, because one gate ranks against nothing.
 
 Every concern must have an observation worker or `root` owner. Each worker packet is limited to eight files and 30,000 characters; `worker_count` and these caps exclude skeptic agents.
 
 ### First round
 
-- Use at most two general observation workers.
+- The planner sets the general observation worker count from routed breadth: two for up to six concerns, then one per three concerns, capped at six.
 - Bundle concerns that inspect the same files or hunks.
 - Attach the always-on questions to relevant bundles instead of assigning one worker per concern.
-- A gated contract-evolution specialist may be a third observation worker.
+- A gated contract-evolution specialist may take one further observation slot.
 - A standalone security specialist consumes one general observation slot.
-- The root orchestrator owns synthesis and overflow.
+- The root orchestrator owns synthesis and whatever still overflows. Overflow is the expensive failure mode, because root reviews it serially; prefer delegating a concern over keeping it.
 
 Use the standalone security skill for auth, tokens, secrets, URL or redirect trust boundaries, workflow permissions, publishing, cross-origin transport, or dependency manifest changes. Mark that plan entry `specialist: "security"`; do not also add it outside the observation-worker budget. Its adapter returns only canonical observations or `no_findings`; ignore any `clean|minor|blocking` disposition or custom report because `review-policy.mjs` remains the sole disposition authority.
 
@@ -85,7 +87,7 @@ Every producer emits `Canonical observation` from `docs/design/PR_REVIEW.md`. Lo
 
 For activated subsystem and cross-cutting concerns with concrete routing paths, run `contract-evolution-gate.mjs` with literal base SHA, head SHA, and concern arguments. Never build commands from contributor-controlled filenames or prose. Skip always-on concerns.
 
-Run a specialist only when the deterministic gate triggers or a changed hunk modifies a named contract anchor that reaches at least two current consumers. Load only `Contract evolution packet` from `docs/design/PR_REVIEW.md`.
+Run a specialist only when the deterministic gate triggers on fix-heavy history, or a changed hunk modifies a named contract anchor that reaches at least two current consumers. Prior PR volume alone does not trigger it; `prior_semantic_pr_count` only ranks gates that already fired. Load only `Contract evolution packet` from `docs/design/PR_REVIEW.md`.
 
 Only one contract specialist runs, alongside any dedicated security worker. When several gates fire, the planner selects it in this order: a gate whose changed hunks modify a named contract anchor reaching at least two current consumers, then the higher `prior_semantic_pr_count` from that gate's output, then the lowest `concern_id`. Set `touches_anchor_with_consumers` yourself from the diff, because the planner never infers anchor reach. A selected gate above the packet envelope, or a listed gate carrying an empty packet, yields the slot to the next gate instead of wasting it. Two fired gates must not share a `concern_id`. Every unselected gate becomes `contract-evolution:<concern_id>` under `root` in `coverage`.
 
@@ -190,4 +192,4 @@ Pattern severity feeds the canonical observation. It never decides disposition.
 
 Record full-versus-incremental mode, activated concern ownership, observation-worker count, each worker's files and context characters, skeptic batch count, dropped evidence, policy reason codes, coverage gaps, and timings. Keep the trace internal unless the user requests it.
 
-The review is complete when every activated concern has an observation worker or root owner, all verification has resolved, reconciliation has run, and `review-report.mjs` has produced the final report. Publication remains a separate optional mutation after the approval gate. Ordinary first rounds must use no more than three observation workers; incremental rounds no more than two. Skeptics are excluded from both caps.
+The review is complete when every activated concern has an observation worker or root owner, all verification has resolved, reconciliation has run, and `review-report.mjs` has produced the final report. Publication remains a separate optional mutation after the approval gate. Observation workers stay inside the planner's returned budget; incremental rounds use no more than two. Skeptics are excluded from both caps.

@@ -4,6 +4,8 @@ import { findTable, unquote } from './registry-table.mjs';
 
 const MAX_WORKER_FILES = 8;
 const MAX_WORKER_CHARACTERS = 30_000;
+const MIN_GENERAL_WORKERS = 2;
+const MAX_GENERAL_WORKERS = 6;
 
 function splitList(value, separator = ',') {
   if (!value) {
@@ -270,6 +272,16 @@ function firedContractGates(contract_evolution) {
   });
 }
 
+const CONCERN_DEPTH = { subsystem: 2, 'cross-cutting': 1, 'always-on': 0 };
+
+function concernDepth(category) {
+  return CONCERN_DEPTH[category] ?? 0;
+}
+
+export function generalWorkerLimit(concernCount) {
+  return Math.min(MAX_GENERAL_WORKERS, Math.max(MIN_GENERAL_WORKERS, Math.ceil(concernCount / 3)));
+}
+
 export function buildReviewPlan({ mode, concerns, contract_evolution = null, skeptic_batch_count = 0 }) {
   if (mode !== 'full' && mode !== 'incremental') {
     throw new Error('mode must be full or incremental');
@@ -281,6 +293,9 @@ export function buildReviewPlan({ mode, concerns, contract_evolution = null, ske
     if (!concern || !/^[a-z0-9-]+$/.test(concern.id ?? '')) {
       throw new Error('each routed concern must include an id');
     }
+    if (concern.category !== undefined && !(concern.category in CONCERN_DEPTH)) {
+      throw new Error(`routed concern ${concern.id} states an unknown category ${concern.category}`);
+    }
     return { ...concern, context: normalizeContext(concern.context ?? [], concern.id) };
   });
   const duplicate = normalized.find((concern, index) => normalized.findIndex(({ id }) => id === concern.id) !== index);
@@ -288,11 +303,13 @@ export function buildReviewPlan({ mode, concerns, contract_evolution = null, ske
     throw new Error(`routed concern ${duplicate.id} must be unique`);
   }
 
-  const generalLimit = mode === 'full' ? 2 : 1;
+  const generalLimit = mode === 'full' ? generalWorkerLimit(normalized.length) : 1;
   const workers = [];
   const rootConcernIds = [];
   const dispatchOrder = [...normalized].sort(
-    (left, right) => Number(right.specialist === 'security') - Number(left.specialist === 'security')
+    (left, right) =>
+      Number(right.specialist === 'security') - Number(left.specialist === 'security') ||
+      concernDepth(right.category) - concernDepth(left.category)
   );
   for (const concern of dispatchOrder) {
     if (!fitsWorker(concern.context)) {
@@ -353,7 +370,7 @@ export function buildReviewPlan({ mode, concerns, contract_evolution = null, ske
   }
 
   const publicWorkers = workers.map(publicWorker);
-  const totalLimit = mode === 'full' ? 3 : 2;
+  const totalLimit = mode === 'full' ? generalLimit + 1 : 2;
   if (publicWorkers.length > totalLimit || publicWorkers.some((worker) => !fitsWorker(worker.context))) {
     throw new Error('review plan exceeds its worker or context budget');
   }
