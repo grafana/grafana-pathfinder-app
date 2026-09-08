@@ -131,7 +131,7 @@ async function executeGuideSteps(
   timestamp: string,
   monitor: BrowserTerminationMonitor
 ): Promise<TestResultsData> {
-  const firstStep = page.locator(STEP_ROOT_SELECTOR).first();
+  const firstStep = page.locator(STEP_ROOT_SELECTOR).filter({ visible: true }).first();
   await firstStep.waitFor({ state: 'visible', timeout: GUIDE_LOAD_TIMEOUT_MS });
   const discovery = await discoverStepsFromDOM(page);
   const guideTimeout = calculateGuideTimeout(discovery.steps);

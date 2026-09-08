@@ -72,8 +72,10 @@ function page(events: string[]): Page {
       }),
     }),
     locator: jest.fn().mockReturnValue({
-      first: jest.fn().mockReturnValue({
-        waitFor: jest.fn().mockResolvedValue(undefined),
+      filter: jest.fn().mockReturnValue({
+        first: jest.fn().mockReturnValue({
+          waitFor: jest.fn().mockResolvedValue(undefined),
+        }),
       }),
     }),
   } as unknown as Page;
@@ -303,6 +305,8 @@ it('reports mixed supported and unsupported tracked roots', async () => {
   expect(result.coverage).toEqual({ ...coverage, executed: 1 });
   expect(withExecutedCoverageMock).toHaveBeenCalledWith(coverage, expect.any(Array));
   expect(currentPage.locator).toHaveBeenCalledWith(STEP_ROOT_SELECTOR);
+  const stepRoots = (currentPage.locator as jest.Mock).mock.results[0].value as { filter: jest.Mock };
+  expect(stepRoots.filter).toHaveBeenCalledWith({ visible: true });
 });
 
 it('reports an unsupported-only guide without changing its outcome', async () => {
