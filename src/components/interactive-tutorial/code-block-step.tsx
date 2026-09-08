@@ -21,6 +21,7 @@ import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import { logger } from '../../lib/logging';
 import { useAssistantBlockValue } from '../../integrations/assistant-integration';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 export interface CodeBlockStepProps {
   code: string;
@@ -302,6 +303,7 @@ export const CodeBlockStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        {...getTrackedStepRootAttributes('codeblock', renderedStepId)}
         data-test-step-state={stepState}
         data-testid={testIds.codeBlock.step(renderedStepId)}
       >
