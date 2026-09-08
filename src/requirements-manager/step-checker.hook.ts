@@ -940,14 +940,10 @@ export function useStepChecker(props: UseStepCheckerProps): UseStepCheckerReturn
     }
   }, [isEligibleForChecking, refTarget]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for section completion events (for `section-completed:` requirements).
-  // `step-auto-skipped` was a listener with no dispatcher anywhere in the
-  // repo — removed in C3 as confirmed dead code.
   useEffect(() => {
     const unsubscribe = subscribeProgressEvent((detail) => {
       if (
         detail.kind === 'section' &&
-        detail.completed &&
         !state.isCompleted &&
         hasConditionPrefix(requirements, ParameterizedRequirementPrefix.SECTION_COMPLETED)
       ) {

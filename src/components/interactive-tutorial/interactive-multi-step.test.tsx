@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { testIds } from '../../constants/testIds';
+import { waitForReactUpdates } from '../../lib/async-utils';
 import { InteractiveMultiStep } from './interactive-multi-step';
 
 jest.mock('@grafana/ui', () => ({
@@ -221,6 +222,102 @@ describe('InteractiveMultiStep — completeEarly lifecycle', () => {
       expect(step).toHaveAttribute('data-test-step-state', 'completed');
     });
     expect(screen.queryByTestId(testIds.interactive.errorMessage('multi-step'))).not.toBeInTheDocument();
+  });
+});
+
+describe('InteractiveMultiStep — parent reset cancellation', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it.each(['ok', 'error'])(
+    'stops a reset run returning %s and allows a fresh run after it settles',
+    async (outcome) => {
+      let resolveAction!: (outcome: string) => void;
+      const pendingAction = new Promise<string>((resolve) => {
+        resolveAction = resolve;
+      });
+      mockExecuteInteractiveAction.mockResolvedValueOnce('ok').mockReturnValueOnce(pendingAction);
+      const ref = React.createRef<{ executeStep: () => Promise<boolean> }>();
+      const props = {
+        stepId: 'multi-reset',
+        internalActions: [{ targetAction: 'noop' as const }, { targetAction: 'noop' as const }],
+        onStepComplete: jest.fn(),
+        onComplete: jest.fn(),
+      };
+      const { rerender } = render(<InteractiveMultiStep {...props} ref={ref} resetTrigger={0} />);
+
+      let run!: Promise<boolean>;
+      await act(async () => {
+        run = ref.current!.executeStep();
+      });
+      expect(mockExecuteInteractiveAction).toHaveBeenCalledTimes(2);
+
+      rerender(<InteractiveMultiStep {...props} ref={ref} resetTrigger={1} />);
+      await act(async () => {
+        resolveAction(outcome);
+        await jest.advanceTimersByTimeAsync(1000);
+        expect(await run).toBe(false);
+      });
+      expect(mockExecuteInteractiveAction).toHaveBeenCalledTimes(2);
+      expect(props.onStepComplete).not.toHaveBeenCalled();
+      expect(props.onComplete).not.toHaveBeenCalled();
+      expect(screen.getByTestId(testIds.interactive.step('multi-reset'))).toHaveAttribute(
+        'data-test-step-state',
+        'idle'
+      );
+
+      await act(async () => {
+        run = ref.current!.executeStep();
+        await jest.advanceTimersByTimeAsync(1000);
+        expect(await run).toBe(true);
+      });
+      expect(mockExecuteInteractiveAction).toHaveBeenCalledTimes(6);
+      expect(props.onStepComplete).toHaveBeenCalledTimes(1);
+      expect(props.onComplete).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('does not restore early completion when reset during the React update wait', async () => {
+    let resumeUpdates!: () => void;
+    jest.mocked(waitForReactUpdates).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resumeUpdates = resolve;
+      })
+    );
+    const ref = React.createRef<{ executeStep: () => Promise<boolean> }>();
+    const props = {
+      stepId: 'multi-reset-early',
+      completeEarly: true,
+      internalActions: [{ targetAction: 'noop' as const }],
+      onStepComplete: jest.fn(),
+      onComplete: jest.fn(),
+    };
+    const { rerender } = render(<InteractiveMultiStep {...props} ref={ref} resetTrigger={0} />);
+    let run!: Promise<boolean>;
+    await act(async () => {
+      run = ref.current!.executeStep();
+    });
+
+    rerender(<InteractiveMultiStep {...props} ref={ref} resetTrigger={1} />);
+    await act(async () => {
+      resumeUpdates();
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(await run).toBe(false);
+    });
+
+    expect(props.onStepComplete).not.toHaveBeenCalled();
+    expect(props.onComplete).not.toHaveBeenCalled();
+    expect(mockExecuteInteractiveAction).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.interactive.step('multi-reset-early'))).toHaveAttribute(
+      'data-test-step-state',
+      'idle'
+    );
   });
 });
 

@@ -159,6 +159,32 @@ describe('completion-store', () => {
     expect(storedCompleted.has(`${CONTENT_KEY}-section-x`)).toBe(false);
   });
 
+  it('reports zero guide progress without dispatching a reset command', () => {
+    mockTotalDocumentSteps = 1;
+    const progressEvents: ProgressEventDetail[] = [];
+    const unsubscribe = subscribeProgressEvent((detail) => progressEvents.push(detail));
+    const resetEvents: Event[] = [];
+    const handleReset = (event: Event) => resetEvents.push(event);
+    window.addEventListener('interactive-progress-cleared', handleReset);
+
+    try {
+      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+      progressEvents.length = 0;
+      act(() => resetStep('step-1', 'section-x'));
+
+      expect(progressEvents).toContainEqual({
+        kind: 'guide',
+        contentKey: CONTENT_KEY,
+        percentage: 0,
+        hasProgress: false,
+      });
+      expect(resetEvents).toHaveLength(0);
+    } finally {
+      unsubscribe();
+      window.removeEventListener('interactive-progress-cleared', handleReset);
+    }
+  });
+
   it('skips redundant writes when the same step is marked with the same reason twice', async () => {
     const { interactiveStepStorage } = require('../lib/user-storage');
     render(<StepProbe stepId="step-1" sectionId="section-x" />);

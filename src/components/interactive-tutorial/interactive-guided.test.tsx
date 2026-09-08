@@ -9,11 +9,14 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
+import { markStepCompleted } from '../../global-state/completion-store';
+import { InteractiveModeContext } from '../../global-state/interactive-mode-context';
+import { useControllerChannel } from '../../global-state/controller-channel';
 
 // ─── Mock @grafana/ui ────────────────────────────────────────────────────────
 jest.mock('@grafana/ui', () => ({
@@ -34,8 +37,13 @@ jest.mock('@grafana/data', () => ({
 // The component publishes app-event toasts via getAppEvents(); importing the
 // real module pulls in config/LocationService, which needs @grafana/data's
 // getThemeById (not provided by the mock above).
+const mockPublish = jest.fn();
 jest.mock('@grafana/runtime', () => ({
-  getAppEvents: () => ({ publish: jest.fn() }),
+  getAppEvents: () => ({ publish: mockPublish }),
+}));
+
+jest.mock('../../global-state/controller-channel', () => ({
+  useControllerChannel: jest.fn(() => null),
 }));
 
 // ─── Mock useAiFixEnabled (off) — avoids pulling @grafana/assistant, which this
@@ -292,6 +300,199 @@ describe('deriveGuidedUiState', () => {
     ['reports unmet requirements when disabled', { isEnabled: false }, 'requirements-unmet'],
   ])('%s', (_name, overrides, expected) => {
     expect(deriveGuidedUiState({ ...baseState, ...overrides })).toBe(expected);
+  });
+});
+
+describe('InteractiveGuided — guide reset', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    mockGetMode.mockReturnValue('sidebar');
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockGetMode.mockReturnValue('sidebar');
+    jest.mocked(useControllerChannel).mockReturnValue(null);
+  });
+
+  it('does not cancel an idle handler when the guide resets', () => {
+    const props = { stepId: 'reset-idle', internalActions: [{ targetAction: 'noop' as const }] };
+    const { rerender } = render(<InteractiveGuided {...props} resetTrigger={0} />);
+
+    rerender(<InteractiveGuided {...props} resetTrigger={1} />);
+
+    expect(mockCancel).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.interactive.step(props.stepId))).toHaveAttribute('data-test-step-state', 'idle');
+  });
+
+  it.each(['standalone', 'section-managed'])(
+    'discards a pending %s run after reset and allows a fresh run',
+    async (mode) => {
+      let resolveExecution!: (result: string) => void;
+      mockExecuteGuidedStep.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveExecution = resolve;
+          })
+      );
+      const onStepComplete = jest.fn(() => {
+        mockStoredCompleted = true;
+      });
+      const onComplete = jest.fn();
+      const props = {
+        stepId: 'reset-guided',
+        sectionId: mode === 'section-managed' ? 'section' : undefined,
+        completeEarly: true,
+        onStepComplete: mode === 'section-managed' ? onStepComplete : undefined,
+        onComplete,
+        internalActions: [{ targetAction: 'highlight' as const, refTarget: '#target' }],
+      };
+      const { rerender } = render(<InteractiveGuided {...props} resetTrigger={0} />);
+      const step = screen.getByTestId(testIds.interactive.step(props.stepId));
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+      });
+      expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1);
+      const staleComplete = mockExecuteGuidedStep.mock.calls[0][4];
+
+      rerender(<InteractiveGuided {...props} resetTrigger={1} />);
+      expect(mockCancel).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        staleComplete();
+        resolveExecution('completed');
+        await jest.advanceTimersByTimeAsync(500);
+      });
+
+      expect(step).toHaveAttribute('data-test-step-state', 'idle');
+      expect(onStepComplete).not.toHaveBeenCalled();
+      expect(onComplete).not.toHaveBeenCalled();
+      expect(markStepCompleted).not.toHaveBeenCalled();
+      expect(mockStoredCompleted).toBe(false);
+
+      mockExecuteGuidedStep.mockResolvedValueOnce('completed');
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+        await jest.advanceTimersByTimeAsync(500);
+      });
+
+      expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(2);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      if (mode === 'section-managed') {
+        expect(onStepComplete).toHaveBeenCalledTimes(1);
+        expect(onStepComplete).toHaveBeenCalledWith(props.stepId);
+        expect(markStepCompleted).not.toHaveBeenCalled();
+      } else {
+        expect(markStepCompleted).toHaveBeenCalledTimes(1);
+        expect(markStepCompleted).toHaveBeenCalledWith(props.stepId, undefined, 'manual');
+      }
+      expect(step).toHaveAttribute('data-test-step-state', 'completed');
+    }
+  );
+
+  it('does not advance to another action after reset during completion feedback', async () => {
+    mockExecuteGuidedStep.mockResolvedValue('completed');
+    const onComplete = jest.fn();
+    const props = {
+      stepId: 'reset-between-actions',
+      onComplete,
+      internalActions: [{ targetAction: 'noop' as const }, { targetAction: 'noop' as const }],
+    };
+    const { rerender } = render(<InteractiveGuided {...props} resetTrigger={0} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    });
+    expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1);
+
+    rerender(<InteractiveGuided {...props} resetTrigger={1} />);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1);
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.interactive.step(props.stepId))).toHaveAttribute('data-test-step-state', 'idle');
+  });
+
+  it('does not start a guided action after reset during a pending sidebar handoff', async () => {
+    mockGetMode.mockReturnValue('fullscreen');
+    let resolveHandoff!: () => void;
+    mockRequestSidebarHandoffAndWait.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveHandoff = resolve;
+      })
+    );
+    const props = {
+      stepId: 'reset-during-handoff',
+      internalActions: [{ targetAction: 'highlight' as const, refTarget: '#target' }],
+    };
+    const { rerender } = render(<InteractiveGuided {...props} resetTrigger={0} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledTimes(1);
+    rerender(<InteractiveGuided {...props} resetTrigger={1} />);
+
+    await act(async () => {
+      resolveHandoff();
+    });
+
+    expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.interactive.step(props.stepId))).toHaveAttribute('data-test-step-state', 'idle');
+  });
+
+  it.each([true, false])('ignores stale controller progress and completion (%s) after reset', async (finished) => {
+    let resolveExecution!: (result: boolean) => void;
+    const stopProgress = jest.fn();
+    const channel = {
+      post: jest.fn(),
+      requestRequirementCheck: jest.fn(),
+      requestFix: jest.fn(),
+      awaitStepComplete: jest.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveExecution = resolve;
+          })
+      ),
+      cancelStepComplete: jest.fn(),
+      onStepProgress: jest.fn(
+        (_stepId: string, _runId: string, _callback: (index: number, total: number) => void) => stopProgress
+      ),
+    };
+    jest.mocked(useControllerChannel).mockReturnValue(channel);
+    const onComplete = jest.fn();
+    const props = {
+      stepId: 'reset-controller',
+      onComplete,
+      internalActions: [{ targetAction: 'noop' as const }, { targetAction: 'noop' as const }],
+    };
+    const { rerender } = render(<InteractiveGuided {...props} resetTrigger={0} />, {
+      wrapper: ({ children }) => (
+        <InteractiveModeContext.Provider value="controller">{children}</InteractiveModeContext.Provider>
+      ),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+    const runId = channel.post.mock.calls[0][0].runId;
+    const staleProgress = channel.onStepProgress.mock.calls[0]![2];
+    rerender(<InteractiveGuided {...props} resetTrigger={1} />);
+    expect(channel.cancelStepComplete).toHaveBeenCalledWith(props.stepId, runId);
+
+    act(() => staleProgress(1, 2));
+    expect(screen.getByText('Step 1 of 2')).toBeInTheDocument();
+    await act(async () => {
+      resolveExecution(finished);
+    });
+
+    expect(stopProgress).toHaveBeenCalledTimes(1);
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+    expect(screen.getByTestId(testIds.interactive.step(props.stepId))).toHaveAttribute('data-test-step-state', 'idle');
   });
 });
 

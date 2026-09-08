@@ -29,7 +29,7 @@ describe('resetGuideProgress', () => {
     expect(dispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'interactive-progress-cleared',
-        detail: { contentKey: 'bundled:e2e-test' },
+        detail: { scope: 'content', contentKey: 'bundled:e2e-test' },
       })
     );
 

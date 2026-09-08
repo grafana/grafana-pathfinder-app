@@ -18,7 +18,7 @@ import { useGuidePreviewProgress } from './hooks/useGuidePreviewProgress';
 import type { JsonGuide } from './types';
 import type { ContentParseResult, RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
-import { StorageEvents } from '../../lib/event-names';
+import { isProgressClearForContent, StorageEvents, type InteractiveProgressClearedDetail } from '../../lib/event-names';
 
 export interface BlockPreviewProps {
   /** The guide to preview */
@@ -47,13 +47,12 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
   const progressKey = `block-editor://preview/${guide.id}`;
   const { hasProgress: hasInteractiveProgress, reset } = useGuidePreviewProgress(progressKey);
 
-  // Force ContentRenderer remount when progress is cleared (locally or by a sibling
-  // surface like BlockEditorHeader). All clears flow through `interactive-progress-cleared`.
+  // Remount when the whole preview is cleared locally or by BlockEditorHeader.
   const [resetKey, setResetKey] = useState(0);
   useEffect(() => {
     const handleCleared = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (detail?.contentKey === progressKey) {
+      const detail = (event as CustomEvent<InteractiveProgressClearedDetail>).detail;
+      if (isProgressClearForContent(detail, progressKey)) {
         setResetKey((prev) => prev + 1);
       }
     };

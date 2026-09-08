@@ -1,3 +1,5 @@
+import { assertExhaustive } from './assert-exhaustive';
+
 export const StorageEvents = {
   LearningProgressUpdated: 'learning-progress-updated',
   GuideResponseChanged: 'guide-response-changed',
@@ -5,6 +7,49 @@ export const StorageEvents = {
 } as const;
 
 export type StorageEventName = (typeof StorageEvents)[keyof typeof StorageEvents];
+
+export type InteractiveProgressClearedDetail =
+  | { scope: 'section'; contentKey: string; sectionId: string }
+  | { scope: 'content'; contentKey: string }
+  | { scope: 'path'; pathId: string; contentKeys: string[] }
+  | { scope: 'global' };
+
+export function dispatchInteractiveProgressCleared(detail: InteractiveProgressClearedDetail): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail }));
+  }
+}
+
+export function isProgressClearForContent(
+  detail: InteractiveProgressClearedDetail | undefined,
+  contentKey: string
+): boolean {
+  switch (detail?.scope) {
+    case 'content':
+      return detail.contentKey === contentKey;
+    case 'path':
+      return Array.isArray(detail.contentKeys) && detail.contentKeys.includes(contentKey);
+    case 'global':
+      return true;
+    case 'section':
+    case undefined:
+      return false;
+    default:
+      assertExhaustive(detail);
+      return false;
+  }
+}
+
+export function isProgressClearForSection(
+  detail: InteractiveProgressClearedDetail | undefined,
+  contentKey: string,
+  sectionId: string
+): boolean {
+  if (detail?.scope === 'section') {
+    return detail.contentKey === contentKey && detail.sectionId === sectionId;
+  }
+  return isProgressClearForContent(detail, contentKey);
+}
 
 // Dispatched by global-state/panel-mode's panelModeManager.setMode with
 // detail { mode, previous }; consumed by every Pathfinder surface.

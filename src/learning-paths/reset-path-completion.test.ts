@@ -93,6 +93,25 @@ beforeEach(() => {
 });
 
 describe('resetPath — App Platform path (no url)', () => {
+  it('dispatches a path-scoped reset with the exact cleared content keys', async () => {
+    const events: CustomEvent[] = [];
+    const handler = (event: Event) => events.push(event as CustomEvent);
+    window.addEventListener('interactive-progress-cleared', handler);
+
+    try {
+      await renderAndResetPath();
+
+      expect(events).toHaveLength(1);
+      expect(events[0]!.detail).toEqual({
+        scope: 'path',
+        pathId: PATH_ID,
+        contentKeys: [BUNDLED_PATH_KEY, PATH_KEY, ...MEMBER_KEYS],
+      });
+    } finally {
+      window.removeEventListener('interactive-progress-cleared', handler);
+    }
+  });
+
   it('clears the milestone checklist stored under the path cover key', async () => {
     await seedCompletedCourse();
 
@@ -192,6 +211,37 @@ describe('resetPath — URL-based journey path', () => {
         url: PATH_URL,
       },
     ];
+  });
+
+  it('dispatches the cover, journey-only, and milestone keys once, excluding other journeys', async () => {
+    const journeyOnlyKey = `${PATH_URL}nested-journey/`;
+    for (const key of [PATH_URL, journeyOnlyKey, ...MILESTONE_URLS, OTHER_JOURNEY_KEY]) {
+      await journeyCompletionStorage.set(key, 100);
+    }
+    for (const key of MILESTONE_URLS) {
+      await interactiveCompletionStorage.set(key, 100);
+    }
+
+    const events: CustomEvent[] = [];
+    const handler = (event: Event) => events.push(event as CustomEvent);
+    window.addEventListener('interactive-progress-cleared', handler);
+
+    try {
+      await renderAndResetPath(URL_PATH_ID);
+
+      expect(events).toHaveLength(1);
+      expect(events[0]!.detail).toEqual({
+        scope: 'path',
+        pathId: URL_PATH_ID,
+        contentKeys: expect.arrayContaining([PATH_URL, journeyOnlyKey, ...MILESTONE_URLS]),
+      });
+      expect(events[0]!.detail.contentKeys).toHaveLength(MILESTONE_URLS.length + 2);
+      await expect(journeyCompletionStorage.get(PATH_URL)).resolves.toBe(0);
+      await expect(journeyCompletionStorage.get(journeyOnlyKey)).resolves.toBe(0);
+      await expect(journeyCompletionStorage.get(OTHER_JOURNEY_KEY)).resolves.toBe(100);
+    } finally {
+      window.removeEventListener('interactive-progress-cleared', handler);
+    }
   });
 
   it('clears every milestone key in one pass, without restoring siblings, and spares other journeys', async () => {

@@ -91,7 +91,7 @@ describe('useGuideProgressState', () => {
     expect(result.current.hasInteractiveProgress).toBe(true);
   });
 
-  it('flips hasInteractiveProgress false on a matching interactive-progress-cleared event', async () => {
+  it('flips hasInteractiveProgress false on a matching content reset', async () => {
     mockHasProgress.mockResolvedValue(true);
     const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
 
@@ -103,7 +103,7 @@ describe('useGuideProgressState', () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: 'guide-a' },
+          detail: { scope: 'content', contentKey: 'guide-a' },
         })
       );
     });
@@ -122,12 +122,70 @@ describe('useGuideProgressState', () => {
     act(() => {
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: 'guide-b' },
+          detail: { scope: 'content', contentKey: 'guide-b' },
         })
       );
     });
 
     expect(result.current.hasInteractiveProgress).toBe(true);
+  });
+
+  it('ignores section resets and handles path and global resets explicitly', async () => {
+    mockHasProgress.mockResolvedValue(true);
+    const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('interactive-progress-cleared', {
+          detail: { scope: 'section', contentKey: 'guide-a', sectionId: 'section-a' },
+        })
+      );
+    });
+    expect(result.current.hasInteractiveProgress).toBe(true);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('interactive-progress-cleared', {
+          detail: { scope: 'path', pathId: 'path-a', contentKeys: ['guide-a'] },
+        })
+      );
+    });
+    expect(result.current.hasInteractiveProgress).toBe(false);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: 'guide-a', hasProgress: true, percentage: 25 },
+        })
+      );
+      window.dispatchEvent(new CustomEvent('interactive-progress-cleared', { detail: { scope: 'global' } }));
+    });
+    expect(result.current.hasInteractiveProgress).toBe(false);
+  });
+
+  it('uses matching guide progress events for both true and false state', async () => {
+    const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: 'guide-a', hasProgress: true, percentage: 25 },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: { kind: 'guide', contentKey: 'guide-a', hasProgress: false, percentage: 0 },
+        })
+      );
+    });
+
+    expect(result.current.hasInteractiveProgress).toBe(false);
   });
 
   it('ignores pathfinder:progress (kind: guide) events for a different content key', async () => {

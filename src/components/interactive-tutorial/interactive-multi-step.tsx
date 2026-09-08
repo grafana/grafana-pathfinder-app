@@ -244,14 +244,13 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
     const activeRunIdRef = React.useRef<string>('');
     const allowCompletedRetryRef = React.useRef(false);
 
-    // Handle reset trigger from parent section
     useEffect(() => {
       if (resetTrigger && resetTrigger > 0) {
         persistReset();
-        setExecutionError(null); // Also clear any execution errors
-        setFailedStepIndex(-1); // Reset failed step tracking
-        setAutoCompletedActions(new Set()); // Clear auto-completed actions
-        isCancelledRef.current = false; // Reset cancellation state
+        setExecutionError(null);
+        setFailedStepIndex(-1);
+        setAutoCompletedActions(new Set());
+        isCancelledRef.current = true;
       }
     }, [resetTrigger, stepId, persistReset]);
 
@@ -347,6 +346,10 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       isCancelledRef.current = false; // Reset ref as well
       if (completeEarly) {
         await waitForReactUpdates();
+        if (isCancelledRef.current) {
+          setIsExecuting(false);
+          return false;
+        }
         persistCompletion();
         if (onStepComplete && stepId) {
           onStepComplete(stepId);
@@ -404,6 +407,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           // Just-in-time requirements checking for this specific action
           if (action.requirements) {
             const requirementsResult = await checkActionRequirements(action, i, checkRequirementsFromData);
+            if (isCancelledRef.current) {
+              return false;
+            }
             if (!requirementsResult.pass) {
               logger.error(`Multi-step ${stepId}: Internal action ${i + 1} requirements failed`, {
                 explanation: requirementsResult.explanation,
@@ -442,6 +448,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               buttonType: 'do',
               fullScreenFallbackLocation,
             });
+            if (isCancelledRef.current) {
+              return false;
+            }
             if (doOutcome === 'error') {
               setFailedStepIndex(i);
               setExecutionError(`Step ${i + 1} did not complete successfully.`);
@@ -463,6 +472,9 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
               }
             }
           } catch (actionError) {
+            if (isCancelledRef.current) {
+              return false;
+            }
             logger.error(`Multi-step ${stepId}: Internal action ${i + 1} execution failed`, { error: actionError });
             const errorMessage = actionError instanceof Error ? actionError.message : 'Action execution failed';
             setFailedStepIndex(i);

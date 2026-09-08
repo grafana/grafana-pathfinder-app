@@ -133,11 +133,14 @@ export class GuidedHandler {
     onActionCompleted?: () => void
   ): Promise<CompletionResult> {
     const arbiter = this.createGuidedStepArbiter();
+    const abortController = new AbortController();
+    const { signal } = abortController;
 
     try {
       this.cleanupListeners();
+      this.currentAbortController = abortController;
       if (action.targetAction === 'noop') {
-        return await this.executeNoopStep(action, stepIndex, totalSteps, timeout);
+        return await this.executeNoopStep(action, stepIndex, totalSteps, timeout, signal);
       }
 
       const refTarget = action.refTarget;
@@ -148,6 +151,7 @@ export class GuidedHandler {
       }
 
       await this.expandNavigationParentIfNeeded(refTarget);
+      signal.throwIfAborted();
 
       let targetElement: HTMLElement;
       try {
@@ -156,18 +160,22 @@ export class GuidedHandler {
           targetAction,
           timeout,
           INTERACTIVE_CONFIG.guided.retryInterval,
+          signal,
           action.isSkippable === true
         );
       } catch (elementNotFoundError) {
+        signal.throwIfAborted();
         if (action.isSkippable) {
           return this.finishGuidedStep('skipped', stepIndex);
         }
         throw elementNotFoundError;
       }
 
-      await this.prepareElement(targetElement);
+      signal.throwIfAborted();
+      await this.prepareElement(targetElement, signal);
+      signal.throwIfAborted();
       // Attach before highlighting so click activation cannot beat the listener.
-      this.createCompletionListener(action, targetElement, timeout, arbiter, onActionCompleted);
+      this.createCompletionListener(action, targetElement, timeout, signal, arbiter, onActionCompleted);
       if (action.isSkippable) {
         this.createSkipListener(stepIndex, arbiter);
       }
@@ -187,12 +195,12 @@ export class GuidedHandler {
       return this.finishGuidedStep(await arbiter.promise, stepIndex);
     } catch (error) {
       const settledResult = arbiter.getResult();
-      if (settledResult === null) {
+      if (settledResult === null && !signal.aborted) {
         logger.error(`Guided step ${stepIndex + 1} failed`, { error });
-      } else if (settledResult !== 'error') {
+      } else if (settledResult !== null && settledResult !== 'error' && !signal.aborted) {
         logger.warn(`Guided step ${stepIndex + 1} settled before setup failed`, { error, result: settledResult });
       }
-      const result = settledResult ?? arbiter.settle('error');
+      const result = settledResult ?? arbiter.settle(signal.aborted ? 'cancelled' : 'error');
       return this.finishGuidedStep(result, stepIndex);
     }
   }
@@ -213,20 +221,14 @@ export class GuidedHandler {
     return result;
   }
 
-  /**
-   * Execute a noop step - informational step with no target element
-   * Shows a comment box and waits for user to click "Continue" or skip
-   */
   private async executeNoopStep(
     action: GuidedAction,
     stepIndex: number,
     totalSteps: number,
-    timeout: number
+    timeout: number,
+    signal: AbortSignal
   ): Promise<CompletionResult> {
-    this.cleanupListeners();
     const arbiter = this.createGuidedStepArbiter();
-    this.currentAbortController = new AbortController();
-    const signal = this.currentAbortController.signal;
     if (action.isSkippable) {
       this.createSkipListener(stepIndex, arbiter);
     }
@@ -370,30 +372,28 @@ export class GuidedHandler {
     document.body.appendChild(commentBox);
   }
 
-  /**
-   * Find target element with retry logic - keeps trying every retryInterval until timeout
-   * @param skipRetryOnFailure - If true, throw immediately on first failure (for skippable steps)
-   */
   private async findTargetElementWithRetry(
     selector: string,
     actionType: 'hover' | 'button' | 'highlight' | 'formfill',
     timeout: number,
     retryInterval: number,
+    signal: AbortSignal,
     skipRetryOnFailure = false
   ): Promise<HTMLElement> {
     const startTime = Date.now();
     let attemptCount = 0;
 
     while (Date.now() - startTime < timeout) {
+      signal.throwIfAborted();
       attemptCount++;
       try {
         const element = await this.findTargetElement(selector, actionType);
         return element;
       } catch (error) {
+        signal.throwIfAborted();
         const elapsed = Date.now() - startTime;
         const remaining = timeout - elapsed;
 
-        // For skippable steps, fail immediately on first attempt - don't retry
         if (skipRetryOnFailure) {
           throw error;
         }
@@ -407,8 +407,15 @@ export class GuidedHandler {
           });
           throw error;
         }
-        // Wait before retrying, but don't exceed timeout
-        await new Promise((resolve) => setTimeout(resolve, Math.min(retryInterval, remaining)));
+        await new Promise<void>((resolve) => {
+          const finishWait = () => {
+            clearTimeout(timeoutId);
+            signal.removeEventListener('abort', finishWait);
+            resolve();
+          };
+          const timeoutId = setTimeout(finishWait, Math.min(retryInterval, remaining));
+          signal.addEventListener('abort', finishWait, { once: true });
+        });
       }
     }
 
@@ -523,17 +530,13 @@ export class GuidedHandler {
     return targetElements[0]!;
   }
 
-  /**
-   * Prepare element for interaction (scroll, open navigation)
-   */
-  private async prepareElement(targetElement: HTMLElement): Promise<void> {
-    // Validate visibility before interaction
+  private async prepareElement(targetElement: HTMLElement, signal: AbortSignal): Promise<void> {
     if (!isElementVisible(targetElement)) {
       logger.warn('Target element is not visible', { targetElement: describeElement(targetElement) });
-      // Continue anyway (non-breaking)
     }
 
     await this.navigationManager.ensureNavigationOpen(targetElement);
+    signal.throwIfAborted();
     await this.navigationManager.ensureElementVisible(targetElement);
   }
 
@@ -632,11 +635,10 @@ export class GuidedHandler {
     action: GuidedAction,
     targetElement: HTMLElement,
     timeout: number,
+    signal: AbortSignal,
     arbiter: GuidedStepArbiter,
     onActionCompleted?: () => void
   ): void {
-    this.currentAbortController = new AbortController();
-    const signal = this.currentAbortController.signal;
     const actionType = action.targetAction as 'hover' | 'button' | 'highlight' | 'formfill';
     // Do not click an already-satisfied toggle away from its target state.
     if (actionType === 'button' || actionType === 'highlight') {

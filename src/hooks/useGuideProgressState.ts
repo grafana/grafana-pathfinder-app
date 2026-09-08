@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { StorageEvents } from '../lib/event-names';
+import { isProgressClearForContent, StorageEvents, type InteractiveProgressClearedDetail } from '../lib/event-names';
 import { interactiveStepStorage } from '../lib/user-storage';
 import { subscribeProgressEvent } from '../global-state/progress-events';
 
@@ -30,13 +30,13 @@ export function useGuideProgressState(activeTab: ActiveTabSummary | null | undef
 
   useEffect(() => {
     const unsubscribeProgress = subscribeProgressEvent((detail) => {
-      if (detail.kind === 'guide' && detail.contentKey === progressKey && detail.hasProgress) {
-        setHasInteractiveProgress(true);
+      if (detail.kind === 'guide' && detail.contentKey === progressKey) {
+        setHasInteractiveProgress(detail.hasProgress);
       }
     });
     const handleProgressCleared = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (detail?.contentKey === progressKey) {
+      const detail = (event as CustomEvent<InteractiveProgressClearedDetail>).detail;
+      if (isProgressClearForContent(detail, progressKey)) {
         setHasInteractiveProgress(false);
       }
     };
