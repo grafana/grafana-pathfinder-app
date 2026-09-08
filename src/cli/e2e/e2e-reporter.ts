@@ -18,6 +18,7 @@ import {
   MultiGuideReportSchema,
   type E2EExecutionOutcome,
   type E2EErrorCode,
+  type E2ETransitionKind,
   type ErrorClassification,
   type RunnerProvenance,
   type ReportSummary,
@@ -68,6 +69,7 @@ export interface TestResultsData {
   endedAt?: string;
   outcome?: E2EExecutionOutcome;
   errorCode?: E2EErrorCode;
+  transitionKind?: E2ETransitionKind;
   errorMessage?: string;
   runner?: Partial<RunnerProvenance>;
   /** Individual step results */
@@ -191,6 +193,7 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
     schemaVersion: E2E_REPORT_SCHEMA_VERSION,
     outcome,
     ...(errorCode ? { errorCode } : {}),
+    ...(data.transitionKind ? { transitionKind: data.transitionKind } : {}),
     ...((data.errorMessage ?? data.abortMessage) ? { errorMessage: data.errorMessage ?? data.abortMessage } : {}),
     runner: {
       name: 'pathfinder-e2e-runner',
@@ -242,6 +245,7 @@ export function createMinimalResultsData(input: {
   guide: GuideMetadata;
   outcome: E2EExecutionOutcome;
   errorCode: E2EErrorCode;
+  transitionKind?: E2ETransitionKind;
   errorMessage: string;
   abortReason?: TestResultsData['abortReason'];
   startedAt?: string;
@@ -258,6 +262,7 @@ export function createMinimalResultsData(input: {
     endedAt,
     outcome: input.outcome,
     errorCode: input.errorCode,
+    ...(input.transitionKind ? { transitionKind: input.transitionKind } : {}),
     errorMessage: input.errorMessage,
     results: [],
     aborted: input.outcome !== 'passed',

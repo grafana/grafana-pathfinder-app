@@ -113,7 +113,12 @@ export function unrunSharedSessionResult(
   return createMinimalResultsData({
     guide: packageGuideMetadata(guide, guide.packageMetadata, targetUrl),
     outcome: authExpired ? 'aborted' : 'infrastructure_error',
-    errorCode: authExpired ? 'AUTH_EXPIRED' : 'REPORT_MISSING',
+    errorCode: authExpired
+      ? 'AUTH_EXPIRED'
+      : fatalTransition
+        ? (activeResult.errorCode ?? 'TRANSITION_FAILED')
+        : 'REPORT_MISSING',
+    ...(fatalTransition && activeResult.transitionKind ? { transitionKind: activeResult.transitionKind } : {}),
     errorMessage,
     ...(authExpired ? { abortReason: 'AUTH_EXPIRED' as const } : {}),
   });
@@ -165,7 +170,8 @@ export async function runSharedGuideChain(
       result = createMinimalResultsData({
         guide: packageGuideMetadata(guide, guide.packageMetadata, input.targetUrl, transition.startingLocation),
         outcome: 'infrastructure_error',
-        errorCode: 'REPORT_MISSING',
+        errorCode: fatalTransition ? 'TRANSITION_FAILED' : 'REPORT_MISSING',
+        ...(fatalTransition ? { transitionKind: error.kind } : {}),
         errorMessage: `Shared runner failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     }

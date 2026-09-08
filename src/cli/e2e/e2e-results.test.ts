@@ -78,6 +78,31 @@ describe('resolveRunMode', () => {
   });
 });
 
+describe('guideResultReason', () => {
+  it('shows the transition kind for fatal transition results', () => {
+    const resultsData: TestResultsData = {
+      guide: { id: 'a', title: 'A', path: 'a/content.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'infrastructure_error',
+      errorCode: 'TRANSITION_FAILED',
+      transitionKind: 'badge-obstruction',
+      results: [],
+      aborted: true,
+    };
+
+    expect(
+      guideResultReason({
+        guide: 'a/content.json',
+        id: 'a',
+        status: 'failed',
+        exitCode: ExitCode.TEST_FAILURE,
+        autoIncluded: false,
+        resultsData,
+      })
+    ).toBe(' (transition failed: badge-obstruction)');
+  });
+});
+
 describe('skipToResult', () => {
   const baseSkip: SkippedPackage = {
     id: 'loki-101',

@@ -43,6 +43,7 @@ export const testIds = {
     fullScreenButton: 'docs-panel-full-screen-button',
     openControllerTabButton: 'docs-panel-open-controller-tab-button',
     milestoneMoreActionsButton: 'docs-panel-milestone-more-actions-button',
+    resetGuideButton: 'docs-panel-reset-guide-button',
   },
 
   // Full screen mode page (sibling of the sidebar / floating panel)
