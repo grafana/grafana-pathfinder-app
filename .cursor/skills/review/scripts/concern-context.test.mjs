@@ -64,6 +64,23 @@ test('includes the concern anchor and named invariants', () => {
   assert.equal(context.named_invariants[0].name, 'payload-boundary-normalization');
 });
 
+test('records the docs retrieval and rendering ownership chain', () => {
+  const context = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'docs-retrieval-and-rendering',
+  });
+
+  assert.equal(context.contract_anchor.evidence, '#894 → #1716');
+  assert.match(context.contract_anchor.contract, /fetchContent/);
+  assert.match(context.contract_anchor.contract, /ContentRenderer/);
+  assert.match(context.contract_anchor.contract, /loadDocsTabContentResult/);
+  assert.match(context.contract_anchor.contract, /resolveDocsLoadAlignment/);
+  assert.match(context.contract_anchor.contract, /#1692/);
+  assert.match(context.contract_anchor.contract, /#1712/);
+  assert.match(context.contract_anchor.contract, /competing convention/);
+});
+
 test('records the review orchestration contract under ai-subsystem', () => {
   const context = extractConcernContext({
     routingMarkdown: concerns,
