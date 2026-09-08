@@ -81,6 +81,8 @@ Workers inspect changed functions, nearby contracts, directly related tests, bas
 
 Prefer one precise observation over speculative variants. Return `reviewed_clean` or `not_applicable` when nothing crosses the bar.
 
+Do not emit an adjacent observation — `pre_existing` or `latent_unreachable`, a condition this PR did not cause — below `high` severity, and do not emit optional advice that widens the changed surface. The facade drops both, so finding them spends tokens for nothing. A high or critical adjacent finding is in bounds; state filing a separate issue as its `suggested_action`.
+
 Every producer emits `Canonical observation` from `docs/design/PR_REVIEW.md`. Load that section before dispatch. No producer decides merge impact. Root assigns the stable finding ID from the invariant and evidence surface, reuses the exact prior ID for the same invariant, and adds a narrow qualifier only to resolve a collision. Normalize and deduplicate by that ID and evidence surface before verification; assign one primary concern.
 
 ### Conditional contract evolution
@@ -105,7 +107,7 @@ The adapter emits factual contract state and a canonical observation. It never d
 
 Fold supplemental checks into an existing worker or the root; do not add workers.
 
-- Tech debt: only for changed files and under the existing tech-debt confidence gates. Emit a defect or suggestion with checked origin and scope effect.
+- Tech debt: only for changed hunks and under the existing tech-debt confidence gates. Emit a defect or suggestion with checked origin and scope effect.
 - Documentation drift: only when changed subsystems, scripts, skills, routes, flags, or architecture can stale agent guidance. Emit a no-impact defect when guidance belongs in this PR.
 - Telemetry: only for `product-runtime` or `mixed` feature behavior. Use `docs/developer/TELEMETRY.md`. Emit a suggestion unless an existing shipped telemetry contract is violated.
 
