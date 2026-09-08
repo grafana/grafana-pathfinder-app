@@ -49,7 +49,7 @@ The registered kind values are:
 
 The registry owns the set of kind values. Each component owns its stable root and stable test step ID.
 
-PR 0 only publishes this additive product DOM contract. A later runner change will consume the contract.
+PR #1640 only publishes this additive product DOM contract. A later runner change will consume the contract.
 The plain, multistep, and guided roots keep the existing `data-step-id` runtime attribute. The other tracked roots do not add this runtime attribute.
 
 The new attributes do not change existing test IDs or state values. They do not change runner discovery, runner execution, or report outcomes.
