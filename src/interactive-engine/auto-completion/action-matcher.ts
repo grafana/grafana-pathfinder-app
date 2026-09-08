@@ -10,6 +10,7 @@
 import type { DetectedAction } from '../../lib/dom/action-detector';
 import { findButtonByText } from '../../lib/dom';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { isCssSelector } from '../../lib/dom/selector-detector';
 
 // ============ REGEX PATTERN MATCHING ============
@@ -332,7 +333,10 @@ export function matchesStepAction(
       // Sequence actions are handled at multi-step level, not here
       return false;
 
+    case 'noop':
+      return false;
     default:
+      assertExhaustive(targetAction);
       return false;
   }
 }

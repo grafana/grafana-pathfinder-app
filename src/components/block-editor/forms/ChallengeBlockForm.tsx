@@ -300,6 +300,11 @@ export function ChallengeBlockForm({
       const isCoda = mode === 'coda';
       const block: JsonChallengeBlock = {
         type: 'challenge',
+        ...(initial?.id !== undefined && { id: initial.id }),
+        ...(initial?.requirements !== undefined && { requirements: initial.requirements }),
+        ...(initial?.objectives !== undefined && { objectives: initial.objectives }),
+        ...(initial?.skippable !== undefined && { skippable: initial.skippable }),
+        ...(initial?.authorNote !== undefined && { authorNote: initial.authorNote }),
         mode,
         title: title.trim(),
         brief: brief.trim(),
@@ -314,7 +319,20 @@ export function ChallengeBlockForm({
 
       onSubmit(block as JsonBlock);
     },
-    [mode, title, brief, vmTemplate, vmScenario, vmApp, setupScript, successCommand, hints, failureMessage, onSubmit]
+    [
+      initial,
+      mode,
+      title,
+      brief,
+      vmTemplate,
+      vmScenario,
+      vmApp,
+      setupScript,
+      successCommand,
+      hints,
+      failureMessage,
+      onSubmit,
+    ]
   );
 
   const isValid = title.trim().length > 0 && brief.trim().length > 0 && successCommand.trim().length > 0;

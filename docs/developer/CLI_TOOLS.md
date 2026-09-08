@@ -79,6 +79,7 @@ node dist/cli/cli/index.js validate [options] [files...]
 - `--format <format>`: Output format. Options are `text` (default) or `json`.
 - `--package <dir>`: Validate a single package directory (expects `content.json` and optionally `manifest.json`).
 - `--packages <dir>`: Validate a tree of package directories recursively.
+- `--snippets-catalog <file>`: Optional generated snippet `index.json` to check every `snippet-ref` ID against. The catalog must satisfy the snippet catalog schema; a missing or invalid catalog fails validation. This option applies to file, stdin, bundled, package, and package-tree validation. Omit it when no local catalog is available.
 - File arguments accept explicit paths to JSON guide files.
 
 ### Examples
@@ -115,6 +116,13 @@ npm run validate:strict
 # Equivalent to: node dist/cli/cli/index.js validate --bundled --strict
 ```
 
+**Validate guide references against a generated snippets catalog:**
+
+```bash
+node dist/cli/cli/index.js build-snippets shared/snippets -o /tmp/snippets-index.json
+node dist/cli/cli/index.js validate --strict --snippets-catalog /tmp/snippets-index.json guides/my-guide/content.json
+```
+
 **Get JSON output for CI integration:**
 
 ```bash
@@ -144,6 +152,8 @@ The validator performs these checks in order:
 2. **Schema compliance** - Types, nesting depth, field names
 3. **Unknown fields** - Warns on unrecognized fields (forward compatibility)
 4. **Condition syntax** - Validates requirements/objectives mini-grammar
+5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (the title is rendered separately). This is an error, so the command fails; remove the heading from the block.
+6. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
 
 Example output with condition warnings:
 
@@ -152,6 +162,8 @@ Example output with condition warnings:
   Warning: blocks[2].requirements[0]: Unknown condition type 'typo-requirement'
   Warning: blocks[5].objectives[0]: 'has-datasource:' requires an argument
 ```
+
+Warnings are reported for a file even when that file also has errors.
 
 In strict mode (`--strict`), warnings become errors and cause the command to fail.
 

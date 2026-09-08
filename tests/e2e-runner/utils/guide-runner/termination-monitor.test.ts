@@ -22,6 +22,7 @@ describe('browser termination monitor', () => {
     browser.emit('disconnected');
 
     await expect(monitor.termination).resolves.toEqual({ message: 'The browser page crashed.' });
+    expect(monitor.isTerminated()).toBe(true);
     monitor.dispose();
   });
 
@@ -39,6 +40,7 @@ describe('browser termination monitor', () => {
     browser.emit('disconnected');
     await Promise.resolve();
     expect(resolved).toBe(false);
+    expect(monitor.isTerminated()).toBe(false);
 
     expect(page.listenerCount('close')).toBe(1);
     monitor.dispose();

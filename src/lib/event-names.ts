@@ -1,3 +1,5 @@
+import { assertExhaustive } from './assert-exhaustive';
+
 export const StorageEvents = {
   LearningProgressUpdated: 'learning-progress-updated',
   GuideResponseChanged: 'guide-response-changed',
@@ -29,7 +31,11 @@ export function isProgressClearForContent(
       return Array.isArray(detail.contentKeys) && detail.contentKeys.includes(contentKey);
     case 'global':
       return true;
+    case 'section':
+    case undefined:
+      return false;
     default:
+      assertExhaustive(detail);
       return false;
   }
 }
@@ -83,6 +89,13 @@ export const PATHFINDER_CONFIG_UPDATED_EVENT = 'pathfinder-config-updated';
 // — the optional launchKey redeems a prepared launch from guideLaunchStore;
 // the payload itself never rides this forgeable event.
 export const AUTO_OPEN_DOCS_EVENT = 'pathfinder-auto-open-docs';
+
+// Dispatched by integrations/coda's TerminalProvider on every connection-status
+// change, with detail { status }. `is-terminal-active` and `coda-exit-zero:`
+// read live module state, so they can see a connection — but nothing tells them
+// to look again when one arrives, and provisioning a VM takes about a minute.
+// Consumed by requirements-manager/step-checker.hook.ts.
+export const TERMINAL_STATUS_CHANGED_EVENT = 'pathfinder-terminal-status-changed';
 
 export const FloatingPanelEvents = {
   Dodge: 'pathfinder-floating-dodge',

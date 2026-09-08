@@ -1,3 +1,7 @@
+export type CheckVerdict = 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
+
+export type ConditionInput = string | readonly string[];
+
 /**
  * Type-safe requirement definitions for compile-time checking
  * This prevents unknown requirement types from reaching runtime
@@ -63,6 +67,7 @@ export const isValidRequirement = (req: string): req is ValidRequirement => {
  * importing each other (#1359).
  */
 export interface CheckResultError {
+  verdict?: CheckVerdict;
   requirement: string;
   pass: boolean;
   error?: string;
@@ -77,7 +82,7 @@ export interface CheckResultError {
 
 // Type-safe requirement checker options
 export interface TypeSafeRequirementsCheckOptions {
-  requirements: string; // We keep this as string for backward compatibility, but validate at runtime
+  requirements: ConditionInput;
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;

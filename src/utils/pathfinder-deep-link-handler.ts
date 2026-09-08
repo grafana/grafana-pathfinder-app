@@ -78,7 +78,7 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
   lastProcessedSearch = search;
 
   if (kioskSessionParam) {
-    (window as any).__pathfinderKioskSessionId = kioskSessionParam;
+    window.__pathfinderKioskSessionId = kioskSessionParam;
   }
 
   if (panelModeParam === 'floating') {
@@ -197,7 +197,7 @@ export function installDeepLinkNavListener(deps: DeepLinkHandlerDeps): void {
     const history = locationService.getHistory();
     if (history) {
       const unlisten = history.listen(handler);
-      (window as any).__pathfinderDeepLinkNavUnlisten = unlisten;
+      window.__pathfinderDeepLinkNavUnlisten = unlisten;
     }
   } catch {
     window.addEventListener('popstate', handler);

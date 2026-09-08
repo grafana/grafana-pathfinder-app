@@ -151,7 +151,7 @@ export function computeGate({ base, head, concern, windowDays = DEFAULT_WINDOW_D
   const inStackOutput = git(['rev-list', head, `^${base}`], cwd);
   const inStackShas = inStackOutput ? inStackOutput.split('\n').filter(Boolean) : [];
 
-  const concerns = git(['show', `${base}:docs/design/CONCERNS.md`], cwd);
+  const concerns = git(['show', `${head}:docs/design/CONCERNS.md`], cwd);
   const paths = extractConcernPaths(concerns, concern);
   const baseTimestamp = Number(git(['show', '-s', '--format=%ct', base], cwd));
   const cutoffTimestamp = baseTimestamp - windowDays * 24 * 60 * 60;

@@ -268,7 +268,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
     onGuideTitleChange?.(state.guide.title);
   }, [state.guide.title, onGuideTitleChange, isContentReady]);
 
-  // Modal state - useModalManager handles metadata, newGuideConfirm, import, githubPr, tour
   const modals = useModalManager();
 
   // Block form state - manages form modal and editing context
@@ -873,7 +872,6 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         guide={editor.getGuide()}
         isDirty={state.isDirty}
         hasBlocks={hasBlocks}
-        onUpdateGuideMetadata={editor.updateGuideMetadata}
         onNewGuideConfirm={guideOps.handleNewGuide}
         onImportGuide={guideOps.handleImportGuide}
       />

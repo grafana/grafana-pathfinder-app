@@ -5,6 +5,7 @@
 import { RawContent, ContentFetchResult } from '../../types/content.types';
 import { StorageKeys } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 
 /**
  * Discriminated representation of a `bundled:` URL. Adding a new
@@ -181,8 +182,7 @@ export async function fetchBundledInteractive(url: string): Promise<ContentFetch
     case 'invalid':
       return { content: null, error: ref.reason, errorType: 'not-found' };
     default: {
-      const _exhaustive: never = ref;
-      void _exhaustive;
+      assertExhaustive(ref);
       return { content: null, error: 'Unknown bundled URL shape' };
     }
   }

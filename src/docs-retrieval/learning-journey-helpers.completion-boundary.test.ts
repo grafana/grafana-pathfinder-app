@@ -115,6 +115,13 @@ describe('bundled guide reaching 100% (trigger class A)', () => {
     expect(journeySetMock).toHaveBeenCalledTimes(3);
   });
 
+  it('continues to persist ordinal percentages for URL-based journeys', () => {
+    setJourneyCompletionPercentage('https://example.com/learning-path/', 50);
+
+    expect(journeySetMock).toHaveBeenCalledWith('https://example.com/learning-path/', 50);
+    expect(emitted).toHaveLength(0);
+  });
+
   it('emits exactly once across the whole progress→100 sequence', () => {
     setJourneyCompletionPercentage('bundled:foo', 50);
     setJourneyCompletionPercentage('bundled:foo', 100);
@@ -173,6 +180,12 @@ describe('bundled guide reaching 100% (trigger class A)', () => {
     await setJourneyCompletionPercentageAsync('bundled:foo', 100);
     expect(emitted).toHaveLength(1);
     expect(markGuideCompletedMock).toHaveBeenCalledWith('foo');
+  });
+
+  it('async twin also ignores ordinal percentages for backend-guide journeys', async () => {
+    await setJourneyCompletionPercentageAsync('backend-guide:linux-path', 50);
+    expect(journeySetMock).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(0);
   });
 });
 
@@ -328,6 +341,52 @@ describe('whole-journey completion (trigger class D — the new journey_complete
     await markMilestoneDone('base', 'm2', ['m1', 'm2', 'm3']);
 
     expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(1);
+  });
+
+  it('persists terminal completion for a backend-guide journey under its base key', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
+
+    await markMilestoneDone('backend-guide:linux-path', 'm3', ['m1', 'm2', 'm3'], {
+      packageManifest: { id: 'linux-path', type: 'journey' },
+      repository: 'app-platform',
+    });
+
+    expect(journeySetMock).toHaveBeenCalledTimes(1);
+    expect(journeySetMock).toHaveBeenCalledWith('backend-guide:linux-path', 100);
+    expect(emitted.filter((f) => f.kind === 'guide')).toHaveLength(1);
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(1);
+  });
+
+  it('does not persist terminal completion before every backend-guide milestone is complete', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2']));
+
+    await markMilestoneDone('backend-guide:linux-path', 'm2', ['m1', 'm2', 'm3'], {
+      packageManifest: { id: 'linux-path', type: 'journey' },
+      repository: 'app-platform',
+    });
+
+    expect(journeySetMock).not.toHaveBeenCalled();
+    expect(emitted.filter((f) => f.kind === 'journey')).toHaveLength(0);
+  });
+
+  it('does not replace terminal backend-guide completion with an ordinal percentage', async () => {
+    milestoneGetCompletedMock.mockResolvedValue(new Set(['m1', 'm2', 'm3']));
+
+    await markMilestoneDone('backend-guide:linux-path', 'm3', ['m1', 'm2', 'm3'], {
+      packageManifest: { id: 'linux-path', type: 'journey' },
+      repository: 'app-platform',
+    });
+    setJourneyCompletionPercentage('backend-guide:linux-path', 33);
+
+    expect(journeySetMock).toHaveBeenCalledTimes(1);
+    expect(journeySetMock).toHaveBeenCalledWith('backend-guide:linux-path', 100);
+  });
+
+  it('does not treat the final backend-guide ordinal as terminal completion', () => {
+    setJourneyCompletionPercentage('backend-guide:linux-path', 100);
+
+    expect(journeySetMock).not.toHaveBeenCalled();
+    expect(emitted).toHaveLength(0);
   });
 });
 

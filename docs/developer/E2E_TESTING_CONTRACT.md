@@ -20,9 +20,39 @@ See: [`docs/developer/interactive-examples/json-guide-format.md`](./interactive-
 
 Used by E2E tests to observe the current state of the interactive system. These are **declarative** - they describe what state the component is in.
 
-Examples: `data-test-step-state`, `data-test-substep-index`, `data-test-action`
+Examples: `data-test-step-kind`, `data-test-step-id`, `data-test-step-state`, `data-test-substep-index`, `data-test-action`
 
 **This document describes the E2E testing contract attributes.**
+
+---
+
+## Tracked step root contract
+
+Each tracked step component exposes these attributes on its stable root:
+
+- `data-test-step-kind`: The registered kind of the tracked step.
+- `data-test-step-id`: The stable test step ID from the guide, or the generated ID for a standalone component.
+
+The registered kind values are:
+
+- `plain`
+- `multistep`
+- `guided`
+- `quiz`
+- `terminal`
+- `terminal-connect`
+- `codeblock`
+- `challenge`
+- `datasource-check`
+
+`getTrackedStepRootAttributes()` is the sole writer of `data-test-step-kind` and `data-test-step-id`. `StepTypeKind` is derived from `STEP_TYPE_KIND_KEYS`.
+
+The registry owns the set of kind values. Each component owns its stable root and stable test step ID.
+
+PR #1640 only publishes this additive product DOM contract. A later runner change will consume the contract.
+The plain, multistep, and guided roots keep the existing `data-step-id` runtime attribute. The other tracked roots do not add this runtime attribute.
+
+The new attributes do not change existing test IDs or state values. They do not change runner discovery, runner execution, or report outcomes.
 
 ---
 
@@ -37,7 +67,104 @@ The guide runner must establish a ready Pathfinder panel before it can load guid
 
 The Grafana-owned Help button and `grafana.navigation.extensionSidebarDocked` storage entry are recovery hints, not Pathfinder-owned contracts. A docs-panel or sidebar refactor must preserve the four Pathfinder signals above, or update the guide runner, contract tests, and this document in the same change.
 
+Pathfinder-owned window globals are declared in `src/types/window-globals.ts`; add new globals there and access them through `window` directly.
+
+The runner waits for Help only after Pathfinder readiness signals do not prove that the panel is ready. Bootstrap owns this fallback.
+
+The default bootstrap budget is 20 seconds. Post-navigation guide loading uses 30 seconds for each attempt.
+
 The source-level tripwires live in `src/components/docs-panel/docs-panel.contract.test.tsx` and `src/components/docs-panel/docs-panel.auto-open-event.test.tsx`.
+
+---
+
+## Runner guide-load contract
+
+Both runner modes use the exact `bundled:e2e-test` URL. Shared execution does not add a plugin URL format.
+
+The installed plugin reads guide JSON from `StorageKeys.E2E_TEST_GUIDE`. No guide content or bearer token is stored in the URL.
+
+Before each later runnable milestone, the runner uses this replacement sequence:
+
+1. It publishes the completed milestone result.
+2. It opens the Pathfinder panel at the prior location.
+3. It activates the exact E2E tab that the previous milestone opened.
+4. It dismisses Pathfinder badge celebrations through bounded DOM event dispatch.
+5. If `window.__pathfinderE2E` exists, it requires version 1 and calls `resetActiveGuide()`.
+6. It requires empty E2E progress storage before tab closure.
+7. If the control is absent, it uses the legacy reset sequence below.
+8. It captures current step roots and closes the E2E guide tab.
+9. It waits until all captured step roots detach.
+10. It navigates to the authored starting location only when necessary.
+11. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
+12. It dispatches `pathfinder-auto-open-docs` and records the new tab ID.
+13. It waits for the replacement content before step discovery.
+
+The plugin exposes `window.__pathfinderE2E` only while the exact `bundled:e2e-test` guide is active.
+
+Version 1 contains one parameterless method: `resetActiveGuide(): Promise<void>`.
+
+The method clears step, collapse, acknowledgment, done, percentage, and in-memory completion state. It emits `interactive-progress-cleared`.
+
+The method does not reload guide content or Grafana. It preserves other guide progress and all non-progress application state.
+
+The plugin removes the control when another tab becomes active or the panel unmounts.
+
+An unsupported version or rejected reset is a fatal transition error. The runner does not use the legacy path in these cases.
+
+If the control is absent, the runner uses this legacy sequence:
+
+1. It inspects stored step completion for `bundled:e2e-test`.
+2. If completion exists, it captures step roots and clicks `Reset guide`.
+3. It waits for `interactive-progress-cleared`.
+4. If completion does not exist, it clears namespaced residue and the E2E percentage entry.
+
+If the prior guide had stored completion, the runner performs a bounded post-close check after either reset path.
+
+Completed step IDs must remain absent.
+
+It then removes matching safe residue.
+
+The runner uses stored completion for the reset decision. It does not use the authored interactive-block count.
+
+Malformed shared completion JSON is ambiguous while a prior tab remains active. The runner preserves it and requires the legacy reset path.
+
+If no prior tab opened, the runner clears stored E2E residue before it continues. It removes an unusable shared completion record.
+
+A page reload can clear the active-tab globals. The recorded tab ID lets the runner reactivate a visible or overflowed E2E tab.
+
+The tab close control uses `docs-panel-tab-close-${tabId}`. The reset control uses `docs-panel-reset-guide-button`.
+
+Both test IDs are part of the shared runner contract.
+
+For plugin versions that predate this test ID, the legacy reset locator also accepts the exact accessible name `Reset guide`.
+
+The standalone runner and first shared milestone can reload once during panel recovery. A later milestone never reloads during recovery.
+
+If later panel recovery fails before new-tab activation, the chain can continue. Prior teardown has already removed the ambiguous state.
+
+If the new tab publishes its ID, a content-load failure remains recoverable. The next milestone can close that recorded tab.
+
+If an active E2E tab has no usable ID, the runner stops the chain. The same rule applies after reset, close, or detach errors.
+
+The legacy UI reset clears Pathfinder progress and its in-memory completion cache. It does not reload the Grafana page.
+
+The legacy product reload can recreate matching storage without completed step IDs. The runner accepts this state only after tab closure.
+
+Stored completion that remains after the bounded check is a fatal transition error.
+
+Hybrid `__timestamp` keys are not completion evidence. Residue cleanup removes them to match the product reset.
+
+Direct no-completion cleanup does not evict the mounted cache. It is not a general mounted-progress reset.
+
+The same page, browser context, cookies, session storage, form values, and application memory remain active.
+
+The legacy fallback remains until all supported Pathfinder versions provide reset control version 1.
+
+Fatal transitions use report error code `TRANSITION_FAILED`. The optional `transitionKind` uses the runner's bounded fatal-transition values.
+
+The same code and kind appear on each unrun milestone that the fatal transition stops.
+
+If this handshake changes, update both runner specs, runner contract tests, and this document in one change.
 
 ---
 
@@ -89,6 +216,10 @@ The runner and plugin share these stable test IDs:
 - **`learning-paths-badge-toast-dismiss`** (`testIds.learningPaths.badgeToastDismiss`): identifies the dismiss action inside the current dialog.
 
 The runner uses only these selectors. It does not close generic Grafana modals.
+
+The runner dispatches the dismiss click through the DOM. It does not require pointer actionability while the toast moves.
+
+The dispatch and toast transition remain bounded. A persistent toast is a fatal shared-session transition error.
 
 If a refactor changes these values, update `BadgeUnlockedToast.tsx`, the guide runner, the contract test, and this document in the same change.
 
@@ -450,9 +581,11 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 ### Location
 
 - `src/components/interactive-tutorial/data-attributes.contract.test.tsx` - React component attributes
+- `src/components/interactive-tutorial/tracked-step-root.contract.test.ts` - Tracked step root attributes and registry parity
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
-- `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
+- `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, bootstrap signals, scroll-restoration)
 - `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
+- `src/integrations/coda/GcxSetupPanel.contract.test.tsx` - gcx credential test IDs, source references, and the form's visibility states
 
 ### Pattern: Dual Assertion
 
@@ -489,16 +622,18 @@ npm test -- data-attributes.contract  # Run specific contract tests
 
 ## E2E Test Integration
 
-### Selector Patterns
+### Selector patterns
 
-**Recommended**: Use attribute selectors for stable queries
+Use attribute selectors for stable queries.
+For tracked roots, use the [tracked step root contract](#tracked-step-root-contract).
 
 ```typescript
 // ✅ Good - semantic state selector
 await page.waitForSelector('[data-test-step-state="completed"]');
-
-// ✅ Good - combine with step ID for specificity
-await page.waitForSelector('[data-step-id="create-dashboard"][data-test-step-state="idle"]');
+// ✅ Good - combine the tracked kind, test step ID, and state
+await page.waitForSelector(
+  '[data-test-step-kind="guided"][data-test-step-id="create-dashboard"][data-test-step-state="idle"]'
+);
 
 // ❌ Bad - fragile to UI changes
 await page.waitForSelector('.interactive-step.completed');
@@ -602,6 +737,46 @@ await skipButton.click();
 // Wait for a terminal state before treating the step as skipped.
 await page.waitForSelector('[data-step-id="my-step"][data-test-step-state="completed"]');
 ```
+
+---
+
+### gcx credential setup
+
+A `terminal-connect` block with `gcx: true` does not finish at `connected`: the step stays incomplete
+until a credential is installed, so a runner that waits only for the connection hangs. The same form
+appears in the terminal toolbar's **gcx** modal, keyed by fixed ids rather than a step id.
+
+| Control                       | Step id (`testIds.interactive.*`)          | Toolbar id (`testIds.codaTerminal.*`) | Rendered when                                                         |
+| ----------------------------- | ------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------- |
+| Open the toolbar modal        | —                                          | `coda-terminal-gcx`                   | The terminal is connected                                             |
+| Mint a token                  | `interactive-gcx-mint-${stepId}`           | `coda-terminal-gcx-mint`              | No mint has been refused for this session yet                         |
+| Paste a token                 | `interactive-gcx-token-${stepId}`          | `coda-terminal-gcx-token`             | Always, while the form is shown — the paste path is primary           |
+| Pasted-token lifetime warning | `interactive-gcx-token-lifetime-${stepId}` | `coda-terminal-gcx-token-lifetime`    | Always, while the form is shown                                       |
+| Install the pasted token      | `interactive-gcx-install-${stepId}`        | `coda-terminal-gcx-install`           | Always, while the form is shown; disabled until the field has a value |
+| Continue without gcx          | `interactive-gcx-skip-${stepId}`           | — (dismiss the modal instead)         | Always, while the form is shown                                       |
+| Credential installed          | `interactive-gcx-ready-${stepId}`          | `coda-terminal-gcx-ready`             | A credential exists for this session                                  |
+| Set up again                  | —                                          | `coda-terminal-gcx-redo`              | A credential exists for this session                                  |
+| Refusal message               | `interactive-gcx-error-${stepId}`          | `coda-terminal-gcx-error`             | The last attempt was refused                                          |
+
+Lifecycle notes a runner has to honour:
+
+- **The whole form disappears while provisioning.** `state === 'provisioning'` renders a spinner and
+  nothing else, so mint, paste and install all detach mid-flight. Poll for the ready line or the error,
+  not for the control you just clicked.
+- **The step's controls are gated on the `gcx` flag, not on the store.** A `terminal-connect` step
+  without `gcx` never renders any of the step-scoped ids above, even while another surface is installing
+  a credential into the same session. It completes on its **Continue** button
+  (`interactive-terminal-skip-${stepId}`) as it always did.
+- **A credential belongs to one session.** After a reconnect the ready line detaches and the form
+  returns, because the new VM holds no credential.
+- **A held-back mint brings its own button back.** A mint whose preflight could not reach an answer is
+  retryable rather than refused, so the error appears _and_ the mint control re-attaches. Only a refusal
+  detaches it for the rest of the session.
+- **Skipping still completes the step.** "Continue without gcx" marks it complete, so
+  `data-test-step-state` reaches `completed` on that path too.
+
+The values and the visibility states above are pinned by
+`src/integrations/coda/GcxSetupPanel.contract.test.tsx`.
 
 ---
 

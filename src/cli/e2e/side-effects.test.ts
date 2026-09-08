@@ -1,5 +1,6 @@
 import { classifyGuideSideEffects, classifyGuideSideEffectsFromString } from './side-effects';
-import type { JsonGuide } from '../../types/json-guide.types';
+import { VALID_BLOCK_TYPES } from '../../types/json-guide.schema';
+import type { JsonBlock, JsonGuide } from '../../types/json-guide.types';
 
 function guide(blocks: JsonGuide['blocks']): JsonGuide {
   return { id: 'g', title: 'Guide', blocks };
@@ -21,6 +22,32 @@ describe('classifyGuideSideEffects', () => {
 
   it('classifies dividers as readonly', () => {
     expect(classifyGuideSideEffects(guide([{ type: 'divider' }]))).toEqual({ level: 'readonly', reasons: [] });
+  });
+
+  it('classifies callouts as readonly', () => {
+    expect(classifyGuideSideEffects(guide([{ type: 'callout', title: 'Note', content: 'Read this' }]))).toEqual({
+      level: 'readonly',
+      reasons: [],
+    });
+  });
+
+  it('walks collapsible children and preserves the runtime fallback', () => {
+    const futureBlock = { type: 'future-presentational' } as unknown as JsonBlock;
+    const collapsible = { type: 'collapsible', title: 'Details', blocks: [futureBlock] } as JsonBlock;
+
+    expect(classifyGuideSideEffects(guide([collapsible]))).toMatchObject({
+      level: 'unknown',
+      reasons: [{ path: 'blocks[0].blocks[0]', message: 'Unknown block type' }],
+    });
+  });
+
+  it('has an explicit classification path for every valid block type', () => {
+    const unclassified = [...VALID_BLOCK_TYPES].filter((type) => {
+      const result = classifyGuideSideEffects(guide([{ type } as JsonBlock]));
+      return result.reasons.some((entry) => entry.message === 'Unknown block type');
+    });
+
+    expect(unclassified).toEqual([]);
   });
 
   it('classifies destructive and save-like buttons as mutating', () => {

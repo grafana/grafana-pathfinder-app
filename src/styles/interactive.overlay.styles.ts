@@ -399,6 +399,7 @@ export const addGlobalInteractiveStyles = () => {
     }
 
     .interactive-comment-box[data-ready="true"][data-position="center"] {
+      opacity: 1;
       transform: scale(1) translate(-50%, -50%);
     }
 

@@ -83,6 +83,20 @@ describe('parseAndValidateGuide', () => {
     });
   });
 
+  describe('duplicate leading heading', () => {
+    const guide = JSON.stringify({
+      id: 'test',
+      title: 'Create your first dashboard',
+      blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
+    });
+
+    it('rejects the guide, so it cannot be imported', () => {
+      const result = parseAndValidateGuide(guide);
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(true);
+    });
+  });
+
   describe('required top-level fields', () => {
     it('should reject guide without id', () => {
       const guide = JSON.stringify({ title: 'Test', blocks: [] });

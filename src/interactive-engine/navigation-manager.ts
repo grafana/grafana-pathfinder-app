@@ -21,6 +21,17 @@ export interface NavigationOptions {
   ensureDocked?: boolean;
 }
 
+export interface CommentBoxOptions {
+  showKeyboardHint?: boolean;
+  stepTitle?: string;
+  skipAnimations?: boolean;
+  actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
+  targetValue?: string;
+  /** E2E contract: selector for current target */
+  refTarget?: string;
+  nextLabel?: string;
+}
+
 const NAV_ITEM_SELECTOR = 'a[data-testid="data-testid Nav menu item"]';
 const MEGA_MENU_SELECTOR = '[data-testid="data-testid navigation mega-menu"]';
 
@@ -106,6 +117,37 @@ export class NavigationManager {
 
     // Add to document body (centered via CSS)
     document.body.appendChild(commentBox);
+  }
+
+  /**
+   * Show a viewport-centered comment that keeps its navigation footer.
+   * Used when a tour step's target cannot be resolved, so the user can still move on.
+   */
+  showCenteredComment(
+    comment: string,
+    stepInfo?: { current: number; total: number; completedSteps: number[] },
+    onCancelCallback?: () => void,
+    onNextCallback?: () => void,
+    onPreviousCallback?: () => void,
+    options?: CommentBoxOptions
+  ): HTMLElement {
+    this.clearAllHighlights();
+
+    const commentBox = this.createCommentBox(
+      comment,
+      null,
+      null,
+      stepInfo,
+      undefined,
+      onCancelCallback,
+      onNextCallback,
+      onPreviousCallback,
+      options
+    );
+
+    document.body.appendChild(commentBox);
+
+    return commentBox;
   }
 
   /**
@@ -641,14 +683,7 @@ export class NavigationManager {
     onCancelCallback?: () => void,
     onNextCallback?: () => void,
     onPreviousCallback?: () => void,
-    options?: {
-      showKeyboardHint?: boolean;
-      stepTitle?: string;
-      skipAnimations?: boolean; // For smooth step transitions
-      actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
-      targetValue?: string;
-      refTarget?: string; // E2E contract: selector for current target
-    }
+    options?: CommentBoxOptions
   ): Promise<HTMLElement> {
     // First, ensure navigation is open and element is visible
     // Keep old highlight visible during this async work for smooth transitions
@@ -691,6 +726,12 @@ export class NavigationManager {
 
     // Create highlight element (dot or bounding box)
     const highlightElement = document.createElement('div');
+
+    // The floating panel dodges highlight overlays; exempt in-panel ones so it can't flee its own.
+    const isInternalTarget = isPathfinderContent(highlightTarget);
+    if (isInternalTarget) {
+      highlightElement.setAttribute('data-pathfinder-internal', 'true');
+    }
 
     if (useDotIndicator) {
       highlightElement.className = 'interactive-highlight-dot';
@@ -738,6 +779,10 @@ export class NavigationManager {
         onPreviousCallback,
         options
       );
+
+      if (isInternalTarget) {
+        commentBox.setAttribute('data-pathfinder-internal', 'true');
+      }
 
       // Always append to body (unified positioning)
       document.body.appendChild(commentBox);
@@ -811,21 +856,14 @@ export class NavigationManager {
    */
   private createCommentBox(
     comment: string,
-    targetRect: DOMRect,
-    highlightRect: { top: number; left: number; width: number; height: number },
+    targetRect: DOMRect | null,
+    highlightRect: { top: number; left: number; width: number; height: number } | null,
     stepInfo?: { current: number; total: number; completedSteps: number[] },
     onSkipCallback?: () => void,
     onCancelCallback?: () => void,
     onNextCallback?: () => void,
     onPreviousCallback?: () => void,
-    options?: {
-      showKeyboardHint?: boolean;
-      stepTitle?: string;
-      skipAnimations?: boolean;
-      actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
-      targetValue?: string;
-      refTarget?: string; // E2E contract: selector for current target
-    }
+    options?: CommentBoxOptions
   ): HTMLElement {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
@@ -955,7 +993,7 @@ export class NavigationManager {
         // Previous button
         const prevButton = document.createElement('button');
         prevButton.className = 'interactive-comment-nav-btn';
-        prevButton.innerHTML = '← Back'; // eslint-disable-line no-restricted-syntax -- Static HTML literal
+        prevButton.textContent = '← Back';
         prevButton.setAttribute('aria-label', 'Previous step');
         prevButton.disabled = !onPreviousCallback;
 
@@ -976,9 +1014,10 @@ export class NavigationManager {
         // Next button - primary style
         const nextButton = document.createElement('button');
         const isLastStep = stepInfo && stepInfo.current === stepInfo.total - 1;
+        const nextLabel = options?.nextLabel ?? (isLastStep ? 'Done' : 'Next →');
         nextButton.className = 'interactive-comment-nav-btn interactive-comment-nav-btn--primary';
-        nextButton.innerHTML = isLastStep ? 'Start creating' : 'Next →'; // eslint-disable-line no-restricted-syntax -- Static HTML literal
-        nextButton.setAttribute('aria-label', isLastStep ? 'Start creating' : 'Next step');
+        nextButton.textContent = nextLabel;
+        nextButton.setAttribute('aria-label', isLastStep ? nextLabel : 'Next step');
 
         if (onNextCallback) {
           nextButton.addEventListener('click', (e) => {
@@ -1051,6 +1090,12 @@ export class NavigationManager {
     }
 
     commentBox.appendChild(content);
+
+    // Returning before any inline top/left write is what lets the CSS centering rule apply.
+    if (!targetRect || !highlightRect) {
+      commentBox.setAttribute('data-position', 'center');
+      return commentBox;
+    }
 
     // MEASURE ACTUAL HEIGHT: Append off-screen temporarily to measure real dimensions
     commentBox.style.visibility = 'hidden';

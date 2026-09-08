@@ -15,6 +15,7 @@ import { detectUnknownFields } from './unknown-fields';
 import { validateBlockConditions, type ConditionIssue } from './condition-validator';
 import { customErrorMap } from './error-map';
 import { normalizeJsonGuideAliases } from './normalize-guide-aliases';
+import { validateSnippetReferences } from './snippet-references';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -33,8 +34,16 @@ export interface LegacyValidationResult {
 export interface ValidationOptions {
   strict?: boolean;
   skipUnknownFieldCheck?: boolean;
+  snippetCatalogIds?: ReadonlySet<string>;
+  /**
+   * When true, a leading heading in blocks[0] that duplicates the guide title
+   * stays a warning instead of failing validation. Runtime guide loaders set
+   * this so an already-published guide keeps rendering; authoring gates (the
+   * CLI `validate` command, the block editor) leave it unset so the error
+   * blocks before the guide ships.
+   */
+  allowDuplicateHeading?: boolean;
 }
-
 /**
  * Convert a condition issue to a validation warning.
  */
@@ -95,29 +104,36 @@ export function validateGuide(data: unknown, options: ValidationOptions = {}): V
     warnings.push({ message: 'Guide has no blocks', path: ['blocks'], type: 'suggestion' });
   }
 
-  // Advisory only — authoring guidance, never promoted to an error by strict mode.
+  // A leading heading in blocks[0] that duplicates the guide title renders as a
+  // second, redundant <h1> wherever the title is rendered separately — see
+  // `allowDuplicateHeading` above.
   const advisories: ValidationWarning[] = [];
+  const errors: ValidationError[] = [];
   const firstBlock = (result.data as JsonGuide).blocks[0];
   if (firstBlock?.type === 'markdown') {
     const leadingHeading = extractLeadingH1(firstBlock.content);
     if (leadingHeading && headingDuplicatesTitle(leadingHeading, result.data.title)) {
-      advisories.push({
-        message: `blocks[0] starts with a heading ("${leadingHeading}") that duplicates the guide title — the title is already rendered separately; consider removing this heading.`,
-        path: ['blocks', 0],
-        type: 'suggestion',
-      });
+      const message = `blocks[0] starts with a heading ("${leadingHeading}") that duplicates the guide title — the title is already rendered separately; remove this heading.`;
+      if (options.allowDuplicateHeading) {
+        advisories.push({ message, path: ['blocks', 0], type: 'suggestion' });
+      } else {
+        errors.push({ message, path: ['blocks', 0], code: 'duplicate_heading' });
+      }
     }
   }
 
+  errors.push(...validateSnippetReferences(result.data as JsonGuide, options.snippetCatalogIds));
+
   // 5. Strict mode - promote all warnings to errors
   if (options.strict && warnings.length > 0) {
-    return {
-      isValid: false,
-      errors: warnings.map((w) => ({ message: w.message, path: w.path, code: 'strict' })),
-      warnings: advisories,
-      guide: null,
-    };
+    errors.push(...warnings.map((w) => ({ message: w.message, path: w.path, code: 'strict' })));
+    return { isValid: false, errors, warnings: advisories, guide: null };
   }
+
+  if (errors.length > 0) {
+    return { isValid: false, errors, warnings: [...warnings, ...advisories], guide: null };
+  }
+
   return { isValid: true, errors: [], warnings: [...warnings, ...advisories], guide: result.data as JsonGuide };
 }
 

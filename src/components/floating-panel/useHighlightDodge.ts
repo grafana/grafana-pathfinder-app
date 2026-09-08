@@ -8,7 +8,8 @@ import { getVisibleModalRects } from '../../interactive-engine';
 import { FloatingPanelEvents, type FloatingPanelMoveDetail } from '../../lib/event-names';
 
 /** Selectors for interactive overlay elements that the panel should dodge. */
-const HIGHLIGHT_SELECTOR = '.interactive-highlight-outline, .interactive-comment-box';
+const HIGHLIGHT_SELECTOR =
+  '.interactive-highlight-outline:not([data-pathfinder-internal]), .interactive-comment-box:not([data-pathfinder-internal])';
 
 interface Rect {
   left: number;

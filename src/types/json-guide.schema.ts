@@ -54,6 +54,18 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
 });
 
 /**
+ * Schema for a single objective token. Deliberately permissive where
+ * `RequirementTokenSchema` is strict: `objectives` shipped for months
+ * described as free-text "learning objectives", so guides already published to
+ * a backend repository or CDN can hold prose. Rejecting them here would blank
+ * the whole guide (`validateGuide` returns early on a Zod failure), so the
+ * vocabulary is enforced one layer later instead — `condition-validator`
+ * warns, `json-parser` drops the unrecognised token, and the runtime refuses
+ * to complete a step on any non-`satisfied` verdict.
+ */
+const ObjectiveTokenSchema = z.string();
+
+/**
  * Desired end state for a toggle target. `true`/`false` auto-detects the
  * control's state signal; `"<attribute>:<value>"` names it explicitly.
  */
@@ -338,8 +350,8 @@ export const JsonInteractiveBlockSchema = z
     requirements: z
       .array(RequirementTokenSchema)
       .optional()
-      .describe('Prerequisite conditions (e.g., on-page:/dashboards, is-admin)'),
-    objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+      .describe('Prerequisite conditions, one condition per entry (e.g., on-page:/dashboards)'),
+    objectives: z.array(ObjectiveTokenSchema).optional().describe('Conditions that automatically complete this block'),
     skippable: z.boolean().optional().describe('Allow user to skip this block'),
     hint: z.string().optional().describe('Hint text shown if user is stuck'),
     formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
@@ -394,7 +406,7 @@ export const JsonMultistepBlockSchema = z.object({
   content: z.string().min(1, 'Multistep content is required').describe('Block heading/intro text'),
   steps: z.array(JsonStepSchema).min(1, EMPTY_STEPS_MESSAGE).describe('Ordered steps; populated via add-step'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
-  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  objectives: z.array(ObjectiveTokenSchema).optional().describe('Conditions that automatically complete this block'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   ...AuthorAnnotatedSchema.shape,
 });
@@ -410,7 +422,7 @@ export const JsonGuidedBlockSchema = z.object({
   steps: z.array(JsonStepSchema).min(1, EMPTY_STEPS_MESSAGE).describe('Ordered steps; populated via add-step'),
   stepTimeout: z.number().optional().describe('Per-step timeout in milliseconds'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
-  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  objectives: z.array(ObjectiveTokenSchema).optional().describe('Conditions that automatically complete this block'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   completeEarly: z
     .boolean()
@@ -611,7 +623,7 @@ export const JsonTerminalBlockSchema = z.object({
   command: z.string().min(1, 'Terminal command is required').describe('Command to execute in the terminal'),
   content: z.string().min(1, 'Terminal content is required').describe('Instructional text shown to the user'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
-  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  objectives: z.array(ObjectiveTokenSchema).optional().describe('Conditions that automatically complete this block'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   hint: z.string().optional().describe('Hint text shown if user is stuck'),
   ...AuthorAnnotatedSchema.shape,
@@ -631,6 +643,7 @@ export const JsonTerminalConnectBlockSchema = z.object({
   vmTemplate: z.string().optional().describe('VM template to provision'),
   vmApp: z.string().optional().describe('App to launch in the VM'),
   vmScenario: z.string().optional().describe('Scenario to run in the VM'),
+  gcx: z.boolean().optional().describe('Also install a Grafana credential so the gcx CLI can be used'),
   ...AuthorAnnotatedSchema.shape,
 });
 
@@ -684,7 +697,7 @@ export const JsonChallengeBlockSchema = z.object({
   hintLevels: z.array(JsonChallengeHintSchema).optional().describe('Progressive hints revealed on demand'),
   failureMessage: z.string().optional().describe('Message shown when the success check fails'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions for the challenge'),
-  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  objectives: z.array(ObjectiveTokenSchema).optional().describe('Conditions that automatically complete this block'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
 });
 
@@ -707,7 +720,7 @@ export const JsonCodeBlockBlockSchema = z.object({
   code: z.string().min(1, 'Code is required').describe('Code to insert into the editor'),
   content: z.string().optional().describe('Optional instructional text shown above the code'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
-  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  objectives: z.array(ObjectiveTokenSchema).optional().describe('Conditions that automatically complete this block'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   hint: z.string().optional().describe('Hint text shown if user is stuck'),
   ...AuthorAnnotatedSchema.shape,
@@ -921,7 +934,7 @@ const SectionProps = {
   id: z.string().optional().describe('Stable identifier for the section (required for container blocks via CLI)'),
   title: z.string().optional().describe('Section heading'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
-  objectives: z.array(z.string()).optional().describe('Learning objectives this section addresses'),
+  objectives: z.array(ObjectiveTokenSchema).optional().describe('Conditions that automatically complete this section'),
   autoCollapse: z.boolean().optional().describe('Collapse the section after the user completes its contents'),
 };
 
@@ -953,7 +966,7 @@ const AssistantProps = {
 const ConditionalSectionConfigSchema = z.object({
   title: z.string().optional(),
   requirements: z.array(RequirementTokenSchema).optional(),
-  objectives: z.array(z.string()).optional(),
+  objectives: z.array(ObjectiveTokenSchema).optional(),
 });
 
 const ConditionalProps = {
@@ -1317,6 +1330,7 @@ export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
     'vmTemplate',
     'vmApp',
     'vmScenario',
+    'gcx',
     'authorNote',
   ]),
   'code-block': new Set([

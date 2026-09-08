@@ -49,27 +49,7 @@ The docs-panel exists to:
 - **Progress Tracking**: Automatic progress tracking for guides and milestones
 - **Error Boundary**: Graceful error handling for My Learning tab
 
-**State Management**:
-
-```typescript
-interface CombinedPanelState {
-  tabs: LearningJourneyTab[];
-  activeTabId: string;
-  contextPanel: ContextPanel;
-  pluginConfig: DocsPluginConfig;
-}
-
-interface LearningJourneyTab {
-  id: string;
-  title: string;
-  baseUrl: string;
-  currentUrl: string;
-  content: Content | null;
-  isLoading: boolean;
-  error: string | null;
-  type?: 'learning-journey' | 'docs';
-}
-```
+**State Management**: the scene state (`CombinedPanelState`) and the per-tab shape (`LearningJourneyTab`) are declared in `src/types/content-panel.types.ts`. Read them there rather than from a copy here.
 
 **Hook Integration**:
 
@@ -174,13 +154,10 @@ interface Recommendation {
 
 ### `/utils/` Directory
 
-**Purpose**: Utility functions for docs panel
+**Purpose**: Helpers for the docs panel - tab validation, kinds, gates, visibility, state transitions, storage restore, URL validation, docs loading and load finalization, and milestone indexing. The state-transition and load-finalization modules (`tab-state-transitions.ts`, `docs-load-finalizer.ts`) are pure; storage restore reads user storage and the docs loader fetches over the network.
 **Location**: `/src/components/docs-panel/utils/`
 
-**Utilities:**
-
-- **isDocsLikeTab()** - Checks if tab is documentation-type
-- **getTranslatedTitle()** - Handles title localization
+The barrel `src/components/docs-panel/utils/index.ts` is the authoritative list of what this directory exports; each module carries its own unit tests alongside it.
 
 ## Architecture
 
@@ -264,19 +241,7 @@ CombinedLearningJourneyPanel (SceneObjectBase)
 - Support for learning paths and docs
 - Milestone navigation (journeys)
 
-**Tab State:**
-
-```typescript
-{
-  id: string; // Unique identifier
-  title: string; // Display name
-  baseUrl: string; // Initial URL
-  currentUrl: string; // Current milestone URL
-  content: Content; // Rendered content
-  isLoading: boolean; // Loading state
-  error: string | null; // Error state
-}
-```
+**Tab State:** see `LearningJourneyTab` in `src/types/content-panel.types.ts`; the persisted subset is `PersistedTabData` in the same file. The pure transitions that produce these shapes live in `src/components/docs-panel/utils/tab-state-transitions.ts` (close, gate prune, persistence projection) and `utils/docs-load-finalizer.ts` (alignment decision and load-success patch).
 
 ## Live Session Features
 
@@ -353,10 +318,10 @@ model.setActiveTab(tabId);
 
 // Close tab (preserves cache intelligently)
 model.closeTab(tabId);
-
-// Close all content tabs
-model.closeAllContentTabs();
 ```
+
+`DocsPanelModelOperations` in `src/components/docs-panel/types.ts` owns the full
+list of supported `model.*` operations.
 
 ### Starting Live Session
 

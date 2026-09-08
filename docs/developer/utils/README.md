@@ -39,14 +39,12 @@ The only top-level hook in `src/utils/` is `usePublishedGuides.ts`. Development-
 ### Development tools (`devtools/`)
 
 - `index.ts` - Barrel export for all devtools utilities
-- `dev-tools.types.ts` - Shared types (`StepDefinition`, `SelectorInfo`, `ExtractedSelector`)
+- `dev-tools.types.ts` - Shared types (`RecordedStep`, `SelectorInfo`, `ExtractedSelector`)
 - `action-recorder.hook.ts` - Record user actions for guide creation
 - `action-recorder.util.ts` - Action recording utilities (selector extraction, step filtering)
 - `element-inspector.hook.ts` - DOM element inspection
 - `hover-highlight.util.ts` - Visual element highlighting during inspection
 - `selector-generator.util.ts` - Automated CSS selector generation
-- `step-parser.util.ts` - Parse step definitions
-- `tutorial-exporter.ts` - Export tutorials in various formats
 
 ### Security and safety
 
@@ -389,7 +387,7 @@ The `devtools/` subdirectory contains development-only utilities for creating an
 ### Structure
 
 - **`index.ts`** - Barrel export for all devtools utilities
-- **`dev-tools.types.ts`** - Shared types (`StepDefinition`, `SelectorInfo`, `ExtractedSelector`)
+- **`dev-tools.types.ts`** - Shared types (`RecordedStep`, `SelectorInfo`, `ExtractedSelector`)
 
 ### Action recording
 
@@ -404,11 +402,6 @@ The `devtools/` subdirectory contains development-only utilities for creating an
 ### Selector generation
 
 - **`selector-generator.util.ts`** - Generate CSS selectors from DOM events
-
-### Step parsing and export
-
-- **`step-parser.util.ts`** - Parse step definitions from strings
-- **`tutorial-exporter.ts`** - Export tutorials in various formats (HTML, guided, multistep)
 
 ---
 

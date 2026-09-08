@@ -277,6 +277,35 @@ describe('ChallengeBlockForm', () => {
   });
 
   describe('submit serialisation', () => {
+    it('preserves unrendered challenge fields during an ordinary edit', () => {
+      const onSubmit = jest.fn();
+      renderForm(
+        {
+          mode: 'standard',
+          id: 'published-challenge-step',
+          requirements: ['has-datasource:prometheus'],
+          objectives: ['Create a dashboard'],
+          skippable: false,
+          authorNote: 'Keep the verification aligned with the tutorial.',
+        },
+        onSubmit
+      );
+
+      fireEvent.change(screen.getByDisplayValue('Test challenge'), { target: { value: 'Edited challenge' } });
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Edited challenge',
+          id: 'published-challenge-step',
+          requirements: ['has-datasource:prometheus'],
+          objectives: ['Create a dashboard'],
+          skippable: false,
+          authorNote: 'Keep the verification aligned with the tutorial.',
+        })
+      );
+    });
+
     it('serialises hints in the displayed order with empty rows filtered out', () => {
       const onSubmit = jest.fn();
       renderForm(
@@ -299,6 +328,28 @@ describe('ChallengeBlockForm', () => {
 
       const submitted = onSubmit.mock.calls[0]![0] as JsonChallengeBlock;
       expect(submitted.hintLevels).toBeUndefined();
+    });
+
+    it('does not restore optional form fields after the author clears them', () => {
+      const onSubmit = jest.fn();
+      renderForm(
+        {
+          setupScript: 'echo setup',
+          hintLevels: [{ text: 'Original hint' }],
+          failureMessage: 'Original failure message',
+        },
+        onSubmit
+      );
+
+      fireEvent.change(screen.getByPlaceholderText(/sudo systemctl stop alloy/i), { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: /remove hint 1/i }));
+      fireEvent.change(screen.getByDisplayValue('Original failure message'), { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: /update block/i }));
+
+      const submitted = onSubmit.mock.calls[0]![0] as JsonChallengeBlock;
+      expect(submitted.setupScript).toBeUndefined();
+      expect(submitted.hintLevels).toBeUndefined();
+      expect(submitted.failureMessage).toBeUndefined();
     });
   });
 
@@ -388,10 +439,17 @@ describe('ChallengeBlockForm', () => {
       renderForm(
         {
           mode: 'coda',
+          id: 'published-challenge-step',
           vmTemplate: 'vm-aws-sample-app',
+          vmScenario: 'legacy-scenario',
           vmApp: 'nginx',
+          setupCommands: ['echo legacy'],
           setupScript: 'echo setup',
           successCriteria: 'coda-exit-zero:true',
+          requirements: ['has-datasource:prometheus'],
+          objectives: ['Create a dashboard'],
+          skippable: true,
+          authorNote: 'Keep this note.',
         },
         onSubmit
       );
@@ -402,8 +460,15 @@ describe('ChallengeBlockForm', () => {
 
       const submitted = onSubmit.mock.calls[0]![0] as JsonChallengeBlock;
       expect(submitted.mode).toBe('standard');
+      expect(submitted.id).toBe('published-challenge-step');
+      expect(submitted.requirements).toEqual(['has-datasource:prometheus']);
+      expect(submitted.objectives).toEqual(['Create a dashboard']);
+      expect(submitted.skippable).toBe(true);
+      expect(submitted.authorNote).toBe('Keep this note.');
       expect(submitted.vmTemplate).toBeUndefined();
+      expect(submitted.vmScenario).toBeUndefined();
       expect(submitted.vmApp).toBeUndefined();
+      expect(submitted).not.toHaveProperty('setupCommands');
       expect(submitted.setupScript).toBeUndefined();
     });
   });

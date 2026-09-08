@@ -39,6 +39,7 @@ export const DEFAULT_STEP_TIMEOUT_MS = 30000;
 export const GUIDE_SETUP_TIMEOUT_MS = 60000;
 export const GUIDE_INITIAL_TIMEOUT_MS = 140000;
 export const STEP_OVERHEAD_TIMEOUT_MS = 20000;
+export const STEP_DEADLINE_CLEANUP_GRACE_MS = 3000;
 
 /**
  * Additional timeout per internal action for multisteps.

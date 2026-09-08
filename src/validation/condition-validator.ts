@@ -15,6 +15,7 @@
 
 import { FixedRequirementType, ParameterizedRequirementPrefix } from '../types/requirements.types';
 import type { JsonGuide, JsonBlock, JsonStep } from '../types/json-guide.types';
+import { assertExhaustive } from '../lib/assert-exhaustive';
 
 // Maximum number of comma-separated components in a single condition string
 const MAX_CONDITION_COMPONENTS = 10;
@@ -166,6 +167,22 @@ function validateArgumentFormat(
         };
       }
       break;
+
+    case ParameterizedRequirementPrefix.HAS_PERMISSION:
+    case ParameterizedRequirementPrefix.HAS_DATASOURCE:
+    case ParameterizedRequirementPrefix.DATASOURCE_CONFIGURED:
+    case ParameterizedRequirementPrefix.HAS_PLUGIN:
+    case ParameterizedRequirementPrefix.PLUGIN_ENABLED:
+    case ParameterizedRequirementPrefix.HAS_DASHBOARD_NAMED:
+    case ParameterizedRequirementPrefix.HAS_FEATURE:
+    case ParameterizedRequirementPrefix.IN_ENVIRONMENT:
+    case ParameterizedRequirementPrefix.SECTION_COMPLETED:
+    case ParameterizedRequirementPrefix.VARIABLE:
+    case ParameterizedRequirementPrefix.CODA_EXIT_ZERO:
+      break;
+
+    default:
+      assertExhaustive(prefix);
   }
 
   return null;
@@ -210,9 +227,13 @@ export function validateConditionString(conditionString: string, path: Array<str
 }
 
 /**
- * Validate an array of condition strings.
+ * Validate an array of condition tokens.
  *
- * @param conditions - Array of condition strings (each may be comma-separated)
+ * Each element is ONE condition, so a comma inside an element belongs to the
+ * parameter value (`has-dashboard-named:CPU, memory`). Only the legacy
+ * comma-separated string form still splits — see `validateConditionString`.
+ *
+ * @param conditions - Array of condition tokens (one condition per element)
  * @param basePath - JSON path to the array (e.g., ['blocks', 2, 'requirements'])
  * @returns Array of all validation issues found
  */
@@ -226,9 +247,20 @@ export function validateConditions(
 
   const allIssues: ConditionIssue[] = [];
 
+  if (conditions.length > MAX_CONDITION_COMPONENTS) {
+    allIssues.push({
+      condition: conditions.join(','),
+      message: `Condition has ${conditions.length} components, maximum is ${MAX_CONDITION_COMPONENTS}`,
+      code: 'too_many_components',
+      path: basePath,
+    });
+  }
+
   for (let i = 0; i < conditions.length; i++) {
-    const issues = validateConditionString(conditions[i]!, [...basePath, i]);
-    allIssues.push(...issues);
+    const issue = validateSingleCondition(conditions[i]!, [...basePath, i]);
+    if (issue) {
+      allIssues.push(issue);
+    }
   }
 
   return allIssues;

@@ -44,7 +44,7 @@ function listExposureMarkers(hostname: string): ExposureMarker[] {
 export function createExperimentDebugger(config: HighlightedGuideConfig): void {
   const hostname = window.location.hostname;
 
-  (window as any).__pathfinderExperiment = {
+  window.__pathfinderExperiment = {
     // Highlighted-guide config captured at module load time
     config,
     variant: config.variant,

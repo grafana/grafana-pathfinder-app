@@ -206,7 +206,7 @@ The raw JSON of the guide. You can edit it directly here for fine-grained tweaks
 
 ![JSON view mode](/media/docs/pathfinder/block-editor-json-view.png)
 
-If your edit produces invalid JSON, the editor refuses to switch back to Edit mode until you fix it.
+If your edit produces invalid JSON, or a guide that fails validation, the editor refuses to switch back to Edit mode until you fix it. Validation includes one rule that is easy to trip over: the first block must not start with a heading that repeats the guide title.
 
 ## The pop out button
 

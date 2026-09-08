@@ -1,4 +1,5 @@
 import { deriveStepId } from '../../global-state/step-id';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import {
   isConditionalBlock,
   isSectionBlock,
@@ -48,7 +49,27 @@ function resolveStepIdForBlock(block: JsonBlock, parentSectionId: string, index:
         variant: 'guided',
       });
     }
+    case 'input':
+    case 'section':
+    case 'markdown':
+    case 'divider':
+    case 'html':
+    case 'image':
+    case 'video':
+    case 'callout':
+    case 'conditional':
+    case 'quiz':
+    case 'assistant':
+    case 'terminal':
+    case 'terminal-connect':
+    case 'code-block':
+    case 'grot-guide':
+    case 'collapsible':
+    case 'challenge':
+    case 'snippet-ref':
+      return undefined;
     default:
+      assertExhaustive(block);
       return undefined;
   }
 }

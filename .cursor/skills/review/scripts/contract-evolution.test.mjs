@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { computeGate, conventionalType, extractConcernPaths, parseArgs } from './contract-evolution-gate.mjs';
-import { buildFinding, decideDisposition } from './contract-evolution-policy.mjs';
+import { buildObservation, classifyContractState } from './contract-evolution-policy.mjs';
 
 const tempDirs = [];
 
@@ -103,6 +103,29 @@ test('gate counts distinct prior PRs and excludes current branch commits', () =>
   assert.deepEqual(result.in_stack_shas.sort(), [head, inStackOne].sort());
   assert.equal(result.in_stack_shas.includes(base), false);
   assert.equal(result.triggered, true);
+});
+
+test('gate reads newly added concern routing from head while keeping history at base', () => {
+  const repo = createRepo();
+  const base = git(repo, ['rev-parse', 'HEAD']);
+  const concernPath = 'src/lib/new-concern.ts';
+  const concernsFile = join(repo, 'docs/design/CONCERNS.md');
+
+  write(repo, concernPath, 'current change\n');
+  write(
+    repo,
+    'docs/design/CONCERNS.md',
+    `${readFileSync(concernsFile, 'utf8')}| \`new-concern\` | sub | N | strong | 1 | 8 | \`${concernPath}\` | \`new-concern\` |\n`
+  );
+  git(repo, ['add', '.']);
+  git(repo, ['commit', '-m', 'feat(new-concern): add routed concern (#12)']);
+  const head = git(repo, ['rev-parse', 'HEAD']);
+
+  const result = computeGate({ base, head, concern: 'new-concern', cwd: repo });
+
+  assert.deepEqual(result.paths, [concernPath]);
+  assert.equal(result.prior_semantic_pr_count, 0);
+  assert.deepEqual(result.in_stack_shas, [head]);
 });
 
 test('in_stack_shas is empty when base equals head', () => {
@@ -226,15 +249,16 @@ test('gate passes metacharacter paths to Git without shell execution', () => {
 
 test('#1297-style second unanchored branch is advisory and schema-compatible', () => {
   const value = packet();
-  assert.deepEqual(decideDisposition(value), {
+  assert.deepEqual(classifyContractState(value), {
     effective_verdict: 'contract_branching',
-    disposition: 'advisory',
+    kind: 'suggestion',
     severity: 'medium',
-    requires_finding: true,
+    requires_observation: true,
   });
-  assert.deepEqual(buildFinding(value), {
+  assert.deepEqual(buildObservation(value), {
     concern_id: 'telemetry',
     finding_id: 'CE-1',
+    kind: 'suggestion',
     severity: 'medium',
     confidence: 'high',
     title: 'Event vocabulary branches',
@@ -243,60 +267,68 @@ test('#1297-style second unanchored branch is advisory and schema-compatible', (
     suggested_action: 'Centralize the event type',
     reversibility: 'reversible',
     applies_to_files: ['src/lib/telemetry.ts'],
-    recommended_disposition: 'suggestion',
+    origin: 'pre_existing',
+    impact: 'none',
+    timing: 'first_round',
+    scope_effect: 'widens_changed_surface',
+    breaks_shipped_path: false,
+    induced: false,
   });
 });
 
-test('violated-anchor or mature branching is blocking', () => {
-  assert.equal(decideDisposition(packet({ has_recorded_anchor: true, anchor_violated: true })).disposition, 'blocking');
-  assert.equal(decideDisposition(packet({ use_ordinal: 'third_or_later' })).disposition, 'blocking');
-  assert.equal(decideDisposition(packet({ same_bug_count: 2 })).disposition, 'blocking');
-  assert.equal(buildFinding(packet({ use_ordinal: 'third_or_later' })).recommended_disposition, 'blocking');
+test('violated-anchor or mature branching emits a defect without deciding disposition', () => {
+  assert.equal(classifyContractState(packet({ has_recorded_anchor: true, anchor_violated: true })).kind, 'defect');
+  assert.equal(classifyContractState(packet({ use_ordinal: 'third_or_later' })).kind, 'defect');
+  assert.equal(classifyContractState(packet({ same_bug_count: 2 })).kind, 'defect');
+  const result = buildObservation(packet({ use_ordinal: 'third_or_later' }));
+  assert.equal(result.kind, 'defect');
+  assert.equal(result.origin, 'regression');
+  assert.equal(Object.hasOwn(result, 'recommended_disposition'), false);
 });
 
-test('an unviolated anchor does not block early-use branching', () => {
-  assert.equal(decideDisposition(packet({ has_recorded_anchor: true })).disposition, 'advisory');
+test('an unviolated anchor keeps early-use branching suggestive', () => {
+  assert.equal(classifyContractState(packet({ has_recorded_anchor: true })).kind, 'suggestion');
 });
 
-test('same bug count below two stays advisory', () => {
-  assert.equal(decideDisposition(packet({ same_bug_count: 1 })).disposition, 'advisory');
+test('same bug count below two stays suggestive', () => {
+  assert.equal(classifyContractState(packet({ same_bug_count: 1 })).kind, 'suggestion');
 });
 
 test('anchor_violated requires a recorded anchor', () => {
-  assert.throws(() => decideDisposition(packet({ anchor_violated: true })), /anchor_violated requires/);
+  assert.throws(() => classifyContractState(packet({ anchor_violated: true })), /anchor_violated requires/);
 });
 
-test('#1334-style third vendor consumer is blocking', () => {
+test('#1334-style third vendor consumer is a high-severity defect', () => {
   const value = packet({
     use_ordinal: 'third_or_later',
     branching_conditions: ['additional_vendor_consumer'],
     new_contract_delta: 'Adds another product-tier pushFaro consumer',
   });
-  assert.deepEqual(decideDisposition(value), {
+  assert.deepEqual(classifyContractState(value), {
     effective_verdict: 'contract_branching',
-    disposition: 'blocking',
+    kind: 'defect',
     severity: 'high',
-    requires_finding: true,
+    requires_observation: true,
   });
 });
 
-test('missing history cannot block without an anchor', () => {
+test('missing history emits a low-confidence suggestion without an anchor', () => {
   const value = packet({ history_status: 'partial' });
-  assert.deepEqual(decideDisposition(value), {
+  assert.deepEqual(classifyContractState(value), {
     effective_verdict: 'insufficient_history',
-    disposition: 'advisory',
+    kind: 'suggestion',
     severity: 'low',
-    requires_finding: true,
+    requires_observation: true,
   });
-  assert.equal(buildFinding(value).confidence, 'low');
+  assert.equal(buildObservation(value).confidence, 'low');
 });
 
 test('downgraded clean verdict synthesizes a deterministic finding', () => {
   const { finding: _omitted, ...value } = packet({ verdict: 'coherent_extension', history_status: 'partial' });
-  assert.equal(decideDisposition(value).effective_verdict, 'insufficient_history');
-  const result = buildFinding(value);
+  assert.equal(classifyContractState(value).effective_verdict, 'insufficient_history');
+  const result = buildObservation(value);
   assert.equal(result.confidence, 'low');
-  assert.equal(result.recommended_disposition, 'suggestion');
+  assert.equal(result.kind, 'suggestion');
   assert.equal(result.finding_id, 'contract-evolution-telemetry-insufficient-history');
   assert.equal(result.reversibility, 'unknown');
   assert.deepEqual(result.applies_to_files, []);
@@ -304,11 +336,11 @@ test('downgraded clean verdict synthesizes a deterministic finding', () => {
 
 test('sub-agent insufficient_history verdicts still require a finding', () => {
   const { finding: _omitted, ...value } = packet({ verdict: 'insufficient_history' });
-  assert.throws(() => buildFinding(value), /must include finding/);
+  assert.throws(() => buildObservation(value), /must include finding/);
 });
 
 test('stable-surface coherent extensions stay silent', () => {
   const value = packet({ verdict: 'coherent_extension', branching_conditions: [] });
-  assert.equal(decideDisposition(value).requires_finding, false);
-  assert.equal(buildFinding(value), null);
+  assert.equal(classifyContractState(value).requires_observation, false);
+  assert.equal(buildObservation(value), null);
 });

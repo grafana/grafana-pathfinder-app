@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
@@ -14,7 +15,8 @@ import { logger } from '../../lib/logging';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import { InternalAction } from '../../types/interactive-actions.types';
-import type { InteractiveElementData } from '../../types/interactive.types';
+import type { InteractiveElementData, InteractiveRequirementsData } from '../../types/interactive.types';
+import { isInteractiveActionType } from '../../lib/interactive-action';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -25,6 +27,7 @@ import { useInteractiveMode } from '../../global-state/interactive-mode-context'
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 let anonymousMultiStepCounter = 0;
 
@@ -49,8 +52,8 @@ interface InteractiveMultiStepProps {
   className?: string;
   disabled?: boolean;
   hints?: string;
-  requirements?: string; // Overall requirements for the multi-step
-  objectives?: string; // Overall objectives for the multi-step
+  requirements?: ConditionInput; // Overall requirements for the multi-step
+  objectives?: ConditionInput; // Overall objectives for the multi-step
   onComplete?: () => void;
   skippable?: boolean; // Whether this multi-step can be skipped if requirements fail
   completeEarly?: boolean; // Whether to mark complete before action execution (for navigation steps)
@@ -104,12 +107,11 @@ export function deriveMultiStepUiState(input: MultiStepUiStateInput): StepStateV
 async function checkActionRequirements(
   action: InternalAction,
   actionIndex: number,
-  checkRequirementsFromData: (data: InteractiveElementData) => Promise<any>
+  checkRequirementsFromData: (data: InteractiveRequirementsData) => Promise<any>
 ): Promise<{ pass: boolean; explanation?: string }> {
   if (!action.requirements) {
     return { pass: true };
   }
-
   try {
     // Create data structure compatible with checkRequirementsFromData
     const actionData = {
@@ -371,7 +373,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
       // Only start blocking if we're not already in a blocking state (avoid double-blocking)
       if (!isNestedInSection) {
         // Create dummy data for blocking overlay
-        const dummyData = {
+        const dummyData: InteractiveElementData = {
           refTarget: `multistep-${multiStepId}`,
           targetAction: 'multistep',
           targetValue: undefined,
@@ -392,6 +394,14 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           if (isCancelledRef.current) {
             break;
           }
+
+          if (!isInteractiveActionType(action.targetAction)) {
+            logger.error(`Unknown multi-step action: ${action.targetAction}`);
+            setFailedStepIndex(i);
+            setExecutionError(`Unsupported action "${action.targetAction}".`);
+            return false;
+          }
+          const targetAction = action.targetAction;
           setCurrentActionIndex(i);
 
           // Just-in-time requirements checking for this specific action
@@ -413,7 +423,12 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
           // Execute the action (show first, then do)
           try {
             // Show mode (highlight what will be acted upon, with comment if available)
-            await executeInteractiveAction({ ...action, buttonType: 'show', fullScreenFallbackLocation });
+            await executeInteractiveAction({
+              ...action,
+              targetAction,
+              buttonType: 'show',
+              fullScreenFallbackLocation,
+            });
 
             // Delay between show and do with cancellation check
             for (let j = 0; j < INTERACTIVE_CONFIG.delays.multiStep.showToDoIterations; j++) {
@@ -429,6 +444,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
             // Do mode (actually perform the action)
             const doOutcome = await executeInteractiveAction({
               ...action,
+              targetAction,
               buttonType: 'do',
               fullScreenFallbackLocation,
             });
@@ -793,6 +809,7 @@ export const InteractiveMultiStep = forwardRef<{ executeStep: () => Promise<bool
         className={`interactive-step${className ? ` ${className}` : ''}${
           uiState === STEP_STATES.COMPLETED ? ' completed' : ''
         }${isCurrentlyExecuting ? ' executing' : ''}`}
+        {...getTrackedStepRootAttributes('multistep', stepId || renderedStepId)}
         data-targetaction="multistep"
         data-reftarget={renderedStepId}
         data-internal-actions={JSON.stringify(internalActions)}

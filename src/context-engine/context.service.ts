@@ -1026,11 +1026,14 @@ export class ContextService {
   /**
    * Fetch data sources
    */
-  static async fetchDataSources(): Promise<DataSource[]> {
+  static async fetchDataSources(options: { throwOnError?: boolean } = {}): Promise<DataSource[]> {
     try {
       const dataSources = await getBackendSrv().get('/api/datasources');
       return dataSources || [];
     } catch (error) {
+      if (options.throwOnError) {
+        throw error;
+      }
       logger.warn('Failed to fetch data sources', { error });
       return [];
     }
@@ -1039,11 +1042,14 @@ export class ContextService {
   /**
    * Fetch plugins
    */
-  static async fetchPlugins(): Promise<Plugin[]> {
+  static async fetchPlugins(options: { throwOnError?: boolean } = {}): Promise<Plugin[]> {
     try {
       const plugins = await getBackendSrv().get('/api/plugins');
       return plugins || [];
     } catch (error) {
+      if (options.throwOnError) {
+        throw error;
+      }
       logger.warn('Failed to fetch plugins', { error });
       return [];
     }
@@ -1052,7 +1058,10 @@ export class ContextService {
   /**
    * Fetch dashboards by name using search API
    */
-  static async fetchDashboardsByName(name: string): Promise<DashboardSearchResult[]> {
+  static async fetchDashboardsByName(
+    name: string,
+    options: { throwOnError?: boolean } = {}
+  ): Promise<DashboardSearchResult[]> {
     try {
       const dashboards = await getBackendSrv().get('/api/search', {
         type: 'dash-db',
@@ -1062,6 +1071,9 @@ export class ContextService {
       });
       return dashboards || [];
     } catch (error) {
+      if (options.throwOnError) {
+        throw error;
+      }
       logger.warn('Failed to fetch dashboards', { error });
       return [];
     }

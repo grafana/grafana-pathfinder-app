@@ -231,6 +231,25 @@ describe('destructiveActionWithoutObjective', () => {
     ).toEqual([]);
   });
 
+  // A prose objective is dropped by the parser, so the step still re-runs.
+  // Clearing the warning on one would hide exactly the hazard it exists for.
+  it('still flags when the only objective is not executable', () => {
+    const issues = destructiveActionWithoutObjective({
+      ...baseGuide,
+      blocks: [
+        {
+          type: 'interactive',
+          action: 'button',
+          reftarget: 'Delete dashboard',
+          content: 'x',
+          objectives: ['Remove the old dashboard'],
+        },
+      ],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe(CROSS_BLOCK_CHECK_CODES.DESTRUCTIVE_ACTION_WITHOUT_OBJECTIVE);
+  });
+
   it('does not flag highlight or formfill actions (heuristic is narrow)', () => {
     expect(
       destructiveActionWithoutObjective({

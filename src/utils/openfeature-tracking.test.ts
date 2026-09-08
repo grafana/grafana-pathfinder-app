@@ -221,6 +221,12 @@ describe('reportFeatureFlagExposure', () => {
     expect(localStorage.length).toBe(0);
   });
 
+  it('skips prototype property names masquerading as variants', () => {
+    const report = freshReportFn();
+    report('pathfinder.highlighted-guide-experiment', { variant: 'toString', pages: [] });
+    expect(mockReportAppInteraction).not.toHaveBeenCalled();
+  });
+
   it('skips boolean flags (config, not experiment arms)', () => {
     const report = freshReportFn();
     report('pathfinder.enabled', true);

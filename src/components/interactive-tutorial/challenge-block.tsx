@@ -36,6 +36,8 @@ import {
 } from '../../integrations/coda/coda-api';
 import { useGuideRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 // The atomic temp+rename guarantees the gated coda-exit-zero check never
 // sees a partially-written gate file. The path is shared with that check
@@ -473,7 +475,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setErrorDetail('');
     try {
       const result = await checkPostconditions({
-        requirements: successCriteria,
+        requirements: [successCriteria],
         stepId,
         maxRetries: 0,
       });
@@ -526,14 +528,26 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
           : 'Preparing your environment…';
       case 'checking':
         return 'Checking your work…';
+      case 'ready':
+      case 'idle':
+      case 'solved':
+      case 'failed-check':
+      case 'setup-failed':
+        return null;
       default:
+        assertExhaustive(state);
         return null;
     }
   })();
 
   if (isCompleted) {
     return (
-      <div className={styles.container} data-test-step-state="completed" data-testid={`challenge-block-${stepId}`}>
+      <div
+        className={styles.container}
+        {...getTrackedStepRootAttributes('challenge', stepId)}
+        data-test-step-state="completed"
+        data-testid={`challenge-block-${stepId}`}
+      >
         <h4 className={styles.title}>{title}</h4>
         <div className={styles.brief}>{brief}</div>
         <div className={styles.solved}>
@@ -544,7 +558,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   }
 
   return (
-    <div className={styles.container} data-test-step-state={state} data-testid={`challenge-block-${stepId}`}>
+    <div
+      className={styles.container}
+      {...getTrackedStepRootAttributes('challenge', stepId)}
+      data-test-step-state={state}
+      data-testid={`challenge-block-${stepId}`}
+    >
       <h4 className={styles.title}>{title}</h4>
       <div className={styles.brief}>{brief}</div>
 

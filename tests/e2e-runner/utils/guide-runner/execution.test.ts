@@ -48,7 +48,7 @@ jest.mock('@playwright/test', () => {
 });
 jest.mock('./requirements', () => ({
   handleRequirementsWithFix: jest.fn(),
-  validateSession: jest.fn().mockResolvedValue(true),
+  validateSession: jest.fn().mockResolvedValue({ valid: true }),
 }));
 jest.mock('./badge-celebrations', () => ({
   dismissBadgeCelebrations: jest.fn().mockResolvedValue(undefined),
@@ -346,6 +346,48 @@ describe('hard step deadline', () => {
       ],
     });
     expect(result.results[0].deadlineExceeded).toBeUndefined();
+  });
+
+  it('uses an injected session validator before step execution', async () => {
+    const sessionValidator = jest.fn().mockResolvedValue({
+      valid: false,
+      failureKind: 'auth_expired',
+      error: 'Session expired',
+    });
+    const page = {
+      url: jest.fn(() => 'http://localhost:3000/'),
+    } as unknown as Page;
+
+    const result = await executeAllSteps(page, [createTestableStep()], { sessionValidator });
+
+    expect(sessionValidator).toHaveBeenCalledWith(page);
+    expect(result).toMatchObject({
+      aborted: true,
+      abortReason: 'AUTH_EXPIRED',
+      results: [{ status: 'not_reached', classification: 'infrastructure' }],
+    });
+  });
+
+  it('reports session transport loss as infrastructure instead of auth expiry', async () => {
+    const page = {
+      url: jest.fn(() => 'http://localhost:3000/'),
+    } as unknown as Page;
+
+    const result = await executeAllSteps(page, [createTestableStep()], {
+      sessionValidator: jest.fn().mockResolvedValue({
+        valid: false,
+        failureKind: 'infrastructure_error',
+        error: 'The browser context closed.',
+      }),
+    });
+
+    expect(result).toMatchObject({
+      aborted: true,
+      infrastructureError: true,
+      abortReason: undefined,
+      abortMessage: 'The browser context closed.',
+      results: [{ status: 'not_reached', classification: 'infrastructure' }],
+    });
   });
 });
 
