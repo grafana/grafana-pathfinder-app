@@ -86,6 +86,10 @@ describe('createBoundedRecordStorage', () => {
   });
 
   describe('eviction order', () => {
+    // Key order in the persisted record IS the recency mechanism, and object
+    // equality ignores it, so these assert the order itself.
+    const storedKeys = () => Object.keys(JSON.parse(localStorage.getItem(TEST_KEY) || '{}'));
+
     it('keeps an entry the reader is still updating and evicts an untouched one instead', async () => {
       const store = makeStore({ storageKey: TEST_KEY, limit: 3, label: 'test' });
       await store.set('early', 10);
@@ -94,12 +98,14 @@ describe('createBoundedRecordStorage', () => {
 
       // The reader comes back to `early` and earns more progress on it.
       await store.set('early', 60);
+      expect(storedKeys()).toEqual(['b', 'c', 'early']);
 
       // A fourth guide pushes the record over budget.
       await store.set('d', 40);
 
       expect(await store.get('early')).toBe(60);
       expect(await store.getAll()).toEqual({ c: 30, early: 60, d: 40 });
+      expect(storedKeys()).toEqual(['c', 'early', 'd']);
     });
 
     it('evicts entries with no recorded progress before entries that hold progress', async () => {
@@ -111,6 +117,37 @@ describe('createBoundedRecordStorage', () => {
 
       // Dropping a 0 is lossless: `get()` already returns 0 for a missing key.
       expect(await store.getAll()).toEqual({ 'has-progress': 20, c: 30, d: 40 });
+      expect(storedKeys()).toEqual(['has-progress', 'c', 'd']);
+    });
+
+    it('leaves the record untouched when a zero is written at the cap', async () => {
+      const store = makeStore({ storageKey: TEST_KEY, limit: 3, label: 'test' });
+      await store.set('a', 10);
+      await store.set('b', 20);
+      await store.set('c', 30);
+
+      // A freshly opened guide writes 0. It is evictable like any other zero,
+      // and it is the surplus entry, so nothing real is displaced for it.
+      await store.set('fresh', 0);
+
+      expect(await store.getAll()).toEqual({ a: 10, b: 20, c: 30 });
+      expect(storedKeys()).toEqual(['a', 'b', 'c']);
+      // Indistinguishable from a stored 0, which is why dropping it is sound.
+      expect(await store.get('fresh')).toBe(0);
+    });
+
+    it('stores that same guide once it earns progress, evicting the stalest entry', async () => {
+      const store = makeStore({ storageKey: TEST_KEY, limit: 3, label: 'test' });
+      await store.set('a', 10);
+      await store.set('b', 20);
+      await store.set('c', 30);
+      await store.set('fresh', 0);
+
+      await store.set('fresh', 25);
+
+      expect(await store.get('fresh')).toBe(25);
+      expect(await store.getAll()).toEqual({ b: 20, c: 30, fresh: 25 });
+      expect(storedKeys()).toEqual(['b', 'c', 'fresh']);
     });
 
     it('reads a record written before the change and keeps updated entries from it', async () => {
@@ -125,6 +162,7 @@ describe('createBoundedRecordStorage', () => {
 
       expect(await store.get('old1')).toBe(55);
       expect(await store.getAll()).toEqual({ old3: 30, old4: 40, old1: 55 });
+      expect(storedKeys()).toEqual(['old3', 'old4', 'old1']);
     });
 
     it('changes nothing for a record below the limit', async () => {

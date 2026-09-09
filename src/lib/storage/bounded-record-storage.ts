@@ -62,6 +62,9 @@ export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): 
       }
     }
     const survivors = entries.filter(([key]) => !evicted.has(key));
+    // A just-written 0 is evictable like any other, so writing one at the cap
+    // leaves the record untouched. Intended: a stored 0 and an absent key read
+    // back identically, so displacing a real record for one is a pure loss.
     return Object.fromEntries(survivors.slice(-limit));
   };
 
