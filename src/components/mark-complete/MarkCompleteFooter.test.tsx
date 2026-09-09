@@ -134,6 +134,27 @@ describe('MarkCompleteFooter', () => {
     expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
   });
 
+  it('announces the new state and keeps focus, rather than dropping it to the body', async () => {
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+
+    await clickWhenReady();
+
+    const completed = screen.getByTestId(testIds.markComplete.completed);
+    expect(completed).toHaveAttribute('role', 'status');
+    expect(completed).toHaveTextContent('Completed');
+    expect(completed).toHaveTextContent('100% complete');
+    expect(completed).toHaveFocus();
+  });
+
+  it('does not steal focus when a return visit hydrates an existing mark', async () => {
+    markStorage.get.mockResolvedValue(true);
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+
+    const completed = await screen.findByTestId(testIds.markComplete.completed);
+
+    expect(completed).not.toHaveFocus();
+  });
+
   it.each([
     ['every guide', '*'],
     ['this guide', 'guide-key'],

@@ -173,29 +173,36 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     onGuideCompleteRef.current?.();
   }, []);
 
+  // The Mark complete route's own entry to that gate. A reset arms this route
+  // and only this route, so the reader's next click records once; the gate
+  // closes again inside `triggerGuideComplete`, leaving the automatic routes
+  // exactly the state they would have seen without the reset.
+  const markCompleteRearmedRef = useRef(false);
+  const triggerGuideCompleteFromMark = useCallback(() => {
+    if (markCompleteRearmedRef.current) {
+      markCompleteRearmedRef.current = false;
+      guideCompleteCalledRef.current = false;
+    }
+    triggerGuideComplete();
+  }, [triggerGuideComplete]);
+
   // Reset tracking state when content changes (new guide = fresh start)
   useEffect(() => {
     guideCompleteCalledRef.current = false;
     completedSectionsRef.current = new Set();
+    markCompleteRearmedRef.current = false;
   }, [content?.url]);
 
-  // A reset clears a guide's progress without remounting this renderer, so the
-  // gate has to re-open on the same signal the Mark complete control re-reads
-  // on — otherwise the re-armed control would write progress and record no
-  // completion at all.
+  // A reset clears a guide's progress without remounting this renderer, so a
+  // re-mark afterwards would otherwise write progress and record no completion.
+  // This arms the Mark complete route only: the automatic routes read the
+  // shared gate at their own invocation time and a reset must not change what
+  // they see, so nothing here touches the gate or the tracked sections.
   useEffect(() => {
     const handleCleared = (event: Event) => {
       const clearedKey = (event as CustomEvent).detail?.contentKey;
-      const clearedEverything = clearedKey === '*';
-      if (!clearedEverything && clearedKey !== resolveGuideContentKey(content?.url)) {
-        return;
-      }
-      guideCompleteCalledRef.current = false;
-      // Only the whole-store form is safe to forget tracked sections on: a
-      // single-section reset carries the same guide-level key as a whole-guide
-      // one, so forgetting here would discard every other section's completion.
-      if (clearedEverything) {
-        completedSectionsRef.current = new Set();
+      if (clearedKey === '*' || clearedKey === resolveGuideContentKey(content?.url)) {
+        markCompleteRearmedRef.current = true;
       }
     };
     window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
@@ -474,7 +481,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     <MarkCompleteFooter
       context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
       contentUrl={content.url}
-      onMarkComplete={triggerGuideComplete}
+      onMarkComplete={triggerGuideCompleteFromMark}
       onContinue={onContinueToNextMilestone}
     />
   );

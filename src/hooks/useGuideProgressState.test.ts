@@ -2,15 +2,20 @@ import { renderHook, act } from '@testing-library/react';
 import { useGuideProgressState } from './useGuideProgressState';
 
 const mockHasProgress = jest.fn();
+const mockGetMark = jest.fn();
 jest.mock('../lib/user-storage', () => ({
   interactiveStepStorage: {
     hasProgress: (key: string) => mockHasProgress(key),
+  },
+  guideCompletionMarkStorage: {
+    get: (key: string) => mockGetMark(key),
   },
 }));
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockHasProgress.mockResolvedValue(false);
+  mockGetMark.mockResolvedValue(null);
 });
 
 describe('useGuideProgressState', () => {
@@ -31,6 +36,31 @@ describe('useGuideProgressState', () => {
     expect(result.current.hasInteractiveProgress).toBe(true);
   });
 
+  // A prose-only guide carries no step progress, so the mark is the only thing
+  // that can make the per-guide reset affordance reachable after a reload.
+  it('reports progress for a guide whose only progress is the completion mark', async () => {
+    mockHasProgress.mockResolvedValue(false);
+    mockGetMark.mockResolvedValue(true);
+    const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockGetMark).toHaveBeenCalledWith('guide-a');
+    expect(result.current.hasInteractiveProgress).toBe(true);
+  });
+
+  it('reports no progress for a guide with neither steps nor a mark', async () => {
+    const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.hasInteractiveProgress).toBe(false);
+  });
+
   it('falls back to baseUrl when currentUrl is missing', async () => {
     renderHook(() => useGuideProgressState({ baseUrl: 'guide-base' }));
 
@@ -49,6 +79,7 @@ describe('useGuideProgressState', () => {
     });
 
     expect(mockHasProgress).not.toHaveBeenCalled();
+    expect(mockGetMark).not.toHaveBeenCalled();
   });
 
   it('resets hasInteractiveProgress when the progress key clears', async () => {

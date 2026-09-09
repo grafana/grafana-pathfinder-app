@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { StorageEvents } from '../lib/event-names';
-import { interactiveStepStorage } from '../lib/user-storage';
+import { guideCompletionMarkStorage, interactiveStepStorage } from '../lib/user-storage';
 import { subscribeProgressEvent } from '../global-state/progress-events';
 
 interface ActiveTabSummary {
@@ -17,7 +17,15 @@ export function useGuideProgressState(activeTab: ActiveTabSummary | null | undef
 
   useEffect(() => {
     let cancelled = false;
-    const lookup = progressKey ? interactiveStepStorage.hasProgress(progressKey) : Promise.resolve(false);
+    // The guide-level mark counts as progress too, and it is the only progress
+    // a prose-only guide can carry — without it the reset affordance would be
+    // hidden on exactly the guides the Mark complete control exists for.
+    const lookup = progressKey
+      ? Promise.all([
+          interactiveStepStorage.hasProgress(progressKey),
+          guideCompletionMarkStorage.get(progressKey),
+        ]).then(([hasSteps, mark]) => hasSteps || mark === true)
+      : Promise.resolve(false);
     void lookup.then((value) => {
       if (!cancelled) {
         setHasInteractiveProgress(value);

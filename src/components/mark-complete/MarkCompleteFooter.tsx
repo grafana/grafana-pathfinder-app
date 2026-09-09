@@ -76,6 +76,8 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
   const [clearedCount, setClearedCount] = useState(0);
   const [celebrating, setCelebrating] = useState(false);
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completedRef = useRef<HTMLDivElement>(null);
+  const claimFocusRef = useRef(false);
 
   const percentage = useSyncExternalStore(
     useCallback(
@@ -134,6 +136,13 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     [contentUrl]
   );
 
+  useEffect(() => {
+    if (claimFocusRef.current && completedRef.current) {
+      claimFocusRef.current = false;
+      completedRef.current.focus();
+    }
+  });
+
   // `hydrated` is what makes "never twice" structural rather than a race: until
   // the stored mark has been read, a return visit cannot be told from a first
   // one.
@@ -145,6 +154,10 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       return;
     }
     const contentKey = resolveGuideContentKey(contentUrl);
+    // The button the reader just activated is about to unmount, and React
+    // would drop focus to `document.body`. A return visit that hydrates an
+    // existing mark must not steal focus, so only a click claims it.
+    claimFocusRef.current = true;
     setMark({ readFor: contentUrl, marked: true });
 
     // The completion write must not wait on the celebration: a reader who
@@ -202,9 +215,19 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       </div>
 
       {marked ? (
-        <div className={celebrating ? styles.celebration : styles.completed}>
+        <div
+          ref={completedRef}
+          role="status"
+          tabIndex={-1}
+          className={celebrating ? styles.celebration : styles.completed}
+          data-testid={testIds.markComplete.completed}
+        >
           <Icon name="check-circle" />
-          <span>{t('markComplete.completed', 'Completed')}</span>
+          <span>
+            {t('markComplete.completed', 'Completed')}
+            {' \u2014 '}
+            {t('markComplete.percentComplete', '{{percent}}% complete', { percent: displayPercentage })}
+          </span>
         </div>
       ) : (
         <Button
@@ -276,7 +299,12 @@ function getStyles(theme: GrafanaTheme2) {
       fontSize: theme.typography.bodySmall.fontSize,
       whiteSpace: 'nowrap',
     }),
-    completed: css(completedBase),
+    completed: css(completedBase, {
+      '&:focus-visible': {
+        outline: `2px solid ${theme.colors.primary.border}`,
+        outlineOffset: theme.spacing(0.5),
+      },
+    }),
     celebration: css(completedBase, {
       animation: `${pop} 500ms ease-out`,
       '@media (prefers-reduced-motion: reduce)': {

@@ -108,7 +108,10 @@ describe('ContentRenderer — the automatic section route and reset', () => {
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
   });
 
-  it('forgets tracked sections when the whole store is cleared, so one section cannot re-complete the guide', async () => {
+  it.each([
+    ['this guide', GUIDE_URL],
+    ['every guide', '*'],
+  ])('leaves the route alone when a reset clears %s, so no clear can re-complete it', async (_label, clearedKey) => {
     const onGuideComplete = jest.fn();
     await renderWithSections(onGuideComplete);
     for (const sectionId of SECTION_IDS) {
@@ -116,14 +119,11 @@ describe('ContentRenderer — the automatic section route and reset', () => {
     }
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
 
-    await announceCleared('*');
+    await announceCleared(clearedKey);
+    for (const sectionId of SECTION_IDS) {
+      completeSection(sectionId);
+    }
 
-    completeSection('section-1');
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
-
-    completeSection('section-2');
-    completeSection('section-3');
-
-    expect(onGuideComplete).toHaveBeenCalledTimes(2);
   });
 });
