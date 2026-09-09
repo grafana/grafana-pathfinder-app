@@ -18,6 +18,9 @@
  * Lives in `global-state/` (Tier 1) beside `step-id.ts` so the counter
  * (`lib/guide-stats`, Tier 1) and the assistant integration (Tier 3) can both
  * import it.
+ *
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 4 of 4. See
+ * `.cursor/rules/tracked-step-types.mdc`.
  */
 
 import { assertExhaustive } from '../lib/assert-exhaustive';

@@ -131,7 +131,11 @@ const withResolver = (blocks: readonly JsonBlock[]) =>
 
 describe('step-id parity with the parser, over the completable set', () => {
   it('covers every block type that can emit completion evidence', () => {
-    const covered = new Set(COMPLETABLE_SHAPES.map((entry) => entry.shape));
+    // Read the coverage off the fixture's own block, never off its `shape`
+    // label: a label is hand-written and can drift from what it names, and a
+    // mislabelled entry would drop a whole type from the sweep while the suite
+    // stayed green. `shape` is a test title and nothing more.
+    const covered = new Set(COMPLETABLE_SHAPES.map((entry) => entry.block.type));
     const uncovered = [...COMPLETION_AFFORDANCE_BLOCK_TYPES, 'input'].filter((type) => !covered.has(type));
 
     expect(uncovered).toEqual([]);
@@ -156,6 +160,22 @@ describe('step-id parity with the parser, over the completable set', () => {
         {
           type: 'section',
           id: 'setup',
+          title: 'Setup',
+          blocks: [{ type: 'markdown', content: 'Preamble' }, block],
+        } as unknown as JsonBlock,
+      ];
+      const index = withResolver(blocks);
+
+      expect([...index.positionsByStepId.entries()]).toEqual([[parseStepIds(guideOf(blocks))[0]!, 2]]);
+    });
+
+    it('derives the id the parser assigns, inside an anonymous section', () => {
+      // `id` is optional on a section, and without one the parser keys its
+      // children on the section's JSON path instead. That branch decides the
+      // numerator key for every completable inside an unnamed section.
+      const blocks: JsonBlock[] = [
+        {
+          type: 'section',
           title: 'Setup',
           blocks: [{ type: 'markdown', content: 'Preamble' }, block],
         } as unknown as JsonBlock,

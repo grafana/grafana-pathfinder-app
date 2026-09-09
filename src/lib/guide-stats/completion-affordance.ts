@@ -16,7 +16,7 @@
  * is the ratchet that keeps the two in step, and it fails when a parse key is
  * added, removed, or remapped.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 3. See
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 4. See
  * `.cursor/rules/tracked-step-types.mdc`.
  */
 
