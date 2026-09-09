@@ -161,15 +161,21 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     onGuideCompleteRef.current = onGuideComplete;
   }, [onGuideComplete]);
 
+  const markCompleteRearmedRef = useRef(false);
+
   // The one gate every completion route passes through — the automatic
   // section/step routes below and the Mark complete control at the foot of the
   // content alike — so a guide records exactly one completion however it was
   // finished, and a click followed by an auto-complete does not record twice.
+  // Emitting also spends any pending re-arm: whichever route gets here first
+  // is the one completion, so a later click cannot re-open a gate that has
+  // already closed on this guide.
   const triggerGuideComplete = useCallback(() => {
     if (guideCompleteCalledRef.current) {
       return;
     }
     guideCompleteCalledRef.current = true;
+    markCompleteRearmedRef.current = false;
     onGuideCompleteRef.current?.();
   }, []);
 
@@ -177,7 +183,6 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   // and only this route, so the reader's next click records once; the gate
   // closes again inside `triggerGuideComplete`, leaving the automatic routes
   // exactly the state they would have seen without the reset.
-  const markCompleteRearmedRef = useRef(false);
   const triggerGuideCompleteFromMark = useCallback(() => {
     if (markCompleteRearmedRef.current) {
       markCompleteRearmedRef.current = false;

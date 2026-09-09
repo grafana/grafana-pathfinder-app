@@ -223,6 +223,33 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     await waitFor(async () => expect(await guideCompletionMarkStorage.get(content.url)).toBe(true));
   });
 
+  it('records one completion when a clear is followed by the automatic route and then a click', async () => {
+    jest.useFakeTimers();
+    const onGuideComplete = jest.fn();
+    const content = makeContent();
+    window.__DocsPluginActiveTabUrl = content.url;
+    render(<ContentRenderer content={content} onGuideComplete={onGuideComplete} />);
+    await act(async () => {
+      jest.advanceTimersByTime(300);
+    });
+
+    // A per-section reset announces the guide's key without the guide having
+    // been marked, so the re-arm is pending when the automatic route lands.
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: content.url } })
+      );
+    });
+    act(() => {
+      dispatchProgress({ kind: 'guide', contentKey: content.url, percentage: 100, hasProgress: true });
+    });
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId(testIds.markComplete.button));
+
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+  });
+
   it('records one completion when the click is followed by the automatic route', async () => {
     jest.useFakeTimers();
     const onGuideComplete = jest.fn();
