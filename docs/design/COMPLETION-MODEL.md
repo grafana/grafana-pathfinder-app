@@ -320,11 +320,24 @@ it, but that is an evidence population and not a firing condition.
 **Decision.** Decision 4's mean joins each member to its persisted percentage by
 content key, and that key is stored nowhere: a member is keyed by the sanitized
 URL it was launched from, while a path definition carries ids. Where a member's
-launch URL has not resolved, both `bundled:<id>` and `backend-guide:<id>` are
+launch URL has not resolved, every scheme it could have been launched under is
 read and whichever holds a record wins — a reader can only have progressed under
-one. Where no key can be formed at all, the member is **excluded from the mean
-and counted**, never scored zero. `src/global-state/path-member-join.ts` owns
-this, and `resetPath` reads its key list rather than restating the scheme pair.
+one. That set is `bundled:<id>`, `bundled:<id>/content.json`, and
+`backend-guide:<id>`: a bundled guide has two live launch shapes, because My
+Learning opens it bare while the package resolver hands the context panel the
+package form. A resolved `bundled:` URL is therefore read alongside its sibling
+shape in both directions. Where no key can be formed at all, the member is
+**excluded from the mean and counted**, never scored zero.
+`src/global-state/path-member-join.ts` owns this, and `resetPath` reads its
+scheme list rather than restating it.
+
+**The key spaces `resetPath` clears are not one space.**
+`interactiveCompletionStorage` and `interactiveStepStorage` are keyed by the
+sanitized content key; `milestoneCompletionStorage` and
+`journeyCompletionStorage` are keyed by the raw launch URL. `resetPath` builds
+both from the join — `pathMemberContentKeys` for the sanitized namespaces,
+`pathMemberIdSchemeKeys` for the raw ones — so sanitization never silently
+narrows what a reset clears.
 
 **Why not zero.** A zero is indistinguishable from a real result. It drags the
 path's number down silently and in exactly the direction the
@@ -342,7 +355,9 @@ exclusion, not an edge case.
 
 **A presence check, not a value read.** The storage `get` returns 0 for a
 missing key, which collapses the distinction the decision rests on. The join
-reads the whole record and tests for the key.
+reads the whole record and tests for the key. The record is parsed persisted
+JSON and its value type is unchecked, so a present key holding anything but a
+finite number is treated as no record rather than entering the mean.
 
 ## The alternative considered and rejected
 

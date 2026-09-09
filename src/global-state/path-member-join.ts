@@ -9,11 +9,14 @@
  *
  * Two things follow, and they are the whole of this module:
  *
- *  - A member with no resolved launch URL is keyed either `bundled:<id>` or
- *    `backend-guide:<id>`, and which one is not knowable from the path
+ *  - A member with no resolved launch URL is keyed under the `bundled:` or the
+ *    `backend-guide:` scheme, and which one is not knowable from the path
  *    definition — the same ambiguity `resetPath` works around by clearing
- *    both. So both are read, and whichever holds a record wins. A reader can
- *    only have progressed under one of them.
+ *    every one of them. `bundled:` itself has two live launch shapes: My
+ *    Learning opens a bundled guide bare, while the package resolver hands the
+ *    context panel `bundled:<id>/content.json`. So every shape is read, and
+ *    whichever holds a record wins. A reader can only have progressed under
+ *    one of them.
  *  - A member for which no key can be formed at all is UNRESOLVED, and is
  *    excluded from the mean rather than scored zero. A zero is
  *    indistinguishable from a real result and drags the path's number down
@@ -61,6 +64,8 @@ export interface PathMemberJoinContext {
    *
    * Read by key presence, not by value: the storage `get` returns 0 for a
    * missing key, which is the distinction this whole module exists to keep.
+   * The record is parsed persisted JSON, so a present key whose value is not
+   * a finite number is treated as no record rather than entering the mean.
    */
   readonly persistedPercentages: Readonly<Record<string, number>>;
 }
@@ -96,6 +101,35 @@ export interface PathMemberJoinResult {
 
 const BUNDLED_PREFIX = 'bundled:';
 const BACKEND_GUIDE_PREFIX = 'backend-guide:';
+const PACKAGE_CONTENT_SUFFIX = '/content.json';
+
+function dedupe(values: readonly string[]): readonly string[] {
+  return [...new Set(values)];
+}
+
+/**
+ * The launch URLs a bare member id may have been opened under, unsanitized.
+ * `bundled:` carries both of its shapes because either may hold the record:
+ * My Learning launches a bundled guide bare, the package resolver launches it
+ * as `bundled:<id>/content.json`. `backend-guide:` has only the bare shape.
+ */
+export function pathMemberIdSchemeKeys(memberId: string): readonly string[] {
+  return [
+    `${BUNDLED_PREFIX}${memberId}`,
+    `${BUNDLED_PREFIX}${memberId}${PACKAGE_CONTENT_SUFFIX}`,
+    `${BACKEND_GUIDE_PREFIX}${memberId}`,
+  ];
+}
+
+/** A resolved `bundled:` URL and its sibling shape; anything else, unchanged. */
+function bundledLaunchShapes(url: string): readonly string[] {
+  if (!url.startsWith(BUNDLED_PREFIX)) {
+    return [url];
+  }
+  return url.endsWith(PACKAGE_CONTENT_SUFFIX)
+    ? [url, url.slice(0, -PACKAGE_CONTENT_SUFFIX.length)]
+    : [url, `${url}${PACKAGE_CONTENT_SUFFIX}`];
+}
 
 /**
  * The keys a member may have persisted under, most authoritative first.
@@ -103,15 +137,12 @@ const BACKEND_GUIDE_PREFIX = 'backend-guide:';
  */
 export function pathMemberContentKeys(member: PathMember, pathBaseUrl?: string): readonly string[] {
   if (member.url) {
-    return [sanitizeContentKey(member.url)];
+    return dedupe(bundledLaunchShapes(member.url).map(sanitizeContentKey));
   }
   if (pathBaseUrl) {
     return [];
   }
-  return [
-    sanitizeContentKey(`${BUNDLED_PREFIX}${member.id}`),
-    sanitizeContentKey(`${BACKEND_GUIDE_PREFIX}${member.id}`),
-  ];
+  return dedupe(pathMemberIdSchemeKeys(member.id).map(sanitizeContentKey));
 }
 
 export function resolvePathMemberPercentage(member: PathMember, context: PathMemberJoinContext): PathMemberPercentage {
@@ -125,14 +156,14 @@ export function resolvePathMemberPercentage(member: PathMember, context: PathMem
   }
 
   for (const contentKey of candidates) {
-    if (Object.hasOwn(context.persistedPercentages, contentKey)) {
-      return {
-        memberId: member.id,
-        percent: context.persistedPercentages[contentKey],
-        source: 'persisted',
-        contentKey,
-      };
+    if (!Object.hasOwn(context.persistedPercentages, contentKey)) {
+      continue;
     }
+    const persisted: unknown = context.persistedPercentages[contentKey];
+    if (typeof persisted !== 'number' || !Number.isFinite(persisted)) {
+      continue;
+    }
+    return { memberId: member.id, percent: persisted, source: 'persisted', contentKey };
   }
 
   return { memberId: member.id, percent: 0, source: 'unopened' };
@@ -143,14 +174,12 @@ export function resolvePathMemberPercentages(
   context: PathMemberJoinContext
 ): PathMemberJoinResult {
   const resolved = members.map((member) => resolvePathMemberPercentage(member, context));
-  const unresolvedMemberIds = resolved.filter((entry) => entry.percent === undefined).map((entry) => entry.memberId);
+  const unresolved = resolved.filter((entry) => entry.source === 'unresolved');
 
   return {
     members: resolved,
-    resolvedPercentages: resolved
-      .map((entry) => entry.percent)
-      .filter((percent): percent is number => percent !== undefined),
-    unresolvedCount: unresolvedMemberIds.length,
-    unresolvedMemberIds,
+    resolvedPercentages: resolved.flatMap((entry) => (entry.percent === undefined ? [] : [entry.percent])),
+    unresolvedCount: unresolved.length,
+    unresolvedMemberIds: unresolved.map((entry) => entry.memberId),
   };
 }

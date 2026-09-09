@@ -28,7 +28,7 @@ import {
   milestoneCompletionStorage,
 } from '../lib/user-storage';
 import { evictContentCache } from '../global-state/completion-store';
-import { pathMemberContentKeys } from '../global-state/path-member-join';
+import { pathMemberContentKeys, pathMemberIdSchemeKeys } from '../global-state/path-member-join';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
@@ -437,19 +437,27 @@ export function useLearningPaths(): UseLearningPathsReturn {
       } else {
         // No base URL: either a static bundled path (`bundled:<id>`) or an App
         // Platform path whose members are `backend-guide:<id>`. We can't tell
-        // them apart from `path.guides` alone, so clear both content schemes —
-        // the same ambiguity the join reads under both to resolve.
-        const pathKeys = pathMemberContentKeys({ id: path.id });
-        const contentKeys = [...pathKeys, ...path.guides.flatMap((guideId) => pathMemberContentKeys({ id: guideId }))];
+        // them apart from `path.guides` alone, so clear every scheme the join
+        // reads under. Milestone and journey records are keyed by the raw
+        // launch URL, the interactive namespaces by its sanitized content key.
+        const rawPathSchemeKeys = pathMemberIdSchemeKeys(path.id);
+        const rawSchemeKeys = [
+          ...rawPathSchemeKeys,
+          ...path.guides.flatMap((guideId) => pathMemberIdSchemeKeys(guideId)),
+        ];
+        const contentKeys = [
+          ...pathMemberContentKeys({ id: path.id }),
+          ...path.guides.flatMap((guideId) => pathMemberContentKeys({ id: guideId })),
+        ];
 
-        for (const pathKey of pathKeys) {
+        for (const pathKey of rawPathSchemeKeys) {
           await milestoneCompletionStorage.clear(pathKey);
         }
 
         await Promise.all(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
         // Batched, not one clear per key: each helper read-modify-writes a single shared record.
         await interactiveCompletionStorage.clearMany(contentKeys);
-        await journeyCompletionStorage.clearMany(contentKeys);
+        await journeyCompletionStorage.clearMany(rawSchemeKeys);
 
         contentKeys.forEach((key) => evictContentCache(key));
 

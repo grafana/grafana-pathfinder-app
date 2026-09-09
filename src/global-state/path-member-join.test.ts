@@ -5,9 +5,12 @@
  * change to either sanitizer or scheme fails here rather than silently
  * reporting a member at 0%.
  */
+import { createBundledResolver } from '../package-engine/resolver';
+
 import { getContentKey, resetContentKeyForTests, setActiveTabUrl } from './content-key';
 import {
   pathMemberContentKeys,
+  pathMemberIdSchemeKeys,
   resolvePathMemberPercentage,
   resolvePathMemberPercentages,
   type PathMember,
@@ -57,14 +60,57 @@ describe('path-member-join launch round-trip', () => {
     expect(pathMemberContentKeys(member)).toContain(keyPersistedByLaunch('bundled:welcome-to-grafana'));
   });
 
-  it('covers both schemes for a member whose launch URL has not resolved yet', () => {
+  it('covers every scheme for a member whose launch URL has not resolved yet', () => {
     // An App Platform member before its catalogue loads carries no url, and is
     // indistinguishable from a bundled member at that point.
     const member: PathMember = { id: 'fe-alerting-01' };
 
     expect(pathMemberContentKeys(member)).toEqual([
       keyPersistedByLaunch('bundled:fe-alerting-01'),
+      keyPersistedByLaunch('bundled:fe-alerting-01/content.json'),
       keyPersistedByLaunch('backend-guide:fe-alerting-01'),
+    ]);
+  });
+
+  it('looks up a bundled member under the key a package-resolved launch persists', async () => {
+    const packageId = 'first-dashboard';
+    const resolution = await createBundledResolver().resolve(packageId);
+    if (!resolution.ok) {
+      throw new Error(`expected ${packageId} to resolve from the bundled repository`);
+    }
+
+    // The context panel opens a recommended package at its resolved contentUrl,
+    // so that is the key the member's progress is persisted under.
+    expect(pathMemberContentKeys({ id: packageId })).toContain(keyPersistedByLaunch(resolution.contentUrl));
+  });
+
+  it('scores a bundled member progressed from a package launch rather than excluding it', async () => {
+    const packageId = 'first-dashboard';
+    const resolution = await createBundledResolver().resolve(packageId);
+    if (!resolution.ok) {
+      throw new Error(`expected ${packageId} to resolve from the bundled repository`);
+    }
+    const persistedKey = keyPersistedByLaunch(resolution.contentUrl);
+
+    const result = resolvePathMemberPercentage(
+      { id: packageId },
+      contextWith({ persistedPercentages: { [persistedKey]: 50 } })
+    );
+
+    expect(result).toEqual({ memberId: packageId, percent: 50, source: 'persisted', contentKey: persistedKey });
+  });
+
+  it('pairs a resolved package-form URL with its bare sibling', () => {
+    expect(pathMemberContentKeys({ id: 'first-dashboard', url: 'bundled:first-dashboard/content.json' })).toEqual([
+      keyPersistedByLaunch('bundled:first-dashboard/content.json'),
+      keyPersistedByLaunch('bundled:first-dashboard'),
+    ]);
+  });
+
+  it('pairs a resolved bare bundled URL with its package-form sibling', () => {
+    expect(pathMemberContentKeys({ id: 'first-dashboard', url: 'bundled:first-dashboard' })).toEqual([
+      keyPersistedByLaunch('bundled:first-dashboard'),
+      keyPersistedByLaunch('bundled:first-dashboard/content.json'),
     ]);
   });
 
@@ -86,6 +132,20 @@ describe('pathMemberContentKeys', () => {
     expect(pathMemberContentKeys({ id: 'fe-alerting-01', url: 'backend-guide:fe-alerting-01' })).toEqual([
       'backend-guide:fe-alerting-01',
     ]);
+  });
+});
+
+describe('pathMemberIdSchemeKeys', () => {
+  it('carries both bundled launch shapes and the backend-guide shape, unsanitized', () => {
+    expect(pathMemberIdSchemeKeys('guide-a')).toEqual([
+      'bundled:guide-a',
+      'bundled:guide-a/content.json',
+      'backend-guide:guide-a',
+    ]);
+  });
+
+  it('leaves a traversal sequence intact for the raw-keyed namespaces', () => {
+    expect(pathMemberIdSchemeKeys('a..b')).toContain('bundled:a..b');
   });
 });
 
@@ -125,6 +185,28 @@ describe('resolvePathMemberPercentage', () => {
       source: 'persisted',
       contentKey: 'backend-guide:guide-a',
     });
+  });
+
+  it('treats a present but non-numeric record as no record', () => {
+    const persisted = { 'bundled:guide-a': '40', 'backend-guide:guide-a': 70 } as unknown as Record<string, number>;
+
+    const resolution = resolvePathMemberPercentage({ id: 'guide-a' }, contextWith({ persistedPercentages: persisted }));
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 70,
+      source: 'persisted',
+      contentKey: 'backend-guide:guide-a',
+    });
+  });
+
+  it('keeps a non-finite record out of the mean', () => {
+    const persisted = { 'bundled:guide-a': Number.NaN } as Record<string, number>;
+
+    const result = resolvePathMemberPercentages([{ id: 'guide-a' }], contextWith({ persistedPercentages: persisted }));
+
+    expect(result.resolvedPercentages).toEqual([0]);
+    expect(result.members[0]!.source).toBe('unopened');
   });
 
   it('distinguishes a persisted zero from a member that was never opened', () => {
