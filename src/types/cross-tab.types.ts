@@ -211,9 +211,11 @@ export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Se
 // build in the same browser/origin/session, so there is no protocol-version
 // negotiation. Cross-version compatibility is not a goal; a mismatched build
 // is out of scope. Requirement traffic is one concrete case: check-requirements
-// can now carry array-shaped guide requirements/objectives, and fix-requirement
-// also accepts ConditionInput. Older validators accept only strings and drop
-// these commands; the controller then times out and falls back locally. See
+// can carry array-shaped guide requirements, and fix-requirement carries the
+// same ConditionInput shape. Guide objectives stay local to the controller and
+// never cross this wire. A dropped check falls back locally after 4s with
+// tab-local tokens stripped; a dropped fix returns "No live tab responded", is
+// not retried locally, and leaves the step blocked. See
 // docs/developer/CROSS_TAB_CONTROLLER.md.
 
 // Recognized interactive action verbs. Kept as a literal set (not derived
