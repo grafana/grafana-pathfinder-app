@@ -775,6 +775,38 @@ describe('ControllerChannelProvider', () => {
       unmount();
     });
 
+    it('rejects oversized completion results before any progress and keeps the waiter active', async () => {
+      const { channel, transport, unmount } = await pairedChannel();
+      const progress = jest.fn();
+      const resolved = jest.fn();
+      channel.onStepProgress('s', 'r', progress);
+      const done = channel.awaitStepComplete('s', 'r').then(resolved);
+      const oversized = Array.from({ length: 1025 }, (_, index) => ({ ...skipped, index }));
+
+      act(() =>
+        transport.emit(
+          stepReply({ kind: 'step-complete', stepId: 's', runId: 'r', ok: true, substepResults: oversized })
+        )
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(progress).not.toHaveBeenCalled();
+      expect(resolved).not.toHaveBeenCalled();
+
+      act(() =>
+        transport.emit(
+          stepReply({ kind: 'step-complete', stepId: 's', runId: 'r', ok: true, substepResults: [skipped] })
+        )
+      );
+      await done;
+      expect(progress).toHaveBeenCalledTimes(1);
+      expect(progress).toHaveBeenCalledWith(0, 1, [skipped]);
+      expect(resolved).toHaveBeenCalledTimes(1);
+      expect(resolved).toHaveBeenCalledWith(true);
+      unmount();
+    });
+
     it('rejects malformed ledgers and final results outside the known total', async () => {
       const { channel, transport, unmount } = await pairedChannel();
       const progress = jest.fn();

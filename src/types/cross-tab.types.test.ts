@@ -344,8 +344,8 @@ describe('guided action transport', () => {
 
 describe('guided substep evidence transport', () => {
   const result: GuidedSubstepResult = { index: 0, action: 'noop', status: 'completed', durationMs: 0 };
-  const replies = (substepResults: unknown) => [
-    envelope({ kind: 'step-progress', stepId: 's', runId: 'r', index: 4, total: 5, substepResults }),
+  const replies = (substepResults: unknown, total = 5) => [
+    envelope({ kind: 'step-progress', stepId: 's', runId: 'r', index: total - 1, total, substepResults }),
     envelope({ kind: 'step-complete', stepId: 's', runId: 'r', ok: false, substepResults }),
   ];
 
@@ -360,9 +360,32 @@ describe('guided substep evidence transport', () => {
     for (const message of replies(results)) {
       expect(validateCrossTabMessage(message)).toBe(message);
     }
-    for (const message of replies([])) {
+  });
+
+  it.each([
+    { label: 'omitted', substepResults: undefined },
+    { label: 'empty', substepResults: [] },
+  ])('accepts $label cumulative results', ({ substepResults }) => {
+    for (const message of replies(substepResults)) {
       expect(validateCrossTabMessage(message)).toBe(message);
     }
+  });
+
+  it('accepts 1024 cumulative results', () => {
+    const results = Array.from({ length: 1024 }, (_, index) => ({ ...result, index }));
+    for (const message of replies(results, results.length)) {
+      expect(validateCrossTabMessage(message)).toBe(message);
+    }
+  });
+  it('rejects more than 1024 results before reading records, regardless of the reported total', () => {
+    const results = Array.from({ length: 1025 }, (_, index) => ({ ...result, index }));
+    const readResult = jest.fn(() => result);
+    Object.defineProperty(results, '0', { get: readResult });
+
+    for (const message of replies(results, Number.MAX_SAFE_INTEGER)) {
+      expect(validateCrossTabMessage(message)).toBeNull();
+    }
+    expect(readResult).not.toHaveBeenCalled();
   });
 
   it.each([

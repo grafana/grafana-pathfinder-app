@@ -225,6 +225,7 @@ const KNOWN_TARGET_ACTIONS: ReadonlySet<string> = new Set([
 const GUIDED_TARGET_ACTIONS: ReadonlySet<string> = new Set(['hover', 'button', 'highlight', 'noop', 'formfill']);
 const GUIDED_SUBSTEP_STATUSES: ReadonlySet<string> = new Set(['completed', 'skipped', 'timeout', 'cancelled', 'error']);
 const MAX_STEP_TIMEOUT = 2_147_483_647;
+const MAX_SUBSTEP_RESULTS = 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -243,7 +244,7 @@ function isOptionalSubstepResults(value: unknown, total?: number): boolean {
   if (value === undefined) {
     return true;
   }
-  if (!Array.isArray(value) || (total !== undefined && value.length > total)) {
+  if (!Array.isArray(value) || value.length > MAX_SUBSTEP_RESULTS || (total !== undefined && value.length > total)) {
     return false;
   }
   for (const [index, result] of value.entries()) {

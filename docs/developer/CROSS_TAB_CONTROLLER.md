@@ -243,6 +243,8 @@ Block-level requirement splitting remains unchanged.
 
 Progress and completion replies carry cumulative `substepResults`.
 Each record contains `index`, `action`, `status`, and `durationMs`, as defined in the [E2E contract](E2E_TESTING_CONTRACT.md#data-test-substep-results).
+The validator allows at most 1,024 results per reply and checks this limit before it reads any records.
+This limit does not depend on a progress reply or its reported total.
 
 The validator rejects invalid nested fields, unsupported guided verbs, invalid durations, unordered indexes, and results beyond known substep bounds.
 Guided `noop` is valid without a target selector. This exception does not widen unrelated top-level verbs.
