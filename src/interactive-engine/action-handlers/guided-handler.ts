@@ -1,5 +1,5 @@
 import { InteractiveStateManager } from '../interactive-state-manager';
-import { NavigationManager } from '../navigation-manager';
+import { NavigationManager, type CommentBoxStepInfo } from '../navigation-manager';
 import { InteractiveElementData } from '../../types/interactive.types';
 import {
   describeElement,
@@ -554,11 +554,11 @@ export class GuidedHandler {
     // Use custom comment if provided, otherwise generate default message
     const message = customComment || this.getActionMessage(actionType, stepIndex, totalSteps);
 
-    // Build step info for progress display in comment tooltip
-    const stepInfo = {
+    const stepInfo: CommentBoxStepInfo = {
       current: stepIndex,
       total: totalSteps,
       completedSteps: [...this.completedSteps], // Copy to avoid mutations
+      progress: 'performed',
     };
 
     // Create skip callback if step is skippable
