@@ -209,7 +209,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
         <div className={styles.track}>
           <div className={styles.fill} style={{ width: `${displayPercentage}%` }} />
         </div>
-        <span className={styles.percentage} role="status" data-testid={testIds.markComplete.percentage}>
+        <span className={styles.percentage} data-testid={testIds.markComplete.percentage}>
           {t('markComplete.percentComplete', '{{percent}}% complete', { percent: displayPercentage })}
         </span>
       </div>

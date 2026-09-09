@@ -38,14 +38,28 @@ jest.mock('../../global-state/content-key', () => ({
   sanitizeContentKey: (value: string) => value,
 }));
 
+let percentage = 25;
+let notifyProgress: (() => void) | undefined;
 jest.mock('../../global-state/completion-store', () => ({
   isPreviewContentKey: () => false,
-  getGuideProgress: () => ({ completed: 1, total: 4, percentage: 25 }),
-  subscribeProgress: () => () => undefined,
+  getGuideProgress: () => ({ completed: 1, total: 4, percentage }),
+  subscribeProgress: (_contentKey: string, listener: () => void) => {
+    notifyProgress = listener;
+    return () => {
+      notifyProgress = undefined;
+    };
+  },
 }));
+
+/** Every live region the footer currently exposes. */
+function liveRegions(): Element[] {
+  return Array.from(screen.getByTestId(testIds.markComplete.footer).querySelectorAll('[role="status"], [aria-live]'));
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
+  percentage = 25;
+  notifyProgress = undefined;
   markStorage.get.mockResolvedValue(null);
   markStorage.set.mockResolvedValue(undefined);
 });
@@ -134,19 +148,30 @@ describe('MarkCompleteFooter', () => {
     expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
   });
 
-  it('announces the new state and keeps focus, rather than dropping it to the body', async () => {
+  it('announces reaching complete exactly once, and keeps focus rather than dropping it to the body', async () => {
     render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
 
     await clickWhenReady();
 
     const completed = screen.getByTestId(testIds.markComplete.completed);
-    expect(completed).toHaveAttribute('role', 'status');
+    expect(liveRegions()).toEqual([completed]);
     expect(completed).toHaveTextContent('Completed');
     expect(completed).toHaveFocus();
-    // The percentage is a live region of its own, so the reader hears the new
-    // number without the footer carrying it twice.
-    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveAttribute('role', 'status');
     expect(screen.getAllByText(/100% complete/)).toHaveLength(1);
+  });
+
+  it('announces nothing while unmarked, however often the percentage moves', async () => {
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+    await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
+    expect(liveRegions()).toEqual([]);
+
+    percentage = 50;
+    act(() => {
+      notifyProgress?.();
+    });
+
+    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('50% complete');
+    expect(liveRegions()).toEqual([]);
   });
 
   it('does not steal focus when a return visit hydrates an existing mark', async () => {
