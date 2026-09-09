@@ -51,6 +51,7 @@ import {
   applyPackageMeta,
   buildPackageMetaMap,
   exitCodeFromResults,
+  guideStatusFromResultsData,
   provisioningErrorCode,
   provisioningFailureResults,
   resolveRunMode,
@@ -858,16 +859,9 @@ async function runChains(
           const meta = packageMetaById.get(planned.id);
           applyPackageMeta(data, meta);
           const failedPrerequisite = planned.dependencies.find((dependency) => blocked.has(dependency));
-          const status: GuideStatus =
-            data.abortReason === 'SKIPPED_PREREQ'
-              ? 'skipped_prereq'
-              : data.abortReason === 'AUTH_EXPIRED' || data.errorCode === 'AUTH_EXPIRED'
-                ? 'auth_expired'
-                : data.outcome === 'passed'
-                  ? 'passed'
-                  : 'failed';
+          const status = guideStatusFromResultsData(data);
           const exitCode =
-            status === 'passed' || status === 'skipped_prereq'
+            status === 'passed' || status === 'skipped_prereq' || status === 'skipped_unsupported_steps'
               ? ExitCode.SUCCESS
               : status === 'auth_expired'
                 ? ExitCode.AUTH_FAILURE
@@ -890,13 +884,14 @@ async function runChains(
           });
           if (status !== 'passed') {
             blocked.add(planned.id);
-            chainHadFailure = true;
           }
           if (status === 'failed') {
             allPassed = false;
+            chainHadFailure = true;
           }
           if (status === 'auth_expired') {
             allPassed = false;
+            chainHadFailure = true;
             hasAuthExpiry = true;
           }
           const suffix = planned.autoIncluded ? ' (auto-included prerequisite)' : '';
@@ -905,6 +900,8 @@ async function runChains(
             console.log('   ✅ Test passed');
           } else if (status === 'skipped_prereq') {
             console.log(`   ⊘ Skipped: prerequisite "${failedPrerequisite}" did not pass`);
+          } else if (status === 'skipped_unsupported_steps') {
+            console.log(`   ⊘ Skipped: ${data.errorMessage}`);
           } else if (status === 'auth_expired') {
             console.log(`   ❌ Session expired: ${data.errorMessage ?? data.abortMessage}`);
           } else {
@@ -916,14 +913,12 @@ async function runChains(
         }
         continue;
       }
-      // IDs in this chain that failed or were skipped; their dependents skip.
       const blocked = new Set<string>();
 
       for (const planned of chain) {
         const blockingDep = planned.dependencies.find((dep) => blocked.has(dep));
         if (blockingDep) {
           blocked.add(planned.id);
-          chainHadFailure = true;
           console.log(`
 📚 ${planned.guide.path}`);
           console.log(`   ⊘ Skipped: prerequisite "${blockingDep}" did not pass`);
@@ -954,7 +949,6 @@ async function runChains(
             exitCode: ExitCode.SUCCESS,
             autoIncluded: planned.autoIncluded,
             failedPrerequisite: blockingDep,
-            // Include a result so the skipped guide is represented in the JSON report
             resultsData: prereqResultsData,
           });
           continue;
@@ -991,11 +985,12 @@ async function runChains(
           continue;
         }
         applyPackageMeta(result.resultsData, meta);
-        const status: GuideStatus = result.success
-          ? 'passed'
-          : result.abortReason === 'AUTH_EXPIRED'
-            ? 'auth_expired'
-            : 'failed';
+        const status: GuideStatus =
+          result.success && result.resultsData
+            ? guideStatusFromResultsData(result.resultsData)
+            : result.abortReason === 'AUTH_EXPIRED'
+              ? 'auth_expired'
+              : 'failed';
 
         results.push({
           guide: planned.guide.path,
@@ -1004,12 +999,15 @@ async function runChains(
           exitCode: result.exitCode,
           traceFile: result.traceFile,
           abortReason: result.abortReason,
-          abortMessage: result.abortMessage,
+          abortMessage: result.abortMessage ?? result.resultsData?.errorMessage,
           resultsData: result.resultsData,
           autoIncluded: planned.autoIncluded,
         });
 
-        if (!result.success) {
+        if (status === 'skipped_unsupported_steps') {
+          blocked.add(planned.id);
+          console.log(`   ⊘ Skipped: ${result.resultsData?.errorMessage}`);
+        } else if (!result.success) {
           allPassed = false;
           chainHadFailure = true;
           blocked.add(planned.id);
@@ -1023,7 +1021,7 @@ async function runChains(
         } else {
           console.log(`   ✅ Test passed`);
         }
-        startingLocations.record(result.success, result.resultsData, targetUrl);
+        startingLocations.record(status === 'passed', result.resultsData, targetUrl);
 
         if (result.traceFile && options.trace) {
           console.log(`   📊 Trace file: ${result.traceFile}`);

@@ -63,7 +63,11 @@ The runner supports `plain`, `multistep`, and `guided`. It reports the other reg
 
 Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
 
-A guide with only unsupported roots fails before execution. The error names each unsupported kind.
+A guide with only unsupported roots returns a skipped report before execution. The report includes each unsupported kind and step ID.
+
+This report has `outcome: "skipped"` and no `errorCode`. It keeps the complete coverage inventory and gives an explicit reason.
+
+The CLI shows `Skipped (unsupported steps)` and exits with code 0. The skipped guide blocks guides that declare it as a prerequisite.
 
 Browser actions use only rendered DOM state. Raw guide JSON can identify authored interactive content, but it cannot control browser actions.
 

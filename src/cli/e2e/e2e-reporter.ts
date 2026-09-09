@@ -169,13 +169,6 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
   });
 }
 
-/**
- * Generate a complete E2E test report from test results data.
- *
- * @param data - Test results data from test execution
- * @param grafanaVersion - Optional Grafana version string
- * @returns Complete E2E test report
- */
 export function generateReport(data: TestResultsData, grafanaVersion?: string): E2ETestReport {
   const summary = generateSummary(data.results);
   const steps = convertStepResults(data.results);
@@ -193,7 +186,11 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
   const errorCode =
     data.errorCode ??
     (data.abortReason as E2EErrorCode | undefined) ??
-    (outcome === 'failed' ? 'MANDATORY_FAILURE' : outcome === 'passed' ? undefined : 'UNKNOWN');
+    (outcome === 'failed'
+      ? 'MANDATORY_FAILURE'
+      : outcome === 'passed' || outcome === 'skipped'
+        ? undefined
+        : 'UNKNOWN');
   const targetUrl = data.guide.targetUrl ?? 'unknown://target';
 
   const report: E2ETestReport = {
@@ -226,12 +223,10 @@ export function generateReport(data: TestResultsData, grafanaVersion?: string): 
     ...(data.coverage ? { coverage: data.coverage } : {}),
   };
 
-  // Add optional config fields
   if (grafanaVersion) {
     report.config.grafanaVersion = grafanaVersion;
   }
 
-  // Add abort info if present
   if (data.aborted) {
     report.aborted = true;
     if (data.abortReason) {
@@ -368,29 +363,16 @@ export function formatReportSummary(report: E2ETestReport): string {
   return parts.join(', ');
 }
 
-// ============================================
-// Multi-Guide Report Generation (L3-7B)
-// ============================================
-
-/**
- * Generate aggregated summary from multiple guide reports (L3-7B).
- *
- * @param reports - Array of individual guide reports
- * @returns Aggregated summary statistics
- */
 export function generateMultiGuideSummary(reports: E2ETestReport[]): MultiGuideSummary {
-  const skippedGuides = reports.filter((r) => r.abortReason === 'SKIPPED_PREREQ').length;
+  const isSkipped = (report: E2ETestReport): boolean =>
+    report.outcome === 'skipped' || report.abortReason === 'SKIPPED_PREREQ';
+  const skippedGuides = reports.filter(isSkipped).length;
   const isAuthExpired = (report: E2ETestReport): boolean =>
     report.abortReason === 'AUTH_EXPIRED' || report.errorCode === 'AUTH_EXPIRED';
-  const passedGuides = reports.filter(
-    (r) => isReportSuccess(r) && r.abortReason !== 'SKIPPED_PREREQ' && !isAuthExpired(r)
-  ).length;
-  const failedGuides = reports.filter(
-    (r) => !isReportSuccess(r) && r.abortReason !== 'SKIPPED_PREREQ' && !isAuthExpired(r)
-  ).length;
+  const passedGuides = reports.filter((r) => isReportSuccess(r) && !isSkipped(r) && !isAuthExpired(r)).length;
+  const failedGuides = reports.filter((r) => !isReportSuccess(r) && !isSkipped(r) && !isAuthExpired(r)).length;
   const authExpiredGuides = reports.filter(isAuthExpired).length;
 
-  // Aggregate step counts
   const steps = reports.reduce(
     (acc, report) => ({
       total: acc.total + report.summary.total,

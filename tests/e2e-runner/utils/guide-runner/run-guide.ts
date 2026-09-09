@@ -102,7 +102,7 @@ function toResultsData(
     startedAt: timestamp,
     endedAt: new Date().toISOString(),
     outcome,
-    errorCode: allStepsResult.abortReason ?? (outcome === 'passed' ? undefined : 'UNKNOWN'),
+    errorCode: allStepsResult.abortReason ?? (outcome === 'passed' || outcome === 'skipped' ? undefined : 'UNKNOWN'),
     errorMessage: allStepsResult.abortMessage,
     results: allStepsResult.results.map((result) => ({
       stepId: result.stepId,
@@ -139,10 +139,6 @@ async function executeGuideSteps(
   if (discovery.coverage.rendered === 0) {
     throw new Error(`Guide ${guide.id} contains interactive blocks but rendered no interactive steps`);
   }
-  if (discovery.coverage.supported === 0) {
-    const unsupportedKinds = [...new Set(discovery.coverage.unsupportedSteps.map(({ stepKind }) => stepKind))].sort();
-    throw new Error(`Guide ${guide.id} rendered only unsupported step kinds: ${unsupportedKinds.join(', ')}`);
-  }
 
   printHeader(guide.title);
   printDiscoveryResults(
@@ -152,6 +148,21 @@ async function executeGuideSteps(
     discovery.durationMs,
     discovery.coverage.contractSource
   );
+  if (discovery.coverage.supported === 0) {
+    const unsupportedKinds = [...new Set(discovery.coverage.unsupportedSteps.map(({ stepKind }) => stepKind))].sort();
+    return {
+      ...toResultsData(
+        guide,
+        options.targetUrl,
+        options.startingLocation,
+        timestamp,
+        { results: [], aborted: false },
+        'skipped',
+        discovery.coverage
+      ),
+      errorMessage: `Guide ${guide.id} rendered only unsupported step kinds: ${unsupportedKinds.join(', ')}`,
+    };
+  }
 
   const completedResults: StepTestResult[] = [];
   const execution = executeAllSteps(page, discovery.steps, {
