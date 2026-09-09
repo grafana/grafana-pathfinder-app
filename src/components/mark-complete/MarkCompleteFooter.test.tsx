@@ -34,28 +34,34 @@ jest.mock('../../global-state/progress-events', () => ({
 
 jest.mock('../../global-state/content-key', () => ({
   getContentKey: () => 'guide-key',
+  sanitizeContentKey: (value: string) => value,
 }));
 
-let previewKey = false;
 jest.mock('../../global-state/completion-store', () => ({
-  isPreviewContentKey: () => previewKey,
+  isPreviewContentKey: () => false,
   getGuideProgress: () => ({ completed: 1, total: 4, percentage: 25 }),
   subscribeProgress: () => () => undefined,
 }));
 
 beforeEach(() => {
   jest.clearAllMocks();
-  previewKey = false;
   markStorage.get.mockResolvedValue(null);
   markStorage.set.mockResolvedValue(undefined);
 });
+
+/** The control is clickable only once the stored mark has been read. */
+async function clickWhenReady(): Promise<void> {
+  const button = await screen.findByTestId(testIds.markComplete.button);
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+}
 
 describe('MarkCompleteFooter', () => {
   it('records exactly one completion and one analytics event per click', async () => {
     const onMarkComplete = jest.fn();
     render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
 
-    fireEvent.click(screen.getByTestId(testIds.markComplete.button));
+    await clickWhenReady();
 
     expect(onMarkComplete).toHaveBeenCalledTimes(1);
     expect(reportAppInteraction).toHaveBeenCalledTimes(1);
@@ -67,13 +73,38 @@ describe('MarkCompleteFooter', () => {
     await waitFor(() => expect(markStorage.set).toHaveBeenCalledWith('guide-key', true));
   });
 
-  it('fires nothing on render or re-render', () => {
+  it('fires nothing on render or re-render', async () => {
     const onMarkComplete = jest.fn();
     const { rerender } = render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
     rerender(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
+    await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
 
     expect(onMarkComplete).not.toHaveBeenCalled();
     expect(reportAppInteraction).not.toHaveBeenCalled();
+  });
+
+  it('refuses the click until the stored mark has been read', async () => {
+    let resolveRead: (value: true | null) => void = () => undefined;
+    markStorage.get.mockReturnValue(
+      new Promise<true | null>((resolve) => {
+        resolveRead = resolve;
+      })
+    );
+    const onMarkComplete = jest.fn();
+    render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
+
+    // The control stays visible throughout — an intermittently absent control
+    // is the interpretability problem the model exists to prevent.
+    const button = await screen.findByTestId(testIds.markComplete.button);
+    fireEvent.click(button);
+    expect(onMarkComplete).not.toHaveBeenCalled();
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRead(null);
+    });
+    fireEvent.click(button);
+    expect(onMarkComplete).toHaveBeenCalledTimes(1);
   });
 
   it('fires nothing on a return visit once the mark exists, and offers no button to click', async () => {
@@ -90,7 +121,7 @@ describe('MarkCompleteFooter', () => {
   it('drives the guide to 100% and announces it', async () => {
     render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
 
-    fireEvent.click(screen.getByTestId(testIds.markComplete.button));
+    await clickWhenReady();
 
     expect(setCompletionPercentage).toHaveBeenCalledWith('guide-key', 100);
     expect(dispatchProgress).toHaveBeenCalledWith({
@@ -102,24 +133,13 @@ describe('MarkCompleteFooter', () => {
     expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
   });
 
-  it('persists nothing from a block-editor preview, but still completes the reading', async () => {
-    previewKey = true;
-    const onMarkComplete = jest.fn();
-    render(<MarkCompleteFooter context="guide" onMarkComplete={onMarkComplete} />);
-
-    fireEvent.click(screen.getByTestId(testIds.markComplete.button));
-
-    expect(onMarkComplete).toHaveBeenCalledTimes(1);
-    expect(markStorage.set).not.toHaveBeenCalled();
-    expect(setCompletionPercentage).not.toHaveBeenCalled();
-    expect(dispatchProgress).not.toHaveBeenCalled();
-  });
-
   it('completes and continues on a milestone', async () => {
     jest.useFakeTimers();
     const onContinue = jest.fn();
     const onMarkComplete = jest.fn();
     render(<MarkCompleteFooter context="milestone" onMarkComplete={onMarkComplete} onContinue={onContinue} />);
+    // Settles the stored-mark read; promises are not faked.
+    await act(async () => {});
 
     fireEvent.click(screen.getByTestId(testIds.markComplete.button));
 

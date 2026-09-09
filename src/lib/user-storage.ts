@@ -1377,6 +1377,32 @@ export const guideCompletionMarkStorage = {
       logger.warn('Failed to clear guide completion mark', { error });
     }
   },
+
+  async clearMany(contentKeys: string[]): Promise<void> {
+    await Promise.all(contentKeys.map((contentKey) => guideCompletionMarkStorage.clear(contentKey)));
+  },
+
+  /**
+   * Clear every mark whose content key starts with `contentKeyPrefix`, or all
+   * of them when it is omitted. Marks are keyed by content key alone and
+   * milestone keys are recorded nowhere, so the bulk reset paths recover them
+   * by prefix exactly as the path reset recovers step keys.
+   */
+  async clearAllWithPrefix(contentKeyPrefix = ''): Promise<void> {
+    try {
+      const prefix = `${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKeyPrefix}`;
+      const contentKeys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix) && !key.endsWith(TIMESTAMP_SUFFIX)) {
+          contentKeys.push(key.slice(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX.length));
+        }
+      }
+      await guideCompletionMarkStorage.clearMany(contentKeys);
+    } catch (error) {
+      logger.warn('Failed to clear guide completion marks', { error });
+    }
+  },
 };
 
 /**

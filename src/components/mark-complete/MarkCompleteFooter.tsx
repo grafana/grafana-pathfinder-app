@@ -21,7 +21,7 @@
  * of its own.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
@@ -30,7 +30,7 @@ import { t } from '@grafana/i18n';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
-import { getContentKey } from '../../global-state/content-key';
+import { getContentKey, sanitizeContentKey } from '../../global-state/content-key';
 import { isPreviewContentKey, getGuideProgress, subscribeProgress } from '../../global-state/completion-store';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { testIds } from '../../constants/testIds';
@@ -44,6 +44,13 @@ export type MarkCompleteContext = 'guide' | 'milestone';
 
 export interface MarkCompleteFooterProps {
   context: MarkCompleteContext;
+  /**
+   * The rendered content's URL. Not itself the storage key — a journey's
+   * `content.url` carries a `/content.json` suffix the rest of the progress
+   * system does not — but it identifies the guide, so a change to it
+   * re-resolves the key even when the footer is not remounted.
+   */
+  contentUrl?: string;
   /**
    * The surface's completion emitter — the same callback the auto-complete
    * route fires when a guide reaches 100%. Deduplicated by the caller, so a
@@ -60,48 +67,77 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
 
-export function MarkCompleteFooter({ context, onMarkComplete, onContinue }: MarkCompleteFooterProps) {
+/**
+ * A block-editor preview's own URL wins over the ambient active tab, which may
+ * belong to a docs panel mounted alongside the editor — otherwise a preview
+ * click would hydrate, and persist against, whichever real guide that panel
+ * happens to hold.
+ */
+function resolveContentKey(contentUrl: string | undefined): string {
+  if (contentUrl && isPreviewContentKey(contentUrl)) {
+    return sanitizeContentKey(contentUrl);
+  }
+  return getContentKey();
+}
+
+export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onContinue }: MarkCompleteFooterProps) {
   const styles = useStyles2(getStyles);
-  const [contentKey] = useState(getContentKey);
-  const [marked, setMarked] = useState(false);
+  // Tagged with the guide it was read for, so a guide change re-arms the
+  // control by derivation rather than by resetting state in an effect.
+  const [mark, setMark] = useState<{ readFor: string | undefined; marked: boolean } | null>(null);
   const [celebrating, setCelebrating] = useState(false);
-  const [percentage, setPercentage] = useState(() => getGuideProgress(contentKey).percentage);
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const percentage = useSyncExternalStore(
+    useCallback((listener: () => void) => subscribeProgress(resolveContentKey(contentUrl), listener), [contentUrl]),
+    useCallback(() => getGuideProgress(resolveContentKey(contentUrl)).percentage, [contentUrl])
+  );
+
+  // Both producers of the content key publish it from a layout effect — the
+  // panel's active tab URL and this renderer's own override — so resolving it
+  // during render would latch the previous milestone's key for the whole life
+  // of this one.
   useEffect(() => {
     let cancelled = false;
-    void guideCompletionMarkStorage.get(contentKey).then((existing) => {
-      if (!cancelled && existing) {
-        setMarked(true);
+    const settle = (marked: boolean) => {
+      if (!cancelled) {
+        setMark({ readFor: contentUrl, marked });
       }
-    });
+    };
+    guideCompletionMarkStorage
+      .get(resolveContentKey(contentUrl))
+      .then((existing) => settle(existing === true))
+      .catch((error) => {
+        logger.warn('Failed to read guide completion mark', { error });
+        settle(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [contentKey]);
-
-  useEffect(
-    () =>
-      subscribeProgress(contentKey, () => {
-        setPercentage(getGuideProgress(contentKey).percentage);
-      }),
-    [contentKey]
-  );
+  }, [contentUrl]);
 
   useEffect(
     () => () => {
       if (celebrationTimer.current) {
         clearTimeout(celebrationTimer.current);
+        celebrationTimer.current = null;
       }
     },
-    []
+    [contentUrl]
   );
 
+  // `hydrated` is what makes "never twice" structural rather than a race: until
+  // the stored mark has been read, a return visit cannot be told from a first
+  // one.
+  const hydrated = mark !== null && mark.readFor === contentUrl;
+  const marked = hydrated && mark.marked;
+
   const handleClick = useCallback(() => {
-    if (marked) {
+    if (!hydrated || marked) {
       return;
     }
-    setMarked(true);
+    const contentKey = resolveContentKey(contentUrl);
+    setMark({ readFor: contentUrl, marked: true });
 
     reportAppInteraction(UserInteraction.MarkCompleteClicked, {
       interaction_location: 'content_footer',
@@ -136,7 +172,7 @@ export function MarkCompleteFooter({ context, onMarkComplete, onContinue }: Mark
       setCelebrating(false);
       onContinue?.();
     }, CELEBRATION_MS);
-  }, [marked, context, percentage, contentKey, onMarkComplete, onContinue]);
+  }, [hydrated, marked, context, percentage, contentUrl, onMarkComplete, onContinue]);
 
   const displayPercentage = marked ? 100 : percentage;
   const label =
@@ -165,6 +201,7 @@ export function MarkCompleteFooter({ context, onMarkComplete, onContinue }: Mark
           variant="primary"
           icon="check"
           size="md"
+          disabled={!hydrated}
           onClick={handleClick}
           data-testid={testIds.markComplete.button}
         >

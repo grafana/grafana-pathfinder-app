@@ -7,13 +7,19 @@
  * asserting absence for a guide shape; such a test would re-encode the
  * predicate the model deleted. The one absence covered is a path's cover page,
  * which is a table of contents rather than a guide.
+ *
+ * The persistence cases run against the real content-key resolution and the
+ * real storage namespace, because which key a click writes under is exactly
+ * what a mocked resolver cannot prove.
  */
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
 import { dispatchProgress } from '../../global-state/progress-events';
+import { resetContentKeyForTests } from '../../global-state/content-key';
+import { guideCompletionMarkStorage } from '../../lib/user-storage';
 import { ContentRenderer } from './content-renderer';
 
 jest.mock('@grafana/i18n', () => ({
@@ -22,6 +28,7 @@ jest.mock('@grafana/i18n', () => ({
 
 const baseUrl = 'https://grafana.com/docs/learning-paths/demo';
 const milestones = [{ number: 1, title: 'Set up', duration: '', url: `${baseUrl}/set-up/`, isActive: false }];
+const PREVIEW_URL = 'block-editor://preview/demo';
 
 const PROSE_ONLY = '<p>Nothing to click here, only words.</p>';
 const WITH_INTERACTIVE_STEP =
@@ -48,12 +55,33 @@ function makeMilestone(currentMilestone = 1): RawContent {
   });
 }
 
+/** The control is clickable only once the stored mark has been read. */
+async function clickWhenReady(): Promise<void> {
+  const button = await screen.findByTestId(testIds.markComplete.button);
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  resetContentKeyForTests();
+  delete window.__DocsPluginActiveTabUrl;
+  delete window.__DocsPluginContentKey;
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+  localStorage.clear();
+  delete window.__DocsPluginActiveTabUrl;
+  delete window.__DocsPluginContentKey;
+});
+
 describe('ContentRenderer — the universal Mark complete control', () => {
   it.each([
     ['a prose-only guide', makeContent()],
     ['a guide with interactive steps', makeContent({ content: WITH_INTERACTIVE_STEP })],
     ['a milestone', makeMilestone()],
-    ['a block-editor preview', makeContent({ url: 'block-editor://preview/demo' })],
+    ['a block-editor preview', makeContent({ url: PREVIEW_URL })],
   ])('renders on %s', (_label, content) => {
     render(<ContentRenderer content={content} />);
 
@@ -78,15 +106,57 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument();
   });
 
-  it('records one completion when the click is followed by the automatic route', () => {
+  it('marks the guide the reader is actually on', async () => {
+    const content = makeContent();
+    window.__DocsPluginActiveTabUrl = content.url;
+    render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
+
+    await clickWhenReady();
+
+    await waitFor(async () => expect(await guideCompletionMarkStorage.get(content.url)).toBe(true));
+  });
+
+  it('re-resolves the key when the guide changes, so a mark lands on the new milestone', async () => {
+    const first = makeMilestone();
+    window.__DocsPluginActiveTabUrl = first.url;
+    const { rerender } = render(<ContentRenderer content={first} onGuideComplete={jest.fn()} />);
+    await screen.findByTestId(testIds.markComplete.button);
+
+    const second = makeContent({ url: `${baseUrl}/configure/` });
+    window.__DocsPluginActiveTabUrl = second.url;
+    rerender(<ContentRenderer content={second} onGuideComplete={jest.fn()} />);
+
+    await clickWhenReady();
+
+    await waitFor(async () => expect(await guideCompletionMarkStorage.get(second.url)).toBe(true));
+    expect(await guideCompletionMarkStorage.get(first.url)).toBeNull();
+  });
+
+  it('completes the reading from a block-editor preview but persists nothing', async () => {
+    // A docs panel holding a real guide can be open alongside the editor, and
+    // its active tab URL is the ambient content key.
+    const openGuideUrl = `${baseUrl}/set-up/`;
+    window.__DocsPluginActiveTabUrl = openGuideUrl;
+    const onGuideComplete = jest.fn();
+    render(<ContentRenderer content={makeContent({ url: PREVIEW_URL })} onGuideComplete={onGuideComplete} />);
+
+    await clickWhenReady();
+
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(await guideCompletionMarkStorage.get(PREVIEW_URL)).toBeNull();
+    expect(await guideCompletionMarkStorage.get(openGuideUrl)).toBeNull();
+  });
+
+  it('records one completion when the click is followed by the automatic route', async () => {
     jest.useFakeTimers();
     const onGuideComplete = jest.fn();
     const content = makeContent();
     window.__DocsPluginActiveTabUrl = content.url;
     render(<ContentRenderer content={content} onGuideComplete={onGuideComplete} />);
 
-    // The renderer ignores progress events until content settles.
-    act(() => {
+    // The renderer ignores progress events until content settles; the async
+    // act also settles the footer's stored-mark read.
+    await act(async () => {
       jest.advanceTimersByTime(300);
     });
 
@@ -96,6 +166,5 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     });
 
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
-    jest.useRealTimers();
   });
 });

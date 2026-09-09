@@ -228,8 +228,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         }
         const totalSections = countSections();
         if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current?.();
+          triggerGuideComplete();
         }
       }, 100); // Small delay to ensure DOM is stable
     };
@@ -254,10 +253,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
       // Check if all sections complete - trigger immediately if count is accurate
       if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
-        if (!guideCompleteCalledRef.current && onGuideCompleteRef.current) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current();
-        }
+        triggerGuideComplete();
       } else {
         // If count seems off, use debounced check as fallback
         debouncedCompletionCheck();
@@ -292,8 +288,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       const allComplete = Array.from(sections).every((section) => section.classList.contains('completed'));
 
       if (allComplete) {
-        guideCompleteCalledRef.current = true;
-        onGuideCompleteRef.current?.();
+        triggerGuideComplete();
       }
     };
 
@@ -324,8 +319,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
         const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
         if (eventKeyNorm === tabUrlNorm) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current?.();
+          triggerGuideComplete();
         }
       }
     };
@@ -359,7 +353,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         clearTimeout(debounceTimer);
       }
     };
-  }, [activeRef, content?.url]); // Removed onGuideComplete - using ref instead
+  }, [activeRef, content?.url, triggerGuideComplete]); // Removed onGuideComplete - using ref instead
 
   // Expose current content key globally for interactive persistence.
   // MUST be useLayoutEffect so the global is set before children's useEffect
@@ -452,6 +446,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter
       context={content.type === 'learning-journey' ? 'milestone' : 'guide'}
+      contentUrl={content.url}
       onMarkComplete={triggerGuideComplete}
       onContinue={onContinueToNextMilestone}
     />

@@ -181,10 +181,11 @@ produces — `mark-guide-complete`, which evidences the whole guide regardless o
 guide and every milestone from inside `ContentRenderer` so all four reading
 surfaces and the block-editor preview carry it from one site. The mark persists
 per content key in `guideCompletionMarkStorage`, beside the per-section `#842`
-acknowledgement rather than in place of it. Reaching 100% is what triggers badge
-awards, durable completion records, path progress and the "continue learning"
-CTA, so before this producer existed no guide in the library could trigger any
-of them under this model.
+acknowledgement rather than in place of it, and every reset path clears it so a
+guide the reader resets comes back unmarked and clickable. Reaching 100% is what
+triggers badge awards, durable completion records, path progress and the
+"continue learning" CTA, so before this producer existed no guide in the library
+could trigger any of them under this model.
 
 A path's cover page is the one place the control is absent, and that is not the
 predicate this decision deleted: a table of contents is neither a guide nor a

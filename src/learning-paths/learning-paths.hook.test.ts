@@ -60,6 +60,10 @@ jest.mock('../lib/user-storage', () => ({
     clearMany: jest.fn().mockResolvedValue(undefined),
   },
   milestoneCompletionStorage: { clear: jest.fn() },
+  guideCompletionMarkStorage: {
+    clearMany: jest.fn().mockResolvedValue(undefined),
+    clearAllWithPrefix: jest.fn().mockResolvedValue(undefined),
+  },
 }));
 
 jest.mock('./badge-coordinator', () => ({
