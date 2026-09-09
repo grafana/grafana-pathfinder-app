@@ -186,8 +186,15 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   useEffect(() => {
     const handleCleared = (event: Event) => {
       const clearedKey = (event as CustomEvent).detail?.contentKey;
-      if (clearedKey === '*' || clearedKey === resolveGuideContentKey(content?.url)) {
-        guideCompleteCalledRef.current = false;
+      const clearedEverything = clearedKey === '*';
+      if (!clearedEverything && clearedKey !== resolveGuideContentKey(content?.url)) {
+        return;
+      }
+      guideCompleteCalledRef.current = false;
+      // Only the whole-store form is safe to forget tracked sections on: a
+      // single-section reset carries the same guide-level key as a whole-guide
+      // one, so forgetting here would discard every other section's completion.
+      if (clearedEverything) {
         completedSectionsRef.current = new Set();
       }
     };
