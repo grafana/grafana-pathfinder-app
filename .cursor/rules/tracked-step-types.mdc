@@ -6,6 +6,7 @@ globs:
   - "src/components/content-renderer/content-renderer.tsx"
   - "src/docs-retrieval/json-parser.ts"
   - "src/lib/guide-stats/completion-affordance.ts"
+  - "src/global-state/guide-step-id-resolver.ts"
 alwaysApply: false
 ---
 
@@ -13,7 +14,7 @@ alwaysApply: false
 
 The plugin tracks "interactive step component types" — the React components rendered inside an interactive section that count as completable steps the user must execute (as opposed to passive content like markdown, image, or video).
 
-Authoritative definition lives in **one source**: `src/components/interactive-tutorial/step-type-registry.ts` (`STEP_TYPE_SCHEMAS`). Its `parseTypeKey` field feeds `STEP_TYPE_PARSE_KEYS`, which `content-renderer.tsx` re-uses for its parse-time `INTERACTIVE_STEP_TYPES` set. Adding a new step type requires editing **three sites**: the registry (parse + orchestration metadata), the React-component classifier, and `src/lib/guide-stats/completion-affordance.ts` — the stamped completion denominator's notion of which block types can emit completion evidence. That third site is tier 1 and cannot import the tier-4 registry, so `completion-affordance.parity.test.ts` holds the two in step instead; it fails when a parse key is added, removed, or remapped. Note it answers a narrower question than the other two: "can this block emit completion evidence", not "does it render interactively" — counting a block that emits none can make a guide permanently uncompletable, which is why `input` counts only in its blocking-datasource-check shape and `grot-guide` never counts at all.
+Authoritative definition lives in **one source**: `src/components/interactive-tutorial/step-type-registry.ts` (`STEP_TYPE_SCHEMAS`). Its `parseTypeKey` field feeds `STEP_TYPE_PARSE_KEYS`, which `content-renderer.tsx` re-uses for its parse-time `INTERACTIVE_STEP_TYPES` set. Adding a new step type requires editing **three sites**: the registry (parse + orchestration metadata), the React-component classifier, and `src/lib/guide-stats/completion-affordance.ts` — the stamped completion denominator's notion of which block types can emit completion evidence. That third site is tier 1 and cannot import the tier-4 registry, so `completion-affordance.parity.test.ts` holds the two in step instead; it fails when a parse key is added, removed, or remapped. Note it answers a narrower question than the other two: "can this block emit completion evidence", not "does it render interactively" — counting a block that emits none can make a guide permanently uncompletable, which is why `input` counts only in its blocking-datasource-check shape and `grot-guide` never counts at all. A type that does emit evidence also needs a step-id case outside the registry — see checklist step 7.
 
 ## The three registry sites
 
@@ -43,7 +44,7 @@ Assume you're adding a `FooStep` component:
 
 6. **Registry site 2** — add `FooStep` to `INTERACTIVE_STEP_COMPONENT_TYPES` in `section-child-classifier.ts`. Add a test case in `section-child-classifier.test.tsx`.
 
-7. **Registry site 3** — decide whether a `foo` block emits completion evidence. If it always does, add `'foo'` to `COMPLETION_AFFORDANCE_BLOCK_TYPES` in `src/lib/guide-stats/completion-affordance.ts`. If only some authored shapes do, branch in `emitsCompletionEvidence` the way `input` does. Either way `completion-affordance.parity.test.ts` fails until the new parse key is accounted for, so it will tell you.
+7. **Registry site 3** — decide whether a `foo` block emits completion evidence. If it always does, add `'foo'` to `COMPLETION_AFFORDANCE_BLOCK_TYPES` in `src/lib/guide-stats/completion-affordance.ts`. If only some authored shapes do, branch in `emitsCompletionEvidence` the way `input` does. Either way `completion-affordance.parity.test.ts` fails until the new parse key is accounted for, so it will tell you. Then add a matching `case 'foo':` to `resolveStepIdForBlock` in `src/global-state/guide-step-id-resolver.ts`, deriving the id exactly as the parser's own case does: the completion numerator keys block positions by that step id, so a completable type the resolver misses resolves position 0 and every guide built on it reads 0% while looking healthy. `src/lib/guide-stats/progress.parity.test.ts` iterates the completable set, so it fails until both the resolver case and a fixture exist.
 
 8. **Block editor** (optional) — if authors should create this block via the WYSIWYG editor, add a form in `src/components/block-editor/forms/`.
 
