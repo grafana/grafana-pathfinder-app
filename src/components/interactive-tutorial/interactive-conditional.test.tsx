@@ -200,7 +200,7 @@ describe('InteractiveConditional', () => {
             <InteractiveConditional
               conditions={[]}
               whenTrueChildren={[]}
-              whenFalseChildren={[]}
+              whenFalseChildren={[{ type: 'p', props: {}, children: [] }]}
               renderElement={() => null}
               keyPrefix="empty"
             />
@@ -220,6 +220,91 @@ describe('InteractiveConditional', () => {
 
     expect(item).toBeEmptyDOMElement();
     expect(getComputedStyle(item).display).toBe('none');
+  });
+
+  it('hides a numbered item when a nested conditional renders no output', async () => {
+    const { container } = render(
+      <div className={getInteractiveStyles(createTheme())}>
+        <ol className="interactive-section-content">
+          {wrapSectionChildrenForNumbering(
+            <InteractiveConditional
+              conditions={[]}
+              whenTrueChildren={[]}
+              whenFalseChildren={[{ type: 'interactive-conditional', props: {}, children: [] }]}
+              renderElement={(_element, childKey) => (
+                <InteractiveConditional
+                  key={childKey}
+                  conditions={[]}
+                  whenTrueChildren={[]}
+                  whenFalseChildren={[]}
+                  renderElement={() => null}
+                  keyPrefix={childKey}
+                />
+              )}
+              keyPrefix="nested-empty"
+            />
+          )}
+        </ol>
+      </div>
+    );
+    const item = container.querySelector('ol > li') as HTMLLIElement;
+
+    await act(async () => {
+      jest.runAllTimers();
+    });
+
+    await act(async () => {
+      jest.runAllTimers();
+    });
+
+    expect(item.querySelector('.interactive-conditional')).toBeEmptyDOMElement();
+    expect(getComputedStyle(item).display).toBe('none');
+  });
+
+  it('keeps visible siblings when a nested conditional is empty', async () => {
+    const { container } = render(
+      <div className={getInteractiveStyles(createTheme())}>
+        <ol className="interactive-section-content">
+          {wrapSectionChildrenForNumbering(
+            <InteractiveConditional
+              conditions={[]}
+              whenTrueChildren={[]}
+              whenFalseChildren={[
+                { type: 'interactive-conditional', props: {}, children: [] },
+                { type: 'p', props: {}, children: ['Visible sibling'] },
+              ]}
+              renderElement={(element, childKey) =>
+                element.type === 'p' ? (
+                  <p key={childKey}>Visible sibling</p>
+                ) : (
+                  <InteractiveConditional
+                    key={childKey}
+                    conditions={[]}
+                    whenTrueChildren={[]}
+                    whenFalseChildren={[]}
+                    renderElement={() => null}
+                    keyPrefix={childKey}
+                  />
+                )
+              }
+              keyPrefix="nested-empty-sibling"
+            />
+          )}
+        </ol>
+      </div>
+    );
+    const item = container.querySelector('ol > li') as HTMLLIElement;
+
+    await act(async () => {
+      jest.runAllTimers();
+    });
+
+    await act(async () => {
+      jest.runAllTimers();
+    });
+
+    expect(screen.getByText('Visible sibling')).toBeInTheDocument();
+    expect(getComputedStyle(item).display).not.toBe('none');
   });
 
   it('retains an occupied numbering slot when re-evaluation empties the branch', async () => {

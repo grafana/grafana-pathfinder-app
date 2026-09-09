@@ -38,6 +38,22 @@ function markPlainNumberingChild(child: React.ReactNode): React.ReactNode {
   return React.cloneElement(child, { className });
 }
 
+function hasRenderableNode(node: React.ReactNode): boolean {
+  if (node == null || typeof node === 'boolean') {
+    return false;
+  }
+  if (Array.isArray(node)) {
+    return node.some(hasRenderableNode);
+  }
+  if (typeof node === 'string') {
+    return node.length > 0;
+  }
+  if (React.isValidElement<{ children?: React.ReactNode }>(node) && node.type === React.Fragment) {
+    return hasRenderableNode(node.props.children);
+  }
+  return true;
+}
+
 export function InteractiveConditional({
   conditions,
   description,
@@ -89,9 +105,6 @@ export function InteractiveConditional({
   // checker callback below is not rebuilt on every parent render.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on conditionsKey, which is the serialization of conditions
   const requirements = useMemo(() => conditions, [conditionsKey]);
-  const whenTrueHasChildren = whenTrueChildren.length > 0;
-  const whenFalseHasChildren = whenFalseChildren.length > 0;
-
   const evaluateConditions = useCallback(
     async (options?: { isReevaluation?: boolean }) => {
       if (!isMountedRef.current) {
@@ -124,9 +137,6 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
-        if (result.pass ? whenTrueHasChildren : whenFalseHasChildren) {
-          setHasOccupiedNumberingSlot(true);
-        }
         setConditionsPassed(result.pass);
         setIsChecking(false);
       } catch (error) {
@@ -134,17 +144,33 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
-        if (whenFalseHasChildren) {
-          setHasOccupiedNumberingSlot(true);
-        }
         setConditionsPassed(false);
         setIsChecking(false);
       }
     },
-    [requirements, checkRequirementsFromData, description, refTarget, whenTrueHasChildren, whenFalseHasChildren]
+    [requirements, checkRequirementsFromData, description, refTarget]
   );
 
   const needsDomWatch = conditionsKeyNeedsDomWatch(conditionsKey);
+
+  const childrenToRender = conditionsPassed === null ? [] : conditionsPassed ? whenTrueChildren : whenFalseChildren;
+  const sectionConfig =
+    conditionsPassed === null ? undefined : conditionsPassed ? whenTrueSectionConfig : whenFalseSectionConfig;
+  const branchKey = conditionsPassed ? 'true' : 'false';
+  const renderedChildren =
+    conditionsPassed === null
+      ? []
+      : childrenToRender.map((child, index) => renderElement(child, `${keyPrefix}-${branchKey}-${index}`));
+  const hasRenderableChildren = renderedChildren.some(hasRenderableNode);
+
+  useEffect(() => {
+    if (hasRenderableChildren) {
+      // The rendered output is the only reliable occupancy signal; latch it
+      // after commit so a later empty re-evaluation can retain its slot.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- monotonic render-history latch
+      setHasOccupiedNumberingSlot(true);
+    }
+  }, [hasRenderableChildren]);
 
   // Stable ref to the latest evaluator. Lets long-lived subscriptions
   // (MutationObserver, event listeners) invoke the current evaluator without
@@ -268,14 +294,16 @@ export function InteractiveConditional({
     );
   }
 
-  const childrenToRender = conditionsPassed ? whenTrueChildren : whenFalseChildren;
-  const sectionConfig = conditionsPassed ? whenTrueSectionConfig : whenFalseSectionConfig;
-
   if (childrenToRender.length === 0) {
     return hasOccupiedNumberingSlot ? <span hidden data-section-numbering-retained="true" /> : null;
   }
 
-  const branchKey = conditionsPassed ? 'true' : 'false';
+  // Parsed elements can still produce no React output (for example, a nested
+  // conditional whose selected branch is empty). Do not leave a numbered
+  // wrapper around an empty result; it would consume a counter slot.
+  if (!hasRenderableChildren) {
+    return hasOccupiedNumberingSlot ? <span hidden data-section-numbering-retained="true" /> : null;
+  }
 
   // Section display preserves its own execution and numbering scope.
   if (display === 'section') {
@@ -303,15 +331,13 @@ export function InteractiveConditional({
           objectives={sectionObjectives}
           className="conditional-section"
         >
-          {childrenToRender.map((child, index) => renderElement(child, `${keyPrefix}-${branchKey}-${index}`))}
+          {renderedChildren}
         </InteractiveSection>
       </div>
     );
   }
 
-  const renderedChildren = childrenToRender.map((child, index) =>
-    markPlainNumberingChild(renderElement(child, `${keyPrefix}-${branchKey}-${index}`))
-  );
+  const alignedChildren = renderedChildren.map(markPlainNumberingChild);
 
   return (
     <div
@@ -320,7 +346,7 @@ export function InteractiveConditional({
       data-conditions={conditions.join(', ')}
       data-passed={String(conditionsPassed)}
     >
-      {renderedChildren}
+      {alignedChildren}
     </div>
   );
 }

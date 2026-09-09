@@ -364,6 +364,12 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     display: 'none',
   },
 
+  // A nested conditional can leave its parent wrapper empty after the inner
+  // branch resolves. Hide that numbered item for the same reason as :empty.
+  '.interactive-section-content > li[data-numbered="true"]:has(> .interactive-conditional:empty:only-child)': {
+    display: 'none',
+  },
+
   // Once visible, a conditional keeps its counter slot so later steps do not renumber.
   '.interactive-section-content > li[data-numbered="true"]:has(> [data-section-numbering-retained="true"])': {
     height: 0,
