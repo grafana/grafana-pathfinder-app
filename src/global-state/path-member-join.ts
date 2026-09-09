@@ -22,9 +22,21 @@
  *    Across schemes it is the opposite: the same id under two schemes may be
  *    two DIFFERENT guides. `createCompositeResolver` documents id collisions
  *    as possible and settles them bundled-first, so the schemes are consulted
- *    in that precedence and the first one holding a record answers. Taking a
- *    maximum across schemes would report a private App Platform guide's
- *    progress as a bundled member's.
+ *    in that precedence and the first one holding a record answers, rather
+ *    than a maximum that could report a private App Platform guide's progress
+ *    as a bundled member's.
+ *
+ *    That precedence applies to the id-scheme branch ONLY. A member that
+ *    arrives with a `url` is TRUSTED VERBATIM: this module is pure, cannot
+ *    consult the bundled repository, and has no way to second-guess which
+ *    guide the caller resolved. So the residual case stays open — a colliding
+ *    CR id can hand this module `backend-guide:<id>` for a member of a static
+ *    bundled path, because `resolveGuideMetadata` consults App Platform
+ *    metadata before the static fallback and that metadata covers every
+ *    published guide, not just members of App Platform paths. Closing it
+ *    belongs to the caller, which would have to resolve member URLs
+ *    bundled-first; recorded as follow-on for the rollup in decision 9 of
+ *    `docs/design/COMPLETION-MODEL.md`.
  *  - A member the record cannot answer for is EXCLUDED from the mean rather
  *    than scored zero, and counted: either no key could be formed at all
  *    (`'unresolved'`), or a key was present but held something other than a
@@ -143,23 +155,32 @@ function dedupe(values: readonly string[]): readonly string[] {
 }
 
 /**
- * The launch URLs a bare member id may have been opened under, unsanitized,
- * in `createCompositeResolver` precedence order. `bundled:` carries both of
- * its shapes because both may hold a record: My Learning launches a bundled
- * guide bare, the package resolver launches it as `bundled:<id>/content.json`.
- * `backend-guide:` has only the bare shape.
+ * The sole owner of the id-scheme construction: the launch URLs a bare member
+ * id may have been opened under, unsanitized, grouped by the guide they
+ * identify and ordered by `createCompositeResolver` precedence. `bundled:`
+ * carries both of its shapes in one group because both may hold a record for
+ * the same guide: My Learning launches a bundled guide bare, the package
+ * resolver launches it as `bundled:<id>/content.json`. `backend-guide:` is its
+ * own group and has only the bare shape.
  *
  * The package form mirrors `BundledPackageResolver.resolve`, which builds it
  * from the repository entry's `path` — every entry's `path` is `<id>/`, and
  * `path-member-join.test.ts` walks the whole repository so a divergent entry
  * fails there rather than in production.
  */
-export function pathMemberIdSchemeKeys(memberId: string): readonly string[] {
+function idSchemeKeyGroups(memberId: string): ReadonlyArray<readonly string[]> {
   return [
-    `${BUNDLED_PREFIX}${memberId}`,
-    `${BUNDLED_PREFIX}${memberId}${PACKAGE_CONTENT_SUFFIX}`,
-    `${BACKEND_GUIDE_PREFIX}${memberId}`,
+    [`${BUNDLED_PREFIX}${memberId}`, `${BUNDLED_PREFIX}${memberId}${PACKAGE_CONTENT_SUFFIX}`],
+    [`${BACKEND_GUIDE_PREFIX}${memberId}`],
   ];
+}
+
+/**
+ * {@link idSchemeKeyGroups} flattened — the raw keys `resetPath` clears in the
+ * namespaces keyed by the unsanitized launch URL.
+ */
+export function pathMemberIdSchemeKeys(memberId: string): readonly string[] {
+  return idSchemeKeyGroups(memberId).flat();
 }
 
 /** A resolved `bundled:` URL and its sibling shape; anything else, unchanged. */
@@ -175,7 +196,9 @@ function bundledLaunchShapes(url: string): readonly string[] {
 /**
  * The member's candidate keys grouped by the guide they identify, schemes in
  * `createCompositeResolver` precedence order. Keys within a group are launch
- * shapes of one guide and rank by percentage; groups rank by precedence.
+ * shapes of one guide and rank by percentage; groups rank by precedence. A
+ * supplied `url` is one group — it is trusted as the guide the caller
+ * resolved.
  */
 function pathMemberContentKeyGroups(member: PathMember, pathBaseUrl?: string): ReadonlyArray<readonly string[]> {
   if (member.url) {
@@ -184,14 +207,7 @@ function pathMemberContentKeyGroups(member: PathMember, pathBaseUrl?: string): R
   if (pathBaseUrl) {
     return [];
   }
-  return [
-    dedupe(
-      [`${BUNDLED_PREFIX}${member.id}`, `${BUNDLED_PREFIX}${member.id}${PACKAGE_CONTENT_SUFFIX}`].map(
-        sanitizeContentKey
-      )
-    ),
-    [sanitizeContentKey(`${BACKEND_GUIDE_PREFIX}${member.id}`)],
-  ];
+  return idSchemeKeyGroups(member.id).map((group) => dedupe(group.map(sanitizeContentKey)));
 }
 
 /**

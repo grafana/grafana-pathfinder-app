@@ -327,8 +327,10 @@ Learning opens it bare while the package resolver hands the context panel the
 package form. A resolved `bundled:` URL is therefore read alongside its sibling
 shape in both directions. Where the member cannot be answered for at all, it is
 **excluded from the mean and counted**, never scored zero.
-`src/global-state/path-member-join.ts` owns this, and `resetPath` reads its
-scheme list rather than restating it.
+`src/global-state/path-member-join.ts` owns this: one internal grouped
+id-scheme list is the source of truth, the join's read path maps the content-key
+sanitizer over it, and `resetPath` reads its flattened raw form rather than
+restating the schemes.
 
 **The furthest record wins within a scheme; precedence decides across them.**
 An earlier draft of this decision claimed a reader can only have progressed
@@ -351,6 +353,21 @@ a private guide's progress as a bundled member's. The join consults the schemes
 in the resolver's own precedence order and the first one holding a record
 answers — including when that record is unreadable, because falling through
 would substitute a different guide's number for a corrupt one.
+
+**That precedence covers the id-scheme branch only; a supplied member URL is
+trusted verbatim.** `path-member-join.ts` is pure — it cannot consult the
+bundled repository, so when a caller hands it a member with a `url` it has no
+basis to second-guess which guide that URL names, and it reads that key alone
+(plus the sibling launch shape, when the URL is `bundled:`). One case therefore
+stays open rather than being closed here: `resolveGuideMetadata` consults App
+Platform metadata before the static fallback, and that metadata covers every
+published guide rather than only members of App Platform paths, so a colliding
+CR id can hand the join `backend-guide:<id>` for a member of a static bundled
+path. **Known follow-on for the rollup:** the caller resolving member URLs
+bundled-first, matching the composite resolver, so the join is never handed an
+App Platform URL for a bundled member. Until then, do not read decision 9 as a
+guarantee that a private guide's progress can never surface as a bundled
+member's — only that the join's own scheme fallback will not cause it.
 
 **A present but unreadable record is excluded too, not scored zero.** The
 persisted record is unchecked `JSON.parse` output, so a key may be present and

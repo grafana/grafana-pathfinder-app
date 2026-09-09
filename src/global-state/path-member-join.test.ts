@@ -261,6 +261,25 @@ describe('resolvePathMemberPercentage', () => {
     });
   });
 
+  it('trusts a supplied backend-guide URL over a bundled record for the same id', () => {
+    // The join is pure and cannot tell which guide the caller resolved, so a
+    // supplied url is read verbatim — the scheme precedence covers the
+    // id-scheme branch only. See decision 9.
+    const resolution = resolvePathMemberPercentage(
+      { id: 'first-dashboard', url: 'backend-guide:first-dashboard' },
+      contextWith({
+        persistedPercentages: { 'bundled:first-dashboard': 30, 'backend-guide:first-dashboard': 90 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'first-dashboard',
+      percent: 90,
+      source: 'persisted',
+      contentKey: 'backend-guide:first-dashboard',
+    });
+  });
+
   it('answers from the backend-guide scheme when no bundled shape holds a record', () => {
     const resolution = resolvePathMemberPercentage(
       { id: 'fe-alerting-01' },
