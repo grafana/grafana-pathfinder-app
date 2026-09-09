@@ -72,17 +72,20 @@ describe('path-member-join launch round-trip', () => {
     ]);
   });
 
-  it('looks up a bundled member under the key a package-resolved launch persists', async () => {
-    const packageId = 'first-dashboard';
-    const resolution = await createBundledResolver().resolve(packageId);
-    if (!resolution.ok) {
-      throw new Error(`expected ${packageId} to resolve from the bundled repository`);
-    }
+  it.each(createBundledResolver().listPackageIds())(
+    'looks up %s under the key a package-resolved launch persists',
+    async (packageId) => {
+      // The context panel opens a recommended package at its resolved
+      // contentUrl, which the resolver derives from the repository entry's
+      // `path` rather than its id. Walking every entry catches a divergent one.
+      const resolution = await createBundledResolver().resolve(packageId);
+      if (!resolution.ok) {
+        throw new Error(`expected ${packageId} to resolve from the bundled repository`);
+      }
 
-    // The context panel opens a recommended package at its resolved contentUrl,
-    // so that is the key the member's progress is persisted under.
-    expect(pathMemberContentKeys({ id: packageId })).toContain(keyPersistedByLaunch(resolution.contentUrl));
-  });
+      expect(pathMemberContentKeys({ id: packageId })).toContain(keyPersistedByLaunch(resolution.contentUrl));
+    }
+  );
 
   it('scores a bundled member progressed from a package launch rather than excluding it', async () => {
     const packageId = 'first-dashboard';
@@ -187,7 +190,55 @@ describe('resolvePathMemberPercentage', () => {
     });
   });
 
-  it('treats a present but non-numeric record as no record', () => {
+  it('takes the furthest record when both bundled launch shapes hold one', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({
+        persistedPercentages: { 'bundled:guide-a': 30, 'bundled:guide-a/content.json': 90 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 90,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a/content.json',
+    });
+  });
+
+  it('takes the furthest record regardless of candidate order', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({
+        persistedPercentages: { 'bundled:guide-a': 90, 'bundled:guide-a/content.json': 30 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 90,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a',
+    });
+  });
+
+  it('takes the furthest record across both sibling shapes of a resolved URL', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a', url: 'bundled:guide-a/content.json' },
+      contextWith({
+        persistedPercentages: { 'bundled:guide-a': 75, 'bundled:guide-a/content.json': 20 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 75,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a',
+    });
+  });
+
+  it('prefers a readable record over an unreadable sibling', () => {
     const persisted = { 'bundled:guide-a': '40', 'backend-guide:guide-a': 70 } as unknown as Record<string, number>;
 
     const resolution = resolvePathMemberPercentage({ id: 'guide-a' }, contextWith({ persistedPercentages: persisted }));
@@ -200,13 +251,25 @@ describe('resolvePathMemberPercentage', () => {
     });
   });
 
-  it('keeps a non-finite record out of the mean', () => {
+  it('excludes and counts a member whose only record is unreadable', () => {
     const persisted = { 'bundled:guide-a': Number.NaN } as Record<string, number>;
 
     const result = resolvePathMemberPercentages([{ id: 'guide-a' }], contextWith({ persistedPercentages: persisted }));
 
-    expect(result.resolvedPercentages).toEqual([0]);
-    expect(result.members[0]!.source).toBe('unopened');
+    expect(result.members[0]).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
+    expect(result.resolvedPercentages).toEqual([]);
+    expect(result.unresolvedCount).toBe(1);
+    expect(result.unresolvedMemberIds).toEqual(['guide-a']);
+  });
+
+  it('excludes and counts a member whose record is not a number at all', () => {
+    const persisted = { 'bundled:guide-a': 'nearly done' } as unknown as Record<string, number>;
+
+    const result = resolvePathMemberPercentages([{ id: 'guide-a' }], contextWith({ persistedPercentages: persisted }));
+
+    expect(result.members[0]!.source).toBe('unreadable');
+    expect(result.resolvedPercentages).toEqual([]);
+    expect(result.unresolvedCount).toBe(1);
   });
 
   it('distinguishes a persisted zero from a member that was never opened', () => {

@@ -321,15 +321,33 @@ it, but that is an evidence population and not a firing condition.
 content key, and that key is stored nowhere: a member is keyed by the sanitized
 URL it was launched from, while a path definition carries ids. Where a member's
 launch URL has not resolved, every scheme it could have been launched under is
-read and whichever holds a record wins — a reader can only have progressed under
-one. That set is `bundled:<id>`, `bundled:<id>/content.json`, and
+read. That set is `bundled:<id>`, `bundled:<id>/content.json`, and
 `backend-guide:<id>`: a bundled guide has two live launch shapes, because My
 Learning opens it bare while the package resolver hands the context panel the
 package form. A resolved `bundled:` URL is therefore read alongside its sibling
-shape in both directions. Where no key can be formed at all, the member is
+shape in both directions. Where the member cannot be answered for at all, it is
 **excluded from the mean and counted**, never scored zero.
 `src/global-state/path-member-join.ts` owns this, and `resetPath` reads its
 scheme list rather than restating it.
+
+**The furthest record wins, not the first one found.** An earlier draft of this
+decision claimed a reader can only have progressed under one key. That is true
+across the schemes — a guide is bundled or it is App Platform, not both — but
+false within `bundled:`, because the bare and package launch shapes are
+independently reachable for the same guide and `interactiveStepStorage` keys
+step progress by content key, so each shape accrues its own. Taking the first
+key that holds anything would under-report a reader who opened the guide from
+both surfaces. The join takes the maximum finite value across the candidate
+keys, which is the honest answer to how far the reader got, and candidate order
+carries no authority.
+
+**A present but unreadable record is excluded too, not scored zero.** The
+persisted record is unchecked `JSON.parse` output, so a key may be present and
+hold something other than a finite number. That member _was_ opened, so zero is
+not the honest answer any more than it is for a member with no formable key —
+it is excluded and counted under its own `'unreadable'` source. A key that is
+genuinely absent stays distinct from both: the member was never opened, and
+zero is correct.
 
 **The key spaces `resetPath` clears are not one space.**
 `interactiveCompletionStorage` and `interactiveStepStorage` are keyed by the
@@ -355,9 +373,7 @@ exclusion, not an edge case.
 
 **A presence check, not a value read.** The storage `get` returns 0 for a
 missing key, which collapses the distinction the decision rests on. The join
-reads the whole record and tests for the key. The record is parsed persisted
-JSON and its value type is unchecked, so a present key holding anything but a
-finite number is treated as no record rather than entering the mean.
+reads the whole record and tests for the key.
 
 ## The alternative considered and rejected
 
@@ -604,7 +620,7 @@ updated is Jay's call.
   — see `completion-denominator-authority` in `docs/design/CONCERN_DETAILS.md`.
 - **An unresolvable member is excluded from the mean, never scored zero**
   (decision 9), and the join reads `interactiveCompletionStorage` by key
-  presence.
+  presence, taking the furthest record across a member's candidate keys.
 
 ## Related
 

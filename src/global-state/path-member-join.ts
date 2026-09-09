@@ -14,15 +14,20 @@
  *    definition — the same ambiguity `resetPath` works around by clearing
  *    every one of them. `bundled:` itself has two live launch shapes: My
  *    Learning opens a bundled guide bare, while the package resolver hands the
- *    context panel `bundled:<id>/content.json`. So every shape is read, and
- *    whichever holds a record wins. A reader can only have progressed under
- *    one of them.
- *  - A member for which no key can be formed at all is UNRESOLVED, and is
- *    excluded from the mean rather than scored zero. A zero is
- *    indistinguishable from a real result and drags the path's number down
- *    silently, which is the one failure that would look like evidence about
- *    reader behaviour instead of a bug. {@link PathMemberJoinResult} carries
- *    the count so the exclusion is visible.
+ *    context panel `bundled:<id>/content.json`. Those two are independently
+ *    reachable for the same guide and each keeps its own step progress, so a
+ *    reader may hold a record under both. Every shape is read and the
+ *    FURTHEST of them wins — how far the reader actually got on that guide.
+ *    Candidate order carries no authority.
+ *  - A member the record cannot answer for is EXCLUDED from the mean rather
+ *    than scored zero, and counted: either no key could be formed at all
+ *    (`'unresolved'`), or a key was present but held something other than a
+ *    finite number (`'unreadable'`). A zero is indistinguishable from a real
+ *    result and drags the path's number down silently, which is the one
+ *    failure that would look like evidence about reader behaviour instead of
+ *    a bug. {@link PathMemberJoinResult} carries the count so the exclusion
+ *    is visible. A key that is genuinely absent is a different thing: the
+ *    member was never opened, and zero is the honest answer.
  *
  * Pure: the persisted record is supplied by the caller, so this module reads
  * no storage and holds no state.
@@ -74,19 +79,24 @@ export interface PathMemberJoinContext {
 export type PathMemberPercentageSource =
   /** In the completed set. */
   | 'completed'
-  /** A record was found under one of the member's candidate keys. */
+  /** The furthest record found across the member's candidate keys. */
   | 'persisted'
   /** Keys were formed and none held a record — the member was never opened. */
   | 'unopened'
   /** No candidate key could be formed. Excluded from the mean. */
-  | 'unresolved';
+  | 'unresolved'
+  /**
+   * A candidate key was present but held no finite number, so the member was
+   * opened and its progress is unreadable. Excluded from the mean.
+   */
+  | 'unreadable';
 
 export interface PathMemberPercentage {
   readonly memberId: string;
-  /** `undefined` only when `source` is `'unresolved'`. */
+  /** `undefined` exactly when the member is excluded from the mean. */
   readonly percent: number | undefined;
   readonly source: PathMemberPercentageSource;
-  /** The key `percent` was read under, when a record was found. */
+  /** The key the winning `percent` was read under. */
   readonly contentKey?: string;
 }
 
@@ -94,7 +104,7 @@ export interface PathMemberJoinResult {
   readonly members: readonly PathMemberPercentage[];
   /** The percentages that may enter the mean, in member order. */
   readonly resolvedPercentages: readonly number[];
-  /** Members excluded because no content key could be formed. */
+  /** Members excluded because the record could not answer for them. */
   readonly unresolvedCount: number;
   readonly unresolvedMemberIds: readonly string[];
 }
@@ -109,9 +119,14 @@ function dedupe(values: readonly string[]): readonly string[] {
 
 /**
  * The launch URLs a bare member id may have been opened under, unsanitized.
- * `bundled:` carries both of its shapes because either may hold the record:
- * My Learning launches a bundled guide bare, the package resolver launches it
- * as `bundled:<id>/content.json`. `backend-guide:` has only the bare shape.
+ * `bundled:` carries both of its shapes because both may hold a record: My
+ * Learning launches a bundled guide bare, the package resolver launches it as
+ * `bundled:<id>/content.json`. `backend-guide:` has only the bare shape.
+ *
+ * The package form mirrors `BundledPackageResolver.resolve`, which builds it
+ * from the repository entry's `path` — every entry's `path` is `<id>/`, and
+ * `path-member-join.test.ts` walks the whole repository so a divergent entry
+ * fails there rather than in production.
  */
 export function pathMemberIdSchemeKeys(memberId: string): readonly string[] {
   return [
@@ -132,8 +147,8 @@ function bundledLaunchShapes(url: string): readonly string[] {
 }
 
 /**
- * The keys a member may have persisted under, most authoritative first.
- * Empty when none can be formed.
+ * The keys a member may have persisted under, in no particular order — the
+ * reader may hold a record under more than one. Empty when none can be formed.
  */
 export function pathMemberContentKeys(member: PathMember, pathBaseUrl?: string): readonly string[] {
   if (member.url) {
@@ -155,17 +170,29 @@ export function resolvePathMemberPercentage(member: PathMember, context: PathMem
     return { memberId: member.id, percent: undefined, source: 'unresolved' };
   }
 
+  let furthest: { percent: number; contentKey: string } | undefined;
+  let unreadable = false;
+
   for (const contentKey of candidates) {
     if (!Object.hasOwn(context.persistedPercentages, contentKey)) {
       continue;
     }
     const persisted: unknown = context.persistedPercentages[contentKey];
     if (typeof persisted !== 'number' || !Number.isFinite(persisted)) {
+      unreadable = true;
       continue;
     }
-    return { memberId: member.id, percent: persisted, source: 'persisted', contentKey };
+    if (!furthest || persisted > furthest.percent) {
+      furthest = { percent: persisted, contentKey };
+    }
   }
 
+  if (furthest) {
+    return { memberId: member.id, percent: furthest.percent, source: 'persisted', contentKey: furthest.contentKey };
+  }
+  if (unreadable) {
+    return { memberId: member.id, percent: undefined, source: 'unreadable' };
+  }
   return { memberId: member.id, percent: 0, source: 'unopened' };
 }
 
@@ -174,12 +201,12 @@ export function resolvePathMemberPercentages(
   context: PathMemberJoinContext
 ): PathMemberJoinResult {
   const resolved = members.map((member) => resolvePathMemberPercentage(member, context));
-  const unresolved = resolved.filter((entry) => entry.source === 'unresolved');
+  const excluded = resolved.filter((entry) => entry.percent === undefined);
 
   return {
     members: resolved,
     resolvedPercentages: resolved.flatMap((entry) => (entry.percent === undefined ? [] : [entry.percent])),
-    unresolvedCount: unresolved.length,
-    unresolvedMemberIds: unresolved.map((entry) => entry.memberId),
+    unresolvedCount: excluded.length,
+    unresolvedMemberIds: excluded.map((entry) => entry.memberId),
   };
 }
