@@ -31,7 +31,7 @@ import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
-import { getContentKey, sanitizeContentKey } from '../../global-state/content-key';
+import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import { isPreviewContentKey, getGuideProgress, subscribeProgress } from '../../global-state/completion-store';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { testIds } from '../../constants/testIds';
@@ -68,19 +68,6 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
 
-/**
- * A block-editor preview's own URL wins over the ambient active tab, which may
- * belong to a docs panel mounted alongside the editor — otherwise a preview
- * click would hydrate, and persist against, whichever real guide that panel
- * happens to hold.
- */
-function resolveContentKey(contentUrl: string | undefined): string {
-  if (contentUrl && isPreviewContentKey(contentUrl)) {
-    return sanitizeContentKey(contentUrl);
-  }
-  return getContentKey();
-}
-
 export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onContinue }: MarkCompleteFooterProps) {
   const styles = useStyles2(getStyles);
   // Tagged with the guide it was read for, so a guide change re-arms the
@@ -91,8 +78,11 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const percentage = useSyncExternalStore(
-    useCallback((listener: () => void) => subscribeProgress(resolveContentKey(contentUrl), listener), [contentUrl]),
-    useCallback(() => getGuideProgress(resolveContentKey(contentUrl)).percentage, [contentUrl])
+    useCallback(
+      (listener: () => void) => subscribeProgress(resolveGuideContentKey(contentUrl), listener),
+      [contentUrl]
+    ),
+    useCallback(() => getGuideProgress(resolveGuideContentKey(contentUrl)).percentage, [contentUrl])
   );
 
   // Both producers of the content key publish it from a layout effect — the
@@ -107,7 +97,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       }
     };
     guideCompletionMarkStorage
-      .get(resolveContentKey(contentUrl))
+      .get(resolveGuideContentKey(contentUrl))
       .then((existing) => settle(existing === true))
       .catch((error) => {
         logger.warn('Failed to read guide completion mark', { error });
@@ -124,7 +114,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
   useEffect(() => {
     const handleCleared = (event: Event) => {
       const clearedKey = (event as CustomEvent).detail?.contentKey;
-      if (clearedKey === '*' || clearedKey === resolveContentKey(contentUrl)) {
+      if (clearedKey === '*' || clearedKey === resolveGuideContentKey(contentUrl)) {
         setClearedCount((count) => count + 1);
       }
     };
@@ -154,7 +144,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     if (!hydrated || marked) {
       return;
     }
-    const contentKey = resolveContentKey(contentUrl);
+    const contentKey = resolveGuideContentKey(contentUrl);
     setMark({ readFor: contentUrl, marked: true });
 
     // The completion write must not wait on the celebration: a reader who

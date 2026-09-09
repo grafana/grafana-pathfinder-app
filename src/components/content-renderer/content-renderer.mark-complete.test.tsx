@@ -21,6 +21,7 @@ import { UserInteraction } from '../../lib/analytics';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { resetContentKeyForTests } from '../../global-state/content-key';
 import { guideCompletionMarkStorage } from '../../lib/user-storage';
+import { StorageEvents } from '../../lib/event-names';
 import { ContentRenderer } from './content-renderer';
 
 jest.mock('@grafana/i18n', () => ({
@@ -184,6 +185,42 @@ describe('ContentRenderer — the universal Mark complete control', () => {
         },
       ],
     ]);
+  });
+
+  it('reports a URL-typed standalone tutorial as a guide, matching how its completion is recorded', async () => {
+    // `determineContentType` types any /tutorials/ URL as a journey, but with
+    // no journey metadata the completion is recorded as a standalone guide.
+    const content = makeContent({ type: 'learning-journey', url: 'https://grafana.com/docs/tutorials/foo/' });
+    window.__DocsPluginActiveTabUrl = content.url;
+    render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
+
+    await clickWhenReady();
+
+    expect(markCompleteEvents()).toEqual([
+      [UserInteraction.MarkCompleteClicked, expect.objectContaining({ completion_context: 'guide' })],
+    ]);
+  });
+
+  it('records a completion again after a reset re-arms the control', async () => {
+    const content = makeContent();
+    window.__DocsPluginActiveTabUrl = content.url;
+    const onGuideComplete = jest.fn();
+    render(<ContentRenderer content={content} onGuideComplete={onGuideComplete} />);
+
+    await clickWhenReady();
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    await waitFor(async () => expect(await guideCompletionMarkStorage.get(content.url)).toBe(true));
+
+    // What every reset path does: drop the mark, then announce the clear.
+    await act(async () => {
+      await guideCompletionMarkStorage.clearAllWithPrefix();
+      window.dispatchEvent(new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: '*' } }));
+    });
+
+    await clickWhenReady();
+
+    expect(onGuideComplete).toHaveBeenCalledTimes(2);
+    await waitFor(async () => expect(await guideCompletionMarkStorage.get(content.url)).toBe(true));
   });
 
   it('records one completion when the click is followed by the automatic route', async () => {

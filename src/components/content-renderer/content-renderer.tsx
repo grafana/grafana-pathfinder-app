@@ -61,6 +61,8 @@ import { substituteVariables } from '../../utils/variable-substitution';
 import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { resolveGuideContentKey } from '../../global-state/guide-content-key';
+import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
 import { MarkCompleteFooter } from '../mark-complete';
 import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
@@ -175,6 +177,24 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   useEffect(() => {
     guideCompleteCalledRef.current = false;
     completedSectionsRef.current = new Set();
+  }, [content?.url]);
+
+  // A reset clears a guide's progress without remounting this renderer, so the
+  // gate has to re-open on the same signal the Mark complete control re-reads
+  // on — otherwise the re-armed control would write progress and record no
+  // completion at all.
+  useEffect(() => {
+    const handleCleared = (event: Event) => {
+      const clearedKey = (event as CustomEvent).detail?.contentKey;
+      if (clearedKey === '*' || clearedKey === resolveGuideContentKey(content?.url)) {
+        guideCompleteCalledRef.current = false;
+        completedSectionsRef.current = new Set();
+      }
+    };
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    return () => {
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    };
   }, [content?.url]);
 
   // Ref to track the current content URL - updated synchronously before effects run
@@ -445,7 +465,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   // nor a milestone, and marking it complete would record a guide nobody read.
   const afterContent = isCoverPage ? null : (
     <MarkCompleteFooter
-      context={content.type === 'learning-journey' ? 'milestone' : 'guide'}
+      context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
       contentUrl={content.url}
       onMarkComplete={triggerGuideComplete}
       onContinue={onContinueToNextMilestone}
