@@ -27,6 +27,15 @@ function sanitize(value: string): string {
   return value.replace(/\.\./g, '').slice(0, MAX_KEY_LENGTH);
 }
 
+/**
+ * Apply the content-key sanitizer to a value that is not the active tab —
+ * e.g. a path member's launch URL, which {@link resolvePathMemberPercentage}
+ * has to reduce to the same key the member persisted under.
+ */
+export function sanitizeContentKey(value: string): string {
+  return sanitize(value);
+}
+
 type ContentGlobalKey = '__DocsPluginActiveTabUrl' | '__DocsPluginContentKey';
 
 function readGlobal(name: ContentGlobalKey): string | undefined {

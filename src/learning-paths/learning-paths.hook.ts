@@ -28,6 +28,7 @@ import {
   milestoneCompletionStorage,
 } from '../lib/user-storage';
 import { evictContentCache } from '../global-state/completion-store';
+import { pathMemberContentKeys } from '../global-state/path-member-join';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
@@ -436,12 +437,10 @@ export function useLearningPaths(): UseLearningPathsReturn {
       } else {
         // No base URL: either a static bundled path (`bundled:<id>`) or an App
         // Platform path whose members are `backend-guide:<id>`. We can't tell
-        // them apart from `path.guides` alone, so clear both content schemes.
-        const pathKeys = [`bundled:${path.id}`, `backend-guide:${path.id}`];
-        const contentKeys = [
-          ...pathKeys,
-          ...path.guides.flatMap((guideId) => [`bundled:${guideId}`, `backend-guide:${guideId}`]),
-        ];
+        // them apart from `path.guides` alone, so clear both content schemes —
+        // the same ambiguity the join reads under both to resolve.
+        const pathKeys = pathMemberContentKeys({ id: path.id });
+        const contentKeys = [...pathKeys, ...path.guides.flatMap((guideId) => pathMemberContentKeys({ id: guideId }))];
 
         for (const pathKey of pathKeys) {
           await milestoneCompletionStorage.clear(pathKey);

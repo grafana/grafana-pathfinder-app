@@ -315,6 +315,35 @@ it, but that is an evidence population and not a firing condition.
 **Its frequency and per-reader state are open.** See
 [open questions](#open-questions).
 
+### Decision 9 — an unresolvable path member is excluded from the mean and counted
+
+**Decision.** Decision 4's mean joins each member to its persisted percentage by
+content key, and that key is stored nowhere: a member is keyed by the sanitized
+URL it was launched from, while a path definition carries ids. Where a member's
+launch URL has not resolved, both `bundled:<id>` and `backend-guide:<id>` are
+read and whichever holds a record wins — a reader can only have progressed under
+one. Where no key can be formed at all, the member is **excluded from the mean
+and counted**, never scored zero. `src/global-state/path-member-join.ts` owns
+this, and `resetPath` reads its key list rather than restating the scheme pair.
+
+**Why not zero.** A zero is indistinguishable from a real result. It drags the
+path's number down silently and in exactly the direction the
+[rejected alternative](#the-alternative-considered-and-rejected) predicts, so a
+join bug would arrive looking like confirmation of it. Excluding the member
+keeps the mean honest over what it can actually see, and the count is what makes
+the gap visible instead of silent.
+
+**Read the percentage from `interactiveCompletionStorage`, and only that.**
+`journeyCompletionStorage` is the namespace a journey's own output is persisted
+to and is the obvious thing to reach for, but it holds no record under
+`backend-guide:` for a partially progressed member. Joining against it would
+exclude every partially progressed App Platform path member — a systematic
+exclusion, not an edge case.
+
+**A presence check, not a value read.** The storage `get` returns 0 for a
+missing key, which collapses the distinction the decision rests on. The join
+reads the whole record and tests for the key.
+
 ## The alternative considered and rejected
 
 One position argued against the path-level half of this model. It was overridden,
@@ -558,6 +587,9 @@ updated is Jay's call.
 - **`src/lib/guide-stats` publishes the denominator and the per-block positions
   together**, so a numerator and a denominator can never come from two traversals
   — see `completion-denominator-authority` in `docs/design/CONCERN_DETAILS.md`.
+- **An unresolvable member is excluded from the mean, never scored zero**
+  (decision 9), and the join reads `interactiveCompletionStorage` by key
+  presence.
 
 ## Related
 
@@ -576,3 +608,5 @@ updated is Jay's call.
 - `src/lib/guide-stats/completion-affordance.ts` — which block types emit
   completion evidence, and why that is a different question from which render
   interactively.
+- `src/global-state/path-member-join.ts` — the content-key join a path member's
+  percentage is resolved through, and the unresolved count decision 9 surfaces.
