@@ -28,9 +28,10 @@ function sanitize(value: string): string {
 }
 
 /**
- * Apply the content-key sanitizer to a value that is not the active tab —
- * e.g. a path member's launch URL, which {@link resolvePathMemberPercentage}
- * has to reduce to the same key the member persisted under.
+ * Apply the content-key sanitizer to a value that is not the active tab — e.g.
+ * a path member's launch URL, which the path-member join has to reduce to the
+ * same key the member persisted under. Lossy by design: callers that build a
+ * key for a destructive operation must check the value survives unchanged.
  */
 export function sanitizeContentKey(value: string): string {
   return sanitize(value);

@@ -1,61 +1,33 @@
 /**
  * The content-key join for a path member.
  *
- * A path's percentage is the mean of its milestones' percentages
- * (`docs/design/COMPLETION-MODEL.md`, decision 4), which means joining each
- * member to the record it persisted under. That key is stored nowhere: a
- * member is keyed by the sanitized URL it was launched from
+ * A path's percentage is the mean of its milestones' percentages, which means
+ * joining each member to the record it persisted under. That key is stored
+ * nowhere: a member is keyed by the sanitized URL it was launched from
  * (`getContentKey`), and a path definition carries ids, not keys.
  *
- * Two things follow, and they are the whole of this module:
+ * The rules the code cannot state for itself, argued in full as decision 9 of
+ * `docs/design/COMPLETION-MODEL.md`, which owns the rationale and the
+ * follow-on work:
  *
- *  - A member with no resolved launch URL is keyed under the `bundled:` or the
- *    `backend-guide:` scheme, and which one is not knowable from the path
- *    definition — the same ambiguity `resetPath` works around by clearing
- *    every one of them. `bundled:` itself has two live launch shapes: My
- *    Learning opens a bundled guide bare, while the package resolver hands the
- *    context panel `bundled:<id>/content.json`. Those two are independently
- *    reachable for the SAME guide and each keeps its own step progress, so a
- *    reader may hold a record under both, and the FURTHEST of them wins — how
- *    far the reader actually got on that guide.
- *
- *    Across schemes it is the opposite: the same id under two schemes may be
- *    two DIFFERENT guides. `createCompositeResolver` documents id collisions
- *    as possible and settles them bundled-first, so the schemes are consulted
- *    in that precedence and the first one holding a record answers, rather
- *    than a maximum that could report a private App Platform guide's progress
- *    as a bundled member's.
- *
- *    That precedence applies to the id-scheme branch ONLY. A member that
- *    arrives with a `url` is TRUSTED VERBATIM: this module is pure, cannot
- *    consult the bundled repository, and has no way to second-guess which
- *    guide the caller resolved. So the residual case stays open — a colliding
- *    CR id can hand this module `backend-guide:<id>` for a member of a static
- *    bundled path, because `resolveGuideMetadata` consults App Platform
- *    metadata before the static fallback and that metadata covers every
- *    published guide, not just members of App Platform paths. Closing it
- *    belongs to the caller, which would have to resolve member URLs
- *    bundled-first; recorded as follow-on for the rollup in decision 9 of
- *    `docs/design/COMPLETION-MODEL.md`.
- *  - A member the record cannot answer for is EXCLUDED from the mean rather
- *    than scored zero, and counted: either no key could be formed at all
- *    (`'unresolved'`), or a key was present but held something other than a
- *    percentage in `[0, 100]` (`'unreadable'`). A zero is indistinguishable
- *    from a real result and drags the path's number down silently, which is
- *    the one failure that would look like evidence about reader behaviour
- *    instead of a bug. {@link PathMemberJoinResult} carries the count so the
- *    exclusion is visible.
- *
- * An absent key is treated as a third thing — the member was never opened, so
- * zero is the honest answer — but that holds only as far as the record itself
- * does. `interactiveCompletionStorage` caps at `MAX_INTERACTIVE_COMPLETIONS`
- * (100) and `writeWithCap` evicts by insertion order, not by recency, so a
- * reader past that many distinct guides loses their earliest keys while the
- * progress behind them was real. At this boundary that is indistinguishable
- * from never-opened, and reading two candidate shapes per bundled member means
- * a guide opened from both surfaces now occupies two of the 100 slots. The
- * remedies are storage-side and are recorded as follow-on work in decision 9
- * of `docs/design/COMPLETION-MODEL.md`.
+ *  - `bundled:` has two live launch shapes for the SAME guide — My Learning
+ *    opens it bare, the package resolver opens `bundled:<id>/content.json` —
+ *    and each keeps its own step progress, so within a scheme the FURTHEST
+ *    record wins.
+ *  - Across schemes the same id may be two DIFFERENT guides, so schemes are
+ *    consulted in `createCompositeResolver` precedence (bundled first) and the
+ *    first holding a record answers. A maximum here could report a private App
+ *    Platform guide's progress as a bundled member's.
+ *  - A supplied `url` is trusted verbatim and forms one group: this module is
+ *    pure and cannot consult the bundled repository to second-guess it.
+ *  - A candidate key must survive `sanitizeContentKey` unchanged. That map is
+ *    lossy, and `resetPath` clears the keys built here, so a rewritten value
+ *    would name another guide's key and delete its progress.
+ *  - The record is read by key PRESENCE, not value: the storage `get` returns
+ *    0 for a missing key, which would collapse never-opened into zero.
+ *  - A member the record cannot answer for is EXCLUDED and counted, never
+ *    scored zero — a zero is indistinguishable from a real result and drags
+ *    the path's number down silently.
  *
  * Pure: the persisted record is supplied by the caller, so this module reads
  * no storage and holds no state.
@@ -71,7 +43,9 @@ export interface PathMember {
    * The member's resolved launch URL, when its source provides one —
    * `resolveGuideMetadata(id, pathId).url`. A milestone URL for URL-based
    * paths, `backend-guide:<id>` for App Platform paths, absent for bundled
-   * guides and for App Platform members whose catalogue has not loaded yet.
+   * guides. The App Platform adapter stamps a url on every published member,
+   * so the `backend-guide:` group of the id-scheme branch is defensive and has
+   * no production caller today.
    */
   readonly url?: string;
 }
@@ -133,9 +107,13 @@ export interface PathMemberJoinResult {
   readonly members: readonly PathMemberPercentage[];
   /** The percentages that may enter the mean, in member order. */
   readonly resolvedPercentages: readonly number[];
-  /** Members excluded because the record could not answer for them. */
-  readonly unresolvedCount: number;
-  readonly unresolvedMemberIds: readonly string[];
+  /**
+   * Members excluded because the record could not answer for them — both the
+   * `'unresolved'` and the `'unreadable'` source, which is why this is not
+   * named for either one.
+   */
+  readonly excludedCount: number;
+  readonly excludedMemberIds: readonly string[];
 }
 
 const BUNDLED_PREFIX = 'bundled:';
@@ -152,6 +130,16 @@ function readablePercentage(value: unknown): number | undefined {
 
 function dedupe(values: readonly string[]): readonly string[] {
   return [...new Set(values)];
+}
+
+/**
+ * Candidates that survive `sanitizeContentKey` unchanged. It strips `..` and
+ * truncates at 200 characters, so a value it rewrites names a different
+ * guide's key — and `resetPath` deletes the keys built here. Dropping the
+ * candidate yields `'unresolved'` instead of someone else's record.
+ */
+function normalizedCandidates(values: readonly string[]): readonly string[] {
+  return dedupe(values.filter((value) => sanitizeContentKey(value) === value));
 }
 
 /**
@@ -198,16 +186,16 @@ function bundledLaunchShapes(url: string): readonly string[] {
  * `createCompositeResolver` precedence order. Keys within a group are launch
  * shapes of one guide and rank by percentage; groups rank by precedence. A
  * supplied `url` is one group — it is trusted as the guide the caller
- * resolved.
+ * resolved. A group whose candidates do not survive normalization is dropped,
+ * so an id that cannot be keyed safely resolves as `'unresolved'`.
  */
 function pathMemberContentKeyGroups(member: PathMember, pathBaseUrl?: string): ReadonlyArray<readonly string[]> {
-  if (member.url) {
-    return [dedupe(bundledLaunchShapes(member.url).map(sanitizeContentKey))];
-  }
-  if (pathBaseUrl) {
-    return [];
-  }
-  return idSchemeKeyGroups(member.id).map((group) => dedupe(group.map(sanitizeContentKey)));
+  const groups = member.url
+    ? [normalizedCandidates(bundledLaunchShapes(member.url))]
+    : pathBaseUrl
+      ? []
+      : idSchemeKeyGroups(member.id).map(normalizedCandidates);
+  return groups.filter((group) => group.length > 0);
 }
 
 /**
@@ -268,7 +256,7 @@ export function resolvePathMemberPercentages(
   return {
     members: resolved,
     resolvedPercentages: resolved.flatMap((entry) => (entry.percent === undefined ? [] : [entry.percent])),
-    unresolvedCount: excluded.length,
-    unresolvedMemberIds: excluded.map((entry) => entry.memberId),
+    excludedCount: excluded.length,
+    excludedMemberIds: excluded.map((entry) => entry.memberId),
   };
 }

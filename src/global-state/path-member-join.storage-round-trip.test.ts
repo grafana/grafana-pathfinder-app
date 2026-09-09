@@ -73,7 +73,7 @@ describe('path member join over the record the product actually writes', () => {
       source: 'persisted',
       contentKey: 'backend-guide:fe-alerting-01',
     });
-    expect(result.unresolvedCount).toBe(0);
+    expect(result.excludedCount).toBe(0);
   });
 
   it('finds nothing for that same member in the journey namespace', async () => {
@@ -143,7 +143,7 @@ describe('path member join over the record the product actually writes', () => {
       ['fe-alerting-03', 100, 'completed'],
     ]);
     expect(withIds.resolvedPercentages).toEqual([75, 0, 100]);
-    expect(withIds.unresolvedCount).toBe(0);
+    expect(withIds.excludedCount).toBe(0);
 
     // The same members under a URL-based path whose milestone URLs never
     // resolved: excluded from the mean and named, never scored zero.
@@ -154,7 +154,7 @@ describe('path member join over the record the product actually writes', () => {
     });
 
     expect(unresolvable.resolvedPercentages).toEqual([]);
-    expect(unresolvable.unresolvedCount).toBe(2);
-    expect(unresolvable.unresolvedMemberIds).toEqual(['fe-alerting-01', 'fe-alerting-02']);
+    expect(unresolvable.excludedCount).toBe(2);
+    expect(unresolvable.excludedMemberIds).toEqual(['fe-alerting-01', 'fe-alerting-02']);
   });
 });

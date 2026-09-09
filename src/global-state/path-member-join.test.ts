@@ -8,6 +8,7 @@
 import ossPathsData from '../learning-paths/paths.json';
 import cloudPathsData from '../learning-paths/paths-cloud.json';
 import { createBundledResolver } from '../package-engine/resolver';
+import { createCompositeResolver } from '../package-engine/composite-resolver';
 
 import { getContentKey, resetContentKeyForTests, setActiveTabUrl } from './content-key';
 import {
@@ -62,9 +63,9 @@ describe('path-member-join launch round-trip', () => {
     expect(pathMemberContentKeys(member)).toContain(keyPersistedByLaunch('bundled:welcome-to-grafana'));
   });
 
-  it('covers every scheme for a member whose launch URL has not resolved yet', () => {
-    // An App Platform member before its catalogue loads carries no url, and is
-    // indistinguishable from a bundled member at that point.
+  it('covers every scheme for a member that arrives with no launch URL', () => {
+    // Defensive: the App Platform adapter stamps a url on every published
+    // member, so only a bundled member reaches this branch in production.
     const member: PathMember = { id: 'fe-alerting-01' };
 
     expect(pathMemberContentKeys(member)).toEqual([
@@ -119,12 +120,12 @@ describe('path-member-join launch round-trip', () => {
     ]);
   });
 
-  it('applies the content-key sanitizer to the member URL', () => {
+  it('forms no key for a member URL that normalization would rewrite', () => {
+    // The sanitizer is lossy, so the rewritten value would name a different
+    // guide's key — and resetPath deletes the keys built here.
     const url = 'https://grafana.com/docs/../learning-journeys/loki/step-two/';
 
-    expect(pathMemberContentKeys({ id: 'step-two', url }, 'https://grafana.com/docs/')).toEqual([
-      keyPersistedByLaunch(url),
-    ]);
+    expect(pathMemberContentKeys({ id: 'step-two', url }, 'https://grafana.com/docs/')).toEqual([]);
   });
 });
 
@@ -156,6 +157,50 @@ describe('static path catalogues', () => {
   it.each([...new Set(idSchemeKeyedMembers)])('resolves %s from the bundled repository', (memberId) => {
     expect(createBundledResolver().has(memberId)).toBe(true);
   });
+
+  // resetPath's no-url branch forms only the id-scheme keys, while the join
+  // given a `url` short-circuits to that url alone. If a member of a url-less
+  // path carried an http(s) metadata url, the two key sets would be disjoint
+  // and a reset would spare a key the join reads a stale percentage back from
+  // — which is exactly what the README and decision 9 promise cannot happen.
+  // Nothing else enforces it: no schema or validator for paths.json exists.
+  it.each([...new Set(idSchemeKeyedMembers)])(
+    'resolves %s to metadata carrying no url, or only a scheme url',
+    (memberId) => {
+      const metadata = [ossPathsData, cloudPathsData]
+        .map((data) => (data.guideMetadata as Record<string, { url?: string }>)[memberId])
+        .find((entry) => entry !== undefined);
+
+      const url = metadata?.url;
+      if (url !== undefined) {
+        expect(url.startsWith('bundled:') || url.startsWith('backend-guide:')).toBe(true);
+      }
+    }
+  );
+});
+
+describe('scheme precedence', () => {
+  // The join is tier 1 and cannot import package-engine at runtime, so its
+  // bundled-before-backend-guide group order is a mirror. Cross-check it
+  // against what the composite resolver actually answers for a bundled id: an
+  // App Platform tier moved ahead of bundled would answer a colliding id under
+  // `backend-guide:`, and this reddens instead of surfacing as a wrong member
+  // percentage. The composite's own collision rule is pinned in
+  // composite-resolver.test.ts.
+  it('consults the scheme createCompositeResolver resolves a bundled id to, first', async () => {
+    const packageId = 'first-dashboard';
+    const resolution = await createCompositeResolver({ acceptedTermsAndConditions: true }).resolve(packageId);
+    if (!resolution.ok) {
+      throw new Error(`expected ${packageId} to resolve through the composite resolver`);
+    }
+
+    const firstGroupKey = pathMemberIdSchemeKeys(packageId)[0];
+    const resolvedScheme = resolution.contentUrl.slice(0, resolution.contentUrl.indexOf(':') + 1);
+
+    expect(resolvedScheme).not.toBe(':');
+    expect(firstGroupKey).toBeDefined();
+    expect(firstGroupKey?.startsWith(resolvedScheme)).toBe(true);
+  });
 });
 
 describe('pathMemberIdSchemeKeys', () => {
@@ -169,6 +214,49 @@ describe('pathMemberIdSchemeKeys', () => {
 
   it('leaves a traversal sequence intact for the raw-keyed namespaces', () => {
     expect(pathMemberIdSchemeKeys('a..b')).toContain('bundled:a..b');
+  });
+});
+
+describe('normalization refusal (B1)', () => {
+  it('forms no key for an id whose traversal sequence the sanitizer would strip', () => {
+    // `welcome..-to-grafana` sanitizes to `welcome-to-grafana`, a real shipped
+    // guide. resetPath clears these keys, so forming them would delete that
+    // guide's progress.
+    expect(pathMemberContentKeys({ id: 'welcome..-to-grafana' })).toEqual([]);
+  });
+
+  it("resolves such a member as unresolved rather than reading another guide's record", () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'welcome..-to-grafana' },
+      contextWith({ persistedPercentages: { 'bundled:welcome-to-grafana': 80 } })
+    );
+
+    expect(resolution).toEqual({ memberId: 'welcome..-to-grafana', percent: undefined, source: 'unresolved' });
+  });
+
+  it('forms no key for an id long enough to be truncated into a collision', () => {
+    // MAX_KEY_LENGTH is 200 and PACKAGE_ID_MAX_LENGTH is 253, so two distinct
+    // kebab-legal ids can sanitize to one key.
+    const longId = 'a'.repeat(240);
+
+    expect(pathMemberContentKeys({ id: longId })).toEqual([]);
+  });
+
+  it('keeps the bare shape when only the package shape overruns the key length', () => {
+    // 195 chars: `bundled:<id>` fits in 200, `bundled:<id>/content.json` does not.
+    const id = 'b'.repeat(185);
+
+    expect(pathMemberContentKeys({ id })).toEqual(['bundled:' + id, 'backend-guide:' + id]);
+  });
+
+  it('still hands resetPath the raw keys for the namespaces keyed by launch URL', () => {
+    // pathMemberIdSchemeKeys is unsanitized, so a malformed id names only its
+    // own key in milestoneCompletionStorage and journeyCompletionStorage.
+    expect(pathMemberIdSchemeKeys('welcome..-to-grafana')).toEqual([
+      'bundled:welcome..-to-grafana',
+      'bundled:welcome..-to-grafana/content.json',
+      'backend-guide:welcome..-to-grafana',
+    ]);
   });
 });
 
@@ -341,8 +429,8 @@ describe('resolvePathMemberPercentage', () => {
 
     expect(result.members[0]).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
     expect(result.resolvedPercentages).toEqual([]);
-    expect(result.unresolvedCount).toBe(1);
-    expect(result.unresolvedMemberIds).toEqual(['guide-a']);
+    expect(result.excludedCount).toBe(1);
+    expect(result.excludedMemberIds).toEqual(['guide-a']);
   });
 
   it('excludes and counts a member whose only record is out of range', () => {
@@ -352,7 +440,7 @@ describe('resolvePathMemberPercentage', () => {
 
     expect(result.members[0]).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
     expect(result.resolvedPercentages).toEqual([]);
-    expect(result.unresolvedCount).toBe(1);
+    expect(result.excludedCount).toBe(1);
   });
 
   it('does not let an out-of-range record win over a readable sibling', () => {
@@ -401,7 +489,7 @@ describe('resolvePathMemberPercentage', () => {
 
     expect(result.members[0]!.source).toBe('unreadable');
     expect(result.resolvedPercentages).toEqual([]);
-    expect(result.unresolvedCount).toBe(1);
+    expect(result.excludedCount).toBe(1);
   });
 
   it('distinguishes a persisted zero from a member that was never opened', () => {
@@ -449,8 +537,8 @@ describe('resolvePathMemberPercentages', () => {
     );
 
     expect(result.resolvedPercentages).toEqual([50]);
-    expect(result.unresolvedCount).toBe(2);
-    expect(result.unresolvedMemberIds).toEqual(['step-two', 'step-three']);
+    expect(result.excludedCount).toBe(2);
+    expect(result.excludedMemberIds).toEqual(['step-two', 'step-three']);
   });
 
   it('reports nothing unresolved for a path whose members all key by id scheme', () => {
@@ -460,8 +548,8 @@ describe('resolvePathMemberPercentages', () => {
     );
 
     expect(result.resolvedPercentages).toEqual([100, 30]);
-    expect(result.unresolvedCount).toBe(0);
-    expect(result.unresolvedMemberIds).toEqual([]);
+    expect(result.excludedCount).toBe(0);
+    expect(result.excludedMemberIds).toEqual([]);
   });
 
   it('returns an empty result for a path with no members', () => {
@@ -469,6 +557,6 @@ describe('resolvePathMemberPercentages', () => {
 
     expect(result.members).toEqual([]);
     expect(result.resolvedPercentages).toEqual([]);
-    expect(result.unresolvedCount).toBe(0);
+    expect(result.excludedCount).toBe(0);
   });
 });

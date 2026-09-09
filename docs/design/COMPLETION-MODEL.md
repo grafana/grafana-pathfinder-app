@@ -35,12 +35,12 @@ argument.
 
 ## The model on one page
 
-| Level     | Progress is                                                    | Reaches 100% by                                                    |
-| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**    |
-| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                       |
-| Path      | the mean of its milestones' percentages                        | every milestone at 100%                                            |
-| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be) |
+| Level     | Progress is                                                    | Reaches 100% by                                                                             |
+| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**                             |
+| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                                                |
+| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9 — the join ships; the rollup that consumes it does not) |
+| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be)                          |
 
 **A vocabulary warning before you read further.** "Journey" in decision 5 means a
 level _above_ paths — a path of paths. That is not what "journey" means in the
@@ -315,7 +315,14 @@ it, but that is an evidence population and not a firing condition.
 **Its frequency and per-reader state are open.** See
 [open questions](#open-questions).
 
-### Decision 9 — an unresolvable path member is excluded from the mean and counted
+### Decision 9 — an unresolvable path member is excluded from the mean and counted (the join is built; the rollup that consumes it is not)
+
+**What is built, and what is not.** `src/global-state/path-member-join.ts` and
+its exports ship with this decision; no production code resolves a member
+percentage yet. `calculatePathProgress` remains a completed-count fraction and
+is what every UI consumer still reads. The percentage half lands with the
+rollup, so read the exports below as staged rather than live, and the
+present-tense rules as what the join does when asked.
 
 **Decision.** Decision 4's mean joins each member to its persisted percentage by
 content key, and that key is stored nowhere: a member is keyed by the sanitized
@@ -402,8 +409,26 @@ consult. Until one of those lands, a path mean can understate a heavy reader.
 sanitized content key; `milestoneCompletionStorage` and
 `journeyCompletionStorage` are keyed by the raw launch URL. `resetPath` builds
 both from the join — `pathMemberContentKeys` for the sanitized namespaces,
-`pathMemberIdSchemeKeys` for the raw ones — so sanitization never silently
-narrows what a reset clears.
+`pathMemberIdSchemeKeys` for the raw ones.
+
+**A candidate key must survive normalization unchanged, and this is a safety
+rule, not a tidiness one.** `sanitizeContentKey` strips `..` and truncates at
+200 characters, so it is not injective: `welcome..-to-grafana` normalizes onto
+the real `welcome-to-grafana`, and two ids agreeing on their first 192
+characters normalize onto one key — reachable without malformed input at all,
+because a package id may be 253 characters. `resetPath` **deletes** the keys
+the join builds, so a rewritten candidate would destroy a different guide's
+progress irreversibly. The join therefore refuses any candidate the sanitizer
+would rewrite, and such a member resolves as `unresolved` — excluded and
+counted rather than joined to someone else's record.
+
+The consequence is deliberate and worth stating: for such a member the raw-keyed
+namespaces are still cleared, because a raw key names only its own member, while
+the sanitized ones are **spared**. That is the correct trade — sparing a record
+is recoverable, deleting the wrong one is not — and it does not leak a stale
+percentage, because the join refuses the same key it declined to clear. Validating
+ids at the wire boundary, so an id that cannot be keyed safely never reaches a
+path definition, is **known follow-on work** outside this module.
 
 **Why not zero.** A zero is indistinguishable from a real result. It drags the
 path's number down silently and in exactly the direction the
