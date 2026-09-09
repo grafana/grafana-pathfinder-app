@@ -175,17 +175,26 @@ there is not one substantive tail in the library; below 0.50, 35 of 43 are
 substantive). Do not re-derive a rendering predicate from it without re-opening
 this decision.
 
-**Where the code stands.** `progress.ts` models the evidence kind this button
-produces — `mark-guide-complete`, which evidences the whole guide regardless of
-`blockId` — and `components/mark-complete/` is its producer, rendered for every
-guide and every milestone from inside `ContentRenderer` so all four reading
-surfaces and the block-editor preview carry it from one site. The mark persists
-per content key in `guideCompletionMarkStorage`, beside the per-section `#842`
-acknowledgement rather than in place of it, and every reset path clears it so a
-guide the reader resets comes back unmarked and clickable. Reaching 100% is what
-triggers badge awards, durable completion records, path progress and the
-"continue learning" CTA, so before this producer existed no guide in the library
+**Where the code stands.** `components/mark-complete/` renders the control for
+every guide and every milestone from inside `ContentRenderer`, so all four
+reading surfaces and the block-editor preview carry it from one site. The mark
+persists per content key in `guideCompletionMarkStorage`, beside the per-section
+`#842` acknowledgement rather than in place of it, and every reset path clears
+it so a guide the reader resets comes back unmarked and clickable. Reaching 100%
+is what triggers badge awards, durable completion records, path progress and the
+"continue learning" CTA, so before this control existed no guide in the library
 could trigger any of them under this model.
+
+What the mark is wired to, precisely: the completion store treats it as
+authoritative for the guide percentage — `getGuideProgress` and
+`refreshGuidePercentage` both report 100 for a marked guide regardless of step
+and ack counts, so a later step write cannot move it back down and every reader
+of the percentage agrees. What it is **not** yet wired to is the evidence
+arithmetic in `progress.ts`: that module models the `mark-guide-complete`
+evidence kind — the one that evidences the whole guide regardless of `blockId` —
+but nothing converts the stored mark into a `CompletionSignal`, and
+`guideProgress` / `furthestEvidencedPosition` still have no production caller.
+Connecting the two is the later derivation work item, not this one.
 
 A path's cover page is the one place the control is absent, and that is not the
 predicate this decision deleted: a table of contents is neither a guide nor a

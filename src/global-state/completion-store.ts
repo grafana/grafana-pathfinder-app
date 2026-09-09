@@ -30,6 +30,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 import {
+  guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
   sectionAcknowledgementStorage,
@@ -241,7 +242,17 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
  * progress the reader would find on a real guide.
  */
 export function isPreviewContentKey(contentKey: string): boolean {
-  return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
+  return contentKey.indexOf('devtools') > -1 || isBlockEditorPreviewUrl(contentKey);
+}
+
+/**
+ * A block-editor preview's own content URL. Narrower than
+ * {@link isPreviewContentKey} on purpose: that predicate's `devtools` arm is a
+ * substring test written for a resolved content key, and applied to a URL it
+ * would capture any docs page whose path happens to contain the word.
+ */
+export function isBlockEditorPreviewUrl(value: string): boolean {
+  return value.startsWith('block-editor://preview/');
 }
 
 function persistSection(contentKey: string, sectionId: string): void {
@@ -294,6 +305,13 @@ function persistSection(contentKey: string, sectionId: string): void {
 }
 
 function refreshGuidePercentage(contentKey: string): number | undefined {
+  // The mark is the reader's own statement that the guide is finished, so it
+  // outranks the step and ack counts the branches below derive from — without
+  // this, the next step write would move a marked guide back down.
+  if (guideCompletionMarkStorage.isMarked(contentKey)) {
+    interactiveCompletionStorage.set(contentKey, 100);
+    return 100;
+  }
   const docTotal = getTotalDocumentSteps();
   if (docTotal < 1) {
     // All-passive guide (F-1, #909 follow-up): no interactive steps
@@ -415,6 +433,9 @@ export function getGuideProgress(contentKey: string): GuideProgress {
   const total = getTotalDocumentSteps();
   const completedRaw = interactiveStepStorage.countAllCompleted(contentKey);
   const completed = completedRaw < 0 ? 0 : completedRaw;
+  // Same authority as in `refreshGuidePercentage`, so every reader of the
+  // percentage agrees with what was persisted.
+  const marked = guideCompletionMarkStorage.isMarked(contentKey);
   if (total < 1) {
     // All-passive branch (F-1, #909 follow-up): `completed` / `total`
     // here count sections, not steps, since there are no interactive
@@ -422,9 +443,9 @@ export function getGuideProgress(contentKey: string): GuideProgress {
     const sectionCount = getRegisteredSectionCount();
     const ackCount = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
     if (sectionCount < 1) {
-      return { completed: 0, total: 0, percentage: 0 };
+      return { completed: 0, total: 0, percentage: marked ? 100 : 0 };
     }
-    const percentage = Math.min(100, Math.round((ackCount / sectionCount) * 100));
+    const percentage = marked ? 100 : Math.min(100, Math.round((ackCount / sectionCount) * 100));
     return { completed: ackCount, total: sectionCount, percentage };
   }
   // Defensive ceiling. `countAllCompleted` reads roster-blind from
@@ -434,7 +455,7 @@ export function getGuideProgress(contentKey: string): GuideProgress {
   // structural fix is `reconcileSection` which self-heals on first
   // mount; this clamp covers the pre-reconcile window so users never
   // see "167% complete" in a progress chip.
-  const percentage = Math.min(100, Math.round((completed / total) * 100));
+  const percentage = marked ? 100 : Math.min(100, Math.round((completed / total) * 100));
   return { completed, total, percentage };
 }
 

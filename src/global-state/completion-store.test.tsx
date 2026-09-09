@@ -36,6 +36,7 @@ function belongsTo(pair: string, contentKey: string): boolean {
 const storedCompleted = new Map<string, Set<string>>(); // pairKey(contentKey, sectionId) -> ids
 const storedAcks = new Map<string, true>(); // pairKey(contentKey, sectionId) -> true
 const guidePercentages = new Map<string, number>();
+const storedMarks = new Set<string>(); // contentKey
 
 jest.mock('../lib/user-storage', () => ({
   interactiveStepStorage: {
@@ -68,6 +69,9 @@ jest.mock('../lib/user-storage', () => ({
       guidePercentages.set(contentKey, percentage);
     }),
   },
+  guideCompletionMarkStorage: {
+    isMarked: jest.fn((contentKey: string) => storedMarks.has(contentKey)),
+  },
   sectionAcknowledgementStorage: {
     countAllAcknowledged: jest.fn((contentKey: string) => {
       let count = 0;
@@ -94,6 +98,7 @@ beforeEach(() => {
   storedCompleted.clear();
   storedAcks.clear();
   guidePercentages.clear();
+  storedMarks.clear();
   mockTotalDocumentSteps = 0;
   mockRegisteredSectionCount = 0;
   resetCompletionStoreForTests();
@@ -258,6 +263,73 @@ describe('completion-store', () => {
       refreshAndNotifyGuideProgress(CONTENT_KEY);
 
       expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
+    });
+  });
+
+  // A1 — the Mark complete control's mark is authoritative for the guide
+  // percentage, so every reader of it agrees and a later step write cannot
+  // move a marked guide back down.
+  describe('a marked guide', () => {
+    it('reports 100% with no steps completed at all', () => {
+      mockTotalDocumentSteps = 3;
+      storedMarks.add(CONTENT_KEY);
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+    });
+
+    it('reports 100% for a prose-only guide, which has neither steps nor sections', () => {
+      storedMarks.add(CONTENT_KEY);
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+    });
+
+    it('stays at 100% for every reader after a later step completion', async () => {
+      mockTotalDocumentSteps = 3;
+      storedMarks.add(CONTENT_KEY);
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      await flushMicrotasks();
+
+      act(() => {
+        markStepCompleted('step-1', 'section-x', 'manual');
+      });
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      // The persisted percentage is what the recommendation card reads.
+      expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
+    });
+
+    it('stays at 100% after an all-passive ack recomputes the percentage', () => {
+      mockRegisteredSectionCount = 3;
+      storedAcks.set(`${CONTENT_KEY}-section-1`, true);
+      storedMarks.add(CONTENT_KEY);
+
+      act(() => {
+        refreshAndNotifyGuideProgress(CONTENT_KEY);
+      });
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
+    });
+
+    it('still reports 100% once the in-memory caches are gone, as after a reload', () => {
+      mockTotalDocumentSteps = 3;
+      storedMarks.add(CONTENT_KEY);
+
+      evictAllContentCaches();
+      resetCompletionStoreForTests();
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+    });
+
+    it('drops back to the derived percentage once the mark is cleared', () => {
+      mockTotalDocumentSteps = 4;
+      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1']));
+      storedMarks.add(CONTENT_KEY);
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+
+      storedMarks.delete(CONTENT_KEY);
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(25);
     });
   });
 

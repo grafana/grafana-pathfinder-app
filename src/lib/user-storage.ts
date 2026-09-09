@@ -1359,6 +1359,21 @@ export const guideCompletionMarkStorage = {
     }
   },
 
+  /**
+   * Synchronous read, for the completion store's percentage derivation which
+   * runs during render. Mirrors
+   * `sectionAcknowledgementStorage.countAllAcknowledged`: the hybrid storage
+   * writes through to localStorage before it queues the Grafana write, so the
+   * value is already there.
+   */
+  isMarked(contentKey: string): boolean {
+    try {
+      return localStorage.getItem(`${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKey}`) === 'true';
+    } catch {
+      return false;
+    }
+  },
+
   /** Only `true` is accepted; use `.clear()` to remove an entry. */
   async set(contentKey: string, isMarked: true): Promise<void> {
     try {

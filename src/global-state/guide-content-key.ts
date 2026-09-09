@@ -13,10 +13,10 @@
  * reset signal, and a disagreement would re-arm one without the other.
  */
 import { getContentKey, sanitizeContentKey } from './content-key';
-import { isPreviewContentKey } from './completion-store';
+import { isBlockEditorPreviewUrl } from './completion-store';
 
 export function resolveGuideContentKey(contentUrl: string | undefined): string {
-  if (contentUrl && isPreviewContentKey(contentUrl)) {
+  if (contentUrl && isBlockEditorPreviewUrl(contentUrl)) {
     return sanitizeContentKey(contentUrl);
   }
   return getContentKey();
