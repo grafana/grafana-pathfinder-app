@@ -24,6 +24,7 @@ import {
   type ReportSummary,
   type ArtifactPaths,
   type StepCoverage,
+  type GuidedSubstepResult,
   type ReportStepResult,
   type GuideMetadata,
   type ReportConfig,
@@ -50,6 +51,8 @@ export interface TestStepResult {
   currentUrl: string;
   consoleErrors: string[];
   error?: string;
+  deadlineExceeded?: boolean;
+  guidedSubsteps?: GuidedSubstepResult[];
   skipReason?: string;
   skippable: boolean;
   /** Error classification for failure triage (L3-5C) */
@@ -148,6 +151,12 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
 
     if (result.error) {
       reportStep.error = result.error;
+    }
+    if (result.deadlineExceeded) {
+      reportStep.deadlineExceeded = true;
+    }
+    if (result.guidedSubsteps?.length) {
+      reportStep.guidedSubsteps = result.guidedSubsteps;
     }
 
     // Include skippable flag for failed steps (useful for understanding why test passed/failed)

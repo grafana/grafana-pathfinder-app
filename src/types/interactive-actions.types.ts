@@ -4,6 +4,53 @@
  */
 
 import type { ConditionInput } from './requirements.types';
+
+export type GuidedStepOutcome = 'completed' | 'skipped' | 'timeout' | 'cancelled' | 'error';
+
+export interface GuidedSubstepSettledDetail {
+  stepId: string;
+  index: number;
+  total: number;
+  action: GuidedAction['targetAction'];
+  outcome: GuidedStepOutcome;
+  durationMs: number;
+  skippable: boolean;
+}
+
+export interface GuidedRunSettledDetail {
+  stepId: string;
+}
+
+export const GUIDED_SUBSTEP_SETTLED_EVENT = 'pathfinder:guided-substep-settled';
+export const GUIDED_RUN_SETTLED_EVENT = 'pathfinder:guided-run-settled';
+
+export interface GuidedRequirementsCheckOptions {
+  requirements: ConditionInput;
+  targetAction?: string;
+  refTarget?: string;
+  targetValue?: string;
+  maxRetries?: number;
+  lazyRender?: boolean;
+  scrollContainer?: string;
+}
+
+export interface GuidedRequirementsCheckResult {
+  pass: boolean;
+  error: Array<{
+    fixType?: string;
+  }>;
+}
+
+export type GuidedRequirementsChecker = (
+  options: GuidedRequirementsCheckOptions
+) => Promise<GuidedRequirementsCheckResult>;
+
+export interface GuidedStepExecutionOptions {
+  timeout?: number;
+  checkRequirements?: GuidedRequirementsChecker;
+  onActionCompleted?: () => void;
+  onSettled?: (detail: Omit<GuidedSubstepSettledDetail, 'stepId'>) => void;
+}
 /**
  * Base internal action interface (flexible)
  * Used for multi-step sequences where action types may vary
@@ -31,6 +78,8 @@ export interface GuidedAction extends InternalAction {
   isSkippable?: boolean; // Whether this specific step can be skipped
   formHint?: string; // Hint shown when form validation fails (for formfill with regex)
   validateInput?: boolean; // Enable strict validation for formfill (require targetValue match)
+  lazyRender?: boolean;
+  scrollContainer?: string;
 }
 
 /**

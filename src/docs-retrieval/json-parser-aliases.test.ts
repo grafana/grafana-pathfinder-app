@@ -135,6 +135,57 @@ describe('json-parser — field-name alias acceptance', () => {
     expect(actions[1]!.targetState).toBe('data-state:open');
     expect(actions[2]!.targetState).toBeUndefined();
   });
+
+  it('guided block: preserves all substep execution fields and the block timeout', () => {
+    const guide: JsonGuide = {
+      id: 'guided-contract',
+      title: 'Guided contract',
+      blocks: [
+        {
+          type: 'guided',
+          content: 'Complete the form',
+          stepTimeout: 45_000,
+          completeEarly: true,
+          steps: [
+            {
+              action: 'formfill',
+              reftarget: '#name',
+              targetvalue: '^Grafana$',
+              description: 'Enter **Grafana**',
+              requirements: ['exists-reftarget'],
+              skippable: true,
+              formHint: 'Use the product name',
+              validateInput: true,
+              lazyRender: true,
+              scrollContainer: '.settings-scroll',
+            },
+          ],
+        },
+      ],
+    };
+
+    const block = parseJsonGuide(guide).data!.elements.find((element) => element.type === 'interactive-guided');
+    const props = block!.props as {
+      stepTimeout: number;
+      completeEarly: boolean;
+      internalActions: Array<Record<string, unknown>>;
+    };
+
+    expect(props.stepTimeout).toBe(45_000);
+    expect(props.completeEarly).toBe(true);
+    expect(props.internalActions[0]).toMatchObject({
+      targetAction: 'formfill',
+      refTarget: '#name',
+      targetValue: '^Grafana$',
+      targetComment: expect.stringContaining('<strong>Grafana</strong>'),
+      requirements: ['exists-reftarget'],
+      isSkippable: true,
+      formHint: 'Use the product name',
+      validateInput: true,
+      lazyRender: true,
+      scrollContainer: '.settings-scroll',
+    });
+  });
 });
 
 describe('json-parser — stable derived stepIds (closes #8 standalone instability)', () => {

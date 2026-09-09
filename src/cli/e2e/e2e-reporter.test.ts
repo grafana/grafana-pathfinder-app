@@ -239,6 +239,66 @@ describe('versioned report contract', () => {
     expect(fail.errorCode).toBe('MANDATORY_FAILURE');
   });
 
+  it('preserves completed and skipped guided evidence on a passed parent step', () => {
+    const data = ranGuide('guided-pass');
+    data.results[0]!.stepKind = 'guided';
+    data.results[0]!.guidedSubsteps = [
+      {
+        index: 0,
+        total: 2,
+        action: 'button',
+        outcome: 'completed',
+        durationMs: 25,
+        timeoutMs: 45_000,
+        skippable: false,
+      },
+      {
+        index: 1,
+        total: 2,
+        action: 'noop',
+        outcome: 'skipped',
+        durationMs: 5,
+        timeoutMs: 45_000,
+        skippable: true,
+      },
+    ];
+
+    const report = generateReport(data);
+
+    expect(report.steps[0]).toMatchObject({
+      status: 'passed',
+      stepKind: 'guided',
+      guidedSubsteps: data.results[0]!.guidedSubsteps,
+    });
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+  });
+
+  it('preserves partial guided evidence and deadline metadata on a failed parent step', () => {
+    const data = ranGuide('guided-fail', { failed: true });
+    data.results[0]!.stepKind = 'guided';
+    data.results[0]!.deadlineExceeded = true;
+    data.results[0]!.guidedSubsteps = [
+      {
+        index: 0,
+        total: 2,
+        action: 'formfill',
+        outcome: 'completed',
+        durationMs: 100,
+        timeoutMs: 60_000,
+        skippable: false,
+      },
+    ];
+
+    const report = generateReport(data);
+
+    expect(report.steps[0]).toMatchObject({
+      status: 'failed',
+      deadlineExceeded: true,
+      guidedSubsteps: data.results[0]!.guidedSubsteps,
+    });
+    expect(() => E2ETestReportSchema.parse(report)).not.toThrow();
+  });
+
   it('includes typed fatal transition metadata', () => {
     const report = generateReport({
       ...ranGuide('transition-failed'),

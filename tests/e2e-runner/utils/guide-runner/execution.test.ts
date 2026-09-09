@@ -36,6 +36,7 @@ jest.mock('@playwright/test', () => {
         }
       };
       return {
+        toBeEnabled: jest.fn().mockResolvedValue(undefined),
         toHaveAttribute: (attr: string, value: string, opts?: { timeout?: number }) =>
           poll(attr, (current) => current === value, opts),
         not: {
@@ -53,6 +54,10 @@ jest.mock('./requirements', () => ({
 jest.mock('./badge-celebrations', () => ({
   dismissBadgeCelebrations: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('./artifacts', () => {
+  const actual = jest.requireActual('./artifacts');
+  return { ...actual, captureFailureArtifacts: jest.fn() };
+});
 
 import type { Locator, Page } from '@playwright/test';
 
@@ -69,12 +74,9 @@ import {
 import { clickSkipButtonAndSync } from './drivers';
 import { handleRequirementsWithFix } from './requirements';
 import { dismissBadgeCelebrations } from './badge-celebrations';
-import {
-  SCROLL_INTO_VIEW_TIMEOUT_MS,
-  GUIDED_RELOAD_LOAD_TIMEOUT_MS,
-  LATE_COMPLETION_CHECK_TIMEOUT_MS,
-  STEP_OVERHEAD_TIMEOUT_MS,
-} from './constants';
+import { captureFailureArtifacts } from './artifacts';
+import { STEP_DRIVERS } from './drivers/registry';
+import { SCROLL_INTO_VIEW_TIMEOUT_MS, LATE_COMPLETION_CHECK_TIMEOUT_MS, STEP_OVERHEAD_TIMEOUT_MS } from './constants';
 import type { StepTestResult, TestableStep } from './types';
 
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
@@ -161,6 +163,18 @@ function createDeadlinePage(closeOverride?: jest.Mock): Page {
   } as unknown as Page;
 }
 
+function createExecutablePage(stepLocator = createLocator(), close = jest.fn().mockResolvedValue(undefined)): Page {
+  return {
+    getByTestId: jest.fn(() => stepLocator),
+    waitForTimeout: jest.fn().mockResolvedValue(undefined),
+    on: jest.fn(),
+    off: jest.fn(),
+    url: jest.fn(() => 'http://localhost:3000/'),
+    close,
+    isClosed: jest.fn(() => false),
+  } as unknown as Page;
+}
+
 describe('scrollStepIntoView', () => {
   it('bounds scrollIntoViewIfNeeded with the scroll timeout', async () => {
     const stepElement = createLocator();
@@ -184,6 +198,197 @@ describe('scrollStepIntoView', () => {
     await scrollStepIntoView(page, 'step-1', 0, 1234);
 
     expect(stepElement.scrollIntoViewIfNeeded).toHaveBeenCalledWith({ timeout: 1234 });
+  });
+});
+
+describe('guided substep evidence', () => {
+  beforeEach(() => {
+    (handleRequirementsWithFix as jest.Mock).mockReset().mockResolvedValue({
+      requirements: { requirementsMet: true, status: 'met' },
+      fixResult: undefined,
+    });
+    (captureFailureArtifacts as jest.Mock).mockReset();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  it('collects completed and skipped evidence before the guided step detaches', async () => {
+    let binding: ((value: unknown) => void) | undefined;
+    let stateReads = 0;
+    let countReads = 0;
+    const stepLocator = createLocator({
+      count: jest.fn(() => Promise.resolve(countReads++ === 0 ? 1 : 0)),
+      getAttribute: jest.fn((name: string) => {
+        if (name !== 'data-test-step-state') {
+          return Promise.resolve(null);
+        }
+        stateReads += 1;
+        return Promise.resolve(stateReads === 3 ? 'executing' : null);
+      }),
+    });
+    const absentControl = createLocator({ count: jest.fn().mockResolvedValue(0) });
+    const doItButton = createLocator({
+      click: jest.fn(async () => {
+        binding?.({
+          stepId: 'test-step-1',
+          index: 0,
+          total: 2,
+          action: 'button',
+          outcome: 'completed',
+          durationMs: 25,
+          timeoutMs: 45_000,
+          skippable: false,
+        });
+        binding?.({
+          stepId: 'test-step-1',
+          index: 1,
+          total: 2,
+          action: 'noop',
+          outcome: 'skipped',
+          durationMs: 5,
+          timeoutMs: 45_000,
+          skippable: true,
+        });
+      }),
+    });
+    const page = {
+      getByTestId: jest.fn((testId: string) => {
+        if (testId.startsWith('interactive-do-it-')) {
+          return doItButton;
+        }
+        if (testId.startsWith('interactive-show-me-')) {
+          return absentControl;
+        }
+        return stepLocator;
+      }),
+      exposeFunction: jest.fn((name: string, callback: (value: unknown) => void) => {
+        expect(name).toMatch(/^__pathfinderGuidedSettlement\d+$/);
+        binding = callback;
+      }),
+      evaluate: jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce(null),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn(),
+      off: jest.fn(),
+      url: jest.fn(() => 'http://localhost:3000/'),
+      isClosed: jest.fn(() => false),
+    } as unknown as Page;
+
+    const result = await executeStep(page, createTestableStep({ actionCount: 2, guidedStepTimeoutMs: 45_000 }), {});
+
+    expect(result).toMatchObject({
+      status: 'passed',
+      guidedSubsteps: [
+        {
+          index: 0,
+          total: 2,
+          action: 'button',
+          outcome: 'completed',
+          durationMs: 25,
+          timeoutMs: 45_000,
+          skippable: false,
+        },
+        {
+          index: 1,
+          total: 2,
+          action: 'noop',
+          outcome: 'skipped',
+          durationMs: 5,
+          timeoutMs: 45_000,
+          skippable: true,
+        },
+      ],
+    });
+  });
+
+  it('retains partial evidence and reuses captured artifacts after a parent failure', async () => {
+    const firstArtifacts = { screenshot: '/artifacts/first.png', dom: '/artifacts/first.html' };
+    const error = Object.assign(new Error('parent failed after one substep'), { artifacts: firstArtifacts });
+    const guidedDriver = STEP_DRIVERS.get('guided')!;
+    jest.spyOn(guidedDriver, 'execute').mockImplementation(async (context) => {
+      context.onGuidedSubstepSettled?.({
+        index: 0,
+        total: 2,
+        action: 'noop',
+        outcome: 'skipped',
+        durationMs: 5,
+        timeoutMs: 30_000,
+        skippable: true,
+      });
+      throw error;
+    });
+    (captureFailureArtifacts as jest.Mock).mockResolvedValue({
+      screenshot: '/artifacts/second.png',
+      dom: '/artifacts/second.html',
+    });
+
+    const result = await executeStep(createExecutablePage(), createTestableStep({ actionCount: 2 }), {
+      artifactsDir: '/artifacts',
+    });
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: 'parent failed after one substep',
+      artifacts: firstArtifacts,
+      guidedSubsteps: [
+        {
+          index: 0,
+          outcome: 'skipped',
+        },
+      ],
+    });
+    expect(captureFailureArtifacts).not.toHaveBeenCalled();
+  });
+
+  it('retains settled evidence when the hard deadline closes the page', async () => {
+    jest.useFakeTimers();
+    let rejectExecution: ((error: Error) => void) | undefined;
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const guidedDriver = STEP_DRIVERS.get('guided')!;
+    jest.spyOn(guidedDriver, 'execute').mockImplementation((context) => {
+      context.onGuidedSubstepSettled?.({
+        index: 0,
+        total: 2,
+        action: 'button',
+        outcome: 'completed',
+        durationMs: 40,
+        timeoutMs: 30_000,
+        skippable: false,
+      });
+      markStarted?.();
+      return new Promise((_resolve, reject) => {
+        rejectExecution = reject;
+      });
+    });
+    const close = jest.fn(async () => {
+      rejectExecution?.(new Error('Target page has been closed'));
+    });
+    const page = createExecutablePage(createLocator(), close);
+    const result = executeStep(page, createTestableStep({ actionCount: 2 }), {
+      timeout: 50,
+      deadlineMs: 100,
+    });
+
+    await started;
+    await jest.advanceTimersByTimeAsync(100);
+
+    await expect(result).resolves.toMatchObject({
+      status: 'failed',
+      deadlineExceeded: true,
+      classification: 'infrastructure',
+      guidedSubsteps: [
+        {
+          index: 0,
+          outcome: 'completed',
+        },
+      ],
+    });
+    expect(close).toHaveBeenCalledWith({ runBeforeUnload: false });
   });
 });
 
@@ -481,6 +686,19 @@ describe('waitForGuidedCommentBoxReady', () => {
     await expect(waitForGuidedCommentBoxReady(page, stepLocator, commentBox, 1000)).resolves.toBe('ready');
   });
 
+  it('reports advancement before accepting a visible comment box from the prior substep', async () => {
+    const stepLocator = createLocator({
+      getAttribute: jest.fn((name: string) =>
+        Promise.resolve(name === 'data-test-step-state' ? 'executing' : name === 'data-test-substep-index' ? '1' : null)
+      ),
+    });
+    const commentBox = createLocator();
+    const page = { waitForTimeout: jest.fn().mockResolvedValue(undefined) } as unknown as Page;
+
+    await expect(waitForGuidedCommentBoxReady(page, stepLocator, commentBox, 1000, 0)).resolves.toBe('advanced');
+    expect(commentBox.isVisible).not.toHaveBeenCalled();
+  });
+
   it("resolves 'completed' when the step reaches completed while waiting", async () => {
     const stepLocator = createLocator({ getAttribute: jest.fn().mockResolvedValue('completed') });
     const commentBox = createLocator({ count: jest.fn().mockResolvedValue(0) });
@@ -593,6 +811,62 @@ describe('runGuidedSubstepLoop', () => {
     ).rejects.toThrow('Target closed');
   });
 
+  it('attaches the first failure artifacts to a guided loop error', async () => {
+    const artifacts = { screenshot: '/artifacts/first.png', dom: '/artifacts/first.html' };
+    (captureFailureArtifacts as jest.Mock).mockReset().mockResolvedValue(artifacts);
+    const stepLocator = createLocator({
+      getAttribute: jest.fn((name: string) => Promise.resolve(name === 'data-test-step-state' ? 'error' : null)),
+    });
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+    } as unknown as Page;
+
+    await expect(
+      runGuidedSubstepLoop(page, createTestableStep(), {
+        stepLocator,
+        perSubstepTimeoutMs: 1000,
+        artifactsDir: '/artifacts',
+      })
+    ).rejects.toMatchObject({
+      message: 'Guided step entered error state',
+      artifacts,
+    });
+    expect(captureFailureArtifacts).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows consecutive automatic skips without reading stale comment-box actions', async () => {
+    const states = ['executing', 'executing', 'executing', 'executing', 'completed'];
+    const indexes = ['0', '1', '1', '2'];
+    const stepLocator = createLocator({
+      getAttribute: jest.fn((name: string) => {
+        if (name === 'data-test-step-state') {
+          return Promise.resolve(states.shift() ?? 'completed');
+        }
+        if (name === 'data-test-substep-index') {
+          return Promise.resolve(indexes.shift() ?? '2');
+        }
+        if (name === 'data-test-substep-skippable') {
+          return Promise.resolve('true');
+        }
+        return Promise.resolve(null);
+      }),
+    });
+    const commentBox = createLocator();
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(stepLocator),
+      locator: jest.fn().mockReturnValue({ first: jest.fn().mockReturnValue(commentBox) }),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+    } as unknown as Page;
+
+    const result = await runGuidedSubstepLoop(page, createTestableStep({ actionCount: 3 }), {
+      stepLocator,
+      perSubstepTimeoutMs: 1000,
+    });
+
+    expect(result).toEqual({ completed: true });
+    expect(commentBox.getAttribute).not.toHaveBeenCalled();
+  });
+
   function createButtonSubstepHarness() {
     const listeners = new Map<string, Array<() => void>>();
 
@@ -667,7 +941,7 @@ describe('runGuidedSubstepLoop', () => {
 
     expect(result).toEqual({ completed: true });
     expect(page.waitForLoadState).toHaveBeenCalledWith('domcontentloaded', {
-      timeout: GUIDED_RELOAD_LOAD_TIMEOUT_MS,
+      timeout: 1000,
     });
     // getByTestId was called again after the reload to fetch a fresh locator.
     expect(getByTestIdCalls).toBeGreaterThan(1);

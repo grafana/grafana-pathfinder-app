@@ -420,7 +420,13 @@ export const JsonGuidedBlockSchema = z.object({
   id: z.string().optional().describe('Stable identifier for this block (required for container blocks via CLI)'),
   content: z.string().min(1, 'Guided content is required').describe('Block heading/intro text'),
   steps: z.array(JsonStepSchema).min(1, EMPTY_STEPS_MESSAGE).describe('Ordered steps; populated via add-step'),
-  stepTimeout: z.number().optional().describe('Per-step timeout in milliseconds'),
+  stepTimeout: z
+    .number()
+    .int()
+    .positive()
+    .max(600_000)
+    .optional()
+    .describe('Per-step timeout in milliseconds (default: 120000)'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(ObjectiveTokenSchema).optional().describe('Conditions that automatically complete this block'),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),

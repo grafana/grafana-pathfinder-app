@@ -59,12 +59,14 @@ the `pathfinder-cross-tab` channel. Every message carries an envelope
 (`source: 'pathfinder'`, a per-tab `senderId` used to drop self-echoes, and a
 `timestamp`):
 
-- `step-command` — `{ phase: 'show' | 'do', stepId, runId, action: { targetAction, refTarget, targetValue?, targetState?, targetComment?, internalActions? } }`.
+- `step-command` — `{ phase: 'show' | 'do', stepId, runId, action }`.
   `targetState` carries an authored `targetstate` through to the live tab so
   toggle actions converge on the requested state instead of clicking blindly.
-  Composite steps carry their ordered sub-actions in `internalActions`; the
-  wire shape is derived from `InternalAction` and omits only `requirements`,
-  which the controller gates separately. A
+  Composite steps carry their ordered sub-actions in `internalActions`.
+  Each sub-action can carry `requirements`, `isSkippable`, `formHint`,
+  `validateInput`, `lazyRender`, and `scrollContainer`.
+  A guided command also carries `guideId`, `contentKey`, `stepTimeout`, and
+  `completeEarly`. The validated wire preserves these fields. A
   `multistep` replays with staged pacing (see [Replay pacing](#replay-pacing));
   a `guided` step runs through the live tab's `GuidedHandler` instead — it
   highlights each target and waits for the user.
@@ -223,6 +225,13 @@ For both simple and composite commands, the executor copies `targetState` into
 the interactive-engine request; guided actions can therefore skip an instruction
 that is already satisfied, while automated actions click only when needed.
 
+The live guided handler uses the authored timeout for each substep. It checks
+substep requirements before target resolution. Requirement checks, one lazy
+discovery cycle, target setup, highlighting, and user action share one deadline.
+
+The live tab dispatches the same guided settlement events as local execution.
+Thus, the E2E runner can collect the same evidence in both modes.
+
 ## Requirement evaluation (round-trip)
 
 A controller tab drives a _different_ Grafana tab, so requirements that probe
@@ -245,6 +254,10 @@ Controller (useStepChecker, controller mode)        Live tab (installLiveTabExec
   controller evaluates them itself, in parallel with the round-trip of the
   remaining tokens, and ANDs the two verdicts — see
   [Guide identity for `var-*` checks](engines/requirements-manager.md#guide-identity-for-var-checks).
+- Guided substep requirements are different from the parent entry gate. They
+  cross the wire inside `internalActions` and run in the live tab.
+  The command carries `guideId` and `contentKey`, so `var-*` and
+  `section-completed:*` use the correct guide and content scope.
 - The reply is a plain `RequirementsCheckResult`; it flows through the **same**
   `createRequirementsState` path the in-tab checker uses, so the warning and
   "Fix this" affordance render identically — no controller-specific UI.
@@ -280,7 +293,8 @@ badge.
   including tab-local ones, but excluding the guide-scoped set the controller
   keeps — are evaluated and fixed on the live tab, re-checked at click time so a
   regressed prerequisite gates, and composites complete only once the live tab
-  reports `step-complete`.
+  reports `step-complete`. Guided substep requirements run on the live tab with
+  the controller's guide and content scope.
 - **Replies scoped to one live tab:** a controller trusts requirement/fix/
   completion replies from a single paired tab; see [Tab pairing](#tab-pairing).
   Commands are physically broadcast but authenticated for one `liveTabId`, so
@@ -300,5 +314,4 @@ badge.
 2. If the action shape differs (e.g. `internalActions` for multi-step / guided),
    extend `CrossTabAction` / `CrossTabMessage` and handle the new shape in
    `live-tab-executor.ts`. Build nested wire actions with
-   `toCrossTabInternalAction()`; it preserves fields such as `targetState` while
-   removing the requirements already evaluated by the controller.
+   `toCrossTabInternalAction()`; it preserves the engine and guided fields.

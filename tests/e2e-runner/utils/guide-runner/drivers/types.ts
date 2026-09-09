@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import type { StepTypeKind } from '../../../../../src/components/interactive-tutorial/step-type-registry';
-import type { TestableStep } from '../types';
+import type { GuidedSubstepResult, TestableStep } from '../types';
 
 export interface StepDriverInspection {
   skippable: boolean;
@@ -10,6 +10,7 @@ export interface StepDriverInspection {
   isPreCompleted: boolean;
   targetAction?: string;
   actionCount: number;
+  guidedStepTimeoutMs?: number;
   refTarget?: string;
 }
 
@@ -19,6 +20,7 @@ export interface StepDriverExecutionContext {
   timeout: number;
   verbose: boolean;
   artifactsDir?: string;
+  onGuidedSubstepSettled?: (result: GuidedSubstepResult) => void;
 }
 
 export interface StepDriverExecutionResult {

@@ -28,12 +28,12 @@ import { getContentKey } from '../../global-state/content-key';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
 
-export async function sectionCompletedCheck(check: string): Promise<CheckResultError> {
+export async function sectionCompletedCheck(check: string, explicitContentKey?: string): Promise<CheckResultError> {
   try {
     const rawId = check.replace('section-completed:', '');
     const sectionId = rawId.startsWith('section-') ? rawId : `section-${rawId}`;
 
-    const contentKey = getContentKey();
+    const contentKey = explicitContentKey ?? getContentKey();
     const persistedDone = await sectionDoneStorage.get(contentKey, sectionId);
     if (persistedDone === true) {
       return {

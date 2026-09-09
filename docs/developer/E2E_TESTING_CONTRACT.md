@@ -20,7 +20,7 @@ See: [`docs/developer/interactive-examples/json-guide-format.md`](./interactive-
 
 Used by E2E tests to observe the current state of the interactive system. These are **declarative** - they describe what state the component is in.
 
-Examples: `data-test-step-kind`, `data-test-step-id`, `data-test-step-state`, `data-test-substep-index`, `data-test-action`
+Examples: `data-test-step-kind`, `data-test-step-id`, `data-test-step-state`, `data-test-substep-index`, `data-test-step-timeout-ms`, `data-test-action`
 
 **This document describes the E2E testing contract attributes.**
 
@@ -366,6 +366,55 @@ console.log(`Progress: ${parseInt(currentIndex) + 1}/${totalSteps}`);
 
 ---
 
+#### `data-test-step-timeout-ms`
+
+**Purpose**: Effective timeout for each guided substep, in milliseconds
+
+**Values**: A positive integer. The default is `120000`, and the maximum is `600000`.
+
+**Presence**: Always present on guided components
+
+The runner uses `120000` when this attribute is absent or invalid. This fallback supports older plugin builds.
+
+---
+
+#### `data-test-substep-skippable`
+
+**Purpose**: States whether the current guided substep can be skipped
+
+**Values**: `true` or `false`
+
+**Presence**: Present only during guided execution
+
+The component updates this value before each substep starts. Thus, the runner can skip a failed substep without waiting for most of its timeout.
+
+---
+
+### Guided settlement events
+
+The guided runtime dispatches these document events in local and cross-tab modes:
+
+- `pathfinder:guided-substep-settled`: Dispatches once when a substep settles.
+- `pathfinder:guided-run-settled`: Dispatches when the parent guided run settles.
+
+The substep event detail contains:
+
+- `stepId`
+- `index`
+- `total`
+- `action`
+- `outcome`
+- `durationMs`
+- `skippable`
+
+The supported outcomes are `completed`, `skipped`, `timeout`, `cancelled`, and `error`.
+
+The run event detail contains `stepId`. The substep event occurs after any `completeEarly` completion callback sets the final outcome.
+
+The runner combines each substep event with `data-test-step-timeout-ms`. It stores the result before the parent step completes, fails, or detaches.
+
+---
+
 #### `data-test-fix-type`
 
 **Purpose**: Classification of requirement fix needed when requirements are unmet
@@ -680,19 +729,23 @@ await page.waitForSelector('[data-test-step-state="completed"]', { timeout: 3000
 Guided steps run a substep loop driven by the comment box. The runner uses only the DOM and contract attributes (no guide JSON):
 
 1. **Wait for execution to start**: After clicking "Do it", wait for the step element to have `data-test-step-state="executing"`.
-2. **Read substep bounds**: From the step element, read `data-test-substep-index` (current substep, 0-based) and `data-test-substep-total` (total substeps).
-3. **Locate the comment box**: Use `.interactive-comment-box` (visible while the guided step is executing).
-4. **Read the comment box contract**: From the comment box, read `data-test-action` (e.g. `button`, `highlight`, `formfill`, `hover`, `noop`), `data-test-reftarget` (selector for the current target; see [Comment Boxes](#comment-boxes) — absent for noop), and `data-test-target-value` (for formfill).
-5. **Perform the substep**: For noop, click the Continue button; for button/highlight, resolve the target from `data-test-reftarget` and click; for hover, resolve and hover; for formfill, resolve and fill with `data-test-target-value`.
-6. **Wait for advance**: Poll the step element until `data-test-substep-index` increases or `data-test-step-state` becomes `"completed"`. If the step becomes `"error"` or `"cancelled"`, fail.
+2. **Read substep bounds**: Read `data-test-substep-index` and `data-test-substep-total` from the step element.
+3. **Read execution rules**: Read `data-test-step-timeout-ms` and `data-test-substep-skippable` from the step element.
+4. **Locate the comment box**: Use `.interactive-comment-box` while the guided step is executing.
+5. **Read the comment box contract**: Read `data-test-action`, `data-test-reftarget`, and `data-test-target-value` from the comment box.
+6. **Perform the substep**: Click, hover, fill, or continue as specified by the comment box attributes.
+7. **Collect evidence**: Record each `pathfinder:guided-substep-settled` event when it occurs.
+8. **Wait for advance**: Wait for the next index, parent completion, parent error, parent cancellation, or detachment.
 
 Completion is standardized on `data-test-step-state="completed"` for all step types (single, multistep, guided).
 
-The calculated step timeout remains the inner operation budget. A separate wall-clock backstop uses twice this budget plus 20 seconds.
+Each guided substep has one runtime deadline. Requirement checks, one lazy-scroll cycle, target resolution, setup, highlighting, and user action share this deadline.
+
+The runner operation budget is 30 seconds plus the effective timeout for each guided substep. A separate wall-clock backstop uses twice this budget plus 20 seconds.
 
 If the backstop expires, the runner closes the page and reports an infrastructure outcome. Normal step failures retain their evidence and skippable behavior.
 
-During active step execution, an unexpected page, context, or browser termination produces an infrastructure outcome. The runner retains results from steps that completed before the termination.
+During active step execution, an unexpected page, context, or browser termination produces an infrastructure outcome. The runner retains prior results and settled guided evidence.
 
 ```typescript
 // Wait for guided execution to start
@@ -702,6 +755,8 @@ await page.waitForSelector('[data-test-step-state="executing"]');
 const stepElement = page.locator('[data-testid="interactive-step-my-step"]');
 const totalStr = await stepElement.getAttribute('data-test-substep-total');
 const total = parseInt(totalStr ?? '1', 10);
+const timeoutStr = await stepElement.getAttribute('data-test-step-timeout-ms');
+const perSubstepTimeout = parseInt(timeoutStr ?? '120000', 10);
 
 // Each substep: read comment box, perform action, wait for advance
 const commentBox = page.locator('.interactive-comment-box').first();

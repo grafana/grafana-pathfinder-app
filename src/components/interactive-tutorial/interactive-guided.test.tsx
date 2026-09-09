@@ -14,6 +14,7 @@ import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
+import { GUIDED_RUN_SETTLED_EVENT, GUIDED_SUBSTEP_SETTLED_EVENT } from '../../types/interactive-actions.types';
 
 // ─── Mock @grafana/ui ────────────────────────────────────────────────────────
 jest.mock('@grafana/ui', () => ({
@@ -84,6 +85,25 @@ let mockCompletionReason = 'none';
 const mockMarkSkipped = jest.fn(() => {
   mockStoredCompleted = true;
 });
+const mockCheckGuidedRequirements = jest.fn().mockResolvedValue({
+  requirements: '',
+  pass: true,
+  error: [],
+});
+let mockInteractiveMode = 'local';
+const mockControllerChannel = {
+  post: jest.fn(),
+  onStepProgress: jest.fn(() => jest.fn()),
+  awaitStepComplete: jest.fn().mockResolvedValue(true),
+  cancelStepComplete: jest.fn(),
+};
+
+jest.mock('../../global-state/interactive-mode-context', () => ({
+  useInteractiveMode: () => mockInteractiveMode,
+}));
+jest.mock('../../global-state/controller-channel', () => ({
+  useControllerChannel: () => mockControllerChannel,
+}));
 
 // ─── Mock completion store ────────────────────────────────────────────────
 jest.mock('../../global-state/completion-store', () => ({
@@ -97,6 +117,12 @@ jest.mock('../../global-state/completion-store', () => ({
 
 // ─── Mock requirements manager ───────────────────────────────────────────────
 jest.mock('../../requirements-manager', () => ({
+  useGuideRequirements: jest.fn(() => ({
+    guideId: 'test-guide',
+    contentKey: '/guides/test/content.json',
+    checkRequirements: mockCheckGuidedRequirements,
+    checkPostconditions: jest.fn(),
+  })),
   useStepChecker: jest.fn(() => ({
     isEnabled: true,
     isChecking: false,
@@ -167,6 +193,12 @@ beforeEach(() => {
   mockStoredCompleted = false;
   mockCompletionReason = 'none';
   mockExecuteGuidedStep.mockReset();
+  mockInteractiveMode = 'local';
+  mockControllerChannel.post.mockReset();
+  mockControllerChannel.onStepProgress.mockClear();
+  mockControllerChannel.awaitStepComplete.mockReset();
+  mockControllerChannel.awaitStepComplete.mockResolvedValue(true);
+  mockControllerChannel.cancelStepComplete.mockClear();
   mockMarkSkipped.mockReset();
   mockMarkSkipped.mockImplementation(() => {
     mockStoredCompleted = true;
@@ -255,6 +287,124 @@ describe('InteractiveGuided — double skip button (issue #786)', () => {
     expect(skipButtons).toHaveLength(1);
     expect(skipButtons[0]).toHaveTextContent('Skip');
   });
+
+  it('exposes the effective timeout and active substep skippability', async () => {
+    render(
+      <InteractiveGuided
+        stepId="guided-contract"
+        stepTimeout={45_000}
+        internalActions={[{ targetAction: 'noop', isSkippable: true }]}
+      />
+    );
+    const step = screen.getByTestId(testIds.interactive.step('guided-contract'));
+
+    expect(step).toHaveAttribute('data-test-step-timeout-ms', '45000');
+    expect(step).not.toHaveAttribute('data-test-substep-skippable');
+
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => {
+      expect(step).toHaveAttribute('data-test-step-state', 'executing');
+      expect(step).toHaveAttribute('data-test-substep-skippable', 'true');
+    });
+  });
+});
+
+describe('InteractiveGuided — guided settlement contract', () => {
+  it('forwards the canonical checker and publishes substep and run settlement', async () => {
+    const onSubstepSettled = jest.fn();
+    const onRunSettled = jest.fn();
+    document.addEventListener(GUIDED_SUBSTEP_SETTLED_EVENT, onSubstepSettled);
+    document.addEventListener(GUIDED_RUN_SETTLED_EVENT, onRunSettled);
+    mockExecuteGuidedStep.mockImplementation(async (_action, _index, _total, options) => {
+      options.onSettled({
+        index: 0,
+        total: 1,
+        action: 'noop',
+        outcome: 'skipped',
+        durationMs: 12,
+        skippable: true,
+      });
+      return 'skipped';
+    });
+
+    render(
+      <InteractiveGuided
+        stepId="settlement-contract"
+        stepTimeout={60_000}
+        internalActions={[{ targetAction: 'noop', requirements: ['is-admin'], isSkippable: true }]}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => expect(onRunSettled).toHaveBeenCalledTimes(1));
+    expect(mockExecuteGuidedStep).toHaveBeenCalledWith(
+      expect.objectContaining({ requirements: ['is-admin'], isSkippable: true }),
+      0,
+      1,
+      expect.objectContaining({
+        timeout: 60_000,
+        checkRequirements: mockCheckGuidedRequirements,
+        onSettled: expect.any(Function),
+      })
+    );
+    expect((onSubstepSettled.mock.calls[0][0] as CustomEvent).detail).toEqual({
+      stepId: 'settlement-contract',
+      index: 0,
+      total: 1,
+      action: 'noop',
+      outcome: 'skipped',
+      durationMs: 12,
+      skippable: true,
+    });
+    expect((onRunSettled.mock.calls[0][0] as CustomEvent).detail).toEqual({ stepId: 'settlement-contract' });
+
+    document.removeEventListener(GUIDED_SUBSTEP_SETTLED_EVENT, onSubstepSettled);
+    document.removeEventListener(GUIDED_RUN_SETTLED_EVENT, onRunSettled);
+  });
+
+  it('preserves guided fields, scope, timeout, and completeEarly in controller mode', async () => {
+    mockInteractiveMode = 'controller';
+    const internalAction = {
+      targetAction: 'formfill' as const,
+      refTarget: '#name',
+      targetValue: '^Grafana$',
+      targetComment: 'Enter the product name',
+      requirements: ['exists-reftarget'],
+      isSkippable: true,
+      formHint: 'Use the product name',
+      validateInput: true,
+      lazyRender: true,
+      scrollContainer: '.settings-scroll',
+    };
+
+    render(
+      <InteractiveGuided
+        stepId="controller-contract"
+        stepTimeout={30_000}
+        completeEarly={true}
+        internalActions={[internalAction]}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+
+    await waitFor(() => expect(mockControllerChannel.post).toHaveBeenCalled());
+    expect(mockControllerChannel.post).toHaveBeenCalledWith({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'controller-contract',
+      runId: expect.any(String),
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [internalAction],
+        guideId: 'test-guide',
+        contentKey: '/guides/test/content.json',
+        stepTimeout: 30_000,
+        completeEarly: true,
+      },
+    });
+  });
 });
 
 describe('deriveGuidedUiState', () => {
@@ -334,9 +484,9 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
 
   it('persists a final click signal only after its listener starts', async () => {
     const actionOrder: string[] = [];
-    mockExecuteGuidedStep.mockImplementation(async (_action, _index, _total, _timeout, onActionCompleted) => {
+    mockExecuteGuidedStep.mockImplementation(async (_action, _index, _total, options) => {
       actionOrder.push('listener started');
-      onActionCompleted();
+      options.onActionCompleted();
       return 'completed';
     });
     function AutoCollapseHarness() {
@@ -368,9 +518,9 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
   it('passes the completion callback only to the final action', async () => {
     const actionOrder: string[] = [];
     const onStepComplete = jest.fn(() => actionOrder.push('completion persisted'));
-    mockExecuteGuidedStep.mockImplementation(async (_action, index, _total, _timeout, onActionCompleted) => {
+    mockExecuteGuidedStep.mockImplementation(async (_action, index, _total, options) => {
       actionOrder.push(`action ${index}`);
-      onActionCompleted?.();
+      options.onActionCompleted?.();
       return 'completed';
     });
 
@@ -393,8 +543,8 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
       expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(2);
       expect(onStepComplete).toHaveBeenCalledTimes(1);
     });
-    expect(mockExecuteGuidedStep.mock.calls[0][4]).toBeUndefined();
-    expect(mockExecuteGuidedStep.mock.calls[1][4]).toEqual(expect.any(Function));
+    expect(mockExecuteGuidedStep.mock.calls[0][3].onActionCompleted).toBeUndefined();
+    expect(mockExecuteGuidedStep.mock.calls[1][3].onActionCompleted).toEqual(expect.any(Function));
     expect(actionOrder).toEqual(['action 0', 'action 1', 'completion persisted']);
   });
 
@@ -405,11 +555,11 @@ describe('InteractiveGuided — completeEarly lifecycle', () => {
         throw new Error('parent persistence failed');
       })
       .mockImplementation(() => undefined);
-    mockExecuteGuidedStep.mockImplementation(async (_action, _index, _total, _timeout, onActionCompleted) => {
+    mockExecuteGuidedStep.mockImplementation(async (_action, _index, _total, options) => {
       try {
-        onActionCompleted?.();
+        options.onActionCompleted?.();
       } catch {
-        onActionCompleted?.();
+        options.onActionCompleted?.();
       }
       return 'completed';
     });

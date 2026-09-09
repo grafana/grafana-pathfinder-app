@@ -39,9 +39,15 @@ async function inspectGuided(page: Page, root: Locator, stepId: string): Promise
   const common = await inspectCommonStep(page, root, stepId);
   const rawTotal = await root.getAttribute('data-test-substep-total');
   const parsedTotal = rawTotal ? Number.parseInt(rawTotal, 10) : Number.NaN;
+  const rawTimeout = await root.getAttribute('data-test-step-timeout-ms');
+  const parsedTimeout = rawTimeout ? Number.parseInt(rawTimeout, 10) : Number.NaN;
   return {
     ...common,
     actionCount: Number.isFinite(parsedTotal) && parsedTotal >= 1 ? parsedTotal : 1,
+    guidedStepTimeoutMs:
+      Number.isFinite(parsedTimeout) && parsedTimeout > 0 && parsedTimeout <= 600_000
+        ? parsedTimeout
+        : TIMEOUT_PER_GUIDED_SUBSTEP_MS,
   };
 }
 
@@ -88,7 +94,9 @@ const drivers = [
   supportedDriver(
     'guided',
     inspectGuided,
-    (step) => DEFAULT_STEP_TIMEOUT_MS + (step.actionCount > 0 ? step.actionCount * TIMEOUT_PER_GUIDED_SUBSTEP_MS : 0),
+    (step) =>
+      DEFAULT_STEP_TIMEOUT_MS +
+      (step.actionCount > 0 ? step.actionCount * (step.guidedStepTimeoutMs ?? TIMEOUT_PER_GUIDED_SUBSTEP_MS) : 0),
     executeGuidedStep
   ),
   unsupportedDriver('quiz'),

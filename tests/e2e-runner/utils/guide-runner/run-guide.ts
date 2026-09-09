@@ -112,6 +112,8 @@ function toResultsData(
       currentUrl: result.currentUrl,
       consoleErrors: result.consoleErrors,
       error: result.error,
+      deadlineExceeded: result.deadlineExceeded,
+      guidedSubsteps: result.guidedSubsteps,
       skipReason: result.skipReason,
       skippable: result.skippable,
       classification: result.classification,

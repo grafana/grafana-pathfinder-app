@@ -1,26 +1,26 @@
 import type { ConditionInput } from './requirements.types';
-import type { InternalAction } from './interactive-actions.types';
+import type { GuidedAction, InternalAction } from './interactive-actions.types';
 
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
 
-// Derived by exclusion rather than restated: a field the engine reads off an
-// action must reach the live tab, and hand-listing the fields is what dropped
-// targetState on this wire three times over. Only `requirements` stays behind —
-// the controller gates them, the live tab replays. Fields added to
-// InternalAction therefore reach the wire by default rather than by remembering.
-export type CrossTabInternalAction = Omit<InternalAction, 'requirements'>;
+type GuidedOnlyActionFields = Omit<GuidedAction, keyof InternalAction | 'targetAction'>;
+
+export type CrossTabInternalAction = InternalAction & Partial<GuidedOnlyActionFields>;
 
 /** Narrow an engine action to what the wire carries. */
 export function toCrossTabInternalAction(action: InternalAction): CrossTabInternalAction {
-  const { requirements, ...wire } = action;
-  return wire;
+  return { ...action };
 }
 
 export interface CrossTabAction extends CrossTabInternalAction {
   refTarget: string;
   internalActions?: CrossTabInternalAction[];
+  guideId?: string;
+  contentKey?: string;
+  stepTimeout?: number;
+  completeEarly?: boolean;
 }
 
 interface CrossTabEnvelope {
@@ -207,6 +207,10 @@ export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Se
   'sidebar-handoff',
 ]);
 
+const MAX_GUIDED_STEP_TIMEOUT_MS = 600_000;
+const MAX_INTERNAL_ACTIONS = 256;
+const MAX_ACTION_STRING_LENGTH = 16_384;
+
 // Same-build assumption: the controller and live tabs are the same plugin
 // build in the same browser/origin/session, so there is no protocol-version
 // negotiation. Cross-version compatibility is not a goal; a mismatched build
@@ -221,6 +225,7 @@ const KNOWN_TARGET_ACTIONS: ReadonlySet<string> = new Set([
   'formfill',
   'navigate',
   'hover',
+  'noop',
   'guided',
   'multistep',
 ]);
@@ -253,10 +258,23 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
   }
   const action = message.action;
   if (
-    typeof action.refTarget !== 'string' ||
+    !isBoundedString(action.refTarget, MAX_ACTION_STRING_LENGTH) ||
     typeof action.targetAction !== 'string' ||
     !KNOWN_TARGET_ACTIONS.has(action.targetAction) ||
-    !isOptionalTargetState(action.targetState)
+    !isOptionalTargetState(action.targetState) ||
+    (action.requirements !== undefined && !isBoundedConditionInput(action.requirements)) ||
+    !isOptionalBoundedString(action.targetValue, MAX_ACTION_STRING_LENGTH) ||
+    !isOptionalBoundedString(action.targetComment, MAX_ACTION_STRING_LENGTH) ||
+    !isOptionalBoolean(action.isSkippable) ||
+    !isOptionalBoundedString(action.formHint, MAX_ACTION_STRING_LENGTH) ||
+    !isOptionalBoolean(action.validateInput) ||
+    !isOptionalBoolean(action.lazyRender) ||
+    !isOptionalBoundedString(action.scrollContainer, MAX_ACTION_STRING_LENGTH) ||
+    !isOptionalBoundedString(action.guideId, MAX_ACTION_STRING_LENGTH) ||
+    !isOptionalBoundedString(action.contentKey, MAX_ACTION_STRING_LENGTH) ||
+    !isOptionalGuidedStepTimeout(action.stepTimeout) ||
+    !isOptionalBoolean(action.completeEarly) ||
+    !hasValidFormValidation(action)
   ) {
     return false;
   }
@@ -267,15 +285,24 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
   if (action.internalActions !== undefined) {
     return (
       Array.isArray(action.internalActions) &&
+      action.internalActions.length <= MAX_INTERNAL_ACTIONS &&
       action.internalActions.every(
         (sub) =>
           isRecord(sub) &&
           typeof sub.targetAction === 'string' &&
           KNOWN_TARGET_ACTIONS.has(sub.targetAction) &&
-          isOptionalString(sub.refTarget) &&
-          isOptionalString(sub.targetValue) &&
-          isOptionalString(sub.targetComment) &&
-          isOptionalTargetState(sub.targetState)
+          hasValidActionTarget(sub) &&
+          isOptionalBoundedString(sub.refTarget, MAX_ACTION_STRING_LENGTH) &&
+          isOptionalBoundedString(sub.targetValue, MAX_ACTION_STRING_LENGTH) &&
+          isOptionalBoundedString(sub.targetComment, MAX_ACTION_STRING_LENGTH) &&
+          isOptionalTargetState(sub.targetState) &&
+          (sub.requirements === undefined || isBoundedConditionInput(sub.requirements)) &&
+          isOptionalBoolean(sub.isSkippable) &&
+          isOptionalBoundedString(sub.formHint, MAX_ACTION_STRING_LENGTH) &&
+          isOptionalBoolean(sub.validateInput) &&
+          isOptionalBoolean(sub.lazyRender) &&
+          isOptionalBoundedString(sub.scrollContainer, MAX_ACTION_STRING_LENGTH) &&
+          hasValidFormValidation(sub)
       )
     );
   }
@@ -295,7 +322,22 @@ function isOptionalString(value: unknown): boolean {
 }
 
 function isOptionalTargetState(value: unknown): boolean {
-  return value === undefined || typeof value === 'boolean' || typeof value === 'string';
+  return (
+    value === undefined ||
+    typeof value === 'boolean' ||
+    (typeof value === 'string' && value.length <= MAX_ACTION_STRING_LENGTH)
+  );
+}
+
+function isOptionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean';
+}
+
+function isOptionalGuidedStepTimeout(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= MAX_GUIDED_STEP_TIMEOUT_MS)
+  );
 }
 
 const MAX_PAIRING_FIELD_LENGTH = 512;
@@ -307,8 +349,31 @@ const MAX_PAIRING_FIELD_LENGTH = 512;
 const MAX_CONDITION_TOKENS = 32;
 const MAX_CONDITION_TOKEN_LENGTH = 512;
 
-function isBoundedString(value: unknown, maxLength: number): boolean {
+function isBoundedString(value: unknown, maxLength: number): value is string {
   return typeof value === 'string' && value.length <= maxLength;
+}
+function isOptionalBoundedString(value: unknown, maxLength: number): boolean {
+  return value === undefined || isBoundedString(value, maxLength);
+}
+
+function hasValidActionTarget(action: Record<string, unknown>): boolean {
+  if (action.targetAction === 'noop') {
+    return true;
+  }
+  const refTarget = action.refTarget;
+  return isBoundedString(refTarget, MAX_ACTION_STRING_LENGTH) && refTarget.length > 0;
+}
+
+function hasValidFormValidation(action: Record<string, unknown>): boolean {
+  if (action.validateInput !== true) {
+    return true;
+  }
+  const targetValue = action.targetValue;
+  return (
+    action.targetAction === 'formfill' &&
+    isBoundedString(targetValue, MAX_ACTION_STRING_LENGTH) &&
+    targetValue.length > 0
+  );
 }
 
 function isBoundedConditionInput(value: unknown): boolean {

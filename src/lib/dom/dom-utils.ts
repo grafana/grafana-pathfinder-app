@@ -320,6 +320,8 @@ export interface LazyScrollOptions {
   maxScrollAttempts?: number;
   scrollIncrement?: number;
   waitTime?: number;
+  deadline?: number;
+  isCancelled?: () => boolean;
 }
 
 /**
@@ -339,6 +341,8 @@ export async function scrollUntilElementFound(
     maxScrollAttempts = 15, // More attempts since we scroll smaller increments
     scrollIncrement = 400, // Smaller increments for smoother scrolling
     waitTime = 350, // Longer wait to allow smooth scroll animation to complete
+    deadline,
+    isCancelled,
   } = options;
 
   // Find the scroll container
@@ -359,11 +363,19 @@ export async function scrollUntilElementFound(
   }
 
   for (let attempt = 0; attempt < maxScrollAttempts; attempt++) {
+    if (isCancelled?.() || (deadline !== undefined && Date.now() >= deadline)) {
+      break;
+    }
     // Scroll down with smooth animation for better UX
     scrollContainer.scrollBy({ top: scrollIncrement, behavior: 'smooth' });
 
     // Wait for smooth scroll animation + lazy render to kick in
-    await new Promise((resolve) => setTimeout(resolve, waitTime));
+    const remainingTime = deadline === undefined ? waitTime : Math.max(0, deadline - Date.now());
+    await new Promise((resolve) => setTimeout(resolve, Math.min(waitTime, remainingTime)));
+
+    if (isCancelled?.() || (deadline !== undefined && Date.now() >= deadline)) {
+      break;
+    }
 
     // Check if element now exists using enhanced selector
     const result = querySelectorAllEnhanced(resolvedSelector);

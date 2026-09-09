@@ -236,6 +236,6 @@ describe('ContentRenderer guide-identity contract', () => {
       'utf8'
     );
     expect(source).toMatch(/useLayoutEffect\(\s*\(\)\s*=>\s*registerCompatibilityGuideId\(/);
-    expect(source).toMatch(/<GuideRequirementsProvider guideId=\{guideId\}>/);
+    expect(source).toMatch(/<GuideRequirementsProvider guideId=\{guideId\} contentKey=\{content\.url\}>/);
   });
 });

@@ -8,6 +8,8 @@ import {
   TIMEOUT_PER_MULTISTEP_ACTION_MS,
 } from './constants';
 
+const MAX_GUIDED_STEP_TIMEOUT_MS = 600_000;
+
 export function countInteractiveBlocks(guide: unknown): number {
   let count = 0;
 
@@ -55,9 +57,17 @@ export function estimateGuideTimeoutFromContent(content: string): number {
     if (isInteractiveBlockType(block.type) || block.type === 'snippet-ref') {
       stepCount++;
       const actions = Array.isArray(block.steps) ? block.steps.length : 0;
+      const authoredGuidedTimeout = block.stepTimeout;
+      const guidedTimeout =
+        typeof authoredGuidedTimeout === 'number' &&
+        Number.isInteger(authoredGuidedTimeout) &&
+        authoredGuidedTimeout > 0 &&
+        authoredGuidedTimeout <= MAX_GUIDED_STEP_TIMEOUT_MS
+          ? authoredGuidedTimeout
+          : TIMEOUT_PER_GUIDED_SUBSTEP_MS;
       const timeout =
         block.type === 'guided'
-          ? DEFAULT_STEP_TIMEOUT_MS + actions * TIMEOUT_PER_GUIDED_SUBSTEP_MS
+          ? DEFAULT_STEP_TIMEOUT_MS + actions * guidedTimeout
           : block.type === 'multistep'
             ? DEFAULT_STEP_TIMEOUT_MS + actions * TIMEOUT_PER_MULTISTEP_ACTION_MS
             : DEFAULT_STEP_TIMEOUT_MS;

@@ -726,6 +726,18 @@ describe('requirements-checker.utils', () => {
         expect(result.pass).toBe(true);
       });
 
+      it('uses an explicit content key instead of the live tab ambient key', async () => {
+        const contentKey = '/guides/controller/content.json';
+        await sectionDoneStorage.set(contentKey, 'section-controller-setup', true);
+
+        const result = await checkRequirements({
+          requirements: 'section-completed:controller-setup',
+          contentKey,
+        });
+
+        expect(result.pass).toBe(true);
+      });
+
       it('clearing the done bit re-blocks the requirement even though the DOM is empty', async () => {
         await sectionDoneStorage.set(getContentKey(), 'section-redo-test', true);
         await sectionDoneStorage.clear(getContentKey(), 'section-redo-test');

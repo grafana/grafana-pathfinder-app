@@ -114,11 +114,23 @@ describe('estimateGuideTimeoutFromContent', () => {
   it('adds the guided and multistep action budgets', () => {
     const content = JSON.stringify({
       blocks: [
-        { type: 'guided', steps: [{}, {}] },
+        { type: 'guided', stepTimeout: 45_000, steps: [{}, {}] },
         { type: 'multistep', steps: [{}, {}, {}] },
       ],
     });
+    expect(estimateGuideTimeoutFromContent(content)).toBe(513_000);
+  });
 
-    expect(estimateGuideTimeoutFromContent(content)).toBe(453_000);
+  it.each([
+    ['30-second', 30_000, 283_000],
+    ['45-second', 45_000, 313_000],
+    ['60-second', 60_000, 343_000],
+    ['default 120-second', undefined, 463_000],
+  ])('uses the %s guided substep timeout', (_label, stepTimeout, expected) => {
+    const content = JSON.stringify({
+      blocks: [{ type: 'guided', ...(stepTimeout === undefined ? {} : { stepTimeout }), steps: [{}] }],
+    });
+
+    expect(estimateGuideTimeoutFromContent(content)).toBe(expected);
   });
 });

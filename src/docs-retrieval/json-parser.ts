@@ -799,8 +799,10 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
         ? markdownToHtml(step.tooltip)
         : undefined,
     isSkippable: step.skippable ?? false,
-    formHint: step.formHint, // Pass form hint for formfill validation feedback
-    validateInput: step.validateInput, // Pass validation toggle for formfill
+    formHint: step.formHint,
+    validateInput: step.validateInput,
+    lazyRender: step.lazyRender ?? false,
+    scrollContainer: step.scrollContainer,
   }));
 
   // Parse content as markdown for children

@@ -150,6 +150,7 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
      - Handle requirements (Fix buttons with retry)
      - Click "Do it" button
      - Wait for completion indicator
+     - For guided steps, collect each substep settlement when it occurs
    - Session validated before each shared milestone and every 5 steps
 
 5. **Reporting**
@@ -289,7 +290,7 @@ Use `--output report.json` to generate a structured report:
 ```json
 {
   "schemaVersion": "1.1.0",
-  "outcome": "passed",
+  "outcome": "failed",
   "runner": {
     "name": "pathfinder-e2e-runner",
     "version": "commit-<sha>",
@@ -302,12 +303,12 @@ Use `--output report.json` to generate a structured report:
   "guide": { "id": "...", "title": "...", "path": "...", "targetUrl": "..." },
   "config": { "timestamp": "..." },
   "summary": {
-    "total": 10,
-    "passed": 8,
+    "total": 2,
+    "passed": 1,
     "failed": 1,
-    "skipped": 1,
+    "skipped": 0,
     "notReached": 0,
-    "duration": 1000,
+    "duration": 47000,
     "mandatoryFailed": 1,
     "skippableFailed": 0
   },
@@ -320,13 +321,42 @@ Use `--output report.json` to generate a structured report:
       "duration": 1000,
       "currentUrl": "http://localhost:3000/",
       "consoleErrors": []
+    },
+    {
+      "stepId": "section-1-guided-1",
+      "stepKind": "guided",
+      "index": 1,
+      "status": "failed",
+      "duration": 46000,
+      "currentUrl": "http://localhost:3000/",
+      "consoleErrors": [],
+      "guidedSubsteps": [
+        {
+          "index": 0,
+          "total": 2,
+          "action": "button",
+          "outcome": "completed",
+          "durationMs": 1000,
+          "timeoutMs": 45000,
+          "skippable": false
+        },
+        {
+          "index": 1,
+          "total": 2,
+          "action": "formfill",
+          "outcome": "timeout",
+          "durationMs": 45000,
+          "timeoutMs": 45000,
+          "skippable": false
+        }
+      ]
     }
   ],
   "coverage": {
     "contractSource": "current",
-    "rendered": 2,
-    "supported": 1,
-    "executed": 1,
+    "rendered": 3,
+    "supported": 2,
+    "executed": 2,
     "unsupported": 1,
     "unsupportedSteps": [{ "stepKind": "quiz", "stepId": "section-1-quiz-1" }]
   }
@@ -344,6 +374,7 @@ Key contract fields:
 - `guide.sourceUrl`: remote package source URL when available
 - `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
 - `steps[].stepKind`: optional registered driver kind for a reported step
+- `steps[].guidedSubsteps`: optional settlement evidence for each observed guided substep
 - `coverage.contractSource`: `current` for tracked roots, or `legacy` for the compatibility selector
 - `coverage.rendered`: number of tracked roots in the rendered DOM
 - `coverage.supported`: number of rendered roots with supported drivers
@@ -400,6 +431,8 @@ With `--always-screenshot`, the runner also captures pre-step screenshots, succe
 
 Trace capture is disabled for bearer-token cloud runs. Traces can contain authorization headers, cookies, and temporary credentials.
 
+The runner keeps the first failure artifact bundle when later cleanup also captures artifacts. Guided evidence remains in failed and deadline-exceeded step results.
+
 ## Guided-block test guide
 
 To verify guided-block support (substep loop, comment box contract, completion), run the E2E CLI against a guide that includes at least one guided block. The bundled guide **Block editor tutorial** (`block-editor-tutorial`) contains a guided block with two highlight substeps and is skippable:
@@ -414,7 +447,21 @@ Or by path:
 npx pathfinder-cli e2e src/bundled-interactives/block-editor-tutorial/content.json
 ```
 
-Guided steps are discovered via `data-targetaction="guided"` and `data-test-substep-total`; after "Do it", the runner drives substeps using only the comment box (`data-test-action`, `data-test-reftarget`, `data-test-target-value`) and step state (`data-test-step-state`, `data-test-substep-index`). Full coverage (button, highlight, formfill, hover, noop, skippable) may require additional guides such as `prometheus-grafana-101` or `loki-grafana-101`.
+Guided steps use the `guided` step driver. The driver reads `data-test-substep-total` and `data-test-step-timeout-ms` from the tracked root.
+
+After "Do it", the runner drives each substep from the comment box. It reads `data-test-action`, `data-test-reftarget`, and `data-test-target-value`.
+
+The runner reads `data-test-substep-skippable` before it waits for the comment box. It can skip consecutive unavailable substeps without a fixed delay.
+
+The runtime dispatches `pathfinder:guided-substep-settled` for each settled substep. The runner stores these events immediately.
+
+Each `guidedSubsteps` report entry contains `index`, `total`, `action`, `outcome`, `durationMs`, `timeoutMs`, and `skippable`. Evidence remains after parent failure, detachment, or a hard runner deadline.
+
+The local and cross-tab paths preserve all authored substep fields. These fields include requirements, target state, skippability, form validation, hints, and lazy-render options.
+
+The runtime checks substep requirements before target resolution. One timeout deadline covers requirements, one lazy-scroll cycle, target resolution, setup, highlighting, and user action.
+
+Full action coverage can require additional guides such as `prometheus-grafana-101` or `loki-grafana-101`.
 
 ## Framework test guide
 
@@ -464,27 +511,30 @@ The environment is reset **between dependency chains**, not between every guide.
 
 ## Timing and timeouts
 
-| Constant                   | Value            | Purpose                                                                                     |
-| -------------------------- | ---------------- | ------------------------------------------------------------------------------------------- |
-| Base step timeout          | 30s              | Maximum time for a single step                                                              |
-| Multistep bonus            | +5s per action   | Added for each internal action in multisteps                                                |
-| Guided substep bonus       | +30s per substep | Added for each substep in guided blocks                                                     |
-| Runner step backstop       | 2× step + 20s    | Wall-clock limit after normal step operation budgets                                        |
-| Backstop cleanup grace     | 3s per guide     | Page close, inner-work drain, and result publication after a backstop                       |
-| Button enable wait         | 10s              | Wait for sequential dependencies                                                            |
-| Fix button timeout         | 10s              | Per fix operation                                                                           |
-| Max fix attempts           | 3                | Retry limit before giving up                                                                |
-| Requirements settle window | 1s               | Poll budget before an unmet read with no Fix button counts as terminal                      |
-| Panel bootstrap            | 20s or 30s       | Uses 30s after navigation and 20s for same-page panel opening                               |
-| Scroll into view           | 5s               | Bounds scrolling a step into view, so a step completing or detaching there can't hang       |
-| Late completion check      | 2s               | Bounds the pre-scroll recheck for a step that completed or detached since discovery         |
-| Skip sync                  | 5s               | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip        |
-| Guided reload wait         | 15s              | Bounds waiting for `domcontentloaded` after a detected reload or navigation mid-guided-step |
+| Constant                   | Value                      | Purpose                                                                                |
+| -------------------------- | -------------------------- | -------------------------------------------------------------------------------------- |
+| Base step timeout          | 30s                        | Outer allowance for one step                                                           |
+| Multistep bonus            | +5s per action             | Added for each internal action in multisteps                                           |
+| Guided substep timeout     | Authored value per substep | Defaults to 120s and has a 600s maximum                                                |
+| Guided operation budget    | 30s + substeps × timeout   | Covers the guided driver and all authored substep budgets                              |
+| Runner step backstop       | 2× step + 20s              | Wall-clock limit after normal step operation budgets                                   |
+| Backstop cleanup grace     | 3s per guide               | Page close, inner-work drain, and result publication after a backstop                  |
+| Button enable wait         | 10s                        | Wait for sequential dependencies                                                       |
+| Fix button timeout         | 10s                        | Per fix operation                                                                      |
+| Max fix attempts           | 3                          | Retry limit before giving up                                                           |
+| Requirements settle window | 1s                         | Poll budget before an unmet read with no Fix button counts as terminal                 |
+| Panel bootstrap            | 20s or 30s                 | Uses 30s after navigation and 20s for same-page panel opening                          |
+| Scroll into view           | 5s                         | Bounds scrolling a step into view, so a step completing or detaching there cannot hang |
+| Late completion check      | 2s                         | Bounds the pre-scroll recheck for a step that completed or detached since discovery    |
+| Skip sync                  | 5s                         | Bounds waiting for the plugin to reach a terminal state after the runner clicks Skip   |
+| Guided reload wait         | Up to 15s                  | Uses the remaining substep budget after a detected reload or navigation                |
 
 Examples:
 
 - A multistep with 5 internal actions gets a 55s timeout (30s base + 5×5s).
-- A guided block with 3 substeps gets a 120s timeout (30s base + 3×30s).
+- A guided block with 3 substeps and the default gets a 390s budget (30s base + 3×120s).
+- A guided block with 3 substeps and `stepTimeout: 30000` gets a 120s budget.
+- Authored values such as 45s and 60s apply to each substep.
 
 The calculated step timeout remains the operation budget for normal completion and artifact collection. The runner backstop is twice this budget plus 20 seconds.
 

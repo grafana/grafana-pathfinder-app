@@ -7,6 +7,7 @@ import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { FakeCrossTabTransport } from '../../test-utils/fake-cross-tab-transport';
 import type { CrossTabMessage } from '../../types/cross-tab.types';
+import { GUIDED_RUN_SETTLED_EVENT, GUIDED_SUBSTEP_SETTLED_EVENT } from '../../types/interactive-actions.types';
 import { withFaroUserAction } from '../../lib/faro';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 
@@ -276,7 +277,10 @@ describe('installLiveTabExecutor', () => {
     expect(executeGuidedStep).toHaveBeenCalledWith(
       expect.objectContaining({ targetState: 'aria-expanded:true' }),
       0,
-      1
+      1,
+      expect.objectContaining({
+        checkRequirements: expect.any(Function),
+      })
     );
     uninstall();
   });
@@ -339,6 +343,201 @@ describe('installLiveTabExecutor', () => {
         expect.objectContaining({ kind: 'step-complete', stepId: 'g1', runId: 'run-g1', ok: true })
       )
     );
+    uninstall();
+  });
+
+  it('passes the complete guided action, timeout, and guide scope to the guided handler', async () => {
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-full',
+      runId: 'run-guided-full',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        guideId: 'guide-a',
+        contentKey: '/guides/a/content.json',
+        stepTimeout: 45_000,
+        internalActions: [
+          {
+            targetAction: 'formfill',
+            refTarget: '#name',
+            targetValue: '^Grafana$',
+            targetComment: 'Enter the product name',
+            requirements: ['exists-reftarget'],
+            isSkippable: true,
+            formHint: 'Use the product name',
+            validateInput: true,
+            lazyRender: true,
+            scrollContainer: '.settings-scroll',
+          },
+        ],
+      },
+    });
+
+    const executeGuidedStep = (GuidedHandler as jest.Mock).mock.results[0]?.value.executeGuidedStep as jest.Mock;
+    await waitFor(() => expect(executeGuidedStep).toHaveBeenCalled());
+    expect(executeGuidedStep).toHaveBeenCalledWith(
+      {
+        targetAction: 'formfill',
+        refTarget: '#name',
+        targetValue: '^Grafana$',
+        targetComment: 'Enter the product name',
+        requirements: ['exists-reftarget'],
+        isSkippable: true,
+        formHint: 'Use the product name',
+        validateInput: true,
+        lazyRender: true,
+        scrollContainer: '.settings-scroll',
+      },
+      0,
+      1,
+      expect.objectContaining({ timeout: 45_000 })
+    );
+
+    const options = executeGuidedStep.mock.calls[0]?.[3] as {
+      checkRequirements: (options: {
+        requirements: string[];
+        targetAction: 'formfill';
+        refTarget: string;
+        stepId: string;
+      }) => Promise<unknown>;
+    };
+    await options.checkRequirements({
+      requirements: ['section-completed:setup'],
+      targetAction: 'formfill',
+      refTarget: '#name',
+      stepId: 'guided-full',
+    });
+    expect(checkRequirements).toHaveBeenCalledWith({
+      requirements: ['section-completed:setup'],
+      targetAction: 'formfill',
+      refTarget: '#name',
+      stepId: 'guided-full',
+      guideId: 'guide-a',
+      contentKey: '/guides/a/content.json',
+    });
+    uninstall();
+  });
+
+  it('dispatches guided substep and run settlement events', async () => {
+    const executeGuidedStep = jest.fn(
+      async (_action: unknown, _index: number, _total: number, options: { onSettled?: (detail: unknown) => void }) => {
+        options.onSettled?.({
+          index: 0,
+          total: 1,
+          action: 'button',
+          outcome: 'completed',
+          durationMs: 25,
+          skippable: false,
+        });
+        return 'completed';
+      }
+    );
+    (GuidedHandler as jest.Mock).mockImplementationOnce(() => ({
+      resetProgress: jest.fn(),
+      executeGuidedStep,
+    }));
+    const dispatchEvent = jest.spyOn(document, 'dispatchEvent');
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-events',
+      runId: 'run-guided-events',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        stepTimeout: 60_000,
+        internalActions: [{ targetAction: 'button', refTarget: '#save' }],
+      },
+    });
+
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', stepId: 'guided-events', ok: true })
+      )
+    );
+    const events = dispatchEvent.mock.calls.map(([event]) => event);
+    const substepEvent = events.find((event) => event.type === GUIDED_SUBSTEP_SETTLED_EVENT) as CustomEvent;
+    const runEvent = events.find((event) => event.type === GUIDED_RUN_SETTLED_EVENT) as CustomEvent;
+    expect(substepEvent.detail).toEqual({
+      index: 0,
+      total: 1,
+      action: 'button',
+      outcome: 'completed',
+      durationMs: 25,
+      skippable: false,
+      stepId: 'guided-events',
+    });
+    expect(runEvent.detail).toEqual({ stepId: 'guided-events' });
+    dispatchEvent.mockRestore();
+    uninstall();
+  });
+
+  it('posts completion once when completeEarly settles the last guided action', async () => {
+    const executeGuidedStep = jest.fn(
+      async (_action: unknown, _index: number, _total: number, options: { onActionCompleted?: () => void }) => {
+        options.onActionCompleted?.();
+        return 'completed';
+      }
+    );
+    (GuidedHandler as jest.Mock).mockImplementationOnce(() => ({
+      resetProgress: jest.fn(),
+      executeGuidedStep,
+    }));
+    const transport = new FakeCrossTabTransport('live-self');
+    const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+
+    transport.emit({
+      source: 'pathfinder',
+      senderId: 'controller',
+      timestamp: 0,
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-early',
+      runId: 'run-guided-early',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        completeEarly: true,
+        internalActions: [
+          { targetAction: 'highlight', refTarget: '#first' },
+          { targetAction: 'button', refTarget: '#last' },
+        ],
+      },
+    });
+
+    await waitFor(() => expect(executeGuidedStep).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-complete', stepId: 'guided-early', ok: true })
+      )
+    );
+    expect(executeGuidedStep.mock.calls[0]?.[3]).toEqual(expect.objectContaining({ onActionCompleted: undefined }));
+    expect(executeGuidedStep.mock.calls[1]?.[3]).toEqual(
+      expect.objectContaining({ onActionCompleted: expect.any(Function) })
+    );
+    expect(
+      transport.postedMessages.filter((message) => {
+        if (typeof message !== 'object' || message === null) {
+          return false;
+        }
+        const posted = message as { kind?: unknown; stepId?: unknown };
+        return posted.kind === 'step-complete' && posted.stepId === 'guided-early';
+      })
+    ).toHaveLength(1);
     uninstall();
   });
 

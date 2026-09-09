@@ -120,6 +120,43 @@ describe('discoverStepsFromDOM', () => {
     expect(result.steps.map((step) => step.stepId)).toEqual(['current-1']);
   });
 
+  it('discovers authored guided timeouts and the 120-second default', async () => {
+    const page = pageWithRoots([
+      root({
+        'data-test-step-kind': 'guided',
+        'data-test-step-id': 'guided-30',
+        'data-test-substep-total': '1',
+        'data-test-step-timeout-ms': '30000',
+      }),
+      root({
+        'data-test-step-kind': 'guided',
+        'data-test-step-id': 'guided-45',
+        'data-test-substep-total': '1',
+        'data-test-step-timeout-ms': '45000',
+      }),
+      root({
+        'data-test-step-kind': 'guided',
+        'data-test-step-id': 'guided-60',
+        'data-test-substep-total': '1',
+        'data-test-step-timeout-ms': '60000',
+      }),
+      root({
+        'data-test-step-kind': 'guided',
+        'data-test-step-id': 'guided-default',
+        'data-test-substep-total': '1',
+      }),
+    ]);
+
+    const result = await discoverStepsFromDOM(page);
+
+    expect(result.steps.map(({ stepId, guidedStepTimeoutMs }) => ({ stepId, guidedStepTimeoutMs }))).toEqual([
+      { stepId: 'guided-30', guidedStepTimeoutMs: 30_000 },
+      { stepId: 'guided-45', guidedStepTimeoutMs: 45_000 },
+      { stepId: 'guided-60', guidedStepTimeoutMs: 60_000 },
+      { stepId: 'guided-default', guidedStepTimeoutMs: 120_000 },
+    ]);
+  });
+
   it('uses a legacy selector that excludes completed badges', async () => {
     const page = pageWithRoots([]);
 

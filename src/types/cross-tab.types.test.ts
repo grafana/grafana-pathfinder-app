@@ -1,4 +1,9 @@
-import { validateCrossTabMessage, type RemoteRequirementError, type WireMirrors } from './cross-tab.types';
+import {
+  toCrossTabInternalAction,
+  validateCrossTabMessage,
+  type RemoteRequirementError,
+  type WireMirrors,
+} from './cross-tab.types';
 import type { CheckResultError } from './requirements.types';
 
 function envelope(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -134,6 +139,77 @@ describe('validateCrossTabMessage', () => {
     ).toBeNull();
   });
 
+  it.each([
+    ['a zero timeout', { stepTimeout: 0 }],
+    ['a fractional timeout', { stepTimeout: 30_000.5 }],
+    ['a timeout above the maximum', { stepTimeout: 600_001 }],
+    ['a non-string guide id', { guideId: 1 }],
+    ['a non-string content key', { contentKey: 1 }],
+  ])('rejects a guided command with %s', (_label, invalidField) => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-1',
+      runId: 'run-1',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [{ targetAction: 'noop' }],
+        ...invalidField,
+      },
+    });
+
+    expect(validateCrossTabMessage(message)).toBeNull();
+  });
+
+  it('rejects an unbounded internal action list', () => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-1',
+      runId: 'run-1',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: new Array(257).fill(null).map(() => ({ targetAction: 'noop' })),
+      },
+    });
+
+    expect(validateCrossTabMessage(message)).toBeNull();
+  });
+
+  it('rejects strict form validation without a target value', () => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-1',
+      runId: 'run-1',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [{ targetAction: 'formfill', refTarget: '#name', validateInput: true }],
+      },
+    });
+
+    expect(validateCrossTabMessage(message)).toBeNull();
+  });
+
+  it('rejects oversized guided action strings', () => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-1',
+      runId: 'run-1',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        internalActions: [{ targetAction: 'highlight', refTarget: `#${'a'.repeat(16_384)}` }],
+      },
+    });
+
+    expect(validateCrossTabMessage(message)).toBeNull();
+  });
+
   it('rejects a heartbeat with an invalid role', () => {
     expect(validateCrossTabMessage(envelope({ kind: 'heartbeat', role: 'admin' }))).toBeNull();
   });
@@ -203,6 +279,25 @@ describe('validateCrossTabMessage', () => {
   });
 });
 
+describe('toCrossTabInternalAction', () => {
+  it('preserves every guided-only field', () => {
+    const action = {
+      targetAction: 'formfill' as const,
+      refTarget: '#name',
+      targetValue: '^Grafana$',
+      targetComment: 'Enter the product name',
+      requirements: ['exists-reftarget'],
+      isSkippable: true,
+      formHint: 'Use the product name',
+      validateInput: true,
+      lazyRender: true,
+      scrollContainer: '.settings-scroll',
+    };
+
+    expect(toCrossTabInternalAction(action)).toEqual(action);
+  });
+});
+
 describe('RemoteRequirementError wire mirror', () => {
   // Compile-time guard for the deliberate re-statement in cross-tab.types.ts:
   // if CheckResultError and the wire type diverge by a field, a key, or the
@@ -227,6 +322,40 @@ describe('condition array transport', () => {
       stepId: 's',
       requirements: ['has-dashboard-named:CPU, memory'],
     });
+    expect(validateCrossTabMessage(message)).toBe(message);
+  });
+
+  it('accepts the complete guided command contract', () => {
+    const message = envelope({
+      kind: 'step-command',
+      phase: 'do',
+      stepId: 'guided-1',
+      runId: 'run-1',
+      action: {
+        targetAction: 'guided',
+        refTarget: '',
+        guideId: 'guide-a',
+        contentKey: '/guides/a/content.json',
+        stepTimeout: 60_000,
+        completeEarly: true,
+        internalActions: [
+          {
+            targetAction: 'formfill',
+            refTarget: '#name',
+            targetValue: '^Grafana$',
+            targetComment: 'Enter the product name',
+            requirements: ['exists-reftarget'],
+            isSkippable: true,
+            formHint: 'Use the product name',
+            validateInput: true,
+            lazyRender: true,
+            scrollContainer: '.settings-scroll',
+          },
+          { targetAction: 'noop', requirements: ['section-completed:setup'], isSkippable: true },
+        ],
+      },
+    });
+
     expect(validateCrossTabMessage(message)).toBe(message);
   });
   it('rejects non-string condition entries', () => {

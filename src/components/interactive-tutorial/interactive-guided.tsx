@@ -14,11 +14,17 @@ import {
 } from '../../interactive-engine';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { logger } from '../../lib/logging';
-import { useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
+import { useGuideRequirements, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { getInteractiveConfig } from '../../constants/interactive-config';
 import { getConfigWithDefaults } from '../../constants';
 import { findButtonByText, querySelectorAllEnhanced } from '../../lib/dom';
-import { GuidedAction } from '../../types/interactive-actions.types';
+import {
+  GUIDED_RUN_SETTLED_EVENT,
+  GUIDED_SUBSTEP_SETTLED_EVENT,
+  type GuidedAction,
+  type GuidedRunSettledDetail,
+  type GuidedSubstepSettledDetail,
+} from '../../types/interactive-actions.types';
 import { testIds } from '../../constants/testIds';
 // Deep import (not the barrel): the barrel re-exports @grafana/assistant, which crashes under jsdom.
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
@@ -211,6 +217,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     // Local UI state
     const mode = useInteractiveMode();
     const controllerChannel = useControllerChannel();
+    const guideRequirements = useGuideRequirements();
     const [isExecuting, setIsExecuting] = useState(false);
     // Set when the user cancels a controller-mode run, so the awaiting branch
     // distinguishes a deliberate cancel from a disconnect/failure (skips the toast).
@@ -415,13 +422,18 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
 
             const completeBeforeActionEffect =
               completeEarly && i === internalActions.length - 1 ? completeStep : undefined;
-            const result = await guidedHandler.executeGuidedStep(
-              action!,
-              i,
-              internalActions.length,
-              stepTimeout,
-              completeBeforeActionEffect
-            );
+            const result = await guidedHandler.executeGuidedStep(action!, i, internalActions.length, {
+              timeout: stepTimeout,
+              checkRequirements: guideRequirements.checkRequirements,
+              onActionCompleted: completeBeforeActionEffect,
+              onSettled: (detail) => {
+                document.dispatchEvent(
+                  new CustomEvent<GuidedSubstepSettledDetail>(GUIDED_SUBSTEP_SETTLED_EVENT, {
+                    detail: { ...detail, stepId: renderedStepId },
+                  })
+                );
+              },
+            });
 
             if (result === 'completed' || result === 'skipped') {
               if (completeEarly && i === internalActions.length - 1) {
@@ -453,6 +465,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           return false;
         }
       } finally {
+        document.dispatchEvent(
+          new CustomEvent<GuidedRunSettledDetail>(GUIDED_RUN_SETTLED_EVENT, {
+            detail: { stepId: renderedStepId },
+          })
+        );
         isExecutingRef.current = false;
         if (isMountedRef.current) {
           setIsExecuting(false);
@@ -473,6 +490,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       persistCompletion,
       checker.completionReason,
       fullScreenFallbackLocation,
+      guideRequirements.checkRequirements,
+      renderedStepId,
     ]);
 
     // Expose execute method for parent (section execution)
@@ -678,6 +697,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             targetAction: 'guided',
             refTarget: '',
             internalActions: internalActions.map(toCrossTabInternalAction),
+            guideId: guideRequirements.guideId,
+            contentKey: guideRequirements.contentKey,
+            stepTimeout,
+            completeEarly,
           },
         });
         try {
@@ -722,6 +745,10 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       onStepComplete,
       onComplete,
       stepId,
+      guideRequirements.guideId,
+      guideRequirements.contentKey,
+      stepTimeout,
+      completeEarly,
     ]);
 
     // Handle step reset (redo functionality)
@@ -813,6 +840,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         data-test-step-state={uiState}
         data-test-substep-index={isExecuting ? currentStepIndex : undefined}
         data-test-substep-total={internalActions.length}
+        data-test-step-timeout-ms={stepTimeout}
+        data-test-substep-skippable={isExecuting ? String(currentAction?.isSkippable === true) : undefined}
         data-test-requirements-state={
           checker.isChecking ? 'checking' : checker.isEnabled ? 'met' : checker.explanation ? 'unmet' : 'unknown'
         }

@@ -113,6 +113,16 @@ export const StepCoverageSchema = z.object({
   ),
 });
 
+export const GuidedSubstepResultSchema = z.object({
+  index: z.number().int().nonnegative(),
+  total: z.number().int().positive(),
+  action: z.string(),
+  outcome: z.enum(['completed', 'skipped', 'timeout', 'cancelled', 'error']),
+  durationMs: z.number().nonnegative(),
+  timeoutMs: z.number().int().positive(),
+  skippable: z.boolean(),
+});
+
 export const ReportStepResultSchema = z.object({
   stepId: z.string(),
   stepKind: z.string().optional(),
@@ -123,6 +133,8 @@ export const ReportStepResultSchema = z.object({
   consoleErrors: z.array(z.string()),
   skipReason: z.string().optional(),
   error: z.string().optional(),
+  deadlineExceeded: z.boolean().optional(),
+  guidedSubsteps: z.array(GuidedSubstepResultSchema).optional(),
   skippable: z.boolean().optional(),
   classification: ErrorClassificationSchema.optional(),
   artifacts: ArtifactPathsSchema.optional(),
@@ -258,6 +270,7 @@ export type ReportTarget = z.infer<typeof ReportTargetSchema>;
 export type ReportSummary = z.infer<typeof ReportSummarySchema>;
 export type ArtifactPaths = z.infer<typeof ArtifactPathsSchema>;
 export type StepCoverage = z.infer<typeof StepCoverageSchema>;
+export type GuidedSubstepResult = z.infer<typeof GuidedSubstepResultSchema>;
 export type ReportStepResult = z.infer<typeof ReportStepResultSchema>;
 export type GuideMetadata = z.infer<typeof GuideMetadataSchema>;
 export type ReportConfig = z.infer<typeof ReportConfigSchema>;

@@ -3,6 +3,7 @@ import { InteractiveStateManager } from '../interactive-state-manager';
 import { NavigationManager } from '../navigation-manager';
 import { querySelectorAllEnhanced } from '../../lib/dom';
 import { withFaroUserAction } from '../../lib/faro';
+import { scrollUntilElementFound } from '../../lib/dom/dom-utils';
 import type { InteractiveElementData } from '../../types/interactive.types';
 
 jest.mock('../interactive-state-manager');
@@ -21,6 +22,9 @@ jest.mock('../../lib/dom', () => ({
 }));
 jest.mock('../../lib/dom/selector-detector', () => ({
   isCssSelector: jest.fn().mockReturnValue(false),
+}));
+jest.mock('../../lib/dom/dom-utils', () => ({
+  scrollUntilElementFound: jest.fn(),
 }));
 
 describe('GuidedHandler', () => {
@@ -50,6 +54,7 @@ describe('GuidedHandler', () => {
 
   afterEach(() => {
     guidedHandler.cancel();
+    jest.useRealTimers();
   });
 
   describe('execute', () => {
@@ -274,6 +279,7 @@ describe('GuidedHandler', () => {
       (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
       mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
         button.click();
+        return button;
       });
       mockNavigationManager.clearAllHighlights = jest.fn(() => {
         throw new Error('cleanup failed');
@@ -343,25 +349,186 @@ describe('GuidedHandler', () => {
       const onActionCompleted = jest.fn(() => {
         throw new Error('persistence failed');
       });
+      const onSettled = jest.fn();
       (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
       mockNavigationManager.highlightWithComment = jest.fn().mockImplementation(async () => {
         button.click();
       });
 
-      const result = await guidedHandler.executeGuidedStep(
-        { targetAction: 'highlight', refTarget: '#install' },
-        0,
-        1,
-        100,
-        onActionCompleted
-      );
+      const result = await guidedHandler.executeGuidedStep({ targetAction: 'highlight', refTarget: '#install' }, 0, 1, {
+        timeout: 100,
+        onActionCompleted,
+        onSettled,
+      });
 
       expect(result).toBe('error');
       expect(onActionCompleted).toHaveBeenCalledTimes(1);
+      expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'error' }));
       expect(mockNavigationManager.clearAllHighlights).toHaveBeenCalled();
       expect((guidedHandler as any).activeListeners).toHaveLength(0);
       expect((guidedHandler as any).pendingTimeouts).toHaveLength(0);
       expect((guidedHandler as any).pendingIntervals).toHaveLength(0);
+    });
+
+    it('checks authored requirements before target resolution', async () => {
+      const order: string[] = [];
+      const button = document.createElement('button');
+      document.body.appendChild(button);
+      const checkRequirements = jest.fn(async () => {
+        order.push('requirements');
+        return { pass: true, error: [] };
+      });
+      (querySelectorAllEnhanced as jest.Mock).mockImplementation(() => {
+        order.push('target');
+        return { elements: [button], usedFallback: false };
+      });
+      mockNavigationManager.highlightWithComment.mockImplementation(async () => {
+        button.click();
+        return button;
+      });
+      const onSettled = jest.fn();
+
+      const result = await guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#name',
+          targetValue: '^Grafana$',
+          requirements: ['exists-reftarget'],
+          formHint: 'Use the product name',
+          validateInput: true,
+          lazyRender: true,
+          scrollContainer: '.settings-scroll',
+        },
+        0,
+        1,
+        { timeout: 1_000, checkRequirements, onSettled }
+      );
+
+      expect(order.slice(0, 2)).toEqual(['requirements', 'target']);
+      expect(checkRequirements).toHaveBeenCalledWith({
+        requirements: ['exists-reftarget'],
+        targetAction: 'highlight',
+        refTarget: '#name',
+        targetValue: '^Grafana$',
+        maxRetries: expect.any(Number),
+        lazyRender: true,
+        scrollContainer: '.settings-scroll',
+      });
+      expect(result).toBe('completed');
+      expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'completed', skippable: false }));
+    });
+
+    it.each([
+      [false, 'error'],
+      [true, 'skipped'],
+    ] as const)('settles a failed requirement with skippable=%s as %s', async (isSkippable, expected) => {
+      const checkRequirements = jest.fn().mockResolvedValue({
+        pass: false,
+        error: [{ fixType: 'navigation' }],
+      });
+      const onSettled = jest.fn();
+
+      const result = await guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#missing',
+          requirements: ['on-page:/dashboards'],
+          isSkippable,
+        },
+        0,
+        1,
+        { timeout: 1_000, checkRequirements, onSettled }
+      );
+
+      expect(result).toBe(expected);
+      expect(querySelectorAllEnhanced).not.toHaveBeenCalled();
+      expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ outcome: expected, skippable: isSkippable }));
+    });
+
+    it('performs one lazy discovery cycle and rechecks requirements without retries', async () => {
+      const button = document.createElement('button');
+      document.body.appendChild(button);
+      const checkRequirements = jest
+        .fn()
+        .mockResolvedValueOnce({ pass: false, error: [{ fixType: 'lazy-scroll' }] })
+        .mockResolvedValueOnce({ pass: true, error: [] });
+      (scrollUntilElementFound as jest.Mock).mockResolvedValue(button);
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment.mockImplementation(async () => {
+        button.click();
+        return button;
+      });
+
+      const result = await guidedHandler.executeGuidedStep(
+        {
+          targetAction: 'highlight',
+          refTarget: '#lazy',
+          requirements: ['exists-reftarget'],
+          lazyRender: true,
+          scrollContainer: '.dashboard-scroll',
+        },
+        0,
+        1,
+        { timeout: 1_000, checkRequirements }
+      );
+
+      expect(result).toBe('completed');
+      expect(scrollUntilElementFound).toHaveBeenCalledTimes(1);
+      expect(scrollUntilElementFound).toHaveBeenCalledWith(
+        '#lazy',
+        expect.objectContaining({
+          scrollContainerSelector: '.dashboard-scroll',
+          deadline: expect.any(Number),
+          isCancelled: expect.any(Function),
+        })
+      );
+      expect(checkRequirements).toHaveBeenCalledTimes(2);
+      expect(checkRequirements.mock.calls[1][0]).toEqual(expect.objectContaining({ maxRetries: 0 }));
+    });
+
+    it('uses one timeout budget for requirements and the user action', async () => {
+      jest.useFakeTimers();
+      const checkRequirements = jest.fn(
+        () =>
+          new Promise<{ pass: boolean; error: [] }>((resolve) => {
+            setTimeout(() => resolve({ pass: true, error: [] }), 40);
+          })
+      );
+      let settled = false;
+
+      const resultPromise = guidedHandler
+        .executeGuidedStep({ targetAction: 'noop', requirements: ['is-admin'] }, 0, 1, {
+          timeout: 100,
+          checkRequirements,
+        })
+        .then((result) => {
+          settled = true;
+          return result;
+        });
+
+      await jest.advanceTimersByTimeAsync(99);
+      expect(settled).toBe(false);
+      await jest.advanceTimersByTimeAsync(1);
+      await expect(resultPromise).resolves.toBe('timeout');
+    });
+
+    it('uses the same timeout budget for element preparation', async () => {
+      jest.useFakeTimers();
+      const button = document.createElement('button');
+      document.body.appendChild(button);
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.ensureNavigationOpen = jest.fn(
+        (_element: HTMLElement) => new Promise<void>(() => undefined)
+      );
+
+      const resultPromise = guidedHandler.executeGuidedStep({ targetAction: 'highlight', refTarget: '#slow' }, 0, 1, {
+        timeout: 100,
+      });
+
+      await jest.advanceTimersByTimeAsync(100);
+
+      await expect(resultPromise).resolves.toBe('timeout');
+      expect(mockNavigationManager.highlightWithComment).not.toHaveBeenCalled();
     });
   });
 

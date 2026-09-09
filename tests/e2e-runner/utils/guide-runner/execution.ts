@@ -35,6 +35,7 @@ import type {
   SkipReason,
   AbortReason,
   ArtifactPaths,
+  GuidedSubstepResult,
   StepTestResult,
   AllStepsResult,
   OnStepCompleteCallback,
@@ -226,6 +227,13 @@ async function buildSuccessArtifacts(
   }
   return artifacts ?? (preScreenshotPath ? { screenshotPre: preScreenshotPath } : undefined);
 }
+function capturedArtifactsFrom(error: unknown): ArtifactPaths | undefined {
+  if (typeof error !== 'object' || error === null || !('artifacts' in error)) {
+    return undefined;
+  }
+  const artifacts = error.artifacts;
+  return typeof artifacts === 'object' && artifacts !== null ? (artifacts as ArtifactPaths) : undefined;
+}
 
 /**
  * Build the failure-path artifact bundle for a step, merging in a
@@ -237,12 +245,13 @@ async function buildFailureArtifacts(
   stepId: string,
   consoleErrors: string[],
   artifactsDir: string | undefined,
-  preScreenshotPath: string | undefined
+  preScreenshotPath: string | undefined,
+  capturedArtifacts?: ArtifactPaths
 ): Promise<ArtifactPaths | undefined> {
   if (!artifactsDir) {
-    return undefined;
+    return capturedArtifacts;
   }
-  const artifacts = await captureFailureArtifacts(page, stepId, consoleErrors, artifactsDir);
+  const artifacts = capturedArtifacts ?? (await captureFailureArtifacts(page, stepId, consoleErrors, artifactsDir));
   if (artifacts && preScreenshotPath) {
     artifacts.screenshotPre = preScreenshotPath;
     return artifacts;
@@ -257,6 +266,7 @@ interface StepExecutionOptions {
   artifactsDir?: string;
   alwaysScreenshot?: boolean;
   onDeadline?(): void;
+  onGuidedSubstepSettled?: (result: GuidedSubstepResult) => void;
 }
 
 interface AllStepsOptions extends StepExecutionOptions {
@@ -299,7 +309,18 @@ async function executeStepCore(
   const timeout = options.timeout ?? calculateStepTimeout(step);
   const deadlineMs = options.deadlineMs ?? calculateStepDeadline(step, timeout);
   const startedAt = Date.now();
-  const work = executeStepWork(page, step, { ...options, timeout });
+  const guidedSubsteps: GuidedSubstepResult[] = [];
+  const work = executeStepWork(page, step, {
+    ...options,
+    timeout,
+    onGuidedSubstepSettled: (result) => {
+      guidedSubsteps.push(result);
+      options.onGuidedSubstepSettled?.(result);
+    },
+  }).then((result) => ({
+    ...result,
+    ...(guidedSubsteps.length > 0 ? { guidedSubsteps: [...guidedSubsteps] } : {}),
+  }));
 
   return new Promise<StepTestResult>((resolve, reject) => {
     let settled = false;
@@ -325,6 +346,7 @@ async function executeStepCore(
           skippable: step.skippable,
           classification: 'infrastructure',
           artifacts: evidence?.artifacts,
+          guidedSubsteps: evidence?.guidedSubsteps ?? (guidedSubsteps.length > 0 ? [...guidedSubsteps] : undefined),
         });
       })();
     }, deadlineMs);
@@ -521,7 +543,14 @@ async function executeStepWork(
       };
     }
 
-    const execution = await driver.execute({ page, step, timeout, verbose, artifactsDir });
+    const execution = await driver.execute({
+      page,
+      step,
+      timeout,
+      verbose,
+      artifactsDir,
+      onGuidedSubstepSettled: options.onGuidedSubstepSettled,
+    });
     if (execution.outcome === 'no-control') {
       if (step.skippable) {
         return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
@@ -559,7 +588,14 @@ async function executeStepWork(
     const errorMsg = error instanceof Error ? error.message : String(error);
 
     // L3-5D: Capture artifacts on failure
-    const artifacts = await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath);
+    const artifacts = await buildFailureArtifacts(
+      page,
+      step.stepId,
+      consoleErrors,
+      artifactsDir,
+      preScreenshotPath,
+      capturedArtifactsFrom(error)
+    );
     if (verbose && artifacts) {
       console.log(`   📸 Artifacts captured to ${artifactsDir}`);
     }

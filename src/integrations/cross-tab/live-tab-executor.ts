@@ -16,7 +16,13 @@ import {
   NavigateHandler,
   NavigationManager,
 } from '../../interactive-engine';
-import type { GuidedAction } from '../../types/interactive-actions.types';
+import {
+  GUIDED_RUN_SETTLED_EVENT,
+  GUIDED_SUBSTEP_SETTLED_EVENT,
+  type GuidedAction,
+  type GuidedRunSettledDetail,
+  type GuidedSubstepSettledDetail,
+} from '../../types/interactive-actions.types';
 import { CrossTabTransport, createSenderId } from '../../lib/cross-tab-transport';
 import { checkRequirements, dispatchFix, type RequirementsCheckResult } from '../../requirements-manager';
 import {
@@ -242,28 +248,55 @@ export function installLiveTabExecutor(
 
   // Guided is human-driven: highlight each target and wait for the user to perform
   // it on the live tab, rather than the auto replay a multi-step uses.
-  const runGuided = async (actions: ActionList, onProgress: OnProgress): Promise<boolean> => {
+  const runGuided = async (
+    command: StepCommandMessage,
+    actions: ActionList,
+    onProgress: OnProgress,
+    onCompletedEarly: () => void
+  ): Promise<boolean> => {
     guidedHandler.resetProgress();
-    for (let i = 0; i < actions.length; i++) {
-      onProgress(i);
-      const action = actions[i]!;
-      // The receive gate accepts any KNOWN_TARGET_ACTIONS verb, which is wider than
-      // the guided verb set — guard the cast so a non-guided verb (e.g. navigate)
-      // fails loud instead of being mistyped into the guided handler (F-1073-nit-cast).
-      if (!GUIDED_VERBS.has(action.targetAction as GuidedAction['targetAction'])) {
-        logger.warn(`[Pathfinder] cross-tab executor: guided step has non-guided verb "${action.targetAction}"`);
-        return false;
+    try {
+      for (let i = 0; i < actions.length; i++) {
+        onProgress(i);
+        const action = actions[i]!;
+        if (!GUIDED_VERBS.has(action.targetAction as GuidedAction['targetAction'])) {
+          logger.warn(`[Pathfinder] cross-tab executor: guided step has non-guided verb "${action.targetAction}"`);
+          return false;
+        }
+        const result = await guidedHandler.executeGuidedStep(
+          { ...action, targetAction: action.targetAction as GuidedAction['targetAction'] },
+          i,
+          actions.length,
+          {
+            timeout: command.action.stepTimeout,
+            checkRequirements: (options) =>
+              checkRequirements({
+                ...options,
+                guideId: command.action.guideId,
+                contentKey: command.action.contentKey,
+              }),
+            onActionCompleted: command.action.completeEarly && i === actions.length - 1 ? onCompletedEarly : undefined,
+            onSettled: (detail) => {
+              document.dispatchEvent(
+                new CustomEvent<GuidedSubstepSettledDetail>(GUIDED_SUBSTEP_SETTLED_EVENT, {
+                  detail: { ...detail, stepId: command.stepId },
+                })
+              );
+            },
+          }
+        );
+        if (result !== 'completed' && result !== 'skipped') {
+          return false;
+        }
       }
-      const result = await guidedHandler.executeGuidedStep(
-        { ...action, targetAction: action.targetAction as GuidedAction['targetAction'] },
-        i,
-        actions.length
+      return true;
+    } finally {
+      document.dispatchEvent(
+        new CustomEvent<GuidedRunSettledDetail>(GUIDED_RUN_SETTLED_EVENT, {
+          detail: { stepId: command.stepId },
+        })
       );
-      if (result !== 'completed' && result !== 'skipped') {
-        return false;
-      }
     }
-    return true;
   };
 
   const runStepCommand = async (command: StepCommandMessage): Promise<void> => {
@@ -274,6 +307,14 @@ export function installLiveTabExecutor(
     const internalActions = command.action.internalActions;
     const postProgress = (index: number) =>
       transport.post({ kind: 'step-progress', stepId, runId, index, total: internalActions?.length ?? 0 });
+    let completionPosted = false;
+    const postCompletion = (ok: boolean) => {
+      if (completionPosted) {
+        return;
+      }
+      completionPosted = true;
+      transport.post({ kind: 'step-complete', stepId, runId, ok });
+    };
     await withFaroUserAction(
       TELEMETRY_ACTIONS.remoteStep,
       {
@@ -289,7 +330,7 @@ export function installLiveTabExecutor(
         try {
           if (internalActions?.length) {
             if (command.action.targetAction === 'guided') {
-              ok = await runGuided(internalActions, postProgress);
+              ok = await runGuided(command, internalActions, postProgress, () => postCompletion(true));
             } else {
               await runComposite(internalActions, postProgress);
               ok = true;
@@ -307,7 +348,7 @@ export function installLiveTabExecutor(
         // failure instead of completing early. Simple steps stay optimistic by design
         // and report nothing back.
         if (internalActions?.length) {
-          transport.post({ kind: 'step-complete', stepId, runId, ok });
+          postCompletion(ok);
         }
       },
       USER_ACTION_TIMEOUT_LONG_MS

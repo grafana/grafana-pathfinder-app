@@ -60,6 +60,8 @@ export interface RequirementsCheckOptions {
   requirements: ConditionInput;
   /** Guide scope for var-* checks; omit only for compatibility callers outside a renderer tree. */
   guideId?: string;
+  /** Content scope for section-completed:* checks. */
+  contentKey?: string;
   targetAction?: string;
   refTarget?: string;
   targetValue?: string;
@@ -76,6 +78,7 @@ type CheckMode = 'pre' | 'post';
 
 interface CheckContext {
   guideId?: string;
+  contentKey?: string;
   targetAction?: string;
   refTarget?: string;
   /** Enable progressive scroll discovery for virtualized containers */
@@ -128,7 +131,11 @@ const CHECK_HANDLERS: readonly CheckHandler[] = [
   { id: 'has-feature:', match: (c) => c.startsWith('has-feature:'), run: (c) => hasFeatureCheck(c) },
   { id: 'in-environment:', match: (c) => c.startsWith('in-environment:'), run: (c) => inEnvironmentCheck(c) },
   { id: 'min-version:', match: (c) => c.startsWith('min-version:'), run: (c) => minVersionCheck(c) },
-  { id: 'section-completed:', match: (c) => c.startsWith('section-completed:'), run: (c) => sectionCompletedCheck(c) },
+  {
+    id: 'section-completed:',
+    match: (c) => c.startsWith('section-completed:'),
+    run: (c, ctx) => sectionCompletedCheck(c, ctx.contentKey),
+  },
   { id: 'form-valid', match: (c) => c === 'form-valid', run: (c) => formValidCheck(c) },
   { id: 'is-terminal-active', match: (c) => c === 'is-terminal-active', run: (c) => terminalActiveCheck(c) },
   { id: 'coda-exit-zero:', match: (c) => c.startsWith('coda-exit-zero:'), run: (c) => codaExitZeroCheck(c) },
@@ -206,6 +213,7 @@ async function executeChecksWithRetry(
   const {
     requirements,
     guideId,
+    contentKey,
     targetAction = 'button',
     refTarget = '',
     retryCount = 0,
@@ -229,6 +237,7 @@ async function executeChecksWithRetry(
   try {
     const result = await runUnifiedChecks(requirements, mode, {
       guideId,
+      contentKey,
       targetAction,
       refTarget,
       lazyRender,

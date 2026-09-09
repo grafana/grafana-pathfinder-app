@@ -10,6 +10,7 @@
 
 import { Locator } from '@playwright/test';
 import type { StepTypeKind } from '../../../../src/components/interactive-tutorial/step-type-registry';
+import type { GuidedStepOutcome } from '../../../../src/types/interactive-actions.types';
 
 // ============================================
 // Step Types
@@ -52,6 +53,8 @@ export interface TestableStep {
 
   /** Number of driver-owned actions for timeout and execution scaling */
   actionCount: number;
+  /** Effective timeout for each guided substep. */
+  guidedStepTimeoutMs?: number;
 
   /**
    * The target element selector (L3-4A).
@@ -106,6 +109,16 @@ export interface StepDiscoveryResult {
  * Status of a step execution.
  */
 export type StepStatus = 'passed' | 'failed' | 'skipped' | 'not_reached';
+
+export interface GuidedSubstepResult {
+  index: number;
+  total: number;
+  action: string;
+  outcome: GuidedStepOutcome;
+  durationMs: number;
+  timeoutMs: number;
+  skippable: boolean;
+}
 
 /**
  * Reason why a step was skipped.
@@ -318,6 +331,8 @@ export interface StepTestResult {
   error?: string;
   /** Whether the runner stopped the step at its hard deadline */
   deadlineExceeded?: boolean;
+  /** Settled guided substeps captured before parent completion or failure. */
+  guidedSubsteps?: GuidedSubstepResult[];
 
   /** Reason if status is 'skipped' */
   skipReason?: SkipReason;

@@ -419,7 +419,7 @@ export interface JsonGuidedBlock extends AuthorAnnotated {
   content: string;
   /** Sequence of steps for user to perform */
   steps: JsonStep[];
-  /** Timeout per step in milliseconds (default: 30000) */
+  /** Timeout per step in milliseconds (default: 120000, maximum: 600000) */
   stepTimeout?: number;
   /** Requirements for the entire guided block */
   requirements?: string[];
