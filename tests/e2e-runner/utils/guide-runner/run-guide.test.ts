@@ -309,30 +309,32 @@ it('reports mixed supported and unsupported tracked roots', async () => {
   expect(stepRoots.filter).toHaveBeenCalledWith({ visible: true });
 });
 
-it('reports an unsupported-only guide without changing its outcome', async () => {
+it('rejects an unsupported-only guide and names each unsupported kind', async () => {
   const events: string[] = [];
   const coverage: StepCoverage = {
     contractSource: 'current',
-    rendered: 1,
+    rendered: 3,
     supported: 0,
     executed: 0,
-    unsupported: 1,
-    unsupportedSteps: [{ stepKind: 'terminal', stepId: 'terminal-1' }],
+    unsupported: 3,
+    unsupportedSteps: [
+      { stepKind: 'terminal', stepId: 'terminal-1' },
+      { stepKind: 'quiz', stepId: 'quiz-1' },
+      { stepKind: 'terminal', stepId: 'terminal-2' },
+    ],
   };
   setupInteractiveRun([], coverage, { results: [], aborted: false });
-
-  const result = await runGuideOnPage(
-    page(events),
-    {
-      id: 'unsupported',
-      title: 'Unsupported guide',
-      path: '/unsupported/content.json',
-      content: '{"id":"unsupported","blocks":[{"type":"interactive"}]}',
-    },
-    options(events)
-  );
-
-  expect(result.outcome).toBe('passed');
-  expect(result.results).toEqual([]);
-  expect(result.coverage).toEqual(coverage);
+  await expect(
+    runGuideOnPage(
+      page(events),
+      {
+        id: 'unsupported',
+        title: 'Unsupported guide',
+        path: '/unsupported/content.json',
+        content: '{"id":"unsupported","blocks":[{"type":"interactive"}]}',
+      },
+      options(events)
+    )
+  ).rejects.toThrow('Guide unsupported rendered only unsupported step kinds: quiz, terminal');
+  expect(executeAllStepsMock).not.toHaveBeenCalled();
 });

@@ -139,6 +139,10 @@ async function executeGuideSteps(
   if (discovery.coverage.rendered === 0) {
     throw new Error(`Guide ${guide.id} contains interactive blocks but rendered no interactive steps`);
   }
+  if (discovery.coverage.supported === 0) {
+    const unsupportedKinds = [...new Set(discovery.coverage.unsupportedSteps.map(({ stepKind }) => stepKind))].sort();
+    throw new Error(`Guide ${guide.id} rendered only unsupported step kinds: ${unsupportedKinds.join(', ')}`);
+  }
 
   printHeader(guide.title);
   printDiscoveryResults(

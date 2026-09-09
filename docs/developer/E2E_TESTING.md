@@ -141,6 +141,7 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - If current roots are absent, the runner uses the documented legacy selector.
    - The driver registry collects metadata and identifies supported steps.
    - Unsupported roots remain in coverage, but the runner does not operate their controls.
+   - A guide with only unsupported roots fails before execution. The error names each unsupported kind.
 
 4. **Sequential execution**
    - For each step:
@@ -347,7 +348,9 @@ Key contract fields:
 - `coverage.unsupported`: number of rendered roots without supported drivers
 - `coverage.unsupportedSteps`: unsupported kind and step ID pairs
 
-Coverage fields are optional and additive. Unsupported coverage does not change outcomes, exit codes, skip behavior, or runner action semantics.
+Coverage fields are optional and additive. Unsupported roots do not change outcomes when the guide also has a supported root.
+
+A guide with only unsupported roots fails before execution. This result prevents a zero-execution guide from passing.
 
 Multi-guide reports keep coverage inside each individual guide report. The aggregate outcome and step summary use the existing rules.
 

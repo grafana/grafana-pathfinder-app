@@ -61,7 +61,9 @@ One `StepDriver` registry owns metadata inspection, product controls, execution,
 
 The runner supports `plain`, `multistep`, and `guided`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
 
-Unsupported coverage does not change guide outcomes in this release. The runner reports each unsupported kind and step ID.
+Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
+
+A guide with only unsupported roots fails before execution. The error names each unsupported kind.
 
 Browser actions use only rendered DOM state. Raw guide JSON can identify authored interactive content, but it cannot control browser actions.
 
