@@ -23,7 +23,13 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 - `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
 - `tests/e2e-runner/guide-runner.spec.ts` — isolated, single-guide wrapper for the reusable guide lifecycle.
 - `tests/e2e-runner/shared-guide-runner.spec.ts` — one-test shared browser session for explicit path and journey selections.
-- `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, browser-termination monitoring, requirement fixing, artifact capture, and failure classification.
+- `tests/e2e-runner/utils/guide-runner/discovery.ts` — current and legacy DOM discovery, driver-based inspection, and supported/unsupported coverage collection.
+- `tests/e2e-runner/utils/guide-runner/drivers/types.ts` — the `StepDriver` contract for inspection, timeout calculation, completion checks, skipping, and execution.
+- `tests/e2e-runner/utils/guide-runner/drivers/registry.ts` — the exhaustive registry of tracked step kinds, their supported status, and their concrete drivers.
+- `tests/e2e-runner/utils/guide-runner/drivers/shared.ts` and `drivers/guided.ts` — shared control behavior and guided-step-specific execution.
+- `tests/e2e-runner/utils/guide-runner/execution.ts` — sequential execution through the selected driver and construction of step results.
+- `tests/e2e-runner/utils/guide-runner/run-guide.ts` — guide lifecycle, unsupported-only skips, coverage finalization, and conversion to reporter input.
+- `tests/e2e-runner/utils/console-reporter.ts`, `src/cli/e2e/e2e-reporter.ts`, `src/cli/e2e/e2e-results.ts`, and `src/cli/e2e/schemas/e2e-report.schema.ts` — console output, external report construction, CLI outcome mapping, and the report contract.
 - `tests/e2e-runner/utils/guide-runner/milestone-replacement.ts` — runner-only progress reset and legacy E2E tab replacement.
 - `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
 
@@ -156,6 +162,19 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - Console output with real-time progress
    - JSON report when `--output` is specified; non-passing runs also write a default report under `--artifacts`
    - Failure artifacts in `--artifacts` directory
+
+### Adding support for a step kind
+
+`STEP_DRIVERS` is the runner's extension point. Discovery and execution select behavior from this registry instead of branching on step kinds themselves.
+
+To support a registered kind that is currently reported as unsupported:
+
+1. Implement the `StepDriver` contract from `drivers/types.ts`. Its methods own DOM inspection, timeout calculation, completion checks, skip synchronization, and execution for that kind.
+2. Put behavior shared with existing drivers in `drivers/shared.ts`. Keep specialized behavior in a focused driver module, as `drivers/guided.ts` does.
+3. Replace the kind's `unsupportedDriver(...)` entry in `drivers/registry.ts` with a supported driver. Do not add kind-specific branches to `discovery.ts` or `execution.ts`.
+4. Update `drivers/registry.test.ts` and add focused discovery and execution tests. If the change affects unsupported-only handling or externally reported fields, also update `run-guide.test.ts`, reporter/result tests, and the report schema as required.
+
+When introducing a product step kind rather than enabling an existing one, first add it to `STEP_TYPE_KIND_KEYS`, emit the tracked root attributes, and update the contract tests and [E2E testing contract](./E2E_TESTING_CONTRACT.md). The registry test requires every tracked kind to have exactly one registry entry, supported or unsupported.
 
 ### Shared path and journey sessions
 
