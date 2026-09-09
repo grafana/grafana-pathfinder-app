@@ -128,21 +128,23 @@ function trailingStateMarker(output) {
   if (markerIndexes.length !== 1) {
     return null;
   }
-  const recap = lines.slice(-RECAP_LINE_COUNT);
+  const markerIndex = markerIndexes[0];
+  // Anchor the recap to the marker, not to the end of the body: a publisher may
+  // append its own closing prose after the rendered report (the community-pr
+  // gate does). Marker-then-recap adjacency is what defeats a marker quoted
+  // mid-prose, so that still holds - only the end-of-body coupling is dropped.
+  let index = markerIndex + 1;
+  while (index < lines.length && lines[index].trim() === '') {
+    index += 1;
+  }
+  const recap = lines.slice(index, index + RECAP_LINE_COUNT);
   if (
     recap.length !== RECAP_LINE_COUNT ||
-    !RECAP_SHAPES.some((shapes) => shapes.every((shape, index) => shape.test(recap[index])))
+    !RECAP_SHAPES.some((shapes) => shapes.every((shape, offset) => shape.test(recap[offset])))
   ) {
     return null;
   }
-  let index = lines.length - RECAP_LINE_COUNT - 1;
-  while (index >= 0 && lines[index].trim() === '') {
-    index -= 1;
-  }
-  if (index !== markerIndexes[0]) {
-    return null;
-  }
-  const encoded = lines[index].match(STATE_MARKER)?.[1];
+  const encoded = lines[markerIndex].match(STATE_MARKER)?.[1];
   return encoded ? { encoded, recap } : null;
 }
 

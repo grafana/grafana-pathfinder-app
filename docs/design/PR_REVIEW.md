@@ -251,7 +251,7 @@ Verdict: Request Changes
 Results: 1 blocker, 5 non-blocking findings, 2 follow-ups
 ```
 
-Nothing follows the results line. `Summary` is one line of at most 120 characters. `Verdict` is `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Results count current rendered findings: suggestions plus nits are non-blocking findings, and carried deferred IDs without repeated prose are not follow-ups.
+The marker and the results recap must stay adjacent, in that order, separated only by blank lines - that adjacency is what authenticates the marker, so never interpose a line between them. A publisher may append its own closing prose after the recap; `--parse-state` reads state through it. `Summary` is one line of at most 120 characters. `Verdict` is `Approve`, `Approve with Minor`, `Request Changes`, or `Review Incomplete`. Results count current rendered findings: suggestions plus nits are non-blocking findings, and carried deferred IDs without repeated prose are not follow-ups.
 
 ### Debug trace
 

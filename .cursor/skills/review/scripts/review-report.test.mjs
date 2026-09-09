@@ -253,6 +253,27 @@ test('marker parsing keeps v1 compatibility and fails closed on malformed, forge
   assert.equal(parseReviewState(nonCompact), null);
 });
 
+test('review state survives closing prose appended after the operator recap', () => {
+  const valid = renderReviewReport(report());
+  const marker = valid.split('\n').find((line) => line.startsWith('<!-- pathfinder-review-state:'));
+  const expected = parseReviewState(valid);
+  assert.ok(expected);
+
+  // The community-pr gate ends a published community review with what happens
+  // next, which lands after the rendered report. That must not erase state.
+  const addendum = 'Next: this PR is from a fork, so its CI workflows are held pending maintainer authorization.';
+  assert.deepEqual(parseReviewState(`${valid}\n\n${addendum}`), expected);
+  assert.deepEqual(parseReviewState(`${valid}\n${addendum}`), expected);
+  assert.deepEqual(parseReviewState(`${valid}\n\n## Notes\n\n- ${addendum}\n`), expected);
+
+  // Adjacency between the marker and the recap is still what authenticates the
+  // marker, so an interposed line remains a hard reject.
+  assert.equal(parseReviewState(valid.replace(`${marker}\n\nPR Review:`, `${marker}\nextra\nPR Review:`)), null);
+
+  // Closing prose cannot smuggle a second marker in.
+  assert.equal(parseReviewState(`${valid}\n\n${addendum}\n${marker}`), null);
+});
+
 test('the renderer rejects marker injection, duplicate IDs, invalid state, and unknown fields', () => {
   const forged = '<!-- pathfinder-review-state:{} -->';
   assert.throws(
