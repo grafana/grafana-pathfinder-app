@@ -34,6 +34,21 @@ function NestedPassiveConditional({ depth, keyPrefix }: { depth: number; keyPref
   );
 }
 
+function NestedEmptyConditional({ depth, keyPrefix }: { depth: number; keyPrefix: string }) {
+  const childType = depth > 0 ? 'interactive-conditional' : 'p';
+  return (
+    <InteractiveConditional
+      conditions={[]}
+      whenTrueChildren={[]}
+      whenFalseChildren={[{ type: childType, props: {}, children: [] }]}
+      renderElement={(_element, childKey) =>
+        depth > 0 ? <NestedEmptyConditional key={childKey} depth={depth - 1} keyPrefix={`${keyPrefix}-nested`} /> : null
+      }
+      keyPrefix={keyPrefix}
+    />
+  );
+}
+
 jest.mock('../../interactive-engine', () => ({
   useInteractiveElements: () => ({
     checkRequirementsFromData,
@@ -226,38 +241,19 @@ describe('InteractiveConditional', () => {
     const { container } = render(
       <div className={getInteractiveStyles(createTheme())}>
         <ol className="interactive-section-content">
-          {wrapSectionChildrenForNumbering(
-            <InteractiveConditional
-              conditions={[]}
-              whenTrueChildren={[]}
-              whenFalseChildren={[{ type: 'interactive-conditional', props: {}, children: [] }]}
-              renderElement={(_element, childKey) => (
-                <InteractiveConditional
-                  key={childKey}
-                  conditions={[]}
-                  whenTrueChildren={[]}
-                  whenFalseChildren={[]}
-                  renderElement={() => null}
-                  keyPrefix={childKey}
-                />
-              )}
-              keyPrefix="nested-empty"
-            />
-          )}
+          {wrapSectionChildrenForNumbering(<NestedEmptyConditional depth={3} keyPrefix="nested-empty" />)}
         </ol>
       </div>
     );
     const item = container.querySelector('ol > li') as HTMLLIElement;
 
-    await act(async () => {
-      jest.runAllTimers();
-    });
+    for (let depth = 0; depth < 6; depth += 1) {
+      await act(async () => {
+        jest.runAllTimers();
+      });
+    }
 
-    await act(async () => {
-      jest.runAllTimers();
-    });
-
-    expect(item.querySelector('.interactive-conditional')).toBeEmptyDOMElement();
+    expect(item).toBeEmptyDOMElement();
     expect(getComputedStyle(item).display).toBe('none');
   });
 
@@ -305,6 +301,62 @@ describe('InteractiveConditional', () => {
 
     expect(screen.getByText('Visible sibling')).toBeInTheDocument();
     expect(getComputedStyle(item).display).not.toBe('none');
+  });
+
+  it('retains the outer slot when a populated nested conditional collapses', async () => {
+    let nestedPass = true;
+    checkRequirementsFromData.mockImplementation(({ refTarget }: { refTarget?: string }) =>
+      Promise.resolve({ pass: refTarget === 'outer' || nestedPass, requirements: '', error: [] })
+    );
+
+    const { container } = render(
+      <div className={getInteractiveStyles(createTheme())}>
+        <ol className="interactive-section-content">
+          {wrapSectionChildrenForNumbering(
+            <InteractiveConditional
+              conditions={['outer']}
+              refTarget="outer"
+              whenTrueChildren={[{ type: 'interactive-conditional', props: {}, children: [] }]}
+              whenFalseChildren={[]}
+              renderElement={(_element, childKey) => (
+                <InteractiveConditional
+                  key={childKey}
+                  conditions={['inner']}
+                  refTarget="inner"
+                  whenTrueChildren={[{ type: 'p', props: {}, children: ['Nested content'] }]}
+                  whenFalseChildren={[]}
+                  renderElement={(_nestedElement, nestedKey) => <p key={nestedKey}>Nested content</p>}
+                  keyPrefix="inner"
+                />
+              )}
+              keyPrefix="outer"
+            />
+          )}
+        </ol>
+      </div>
+    );
+    const item = container.querySelector('ol > li') as HTMLLIElement;
+
+    for (let run = 0; run < 4; run += 1) {
+      await act(async () => {
+        jest.runAllTimers();
+      });
+    }
+    expect(screen.getByText('Nested content')).toBeInTheDocument();
+
+    nestedPass = false;
+    await act(async () => {
+      document.dispatchEvent(new CustomEvent('interactive-action-completed', { detail: {} }));
+      jest.advanceTimersByTime(300);
+      jest.runAllTimers();
+    });
+
+    await waitFor(() => {
+      expect(item.firstElementChild).toHaveAttribute('data-section-numbering-retained', 'true');
+    });
+    expect(item.firstElementChild).toHaveAttribute('hidden');
+    expect(item.childElementCount).toBe(1);
+    expect(item).toHaveAttribute('data-numbered', 'true');
   });
 
   it('retains an occupied numbering slot when re-evaluation empties the branch', async () => {

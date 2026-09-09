@@ -54,6 +54,49 @@ function hasRenderableNode(node: React.ReactNode): boolean {
   return true;
 }
 
+interface RenderedDomState {
+  hasVisibleContent: boolean;
+  isPending: boolean;
+}
+
+// Nested conditionals are transparent for occupancy: their loading state is
+// pending, and hidden retained markers are not visible content of the parent.
+function inspectRenderedDom(nodes: NodeListOf<ChildNode>): RenderedDomState {
+  let hasVisibleContent = false;
+  let isPending = false;
+
+  for (const node of Array.from(nodes)) {
+    if (node.nodeType === 8) {
+      continue;
+    }
+    if (node.nodeType === 3) {
+      hasVisibleContent ||= Boolean(node.textContent?.trim());
+      continue;
+    }
+    if (!(node instanceof HTMLElement)) {
+      hasVisibleContent ||= node.nodeType === 1;
+      continue;
+    }
+    if (node.hidden) {
+      continue;
+    }
+    if (!node.classList.contains('interactive-conditional')) {
+      hasVisibleContent = true;
+      continue;
+    }
+    if (node.classList.contains('loading')) {
+      isPending = true;
+      continue;
+    }
+
+    const nested = inspectRenderedDom(node.childNodes);
+    hasVisibleContent ||= nested.hasVisibleContent;
+    isPending ||= nested.isPending;
+  }
+
+  return { hasVisibleContent, isPending };
+}
+
 export function InteractiveConditional({
   conditions,
   description,
@@ -69,6 +112,8 @@ export function InteractiveConditional({
   const [conditionsPassed, setConditionsPassed] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
   const [hasOccupiedNumberingSlot, setHasOccupiedNumberingSlot] = useState(false);
+  const [emptyRenderToken, setEmptyRenderToken] = useState<object | null>(null);
+  const conditionalWrapperRef = useRef<HTMLDivElement>(null);
   const { checkRequirementsFromData } = useInteractiveElements();
 
   // Stable string identity for `conditions`. The parent passes a fresh array
@@ -137,6 +182,7 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
+        setEmptyRenderToken(null);
         setConditionsPassed(result.pass);
         setIsChecking(false);
       } catch (error) {
@@ -144,6 +190,7 @@ export function InteractiveConditional({
         if (!isMountedRef.current || myRunId !== runIdRef.current) {
           return;
         }
+        setEmptyRenderToken(null);
         setConditionsPassed(false);
         setIsChecking(false);
       }
@@ -153,7 +200,10 @@ export function InteractiveConditional({
 
   const needsDomWatch = conditionsKeyNeedsDomWatch(conditionsKey);
 
-  const childrenToRender = conditionsPassed === null ? [] : conditionsPassed ? whenTrueChildren : whenFalseChildren;
+  const childrenToRender = useMemo(
+    () => (conditionsPassed === null ? [] : conditionsPassed ? whenTrueChildren : whenFalseChildren),
+    [conditionsPassed, whenFalseChildren, whenTrueChildren]
+  );
   const sectionConfig =
     conditionsPassed === null ? undefined : conditionsPassed ? whenTrueSectionConfig : whenFalseSectionConfig;
   const branchKey = conditionsPassed ? 'true' : 'false';
@@ -162,15 +212,41 @@ export function InteractiveConditional({
       ? []
       : childrenToRender.map((child, index) => renderElement(child, `${keyPrefix}-${branchKey}-${index}`));
   const hasRenderableChildren = renderedChildren.some(hasRenderableNode);
+  // A later authoring update must be allowed to remount a branch previously
+  // observed as empty, even when the condition verdict itself did not change.
+  const renderToken = useMemo(
+    () => ({ branchKey, childrenToRender, display, keyPrefix }),
+    [branchKey, childrenToRender, display, keyPrefix]
+  );
+  const isEmptyAfterCommit = emptyRenderToken === renderToken;
 
   useEffect(() => {
-    if (hasRenderableChildren) {
-      // The rendered output is the only reliable occupancy signal; latch it
-      // after commit so a later empty re-evaluation can retain its slot.
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- monotonic render-history latch
-      setHasOccupiedNumberingSlot(true);
+    const wrapper = conditionalWrapperRef.current;
+    if (!wrapper || !hasRenderableChildren || isEmptyAfterCommit) {
+      return;
     }
-  }, [hasRenderableChildren]);
+
+    const syncRenderedOutput = () => {
+      if (!isMountedRef.current) {
+        return;
+      }
+      const renderedDomState = inspectRenderedDom(wrapper.childNodes);
+      if (!renderedDomState.hasVisibleContent && !renderedDomState.isPending) {
+        setEmptyRenderToken((previous) => (previous === renderToken ? previous : renderToken));
+        return;
+      }
+
+      if (renderedDomState.hasVisibleContent) {
+        setEmptyRenderToken(null);
+        setHasOccupiedNumberingSlot(true);
+      }
+    };
+
+    syncRenderedOutput();
+    const observer = new MutationObserver(syncRenderedOutput);
+    observer.observe(wrapper, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [hasRenderableChildren, isEmptyAfterCommit, renderToken]);
 
   // Stable ref to the latest evaluator. Lets long-lived subscriptions
   // (MutationObserver, event listeners) invoke the current evaluator without
@@ -298,10 +374,10 @@ export function InteractiveConditional({
     return hasOccupiedNumberingSlot ? <span hidden data-section-numbering-retained="true" /> : null;
   }
 
-  // Parsed elements can still produce no React output (for example, a nested
-  // conditional whose selected branch is empty). Do not leave a numbered
-  // wrapper around an empty result; it would consume a counter slot.
-  if (!hasRenderableChildren) {
+  // Parsed elements can produce no React output directly, or a nested
+  // component can settle empty after commit. Neither may leave a numbered
+  // wrapper behind; only a slot that previously rendered stays reserved.
+  if (!hasRenderableChildren || isEmptyAfterCommit) {
     return hasOccupiedNumberingSlot ? <span hidden data-section-numbering-retained="true" /> : null;
   }
 
@@ -317,6 +393,7 @@ export function InteractiveConditional({
 
     return (
       <div
+        ref={conditionalWrapperRef}
         className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}`}
         data-testid={testIds.interactive.conditional(conditionalId)}
         data-conditions={conditions.join(', ')}
@@ -341,6 +418,7 @@ export function InteractiveConditional({
 
   return (
     <div
+      ref={conditionalWrapperRef}
       className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}`}
       data-testid={testIds.interactive.conditional(conditionalId)}
       data-conditions={conditions.join(', ')}
