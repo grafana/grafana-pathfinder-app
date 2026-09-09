@@ -32,7 +32,7 @@ import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../
 import { logger } from '../../lib/logging';
 import { StorageEvents } from '../../lib/event-names';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
-import { isPreviewContentKey, getGuideProgress, subscribeProgress } from '../../global-state/completion-store';
+import { isBlockEditorPreviewUrl, getGuideProgress, subscribeProgress } from '../../global-state/completion-store';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { testIds } from '../../constants/testIds';
 
@@ -160,14 +160,16 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     claimFocusRef.current = true;
     setMark({ readFor: contentUrl, marked: true });
 
-    // The completion write must not wait on the celebration: a reader who
-    // navigates away mid-animation still completed the guide.
-    onMarkComplete?.();
+    // A block-editor preview is an author iterating, not a reader: it records
+    // nothing, persists nothing and stays out of the click stream, because that
+    // stream exists to measure whether real readers use the control. The narrow
+    // URL predicate, not `isPreviewContentKey`: that one's `devtools` arm is a
+    // substring test, and this key is a URL.
+    if (!isBlockEditorPreviewUrl(contentKey)) {
+      // The completion write must not wait on the celebration: a reader who
+      // navigates away mid-animation still completed the guide.
+      onMarkComplete?.();
 
-    // A block-editor preview is an author iterating, not a reader: it persists
-    // nothing and it stays out of the click stream, because that stream exists
-    // to measure whether real readers use the control.
-    if (!isPreviewContentKey(contentKey)) {
       reportAppInteraction(UserInteraction.MarkCompleteClicked, {
         interaction_location: 'content_footer',
         completion_context: context,

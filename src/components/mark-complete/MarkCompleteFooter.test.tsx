@@ -41,7 +41,7 @@ jest.mock('../../global-state/content-key', () => ({
 let percentage = 25;
 let notifyProgress: (() => void) | undefined;
 jest.mock('../../global-state/completion-store', () => ({
-  isPreviewContentKey: () => false,
+  ...jest.requireActual('../../global-state/completion-store'),
   getGuideProgress: () => ({ completed: 1, total: 4, percentage }),
   subscribeProgress: (_contentKey: string, listener: () => void) => {
     notifyProgress = listener;
@@ -215,6 +215,21 @@ describe('MarkCompleteFooter', () => {
     });
 
     expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument();
+  });
+
+  it('records, persists and reports nothing from a block-editor preview', async () => {
+    const onMarkComplete = jest.fn();
+    render(
+      <MarkCompleteFooter context="guide" contentUrl="block-editor://preview/demo" onMarkComplete={onMarkComplete} />
+    );
+
+    await clickWhenReady();
+
+    expect(onMarkComplete).not.toHaveBeenCalled();
+    expect(reportAppInteraction).not.toHaveBeenCalled();
+    expect(markStorage.set).not.toHaveBeenCalled();
+    expect(setCompletionPercentage).not.toHaveBeenCalled();
+    expect(dispatchProgress).not.toHaveBeenCalled();
   });
 
   it('completes and continues on a milestone', async () => {

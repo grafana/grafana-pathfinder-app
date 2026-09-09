@@ -150,7 +150,7 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     expect(await guideCompletionMarkStorage.get(first.url)).toBeNull();
   });
 
-  it('completes the reading from a block-editor preview but persists nothing and reports nothing', async () => {
+  it('records nothing at all from a block-editor preview', async () => {
     // A docs panel holding a real guide can be open alongside the editor, and
     // its active tab URL is the ambient content key.
     const openGuideUrl = `${baseUrl}/set-up/`;
@@ -160,10 +160,25 @@ describe('ContentRenderer — the universal Mark complete control', () => {
 
     await clickWhenReady();
 
-    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    // The durable completion record is the one irreversible side effect, so it
+    // belongs behind the same guard as the mark and the analytics event.
+    expect(onGuideComplete).not.toHaveBeenCalled();
     expect(markCompleteEvents()).toEqual([]);
     expect(await guideCompletionMarkStorage.get(PREVIEW_URL)).toBeNull();
     expect(await guideCompletionMarkStorage.get(openGuideUrl)).toBeNull();
+  });
+
+  it('treats a real guide whose URL merely contains "devtools" as a real guide', async () => {
+    const content = makeContent({ url: `${baseUrl}/devtools-setup/` });
+    window.__DocsPluginActiveTabUrl = content.url;
+    const onGuideComplete = jest.fn();
+    render(<ContentRenderer content={content} onGuideComplete={onGuideComplete} />);
+
+    await clickWhenReady();
+
+    expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(markCompleteEvents()).toHaveLength(1);
+    await waitFor(async () => expect(await guideCompletionMarkStorage.get(content.url)).toBe(true));
   });
 
   it.each([
