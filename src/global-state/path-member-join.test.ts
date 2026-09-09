@@ -262,6 +262,55 @@ describe('resolvePathMemberPercentage', () => {
     expect(result.unresolvedMemberIds).toEqual(['guide-a']);
   });
 
+  it('excludes and counts a member whose only record is out of range', () => {
+    const persisted = { 'bundled:guide-a': 500 } as Record<string, number>;
+
+    const result = resolvePathMemberPercentages([{ id: 'guide-a' }], contextWith({ persistedPercentages: persisted }));
+
+    expect(result.members[0]).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
+    expect(result.resolvedPercentages).toEqual([]);
+    expect(result.unresolvedCount).toBe(1);
+  });
+
+  it('does not let an out-of-range record win over a readable sibling', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ persistedPercentages: { 'bundled:guide-a': 40, 'bundled:guide-a/content.json': 500 } })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 40,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a',
+    });
+  });
+
+  it('excludes a negative record rather than letting it into the mean', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ persistedPercentages: { 'bundled:guide-a': -10 } })
+    );
+
+    expect(resolution).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
+  });
+
+  it('accepts the range boundaries', () => {
+    const atZero = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ persistedPercentages: { 'bundled:guide-a': 0 } })
+    );
+    const atHundred = resolvePathMemberPercentage(
+      { id: 'guide-b' },
+      contextWith({ persistedPercentages: { 'bundled:guide-b': 100 } })
+    );
+
+    expect(atZero.source).toBe('persisted');
+    expect(atZero.percent).toBe(0);
+    expect(atHundred.source).toBe('persisted');
+    expect(atHundred.percent).toBe(100);
+  });
+
   it('excludes and counts a member whose record is not a number at all', () => {
     const persisted = { 'bundled:guide-a': 'nearly done' } as unknown as Record<string, number>;
 

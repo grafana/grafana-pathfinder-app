@@ -343,11 +343,31 @@ carries no authority.
 
 **A present but unreadable record is excluded too, not scored zero.** The
 persisted record is unchecked `JSON.parse` output, so a key may be present and
-hold something other than a finite number. That member _was_ opened, so zero is
-not the honest answer any more than it is for a member with no formable key —
-it is excluded and counted under its own `'unreadable'` source. A key that is
-genuinely absent stays distinct from both: the member was never opened, and
-zero is correct.
+hold something other than a percentage. `BoundedRecordStorage.set` clamps to
+`[0, 100]` on write, so anything outside that range — or not a finite number at
+all — is corruption. That member _was_ opened, so zero is not the honest answer
+any more than it is for a member with no formable key: it is excluded and
+counted under its own `'unreadable'` source. Under furthest-wins this also
+matters more than it reads — an unclamped 500 would otherwise win every
+candidate set it appears in and inflate the path's number.
+
+**An absent key means never-opened only as far as the record does.** The join
+treats a formable-but-absent key as never-opened and scores it zero, which is
+the honest answer for a reader who has not started that guide. It is _not_
+honest for a reader whose record was evicted: `interactiveCompletionStorage`
+caps at `MAX_INTERACTIVE_COMPLETIONS` (100, `src/lib/user-storage.ts`) and
+`writeWithCap` keeps `entries.slice(-limit)` — insertion order, so the earliest
+keys are dropped and updating an existing key does not move it forward. A reader
+past 100 distinct guides therefore loses real progress on their oldest ones, and
+it arrives at the join as a genuine zero. Reading two candidate shapes per
+bundled member raises the pressure slightly, because a guide opened from both
+surfaces occupies two of the 100 slots.
+
+The information needed to tell eviction from never-opened is gone by the time
+the join runs, so this is not fixable in `path-member-join.ts`. **Known
+follow-on work, storage-side:** raise the cap, evict least-recently-updated
+rather than earliest-inserted, or persist an opened-guides set the join can
+consult. Until one of those lands, a path mean can understate a heavy reader.
 
 **The key spaces `resetPath` clears are not one space.**
 `interactiveCompletionStorage` and `interactiveStepStorage` are keyed by the
@@ -620,7 +640,8 @@ updated is Jay's call.
   — see `completion-denominator-authority` in `docs/design/CONCERN_DETAILS.md`.
 - **An unresolvable member is excluded from the mean, never scored zero**
   (decision 9), and the join reads `interactiveCompletionStorage` by key
-  presence, taking the furthest record across a member's candidate keys.
+  presence, taking the furthest record in `[0, 100]` across a member's
+  candidate keys.
 
 ## Related
 

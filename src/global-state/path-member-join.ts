@@ -22,12 +22,22 @@
  *  - A member the record cannot answer for is EXCLUDED from the mean rather
  *    than scored zero, and counted: either no key could be formed at all
  *    (`'unresolved'`), or a key was present but held something other than a
- *    finite number (`'unreadable'`). A zero is indistinguishable from a real
- *    result and drags the path's number down silently, which is the one
- *    failure that would look like evidence about reader behaviour instead of
- *    a bug. {@link PathMemberJoinResult} carries the count so the exclusion
- *    is visible. A key that is genuinely absent is a different thing: the
- *    member was never opened, and zero is the honest answer.
+ *    percentage in `[0, 100]` (`'unreadable'`). A zero is indistinguishable
+ *    from a real result and drags the path's number down silently, which is
+ *    the one failure that would look like evidence about reader behaviour
+ *    instead of a bug. {@link PathMemberJoinResult} carries the count so the
+ *    exclusion is visible.
+ *
+ * An absent key is treated as a third thing — the member was never opened, so
+ * zero is the honest answer — but that holds only as far as the record itself
+ * does. `interactiveCompletionStorage` caps at `MAX_INTERACTIVE_COMPLETIONS`
+ * (100) and `writeWithCap` evicts by insertion order, not by recency, so a
+ * reader past that many distinct guides loses their earliest keys while the
+ * progress behind them was real. At this boundary that is indistinguishable
+ * from never-opened, and reading two candidate shapes per bundled member means
+ * a guide opened from both surfaces now occupies two of the 100 slots. The
+ * remedies are storage-side and are recorded as follow-on work in decision 9
+ * of `docs/design/COMPLETION-MODEL.md`.
  *
  * Pure: the persisted record is supplied by the caller, so this module reads
  * no storage and holds no state.
@@ -70,7 +80,8 @@ export interface PathMemberJoinContext {
    * Read by key presence, not by value: the storage `get` returns 0 for a
    * missing key, which is the distinction this whole module exists to keep.
    * The record is parsed persisted JSON, so a present key whose value is not
-   * a finite number is treated as no record rather than entering the mean.
+   * a percentage in `[0, 100]` is unreadable rather than entering the mean —
+   * the writer clamps to that range, so anything outside it is corruption.
    */
   readonly persistedPercentages: Readonly<Record<string, number>>;
 }
@@ -86,8 +97,8 @@ export type PathMemberPercentageSource =
   /** No candidate key could be formed. Excluded from the mean. */
   | 'unresolved'
   /**
-   * A candidate key was present but held no finite number, so the member was
-   * opened and its progress is unreadable. Excluded from the mean.
+   * A candidate key was present but held no percentage in `[0, 100]`, so the
+   * member was opened and its progress is unreadable. Excluded from the mean.
    */
   | 'unreadable';
 
@@ -112,6 +123,14 @@ export interface PathMemberJoinResult {
 const BUNDLED_PREFIX = 'bundled:';
 const BACKEND_GUIDE_PREFIX = 'backend-guide:';
 const PACKAGE_CONTENT_SUFFIX = '/content.json';
+const MIN_PERCENT = 0;
+const MAX_PERCENT = 100;
+
+function readablePercentage(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= MIN_PERCENT && value <= MAX_PERCENT
+    ? value
+    : undefined;
+}
 
 function dedupe(values: readonly string[]): readonly string[] {
   return [...new Set(values)];
@@ -177,8 +196,8 @@ export function resolvePathMemberPercentage(member: PathMember, context: PathMem
     if (!Object.hasOwn(context.persistedPercentages, contentKey)) {
       continue;
     }
-    const persisted: unknown = context.persistedPercentages[contentKey];
-    if (typeof persisted !== 'number' || !Number.isFinite(persisted)) {
+    const persisted = readablePercentage(context.persistedPercentages[contentKey]);
+    if (persisted === undefined) {
       unreadable = true;
       continue;
     }
