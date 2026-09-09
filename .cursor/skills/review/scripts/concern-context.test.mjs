@@ -220,6 +220,7 @@ test('emits every completion-records doc as one loadable path', () => {
     'docs/design/BACKEND_PROXY_PATTERN.md',
     '.cursor/rules/systemPatterns.mdc (tier-1 lib/ guide-stats bullet)',
     'docs/developer/STEP_MODEL.md',
+    'docs/design/COMPLETION-MODEL.md',
   ]);
   for (const doc of context.load_docs) {
     assert.doesNotMatch(doc, /`/);
