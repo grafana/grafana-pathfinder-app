@@ -430,12 +430,17 @@ export interface GuideProgress {
 }
 
 export function getGuideProgress(contentKey: string): GuideProgress {
+  // Checked before anything is counted, as in `refreshGuidePercentage`: the
+  // mark outranks every derived count, and this runs as a
+  // `useSyncExternalStore` snapshot on every render of the Mark complete
+  // footer, where `countAllAcknowledged` would be an uncached scan over the
+  // whole of localStorage. Counts of 0 because none were derived.
+  if (guideCompletionMarkStorage.isMarked(contentKey)) {
+    return { completed: 0, total: 0, percentage: 100 };
+  }
   const total = getTotalDocumentSteps();
   const completedRaw = interactiveStepStorage.countAllCompleted(contentKey);
   const completed = completedRaw < 0 ? 0 : completedRaw;
-  // Same authority as in `refreshGuidePercentage`, so every reader of the
-  // percentage agrees with what was persisted.
-  const marked = guideCompletionMarkStorage.isMarked(contentKey);
   if (total < 1) {
     // All-passive branch (F-1, #909 follow-up): `completed` / `total`
     // here count sections, not steps, since there are no interactive
@@ -443,10 +448,13 @@ export function getGuideProgress(contentKey: string): GuideProgress {
     const sectionCount = getRegisteredSectionCount();
     const ackCount = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
     if (sectionCount < 1) {
-      return { completed: 0, total: 0, percentage: marked ? 100 : 0 };
+      return { completed: 0, total: 0, percentage: 0 };
     }
-    const percentage = marked ? 100 : Math.min(100, Math.round((ackCount / sectionCount) * 100));
-    return { completed: ackCount, total: sectionCount, percentage };
+    return {
+      completed: ackCount,
+      total: sectionCount,
+      percentage: Math.min(100, Math.round((ackCount / sectionCount) * 100)),
+    };
   }
   // Defensive ceiling. `countAllCompleted` reads roster-blind from
   // storage; if a guide ships a v2 schema that renames or removes a
@@ -455,8 +463,7 @@ export function getGuideProgress(contentKey: string): GuideProgress {
   // structural fix is `reconcileSection` which self-heals on first
   // mount; this clamp covers the pre-reconcile window so users never
   // see "167% complete" in a progress chip.
-  const percentage = marked ? 100 : Math.min(100, Math.round((completed / total) * 100));
-  return { completed, total, percentage };
+  return { completed, total, percentage: Math.min(100, Math.round((completed / total) * 100)) };
 }
 
 /** Subscribe to per-content progress changes. Returns an unsubscribe function. */

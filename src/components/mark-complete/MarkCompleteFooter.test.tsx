@@ -33,23 +33,42 @@ jest.mock('../../global-state/progress-events', () => ({
   dispatchProgress: (...a: unknown[]) => dispatchProgress(...a),
 }));
 
+let ambientKey = 'guide-key';
 jest.mock('../../global-state/content-key', () => ({
-  getContentKey: () => 'guide-key',
+  getContentKey: () => ambientKey,
   sanitizeContentKey: (value: string) => value,
 }));
 
 let percentage = 25;
 let notifyProgress: (() => void) | undefined;
+/** Every content key the footer has asked the store about, in order. */
+const progressKeys: string[] = [];
+const subscribedKeys: string[] = [];
 jest.mock('../../global-state/completion-store', () => ({
   ...jest.requireActual('../../global-state/completion-store'),
-  getGuideProgress: () => ({ completed: 1, total: 4, percentage }),
-  subscribeProgress: (_contentKey: string, listener: () => void) => {
+  getGuideProgress: (contentKey: string) => {
+    progressKeys.push(contentKey);
+    return { completed: 1, total: 4, percentage };
+  },
+  subscribeProgress: (contentKey: string, listener: () => void) => {
+    subscribedKeys.push(contentKey);
     notifyProgress = listener;
     return () => {
       notifyProgress = undefined;
     };
   },
 }));
+
+/**
+ * Publishes the content key from a layout effect, as both production producers
+ * do — so the key is ambient only *after* the footer beneath it has rendered.
+ */
+function Milestone({ url, onMarkComplete }: { url: string; onMarkComplete?: () => void }) {
+  React.useLayoutEffect(() => {
+    ambientKey = url;
+  }, [url]);
+  return <MarkCompleteFooter context="milestone" contentUrl={url} onMarkComplete={onMarkComplete} />;
+}
 
 /** Every live region the footer currently exposes. */
 function liveRegions(): Element[] {
@@ -60,6 +79,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   percentage = 25;
   notifyProgress = undefined;
+  ambientKey = 'guide-key';
+  progressKeys.length = 0;
+  subscribedKeys.length = 0;
   markStorage.get.mockResolvedValue(null);
   markStorage.set.mockResolvedValue(undefined);
 });
@@ -230,6 +252,23 @@ describe('MarkCompleteFooter', () => {
     expect(markStorage.set).not.toHaveBeenCalled();
     expect(setCompletionPercentage).not.toHaveBeenCalled();
     expect(dispatchProgress).not.toHaveBeenCalled();
+  });
+
+  it("never asks about the previous milestone's key when the guide changes", async () => {
+    const { rerender } = render(<Milestone url="milestone-1" />);
+    await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
+    progressKeys.length = 0;
+    subscribedKeys.length = 0;
+
+    await act(async () => {
+      rerender(<Milestone url="milestone-2" />);
+    });
+
+    // Resolving the key during render would latch `milestone-1`, and since the
+    // reader has just marked it, paint "100% complete" on the fresh milestone.
+    expect(progressKeys).not.toContain('milestone-1');
+    expect(subscribedKeys).not.toContain('milestone-1');
+    expect(progressKeys).toContain('milestone-2');
   });
 
   it('completes and continues on a milestone', async () => {

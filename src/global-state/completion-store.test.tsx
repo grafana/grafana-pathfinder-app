@@ -321,6 +321,22 @@ describe('completion-store', () => {
       expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
     });
 
+    it('counts nothing, because the mark settles the answer before any storage scan', () => {
+      // `getGuideProgress` is a `useSyncExternalStore` snapshot, so it runs on
+      // every render of the Mark complete footer; `countAllAcknowledged` is an
+      // uncached scan over the whole of localStorage.
+      const { interactiveStepStorage, sectionAcknowledgementStorage } = jest.requireMock('../lib/user-storage');
+      mockRegisteredSectionCount = 3;
+      storedMarks.add(CONTENT_KEY);
+      interactiveStepStorage.countAllCompleted.mockClear();
+      sectionAcknowledgementStorage.countAllAcknowledged.mockClear();
+
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+
+      expect(sectionAcknowledgementStorage.countAllAcknowledged).not.toHaveBeenCalled();
+      expect(interactiveStepStorage.countAllCompleted).not.toHaveBeenCalled();
+    });
+
     it('drops back to the derived percentage once the mark is cleared', () => {
       mockTotalDocumentSteps = 4;
       storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1']));

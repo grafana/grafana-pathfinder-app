@@ -64,42 +64,54 @@ export interface MarkCompleteFooterProps {
 
 const CELEBRATION_MS = 1400;
 
+/** No key resolved yet, so there is nothing to subscribe to. */
+const NO_SUBSCRIPTION = () => undefined;
+
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
 
 export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onContinue }: MarkCompleteFooterProps) {
   const styles = useStyles2(getStyles);
-  // Tagged with the guide it was read for, so a guide change re-arms the
-  // control by derivation rather than by resetting state in an effect.
-  const [mark, setMark] = useState<{ readFor: string | undefined; marked: boolean } | null>(null);
+  // Carries the resolved key alongside the mark and is tagged with the guide
+  // both were read for, so a guide change re-arms the control by derivation
+  // rather than by resetting state in an effect.
+  const [mark, setMark] = useState<{ readFor: string | undefined; key: string; marked: boolean } | null>(null);
   const [clearedCount, setClearedCount] = useState(0);
   const [celebrating, setCelebrating] = useState(false);
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completedRef = useRef<HTMLDivElement>(null);
   const claimFocusRef = useRef(false);
 
+  // `hydrated` is what makes "never twice" structural rather than a race: until
+  // the stored mark has been read, a return visit cannot be told from a first
+  // one.
+  const hydrated = mark !== null && mark.readFor === contentUrl;
+  const marked = hydrated && mark.marked;
+  const contentKey = hydrated ? mark.key : undefined;
+
   const percentage = useSyncExternalStore(
     useCallback(
-      (listener: () => void) => subscribeProgress(resolveGuideContentKey(contentUrl), listener),
-      [contentUrl]
+      (listener: () => void) => (contentKey === undefined ? NO_SUBSCRIPTION : subscribeProgress(contentKey, listener)),
+      [contentKey]
     ),
-    useCallback(() => getGuideProgress(resolveGuideContentKey(contentUrl)).percentage, [contentUrl])
+    useCallback(() => (contentKey === undefined ? 0 : getGuideProgress(contentKey).percentage), [contentKey])
   );
 
   // Both producers of the content key publish it from a layout effect — the
   // panel's active tab URL and this renderer's own override — so resolving it
-  // during render would latch the previous milestone's key for the whole life
-  // of this one.
+  // during render would latch the previous milestone's key, and the reader who
+  // just marked that milestone would see the fresh one open at 100%.
   useEffect(() => {
     let cancelled = false;
-    const settle = (marked: boolean) => {
+    const key = resolveGuideContentKey(contentUrl);
+    const settle = (isMarked: boolean) => {
       if (!cancelled) {
-        setMark({ readFor: contentUrl, marked });
+        setMark({ readFor: contentUrl, key, marked: isMarked });
       }
     };
     guideCompletionMarkStorage
-      .get(resolveGuideContentKey(contentUrl))
+      .get(key)
       .then((existing) => settle(existing === true))
       .catch((error) => {
         logger.warn('Failed to read guide completion mark', { error });
@@ -143,22 +155,15 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     }
   });
 
-  // `hydrated` is what makes "never twice" structural rather than a race: until
-  // the stored mark has been read, a return visit cannot be told from a first
-  // one.
-  const hydrated = mark !== null && mark.readFor === contentUrl;
-  const marked = hydrated && mark.marked;
-
   const handleClick = useCallback(() => {
-    if (!hydrated || marked) {
+    if (contentKey === undefined || marked) {
       return;
     }
-    const contentKey = resolveGuideContentKey(contentUrl);
     // The button the reader just activated is about to unmount, and React
     // would drop focus to `document.body`. A return visit that hydrates an
     // existing mark must not steal focus, so only a click claims it.
     claimFocusRef.current = true;
-    setMark({ readFor: contentUrl, marked: true });
+    setMark({ readFor: contentUrl, key: contentKey, marked: true });
 
     // A block-editor preview is an author iterating, not a reader: it records
     // nothing, persists nothing and stays out of the click stream, because that
@@ -197,7 +202,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       setCelebrating(false);
       onContinue?.();
     }, CELEBRATION_MS);
-  }, [hydrated, marked, context, percentage, contentUrl, onMarkComplete, onContinue]);
+  }, [contentKey, marked, context, percentage, contentUrl, onMarkComplete, onContinue]);
 
   const displayPercentage = marked ? 100 : percentage;
   const label =
