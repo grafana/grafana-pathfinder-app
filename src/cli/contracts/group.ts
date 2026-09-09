@@ -96,6 +96,7 @@ export function renderGroupInterface(group: CommandGroupSpec, view: SurfaceView,
       summary: group.summary,
       required: [selector],
       optional: [],
+      requiredParams: [group.discriminator],
       subcommands: variantNames(group),
       requiredByType: requiredByVariant(group, view),
     };
@@ -104,6 +105,12 @@ export function renderGroupInterface(group: CommandGroupSpec, view: SurfaceView,
   const spec = group.variants.get(variant)!;
   const base = renderInterface(spec, view);
   // The discriminator leads the required list: it is the parameter that decides
-  // what the rest of the interface means.
-  return { ...base, required: [selector, ...base.required] };
+  // what the rest of the interface means. It leads `requiredParams` for the same
+  // reason, which also makes that list identical to what the MCP preflight
+  // demands of a group call — discriminator plus the variant's own obligations.
+  return {
+    ...base,
+    required: [selector, ...base.required],
+    requiredParams: [group.discriminator, ...(base.requiredParams ?? [])],
+  };
 }

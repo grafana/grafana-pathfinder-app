@@ -15,6 +15,8 @@
 
 import { ZodError, z } from 'zod';
 
+import type { RequirementTokenDoc } from '../../types/requirements.types';
+
 import type { IssueRemedy, PackageIOIssue } from './package-io';
 import { CLI_SPELLING, spellOutcome } from './param-spelling';
 
@@ -365,6 +367,19 @@ export interface HelpJson {
   required: HelpJsonFlag[];
   optional: HelpJsonFlag[];
   addressing?: HelpJsonFlag[];
+  /**
+   * Every parameter the caller must supply, across all three buckets.
+   *
+   * `required` and `optional` are named for requiredness but `addressing` is
+   * named for role, and a required parameter lands in `addressing` whenever it
+   * is one — `add-block --type section`'s `id`, `add-step`'s `parent`. A reader
+   * that takes the two requiredness-named buckets for the whole interface
+   * therefore builds a field list with a required parameter missing from it.
+   * This is that list stated once, so no reader has to know the bucket rule:
+   * it is exactly what the MCP preflight (`commandArgViolations`) demands, and
+   * exactly what `requiredByType` reports for the same variant.
+   */
+  requiredParams?: string[];
   /** Subcommand names exposed by this command, if any. */
   subcommands?: string[];
   /**
@@ -373,4 +388,11 @@ export interface HelpJson {
    * type. Additive key in the help-shape stability contract.
    */
   requiredByType?: Record<string, string[]>;
+  /**
+   * The whole requirement vocabulary, present when this interface publishes a
+   * parameter that takes requirement tokens and the reader has no command to
+   * print them with. A reader that can — the command line — is pointed at
+   * `pathfinder-cli requirements list` instead and gets no copy here.
+   */
+  requirementTokens?: readonly RequirementTokenDoc[];
 }
