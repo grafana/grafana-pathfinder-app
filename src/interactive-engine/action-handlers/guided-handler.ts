@@ -202,15 +202,13 @@ export class GuidedHandler {
       this.currentAbortController.abort();
       this.currentAbortController = null;
     }
-    // Credit before teardown: cleanupListeners removes the comment box, so a push
-    // after it can never reach the box that is painting this step's progress.
-    if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
-      this.completedSteps.push(stepIndex);
-    }
     try {
       this.cleanupListeners(true);
     } catch (error) {
       logger.error('Guided cleanup failed', { error });
+    }
+    if ((result === 'completed' || result === 'skipped') && !this.completedSteps.includes(stepIndex)) {
+      this.completedSteps.push(stepIndex);
     }
     return result;
   }

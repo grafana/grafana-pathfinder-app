@@ -875,6 +875,9 @@ describe('E2E Contract: Comment Box Attributes', () => {
       });
 
       it('reaches 100% only once every step in the block is done', async () => {
+        // Guard on the formula, NOT a state a live guided tour can paint: the box for
+        // step N is created before N is performed and destroyed when it settles, so the
+        // overlay bar tops out at (total-1)/total. See the interactive-engine anchor.
         const bar = await renderBar({ current: 3, total: 4, completedSteps: [0, 1, 2, 3], progress: 'performed' });
         expect(bar.style.width).toBe('100%');
       });
