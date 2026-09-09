@@ -143,7 +143,8 @@ npm run prettier-test    # check formatting only
 npm run lint:go          # golangci-lint via mage
 ```
 
-Husky runs `lint-staged` on commit (Prettier on staged `.ts`/`.tsx`/`.js`/`.json`/`.yaml`/`.md`).
+Husky runs `lint-staged` on commit: `eslint --fix` then Prettier on staged
+`.ts`/`.tsx`/`.js`/`.mjs`, and Prettier alone on staged `.json`/`.yaml`/`.md`.
 
 ## IDE setup
 
@@ -188,7 +189,7 @@ go install github.com/magefile/mage@latest
 export PATH="$PATH:$(go env GOPATH)/bin"
 ```
 
-### Husky pre-commit hook fails
+### Husky pre-commit hook fails or blocks the commit
 
 `npm run check` reproduces the failure locally. Fix the underlying issue; do not bypass with `--no-verify`.
 

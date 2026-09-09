@@ -2,6 +2,9 @@
 *.sh text eol=lf
 *.bash text eol=lf
 *.zsh text eol=lf
+# Git hooks have no extension, so no rule above covers them. Checked out
+# with CRLF they fail to execute.
+.husky/* text eol=lf
 
 # Ensure consistent line endings for other text files
 *.ts text eol=lf

@@ -175,7 +175,11 @@
     }
   },
   "lint-staged": {
-    "*.{ts,tsx,js,mjs,json,yaml,md}": "prettier --config .prettierrc.js --write"
+    "*.{ts,tsx,js,mjs}": [
+      "eslint --cache --fix",
+      "prettier --config .prettierrc.js --write"
+    ],
+    "*.{json,yaml,md}": "prettier --config .prettierrc.js --write"
   },
   "packageManager": "npm@12.0.2"
 }
