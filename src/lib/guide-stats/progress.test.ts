@@ -145,7 +145,7 @@ describe('guideProgress', () => {
     });
   });
 
-  it('needs a "Mark as complete" to finish a guide whose last block is prose', () => {
+  it('reaches 100% only on "Mark as complete" for a guide whose last block is prose', () => {
     const index = computeGuideBlockIndex([
       { type: 'section', blocks: [markdown('brief'), interactive('run')] },
       markdown('well-done'),

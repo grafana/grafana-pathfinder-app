@@ -289,11 +289,12 @@ and without a separate event that pattern is invisible. It is the instrument for
 and [bet 2](#bet-2--the-nudge-teaches-the-behaviour); those bets cannot be settled
 without it.
 
-### Decision 8 — a teaching nudge on prose-only milestones, which must not block
+### Decision 8 — a teaching nudge on any incomplete milestone, which must not block
 
-**Decision.** On a prose-only milestone, when the reader clicks "next milestone"
-without having marked the milestone complete, show a small tip or modal teaching
-them to mark it complete first.
+**Decision.** When the reader clicks "next milestone" without having marked the
+current milestone complete, show a small tip or modal teaching them to mark it
+complete first. It fires whenever a reader leaves an incomplete milestone,
+prose-only or not.
 
 **It must not block them from moving on.** This is the load-bearing half. The
 nudge exists because decision 6 means navigation earns nothing and decision 3
@@ -301,7 +302,17 @@ means a prose milestone has exactly one way to earn something; a reader who does
 not know that loses their progress silently. A nudge that gated navigation would
 turn a teaching moment into a toll, on the population least likely to tolerate one.
 
-**Its frequency, scope and state are open.** See
+**Why not restrict it to prose-only milestones.** A narrow nudge would reintroduce
+the same "sometimes you see it" inconsistency that decision 2 removed from the
+button, and the reader cannot tell a nudge that did not fire from one that was
+suppressed. The counter-argument — that a nudge is advice and a button an
+affordance, so inconsistent advice costs less than an inconsistent control —
+was heard and not taken: firing on every incomplete milestone needs no predicate
+and is the same shape as decision 2. A prose-only milestone remains the
+population where the tip does most of its teaching, which is where bet 2 measures
+it, but that is an evidence population and not a firing condition.
+
+**Its frequency and per-reader state are open.** See
 [open questions](#open-questions).
 
 ## The alternative considered and rejected
@@ -462,18 +473,10 @@ to 4; it invalidates the hope that they would fix themselves.
 
 Recorded as open. None of these is settled.
 
-**The nudge's frequency and scope.** First time in a path, first time ever for
+**The nudge's frequency.** First time in a path, first time ever for
 that reader, or every time — and where the per-reader state lives. Every option
 has a cost: per-path state multiplies, per-reader-ever state is one more thing a
 progress reset must or must not clear, and every-time is a nag.
-
-**Whether the nudge fires only on prose-only milestones.** The alternative is
-firing whenever a reader leaves any incomplete milestone. There is a real tension
-here and it should not be smoothed over: **restricting the nudge to prose-only
-milestones reintroduces the same "sometimes you see it" inconsistency that
-justified putting the button everywhere** (decision 2). The counter-argument is
-that a nudge is advice and a button is an affordance, and inconsistent advice is
-less confusing than an inconsistent control. Unresolved.
 
 **Whether look-ahead navigation should be restricted until a milestone is
 complete.** Raised and parked. The objection against it is that a reader who
@@ -538,7 +541,7 @@ updated is Jay's call.
 
 - The button labels. "Mark complete" and "Mark complete and continue" are context
   labels, not contract.
-- The nudge's copy, frequency, and scope — all open, all expected to move.
+- The nudge's copy and frequency — both open, both expected to move.
 - Anything about `rollUpGuideStats` other than the claim that it is not a
   completion denominator.
 
@@ -546,7 +549,8 @@ updated is Jay's call.
 
 - **The button is unconditional** (decision 2). Any predicate on whether it
   renders reintroduces the failure the measurements above document.
-- **The nudge does not block navigation** (decision 8).
+- **The nudge does not block navigation, and fires on any incomplete milestone
+  rather than on a prose-only subset** (decision 8).
 - **Navigation credits nothing** (decision 6).
 - **Path progress consumes percentages, not totals** (decision 4). This is what
   buys the recursion in decision 5 and what retires RFC #14's Option A. A change
