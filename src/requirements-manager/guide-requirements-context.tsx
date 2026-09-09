@@ -1,4 +1,5 @@
 import React, { createContext, type PropsWithChildren, useContext, useMemo } from 'react';
+import { sanitizeContentKey } from '../global-state/content-key';
 
 import {
   checkPostconditions as checkPostconditionsWithOptions,
@@ -7,9 +8,11 @@ import {
   type RequirementsCheckResult,
 } from './requirements-checker.utils';
 
-export type GuideRequirementsCheckOptions = Omit<RequirementsCheckOptions, 'guideId'>;
+export type GuideRequirementsCheckOptions = Omit<RequirementsCheckOptions, 'guideId' | 'contentKey'>;
 
 interface GuideRequirementsContextValue {
+  guideId?: string;
+  contentKey?: string;
   checkRequirements: (options: GuideRequirementsCheckOptions) => Promise<RequirementsCheckResult>;
   checkPostconditions: (options: GuideRequirementsCheckOptions) => Promise<RequirementsCheckResult>;
 }
@@ -21,13 +24,22 @@ const compatibilityFallback: GuideRequirementsContextValue = {
 
 const GuideRequirementsContext = createContext<GuideRequirementsContextValue>(compatibilityFallback);
 
-export function GuideRequirementsProvider({ guideId, children }: PropsWithChildren<{ guideId: string }>) {
+export function GuideRequirementsProvider({
+  guideId,
+  contentKey,
+  children,
+}: PropsWithChildren<{ guideId: string; contentKey?: string }>) {
+  const scopedContentKey = contentKey === undefined ? undefined : sanitizeContentKey(contentKey);
   const value = useMemo<GuideRequirementsContextValue>(
     () => ({
-      checkRequirements: (options) => checkRequirementsWithOptions({ ...options, guideId }),
-      checkPostconditions: (options) => checkPostconditionsWithOptions({ ...options, guideId }),
+      guideId,
+      contentKey: scopedContentKey,
+      checkRequirements: (options) =>
+        checkRequirementsWithOptions({ ...options, guideId, contentKey: scopedContentKey }),
+      checkPostconditions: (options) =>
+        checkPostconditionsWithOptions({ ...options, guideId, contentKey: scopedContentKey }),
     }),
-    [guideId]
+    [guideId, scopedContentKey]
   );
 
   return <GuideRequirementsContext.Provider value={value}>{children}</GuideRequirementsContext.Provider>;

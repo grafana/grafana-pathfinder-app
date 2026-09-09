@@ -493,7 +493,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
   return (
     <GuideResponseProvider guideId={guideId}>
-      <GuideRequirementsProvider guideId={guideId}>
+      <GuideRequirementsProvider guideId={guideId} contentKey={content.url}>
         <ContentWithVariables
           processedContent={processedContent}
           contentType={content.type}

@@ -177,13 +177,19 @@ describe('GuidedHandler', () => {
       );
 
       expect(result).toBe('completed');
-      expect(mockNavigationManager.expandParentNavigationSection).toHaveBeenCalledWith('/alerting/list');
+      expect(mockNavigationManager.expandParentNavigationSection).toHaveBeenCalledWith(
+        '/alerting/list',
+        expect.any(AbortSignal)
+      );
       expect(document.querySelector('button[aria-label="Expand section: Alerting"]')).toHaveAttribute(
         'aria-expanded',
         'true'
       );
       expect(document.querySelector(refTarget)).toBeInTheDocument();
-      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(document.querySelector(refTarget));
+      expect(mockNavigationManager.ensureNavigationOpen).toHaveBeenCalledWith(
+        document.querySelector(refTarget),
+        expect.any(AbortSignal)
+      );
       expect(mockNavigationManager.highlightWithComment).toHaveBeenCalledWith(
         document.querySelector(refTarget),
         'Click Alert rules in the Alerting menu.',

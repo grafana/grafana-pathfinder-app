@@ -193,6 +193,11 @@ export function getInteractiveConfig(pluginConfig?: DocsPluginConfig) {
  * Components can migrate to getInteractiveConfig() over time
  */
 export const INTERACTIVE_CONFIG = INTERACTIVE_CONFIG_DEFAULTS;
+export function getGuidedStepTimeout(timeout?: number): number {
+  return typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0 && timeout <= 2_147_483_647
+    ? timeout
+    : INTERACTIVE_CONFIG.guided.stepTimeout;
+}
 
 /**
  * Clear command constant for form fill operations

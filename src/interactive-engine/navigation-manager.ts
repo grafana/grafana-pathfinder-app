@@ -20,6 +20,7 @@ export interface NavigationOptions {
   checkContext?: boolean;
   logWarnings?: boolean;
   ensureDocked?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface CommentBoxOptions {
@@ -28,9 +29,11 @@ export interface CommentBoxOptions {
   skipAnimations?: boolean;
   actionType?: 'hover' | 'button' | 'highlight' | 'formfill';
   targetValue?: string;
-  /** E2E contract: selector for current target */
   refTarget?: string;
   nextLabel?: string;
+  substepIndex?: number;
+  substepSkippable?: boolean;
+  signal?: AbortSignal;
 }
 
 /**
@@ -564,30 +567,16 @@ export class NavigationManager {
     this.activeCleanupHandlers.push(cleanupHandler);
   }
 
-  /**
-   * Ensure element is visible in the viewport by scrolling it into view
-   * Accounts for sticky/fixed headers that may obstruct visibility
-   *
-   * @param element - The element to make visible
-   * @returns Promise that resolves when element is visible in viewport
-   *
-   * @example
-   * ```typescript
-   * await navigationManager.ensureElementVisible(hiddenElement);
-   * // Element is now visible and centered in viewport
-   * ```
-   */
-  async ensureElementVisible(element: HTMLElement): Promise<void> {
-    // 1. Check if element is visible in DOM (not hidden by CSS)
+  async ensureElementVisible(element: HTMLElement, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      return;
+    }
     if (!isElementVisible(element)) {
       logger.warn('Element is hidden or not visible', { element: describeElement(element) });
-      // Continue anyway - element might become visible during interaction
     }
 
-    // 2. Calculate sticky header offset to account for headers blocking view
     const stickyOffset = getStickyHeaderOffset(element);
 
-    // 3. Check if element is already visible - if so, skip scrolling!
     const rect = element.getBoundingClientRect();
     const scrollContainer = getScrollParent(element);
     const containerRect =
@@ -595,42 +584,32 @@ export class NavigationManager {
         ? { top: 0, bottom: window.innerHeight }
         : scrollContainer.getBoundingClientRect();
 
-    // Element is visible if it's within the container bounds (accounting for sticky offset)
     const isVisible = rect.top >= containerRect.top + stickyOffset && rect.bottom <= containerRect.bottom;
 
     if (isVisible) {
-      return; // Already visible, no need to scroll!
+      return;
     }
 
-    // 4. Set scroll-padding-top on container (modern CSS solution)
     const originalScrollPadding = scrollContainer.style.scrollPaddingTop;
     if (stickyOffset > 0) {
-      scrollContainer.style.scrollPaddingTop = `${stickyOffset + 10}px`; // +10px padding
+      scrollContainer.style.scrollPaddingTop = `${stickyOffset + 10}px`;
     }
 
-    // 5. Scroll into view with smooth animation
     element.scrollIntoView({
-      behavior: 'smooth', // Smooth animation looks better
-      block: 'start', // Position at top (below sticky headers due to scroll-padding-top)
+      behavior: 'smooth',
+      block: 'start',
       inline: 'nearest',
     });
 
-    // Wait for browser to finish scrolling using modern scrollend event
-    await this.waitForScrollEnd(scrollContainer);
+    await this.waitForScrollEnd(scrollContainer, signal);
 
-    // Restore original scroll padding after scroll completes
     scrollContainer.style.scrollPaddingTop = originalScrollPadding;
   }
 
-  /**
-   * Wait for scroll animation to complete using modern scrollend event
-   * Browser-native event that fires when scrolling stops (no guessing!)
-   * Per MDN: "If scroll position did not change, then no scrollend event fires"
-   *
-   * @param scrollContainer - The element that is scrolling
-   * @returns Promise that resolves when scrolling completes
-   */
-  private waitForScrollEnd(scrollContainer: HTMLElement): Promise<void> {
+  private waitForScrollEnd(scrollContainer: HTMLElement, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      return Promise.resolve();
+    }
     return new Promise((resolve) => {
       let scrollDetected = false;
       let resolved = false;
@@ -641,6 +620,7 @@ export class NavigationManager {
         scrollContainer.removeEventListener('scroll', scrollHandler);
         scrollContainer.removeEventListener('scrollend', scrollendHandler);
         document.removeEventListener('scrollend', docScrollendHandler);
+        signal?.removeEventListener('abort', handleScrollEnd);
       };
 
       const handleScrollEnd = () => {
@@ -654,54 +634,33 @@ export class NavigationManager {
 
       const scrollHandler = () => {
         scrollDetected = true;
-        // Scroll started - now wait for scrollend
       };
 
       const scrollendHandler = () => handleScrollEnd();
       const docScrollendHandler = () => handleScrollEnd();
 
-      // Detect if scrolling actually happens
       scrollContainer.addEventListener('scroll', scrollHandler, { once: true, passive: true });
 
-      // Listen for scrollend on both container and document
-      // Per Chrome blog: scrollIntoView may fire scrollend on different elements
       scrollContainer.addEventListener('scrollend', scrollendHandler, { once: true });
       document.addEventListener('scrollend', docScrollendHandler, { once: true });
 
-      // Safety timeout: If no scroll detected, assume no scroll needed
-      // This handles edge cases where scrollIntoView is a no-op
+      // Without scroll movement, the browser never emits scrollend.
       timeoutId = setTimeout(() => {
         if (!scrollDetected && !resolved) {
           handleScrollEnd();
         }
       }, INTERACTIVE_CONFIG.delays.navigation.scrollTimeout);
+      signal?.addEventListener('abort', handleScrollEnd, { once: true });
+      if (signal?.aborted) {
+        handleScrollEnd();
+      }
     });
   }
 
-  /**
-   * Highlight an element with visual feedback
-   *
-   * @param element - The element to highlight
-   * @returns Promise that resolves when highlighting is complete
-   */
   async highlight(element: HTMLElement): Promise<HTMLElement> {
     return this.highlightWithComment(element);
   }
 
-  /**
-   * Highlight an element with optional comment box
-   *
-   * @param element - The element to highlight
-   * @param comment - Optional comment text to display in a comment box
-   * @param enableAutoCleanup - Whether to enable auto-cleanup on scroll/click (default: true, false for guided mode)
-   * @param stepInfo - Optional step progress info for guided interactions and tours
-   * @param onSkipCallback - Optional callback when skip button is clicked
-   * @param onCancelCallback - Optional callback when cancel button is clicked (for guided mode)
-   * @param onNextCallback - Optional callback when next button is clicked (for tour mode)
-   * @param onPreviousCallback - Optional callback when previous button is clicked (for tour mode)
-   * @param options - Additional options for the comment box
-   * @returns Promise that resolves when highlighting is complete
-   */
   async highlightWithComment(
     element: HTMLElement,
     comment?: string,
@@ -713,23 +672,24 @@ export class NavigationManager {
     onPreviousCallback?: () => void,
     options?: CommentBoxOptions
   ): Promise<HTMLElement> {
-    // First, ensure navigation is open and element is visible
-    // Keep old highlight visible during this async work for smooth transitions
-    await this.ensureNavigationOpen(element);
-    await this.ensureElementVisible(element);
+    const signal = options?.signal;
+    if (signal?.aborted) {
+      return element;
+    }
+    await this.ensureNavigationOpen(element, signal);
+    if (signal?.aborted) {
+      return element;
+    }
+    await this.ensureElementVisible(element, signal);
+    if (signal?.aborted) {
+      return element;
+    }
 
-    // No DOM settling delay needed - scrollend event ensures scroll is complete
-    // and DOM is stable. Highlight immediately for better responsiveness!
-
-    // If selector targeted a hidden input (common in dropdowns), highlight the visible parent instead
     const highlightTarget = getVisibleHighlightTarget(element);
 
-    // Position the outline around the target element using CSS custom properties
-    // All overlay elements use position:fixed, so coordinates are viewport-relative
-    // (no scroll offsets needed — getBoundingClientRect already returns viewport coords)
+    // Fixed overlays use viewport coordinates, without page scroll offsets.
     const rect = highlightTarget.getBoundingClientRect();
 
-    // Check if element has no valid position at all (truly invalid)
     const hasNoPosition = rect.top === 0 && rect.left === 0 && rect.width === 0 && rect.height === 0;
     if (hasNoPosition) {
       logger.warn('Cannot highlight element: invalid position or dimensions', {
@@ -738,21 +698,18 @@ export class NavigationManager {
       return element;
     }
 
-    // Determine if we should use dot indicator instead of bounding box
     const isSmallElement =
       rect.width < INTERACTIVE_CONFIG.highlighting.minDimensionForBox ||
       rect.height < INTERACTIVE_CONFIG.highlighting.minDimensionForBox;
     const isHiddenElement = !isElementVisible(highlightTarget);
     const useDotIndicator = isSmallElement || isHiddenElement;
 
-    // For hidden elements, ALWAYS prepend warning to comment (regardless of size)
     let effectiveComment = comment;
     if (isHiddenElement) {
       const hiddenWarning = 'Item may be hidden due to screen size; enlarge to see.\n\n';
       effectiveComment = effectiveComment ? hiddenWarning + effectiveComment : hiddenWarning;
     }
 
-    // Create highlight element (dot or bounding box)
     const highlightElement = document.createElement('div');
 
     // The floating panel dodges highlight overlays; exempt in-panel ones so it can't flee its own.
@@ -763,28 +720,22 @@ export class NavigationManager {
 
     if (useDotIndicator) {
       highlightElement.className = 'interactive-highlight-dot';
-      // Position at element's center (viewport coords for position:fixed)
       const dotTop = rect.top + rect.height / 2;
       const dotLeft = rect.left + rect.width / 2;
       highlightElement.style.setProperty('--highlight-top', `${dotTop}px`);
       highlightElement.style.setProperty('--highlight-left', `${dotLeft}px`);
     } else {
       highlightElement.className = 'interactive-highlight-outline';
-      // Note: We always show the highlight draw animation (looks good)
-      // skipAnimations only affects the comment box transition
       highlightElement.style.setProperty('--highlight-top', `${rect.top - 4}px`);
       highlightElement.style.setProperty('--highlight-left', `${rect.left - 4}px`);
       highlightElement.style.setProperty('--highlight-width', `${rect.width + 8}px`);
       highlightElement.style.setProperty('--highlight-height', `${rect.height + 8}px`);
     }
 
-    // Clear old highlights RIGHT BEFORE adding new one for seamless transition
     this.clearAllHighlights();
 
     document.body.appendChild(highlightElement);
 
-    // Create comment box if comment is provided OR if any callback is provided
-    // Comment box is always attached to body with absolute positioning
     let commentBox: HTMLElement | null = null;
     if (
       (effectiveComment && effectiveComment.trim()) ||
@@ -793,7 +744,6 @@ export class NavigationManager {
       onNextCallback ||
       onPreviousCallback
     ) {
-      // Calculate highlight rect in viewport coordinates (position:fixed)
       const highlightRect = this.calculateHighlightRect(rect, useDotIndicator);
 
       commentBox = this.createCommentBox(
@@ -812,62 +762,36 @@ export class NavigationManager {
         commentBox.setAttribute('data-pathfinder-internal', 'true');
       }
 
-      // Always append to body (unified positioning)
       document.body.appendChild(commentBox);
     }
 
-    // GUARDRAIL: Auto-remove highlight after fixed duration
-    // CSS handles visual fade, this is the cleanup failsafe
-    //
-    // Guided mode (!enableAutoCleanup): CSS animations run to completion but
-    // DOM element persists until clearAllHighlights() is called by the guided
-    // interaction flow. This is intentional - guides control their own lifecycle.
     if (useDotIndicator && enableAutoCleanup) {
       const dotRemovalTimeout = setTimeout(() => {
         if (highlightElement.isConnected) {
           highlightElement.remove();
         }
-        // Also remove comment box (now on body, not child of dot)
         if (commentBox?.isConnected) {
           commentBox.remove();
         }
       }, INTERACTIVE_CONFIG.highlighting.dotDurationMs);
 
-      // Store timeout for cleanup if clearAllHighlights is called early
       this.activeCleanupHandlers.push(() => clearTimeout(dotRemovalTimeout));
     } else if (!useDotIndicator && enableAutoCleanup) {
-      // GUARDRAIL: Auto-remove bounding box after animation completes (non-guided mode only)
-      // CSS handles visual fade-out, this ensures cleanup after animation finishes
       const outlineRemovalTimeout = setTimeout(() => {
         if (highlightElement.isConnected) {
           highlightElement.remove();
         }
-        // Also remove comment box (body-attached)
         if (commentBox?.isConnected) {
           commentBox.remove();
         }
       }, INTERACTIVE_CONFIG.highlighting.outlineDurationMs);
 
-      // Store timeout for cleanup if clearAllHighlights is called early
       this.activeCleanupHandlers.push(() => clearTimeout(outlineRemovalTimeout));
     }
 
-    // Highlights and comments now persist until explicitly cleared
-    // They will be removed when:
-    // 1. User clicks the close button on highlight
-    // 2. A new highlight is shown (clearAllHighlights called)
-    // 3. Section/guided execution starts
-    // 4. (If auto-cleanup enabled) User scrolls
-    // 5. (If auto-cleanup enabled) User clicks outside
-
-    // Always set up position tracking (efficient with ResizeObserver)
-    // Enable drift detection for guided mode (!enableAutoCleanup) for more responsive tracking
-    // FIX: Track the highlightTarget (visible parent) instead of original element
     const enableDriftDetection = !enableAutoCleanup;
     this.setupPositionTracking(highlightTarget, highlightElement, commentBox, enableDriftDetection, useDotIndicator);
 
-    // Set up smart auto-cleanup (unless disabled for guided mode)
-    // FIX: Use highlightTarget for auto-cleanup detection
     if (enableAutoCleanup) {
       this.setupAutoCleanup(highlightTarget);
     }
@@ -875,13 +799,6 @@ export class NavigationManager {
     return element;
   }
 
-  /**
-   * Create a themed comment box positioned near the highlighted element.
-   * Uses absolute positioning attached to document.body, clamped to viewport.
-   * Uses a clean, polished card design for both tour and guided modes.
-   *
-   * @param highlightRect - The absolute document coordinates of the highlight element
-   */
   private createCommentBox(
     comment: string,
     targetRect: DOMRect | null,
@@ -896,30 +813,28 @@ export class NavigationManager {
     const commentBox = document.createElement('div');
     commentBox.className = 'interactive-comment-box';
 
-    // Apply E2E testing contract attributes
     applyE2ECommentBoxAttributes(commentBox, {
       actionType: options?.actionType,
       targetValue: options?.targetValue,
       refTarget: options?.refTarget,
+      substepIndex: options?.substepIndex,
+      substepSkippable: options?.substepSkippable,
     });
 
-    // We'll calculate position after building the content so we can measure actual height
-
-    // Defer visibility to prevent layout bounce (unless skipping animations)
     if (options?.skipAnimations) {
       commentBox.setAttribute('data-ready', 'true');
       commentBox.classList.add('interactive-comment-box--instant');
     } else {
       requestAnimationFrame(() => {
-        commentBox.setAttribute('data-ready', 'true');
+        if (!options?.signal?.aborted) {
+          commentBox.setAttribute('data-ready', 'true');
+        }
       });
     }
 
-    // Create content structure - clean card design
     const content = document.createElement('div');
     content.className = 'interactive-comment-content interactive-comment-glow';
 
-    // Close button (absolute positioned for simple tooltips)
     const closeButton = document.createElement('button');
     closeButton.className = 'interactive-comment-close';
     closeButton.innerHTML = '×'; // eslint-disable-line no-restricted-syntax -- Static HTML entity
@@ -939,7 +854,6 @@ export class NavigationManager {
 
     content.appendChild(closeButton);
 
-    // === HEADER: Step badge (only when stepInfo provided) ===
     if (stepInfo) {
       const headerContainer = document.createElement('div');
       headerContainer.className = 'interactive-comment-header';
@@ -952,7 +866,6 @@ export class NavigationManager {
       content.appendChild(headerContainer);
     }
 
-    // === PROGRESS BAR ===
     if (stepInfo) {
       const progressContainer = document.createElement('div');
       progressContainer.className = 'interactive-comment-progress-container';
@@ -965,11 +878,9 @@ export class NavigationManager {
       content.appendChild(progressContainer);
     }
 
-    // === CONTENT: Title + Description ===
     const contentSection = document.createElement('div');
     contentSection.className = 'interactive-comment-content-section';
 
-    // Title (optional)
     if (options?.stepTitle) {
       const titleElement = document.createElement('h4');
       titleElement.className = 'interactive-comment-title';
@@ -977,7 +888,6 @@ export class NavigationManager {
       contentSection.appendChild(titleElement);
     }
 
-    // Description/comment
     const descriptionElement = document.createElement('p');
     descriptionElement.className = 'interactive-comment-description';
     // eslint-disable-next-line no-restricted-syntax -- Sanitized with DOMPurify via sanitizeDocumentationHTML
@@ -986,7 +896,6 @@ export class NavigationManager {
 
     content.appendChild(contentSection);
 
-    // === STEP DOTS ===
     if (stepInfo) {
       const dotsContainer = document.createElement('div');
       dotsContainer.className = 'interactive-comment-dots';
@@ -1007,7 +916,6 @@ export class NavigationManager {
       content.appendChild(dotsContainer);
     }
 
-    // === NAVIGATION BUTTONS ===
     const hasGuidedButtons = onSkipCallback || onCancelCallback;
     const hasTourButtons = onNextCallback || onPreviousCallback;
 
@@ -1015,9 +923,7 @@ export class NavigationManager {
       const buttonContainer = document.createElement('div');
       buttonContainer.className = 'interactive-comment-buttons';
 
-      // Tour mode: Previous/Next navigation
       if (hasTourButtons) {
-        // Previous button
         const prevButton = document.createElement('button');
         prevButton.className = 'interactive-comment-nav-btn';
         prevButton.textContent = '← Back';
@@ -1033,12 +939,10 @@ export class NavigationManager {
 
         buttonContainer.appendChild(prevButton);
 
-        // Spacer
         const spacer = document.createElement('div');
         spacer.className = 'interactive-comment-nav-spacer';
         buttonContainer.appendChild(spacer);
 
-        // Next button - primary style
         const nextButton = document.createElement('button');
         const isLastStep = stepInfo && stepInfo.current === stepInfo.total - 1;
         const nextLabel = options?.nextLabel ?? (isLastStep ? 'Done' : 'Next →');
@@ -1056,9 +960,7 @@ export class NavigationManager {
         buttonContainer.appendChild(nextButton);
       }
 
-      // Guided mode: Cancel/Skip buttons (same row layout as tour)
       if (hasGuidedButtons && !hasTourButtons) {
-        // Cancel button (left side)
         if (onCancelCallback) {
           const cancelButton = document.createElement('button');
           cancelButton.className = 'interactive-comment-nav-btn interactive-comment-nav-btn--cancel';
@@ -1075,12 +977,10 @@ export class NavigationManager {
           buttonContainer.appendChild(cancelButton);
         }
 
-        // Spacer
         const spacer = document.createElement('div');
         spacer.className = 'interactive-comment-nav-spacer';
         buttonContainer.appendChild(spacer);
 
-        // Skip button (right side, if skippable)
         if (onSkipCallback) {
           const skipButton = document.createElement('button');
           skipButton.className = 'interactive-comment-nav-btn';
@@ -1101,7 +1001,6 @@ export class NavigationManager {
       content.appendChild(buttonContainer);
     }
 
-    // === KEYBOARD HINT ===
     if (options?.showKeyboardHint) {
       const keyboardHint = document.createElement('div');
       keyboardHint.className = 'interactive-comment-keyboard-hint';
@@ -1124,26 +1023,20 @@ export class NavigationManager {
       return commentBox;
     }
 
-    // MEASURE ACTUAL HEIGHT: Append off-screen temporarily to measure real dimensions
     commentBox.style.visibility = 'hidden';
     commentBox.style.position = 'absolute';
     commentBox.style.left = '-9999px';
     document.body.appendChild(commentBox);
 
-    // Get the actual rendered height
     const actualHeight = commentBox.offsetHeight;
 
-    // Remove it temporarily (we'll append it properly later)
     commentBox.remove();
     commentBox.style.visibility = '';
     commentBox.style.position = '';
     commentBox.style.left = '';
 
-    // NOW calculate position with the REAL height
-    // Calculate position offsets relative to highlight
     const { offsetX, offsetY, position } = this.calculateCommentPosition(targetRect, actualHeight);
 
-    // Convert to viewport coordinates (position:fixed overlay)
     const fixedTop = highlightRect.top + offsetY;
     const fixedLeft = highlightRect.left + offsetX;
 
@@ -1328,23 +1221,12 @@ export class NavigationManager {
     return { offsetX, offsetY, position: maxSpace === spaceRight ? 'right' : 'left' };
   }
 
-  /**
-   * Ensure navigation is open if the target element is in the navigation area
-   *
-   * @param element - The target element that may require navigation to be open
-   * @returns Promise that resolves when navigation is open and accessible
-   *
-   * @example
-   * ```typescript
-   * await navigationManager.ensureNavigationOpen(targetElement);
-   * // Navigation menu is now open and docked if needed
-   * ```
-   */
-  async ensureNavigationOpen(element: HTMLElement): Promise<void> {
+  async ensureNavigationOpen(element: HTMLElement, signal?: AbortSignal): Promise<void> {
     return this.openAndDockNavigation(element, {
-      checkContext: true, // Only run if element is inside the mega menu
-      logWarnings: false, // Silent operation
-      ensureDocked: true, // Always dock if open
+      checkContext: true,
+      logWarnings: false,
+      ensureDocked: true,
+      signal,
     });
   }
 
@@ -1371,35 +1253,39 @@ export class NavigationManager {
     await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.technical.navigation));
   }
 
-  /**
-   * Attempt to expand parent navigation sections for nested menu items
-   * This function analyzes the target href to determine the parent section and expands it
-   */
-  async expandParentNavigationSection(targetHref: string): Promise<boolean> {
+  async expandParentNavigationSection(targetHref: string, signal?: AbortSignal): Promise<boolean> {
     try {
+      if (signal?.aborted) {
+        return false;
+      }
       if (this.findNavItemByHref(targetHref)) {
         return true;
       }
 
-      await this.openAndDockNavigation(undefined, { ensureDocked: true });
-
-      const polled = await this.pollForNavItem(targetHref);
+      await this.openAndDockNavigation(undefined, { ensureDocked: true, signal });
+      if (signal?.aborted) {
+        return false;
+      }
+      const polled = await this.pollForNavItem(targetHref, signal);
+      if (signal?.aborted) {
+        return false;
+      }
       if (polled) {
         return true;
       }
 
       if (targetHref.includes('/a/')) {
-        return this.expandAllNavigationSections();
+        return this.expandAllNavigationSections(signal);
       }
 
       const parentPath = this.getParentPathFromHref(targetHref);
       if (!parentPath) {
-        return this.expandAllNavigationSections();
+        return this.expandAllNavigationSections(signal);
       }
 
       const parentExpandButton = this.findParentExpandButton(parentPath);
       if (!parentExpandButton) {
-        return this.expandAllNavigationSections();
+        return this.expandAllNavigationSections(signal);
       }
 
       if (this.isParentSectionExpanded(parentExpandButton)) {
@@ -1407,9 +1293,9 @@ export class NavigationManager {
       }
 
       parentExpandButton.click();
-      await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.expansionAnimationMs));
+      await this.waitForNavigationDelay(INTERACTIVE_CONFIG.delays.navigation.expansionAnimationMs, signal);
 
-      return true;
+      return !signal?.aborted;
     } catch (error) {
       logger.error('Failed to expand parent navigation section', { error });
       return false;
@@ -1443,18 +1329,14 @@ export class NavigationManager {
     );
   }
 
-  /**
-   * Poll the DOM for a nav item matching the given href, retrying at short intervals.
-   * Returns the element if found within the timeout, or null.
-   */
-  private async pollForNavItem(href: string): Promise<Element | null> {
+  private async pollForNavItem(href: string, signal?: AbortSignal): Promise<Element | null> {
     const { pollMaxAttempts, pollIntervalMs } = INTERACTIVE_CONFIG.delays.navigation;
-    for (let i = 0; i < pollMaxAttempts; i++) {
+    for (let i = 0; i < pollMaxAttempts && !signal?.aborted; i++) {
       const el = this.findNavItemByHref(href);
       if (el) {
         return el;
       }
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      await this.waitForNavigationDelay(pollIntervalMs, signal);
     }
     return null;
   }
@@ -1523,61 +1405,44 @@ export class NavigationManager {
     return false; // Default to collapsed if we can't determine state
   }
 
-  /**
-   * Expand all collapsible navigation sections
-   * This is used as a fallback when we can't determine the specific parent section
-   */
-  async expandAllNavigationSections(): Promise<boolean> {
+  async expandAllNavigationSections(signal?: AbortSignal): Promise<boolean> {
     try {
-      // Find all expand buttons in the navigation
+      if (signal?.aborted) {
+        return false;
+      }
       const expandButtons = document.querySelectorAll(
         'button[aria-label*="Expand section"]'
       ) as NodeListOf<HTMLButtonElement>;
-
       if (expandButtons.length === 0) {
-        return false; // No expandable sections found
+        return false;
       }
-
       let expandedAny = false;
-
-      // Click all expand buttons that are currently collapsed
       for (const button of expandButtons) {
+        if (signal?.aborted) {
+          return false;
+        }
         if (!this.isParentSectionExpanded(button)) {
           button.click();
           expandedAny = true;
         }
       }
-
       if (expandedAny) {
-        // Wait for all expansion animations to complete
-        await new Promise((resolve) =>
-          setTimeout(resolve, INTERACTIVE_CONFIG.delays.navigation.allExpansionAnimationMs)
-        );
+        await this.waitForNavigationDelay(INTERACTIVE_CONFIG.delays.navigation.allExpansionAnimationMs, signal);
       }
-
-      return true;
+      return !signal?.aborted;
     } catch (error) {
       logger.error('Failed to expand all navigation sections', { error });
       return false;
     }
   }
 
-  /**
-   * Interactive steps that use the nav require that it be open.  This function will ensure
-   * that it's open so that other steps can be executed.
-   * @param element - The element that may require navigation to be open
-   * @param options - The options for the navigation
-   * @param options.checkContext - Whether to require that the element is inside the mega menu (default false)
-   * @param options.logWarnings - Whether to log warnings (default true)
-   * @param options.ensureDocked - Whether to ensure the navigation is docked when we're done. (default true)
-   * @returns Promise that resolves when navigation is properly configured
-   */
   async openAndDockNavigation(element?: HTMLElement, options: NavigationOptions = {}): Promise<void> {
-    const { checkContext = false, logWarnings = true, ensureDocked = true } = options;
+    const { checkContext = false, logWarnings = true, ensureDocked = true, signal } = options;
+    if (signal?.aborted) {
+      return;
+    }
 
-    // Only the mega menu counts as "navigation" — Grafana renders page toolbars and
-    // breadcrumbs as <nav> too, so a looser ancestor test opens the sidebar for
-    // ordinary page targets.
+    // Page toolbars also use <nav>, but only the mega menu needs docking.
     if (checkContext && element && !element.closest(MEGA_MENU_SELECTOR)) {
       return;
     }
@@ -1590,87 +1455,95 @@ export class NavigationManager {
       return;
     }
 
-    // Nav items in the DOM means the sidebar is already open (docked or overlay).
-    // The mega-menu toggle's aria-expanded only reflects overlay state, not docked
-    // sidebar state, so checking actual DOM content is the reliable signal.
+    // The toggle's aria-expanded does not reflect docked navigation.
     const navItemsVisible = document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0;
     if (navItemsVisible) {
       if (ensureDocked) {
-        await this.dockIfInOverlay();
+        await this.dockIfInOverlay(signal);
       }
       return;
     }
 
     megaMenuToggle.click();
     await waitForReactUpdates();
+    if (signal?.aborted) {
+      return;
+    }
 
-    // After the toggle click, the sidebar may have opened directly as docked
-    // (if the user's localStorage preference was already set). In that case
-    // nav items are already visible and clicking the dock button would UNDOCK it.
     if (document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0) {
       if (ensureDocked) {
-        await this.dockIfInOverlay();
+        await this.dockIfInOverlay(signal);
       }
       return;
     }
 
     if (ensureDocked) {
-      const dockMenuButton = await this.pollForDockButton();
+      const dockMenuButton = await this.pollForDockButton(signal);
+      if (signal?.aborted) {
+        return;
+      }
       if (dockMenuButton) {
         dockMenuButton.click();
         await waitForReactUpdates();
-        await this.pollForNavItems();
+        if (!signal?.aborted) {
+          await this.pollForNavItems(signal);
+        }
       } else if (logWarnings) {
         logger.warn('Dock menu button not found after polling, navigation will remain in modal mode');
       }
     }
   }
 
-  /**
-   * Click the dock button iff the nav is currently in overlay mode.
-   * `#dock-menu-button` exists in both docked and overlay states with opposite
-   * semantics — in overlay its aria-label reads "Dock menu" (clicking docks the
-   * nav, what we want); in docked it reads "Undock menu" (clicking would undock,
-   * which would regress the intent of #709). The aria-label is the discriminator.
-   */
-  private async dockIfInOverlay(): Promise<void> {
+  // The dock button also exists in docked mode, where it undocks the menu.
+  private async dockIfInOverlay(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      return;
+    }
     const dockMenuButton = document.querySelector('#dock-menu-button') as HTMLButtonElement | null;
     if (dockMenuButton?.getAttribute('aria-label') === 'Dock menu') {
       dockMenuButton.click();
       await waitForReactUpdates();
-      await this.pollForNavItems();
+      if (!signal?.aborted) {
+        await this.pollForNavItems(signal);
+      }
     }
   }
 
-  /**
-   * Poll for the dock menu button to appear in the DOM.
-   * The overlay needs time to fully render after the mega-menu toggle click
-   * before the dock button is available.
-   */
-  private async pollForDockButton(): Promise<HTMLButtonElement | null> {
+  private async pollForDockButton(signal?: AbortSignal): Promise<HTMLButtonElement | null> {
     const { pollMaxAttempts, pollIntervalMs } = INTERACTIVE_CONFIG.delays.navigation;
-    for (let i = 0; i < pollMaxAttempts; i++) {
+    for (let i = 0; i < pollMaxAttempts && !signal?.aborted; i++) {
       const btn = document.querySelector('#dock-menu-button') as HTMLButtonElement;
       if (btn) {
         return btn;
       }
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      await this.waitForNavigationDelay(pollIntervalMs, signal);
     }
     return null;
   }
 
-  /**
-   * Poll until at least one nav menu item is present in the DOM.
-   * Used after docking to wait for the sidebar's nav tree to finish mounting.
-   */
-  private async pollForNavItems(): Promise<boolean> {
+  private async pollForNavItems(signal?: AbortSignal): Promise<boolean> {
     const { pollMaxAttempts, pollIntervalMs } = INTERACTIVE_CONFIG.delays.navigation;
-    for (let i = 0; i < pollMaxAttempts; i++) {
+    for (let i = 0; i < pollMaxAttempts && !signal?.aborted; i++) {
       if (document.querySelectorAll(NAV_ITEM_SELECTOR).length > 0) {
         return true;
       }
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      await this.waitForNavigationDelay(pollIntervalMs, signal);
     }
     return false;
+  }
+
+  private waitForNavigationDelay(duration: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const finish = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', finish);
+        resolve();
+      };
+      const timer = setTimeout(finish, duration);
+      signal?.addEventListener('abort', finish, { once: true });
+    });
   }
 }

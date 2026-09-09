@@ -1,33 +1,47 @@
 import type { Locator, Page } from '@playwright/test';
+import { getGuidedStepTimeout } from '../../../../../src/constants/interactive-config';
 
 import { testIds } from '../../../../../src/constants/testIds';
+import { assertExhaustive } from '../../../../../src/lib/assert-exhaustive';
 import { resolveSelector } from '../../selector-resolver';
 import { captureFailureArtifacts } from '../artifacts';
 import { dismissBadgeCelebrations } from '../badge-celebrations';
+import { classifyError } from '../classification';
 import {
   COMPLETION_POLL_INTERVAL_MS,
-  GUIDED_BETWEEN_SUBSTEP_DELAY_MS,
-  GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS,
+  DEFAULT_STEP_TIMEOUT_MS,
   GUIDED_FORMFILL_DEBOUNCE_MS,
   GUIDED_FORMFILL_INVALID_PERSIST_MS,
   GUIDED_FORMFILL_VALID_TIMEOUT_MS,
   GUIDED_HOVER_DWELL_MS,
   GUIDED_RELOAD_LOAD_TIMEOUT_MS,
-  GUIDED_SKIP_AFTER_TIMEOUT_FRACTION,
   GUIDED_SUBSTEP_ADVANCE_POLL_MS,
   GUIDED_TARGET_RESOLUTION_TIMEOUT_MS,
-  TIMEOUT_PER_GUIDED_SUBSTEP_MS,
 } from '../constants';
-import type { TestableStep } from '../types';
-import { startStepAction, waitForCompletion } from './shared';
+import { isFatalTransitionError } from '../transition-error';
+import type { StepSubstepResult, TestableStep } from '../types';
+import { captureGuidedEvidence, isGuidedAction, type GuidedEvidence, type GuidedSnapshot } from './guided-evidence';
+import { startStepAction } from './shared';
 import type { StepDriverExecutionContext, StepDriverExecutionResult } from './types';
+function operationTimeout(deadlineMs: number, limit = GUIDED_TARGET_RESOLUTION_TIMEOUT_MS): number {
+  const remaining = deadlineMs - Date.now();
+  if (remaining <= 0) {
+    throw new Error('Guided substep deadline expired');
+  }
+  return Math.min(remaining, limit);
+}
 
-const GUIDED_WAIT_EXECUTING_MS = 5000;
+async function pause(page: Page, durationMs: number, deadlineMs: number): Promise<void> {
+  const remaining = deadlineMs - Date.now();
+  if (remaining > 0) {
+    await page.waitForTimeout(Math.min(durationMs, remaining));
+  }
+}
 
 export async function waitForGuidedExecutionStart(
   page: Page,
   stepLocator: Locator,
-  timeout = GUIDED_WAIT_EXECUTING_MS
+  timeout = getGuidedStepTimeout()
 ): Promise<void> {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -74,16 +88,16 @@ function guidedSelectorLocator(page: Page, selector: string): Locator {
   return parsed.trailingSelector ? matched.locator(parsed.trailingSelector).first() : matched;
 }
 
-async function revealGuidedTarget(page: Page, target: Locator, timeout: number): Promise<Locator> {
+async function revealGuidedTarget(page: Page, target: Locator, deadlineMs: number): Promise<Locator> {
   if (await target.isVisible()) {
     return target;
   }
   if ((await target.count()) > 0) {
     const panel = target.locator('xpath=ancestor::section[1]');
     if ((await panel.count()) > 0) {
-      await panel.scrollIntoViewIfNeeded().catch(() => {});
+      await panel.scrollIntoViewIfNeeded({ timeout: operationTimeout(deadlineMs) }).catch(() => {});
       await dismissBadgeCelebrations(page);
-      await panel.hover({ timeout }).catch(() => {});
+      await panel.hover({ timeout: operationTimeout(deadlineMs) }).catch(() => {});
       if (await target.isVisible()) {
         return target;
       }
@@ -93,104 +107,47 @@ async function revealGuidedTarget(page: Page, target: Locator, timeout: number):
       }
     }
   }
-  await target.waitFor({ state: 'visible', timeout });
+  await target.waitFor({ state: 'visible', timeout: operationTimeout(deadlineMs) });
   return target;
 }
 
-async function resolveGuidedTarget(page: Page, reftarget: string, actionType: string): Promise<Locator> {
+async function resolveGuidedTarget(
+  page: Page,
+  reftarget: string,
+  actionType: string,
+  deadlineMs: number
+): Promise<Locator> {
   await dismissBadgeCelebrations(page);
-  const timeout = GUIDED_TARGET_RESOLUTION_TIMEOUT_MS;
   const selector = reftarget.startsWith('grafana:') ? resolveSelector(reftarget) : reftarget;
 
   if (actionType === 'button') {
     const byRole = page.getByRole('button', { name: reftarget });
     const n = await byRole.count();
     if (n > 0) {
-      return revealGuidedTarget(page, byRole.first(), timeout);
+      return revealGuidedTarget(page, byRole.first(), deadlineMs);
     }
     const bySelector = guidedSelectorLocator(page, selector);
     const hasButton = bySelector.filter({ has: page.getByRole('button') });
     const hasCount = await hasButton.count();
     if (hasCount > 0) {
-      return revealGuidedTarget(page, hasButton.first(), timeout);
+      return revealGuidedTarget(page, hasButton.first(), deadlineMs);
     }
-    return revealGuidedTarget(page, bySelector.first(), timeout);
+    return revealGuidedTarget(page, bySelector.first(), deadlineMs);
   }
 
-  return revealGuidedTarget(page, guidedSelectorLocator(page, selector), timeout);
-}
-
-async function waitForSubstepAdvance(
-  page: Page,
-  stepLocator: Locator,
-  previousSubstepIndex: number,
-  timeoutMs: number,
-  options: { commentBox?: Locator } = {}
-): Promise<void> {
-  const { commentBox } = options;
-  const deadline = Date.now() + timeoutMs;
-  const skipAfterMs = Math.floor(timeoutMs * GUIDED_SKIP_AFTER_TIMEOUT_FRACTION);
-  let lastState: string | null = null;
-  let lastIndex: string | null = null;
-
-  while (Date.now() < deadline) {
-    // Count first because Playwright waits for attributes on a missing locator.
-    if ((await stepLocator.count()) === 0) {
-      return;
-    }
-
-    try {
-      lastState = await stepLocator.getAttribute('data-test-step-state', { timeout: 2000 });
-      lastIndex = await stepLocator.getAttribute('data-test-substep-index', { timeout: 2000 });
-    } catch {
-      if ((await stepLocator.count()) === 0) {
-        return;
-      }
-      lastState = null;
-      lastIndex = null;
-    }
-
-    if (lastState === 'error') {
-      throw new Error('Guided step entered error state');
-    }
-    if (lastState === 'cancelled') {
-      throw new Error('Guided step was cancelled');
-    }
-    const index = lastIndex != null ? parseInt(lastIndex, 10) : 0;
-    if (!Number.isNaN(index) && index > previousSubstepIndex) {
-      return;
-    }
-    if (lastState === 'completed' && lastIndex === null) {
-      return;
-    }
-
-    const elapsed = Date.now() - (deadline - timeoutMs);
-    if (commentBox && elapsed >= skipAfterMs) {
-      const skipBtn = commentBox.getByRole('button', { name: /^Skip$/ });
-      const count = await skipBtn.count();
-      if (count > 0) {
-        await dismissBadgeCelebrations(page);
-        await skipBtn.click().catch(() => {});
-      }
-    }
-
-    await page.waitForTimeout(GUIDED_SUBSTEP_ADVANCE_POLL_MS);
-  }
-
-  throw new Error(
-    `Guided substep did not advance within ${timeoutMs}ms (previous index: ${previousSubstepIndex}, last state: ${lastState ?? 'unknown'}, last substep-index: ${lastIndex ?? 'unknown'})`
-  );
+  return revealGuidedTarget(page, guidedSelectorLocator(page, selector), deadlineMs);
 }
 
 export async function waitForFormfillSettle(
   page: Page,
   stepLocator: Locator,
   target: Locator,
-  targetValue: string
+  targetValue: string,
+  options: { deadlineMs?: number; isCurrent?: () => Promise<boolean> } = {}
 ): Promise<void> {
-  await page.waitForTimeout(GUIDED_FORMFILL_DEBOUNCE_MS);
-
-  const validDeadline = Date.now() + GUIDED_FORMFILL_VALID_TIMEOUT_MS;
+  const deadlineMs = options.deadlineMs ?? Date.now() + GUIDED_FORMFILL_VALID_TIMEOUT_MS + GUIDED_FORMFILL_DEBOUNCE_MS;
+  await pause(page, GUIDED_FORMFILL_DEBOUNCE_MS, deadlineMs);
+  const validDeadline = Math.min(deadlineMs, Date.now() + GUIDED_FORMFILL_VALID_TIMEOUT_MS);
   let invalidSince: number | null = null;
 
   const readFormState = async (): Promise<string | null> => {
@@ -198,14 +155,14 @@ export async function waitForFormfillSettle(
       return null;
     }
     try {
-      return await stepLocator.getAttribute('data-test-form-state', { timeout: 2000 });
+      return await stepLocator.getAttribute('data-test-form-state', { timeout: operationTimeout(validDeadline, 2000) });
     } catch {
       return null;
     }
   };
 
   while (Date.now() < validDeadline) {
-    if ((await stepLocator.count()) === 0) {
+    if ((options.isCurrent && !(await options.isCurrent())) || (await stepLocator.count()) === 0) {
       return;
     }
     const formState = await readFormState();
@@ -218,13 +175,14 @@ export async function waitForFormfillSettle(
       }
       if (Date.now() - invalidSince >= GUIDED_FORMFILL_INVALID_PERSIST_MS) {
         await dismissBadgeCelebrations(page);
-        await target.fill(targetValue);
-        await page.waitForTimeout(GUIDED_FORMFILL_DEBOUNCE_MS);
+        if (options.isCurrent && !(await options.isCurrent())) {
+          return;
+        }
+        await target.fill(targetValue, { timeout: operationTimeout(validDeadline) });
+        await pause(page, GUIDED_FORMFILL_DEBOUNCE_MS, validDeadline);
         const afterRetry = await readFormState();
         if (afterRetry === 'invalid') {
-          throw new Error(
-            `Guided step: formfill validation failed (data-test-form-state="invalid" persisted after retry with value "${targetValue}")`
-          );
+          throw new Error('Guided formfill validation remained invalid after retry');
         }
         if (afterRetry === 'valid') {
           return;
@@ -234,7 +192,7 @@ export async function waitForFormfillSettle(
     } else {
       invalidSince = null;
     }
-    await page.waitForTimeout(GUIDED_SUBSTEP_ADVANCE_POLL_MS);
+    await pause(page, GUIDED_SUBSTEP_ADVANCE_POLL_MS, validDeadline);
   }
 }
 
@@ -244,7 +202,7 @@ export async function waitForGuidedCommentBoxReady(
   page: Page,
   stepLocator: Locator,
   commentBox: Locator,
-  timeoutMs = GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS
+  timeoutMs = getGuidedStepTimeout()
 ): Promise<GuidedCommentBoxWaitOutcome> {
   const deadline = Date.now() + timeoutMs;
 
@@ -284,169 +242,310 @@ export async function waitForGuidedCommentBoxReady(
   }
 }
 
+function assertGuidedState(snapshot: GuidedSnapshot): void {
+  const failed = snapshot.substeps?.find((result) => result.status !== 'completed' && result.status !== 'skipped');
+  if (failed) {
+    throw new Error(`Guided substep ${failed.index + 1} settled as ${failed.status}`);
+  }
+  if (snapshot.state === 'error' || snapshot.state === 'cancelled') {
+    throw new Error(`Guided step entered ${snapshot.state} state`);
+  }
+}
+
+function isCurrentSubstep(snapshot: GuidedSnapshot, index: number): boolean {
+  return (
+    snapshot.attached &&
+    snapshot.state === 'executing' &&
+    snapshot.index === index &&
+    !snapshot.substeps?.some((result) => result.index === index)
+  );
+}
+
+function currentCommentBox(page: Page, index: number, hasLedger: boolean): Locator {
+  const indexed = `.interactive-comment-box[data-test-substep-index="${index}"]`;
+  const selector = hasLedger ? indexed : `${indexed}, .interactive-comment-box:not([data-test-substep-index])`;
+  return page.locator(selector).filter({ visible: true }).first();
+}
+
+interface GuidedComment {
+  action: StepSubstepResult['action'];
+  reftarget: string | null;
+  targetValue: string | null;
+}
+
+class GuidedContractError extends Error {}
+class GuidedNavigationError extends Error {}
+
+async function readGuidedComment(commentBox: Locator, deadlineMs: number): Promise<GuidedComment> {
+  const comment = await commentBox.evaluate(
+    (element) => ({
+      action: element.getAttribute('data-test-action'),
+      reftarget: element.getAttribute('data-test-reftarget'),
+      targetValue: element.getAttribute('data-test-target-value'),
+    }),
+    undefined,
+    { timeout: operationTimeout(deadlineMs) }
+  );
+  if (!isGuidedAction(comment.action)) {
+    throw new GuidedContractError(`Guided step: unknown data-test-action "${comment.action}"`);
+  }
+  if (comment.action !== 'noop' && !comment.reftarget) {
+    throw new GuidedContractError(`Guided step: ${comment.action} substep missing data-test-reftarget`);
+  }
+  return { ...comment, action: comment.action };
+}
+
+async function performGuidedAction(
+  page: Page,
+  stepLocator: Locator,
+  commentBox: Locator,
+  comment: GuidedComment,
+  deadlineMs: number,
+  isCurrent: () => Promise<boolean>
+): Promise<void> {
+  if (comment.action === 'noop') {
+    await dismissBadgeCelebrations(page);
+    if (await isCurrent()) {
+      await commentBox.getByRole('button', { name: /Continue/ }).click({ timeout: operationTimeout(deadlineMs) });
+    }
+    return;
+  }
+  const target = await resolveGuidedTarget(page, comment.reftarget!, comment.action, deadlineMs);
+  if (!(await isCurrent())) {
+    return;
+  }
+  await target.scrollIntoViewIfNeeded({ timeout: operationTimeout(deadlineMs) });
+  await dismissBadgeCelebrations(page);
+  if (!(await isCurrent())) {
+    return;
+  }
+
+  switch (comment.action) {
+    case 'button':
+    case 'highlight': {
+      const urlBefore = page.url();
+      let navigated = false;
+      const onFrameNavigated = () => {
+        navigated = true;
+      };
+      page.on('framenavigated', onFrameNavigated);
+      try {
+        await target.click({ timeout: operationTimeout(deadlineMs) });
+        await pause(page, 100, deadlineMs);
+      } finally {
+        page.off('framenavigated', onFrameNavigated);
+      }
+      if (navigated || urlBefore !== page.url()) {
+        try {
+          await page.waitForLoadState('domcontentloaded', {
+            timeout: operationTimeout(deadlineMs, GUIDED_RELOAD_LOAD_TIMEOUT_MS),
+          });
+        } catch (error) {
+          throw new GuidedNavigationError(error instanceof Error ? error.message : String(error));
+        }
+      }
+      return;
+    }
+    case 'hover':
+      await target.hover({ timeout: operationTimeout(deadlineMs) });
+      await pause(page, GUIDED_HOVER_DWELL_MS, deadlineMs);
+      return;
+    case 'formfill':
+      await target.fill(comment.targetValue ?? '', { timeout: operationTimeout(deadlineMs) });
+      await waitForFormfillSettle(page, stepLocator, target, comment.targetValue ?? '', { deadlineMs, isCurrent });
+      return;
+    default:
+      assertExhaustive(comment.action);
+  }
+}
+
+async function skipFailedGuidedAction(
+  page: Page,
+  evidence: GuidedEvidence,
+  index: number,
+  deadlineMs: number,
+  error: unknown
+): Promise<boolean> {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    isFatalTransitionError(error) ||
+    error instanceof GuidedContractError ||
+    error instanceof GuidedNavigationError ||
+    classifyError(message) === 'infrastructure'
+  ) {
+    return false;
+  }
+  const snapshot = await evidence.read();
+  assertGuidedState(snapshot);
+  if (!isCurrentSubstep(snapshot, index)) {
+    return true;
+  }
+  const commentBox = currentCommentBox(page, index, snapshot.substeps !== undefined);
+  if ((await commentBox.count()) === 0) {
+    return false;
+  }
+  const boxSkippable = await commentBox.getAttribute('data-test-substep-skippable', {
+    timeout: operationTimeout(deadlineMs),
+  });
+  const skipButton = commentBox.getByRole('button', { name: /^Skip$/ });
+  const visibleSkip = await skipButton.isVisible();
+  const skippable =
+    snapshot.skippable ??
+    (boxSkippable === null ? snapshot.substeps === undefined && visibleSkip : boxSkippable === 'true');
+  if (
+    !skippable ||
+    boxSkippable === 'false' ||
+    (snapshot.substeps !== undefined && boxSkippable !== 'true') ||
+    !visibleSkip ||
+    !(await skipButton.isEnabled())
+  ) {
+    return false;
+  }
+  await dismissBadgeCelebrations(page);
+  if (!isCurrentSubstep(await evidence.read(), index)) {
+    return true;
+  }
+  await skipButton.click({ timeout: operationTimeout(deadlineMs) });
+  evidence.recordActionFailure(index, message);
+  return true;
+}
+
+interface GuidedLoopOptions {
+  stepLocator: Locator;
+  perSubstepTimeoutMs?: number;
+  commentBoxDeadlineMs?: number;
+  verbose?: boolean;
+  artifactsDir?: string;
+  onSubsteps?: (substeps: StepSubstepResult[]) => void;
+}
+
+async function driveGuidedSubsteps(
+  page: Page,
+  step: TestableStep,
+  options: GuidedLoopOptions,
+  evidence: GuidedEvidence
+): Promise<void> {
+  let activeIndex: number | undefined;
+  let settledIndex: number | undefined;
+  let deadlineMs = options.commentBoxDeadlineMs ?? Date.now() + getGuidedStepTimeout(options.perSubstepTimeoutMs);
+  const attempted = new Set<number>();
+
+  for (;;) {
+    const snapshot = await evidence.read();
+    assertGuidedState(snapshot);
+    if (snapshot.state === 'completed' || !snapshot.attached) {
+      return;
+    }
+    const index = snapshot.index;
+    if (index !== activeIndex) {
+      activeIndex = index;
+      const timeout = options.perSubstepTimeoutMs ?? snapshot.timeoutMs;
+      deadlineMs = Math.min(Date.now() + timeout, options.commentBoxDeadlineMs ?? Number.POSITIVE_INFINITY);
+    }
+    if (index !== undefined && settledIndex !== index && snapshot.substeps?.some((record) => record.index === index)) {
+      settledIndex = index;
+      deadlineMs = options.commentBoxDeadlineMs ?? Date.now() + DEFAULT_STEP_TIMEOUT_MS;
+    }
+    if (Date.now() >= deadlineMs) {
+      throw new Error(
+        `Guided substep ${index === undefined ? 'unknown' : index + 1} did not settle before its deadline`
+      );
+    }
+    if (index === undefined || !isCurrentSubstep(snapshot, index) || attempted.has(index)) {
+      await pause(page, GUIDED_SUBSTEP_ADVANCE_POLL_MS, deadlineMs);
+      continue;
+    }
+    const commentBox = currentCommentBox(page, index, snapshot.substeps !== undefined);
+    if ((await commentBox.count()) === 0) {
+      await pause(page, GUIDED_SUBSTEP_ADVANCE_POLL_MS, deadlineMs);
+      continue;
+    }
+    let comment: GuidedComment;
+    try {
+      comment = await readGuidedComment(commentBox, deadlineMs);
+    } catch (error) {
+      const current = await evidence.read();
+      assertGuidedState(current);
+      if (!isCurrentSubstep(current, index)) {
+        continue;
+      }
+      throw error;
+    }
+    const isCurrent = async () => {
+      const current = await evidence.read();
+      assertGuidedState(current);
+      return isCurrentSubstep(current, index);
+    };
+    if (!(await isCurrent())) {
+      continue;
+    }
+    if (options.verbose) {
+      console.log(`   Guided substep ${index + 1}/${step.actionCount}: ${comment.action}`);
+    }
+    try {
+      await performGuidedAction(page, options.stepLocator, commentBox, comment, deadlineMs, isCurrent);
+    } catch (error) {
+      if (!(await skipFailedGuidedAction(page, evidence, index, deadlineMs, error))) {
+        throw error;
+      }
+    }
+    attempted.add(index);
+  }
+}
+
+async function captureGuidedFailure(
+  page: Page,
+  step: TestableStep,
+  evidence: GuidedEvidence,
+  artifactsDir?: string
+): Promise<void> {
+  await evidence.read().catch(() => undefined);
+  if (artifactsDir) {
+    await captureFailureArtifacts(page, step.stepId, [], artifactsDir).catch(() => undefined);
+  }
+}
+
 export async function runGuidedSubstepLoop(
   page: Page,
   step: TestableStep,
-  options: {
-    stepLocator: Locator;
-    perSubstepTimeoutMs: number;
-    commentBoxDeadlineMs?: number;
-    verbose?: boolean;
-    artifactsDir?: string;
-  }
-): Promise<{ completed: boolean }> {
-  let stepLocator = options.stepLocator;
-  const { perSubstepTimeoutMs, verbose = false, artifactsDir } = options;
-  const commentBoxDeadlineMs = options.commentBoxDeadlineMs ?? Date.now() + GUIDED_COMMENT_BOX_VISIBLE_TIMEOUT_MS;
-  const actionCount = Math.max(1, step.actionCount);
-
-  const captureLoopArtifacts = async () => {
-    if (artifactsDir) {
-      await captureFailureArtifacts(page, step.stepId, [], artifactsDir).catch(() => {});
-    }
-  };
-
-  // Re-resolve after navigation, but propagate locator errors as execution failures.
-  const stepDetached = async (): Promise<boolean> => {
-    stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-    return (await stepLocator.count()) === 0;
-  };
-
-  while (true) {
-    if (await stepDetached()) {
-      return { completed: true };
-    }
-
-    const state = await stepLocator.getAttribute('data-test-step-state');
-    if (state === 'completed') {
-      return { completed: true };
-    }
-    if (state === 'error') {
-      await captureLoopArtifacts();
-      throw new Error('Guided step entered error state');
-    }
-    if (state === 'cancelled') {
-      await captureLoopArtifacts();
-      throw new Error('Guided step was cancelled');
-    }
-    if (state !== 'executing') {
-      await captureLoopArtifacts();
-      throw new Error(`Unexpected guided step state: ${state}`);
-    }
-    const indexStr = await stepLocator.getAttribute('data-test-substep-index');
-
-    const currentIndex = indexStr != null ? parseInt(indexStr, 10) : 0;
-    const safeIndex = Number.isNaN(currentIndex) ? 0 : currentIndex;
-    if (safeIndex >= actionCount) {
-      return { completed: false };
-    }
-
-    const commentBox = page.locator('.interactive-comment-box').first();
-    let commentBoxOutcome: GuidedCommentBoxWaitOutcome;
-    try {
-      commentBoxOutcome = await waitForGuidedCommentBoxReady(
-        page,
-        stepLocator,
-        commentBox,
-        Math.max(1, commentBoxDeadlineMs - Date.now())
-      );
-    } catch (err) {
-      await captureLoopArtifacts();
-      throw err;
-    }
-    if (commentBoxOutcome === 'completed' || commentBoxOutcome === 'detached') {
-      return { completed: true };
-    }
-
-    const action = await commentBox.getAttribute('data-test-action');
-    const reftarget = await commentBox.getAttribute('data-test-reftarget');
-    const targetValue = await commentBox.getAttribute('data-test-target-value');
-
-    if (verbose) {
-      console.log(`   📍 Guided substep ${safeIndex + 1}/${actionCount} action=${action}`);
-    }
-
-    try {
-      if (action === 'noop') {
-        const continueBtn = commentBox.getByRole('button', { name: /Continue/ });
-        await dismissBadgeCelebrations(page);
-        await continueBtn.click();
-      } else if (action === 'button' || action === 'highlight') {
-        if (!reftarget) {
-          throw new Error('Guided step: button/highlight substep missing data-test-reftarget');
-        }
-        const urlBefore = page.url();
-        let navigated = false;
-        const onFrameNavigated = () => {
-          navigated = true;
-        };
-        page.on('framenavigated', onFrameNavigated);
-        try {
-          const target = await resolveGuidedTarget(page, reftarget, action);
-          await target.scrollIntoViewIfNeeded();
-          await dismissBadgeCelebrations(page);
-          await target.click();
-          await page.waitForTimeout(100);
-        } finally {
-          page.off('framenavigated', onFrameNavigated);
-        }
-        if (navigated || urlBefore !== page.url()) {
-          // Navigation invalidates the old locator, so wait for the new document.
-          await page.waitForLoadState('domcontentloaded', { timeout: GUIDED_RELOAD_LOAD_TIMEOUT_MS });
-          stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
-        }
-      } else if (action === 'hover') {
-        if (!reftarget) {
-          throw new Error('Guided step: hover substep missing data-test-reftarget');
-        }
-        const target = await resolveGuidedTarget(page, reftarget, 'hover');
-        await target.scrollIntoViewIfNeeded();
-        await dismissBadgeCelebrations(page);
-        await target.hover();
-        await page.waitForTimeout(GUIDED_HOVER_DWELL_MS);
-      } else if (action === 'formfill') {
-        if (!reftarget) {
-          throw new Error('Guided step: formfill substep missing data-test-reftarget');
-        }
-        const target = await resolveGuidedTarget(page, reftarget, 'formfill');
-        await target.scrollIntoViewIfNeeded();
-        await dismissBadgeCelebrations(page);
-        await target.fill(targetValue ?? '');
-        await waitForFormfillSettle(page, stepLocator, target, targetValue ?? '');
-      } else {
-        throw new Error(`Guided step: unknown data-test-action "${action}"`);
-      }
-    } catch (err) {
-      await captureLoopArtifacts();
-      throw err;
-    }
-
-    if (await stepDetached()) {
-      return { completed: true };
-    }
-
-    await waitForSubstepAdvance(page, stepLocator, safeIndex, perSubstepTimeoutMs, { commentBox });
-    await page.waitForTimeout(GUIDED_BETWEEN_SUBSTEP_DELAY_MS);
+  options: GuidedLoopOptions
+): Promise<{ completed: boolean; substeps?: StepSubstepResult[] }> {
+  const evidence = await captureGuidedEvidence(options.stepLocator, options.onSubsteps);
+  try {
+    await driveGuidedSubsteps(page, step, options, evidence);
+    assertGuidedState(await evidence.read());
+    return { completed: true, ...(evidence.results() !== undefined ? { substeps: evidence.results() } : {}) };
+  } catch (error) {
+    await captureGuidedFailure(page, step, evidence, options.artifactsDir);
+    throw error;
+  } finally {
+    await evidence.dispose();
   }
 }
 
 export async function executeGuidedStep(context: StepDriverExecutionContext): Promise<StepDriverExecutionResult> {
-  const action = await startStepAction(context);
-  if (action.outcome !== 'started') {
-    return { outcome: action.outcome };
+  const { page, step } = context;
+  const stepLocator = page.getByTestId(testIds.interactive.step(step.stepId));
+  const evidence = await captureGuidedEvidence(stepLocator, context.onSubsteps);
+  try {
+    const action = await startStepAction(context);
+    if (action.outcome === 'started') {
+      await driveGuidedSubsteps(
+        page,
+        step,
+        { stepLocator, commentBoxDeadlineMs: Date.now() + context.timeout, verbose: context.verbose },
+        evidence
+      );
+    }
+    assertGuidedState(await evidence.read());
+    return {
+      outcome: action.outcome === 'no-control' ? 'no-control' : 'completed',
+      ...(evidence.results() !== undefined ? { substeps: evidence.results() } : {}),
+    };
+  } catch (error) {
+    await captureGuidedFailure(page, step, evidence, context.artifactsDir);
+    throw error;
+  } finally {
+    await evidence.dispose();
   }
-
-  const stepLocator = context.page.getByTestId(testIds.interactive.step(context.step.stepId));
-  await waitForGuidedExecutionStart(context.page, stepLocator);
-  const { completed } = await runGuidedSubstepLoop(context.page, context.step, {
-    stepLocator,
-    perSubstepTimeoutMs: TIMEOUT_PER_GUIDED_SUBSTEP_MS,
-    commentBoxDeadlineMs: Date.now() + context.timeout,
-    verbose: context.verbose,
-    artifactsDir: context.artifactsDir,
-  });
-  if (!completed) {
-    await waitForCompletion(context.page, context.step.stepId, context.timeout);
-  }
-  return { outcome: 'completed' };
 }

@@ -6,7 +6,8 @@ import { checkRequirements, dispatchFix } from '../../requirements-manager';
 import { sidebarState } from '../../global-state/sidebar';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { FakeCrossTabTransport } from '../../test-utils/fake-cross-tab-transport';
-import type { CrossTabMessage } from '../../types/cross-tab.types';
+import type { CrossTabAction, CrossTabMessage, StepCommandMessage } from '../../types/cross-tab.types';
+import type { GuidedAction, GuidedStepOptions, GuidedSubstepResult } from '../../types/interactive-actions.types';
 import { withFaroUserAction } from '../../lib/faro';
 import { isInteractiveActionType } from '../../lib/interactive-action';
 
@@ -30,6 +31,7 @@ jest.mock('../../interactive-engine/action-handlers', () => {
   const makeGuided = () => ({
     resetProgress: jest.fn(),
     executeGuidedStep: jest.fn().mockResolvedValue('completed'),
+    cancel: jest.fn(),
   });
   return {
     FocusHandler: jest.fn(makeHandler),
@@ -109,6 +111,27 @@ function stampSidebarHandoff(action: 'close' | 'reopen'): CrossTabMessage {
 function executeOf(handler: unknown): jest.Mock {
   const ctor = handler as jest.Mock;
   return (ctor.mock.results[0]?.value as { execute: jest.Mock }).execute;
+}
+
+function guidedMock(): { executeGuidedStep: jest.Mock; resetProgress: jest.Mock; cancel: jest.Mock } {
+  return (GuidedHandler as jest.Mock).mock.results[0]?.value;
+}
+
+function guidedCommand(
+  internalActions: GuidedAction[],
+  options: Partial<CrossTabAction> = {},
+  runId = 'guided-run'
+): StepCommandMessage {
+  return {
+    source: 'pathfinder',
+    senderId: 'controller',
+    timestamp: 0,
+    kind: 'step-command',
+    phase: 'do',
+    stepId: 'guided-step',
+    runId,
+    action: { targetAction: 'guided', refTarget: '', internalActions, ...options },
+  };
 }
 
 describe('installLiveTabExecutor', () => {
@@ -276,9 +299,282 @@ describe('installLiveTabExecutor', () => {
     expect(executeGuidedStep).toHaveBeenCalledWith(
       expect.objectContaining({ targetState: 'aria-expanded:true' }),
       0,
-      1
+      1,
+      120_000,
+      undefined,
+      expect.objectContaining({ checkRequirements: expect.any(Function), onSettled: expect.any(Function) })
     );
     uninstall();
+  });
+
+  describe('guided substep contract', () => {
+    it.each([
+      [30_000, 30_000],
+      [45_000, 45_000],
+      [60_000, 60_000],
+      [undefined, 120_000],
+    ])('forwards the authored timeout %s as %s', async (stepTimeout, expected) => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+      const action: GuidedAction = { targetAction: 'noop', targetComment: 'Read the instructions.' };
+      transport.emit(guidedCommand([action], { stepTimeout }));
+
+      await waitFor(() => expect(guidedMock().executeGuidedStep).toHaveBeenCalledTimes(1));
+      expect(guidedMock().executeGuidedStep).toHaveBeenCalledWith(
+        action,
+        0,
+        1,
+        expected,
+        undefined,
+        expect.objectContaining({ checkRequirements: expect.any(Function), onSettled: expect.any(Function) })
+      );
+      uninstall();
+    });
+
+    it('preserves every guided field and uses explicit scope for requirement checks', async () => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+      const action: GuidedAction = {
+        targetAction: 'formfill',
+        refTarget: '#query',
+        targetValue: 'up',
+        targetState: 'aria-expanded:true',
+        requirements: ['var-ready:true', 'section-completed:intro'],
+        targetComment: 'Enter the query.',
+        isSkippable: false,
+        formHint: 'Use a metric name.',
+        validateInput: true,
+        lazyRender: true,
+        scrollContainer: '#panels',
+      };
+      transport.emit(guidedCommand([action], { guideId: 'guide-a', contentKey: 'content-a', stepTimeout: 45_000 }));
+      await waitFor(() => expect(guidedMock().executeGuidedStep).toHaveBeenCalled());
+      const call = guidedMock().executeGuidedStep.mock.calls[0]!;
+      expect(call[0]).toEqual(action);
+      const options = call[5] as GuidedStepOptions;
+      const checkedAction = { ...action, lazyRender: false };
+      await options.checkRequirements!(checkedAction);
+      expect(checkRequirements).toHaveBeenCalledWith({
+        requirements: action.requirements,
+        targetAction: 'formfill',
+        refTarget: '#query',
+        targetValue: 'up',
+        lazyRender: false,
+        scrollContainer: '#panels',
+        guideId: 'guide-a',
+        contentKey: 'content-a',
+        stepId: 'guided-step',
+        maxRetries: 0,
+      });
+      uninstall();
+    });
+
+    it.each(['timeout', 'cancelled', 'error'] as const)(
+      'preserves consecutive skips and the final %s result',
+      async (status) => {
+        const transport = new FakeCrossTabTransport('live-self');
+        const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+        const actions: GuidedAction[] = [
+          { targetAction: 'noop', isSkippable: true },
+          { targetAction: 'button', refTarget: '#optional', isSkippable: true },
+          { targetAction: 'formfill', refTarget: '#required' },
+          { targetAction: 'highlight', refTarget: '#not-reached' },
+        ];
+        const results: GuidedSubstepResult[] = [
+          { index: 0, action: 'noop', status: 'skipped', durationMs: 10 },
+          { index: 1, action: 'button', status: 'skipped', durationMs: 20 },
+          { index: 2, action: 'formfill', status, durationMs: 30_000 },
+        ];
+        guidedMock().executeGuidedStep.mockImplementation(
+          async (_action, index, _total, _timeout, _onCompleted, options: GuidedStepOptions) => {
+            const result = results[index]!;
+            options.onSettled!(result);
+            return result.status;
+          }
+        );
+        transport.emit(guidedCommand(actions));
+
+        await waitFor(() =>
+          expect(transport.postedMessages).toContainEqual({
+            kind: 'step-complete',
+            stepId: 'guided-step',
+            runId: 'guided-run',
+            ok: false,
+            substepResults: results,
+          })
+        );
+        const progress = transport.postedMessages.filter(
+          (message): message is { kind: string; index: number; substepResults: GuidedSubstepResult[] } =>
+            (message as { kind: string }).kind === 'step-progress'
+        );
+        expect(progress.map(({ index, substepResults }) => [index, substepResults.length])).toEqual([
+          [0, 0],
+          [0, 1],
+          [1, 1],
+          [1, 2],
+          [2, 2],
+          [2, 3],
+        ]);
+        expect(progress[0]!.substepResults).toEqual([]);
+        expect(progress[1]!.substepResults).toEqual(results.slice(0, 1));
+        expect(guidedMock().executeGuidedStep).toHaveBeenCalledTimes(3);
+        uninstall();
+      }
+    );
+
+    it('replaces a settlement correction instead of sending a duplicate index', async () => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+      const result: GuidedSubstepResult = { index: 0, action: 'noop', status: 'completed', durationMs: 1 };
+      guidedMock().executeGuidedStep.mockImplementationOnce(
+        async (_a, _i, _total, _timeout, _completed, options: GuidedStepOptions) => {
+          options.onSettled!(result);
+          options.onSettled!({ ...result, status: 'error' });
+          return 'error';
+        }
+      );
+      transport.emit(guidedCommand([{ targetAction: 'noop' }]));
+      await waitFor(() =>
+        expect(transport.postedMessages).toContainEqual({
+          kind: 'step-complete',
+          stepId: 'guided-step',
+          runId: 'guided-run',
+          ok: false,
+          substepResults: [{ ...result, status: 'error' }],
+        })
+      );
+      uninstall();
+    });
+
+    it('retains settled evidence when a later handler call throws', async () => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+      const first: GuidedSubstepResult = { index: 0, action: 'noop', status: 'skipped', durationMs: 1 };
+      guidedMock()
+        .executeGuidedStep.mockImplementationOnce(
+          async (_a, _i, _total, _timeout, _completed, options: GuidedStepOptions) => {
+            options.onSettled!(first);
+            return 'skipped';
+          }
+        )
+        .mockRejectedValueOnce(new Error('handler failed'));
+      transport.emit(guidedCommand([{ targetAction: 'noop' }, { targetAction: 'button', refTarget: '#missing' }]));
+      await waitFor(() =>
+        expect(transport.postedMessages).toContainEqual({
+          kind: 'step-complete',
+          stepId: 'guided-step',
+          runId: 'guided-run',
+          ok: false,
+          substepResults: [first],
+        })
+      );
+      uninstall();
+    });
+
+    it('keeps scope and evidence separate for queued runs', async () => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+      let finishFirst!: () => void;
+      const result: GuidedSubstepResult = { index: 0, action: 'noop', status: 'completed', durationMs: 5 };
+      guidedMock()
+        .executeGuidedStep.mockImplementationOnce(
+          (action: GuidedAction, _index, _total, _timeout, _completed, options: GuidedStepOptions) =>
+            new Promise((resolve) => {
+              finishFirst = () => {
+                void options.checkRequirements!(action).then(() => {
+                  options.onSettled!(result);
+                  resolve('completed');
+                });
+              };
+            })
+        )
+        .mockImplementationOnce(
+          async (action: GuidedAction, _i, _total, _timeout, _completed, options: GuidedStepOptions) => {
+            await options.checkRequirements!(action);
+            options.onSettled!(result);
+            return 'completed';
+          }
+        );
+      transport.emit(
+        guidedCommand([{ targetAction: 'noop' }], { guideId: 'guide-a', contentKey: 'content-a' }, 'run-a')
+      );
+      transport.emit(
+        guidedCommand([{ targetAction: 'noop' }], { guideId: 'guide-b', contentKey: 'content-b' }, 'run-b')
+      );
+
+      await waitFor(() => expect(guidedMock().executeGuidedStep).toHaveBeenCalledTimes(1));
+      finishFirst();
+      await waitFor(() =>
+        expect(transport.postedMessages).toContainEqual({
+          kind: 'step-complete',
+          stepId: 'guided-step',
+          runId: 'run-b',
+          ok: true,
+          substepResults: [result],
+        })
+      );
+      expect(checkRequirements).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ guideId: 'guide-a', contentKey: 'content-a' })
+      );
+      expect(checkRequirements).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ guideId: 'guide-b', contentKey: 'content-b' })
+      );
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-progress', runId: 'run-b', substepResults: [] })
+      );
+      expect(guidedMock().resetProgress).toHaveBeenCalledTimes(2);
+      uninstall();
+    });
+
+    it('cancels the active handler on teardown without starting another substep or queued run', async () => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, openAuthGate);
+      const cancelled: GuidedSubstepResult = { index: 0, action: 'noop', status: 'cancelled', durationMs: 1 };
+      guidedMock().executeGuidedStep.mockImplementationOnce(
+        (_action, _index, _total, _timeout, _completed, options: GuidedStepOptions) =>
+          new Promise((resolve) => {
+            guidedMock().cancel.mockImplementationOnce(() => {
+              options.onSettled!(cancelled);
+              resolve('completed');
+            });
+          })
+      );
+      transport.emit(guidedCommand([{ targetAction: 'noop' }, { targetAction: 'button', refTarget: '#never' }]));
+      transport.emit(guidedCommand([{ targetAction: 'noop' }], {}, 'queued-run'));
+      await waitFor(() => expect(guidedMock().executeGuidedStep).toHaveBeenCalledTimes(1));
+      uninstall();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(guidedMock().cancel).toHaveBeenCalledTimes(1);
+      expect(guidedMock().executeGuidedStep).toHaveBeenCalledTimes(1);
+      expect(transport.postedMessages).toContainEqual(
+        expect.objectContaining({ kind: 'step-progress', runId: 'guided-run', substepResults: [cancelled] })
+      );
+      expect(transport.postedMessages).not.toContainEqual(expect.objectContaining({ runId: 'queued-run' }));
+    });
+
+    it.each([
+      { requirements: ['is-admin', {}] },
+      { lazyRender: 'true' },
+      { scrollContainer: [] },
+      { isSkippable: 1 },
+      { formHint: {} },
+      { validateInput: null },
+    ])('rejects malformed guided fields before authentication %#', async (invalid) => {
+      const transport = new FakeCrossTabTransport('live-self');
+      const gate = { ...openAuthGate, verifySignedMessage: jest.fn().mockResolvedValue(true) };
+      const uninstall = installLiveTabExecutor(transport, DEFAULT_PACING, gate);
+      const message = guidedCommand([{ targetAction: 'noop' }]);
+      message.action.internalActions = [{ targetAction: 'noop', ...invalid }] as CrossTabAction[];
+      transport.emit(message);
+      await Promise.resolve();
+      expect(gate.verifySignedMessage).not.toHaveBeenCalled();
+      expect(guidedMock().executeGuidedStep).not.toHaveBeenCalled();
+      expect(checkRequirements).not.toHaveBeenCalled();
+      uninstall();
+    });
   });
 
   it('paces each composite action through show then do', async () => {

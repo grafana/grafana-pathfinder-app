@@ -113,6 +113,14 @@ export const StepCoverageSchema = z.object({
   ),
 });
 
+export const ReportSubstepResultSchema = z.object({
+  index: z.number().int().nonnegative(),
+  action: z.enum(['button', 'highlight', 'hover', 'formfill', 'noop']),
+  status: z.enum(['completed', 'skipped', 'timeout', 'cancelled', 'error']),
+  duration: z.number().nonnegative(),
+  error: z.string().optional(),
+});
+
 export const ReportStepResultSchema = z.object({
   stepId: z.string(),
   stepKind: z.string().optional(),
@@ -126,6 +134,7 @@ export const ReportStepResultSchema = z.object({
   skippable: z.boolean().optional(),
   classification: ErrorClassificationSchema.optional(),
   artifacts: ArtifactPathsSchema.optional(),
+  substeps: z.array(ReportSubstepResultSchema).optional(),
 });
 
 export const GuideMetadataSchema = z.object({
@@ -259,6 +268,7 @@ export type ReportSummary = z.infer<typeof ReportSummarySchema>;
 export type ArtifactPaths = z.infer<typeof ArtifactPathsSchema>;
 export type StepCoverage = z.infer<typeof StepCoverageSchema>;
 export type ReportStepResult = z.infer<typeof ReportStepResultSchema>;
+export type ReportSubstepResult = z.infer<typeof ReportSubstepResultSchema>;
 export type GuideMetadata = z.infer<typeof GuideMetadataSchema>;
 export type ReportConfig = z.infer<typeof ReportConfigSchema>;
 export type PreRunSkip = z.infer<typeof PreRunSkipSchema>;

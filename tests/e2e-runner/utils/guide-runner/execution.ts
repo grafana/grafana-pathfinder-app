@@ -35,6 +35,7 @@ import type {
   SkipReason,
   AbortReason,
   ArtifactPaths,
+  StepSubstepResult,
   StepTestResult,
   AllStepsResult,
   OnStepCompleteCallback,
@@ -299,7 +300,14 @@ async function executeStepCore(
   const timeout = options.timeout ?? calculateStepTimeout(step);
   const deadlineMs = options.deadlineMs ?? calculateStepDeadline(step, timeout);
   const startedAt = Date.now();
-  const work = executeStepWork(page, step, { ...options, timeout });
+  let substeps: StepSubstepResult[] | undefined;
+  const work = executeStepWork(page, step, {
+    ...options,
+    timeout,
+    onSubsteps: (records) => {
+      substeps = records.map((record) => ({ ...record }));
+    },
+  });
 
   return new Promise<StepTestResult>((resolve, reject) => {
     let settled = false;
@@ -325,6 +333,7 @@ async function executeStepCore(
           skippable: step.skippable,
           classification: 'infrastructure',
           artifacts: evidence?.artifacts,
+          ...(substeps !== undefined ? { substeps } : {}),
         });
       })();
     }, deadlineMs);
@@ -336,7 +345,7 @@ async function executeStepCore(
         }
         settled = true;
         clearTimeout(timer);
-        resolve(result);
+        resolve({ ...result, ...(substeps !== undefined ? { substeps } : {}) });
       },
       (error) => {
         if (settled) {
@@ -353,15 +362,13 @@ async function executeStepCore(
 async function executeStepWork(
   page: Page,
   step: TestableStep,
-  options: StepExecutionOptions & { timeout: number }
+  options: StepExecutionOptions & { timeout: number; onSubsteps?: (substeps: StepSubstepResult[]) => void }
 ): Promise<StepTestResult> {
   const { timeout, verbose = false, artifactsDir, alwaysScreenshot = false } = options;
   const startTime = Date.now();
   const driver = getStepDriver(step.stepKind);
   const consoleErrors: string[] = [];
 
-  // Set up console error capture for this step execution
-  // REACT: cleanup subscription (R1) - removed in finally block
   const consoleHandler = (msg: { type: () => string; text: () => string }) => {
     if (msg.type() === 'error') {
       consoleErrors.push(msg.text());
@@ -369,11 +376,9 @@ async function executeStepWork(
   };
   page.on('console', consoleHandler);
 
-  // PRE screenshot path (captured before step execution when alwaysScreenshot is enabled)
   let preScreenshotPath: string | undefined;
 
   try {
-    // Handle pre-completed steps (U2: objectives/noop auto-completion)
     if (step.isPreCompleted) {
       if (verbose) {
         console.log(`   ⊘ Step ${step.stepId} already completed (discovered as pre-completed)`);
@@ -381,15 +386,6 @@ async function executeStepWork(
       return createSkippedResult(step, page, startTime, consoleErrors, 'pre_completed');
     }
 
-    // Some no-op/objective-based steps complete (or their element detaches)
-    // between discovery and execution; recheck immediately before scrolling so
-    // a step that's already done doesn't block on the scroll below. Bounded
-    // and error-propagating: a query/navigation fault fails the step instead
-    // of being mistaken for "already done". Reported as 'passed', matching
-    // the pre-click objective check below so the same DOM state (attached +
-    // completed) is never classified differently depending on which check
-    // happened to observe it first; detachment is treated the same way
-    // detachment is treated as completion elsewhere in this file.
     const lateOutcome = await checkLateCompletionOrDetachment(page, step.stepId);
     if (lateOutcome !== 'not-complete') {
       const lateArtifacts = await buildSuccessArtifacts(
@@ -418,11 +414,8 @@ async function executeStepWork(
       };
     }
 
-    // Scroll step into view before interaction. Bounded so a step that's
-    // completing/detaching right around this point doesn't hang the run.
     await scrollStepIntoView(page, step.stepId, SCROLL_SETTLE_DELAY_MS);
 
-    // Capture PRE screenshot if alwaysScreenshot is enabled
     if (artifactsDir && alwaysScreenshot) {
       preScreenshotPath = await capturePreStepArtifacts(page, step.stepId, artifactsDir);
       if (verbose && preScreenshotPath) {
@@ -430,24 +423,17 @@ async function executeStepWork(
       }
     }
 
-    // L3-4A/4B: Detect requirements and attempt to fix if needed BEFORE waiting for button
-    // Requirements must be met before the "Do it" button can appear/be enabled
     if (verbose) {
       console.log(`   🔍 Checking requirements for step ${step.stepId}...`);
     }
     const { requirements, fixResult } = await handleRequirementsWithFix(page, step, {
       verbose,
-      attemptFix: true, // Attempt fix for all steps, skip later if it fails
+      attemptFix: true,
       maxFixAttempts: MAX_FIX_ATTEMPTS,
     });
 
-    // If requirements are not met after fix attempts
     if (!requirements.requirementsMet && requirements.status === 'unmet') {
       if (determineUnmetRequirementOutcome(step.skippable) === 'skip') {
-        // Click the Skip control and wait for the plugin to leave requirements-unmet
-        // so the next sequential step isn't gated on "Complete previous step". Only
-        // record the skip once that's confirmed; a sync failure is a clear runner
-        // failure rather than a false skip that reproduces the original bug.
         try {
           await driver.skip(page, step.stepId);
         } catch (syncError) {
@@ -491,8 +477,6 @@ async function executeStepWork(
       };
     }
 
-    // L3-3C: Check for objective-based auto-completion BEFORE clicking
-    // Objectives may be satisfied by prior actions (e.g., navigation completed the step)
     const preClickCompleted = await driver.completionState(page, step.stepId);
     if (preClickCompleted) {
       if (verbose) {
@@ -521,7 +505,17 @@ async function executeStepWork(
       };
     }
 
-    const execution = await driver.execute({ page, step, timeout, verbose, artifactsDir });
+    const execution = await driver.execute({
+      page,
+      step,
+      timeout,
+      verbose,
+      artifactsDir,
+      onSubsteps: options.onSubsteps,
+    });
+    if (execution.substeps !== undefined) {
+      options.onSubsteps?.(execution.substeps);
+    }
     if (execution.outcome === 'no-control') {
       if (step.skippable) {
         return createSkippedResult(step, page, startTime, consoleErrors, 'no_do_it_button');
@@ -544,7 +538,6 @@ async function executeStepWork(
       console.log(`   📸 Success screenshot captured`);
     }
 
-    // Return success result with diagnostics
     return {
       stepId: step.stepId,
       status: 'passed',
@@ -555,10 +548,8 @@ async function executeStepWork(
       artifacts: successArtifacts,
     };
   } catch (error) {
-    // Return failure result with error details
     const errorMsg = error instanceof Error ? error.message : String(error);
 
-    // L3-5D: Capture artifacts on failure
     const artifacts = await buildFailureArtifacts(page, step.stepId, consoleErrors, artifactsDir, preScreenshotPath);
     if (verbose && artifacts) {
       console.log(`   📸 Artifacts captured to ${artifactsDir}`);
@@ -572,13 +563,10 @@ async function executeStepWork(
       consoleErrors,
       error: errorMsg,
       skippable: step.skippable,
-      // L3-5C: Classify the error for triage hints
       classification: classifyError(errorMsg),
-      // L3-5D: Include artifact paths
       artifacts,
     };
   } finally {
-    // REACT: cleanup subscription (R1) - Clean up console handler to prevent memory leaks
     page.off('console', consoleHandler);
   }
 }

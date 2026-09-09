@@ -8,8 +8,9 @@
  * @see docs/developer/E2E_TESTING.md
  */
 
-import { Locator } from '@playwright/test';
+import type { Locator } from '@playwright/test';
 import type { StepTypeKind } from '../../../../src/components/interactive-tutorial/step-type-registry';
+import type { GuidedSubstepResult } from '../../../../src/types/interactive-actions.types';
 
 // ============================================
 // Step Types
@@ -52,6 +53,7 @@ export interface TestableStep {
 
   /** Number of driver-owned actions for timeout and execution scaling */
   actionCount: number;
+  substepTimeoutMs?: number;
 
   /**
    * The target element selector (L3-4A).
@@ -106,6 +108,7 @@ export interface StepDiscoveryResult {
  * Status of a step execution.
  */
 export type StepStatus = 'passed' | 'failed' | 'skipped' | 'not_reached';
+export type StepSubstepResult = GuidedSubstepResult & { error?: string };
 
 /**
  * Reason why a step was skipped.
@@ -342,6 +345,8 @@ export interface StepTestResult {
    * Contains screenshot and DOM snapshot for debugging.
    */
   artifacts?: ArtifactPaths;
+
+  substeps?: StepSubstepResult[];
 }
 
 /**

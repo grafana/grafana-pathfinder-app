@@ -366,6 +366,49 @@ console.log(`Progress: ${parseInt(currentIndex) + 1}/${totalSteps}`);
 
 ---
 
+#### `data-test-step-timeout`
+
+**Purpose**: Effective timeout for each guided substep, in milliseconds.
+
+**Presence**: Always present on guided roots, including before execution.
+
+`getGuidedStepTimeout()` owns normalization. An absent, non-finite, non-positive, or timer-unsafe value uses the 120000ms default.
+
+The same deadline covers authored requirements, target discovery, navigation preparation, highlighting, and user interaction. Lazy discovery runs at most once per substep.
+
+#### `data-test-substep-skippable`
+
+**Purpose**: Authored skippability of the selected guided substep.
+
+**Values**: `true` or `false`.
+
+**Presence**: Always present on guided roots. Before execution, it describes the first substep.
+
+This value is separate from block-level skippability. The runner does not wait for a fraction of the timeout to discover it.
+
+#### `data-test-substep-results`
+
+**Purpose**: Cumulative JSON array of settled guided substeps.
+
+**Presence**: Always present on guided roots. Each new run, retry, or reset starts with `[]`.
+
+Each record contains:
+
+- `index`: Zero-based substep index.
+- `action`: `button`, `highlight`, `hover`, `formfill`, or `noop`.
+- `status`: `completed`, `skipped`, `timeout`, `cancelled`, or `error`.
+- `durationMs`: Finite, non-negative elapsed milliseconds for that substep.
+
+Records remain ordered by index. A corrected result replaces the prior record at that index.
+
+The component writes the array synchronously before completion callbacks can detach the root. It also updates the captured root after detachment.
+
+Earlier records survive later failures and cancellation. Replies from an older run cannot update a new run.
+
+The array contains observed settlements only. An absent index does not mean that the action passed or was skipped.
+
+---
+
 #### `data-test-fix-type`
 
 **Purpose**: Classification of requirement fix needed when requirements are unmet
@@ -453,6 +496,9 @@ await page.waitForSelector('[data-test-form-state="valid"]', { timeout: 3000 });
 ### Comment Boxes
 
 Applied to comment box elements created by `NavigationManager` and `GuidedHandler`.
+Guided comment boxes also expose `data-test-substep-index` and `data-test-substep-skippable`.
+These values identify the active substep and its authored skippability as soon as the box exists.
+The runner matches the comment-box index to the root index before it operates a control.
 
 #### `data-test-action`
 
@@ -677,18 +723,31 @@ await page.waitForSelector('[data-test-step-state="completed"]', { timeout: 3000
 
 ### Guided steps
 
-Guided steps run a substep loop driven by the comment box. The runner uses only the DOM and contract attributes (no guide JSON):
+The guided driver operates controls from DOM attributes only. Guide JSON does not drive browser actions.
 
-1. **Wait for execution to start**: After clicking "Do it", wait for the step element to have `data-test-step-state="executing"`.
-2. **Read substep bounds**: From the step element, read `data-test-substep-index` (current substep, 0-based) and `data-test-substep-total` (total substeps).
-3. **Locate the comment box**: Use `.interactive-comment-box` (visible while the guided step is executing).
-4. **Read the comment box contract**: From the comment box, read `data-test-action` (e.g. `button`, `highlight`, `formfill`, `hover`, `noop`), `data-test-reftarget` (selector for the current target; see [Comment Boxes](#comment-boxes) — absent for noop), and `data-test-target-value` (for formfill).
-5. **Perform the substep**: For noop, click the Continue button; for button/highlight, resolve the target from `data-test-reftarget` and click; for hover, resolve and hover; for formfill, resolve and fill with `data-test-target-value`.
-6. **Wait for advance**: Poll the step element until `data-test-substep-index` increases or `data-test-step-state` becomes `"completed"`. If the step becomes `"error"` or `"cancelled"`, fail.
+The driver captures the original root before Start. It reads the effective timeout during discovery and again during execution.
+
+The active index selects the matching comment box. Its action, target selector, and target value determine the browser operation.
+
+The driver reads cumulative settlements before and after actions. Consecutive runtime skips therefore remain visible even when polling misses their active indexes.
+
+If an optional action fails, the driver can use its enabled Skip control immediately. It does not wait for 80 percent of the timeout.
+
+The retained root preserves evidence after a section detaches. A failed or cancelled record still fails the guided run.
+
+Reports include optional `steps[].substeps` records. Report `duration` contains the same milliseconds as DOM `durationMs`.
+
+Driver progress also reaches the runner's failure path. Parent failure or a hard deadline preserves records that the runner already received.
+
+Older builds without the results attribute retain DOM-only execution, but omit substep records. The runner never infers a passed or skipped record from an index jump.
+
+If both skippability attributes are absent, an enabled visible Skip control supplies the legacy fallback.
 
 Completion is standardized on `data-test-step-state="completed"` for all step types (single, multistep, guided).
 
-The calculated step timeout remains the inner operation budget. A separate wall-clock backstop uses twice this budget plus 20 seconds.
+The guided block budget is 30 seconds plus the effective timeout for each substep. The overhead covers control setup and status transitions.
+
+A separate wall-clock backstop uses twice this block budget plus 20 seconds.
 
 If the backstop expires, the runner closes the page and reports an infrastructure outcome. Normal step failures retain their evidence and skippable behavior.
 

@@ -1,26 +1,22 @@
 import type { ConditionInput } from './requirements.types';
-import type { InternalAction } from './interactive-actions.types';
+import type { GuidedAction, GuidedSubstepResult, InternalAction } from './interactive-actions.types';
 
 export const CROSS_TAB_CHANNEL = 'pathfinder-cross-tab';
 
 export type CrossTabRole = 'controller' | 'live';
 
-// Derived by exclusion rather than restated: a field the engine reads off an
-// action must reach the live tab, and hand-listing the fields is what dropped
-// targetState on this wire three times over. Only `requirements` stays behind —
-// the controller gates them, the live tab replays. Fields added to
-// InternalAction therefore reach the wire by default rather than by remembering.
-export type CrossTabInternalAction = Omit<InternalAction, 'requirements'>;
+export type CrossTabInternalAction = InternalAction & Omit<GuidedAction, 'targetAction'>;
 
-/** Narrow an engine action to what the wire carries. */
-export function toCrossTabInternalAction(action: InternalAction): CrossTabInternalAction {
-  const { requirements, ...wire } = action;
-  return wire;
+export function toCrossTabInternalAction(action: CrossTabInternalAction): CrossTabInternalAction {
+  return { ...action };
 }
 
 export interface CrossTabAction extends CrossTabInternalAction {
   refTarget: string;
   internalActions?: CrossTabInternalAction[];
+  stepTimeout?: number;
+  guideId?: string;
+  contentKey?: string;
 }
 
 interface CrossTabEnvelope {
@@ -156,22 +152,21 @@ export interface FixResultMessage extends CrossTabEnvelope {
   error?: string;
 }
 
-// Live → controller: a composite finished; the controller marks completion only then.
 export interface StepCompleteMessage extends CrossTabEnvelope {
   kind: 'step-complete';
   stepId: string;
   runId: string;
   ok: boolean;
+  substepResults?: GuidedSubstepResult[];
 }
 
-// Live → controller: which internal action a composite is on, so the controller
-// can animate per-step progress while the replay runs on the live tab.
 export interface StepProgressMessage extends CrossTabEnvelope {
   kind: 'step-progress';
   stepId: string;
   runId: string;
   index: number;
   total: number;
+  substepResults?: GuidedSubstepResult[];
 }
 
 export type CrossTabMessage =
@@ -218,9 +213,6 @@ export const SIGNED_MESSAGE_KINDS: ReadonlySet<CrossTabMessage['kind']> = new Se
 // not retried locally, and leaves the step blocked. See
 // docs/developer/CROSS_TAB_CONTROLLER.md.
 
-// Recognized interactive action verbs. Kept as a literal set (not derived
-// from InteractiveAction) so the receive gate stays decoupled from the
-// action type — #1063 swaps the wire action to a structural CrossTabAction.
 const KNOWN_TARGET_ACTIONS: ReadonlySet<string> = new Set([
   'button',
   'highlight',
@@ -230,9 +222,12 @@ const KNOWN_TARGET_ACTIONS: ReadonlySet<string> = new Set([
   'guided',
   'multistep',
 ]);
+const GUIDED_TARGET_ACTIONS: ReadonlySet<string> = new Set(['hover', 'button', 'highlight', 'noop', 'formfill']);
+const GUIDED_SUBSTEP_STATUSES: ReadonlySet<string> = new Set(['completed', 'skipped', 'timeout', 'cancelled', 'error']);
+const MAX_STEP_TIMEOUT = 2_147_483_647;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function hasValidEnvelope(message: Record<string, unknown>): boolean {
@@ -242,6 +237,31 @@ function hasValidEnvelope(message: Record<string, unknown>): boolean {
     typeof message.timestamp === 'number' &&
     typeof message.kind === 'string'
   );
+}
+
+function isOptionalSubstepResults(value: unknown, total?: number): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (!Array.isArray(value) || (total !== undefined && value.length > total)) {
+    return false;
+  }
+  for (const [index, result] of value.entries()) {
+    if (
+      !isRecord(result) ||
+      result.index !== index ||
+      typeof result.action !== 'string' ||
+      !GUIDED_TARGET_ACTIONS.has(result.action) ||
+      typeof result.status !== 'string' ||
+      !GUIDED_SUBSTEP_STATUSES.has(result.status) ||
+      typeof result.durationMs !== 'number' ||
+      !Number.isFinite(result.durationMs) ||
+      result.durationMs < 0
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isValidStepCommand(message: Record<string, unknown>): boolean {
@@ -260,32 +280,43 @@ function isValidStepCommand(message: Record<string, unknown>): boolean {
   const action = message.action;
   if (
     typeof action.refTarget !== 'string' ||
-    typeof action.targetAction !== 'string' ||
-    !KNOWN_TARGET_ACTIONS.has(action.targetAction) ||
-    !isOptionalTargetState(action.targetState)
+    !isValidInternalAction(action, KNOWN_TARGET_ACTIONS) ||
+    !isOptionalStepTimeout(action.stepTimeout) ||
+    !isOptionalString(action.guideId) ||
+    !isOptionalString(action.contentKey)
   ) {
     return false;
   }
-  // Composite (guided/multistep) steps carry an ordered internalActions
-  // sequence; every element is replayed as a DOM action on the live tab, so
-  // each must itself carry a recognized verb — validate the whole array, not
-  // just the composite envelope (T1 / #1068).
   if (action.internalActions !== undefined) {
-    return (
-      Array.isArray(action.internalActions) &&
-      action.internalActions.every(
-        (sub) =>
-          isRecord(sub) &&
-          typeof sub.targetAction === 'string' &&
-          KNOWN_TARGET_ACTIONS.has(sub.targetAction) &&
-          isOptionalString(sub.refTarget) &&
-          isOptionalString(sub.targetValue) &&
-          isOptionalString(sub.targetComment) &&
-          isOptionalTargetState(sub.targetState)
-      )
-    );
+    if (!Array.isArray(action.internalActions)) {
+      return false;
+    }
+    const verbs = action.targetAction === 'guided' ? GUIDED_TARGET_ACTIONS : KNOWN_TARGET_ACTIONS;
+    for (const sub of action.internalActions) {
+      if (!isValidInternalAction(sub, verbs)) {
+        return false;
+      }
+    }
   }
   return true;
+}
+
+function isValidInternalAction(action: unknown, verbs: ReadonlySet<string>): boolean {
+  return (
+    isRecord(action) &&
+    typeof action.targetAction === 'string' &&
+    verbs.has(action.targetAction) &&
+    isOptionalString(action.refTarget) &&
+    isOptionalString(action.targetValue) &&
+    isOptionalString(action.targetComment) &&
+    isOptionalTargetState(action.targetState) &&
+    (action.requirements === undefined || isBoundedConditionInput(action.requirements)) &&
+    isOptionalBoolean(action.isSkippable) &&
+    isOptionalString(action.formHint) &&
+    isOptionalBoolean(action.validateInput) &&
+    isOptionalBoolean(action.lazyRender) &&
+    isOptionalString(action.scrollContainer)
+  );
 }
 
 function isValidHeartbeat(message: Record<string, unknown>): boolean {
@@ -300,8 +331,19 @@ function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string';
 }
 
+function isOptionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean';
+}
+
 function isOptionalTargetState(value: unknown): boolean {
   return value === undefined || typeof value === 'boolean' || typeof value === 'string';
+}
+
+function isOptionalStepTimeout(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_STEP_TIMEOUT)
+  );
 }
 
 const MAX_PAIRING_FIELD_LENGTH = 512;
@@ -324,7 +366,7 @@ function isBoundedConditionInput(value: unknown): boolean {
   return (
     Array.isArray(value) &&
     value.length <= MAX_CONDITION_TOKENS &&
-    value.every((token) => isBoundedString(token, MAX_CONDITION_TOKEN_LENGTH))
+    Array.from(value).every((token) => isBoundedString(token, MAX_CONDITION_TOKEN_LENGTH))
   );
 }
 
@@ -394,27 +436,27 @@ function isValidFixResult(message: Record<string, unknown>): boolean {
   return typeof message.requestId === 'string' && typeof message.stepId === 'string' && typeof message.ok === 'boolean';
 }
 
-// step-complete is a live → controller reply: the live tab reports a composite
-// finished so the controller can mark completion only when it actually ran. It
-// triggers no DOM action, but it resolves a pending awaitStepComplete waiter, so
-// validate the shape to keep a malformed reply from completing the wrong step.
 function isValidStepComplete(message: Record<string, unknown>): boolean {
-  return typeof message.stepId === 'string' && typeof message.runId === 'string' && typeof message.ok === 'boolean';
+  return (
+    typeof message.stepId === 'string' &&
+    typeof message.runId === 'string' &&
+    typeof message.ok === 'boolean' &&
+    isOptionalSubstepResults(message.substepResults)
+  );
 }
 
-// step-progress is a live → controller reply: the live tab reports which internal
-// action a composite is on so the controller can animate progress. It triggers no
-// DOM action, but it drives a UI callback keyed by stepId, so validate the shape
-// to keep a malformed reply from advancing the wrong step's progress.
 function isValidStepProgress(message: Record<string, unknown>): boolean {
   return (
     typeof message.stepId === 'string' &&
     typeof message.runId === 'string' &&
     typeof message.index === 'number' &&
     typeof message.total === 'number' &&
+    Number.isSafeInteger(message.index) &&
+    Number.isSafeInteger(message.total) &&
     message.index >= 0 &&
     message.total >= 1 &&
-    message.index <= message.total
+    message.index <= message.total &&
+    isOptionalSubstepResults(message.substepResults, message.total)
   );
 }
 

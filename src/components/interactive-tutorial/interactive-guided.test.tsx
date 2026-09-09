@@ -9,11 +9,19 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { flushSync } from 'react-dom';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
+import type {
+  GuidedAction,
+  GuidedStepOptions,
+  GuidedSubstepResult,
+  GuidedSubstepStatus,
+} from '../../types/interactive-actions.types';
+import type { useControllerChannel } from '../../global-state/controller-channel';
 
 // ─── Mock @grafana/ui ────────────────────────────────────────────────────────
 jest.mock('@grafana/ui', () => ({
@@ -60,6 +68,7 @@ jest.mock('../../constants', () => ({
   getConfigWithDefaults: jest.fn(() => ({})),
 }));
 jest.mock('../../constants/interactive-config', () => ({
+  getGuidedStepTimeout: jest.requireActual('../../constants/interactive-config').getGuidedStepTimeout,
   getInteractiveConfig: jest.fn(() => ({
     autoDetection: { enabled: false },
     guided: { stepTimeout: 120000, hoverDwell: 500 },
@@ -81,6 +90,15 @@ jest.mock('../../security', () => ({
 
 let mockStoredCompleted = false;
 let mockCompletionReason = 'none';
+let mockInteractiveMode = 'interactive';
+let mockControllerChannel: ReturnType<typeof useControllerChannel> = null;
+const mockCheckGuidedRequirements = jest.fn().mockResolvedValue({ pass: true, error: [] });
+jest.mock('../../global-state/interactive-mode-context', () => ({
+  useInteractiveMode: () => mockInteractiveMode,
+}));
+jest.mock('../../global-state/controller-channel', () => ({
+  useControllerChannel: () => mockControllerChannel,
+}));
 const mockMarkSkipped = jest.fn(() => {
   mockStoredCompleted = true;
 });
@@ -97,6 +115,11 @@ jest.mock('../../global-state/completion-store', () => ({
 
 // ─── Mock requirements manager ───────────────────────────────────────────────
 jest.mock('../../requirements-manager', () => ({
+  useGuideRequirements: () => ({
+    checkRequirements: mockCheckGuidedRequirements,
+    guideId: 'guide-owner',
+    contentKey: 'bundled:guide-owner',
+  }),
   useStepChecker: jest.fn(() => ({
     isEnabled: true,
     isChecking: false,
@@ -166,6 +189,9 @@ jest.mock('../../global-state/panel-mode', () => {
 beforeEach(() => {
   mockStoredCompleted = false;
   mockCompletionReason = 'none';
+  mockInteractiveMode = 'interactive';
+  mockControllerChannel = null;
+  mockCheckGuidedRequirements.mockClear();
   mockExecuteGuidedStep.mockReset();
   mockMarkSkipped.mockReset();
   mockMarkSkipped.mockImplementation(() => {
@@ -796,5 +822,323 @@ describe('InteractiveGuided — full-screen sidebar handoff', () => {
     resolveHandoff();
 
     await waitFor(() => expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('InteractiveGuided evidence contract', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockGetMode.mockReturnValue('sidebar');
+    (useStepChecker as jest.Mock).mockReturnValue({
+      isEnabled: true,
+      isChecking: false,
+      completionReason: 'none',
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function settleWith(statuses: GuidedSubstepStatus[]) {
+    mockExecuteGuidedStep.mockImplementation(
+      async (
+        action: GuidedAction,
+        index: number,
+        _total: number,
+        _timeout: number,
+        onActionCompleted: (() => void) | undefined,
+        options: GuidedStepOptions
+      ) => {
+        const status = statuses[index]!;
+        options.onSettled?.({ index, action: action.targetAction, status, durationMs: 10 });
+        if (status === 'completed') {
+          onActionCompleted?.();
+        }
+        return status;
+      }
+    );
+  }
+
+  async function startAndAdvance(ms = 0) {
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
+      await jest.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  function evidence(root: HTMLElement): GuidedSubstepResult[] {
+    return JSON.parse(root.getAttribute('data-test-substep-results')!);
+  }
+
+  it.each([
+    [undefined, 120000],
+    [30000, 30000],
+    [45000, 45000],
+    [60000, 60000],
+    [0, 120000],
+    [Number.NaN, 120000],
+    [Number.POSITIVE_INFINITY, 120000],
+  ])('uses the same effective timeout for DOM and execution (%s)', async (authored, effective) => {
+    mockExecuteGuidedStep.mockReturnValue(new Promise(() => {}));
+    render(
+      <InteractiveGuided
+        stepId="timed"
+        stepTimeout={authored}
+        internalActions={[{ targetAction: 'noop', isSkippable: true }]}
+      />
+    );
+    const root = screen.getByTestId(testIds.interactive.step('timed'));
+    expect(root).toHaveAttribute('data-test-step-timeout', String(effective));
+    expect(root).toHaveAttribute('data-test-substep-skippable', 'true');
+    expect(evidence(root)).toEqual([]);
+    await startAndAdvance();
+    expect(mockExecuteGuidedStep.mock.calls[0][3]).toBe(effective);
+  });
+
+  it.each(['noop', 'button', 'highlight', 'hover', 'formfill'] as const)(
+    'passes %s requirements and lazy fields through the scoped checker',
+    async (targetAction) => {
+      const action: GuidedAction = {
+        targetAction,
+        refTarget: targetAction === 'noop' ? undefined : '#target',
+        targetValue: 'expected',
+        requirements: ['var-accepted:true', 'section-completed:setup'],
+        lazyRender: true,
+        scrollContainer: '#scroll',
+      };
+      mockExecuteGuidedStep.mockImplementation(
+        async (current, _index, _total, _timeout, _complete, options: GuidedStepOptions) => {
+          await options.checkRequirements?.(current);
+          return 'error';
+        }
+      );
+      render(<InteractiveGuided stepId="scoped" internalActions={[action]} />);
+      await startAndAdvance();
+      expect(mockCheckGuidedRequirements).toHaveBeenCalledWith({
+        requirements: action.requirements,
+        targetAction,
+        refTarget: action.refTarget,
+        targetValue: 'expected',
+        stepId: 'scoped',
+        lazyRender: true,
+        scrollContainer: '#scroll',
+        maxRetries: 0,
+      });
+    }
+  );
+
+  it('publishes consecutive skips and the final action before completeEarly detaches the root', async () => {
+    settleWith(['skipped', 'skipped', 'completed']);
+    let completionEvidence: GuidedSubstepResult[] = [];
+    let root: HTMLElement;
+    function Section() {
+      const [expanded, setExpanded] = React.useState(true);
+      return expanded ? (
+        <InteractiveGuided
+          stepId="detached-evidence"
+          completeEarly
+          onStepComplete={() => {
+            completionEvidence = evidence(root);
+            flushSync(() => setExpanded(false));
+          }}
+          internalActions={[
+            { targetAction: 'button', refTarget: '#missing-a', isSkippable: true },
+            { targetAction: 'hover', refTarget: '#missing-b', isSkippable: true },
+            { targetAction: 'highlight', refTarget: '#finish' },
+          ]}
+        />
+      ) : null;
+    }
+    render(<Section />);
+    root = screen.getByTestId(testIds.interactive.step('detached-evidence'));
+    await startAndAdvance(1500);
+    expect(root.isConnected).toBe(false);
+    expect(completionEvidence.map((result) => result.status)).toEqual(['skipped', 'skipped', 'completed']);
+    expect(evidence(root)).toEqual(completionEvidence);
+  });
+
+  it('retains prior results when a later substep fails', async () => {
+    settleWith(['skipped', 'completed', 'error']);
+    render(
+      <InteractiveGuided
+        stepId="partial-evidence"
+        internalActions={[
+          { targetAction: 'noop', isSkippable: true },
+          { targetAction: 'formfill', refTarget: '#input' },
+          { targetAction: 'button', refTarget: '#missing' },
+        ]}
+      />
+    );
+    const root = screen.getByTestId(testIds.interactive.step('partial-evidence'));
+    await startAndAdvance(1000);
+    expect(root).toHaveAttribute('data-test-step-state', 'error');
+    expect(evidence(root).map((result) => result.status)).toEqual(['skipped', 'completed', 'error']);
+  });
+
+  it('replaces a provisional completion when its callback fails', async () => {
+    mockExecuteGuidedStep.mockImplementation(
+      async (action, index, _total, _timeout, complete, options: GuidedStepOptions) => {
+        const result = { index, action: action.targetAction, durationMs: 10 };
+        options.onSettled?.({ ...result, status: 'completed' });
+        try {
+          complete();
+        } catch {
+          options.onSettled?.({ ...result, status: 'error' });
+        }
+        return 'error';
+      }
+    );
+    render(
+      <InteractiveGuided
+        stepId="corrected-evidence"
+        completeEarly
+        onStepComplete={() => {
+          throw new Error('Completion failed');
+        }}
+        internalActions={[{ targetAction: 'highlight', refTarget: '#target' }]}
+      />
+    );
+    const root = screen.getByTestId(testIds.interactive.step('corrected-evidence'));
+    await startAndAdvance();
+    expect(root).toHaveAttribute('data-test-step-state', 'error');
+    expect(evidence(root)).toEqual([{ index: 0, action: 'highlight', status: 'error', durationMs: 10 }]);
+  });
+
+  it('clears evidence on retry and ignores a late result from the prior run', async () => {
+    let priorOptions: GuidedStepOptions;
+    mockExecuteGuidedStep.mockImplementationOnce(
+      async (_action, _index, _total, _timeout, _complete, options: GuidedStepOptions) => {
+        priorOptions = options;
+        options.onSettled?.({ index: 0, action: 'noop', status: 'timeout', durationMs: 30000 });
+        return 'timeout';
+      }
+    );
+    mockExecuteGuidedStep.mockImplementation(() => new Promise(() => {}));
+    render(<InteractiveGuided stepId="retry-evidence" internalActions={[{ targetAction: 'noop' }]} />);
+    const root = screen.getByTestId(testIds.interactive.step('retry-evidence'));
+    await startAndAdvance();
+    expect(evidence(root)).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('retry-evidence')));
+    });
+    expect(evidence(root)).toEqual([]);
+    await act(async () => {
+      priorOptions!.onSettled?.({ index: 0, action: 'noop', status: 'completed', durationMs: 1 });
+    });
+    expect(evidence(root)).toEqual([]);
+  });
+
+  it('clears evidence on reset and stops the old sequence before its next action', async () => {
+    settleWith(['completed', 'completed']);
+    const actions: GuidedAction[] = [{ targetAction: 'noop' }, { targetAction: 'noop' }];
+    const { rerender } = render(<InteractiveGuided stepId="reset-evidence" internalActions={actions} />);
+    const root = screen.getByTestId(testIds.interactive.step('reset-evidence'));
+    await startAndAdvance();
+    expect(evidence(root)).toHaveLength(1);
+    rerender(<InteractiveGuided stepId="reset-evidence" internalActions={actions} resetTrigger={1} />);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1000);
+    });
+    expect(evidence(root)).toEqual([]);
+    expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries remotely and ignores evidence from the failed remote run', async () => {
+    mockInteractiveMode = 'controller';
+    const channel = {
+      post: jest.fn(),
+      requestRequirementCheck: jest.fn(),
+      requestFix: jest.fn(),
+      awaitStepComplete: jest
+        .fn()
+        .mockResolvedValueOnce(false)
+        .mockReturnValue(new Promise(() => {})),
+      cancelStepComplete: jest.fn(),
+      onStepProgress: jest.fn(() => jest.fn()),
+    };
+    mockControllerChannel = channel;
+    render(<InteractiveGuided stepId="remote-retry" internalActions={[{ targetAction: 'noop' }]} />);
+    const root = screen.getByTestId(testIds.interactive.step('remote-retry'));
+    await startAndAdvance();
+    expect(root).toHaveAttribute('data-test-step-state', 'error');
+    const firstProgress = (channel.onStepProgress as jest.Mock).mock.calls[0][2];
+    await act(async () => {
+      fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('remote-retry')));
+    });
+    expect(channel.post).toHaveBeenCalledTimes(2);
+    expect(mockExecuteGuidedStep).not.toHaveBeenCalled();
+    await act(async () => {
+      firstProgress(0, 1, [{ index: 0, action: 'noop', status: 'completed', durationMs: 10 }]);
+    });
+    expect(evidence(root)).toEqual([]);
+  });
+
+  it.each([30000, 45000, 60000, undefined])('preserves controller fields and final evidence (%s)', async (timeout) => {
+    mockInteractiveMode = 'controller';
+    let progress: (index: number, total: number, results?: GuidedSubstepResult[]) => void = () => {};
+    let finish: (ok: boolean) => void = () => {};
+    const channel = {
+      post: jest.fn(),
+      requestRequirementCheck: jest.fn(),
+      requestFix: jest.fn(),
+      awaitStepComplete: jest.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          })
+      ),
+      cancelStepComplete: jest.fn(),
+      onStepProgress: jest.fn((_stepId, _runId, callback) => {
+        progress = callback;
+        return jest.fn();
+      }),
+    };
+    mockControllerChannel = channel;
+    const action: GuidedAction = {
+      targetAction: 'formfill',
+      refTarget: '#input',
+      requirements: ['var-accepted:true'],
+      targetValue: 'expected',
+      isSkippable: true,
+      lazyRender: true,
+      scrollContainer: '#scroll',
+      validateInput: true,
+      formHint: 'Enter the expected value',
+      targetComment: 'Enter a value',
+    };
+    let completionEvidence: GuidedSubstepResult[] = [];
+    render(
+      <InteractiveGuided
+        stepId="remote-evidence"
+        stepTimeout={timeout}
+        internalActions={[action]}
+        onStepComplete={() => {
+          completionEvidence = evidence(root);
+        }}
+      />
+    );
+    const root = screen.getByTestId(testIds.interactive.step('remote-evidence'));
+    await startAndAdvance();
+    expect(channel.post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'step-command',
+        action: {
+          targetAction: 'guided',
+          refTarget: '',
+          stepTimeout: timeout ?? 120000,
+          guideId: 'guide-owner',
+          contentKey: 'bundled:guide-owner',
+          internalActions: [action],
+        },
+      })
+    );
+    const settled: GuidedSubstepResult[] = [{ index: 0, action: 'formfill', status: 'skipped', durationMs: 10 }];
+    await act(async () => {
+      progress(0, 1, settled);
+      finish(true);
+    });
+    expect(completionEvidence).toEqual(settled);
+    expect(evidence(root)).toEqual(settled);
   });
 });

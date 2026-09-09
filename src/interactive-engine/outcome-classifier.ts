@@ -1,6 +1,7 @@
 import type { SequenceRunResult, UserActionOutcome } from '../lib/telemetry';
+import type { GuidedSubstepStatus } from '../types/interactive-actions.types';
 
-export type CompletionResult = 'completed' | 'timeout' | 'cancelled' | 'skipped' | 'error';
+export type CompletionResult = GuidedSubstepStatus;
 
 export type LoopExitReason = 'ok' | 'cancelled' | 'requirements_exhausted' | 'action_error';
 

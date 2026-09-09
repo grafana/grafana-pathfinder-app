@@ -119,6 +119,17 @@ describe('estimateGuideTimeoutFromContent', () => {
       ],
     });
 
-    expect(estimateGuideTimeoutFromContent(content)).toBe(453_000);
+    expect(estimateGuideTimeoutFromContent(content)).toBe(813_000);
   });
+
+  it.each([30000, 45000, 60000, undefined])(
+    'uses the authored %s guided budget in the launch estimate',
+    (stepTimeout) => {
+      const content = JSON.stringify({ blocks: [{ type: 'guided', stepTimeout, steps: [{}, {}] }] });
+
+      expect(estimateGuideTimeoutFromContent(content)).toBe(
+        140000 + (30000 + 2 * (stepTimeout ?? 120000)) * 2 + 20000 + 3000
+      );
+    }
+  );
 });

@@ -3,7 +3,8 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { ControllerChannelProvider, useControllerChannel, useControllerConnected } from './controller-channel';
 import { FakeCrossTabTransport, TEST_PAIRING } from '../test-utils/fake-cross-tab-transport';
 import { createPairingAcceptProof } from '../lib/pairing-manager';
-import type { CrossTabMessage } from '../types/cross-tab.types';
+import type { CrossTabMessage, CrossTabPayload } from '../types/cross-tab.types';
+import type { GuidedSubstepResult } from '../types/interactive-actions.types';
 
 function liveHeartbeat(): CrossTabMessage {
   return { source: 'pathfinder', senderId: 'live', timestamp: 0, kind: 'heartbeat', role: 'live' };
@@ -98,6 +99,34 @@ function signedFieldsFor(liveId: string) {
     sigTs: expect.any(Number),
     sigNonce: expect.any(String),
   };
+}
+
+async function pairedChannel() {
+  let channel!: NonNullable<ReturnType<typeof useControllerChannel>>;
+  function CaptureChannel() {
+    const current = useControllerChannel();
+    React.useEffect(() => {
+      if (current) {
+        channel = current;
+      }
+    }, [current]);
+    return null;
+  }
+  const transport = new FakeCrossTabTransport();
+  const view = render(
+    <ControllerChannelProvider transport={transport} pairing={TEST_PAIRING}>
+      <CaptureChannel />
+    </ControllerChannelProvider>
+  );
+  await pairWithLive(transport);
+  return { channel, transport, unmount: view.unmount };
+}
+
+function stepReply(
+  payload: Extract<CrossTabPayload, { kind: 'step-progress' | 'step-complete' }>,
+  senderId = 'live'
+): CrossTabMessage {
+  return { source: 'pathfinder', senderId, timestamp: 0, ...payload };
 }
 
 describe('ControllerChannelProvider', () => {
@@ -628,6 +657,184 @@ describe('ControllerChannelProvider', () => {
       })
     );
     expect(screen.getByTestId('progress')).toHaveTextContent('1/3');
+  });
+
+  describe('guided evidence', () => {
+    const skipped: GuidedSubstepResult = { index: 0, action: 'noop', status: 'skipped', durationMs: 5 };
+    const results: GuidedSubstepResult[] = [
+      skipped,
+      { ...skipped, index: 1, action: 'button' },
+      { index: 2, action: 'formfill', status: 'timeout', durationMs: 30_000 },
+    ];
+
+    it('publishes cumulative progress and final failure evidence before completion', async () => {
+      const { channel, transport, unmount } = await pairedChannel();
+      const events: string[] = [];
+      const progress = jest.fn((_index: number, _total: number, ledger?: GuidedSubstepResult[]) => {
+        events.push(`evidence:${ledger?.length}`);
+      });
+      channel.onStepProgress('s', 'r', progress);
+      const done = channel.awaitStepComplete('s', 'r').then((ok) => {
+        events.push(`done:${ok}`);
+        unmount();
+        return ok;
+      });
+
+      act(() => {
+        transport.emit(
+          stepReply({ kind: 'step-progress', stepId: 's', runId: 'r', index: 0, total: 3, substepResults: [skipped] })
+        );
+        transport.emit(
+          stepReply({
+            kind: 'step-progress',
+            stepId: 's',
+            runId: 'r',
+            index: 2,
+            total: 3,
+            substepResults: results.slice(0, 2),
+          })
+        );
+        transport.emit(
+          stepReply({ kind: 'step-complete', stepId: 's', runId: 'r', ok: false, substepResults: results })
+        );
+      });
+
+      expect(progress).toHaveBeenLastCalledWith(2, 3, results);
+      expect(events).toEqual(['evidence:1', 'evidence:2', 'evidence:3']);
+      await act(async () => expect(await done).toBe(false));
+      expect(events).toEqual(['evidence:1', 'evidence:2', 'evidence:3', 'done:false']);
+    });
+
+    it('resolves the completion even when its final evidence subscriber unmounts the provider', async () => {
+      const { channel, transport, unmount } = await pairedChannel();
+      const progress = jest.fn(() => unmount());
+      channel.onStepProgress('s', 'r', progress);
+      const done = channel.awaitStepComplete('s', 'r');
+
+      act(() =>
+        transport.emit(
+          stepReply({ kind: 'step-complete', stepId: 's', runId: 'r', ok: true, substepResults: [skipped] })
+        )
+      );
+
+      expect(progress).toHaveBeenCalledWith(0, 1, [skipped]);
+      await expect(done).resolves.toBe(true);
+    });
+
+    it('isolates cancelled runs, foreign senders, and replies after completion', async () => {
+      const { channel, transport, unmount } = await pairedChannel();
+      const progress = jest.fn();
+      channel.onStepProgress('s', 'old', progress);
+      const old = channel.awaitStepComplete('s', 'old');
+      channel.cancelStepComplete('s', 'old');
+      await expect(old).resolves.toBe(false);
+
+      channel.onStepProgress('s', 'new', progress);
+      const resolved = jest.fn();
+      const done = channel.awaitStepComplete('s', 'new').then(resolved);
+      act(() => {
+        for (const [runId, sender] of [
+          ['old', 'live'],
+          ['new', 'other-live'],
+        ]) {
+          transport.emit(
+            stepReply(
+              { kind: 'step-progress', stepId: 's', runId: runId!, index: 0, total: 1, substepResults: [skipped] },
+              sender
+            )
+          );
+          transport.emit(
+            stepReply(
+              { kind: 'step-complete', stepId: 's', runId: runId!, ok: true, substepResults: [skipped] },
+              sender
+            )
+          );
+        }
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(progress).not.toHaveBeenCalled();
+      expect(resolved).not.toHaveBeenCalled();
+
+      act(() =>
+        transport.emit(
+          stepReply({ kind: 'step-complete', stepId: 's', runId: 'new', ok: true, substepResults: [skipped] })
+        )
+      );
+      await done;
+      expect(progress).toHaveBeenCalledTimes(1);
+      expect(resolved).toHaveBeenCalledWith(true);
+
+      act(() =>
+        transport.emit(
+          stepReply({ kind: 'step-progress', stepId: 's', runId: 'new', index: 0, total: 1, substepResults: [] })
+        )
+      );
+      expect(progress).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it('rejects malformed ledgers and final results outside the known total', async () => {
+      const { channel, transport, unmount } = await pairedChannel();
+      const progress = jest.fn();
+      const resolved = jest.fn();
+      channel.onStepProgress('s', 'r', progress);
+      const done = channel.awaitStepComplete('s', 'r').then(resolved);
+      act(() => {
+        transport.emit(
+          stepReply({ kind: 'step-progress', stepId: 's', runId: 'r', index: 0, total: 1, substepResults: [] })
+        );
+        transport.emit(
+          stepReply({
+            kind: 'step-complete',
+            stepId: 's',
+            runId: 'r',
+            ok: true,
+            substepResults: [skipped, { ...skipped, index: 1 }],
+          })
+        );
+        transport.emit(
+          stepReply({
+            kind: 'step-complete',
+            stepId: 's',
+            runId: 'r',
+            ok: true,
+            substepResults: [{ ...skipped, durationMs: Infinity }],
+          })
+        );
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(progress).toHaveBeenCalledTimes(1);
+      expect(resolved).not.toHaveBeenCalled();
+
+      act(() =>
+        transport.emit(
+          stepReply({ kind: 'step-complete', stepId: 's', runId: 'r', ok: true, substepResults: [skipped] })
+        )
+      );
+      await done;
+      expect(progress).toHaveBeenLastCalledWith(0, 1, [skipped]);
+      expect(resolved).toHaveBeenCalledWith(true);
+      unmount();
+    });
+
+    it('keeps a newer subscription when an older subscription uses the same callback', async () => {
+      const { channel, transport, unmount } = await pairedChannel();
+      const progress = jest.fn();
+      const stopOld = channel.onStepProgress('s', 'r', progress);
+      channel.onStepProgress('s', 'r', progress);
+      stopOld();
+      act(() =>
+        transport.emit(
+          stepReply({ kind: 'step-progress', stepId: 's', runId: 'r', index: 0, total: 1, substepResults: [skipped] })
+        )
+      );
+      expect(progress).toHaveBeenCalledWith(0, 1, [skipped]);
+      unmount();
+    });
   });
 
   it('posts a signed sidebar hand-back on unmount after pairing', async () => {
