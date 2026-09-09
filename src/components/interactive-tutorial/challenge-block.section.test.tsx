@@ -100,7 +100,7 @@ beforeEach(() => {
 });
 
 describe('ChallengeBlock sequential blocking at section level', () => {
-  it('renders Complete previous step instead of Start challenge after an incomplete quiz', async () => {
+  it('renders Complete previous step banner while keeping Start challenge reachable after an incomplete quiz', async () => {
     render(
       <InteractiveSection id="sec-blocked" title="Blocked section" autoCollapse={false}>
         <InteractiveQuiz
@@ -124,6 +124,6 @@ describe('ChallengeBlock sequential blocking at section level', () => {
     );
 
     expect(await screen.findByText('Complete previous step')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
   });
 });

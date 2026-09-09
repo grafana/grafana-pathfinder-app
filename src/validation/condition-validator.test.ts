@@ -377,6 +377,51 @@ describe('Condition Validator', () => {
       const issues = validateBlockConditions(guide);
       expect(issues).toHaveLength(0);
     });
+
+    it('rejects coda-exit-zero: as a requirement on challenge blocks', () => {
+      const guide: JsonGuide = {
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'challenge',
+            title: 'Challenge',
+            brief: 'Task',
+            successCriteria: 'coda-exit-zero:true',
+            requirements: ['coda-exit-zero:test -f /tmp/ready'],
+            objectives: [],
+          },
+        ],
+      };
+      const issues = validateBlockConditions(guide);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toEqual({
+        condition: 'coda-exit-zero:test -f /tmp/ready',
+        message:
+          "coda-exit-zero: cannot be used as a challenge requirement because it depends on the challenge's own setup running first — use it in `objectives` instead, or move this check into successCriteria.",
+        code: 'invalid_format',
+        path: ['blocks', 0, 'requirements', 0],
+      });
+    });
+
+    it('allows coda-exit-zero: in objectives on challenge blocks', () => {
+      const guide: JsonGuide = {
+        id: 'test',
+        title: 'Test',
+        blocks: [
+          {
+            type: 'challenge',
+            title: 'Challenge',
+            brief: 'Task',
+            successCriteria: 'coda-exit-zero:true',
+            requirements: ['is-admin'],
+            objectives: ['coda-exit-zero:test -f /tmp/ready'],
+          },
+        ],
+      };
+      const issues = validateBlockConditions(guide);
+      expect(issues).toHaveLength(0);
+    });
   });
 });
 

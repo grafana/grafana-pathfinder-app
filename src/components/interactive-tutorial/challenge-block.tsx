@@ -293,6 +293,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // persist to this block's store key, solving the challenge without successCriteria.
   const [objectivesMet, setObjectivesMet] = useState(false);
   useEffect(() => {
+    // coda-exit-zero: is excluded from the informational probe because
+    // probing it would exec the author's command in the learner's VM outside
+    // the Check my work flow — an informational check must never have side
+    // effects. (See also B1/round-3 review: the same token is now rejected
+    // outright in `requirements`, since only the challenge's own setup can
+    // ever satisfy it there.)
     const safeObjectives = conditionTokens(objectives).filter((token) => !token.startsWith('coda-exit-zero:'));
     const isReadyForProbe =
       isEligibleForChecking &&
@@ -751,7 +757,8 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       )}
 
       <div className={styles.actions}>
-        {state === 'idle' && !configGateMessage && isEnabled && (
+        {/* Start's job is to provision setup, which is what satisfies certain requirements (e.g. coda-exit-zero: depends on this block's own runSetup writing the ready file) — gating Start on isEnabled created a circular dependency for any requirement whose only path to true runs through Start itself. */}
+        {state === 'idle' && !configGateMessage && (
           <Button variant="primary" icon="play" onClick={handleStart}>
             Start challenge
           </Button>

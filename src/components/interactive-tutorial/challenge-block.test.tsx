@@ -853,7 +853,7 @@ describe('ChallengeBlock', () => {
       }));
     });
 
-    it('renders requirement warning banner and hides Start button when disabled by requirements', () => {
+    it('renders requirement warning banner while keeping Start button reachable in idle when disabled by requirements', () => {
       mockTerminalCtx();
       mockUseStepChecker.mockReturnValue({
         status: 'blocked' as StepStatus,
@@ -872,7 +872,63 @@ describe('ChallengeBlock', () => {
       expect(screen.getByTestId('challenge-requirement-warning-ch-1')).toHaveTextContent(
         'Complete previous step first'
       );
-      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    it('allows starting a coda challenge with requirements and enables Check my work after requirements are met', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      mockTerminalCtx({ status: 'connected' });
+
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'blocked',
+          isEnabled: false,
+          explanation: 'Prerequisites unmet',
+          canSkip: false,
+        })
+      );
+
+      const { rerender } = render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="coda"
+          requirements={['coda-exit-zero:check-ready']}
+          skippable={false}
+          stepId="ch-coda-req"
+        />
+      );
+
+      const startButton = screen.getByRole('button', { name: /start challenge/i });
+      expect(startButton).toBeInTheDocument();
+      expect(screen.getByTestId('challenge-requirement-warning-ch-coda-req')).toBeInTheDocument();
+
+      fireEvent.click(startButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeDisabled();
+
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'enabled',
+          isEnabled: true,
+          explanation: null,
+          canSkip: false,
+        })
+      );
+      rerender(
+        <ChallengeBlock
+          {...baseProps}
+          mode="coda"
+          requirements={['coda-exit-zero:check-ready']}
+          skippable={false}
+          stepId="ch-coda-req"
+        />
+      );
+
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeEnabled();
     });
 
     it('passes objectives: "" to useStepChecker to prevent Phase 1 auto-completion and does not show solved UI', () => {
