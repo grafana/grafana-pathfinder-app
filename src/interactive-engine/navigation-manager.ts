@@ -931,7 +931,8 @@ export class NavigationManager {
 
       const progressBar = document.createElement('div');
       progressBar.className = 'interactive-comment-progress-bar';
-      const progressPercent = ((stepInfo.current + 1) / stepInfo.total) * 100;
+      // Tour-local: total counts steps inside this guided block, not the guide.
+      const progressPercent = (stepInfo.completedSteps.length / stepInfo.total) * 100;
       progressBar.style.width = `${progressPercent}%`;
 
       progressContainer.appendChild(progressBar);

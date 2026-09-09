@@ -846,4 +846,47 @@ describe('E2E Contract: Comment Box Attributes', () => {
       expect(commentBox).not.toHaveAttribute('data-test-refTarget');
     });
   });
+
+  describe('tour progress bar', () => {
+    const renderTour = async (stepInfo: { current: number; total: number; completedSteps: number[] }) => {
+      await navigationManager.highlightWithComment(
+        mockElement,
+        'Tour step',
+        false,
+        stepInfo,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { skipAnimations: true }
+      );
+      return document.querySelector('.interactive-comment-progress-bar') as HTMLElement;
+    };
+
+    it('credits performed steps, not displayed ones', async () => {
+      const bar = await renderTour({ current: 0, total: 4, completedSteps: [] });
+      expect(bar.style.width).toBe('0%');
+    });
+
+    it('does not reach 100% merely by displaying the last step', async () => {
+      const bar = await renderTour({ current: 3, total: 4, completedSteps: [0, 1, 2] });
+      expect(bar.style.width).toBe('75%');
+    });
+
+    it('reaches 100% only once every step in the block is done', async () => {
+      const bar = await renderTour({ current: 3, total: 4, completedSteps: [0, 1, 2, 3] });
+      expect(bar.style.width).toBe('100%');
+    });
+
+    it('measures the guided block, not the whole guide', async () => {
+      // Guard: `total` is tour-local (steps inside one guided block). Do not
+      // converge this bar on guide-wide completion - it measures a different quantity.
+      const bar = await renderTour({ current: 1, total: 2, completedSteps: [0] });
+      expect(bar.style.width).toBe('50%');
+
+      const badge = document.querySelector('.interactive-comment-step-badge');
+      expect(badge?.textContent).toBe('Step 2 of 2');
+    });
+  });
+
 });
