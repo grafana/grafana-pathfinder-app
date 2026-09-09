@@ -20,7 +20,7 @@
 
 import { resolveCountedBlockStepId, resolveStepIdForBlock } from '../../global-state/guide-step-id-resolver';
 import { parseJsonGuide } from '../../docs-retrieval/json-parser';
-import type { ParsedElement } from '../../types/documentation.types';
+import type { ParsedElement } from '../../types/content.types';
 import type { JsonBlock, JsonGuide } from '../../types/json-guide.types';
 import { computeGuideBlockIndex } from './block-index';
 import { COMPLETION_AFFORDANCE_BLOCK_TYPES, emitsCompletionEvidence } from './completion-affordance';
@@ -97,8 +97,11 @@ const COMPLETABLE_SHAPES: ReadonlyArray<{ shape: string; block: JsonBlock }> = [
 /** Every `props.stepId` the parser assigned, in document order. */
 function collectStepIds(elements: readonly ParsedElement[]): string[] {
   const ids: string[] = [];
-  const walk = (nodes: readonly ParsedElement[]): void => {
+  const walk = (nodes: ReadonlyArray<ParsedElement | string>): void => {
     for (const node of nodes) {
+      if (typeof node === 'string') {
+        continue;
+      }
       const stepId = node.props?.stepId;
       if (typeof stepId === 'string' && stepId.length > 0) {
         ids.push(stepId);
@@ -189,6 +192,13 @@ describe('step-id parity with the parser, over the completable set', () => {
 
     expect(top).toBeDefined();
     expect(top).not.toBe(nested);
+  });
+
+  it('treats an empty author id as no id, exactly as the parser does', () => {
+    const blocks: JsonBlock[] = [{ ...COMPLETABLE_SHAPES[0]!.block, id: '' } as unknown as JsonBlock];
+    const index = withResolver(blocks);
+
+    expect([...index.positionsByStepId.entries()]).toEqual([[parseStepIds(guideOf(blocks))[0]!, 1]]);
   });
 
   it('leaves the map empty when no resolver is injected', () => {

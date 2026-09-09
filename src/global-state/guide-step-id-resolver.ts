@@ -21,7 +21,7 @@
  */
 
 import { assertExhaustive } from '../lib/assert-exhaustive';
-import type { BlockIndexOptions } from '../lib/guide-stats';
+import type { BlockIndexOptions, BlockStepIdContext } from '../lib/guide-stats';
 import {
   type JsonBlock,
   type JsonChallengeBlock,
@@ -36,22 +36,15 @@ import {
 } from '../types/json-guide.types';
 import { deriveStepId } from './step-id';
 
-/** Where a block sits, in the namespace the parser keys derived ids under. */
-export interface StepIdBlockContext {
-  /** Owning section, conditional branch, or synthetic standalone parent. */
-  parentSectionId: string;
-  /** Zero-based index within the parent block array. */
-  index: number;
-}
-
-export function resolveStepIdForBlock(block: JsonBlock, context: StepIdBlockContext): string | undefined {
+export function resolveStepIdForBlock(block: JsonBlock, context: BlockStepIdContext): string | undefined {
   const { parentSectionId: sectionId, index } = context;
+  const authorId = block.id || undefined;
 
   switch (block.type) {
     case 'interactive': {
       const b = block as JsonInteractiveBlock;
       return (
-        block.id ??
+        authorId ??
         deriveStepId({
           sectionId,
           index,
@@ -61,9 +54,9 @@ export function resolveStepIdForBlock(block: JsonBlock, context: StepIdBlockCont
       );
     }
     case 'multistep': {
-      const first = (block as JsonMultistepBlock).steps[0];
+      const first = (block as JsonMultistepBlock).steps?.[0];
       return (
-        block.id ??
+        authorId ??
         deriveStepId({
           sectionId,
           index,
@@ -74,9 +67,9 @@ export function resolveStepIdForBlock(block: JsonBlock, context: StepIdBlockCont
       );
     }
     case 'guided': {
-      const first = (block as JsonGuidedBlock).steps[0];
+      const first = (block as JsonGuidedBlock).steps?.[0];
       return (
-        block.id ??
+        authorId ??
         deriveStepId({
           sectionId,
           index,
@@ -87,17 +80,17 @@ export function resolveStepIdForBlock(block: JsonBlock, context: StepIdBlockCont
       );
     }
     case 'quiz': {
-      return block.id ?? deriveStepId({ sectionId, index, action: 'quiz', variant: (block as JsonQuizBlock).question });
+      return authorId ?? deriveStepId({ sectionId, index, action: 'quiz', variant: (block as JsonQuizBlock).question });
     }
     case 'terminal': {
       return (
-        block.id ??
+        authorId ??
         deriveStepId({ sectionId, index, action: 'terminal', refTarget: (block as JsonTerminalBlock).command })
       );
     }
     case 'terminal-connect': {
       return (
-        block.id ??
+        authorId ??
         deriveStepId({
           sectionId,
           index,
@@ -108,13 +101,13 @@ export function resolveStepIdForBlock(block: JsonBlock, context: StepIdBlockCont
     }
     case 'challenge': {
       return (
-        block.id ??
+        authorId ??
         deriveStepId({ sectionId, index, action: 'challenge', refTarget: (block as JsonChallengeBlock).title })
       );
     }
     case 'code-block': {
       return (
-        block.id ??
+        authorId ??
         deriveStepId({
           sectionId,
           index,
@@ -131,7 +124,7 @@ export function resolveStepIdForBlock(block: JsonBlock, context: StepIdBlockCont
       if (!hasDataCheck || !b.dataCheckBlocking) {
         return undefined;
       }
-      return block.id ?? deriveStepId({ sectionId, index, action: 'datasource-check', refTarget: b.variableName });
+      return authorId ?? deriveStepId({ sectionId, index, action: 'datasource-check', refTarget: b.variableName });
     }
     case 'section':
     case 'markdown':
