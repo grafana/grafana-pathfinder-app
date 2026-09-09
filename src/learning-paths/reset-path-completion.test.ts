@@ -156,6 +156,25 @@ describe('resetPath — App Platform path (no url)', () => {
     expect(interactives[SENTINEL_KEY]).toBe(100);
   });
 
+  it('clears the package-launch shape of a member, which the join also reads', async () => {
+    // A bundled member opened from the context panel persists under
+    // `bundled:<id>/content.json`. Sparing it would leave the member reading
+    // its pre-reset percentage back through `pathMemberContentKeys`.
+    const packageKeys = GUIDES.map((id) => `bundled:${id}/content.json`);
+    for (const key of packageKeys) {
+      await interactiveCompletionStorage.set(key, 100);
+      await interactiveStepStorage.setCompleted(key, 'section-one', new Set(['step-1']));
+    }
+
+    await renderAndResetPath();
+
+    const interactives = await interactiveCompletionStorage.getAll();
+    expect(packageKeys.filter((key) => key in interactives)).toEqual([]);
+    for (const key of packageKeys) {
+      await expect(interactiveStepStorage.getCompleted(key, 'section-one')).resolves.toEqual(new Set());
+    }
+  });
+
   it('clears interactive progress recorded against the path cover itself', async () => {
     for (const pathKey of [PATH_KEY, BUNDLED_PATH_KEY]) {
       await interactiveStepStorage.setCompleted(pathKey, 'cover-section', new Set(['step-1', 'step-2']));

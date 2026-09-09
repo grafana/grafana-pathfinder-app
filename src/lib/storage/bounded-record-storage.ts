@@ -9,7 +9,7 @@ export interface BoundedRecordStorage {
   /** Deletes every key in one read-modify-write. Concurrent `clear` calls share one record, so each write restores the keys its siblings deleted. */
   clearMany(keys: string[]): Promise<void>;
   getAll(): Promise<Record<string, number>>;
-  /** Trims the record down to `limit` entries (most recent kept). No-op when already within budget. */
+  /** Trims the record down to the last `limit` entries in insertion order, not by recency of update. No-op when already within budget. */
   cleanup(): Promise<void>;
   clearAll(): Promise<void>;
 }
