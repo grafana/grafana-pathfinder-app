@@ -541,8 +541,9 @@ that matters for KPIs.
 
 **Known starting point:** 51.5% of the library has no other way to register
 anything, so for that population click rate _is_ completion rate. There is no
-prior click-rate number, because the button has no producer in the repo yet —
-this bet's baseline is measured after it ships, not before.
+prior click-rate number, because the button had no producer in the repo before
+the control shipped — this bet's baseline is measured from that point on, not
+before it.
 
 **If falsified:** the button is not the completion mechanism we thought it was.
 The live alternatives are the "check my setup" idea (see open questions), which

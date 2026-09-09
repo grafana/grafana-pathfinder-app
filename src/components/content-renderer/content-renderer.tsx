@@ -1039,7 +1039,8 @@ interface StandaloneStepPosition {
  * `src/components/interactive-tutorial/step-type-registry.ts`.
  *
  * Note: input-block is intentionally excluded — it doesn't track completion
- * and would inflate the total step count, making 100% completion impossible.
+ * and would inflate the total step count, putting a step-derived 100% out of
+ * reach.
  * An `input` block emits `datasource-check-step` instead when its author asked
  * a failing data check to block, and only that form is tracked here.
  *

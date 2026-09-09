@@ -230,11 +230,39 @@ describe('MarkCompleteFooter', () => {
     // The completion write does not wait on the celebration.
     expect(onMarkComplete).toHaveBeenCalledTimes(1);
     expect(onContinue).not.toHaveBeenCalled();
+    expect(getComputedStyle(screen.getByTestId(testIds.markComplete.completed)).animation).not.toBe('');
 
     act(() => {
       jest.runOnlyPendingTimers();
     });
     expect(onContinue).toHaveBeenCalledTimes(1);
     jest.useRealTimers();
+  });
+
+  it('skips the celebration dwell for a reader who asked for reduced motion', async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      ...originalMatchMedia(query),
+      matches: query.includes('prefers-reduced-motion'),
+    })) as typeof window.matchMedia;
+    jest.useFakeTimers();
+    const onContinue = jest.fn();
+    const onMarkComplete = jest.fn();
+    try {
+      render(<MarkCompleteFooter context="milestone" onMarkComplete={onMarkComplete} onContinue={onContinue} />);
+      // Settles the stored-mark read; promises are not faked.
+      await act(async () => {});
+
+      fireEvent.click(screen.getByTestId(testIds.markComplete.button));
+
+      // No dwell: continuing happens on the click itself, not after a timer.
+      expect(onMarkComplete).toHaveBeenCalledTimes(1);
+      expect(onContinue).toHaveBeenCalledTimes(1);
+      // And nothing animates on arrival either.
+      expect(getComputedStyle(screen.getByTestId(testIds.markComplete.completed)).animation).toBe('');
+    } finally {
+      jest.useRealTimers();
+      window.matchMedia = originalMatchMedia;
+    }
   });
 });
