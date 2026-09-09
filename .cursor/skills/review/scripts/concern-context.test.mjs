@@ -74,11 +74,18 @@ test('records the docs retrieval and rendering ownership chain', () => {
   assert.equal(context.contract_anchor.evidence, '#894 → #1716');
   assert.match(context.contract_anchor.contract, /fetchContent/);
   assert.match(context.contract_anchor.contract, /ContentRenderer/);
+  assert.match(context.contract_anchor.contract, /shouldUseDocsLoader/);
   assert.match(context.contract_anchor.contract, /loadDocsTabContentResult/);
+  assert.match(context.contract_anchor.contract, /loadTabContent/);
   assert.match(context.contract_anchor.contract, /resolveDocsLoadAlignment/);
-  assert.match(context.contract_anchor.contract, /#1692/);
-  assert.match(context.contract_anchor.contract, /#1712/);
-  assert.match(context.contract_anchor.contract, /competing convention/);
+  assert.match(context.contract_anchor.contract, /#1692 established manifest precedence/);
+  assert.match(context.contract_anchor.contract, /#1712 made `package-info-from-url\.ts`/);
+  assert.match(
+    context.contract_anchor.contract,
+    /plain guides prefer `spec\.id`, while `path` and `journey` keep the immutable resource name \(`packageId`\)/
+  );
+  assert.match(context.contract_anchor.contract, /`packageId` remains the fallback when no `spec\.id` exists/);
+  assert.match(context.contract_anchor.contract, /legacy `loadTabContent` arm is a known accepted residual/);
 });
 
 test('records the review orchestration contract under ai-subsystem', () => {
