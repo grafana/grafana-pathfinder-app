@@ -388,19 +388,27 @@ candidate set it appears in and inflate the path's number.
 treats a formable-but-absent key as never-opened and scores it zero, which is
 the honest answer for a reader who has not started that guide. It is _not_
 honest for a reader whose record was evicted: `interactiveCompletionStorage`
-caps at `MAX_INTERACTIVE_COMPLETIONS` (100, `src/lib/user-storage.ts`) and
-`writeWithCap` keeps `entries.slice(-limit)` — insertion order, so the earliest
-keys are dropped and updating an existing key does not move it forward. A reader
-past 100 distinct guides therefore loses real progress on their oldest ones, and
-it arrives at the join as a genuine zero. Reading two candidate shapes per
-bundled member raises the pressure slightly, because a guide opened from both
-surfaces occupies two of the 100 slots.
+caps at `MAX_INTERACTIVE_COMPLETIONS` (250, `src/lib/user-storage.ts`), and past
+that cap `writeWithCap` drops zero-progress entries first and then the least
+recently written of the rest. Reading two candidate shapes per bundled member
+raises the pressure, because a guide opened from both surfaces occupies two
+slots.
 
 The information needed to tell eviction from never-opened is gone by the time
-the join runs, so this is not fixable in `path-member-join.ts`. **Known
-follow-on work, storage-side:** raise the cap, evict least-recently-updated
-rather than earliest-inserted, or persist an opened-guides set the join can
-consult. Until one of those lands, a path mean can understate a heavy reader.
+the join runs, so this is not fixable in `path-member-join.ts`. Eviction now
+falls on the entries a reader has stopped touching rather than the ones they
+opened first, which is what closes the case where a heavy reader lost progress
+on a guide they were actively using.
+
+**Recency and furthest-wins disagree on a split pair.** Storage sees two launch
+shapes of one guide as two unrelated keys, so it cannot prefer the pair's higher
+record — it keeps whichever was written more recently. The join prefers the
+higher. A reader who reaches 80% under `bundled:<id>/content.json` and later
+does one step under bare `bundled:<id>` has a fresh 10% and a stale 80%; the
+join reports 80% until the 80% entry ages out, and 10% after. The zero-first
+pass covers the common case, where the twin holds no progress at all and is
+dropped losslessly. Closing the rest needs the pair to be known where the keys
+are paired, which is here and not in storage.
 
 **The key spaces `resetPath` clears are not one space.**
 `interactiveCompletionStorage` and `interactiveStepStorage` are keyed by the
