@@ -54,6 +54,25 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
 });
 
 /**
+ * Schema for the single-string, comma-separated condition form. Every token is
+ * held to the same `isValidRequirement` vocabulary as `RequirementTokenSchema`,
+ * and splitting on `,` mirrors `conditionTokens` — how the runtime tokenizes
+ * the value before checking it.
+ *
+ * Used by `verify`, which the JSON model carries as one string rather than an
+ * array, so a comma inside a parameter value is not expressible here — the
+ * same limitation `validateConditionString` has.
+ */
+const ConditionStringSchema = z.string().superRefine((value, ctx) => {
+  for (const part of value.split(',')) {
+    const token = part.trim();
+    if (token && !isValidRequirement(token)) {
+      ctx.addIssue({ code: 'custom', message: unknownRequirementMessage(token) });
+    }
+  }
+});
+
+/**
  * Schema for a single objective token. Deliberately permissive where
  * `RequirementTokenSchema` is strict: `objectives` shipped for months
  * described as free-text "learning objectives", so guides already published to
@@ -359,7 +378,9 @@ export const JsonInteractiveBlockSchema = z
     showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
     doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
     completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
-    verify: z.string().optional().describe('CSS selector to check for verification after action'),
+    verify: ConditionStringSchema.optional().describe(
+      'Post-action verification condition, evaluated after the action runs; the step completes only once it is satisfied. Same condition vocabulary as `requirements` (e.g., on-page:/connections/datasources/edit) — not a CSS selector. One string, comma-separated for more than one condition.'
+    ),
     lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
     scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
     openGuide: z.string().optional().describe('Guide ID to open when this block completes'),

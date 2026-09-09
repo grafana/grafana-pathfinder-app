@@ -479,7 +479,9 @@ export const JsonInteractiveBlockSchema = z.object({
   showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
   doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
   completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
-  verify: z.string().optional().describe('CSS selector to check for verification after action'),
+  verify: ConditionStringSchema.optional().describe(
+    'Post-action verification condition (e.g., on-page:/connections/datasources/edit)'
+  ),
   lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
   scrollContainer: z.string().optional().describe('CSS selector of scroll container for lazy-rendered targets'),
   openGuide: z.string().optional().describe('Guide ID to open when this block completes'),
