@@ -82,6 +82,44 @@ describe('useGuideProgressState', () => {
     expect(mockGetMark).not.toHaveBeenCalled();
   });
 
+  // A step total falling to zero sends the same signal as a guide reset, so the
+  // affordance may only disappear once the mark itself is gone.
+  it('keeps reporting progress when a clear leaves the mark in place', async () => {
+    mockHasProgress.mockResolvedValue(true);
+    mockGetMark.mockResolvedValue(true);
+    const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.hasInteractiveProgress).toBe(true);
+
+    mockHasProgress.mockResolvedValue(false);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('interactive-progress-cleared', { detail: { contentKey: 'guide-a' } }));
+      await Promise.resolve();
+    });
+
+    expect(result.current.hasInteractiveProgress).toBe(true);
+  });
+
+  it('stops reporting progress once a clear has taken the mark too', async () => {
+    mockHasProgress.mockResolvedValue(true);
+    mockGetMark.mockResolvedValue(true);
+    const { result } = renderHook(() => useGuideProgressState({ currentUrl: 'guide-a' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    mockHasProgress.mockResolvedValue(false);
+    mockGetMark.mockResolvedValue(null);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('interactive-progress-cleared', { detail: { contentKey: 'guide-a' } }));
+      await Promise.resolve();
+    });
+
+    expect(result.current.hasInteractiveProgress).toBe(false);
+  });
+
   it('resets hasInteractiveProgress when the progress key clears', async () => {
     mockHasProgress.mockResolvedValue(true);
     const { result, rerender } = renderHook(
@@ -131,12 +169,14 @@ describe('useGuideProgressState', () => {
     });
     expect(result.current.hasInteractiveProgress).toBe(true);
 
-    act(() => {
+    mockHasProgress.mockResolvedValue(false);
+    await act(async () => {
       window.dispatchEvent(
         new CustomEvent('interactive-progress-cleared', {
           detail: { contentKey: 'guide-a' },
         })
       );
+      await Promise.resolve();
     });
 
     expect(result.current.hasInteractiveProgress).toBe(false);

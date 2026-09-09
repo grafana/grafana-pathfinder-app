@@ -142,8 +142,11 @@ describe('MarkCompleteFooter', () => {
     const completed = screen.getByTestId(testIds.markComplete.completed);
     expect(completed).toHaveAttribute('role', 'status');
     expect(completed).toHaveTextContent('Completed');
-    expect(completed).toHaveTextContent('100% complete');
     expect(completed).toHaveFocus();
+    // The percentage is a live region of its own, so the reader hears the new
+    // number without the footer carrying it twice.
+    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveAttribute('role', 'status');
+    expect(screen.getAllByText(/100% complete/)).toHaveLength(1);
   });
 
   it('does not steal focus when a return visit hydrates an existing mark', async () => {
