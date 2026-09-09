@@ -3,13 +3,25 @@ import type { UserStorage } from '../../types/storage.types';
 
 export interface BoundedRecordStorage {
   get(key: string): Promise<number>;
-  /** Clamps `percentage` to `[0, 100]`, trims down to `limit` entries on overflow, and retries once after `cleanup()` on quota errors. */
+  /**
+   * Clamps `percentage` to `[0, 100]` and retries once after `cleanup()` on quota errors.
+   *
+   * On overflow the record is trimmed to `limit` entries: zero-progress
+   * entries go first (a missing key reads back as 0, so dropping one loses
+   * nothing), then the least recently written of the rest. Writing a key
+   * counts as touching it, so a guide the reader keeps returning to outlives
+   * one they opened earlier and abandoned.
+   */
   set(key: string, percentage: number): Promise<void>;
   clear(key: string): Promise<void>;
   /** Deletes every key in one read-modify-write. Concurrent `clear` calls share one record, so each write restores the keys its siblings deleted. */
   clearMany(keys: string[]): Promise<void>;
   getAll(): Promise<Record<string, number>>;
-  /** Trims the record down to the last `limit` entries in insertion order, not by recency of update. No-op when already within budget. */
+  /**
+   * Trims the record down to `limit` entries, evicting zero-progress entries
+   * first and then the least recently written of the rest. No-op when already
+   * within budget.
+   */
   cleanup(): Promise<void>;
   clearAll(): Promise<void>;
 }
@@ -34,17 +46,37 @@ export interface BoundedRecordStorageConfig {
 export function createBoundedRecordStorage(config: BoundedRecordStorageConfig): BoundedRecordStorage {
   const { storageKey, limit, label, createStorage, onQuotaExceeded } = config;
 
+  const trimToLimit = (data: Record<string, number>): Record<string, number> => {
+    const entries = Object.entries(data);
+    const surplus = entries.length - limit;
+    if (surplus <= 0) {
+      return data;
+    }
+    const evicted = new Set<string>();
+    for (const [key, value] of entries) {
+      if (evicted.size >= surplus) {
+        break;
+      }
+      if (value <= 0) {
+        evicted.add(key);
+      }
+    }
+    const survivors = entries.filter(([key]) => !evicted.has(key));
+    return Object.fromEntries(survivors.slice(-limit));
+  };
+
   const writeWithCap = async (data: Record<string, number>): Promise<void> => {
     const storage = createStorage();
-    const entries = Object.entries(data);
-    const payload = entries.length > limit ? Object.fromEntries(entries.slice(-limit)) : data;
-    await storage.setItem(storageKey, payload);
+    await storage.setItem(storageKey, trimToLimit(data));
   };
 
   const setInternal = async (key: string, percentage: number, hasRetried: boolean): Promise<void> => {
     try {
       const storage = createStorage();
       const data = (await storage.getItem<Record<string, number>>(storageKey)) || {};
+      // Delete before re-adding so the key moves to the end of the record's
+      // key order, which is what `trimToLimit` reads as write recency.
+      delete data[key];
       data[key] = Math.max(0, Math.min(100, percentage));
       await writeWithCap(data);
     } catch (error) {
