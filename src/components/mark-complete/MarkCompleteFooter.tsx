@@ -30,6 +30,7 @@ import { t } from '@grafana/i18n';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { guideCompletionMarkStorage, interactiveCompletionStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
+import { StorageEvents } from '../../lib/event-names';
 import { getContentKey, sanitizeContentKey } from '../../global-state/content-key';
 import { isPreviewContentKey, getGuideProgress, subscribeProgress } from '../../global-state/completion-store';
 import { dispatchProgress } from '../../global-state/progress-events';
@@ -85,6 +86,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
   // Tagged with the guide it was read for, so a guide change re-arms the
   // control by derivation rather than by resetting state in an effect.
   const [mark, setMark] = useState<{ readFor: string | undefined; marked: boolean } | null>(null);
+  const [clearedCount, setClearedCount] = useState(0);
   const [celebrating, setCelebrating] = useState(false);
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -114,6 +116,22 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     return () => {
       cancelled = true;
     };
+  }, [contentUrl, clearedCount]);
+
+  // A bulk reset clears the mark without remounting this footer, so the read
+  // has to re-run on the signal every reset path already emits — otherwise the
+  // control stays on "Completed" for a guide that no longer carries a mark.
+  useEffect(() => {
+    const handleCleared = (event: Event) => {
+      const clearedKey = (event as CustomEvent).detail?.contentKey;
+      if (clearedKey === '*' || clearedKey === resolveContentKey(contentUrl)) {
+        setClearedCount((count) => count + 1);
+      }
+    };
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    return () => {
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    };
   }, [contentUrl]);
 
   useEffect(
@@ -139,17 +157,19 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     const contentKey = resolveContentKey(contentUrl);
     setMark({ readFor: contentUrl, marked: true });
 
-    reportAppInteraction(UserInteraction.MarkCompleteClicked, {
-      interaction_location: 'content_footer',
-      completion_context: context,
-      completion_percentage_before: percentage,
-    });
-
     // The completion write must not wait on the celebration: a reader who
     // navigates away mid-animation still completed the guide.
     onMarkComplete?.();
 
+    // A block-editor preview is an author iterating, not a reader: it persists
+    // nothing and it stays out of the click stream, because that stream exists
+    // to measure whether real readers use the control.
     if (!isPreviewContentKey(contentKey)) {
+      reportAppInteraction(UserInteraction.MarkCompleteClicked, {
+        interaction_location: 'content_footer',
+        completion_context: context,
+        completion_percentage_before: percentage,
+      });
       void guideCompletionMarkStorage.set(contentKey, true).catch((error) => {
         logger.warn('Failed to persist guide completion mark', { error });
       });

@@ -3,6 +3,7 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 
 import { testIds } from '../../constants/testIds';
 import { UserInteraction } from '../../lib/analytics';
+import { StorageEvents } from '../../lib/event-names';
 import { MarkCompleteFooter } from './MarkCompleteFooter';
 
 jest.mock('@grafana/i18n', () => ({
@@ -131,6 +132,40 @@ describe('MarkCompleteFooter', () => {
       hasProgress: true,
     });
     expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('100% complete');
+  });
+
+  it.each([
+    ['every guide', '*'],
+    ['this guide', 'guide-key'],
+  ])('comes back clickable when a reset clears the mark for %s underneath it', async (_label, clearedKey) => {
+    markStorage.get.mockResolvedValue(true);
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+    await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
+
+    markStorage.get.mockResolvedValue(null);
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: clearedKey } })
+      );
+    });
+
+    await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
+    expect(screen.getByTestId(testIds.markComplete.percentage)).toHaveTextContent('25% complete');
+  });
+
+  it('ignores a reset that clears some other guide', async () => {
+    markStorage.get.mockResolvedValue(true);
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+    await waitFor(() => expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument());
+
+    markStorage.get.mockResolvedValue(null);
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent(StorageEvents.InteractiveProgressCleared, { detail: { contentKey: 'other-guide-key' } })
+      );
+    });
+
+    expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument();
   });
 
   it('completes and continues on a milestone', async () => {

@@ -17,6 +17,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import type { RawContent } from '../../types/content.types';
 import { testIds } from '../../constants/testIds';
+import { UserInteraction } from '../../lib/analytics';
 import { dispatchProgress } from '../../global-state/progress-events';
 import { resetContentKeyForTests } from '../../global-state/content-key';
 import { guideCompletionMarkStorage } from '../../lib/user-storage';
@@ -25,6 +26,16 @@ import { ContentRenderer } from './content-renderer';
 jest.mock('@grafana/i18n', () => ({
   t: (_key: string, fallback: string) => fallback,
 }));
+
+const reportAppInteraction = jest.fn();
+jest.mock('../../lib/analytics', () => ({
+  ...jest.requireActual('../../lib/analytics'),
+  reportAppInteraction: (...args: unknown[]) => reportAppInteraction(...args),
+}));
+
+function markCompleteEvents(): unknown[][] {
+  return reportAppInteraction.mock.calls.filter(([interaction]) => interaction === UserInteraction.MarkCompleteClicked);
+}
 
 const baseUrl = 'https://grafana.com/docs/learning-paths/demo';
 const milestones = [{ number: 1, title: 'Set up', duration: '', url: `${baseUrl}/set-up/`, isActive: false }];
@@ -45,6 +56,11 @@ function makeContent(overrides: Partial<RawContent> = {}): RawContent {
   };
 }
 
+/** The shape `BlockPreview` builds: a journey with no milestone metadata. */
+function makePreview(): RawContent {
+  return makeContent({ type: 'learning-journey', url: PREVIEW_URL });
+}
+
 function makeMilestone(currentMilestone = 1): RawContent {
   return makeContent({
     type: 'learning-journey',
@@ -63,6 +79,7 @@ async function clickWhenReady(): Promise<void> {
 }
 
 beforeEach(() => {
+  jest.clearAllMocks();
   localStorage.clear();
   resetContentKeyForTests();
   delete window.__DocsPluginActiveTabUrl;
@@ -81,7 +98,7 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     ['a prose-only guide', makeContent()],
     ['a guide with interactive steps', makeContent({ content: WITH_INTERACTIVE_STEP })],
     ['a milestone', makeMilestone()],
-    ['a block-editor preview', makeContent({ url: PREVIEW_URL })],
+    ['a block-editor preview', makePreview()],
   ])('renders on %s', (_label, content) => {
     render(<ContentRenderer content={content} />);
 
@@ -132,19 +149,41 @@ describe('ContentRenderer — the universal Mark complete control', () => {
     expect(await guideCompletionMarkStorage.get(first.url)).toBeNull();
   });
 
-  it('completes the reading from a block-editor preview but persists nothing', async () => {
+  it('completes the reading from a block-editor preview but persists nothing and reports nothing', async () => {
     // A docs panel holding a real guide can be open alongside the editor, and
     // its active tab URL is the ambient content key.
     const openGuideUrl = `${baseUrl}/set-up/`;
     window.__DocsPluginActiveTabUrl = openGuideUrl;
     const onGuideComplete = jest.fn();
-    render(<ContentRenderer content={makeContent({ url: PREVIEW_URL })} onGuideComplete={onGuideComplete} />);
+    render(<ContentRenderer content={makePreview()} onGuideComplete={onGuideComplete} />);
 
     await clickWhenReady();
 
     expect(onGuideComplete).toHaveBeenCalledTimes(1);
+    expect(markCompleteEvents()).toEqual([]);
     expect(await guideCompletionMarkStorage.get(PREVIEW_URL)).toBeNull();
     expect(await guideCompletionMarkStorage.get(openGuideUrl)).toBeNull();
+  });
+
+  it.each([
+    ['guide', makeContent()],
+    ['milestone', makeMilestone()],
+  ])('reports one %s click with that discriminator', async (discriminator, content) => {
+    window.__DocsPluginActiveTabUrl = content.url;
+    render(<ContentRenderer content={content} onGuideComplete={jest.fn()} />);
+
+    await clickWhenReady();
+
+    expect(markCompleteEvents()).toEqual([
+      [
+        UserInteraction.MarkCompleteClicked,
+        {
+          interaction_location: 'content_footer',
+          completion_context: discriminator,
+          completion_percentage_before: 0,
+        },
+      ],
+    ]);
   });
 
   it('records one completion when the click is followed by the automatic route', async () => {
