@@ -19,7 +19,7 @@ import {
 } from './completion-store';
 import { setActiveTabUrl, resetContentKeyForTests } from './content-key';
 import { subscribeProgressEvent, type ProgressEventDetail } from './progress-events';
-import { StorageKeys, buildVersionedSectionStorageKey } from '../lib/storage-keys';
+import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../lib/storage-keys';
 
 // In-memory mocks for the persisted-storage layer so tests are hermetic
 // and synchronous-where-they-can-be. Records are addressed by a NUL-joined
@@ -300,7 +300,7 @@ describe('completion-store', () => {
 
     it('stays at 100% after an all-passive ack recomputes the percentage', () => {
       mockRegisteredSectionCount = 3;
-      storedAcks.set(`${CONTENT_KEY}-section-1`, true);
+      storedAcks.set(pairKey(CONTENT_KEY, 'section-1'), true);
       storedMarks.add(CONTENT_KEY);
 
       act(() => {
@@ -339,7 +339,7 @@ describe('completion-store', () => {
 
     it('drops back to the derived percentage once the mark is cleared', () => {
       mockTotalDocumentSteps = 4;
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1']));
       storedMarks.add(CONTENT_KEY);
       expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
 
@@ -736,6 +736,78 @@ describe('completion-store', () => {
       const shortAgain = render(<StepProbe stepId="step-1" sectionId="section-x" />);
       expect(shortAgain.getByTestId('completed').textContent).toBe('true');
       shortAgain.unmount();
+    });
+
+    // A1 — the mark namespace became authoritative for the guide percentage,
+    // so a mark another tab writes has to reach this tab's subscribers.
+    it('notifies subscribers when another tab writes a completion mark', () => {
+      const listener = jest.fn();
+      subscribeProgress(CONTENT_KEY, listener);
+
+      storedMarks.add(CONTENT_KEY);
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, CONTENT_KEY),
+            newValue: 'true',
+            oldValue: null,
+          })
+        );
+      });
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+    });
+
+    it('spares a sibling guide whose key merely starts with the written one', () => {
+      const listener = jest.fn();
+      subscribeProgress(CONTENT_KEY, listener);
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, `${CONTENT_KEY}-extended`),
+            newValue: 'true',
+            oldValue: null,
+          })
+        );
+      });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('ignores a mark left in the superseded shape, which #1864 discarded', () => {
+      const listener = jest.fn();
+      subscribeProgress(CONTENT_KEY, listener);
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: `${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${CONTENT_KEY}`,
+            newValue: 'true',
+            oldValue: null,
+          })
+        );
+      });
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('ignores the timestamp sibling the hybrid storage writes beside each mark', () => {
+      const listener = jest.fn();
+      subscribeProgress(CONTENT_KEY, listener);
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: `${buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, CONTENT_KEY)}__timestamp`,
+            newValue: '1757000000000',
+            oldValue: null,
+          })
+        );
+      });
+
+      expect(listener).not.toHaveBeenCalled();
     });
 
     it('drops stale in-flight hydration when a cross-tab storage event triggers re-hydration', async () => {

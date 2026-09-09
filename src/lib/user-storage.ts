@@ -46,8 +46,15 @@ import { StorageEvents } from './event-names';
 import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
+import { collectKeysByPrefix } from './storage/key-utils';
 import { listProgressEntries, progressSectionKey, sweepDiscardedProgressRecords } from './storage/progress-keys';
-import { HYBRID_TIMESTAMP_SUFFIX, PROGRESS_SECTION_PREFIXES, StorageKeys } from './storage-keys';
+import {
+  HYBRID_TIMESTAMP_SUFFIX,
+  PROGRESS_SECTION_PREFIXES,
+  StorageKeys,
+  buildVersionedContentStorageKey,
+  parseVersionedStorageKey,
+} from './storage-keys';
 
 // ============================================================================
 // LEARNING PROGRESS SCHEMA (for defense-in-depth validation)
@@ -1347,12 +1354,16 @@ export const sectionDoneStorage = {
  * namespace is: reset paths call `.clear()` rather than writing a `false`
  * sentinel, so absence is the only "not marked" representation.
  */
+function guideCompletionMarkKey(contentKey: string): string {
+  return buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, contentKey);
+}
+
 export const guideCompletionMarkStorage = {
   /** `true` when the guide carries the mark; otherwise `null`. */
   async get(contentKey: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
-      const marked = await storage.getItem<boolean>(`${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKey}`);
+      const marked = await storage.getItem<boolean>(guideCompletionMarkKey(contentKey));
       return marked === true ? true : null;
     } catch {
       return null;
@@ -1368,7 +1379,7 @@ export const guideCompletionMarkStorage = {
    */
   isMarked(contentKey: string): boolean {
     try {
-      return localStorage.getItem(`${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKey}`) === 'true';
+      return localStorage.getItem(guideCompletionMarkKey(contentKey)) === 'true';
     } catch {
       return false;
     }
@@ -1378,7 +1389,7 @@ export const guideCompletionMarkStorage = {
   async set(contentKey: string, isMarked: true): Promise<void> {
     try {
       const storage = createUserStorage();
-      await storage.setItem(`${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKey}`, isMarked);
+      await storage.setItem(guideCompletionMarkKey(contentKey), isMarked);
     } catch (error) {
       logger.warn('Failed to save guide completion mark', { error });
     }
@@ -1387,7 +1398,7 @@ export const guideCompletionMarkStorage = {
   async clear(contentKey: string): Promise<void> {
     try {
       const storage = createUserStorage();
-      await storage.removeItem(`${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKey}`);
+      await storage.removeItem(guideCompletionMarkKey(contentKey));
     } catch (error) {
       logger.warn('Failed to clear guide completion mark', { error });
     }
@@ -1405,12 +1416,11 @@ export const guideCompletionMarkStorage = {
    */
   async clearAllWithPrefix(contentKeyPrefix = ''): Promise<void> {
     try {
-      const prefix = `${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKeyPrefix}`;
       const contentKeys: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(prefix) && !key.endsWith(TIMESTAMP_SUFFIX)) {
-          contentKeys.push(key.slice(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX.length));
+      for (const key of collectKeysByPrefix(localStorage, StorageKeys.GUIDE_COMPLETION_MARK_PREFIX)) {
+        const parsed = parseVersionedStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, key);
+        if (parsed && parsed.sectionId === '' && parsed.contentKey.startsWith(contentKeyPrefix)) {
+          contentKeys.push(parsed.contentKey);
         }
       }
       await guideCompletionMarkStorage.clearMany(contentKeys);

@@ -271,6 +271,23 @@ describe('MarkCompleteFooter', () => {
     expect(progressKeys).toContain('milestone-2');
   });
 
+  it('stops offering the button when another tab marks the same guide', async () => {
+    render(<MarkCompleteFooter context="guide" onMarkComplete={jest.fn()} />);
+    await waitFor(() => expect(screen.getByTestId(testIds.markComplete.button)).toBeEnabled());
+
+    // The cross-tab storage listener notifies this key; a marked guide must
+    // never present a clickable button, because the click mints a second
+    // durable completion record.
+    markStorage.get.mockResolvedValue(true);
+    percentage = 100;
+    await act(async () => {
+      notifyProgress?.();
+    });
+
+    expect(screen.queryByTestId(testIds.markComplete.button)).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.markComplete.completed)).toBeInTheDocument();
+  });
+
   it('completes and continues on a milestone', async () => {
     jest.useFakeTimers();
     const onContinue = jest.fn();

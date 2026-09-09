@@ -36,7 +36,7 @@ import {
   sectionAcknowledgementStorage,
 } from '../lib/user-storage';
 import { StorageEvents } from '../lib/event-names';
-import { StorageKeys, buildVersionedSectionStorageKey } from '../lib/storage-keys';
+import { StorageKeys, buildVersionedSectionStorageKey, parseVersionedStorageKey } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
 
 import { getContentKey } from './content-key';
@@ -883,6 +883,20 @@ function handleStorageEvent(event: StorageEvent): void {
   // a full storage wipe, so drop every in-memory cache.
   if (event.key === null) {
     evictAllContentCaches();
+    return;
+  }
+
+  // The mark is authoritative for the guide percentage, so a mark another tab
+  // writes has to reach this tab's subscribers — otherwise the footer shows
+  // 100% beside a still-clickable button, and the click mints a second durable
+  // record. The mark is keyed by content key alone, so a well-formed key parses
+  // with an empty section id; the parser rejects the hybrid backend's timestamp
+  // companion and the superseded shape on its own.
+  if (event.key.startsWith(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX)) {
+    const parsed = parseVersionedStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, event.key);
+    if (parsed && parsed.sectionId === '') {
+      notify(parsed.contentKey);
+    }
     return;
   }
 

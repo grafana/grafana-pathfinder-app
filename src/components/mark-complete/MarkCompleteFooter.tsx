@@ -77,7 +77,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
   // both were read for, so a guide change re-arms the control by derivation
   // rather than by resetting state in an effect.
   const [mark, setMark] = useState<{ readFor: string | undefined; key: string; marked: boolean } | null>(null);
-  const [clearedCount, setClearedCount] = useState(0);
+  const [markRevision, setMarkRevision] = useState(0);
   const [celebrating, setCelebrating] = useState(false);
   const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completedRef = useRef<HTMLDivElement>(null);
@@ -106,9 +106,14 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     let cancelled = false;
     const key = resolveGuideContentKey(contentUrl);
     const settle = (isMarked: boolean) => {
-      if (!cancelled) {
-        setMark({ readFor: contentUrl, key, marked: isMarked });
+      if (cancelled) {
+        return;
       }
+      setMark((previous) =>
+        previous !== null && previous.readFor === contentUrl && previous.key === key && previous.marked === isMarked
+          ? previous
+          : { readFor: contentUrl, key, marked: isMarked }
+      );
     };
     guideCompletionMarkStorage
       .get(key)
@@ -120,7 +125,17 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     return () => {
       cancelled = true;
     };
-  }, [contentUrl, clearedCount]);
+  }, [contentUrl, markRevision]);
+
+  // The store notifies this key when another tab writes the mark. Re-reading it
+  // is what keeps a marked guide from presenting a clickable button, whose
+  // click would mint a second durable completion record.
+  useEffect(() => {
+    if (contentKey === undefined) {
+      return;
+    }
+    return subscribeProgress(contentKey, () => setMarkRevision((revision) => revision + 1));
+  }, [contentKey]);
 
   // A bulk reset clears the mark without remounting this footer, so the read
   // has to re-run on the signal every reset path already emits — otherwise the
@@ -129,7 +144,7 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
     const handleCleared = (event: Event) => {
       const clearedKey = (event as CustomEvent).detail?.contentKey;
       if (clearedKey === '*' || clearedKey === resolveGuideContentKey(contentUrl)) {
-        setClearedCount((count) => count + 1);
+        setMarkRevision((revision) => revision + 1);
       }
     };
     window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
