@@ -93,6 +93,12 @@
     "body": "",
     "title": ""
   },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "Tous les parcours terminés !",
     "allCompleteTooltip": "Vous avez terminé tous les parcours d'apprentissage — bravo !",

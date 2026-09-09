@@ -175,13 +175,20 @@ there is not one substantive tail in the library; below 0.50, 35 of 43 are
 substantive). Do not re-derive a rendering predicate from it without re-opening
 this decision.
 
-**Where the code stands.** `progress.ts` already models the evidence kind this
-button produces — `mark-guide-complete`, which evidences the whole guide
-regardless of `blockId` — but there is **no producer for it anywhere in the
-repo**. Only the per-section `#842` acknowledgement exists. Until the button
-ships, no guide in the library can reach 100% under this model, and 100% is what
-triggers badge awards, durable completion records, path progress and the
-"continue learning" CTA.
+**Where the code stands.** `progress.ts` models the evidence kind this button
+produces — `mark-guide-complete`, which evidences the whole guide regardless of
+`blockId` — and `components/mark-complete/` is its producer, rendered for every
+guide and every milestone from inside `ContentRenderer` so all four reading
+surfaces and the block-editor preview carry it from one site. The mark persists
+per content key in `guideCompletionMarkStorage`, beside the per-section `#842`
+acknowledgement rather than in place of it. Reaching 100% is what triggers badge
+awards, durable completion records, path progress and the "continue learning"
+CTA, so before this producer existed no guide in the library could trigger any
+of them under this model.
+
+A path's cover page is the one place the control is absent, and that is not the
+predicate this decision deleted: a table of contents is neither a guide nor a
+milestone, and marking one complete would record a guide nobody read.
 
 **Evidence.** A narrow predicate was measured against the library and fires for
 the wrong population: an earlier candidate — "prose-only, or no sections" — fires

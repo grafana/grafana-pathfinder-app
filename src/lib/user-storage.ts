@@ -1336,6 +1336,50 @@ export const sectionDoneStorage = {
 };
 
 /**
+ * Guide-level completion mark storage.
+ *
+ * Persists the `mark-guide-complete` evidence produced by the "Mark
+ * complete" control at the foot of every guide and milestone. Keyed by
+ * content key alone: the mark evidences the whole guide, so unlike
+ * `sectionAcknowledgementStorage` there is no section to qualify it with.
+ *
+ * Two-state — `true` or absent (`null`) — for the same reason that
+ * namespace is: reset paths call `.clear()` rather than writing a `false`
+ * sentinel, so absence is the only "not marked" representation.
+ */
+export const guideCompletionMarkStorage = {
+  /** `true` when the guide carries the mark; otherwise `null`. */
+  async get(contentKey: string): Promise<true | null> {
+    try {
+      const storage = createUserStorage();
+      const marked = await storage.getItem<boolean>(`${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKey}`);
+      return marked === true ? true : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Only `true` is accepted; use `.clear()` to remove an entry. */
+  async set(contentKey: string, isMarked: true): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.setItem(`${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKey}`, isMarked);
+    } catch (error) {
+      logger.warn('Failed to save guide completion mark', { error });
+    }
+  },
+
+  async clear(contentKey: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(`${StorageKeys.GUIDE_COMPLETION_MARK_PREFIX}${contentKey}`);
+    } catch (error) {
+      logger.warn('Failed to clear guide completion mark', { error });
+    }
+  },
+};
+
+/**
  * Full screen mode state storage operations
  * Used to persist recording state across page refreshes
  */

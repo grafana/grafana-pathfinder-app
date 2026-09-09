@@ -235,7 +235,12 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
     });
 }
 
-function isPreviewContentKey(contentKey: string): boolean {
+/**
+ * A throwaway content key from the block-editor preview or devtools. Callers
+ * that persist guide-level state consult this so a preview never writes
+ * progress the reader would find on a real guide.
+ */
+export function isPreviewContentKey(contentKey: string): boolean {
   return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
 }
 

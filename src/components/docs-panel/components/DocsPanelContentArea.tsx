@@ -430,6 +430,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           guideTitle: activeTab?.title,
                         })
                       }
+                      onContinueToNextMilestone={
+                        model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
+                      }
                     />
                   </AlignmentPendingContext.Provider>
                 )}

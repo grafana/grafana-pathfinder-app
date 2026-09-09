@@ -62,6 +62,7 @@ import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
+import { MarkCompleteFooter } from '../mark-complete';
 import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
 
 /**
@@ -108,6 +109,13 @@ interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
   onGuideComplete?: () => void;
+  /**
+   * Advance to the next milestone, for the milestone form of the Mark complete
+   * control. Surfaces that cannot navigate — or that are on the last milestone
+   * — leave it unset, which downgrades the label to "Mark complete"; the
+   * control itself is never conditional.
+   */
+  onContinueToNextMilestone?: () => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -126,6 +134,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   content,
   onContentReady,
   onGuideComplete,
+  onContinueToNextMilestone,
   className,
   containerRef,
 }: ContentRendererProps) {
@@ -149,6 +158,18 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   useEffect(() => {
     onGuideCompleteRef.current = onGuideComplete;
   }, [onGuideComplete]);
+
+  // The one gate every completion route passes through — the automatic
+  // section/step routes below and the Mark complete control at the foot of the
+  // content alike — so a guide records exactly one completion however it was
+  // finished, and a click followed by an auto-complete does not record twice.
+  const triggerGuideComplete = useCallback(() => {
+    if (guideCompleteCalledRef.current) {
+      return;
+    }
+    guideCompleteCalledRef.current = true;
+    onGuideCompleteRef.current?.();
+  }, []);
 
   // Reset tracking state when content changes (new guide = fresh start)
   useEffect(() => {
@@ -412,8 +433,9 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   const fullScreenFallbackLocation =
     resolveFullScreenFallbackLocation(getCurrentMilestone(content)?.startingLocation) ??
     resolveFullScreenFallbackLocation(typeof courseStartingLocation === 'string' ? courseStartingLocation : undefined);
+  const isCoverPage = isJourneyCoverPage(content);
   const beforeContent =
-    isJourneyCoverPage(content) && journey && journey.milestones.length > 0 ? (
+    isCoverPage && journey && journey.milestones.length > 0 ? (
       <LearningPathTableOfContents
         milestones={journey.milestones}
         baseUrl={journey.baseUrl}
@@ -422,6 +444,18 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         description={pathDescription}
       />
     ) : null;
+
+  // Unconditional for every guide and every milestone (COMPLETION-MODEL.md,
+  // decision 2). A path's cover page is the one thing it is absent from, and
+  // that is not the deleted predicate: a table of contents is neither a guide
+  // nor a milestone, and marking it complete would record a guide nobody read.
+  const afterContent = isCoverPage ? null : (
+    <MarkCompleteFooter
+      context={content.type === 'learning-journey' ? 'milestone' : 'guide'}
+      onMarkComplete={triggerGuideComplete}
+      onContinue={onContinueToNextMilestone}
+    />
+  );
 
   return (
     <GuideResponseProvider guideId={guideId}>
@@ -438,6 +472,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
           selectionState={selectionState}
           documentContext={documentContext}
           beforeContent={beforeContent}
+          afterContent={afterContent}
           fullScreenFallbackLocation={fullScreenFallbackLocation}
         />
       </GuideRequirementsProvider>
@@ -458,6 +493,7 @@ interface ContentWithVariablesProps {
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
+  afterContent?: React.ReactNode;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
 }
@@ -474,6 +510,7 @@ function ContentWithVariables({
   selectionState,
   documentContext,
   beforeContent,
+  afterContent,
   fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
@@ -559,6 +596,7 @@ function ContentWithVariables({
         responses={responses}
         fullScreenFallbackLocation={fullScreenFallbackLocation}
       />
+      {afterContent}
       {selectionState.isValid && (
         <AssistantSelectionPopover
           selectedText={selectionState.selectedText}
