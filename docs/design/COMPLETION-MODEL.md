@@ -330,16 +330,27 @@ shape in both directions. Where the member cannot be answered for at all, it is
 `src/global-state/path-member-join.ts` owns this, and `resetPath` reads its
 scheme list rather than restating it.
 
-**The furthest record wins, not the first one found.** An earlier draft of this
-decision claimed a reader can only have progressed under one key. That is true
-across the schemes — a guide is bundled or it is App Platform, not both — but
-false within `bundled:`, because the bare and package launch shapes are
-independently reachable for the same guide and `interactiveStepStorage` keys
-step progress by content key, so each shape accrues its own. Taking the first
-key that holds anything would under-report a reader who opened the guide from
-both surfaces. The join takes the maximum finite value across the candidate
-keys, which is the honest answer to how far the reader got, and candidate order
-carries no authority.
+**The furthest record wins within a scheme; precedence decides across them.**
+An earlier draft of this decision claimed a reader can only have progressed
+under one key. That is false within `bundled:`: the bare and package launch
+shapes are independently reachable for the same guide and
+`interactiveStepStorage` keys step progress by content key, so each shape
+accrues its own, and taking the first key that holds anything would
+under-report a reader who opened the guide from both surfaces. Within a scheme
+the join therefore takes the maximum, which is the honest answer to how far
+the reader got.
+
+It is also false the other way round — an earlier draft claimed a guide is
+bundled or App Platform and not both. `createCompositeResolver` says the
+opposite: id collisions are possible, nothing enforces the `fe-`-prefix
+convention that makes them unlikely, and bundled/CDN deliberately win one so
+today's fallback behaviour is preserved
+(`src/package-engine/composite-resolver.ts`). Two schemes carrying the same id
+may therefore be two different guides, so a maximum across schemes would report
+a private guide's progress as a bundled member's. The join consults the schemes
+in the resolver's own precedence order and the first one holding a record
+answers — including when that record is unreadable, because falling through
+would substitute a different guide's number for a corrupt one.
 
 **A present but unreadable record is excluded too, not scored zero.** The
 persisted record is unchecked `JSON.parse` output, so a key may be present and

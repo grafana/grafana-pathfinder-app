@@ -15,10 +15,16 @@
  *    every one of them. `bundled:` itself has two live launch shapes: My
  *    Learning opens a bundled guide bare, while the package resolver hands the
  *    context panel `bundled:<id>/content.json`. Those two are independently
- *    reachable for the same guide and each keeps its own step progress, so a
- *    reader may hold a record under both. Every shape is read and the
- *    FURTHEST of them wins — how far the reader actually got on that guide.
- *    Candidate order carries no authority.
+ *    reachable for the SAME guide and each keeps its own step progress, so a
+ *    reader may hold a record under both, and the FURTHEST of them wins — how
+ *    far the reader actually got on that guide.
+ *
+ *    Across schemes it is the opposite: the same id under two schemes may be
+ *    two DIFFERENT guides. `createCompositeResolver` documents id collisions
+ *    as possible and settles them bundled-first, so the schemes are consulted
+ *    in that precedence and the first one holding a record answers. Taking a
+ *    maximum across schemes would report a private App Platform guide's
+ *    progress as a bundled member's.
  *  - A member the record cannot answer for is EXCLUDED from the mean rather
  *    than scored zero, and counted: either no key could be formed at all
  *    (`'unresolved'`), or a key was present but held something other than a
@@ -137,10 +143,11 @@ function dedupe(values: readonly string[]): readonly string[] {
 }
 
 /**
- * The launch URLs a bare member id may have been opened under, unsanitized.
- * `bundled:` carries both of its shapes because both may hold a record: My
- * Learning launches a bundled guide bare, the package resolver launches it as
- * `bundled:<id>/content.json`. `backend-guide:` has only the bare shape.
+ * The launch URLs a bare member id may have been opened under, unsanitized,
+ * in `createCompositeResolver` precedence order. `bundled:` carries both of
+ * its shapes because both may hold a record: My Learning launches a bundled
+ * guide bare, the package resolver launches it as `bundled:<id>/content.json`.
+ * `backend-guide:` has only the bare shape.
  *
  * The package form mirrors `BundledPackageResolver.resolve`, which builds it
  * from the repository entry's `path` — every entry's `path` is `<id>/`, and
@@ -166,17 +173,34 @@ function bundledLaunchShapes(url: string): readonly string[] {
 }
 
 /**
- * The keys a member may have persisted under, in no particular order — the
- * reader may hold a record under more than one. Empty when none can be formed.
+ * The member's candidate keys grouped by the guide they identify, schemes in
+ * `createCompositeResolver` precedence order. Keys within a group are launch
+ * shapes of one guide and rank by percentage; groups rank by precedence.
  */
-export function pathMemberContentKeys(member: PathMember, pathBaseUrl?: string): readonly string[] {
+function pathMemberContentKeyGroups(member: PathMember, pathBaseUrl?: string): ReadonlyArray<readonly string[]> {
   if (member.url) {
-    return dedupe(bundledLaunchShapes(member.url).map(sanitizeContentKey));
+    return [dedupe(bundledLaunchShapes(member.url).map(sanitizeContentKey))];
   }
   if (pathBaseUrl) {
     return [];
   }
-  return dedupe(pathMemberIdSchemeKeys(member.id).map(sanitizeContentKey));
+  return [
+    dedupe(
+      [`${BUNDLED_PREFIX}${member.id}`, `${BUNDLED_PREFIX}${member.id}${PACKAGE_CONTENT_SUFFIX}`].map(
+        sanitizeContentKey
+      )
+    ),
+    [sanitizeContentKey(`${BACKEND_GUIDE_PREFIX}${member.id}`)],
+  ];
+}
+
+/**
+ * The keys a member may have persisted under, flattened. Order is the scheme
+ * precedence the join reads them in, but a caller clearing keys should treat
+ * the list as a set. Empty when none can be formed.
+ */
+export function pathMemberContentKeys(member: PathMember, pathBaseUrl?: string): readonly string[] {
+  return dedupe(pathMemberContentKeyGroups(member, pathBaseUrl).flat());
 }
 
 export function resolvePathMemberPercentage(member: PathMember, context: PathMemberJoinContext): PathMemberPercentage {
@@ -184,34 +208,37 @@ export function resolvePathMemberPercentage(member: PathMember, context: PathMem
     return { memberId: member.id, percent: 100, source: 'completed' };
   }
 
-  const candidates = pathMemberContentKeys(member, context.pathBaseUrl);
-  if (candidates.length === 0) {
+  const groups = pathMemberContentKeyGroups(member, context.pathBaseUrl);
+  if (groups.length === 0) {
     return { memberId: member.id, percent: undefined, source: 'unresolved' };
   }
 
-  let furthest: { percent: number; contentKey: string } | undefined;
-  let unreadable = false;
+  for (const group of groups) {
+    let furthest: { percent: number; contentKey: string } | undefined;
+    let unreadable = false;
 
-  for (const contentKey of candidates) {
-    if (!Object.hasOwn(context.persistedPercentages, contentKey)) {
-      continue;
+    for (const contentKey of group) {
+      if (!Object.hasOwn(context.persistedPercentages, contentKey)) {
+        continue;
+      }
+      const persisted = readablePercentage(context.persistedPercentages[contentKey]);
+      if (persisted === undefined) {
+        unreadable = true;
+        continue;
+      }
+      if (!furthest || persisted > furthest.percent) {
+        furthest = { percent: persisted, contentKey };
+      }
     }
-    const persisted = readablePercentage(context.persistedPercentages[contentKey]);
-    if (persisted === undefined) {
-      unreadable = true;
-      continue;
+
+    if (furthest) {
+      return { memberId: member.id, percent: furthest.percent, source: 'persisted', contentKey: furthest.contentKey };
     }
-    if (!furthest || persisted > furthest.percent) {
-      furthest = { percent: persisted, contentKey };
+    if (unreadable) {
+      return { memberId: member.id, percent: undefined, source: 'unreadable' };
     }
   }
 
-  if (furthest) {
-    return { memberId: member.id, percent: furthest.percent, source: 'persisted', contentKey: furthest.contentKey };
-  }
-  if (unreadable) {
-    return { memberId: member.id, percent: undefined, source: 'unreadable' };
-  }
   return { memberId: member.id, percent: 0, source: 'unopened' };
 }
 

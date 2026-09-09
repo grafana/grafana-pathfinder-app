@@ -5,6 +5,8 @@
  * change to either sanitizer or scheme fails here rather than silently
  * reporting a member at 0%.
  */
+import ossPathsData from '../learning-paths/paths.json';
+import cloudPathsData from '../learning-paths/paths-cloud.json';
 import { createBundledResolver } from '../package-engine/resolver';
 
 import { getContentKey, resetContentKeyForTests, setActiveTabUrl } from './content-key';
@@ -138,6 +140,24 @@ describe('pathMemberContentKeys', () => {
   });
 });
 
+describe('static path catalogues', () => {
+  // The id-scheme candidates cover the bundled and App Platform launch shapes
+  // only. A static path member resolved through the CDN or recommender tier
+  // would persist under an https key the join never forms, so every member of
+  // a path with no base URL has to be a bundled repository id.
+  const idSchemeKeyedMembers = [ossPathsData, cloudPathsData].flatMap((data) =>
+    data.paths.filter((path) => !('url' in path) || !path.url).flatMap((path) => path.guides)
+  );
+
+  it('has at least one id-scheme-keyed member to check', () => {
+    expect(idSchemeKeyedMembers.length).toBeGreaterThan(0);
+  });
+
+  it.each([...new Set(idSchemeKeyedMembers)])('resolves %s from the bundled repository', (memberId) => {
+    expect(createBundledResolver().has(memberId)).toBe(true);
+  });
+});
+
 describe('pathMemberIdSchemeKeys', () => {
   it('carries both bundled launch shapes and the backend-guide shape, unsanitized', () => {
     expect(pathMemberIdSchemeKeys('guide-a')).toEqual([
@@ -222,6 +242,47 @@ describe('resolvePathMemberPercentage', () => {
     });
   });
 
+  it('answers from the bundled scheme even when backend-guide holds more', () => {
+    // The composite resolver settles an id collision bundled-first, so the two
+    // schemes may be different guides and the higher percentage is not this
+    // member's. See createCompositeResolver.
+    const resolution = resolvePathMemberPercentage(
+      { id: 'first-dashboard' },
+      contextWith({
+        persistedPercentages: { 'bundled:first-dashboard': 30, 'backend-guide:first-dashboard': 90 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'first-dashboard',
+      percent: 30,
+      source: 'persisted',
+      contentKey: 'bundled:first-dashboard',
+    });
+  });
+
+  it('answers from the backend-guide scheme when no bundled shape holds a record', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'fe-alerting-01' },
+      contextWith({ persistedPercentages: { 'backend-guide:fe-alerting-01': 45 } })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'fe-alerting-01',
+      percent: 45,
+      source: 'persisted',
+      contentKey: 'backend-guide:fe-alerting-01',
+    });
+  });
+
+  it('does not fall through to a lower-precedence scheme when the winning record is unreadable', () => {
+    const persisted = { 'bundled:guide-a': '40', 'backend-guide:guide-a': 70 } as unknown as Record<string, number>;
+
+    const resolution = resolvePathMemberPercentage({ id: 'guide-a' }, contextWith({ persistedPercentages: persisted }));
+
+    expect(resolution).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
+  });
+
   it('takes the furthest record across both sibling shapes of a resolved URL', () => {
     const resolution = resolvePathMemberPercentage(
       { id: 'guide-a', url: 'bundled:guide-a/content.json' },
@@ -238,8 +299,11 @@ describe('resolvePathMemberPercentage', () => {
     });
   });
 
-  it('prefers a readable record over an unreadable sibling', () => {
-    const persisted = { 'bundled:guide-a': '40', 'backend-guide:guide-a': 70 } as unknown as Record<string, number>;
+  it('prefers a readable record over an unreadable launch shape of the same guide', () => {
+    const persisted = { 'bundled:guide-a': '40', 'bundled:guide-a/content.json': 70 } as unknown as Record<
+      string,
+      number
+    >;
 
     const resolution = resolvePathMemberPercentage({ id: 'guide-a' }, contextWith({ persistedPercentages: persisted }));
 
@@ -247,7 +311,7 @@ describe('resolvePathMemberPercentage', () => {
       memberId: 'guide-a',
       percent: 70,
       source: 'persisted',
-      contentKey: 'backend-guide:guide-a',
+      contentKey: 'bundled:guide-a/content.json',
     });
   });
 
