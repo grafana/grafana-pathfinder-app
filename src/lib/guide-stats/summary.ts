@@ -35,8 +35,8 @@ export const GUIDE_STATS_VERSION = 1;
  * - `completableBlockCount` — counted blocks carrying a completion affordance.
  * - `finalCompletablePosition` — position of the last completable block, 0 when
  *   there is none. Equal to `blockCount` when the final counted block is
- *   completable, which is the signal that the guide needs no "Mark as complete"
- *   button at its foot.
+ *   completable. An authoring signal only; the foot-of-guide "Mark as complete"
+ *   button is unconditional, so this is not a rendering predicate.
  */
 export type { GuideStatsSummary };
 

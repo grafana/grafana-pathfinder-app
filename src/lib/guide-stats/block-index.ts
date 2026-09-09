@@ -125,9 +125,9 @@ export interface GuideBlockIndex {
   completableBlockCount: number;
   /**
    * Position of the last completable counted block, or 0 when the guide has
-   * none. `finalCompletablePosition === totalBlockCount` means the final
-   * counted block is completable, so the guide needs no "Mark as complete"
-   * button at its foot; anything less means one is mandatory.
+   * none. An authoring signal, not a rendering predicate: the foot-of-guide
+   * "Mark as complete" button is unconditional, so do not re-derive one from
+   * this field without re-opening `docs/design/COMPLETION-MODEL.md`.
    */
   finalCompletablePosition: number;
 }

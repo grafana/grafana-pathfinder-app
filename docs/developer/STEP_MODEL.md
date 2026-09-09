@@ -113,7 +113,7 @@ Listeners use `subscribeProgressEvent(detail => ...)`. The store fires `kind: 's
 
 The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was removed in C3 — there were no dispatchers anywhere in the repo.
 
-`interactive-progress-cleared` (dispatched by `handleResetSection` and `useContentReset`) is the one remaining legacy event — it still drives ephemeral preview / alignment UI and will fold into `kind: 'guide'` with `hasProgress: false` once those listeners migrate.
+`interactive-progress-cleared` is a first-class event in its own right, not a leftover: its name is owned by `StorageEvents` in `src/lib/event-names.ts`, it is dispatched by the reset paths (`handleResetSection`, `useContentReset`, and the block-editor preview reset), and it is what drives the ephemeral preview and alignment UI. Treat it as part of the contract alongside `PROGRESS_EVENT`, and dispatch it through the name constant rather than a literal.
 
 ## Tab loader
 
