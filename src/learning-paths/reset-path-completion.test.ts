@@ -45,6 +45,7 @@ import {
   journeyCompletionStorage,
   milestoneCompletionStorage,
 } from '../lib/user-storage';
+import { pathMemberContentKeys } from '../global-state/path-member-join';
 import { useLearningPaths } from './learning-paths.hook';
 
 const PATH_ID = 'fe-alerting-path';
@@ -154,6 +155,72 @@ describe('resetPath — App Platform path (no url)', () => {
     expect(MEMBER_KEYS.filter((key) => key in interactives)).toEqual([]);
     expect(journeys[SENTINEL_KEY]).toBe(100);
     expect(interactives[SENTINEL_KEY]).toBe(100);
+  });
+
+  it('clears the package-launch shape of a member, which the join also reads', async () => {
+    // A bundled member opened from the context panel persists under
+    // `bundled:<id>/content.json`. Sparing it would leave the member reading
+    // its pre-reset percentage back through `pathMemberContentKeys`.
+    const packageKeys = GUIDES.map((id) => `bundled:${id}/content.json`);
+    for (const key of packageKeys) {
+      await interactiveCompletionStorage.set(key, 100);
+      await interactiveStepStorage.setCompleted(key, 'section-one', new Set(['step-1']));
+    }
+
+    await renderAndResetPath();
+
+    const interactives = await interactiveCompletionStorage.getAll();
+    expect(packageKeys.filter((key) => key in interactives)).toEqual([]);
+    for (const key of packageKeys) {
+      await expect(interactiveStepStorage.getCompleted(key, 'section-one')).resolves.toEqual(new Set());
+    }
+  });
+
+  it('clears the raw key space and spares the unsafe sanitized one when they differ', async () => {
+    // `journeyCompletionStorage` and `milestoneCompletionStorage` are keyed by
+    // the raw launch URL; the interactive namespaces by its sanitized content
+    // key. A CR-authored member id long enough to cross MAX_KEY_LENGTH (200)
+    // makes the two lists diverge, which every other id here does not.
+    const longId = `fe-${'x'.repeat(230)}`;
+    const rawKey = `bundled:${longId}`;
+    const truncatedKey = rawKey.slice(0, 200);
+    expect(truncatedKey).not.toBe(rawKey);
+
+    mockFetchAppPlatformLearningPaths.mockResolvedValue({
+      paths: [
+        {
+          id: PATH_ID,
+          title: 'Alerting enablement',
+          description: '',
+          guides: [longId],
+          badgeId: '',
+          manifest: { id: PATH_ID, type: 'path', repository: 'app-platform', milestones: [longId] },
+        },
+      ],
+      guideMetadata: { [longId]: { title: longId, estimatedMinutes: 5 } },
+    });
+
+    await journeyCompletionStorage.set(rawKey, 100);
+    await interactiveCompletionStorage.set(truncatedKey, 100);
+
+    await renderAndResetPath();
+
+    const [journeys, interactives] = await Promise.all([
+      journeyCompletionStorage.getAll(),
+      interactiveCompletionStorage.getAll(),
+    ]);
+
+    // Raw-keyed namespace: cleared, because the raw key names only this
+    // member. Feeding it sanitized keys instead would spare this record.
+    expect(rawKey in journeys).toBe(false);
+
+    // Sanitized namespace: deliberately SPARED. The truncated key is not
+    // uniquely this member's — another id agreeing on its first 192 characters
+    // sanitizes to the same string — so the join refuses to form it and the
+    // reset must not delete it. The containment invariant still holds because
+    // the join refuses the same key, so nothing stale is readable back.
+    expect(truncatedKey in interactives).toBe(true);
+    expect(pathMemberContentKeys({ id: longId })).toEqual([]);
   });
 
   it('clears interactive progress recorded against the path cover itself', async () => {

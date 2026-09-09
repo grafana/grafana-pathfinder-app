@@ -1,0 +1,562 @@
+/**
+ * The join's contract: for every surface a path member can be launched from,
+ * the key the member persists under must be one of the keys the join looks it
+ * up by. The launch side is exercised through the real `getContentKey`, so a
+ * change to either sanitizer or scheme fails here rather than silently
+ * reporting a member at 0%.
+ */
+import ossPathsData from '../learning-paths/paths.json';
+import cloudPathsData from '../learning-paths/paths-cloud.json';
+import { createBundledResolver } from '../package-engine/resolver';
+import { createCompositeResolver } from '../package-engine/composite-resolver';
+
+import { getContentKey, resetContentKeyForTests, setActiveTabUrl } from './content-key';
+import {
+  pathMemberContentKeys,
+  pathMemberIdSchemeKeys,
+  resolvePathMemberPercentage,
+  resolvePathMemberPercentages,
+  type PathMember,
+  type PathMemberJoinContext,
+} from './path-member-join';
+
+const EMPTY_CONTEXT: PathMemberJoinContext = {
+  completedMemberIds: [],
+  persistedPercentages: {},
+};
+
+function contextWith(overrides: Partial<PathMemberJoinContext>): PathMemberJoinContext {
+  return { ...EMPTY_CONTEXT, ...overrides };
+}
+
+/** The key a launch from `launchUrl` would persist under. */
+function keyPersistedByLaunch(launchUrl: string): string {
+  setActiveTabUrl(launchUrl);
+  return getContentKey();
+}
+
+describe('path-member-join launch round-trip', () => {
+  beforeEach(() => {
+    resetContentKeyForTests();
+    delete (window as unknown as Record<string, unknown>).__DocsPluginActiveTabUrl;
+    delete (window as unknown as Record<string, unknown>).__DocsPluginContentKey;
+  });
+
+  it('looks up a URL-based path milestone under the key its launch persists', () => {
+    const url = 'https://grafana.com/docs/learning-journeys/loki/step-two/';
+    const member: PathMember = { id: 'step-two', url };
+
+    expect(pathMemberContentKeys(member, 'https://grafana.com/docs/learning-journeys/loki/')).toContain(
+      keyPersistedByLaunch(url)
+    );
+  });
+
+  it('looks up an App Platform member under the key its launch persists', () => {
+    const member: PathMember = { id: 'fe-alerting-01', url: 'backend-guide:fe-alerting-01' };
+
+    expect(pathMemberContentKeys(member)).toContain(keyPersistedByLaunch('backend-guide:fe-alerting-01'));
+  });
+
+  it('looks up a bundled member under the key its launch persists', () => {
+    const member: PathMember = { id: 'welcome-to-grafana' };
+
+    expect(pathMemberContentKeys(member)).toContain(keyPersistedByLaunch('bundled:welcome-to-grafana'));
+  });
+
+  it('covers every scheme for a member that arrives with no launch URL', () => {
+    // Defensive: the App Platform adapter stamps a url on every published
+    // member, so only a bundled member reaches this branch in production.
+    const member: PathMember = { id: 'fe-alerting-01' };
+
+    expect(pathMemberContentKeys(member)).toEqual([
+      keyPersistedByLaunch('bundled:fe-alerting-01'),
+      keyPersistedByLaunch('bundled:fe-alerting-01/content.json'),
+      keyPersistedByLaunch('backend-guide:fe-alerting-01'),
+    ]);
+  });
+
+  it.each(createBundledResolver().listPackageIds())(
+    'looks up %s under the key a package-resolved launch persists',
+    async (packageId) => {
+      // The context panel opens a recommended package at its resolved
+      // contentUrl, which the resolver derives from the repository entry's
+      // `path` rather than its id. Walking every entry catches a divergent one.
+      const resolution = await createBundledResolver().resolve(packageId);
+      if (!resolution.ok) {
+        throw new Error(`expected ${packageId} to resolve from the bundled repository`);
+      }
+
+      expect(pathMemberContentKeys({ id: packageId })).toContain(keyPersistedByLaunch(resolution.contentUrl));
+    }
+  );
+
+  it('scores a bundled member progressed from a package launch rather than excluding it', async () => {
+    const packageId = 'first-dashboard';
+    const resolution = await createBundledResolver().resolve(packageId);
+    if (!resolution.ok) {
+      throw new Error(`expected ${packageId} to resolve from the bundled repository`);
+    }
+    const persistedKey = keyPersistedByLaunch(resolution.contentUrl);
+
+    const result = resolvePathMemberPercentage(
+      { id: packageId },
+      contextWith({ persistedPercentages: { [persistedKey]: 50 } })
+    );
+
+    expect(result).toEqual({ memberId: packageId, percent: 50, source: 'persisted', contentKey: persistedKey });
+  });
+
+  it('pairs a resolved package-form URL with its bare sibling', () => {
+    expect(pathMemberContentKeys({ id: 'first-dashboard', url: 'bundled:first-dashboard/content.json' })).toEqual([
+      keyPersistedByLaunch('bundled:first-dashboard/content.json'),
+      keyPersistedByLaunch('bundled:first-dashboard'),
+    ]);
+  });
+
+  it('pairs a resolved bare bundled URL with its package-form sibling', () => {
+    expect(pathMemberContentKeys({ id: 'first-dashboard', url: 'bundled:first-dashboard' })).toEqual([
+      keyPersistedByLaunch('bundled:first-dashboard'),
+      keyPersistedByLaunch('bundled:first-dashboard/content.json'),
+    ]);
+  });
+
+  it('forms no key for a member URL that normalization would rewrite', () => {
+    // The sanitizer is lossy, so the rewritten value would name a different
+    // guide's key — and resetPath deletes the keys built here.
+    const url = 'https://grafana.com/docs/../learning-journeys/loki/step-two/';
+
+    expect(pathMemberContentKeys({ id: 'step-two', url }, 'https://grafana.com/docs/')).toEqual([]);
+  });
+});
+
+describe('pathMemberContentKeys', () => {
+  it('forms no key for a URL-based path member whose URL did not resolve', () => {
+    expect(pathMemberContentKeys({ id: 'step-two' }, 'https://grafana.com/docs/learning-journeys/loki/')).toEqual([]);
+  });
+
+  it('prefers the resolved URL over the id schemes', () => {
+    expect(pathMemberContentKeys({ id: 'fe-alerting-01', url: 'backend-guide:fe-alerting-01' })).toEqual([
+      'backend-guide:fe-alerting-01',
+    ]);
+  });
+});
+
+describe('static path catalogues', () => {
+  // The id-scheme candidates cover the bundled and App Platform launch shapes
+  // only. A static path member resolved through the CDN or recommender tier
+  // would persist under an https key the join never forms, so every member of
+  // a path with no base URL has to be a bundled repository id.
+  const idSchemeKeyedMembers = [ossPathsData, cloudPathsData].flatMap((data) =>
+    data.paths.filter((path) => !('url' in path) || !path.url).flatMap((path) => path.guides)
+  );
+
+  it('has at least one id-scheme-keyed member to check', () => {
+    expect(idSchemeKeyedMembers.length).toBeGreaterThan(0);
+  });
+
+  it.each([...new Set(idSchemeKeyedMembers)])('resolves %s from the bundled repository', (memberId) => {
+    expect(createBundledResolver().has(memberId)).toBe(true);
+  });
+
+  // resetPath's no-url branch forms only the id-scheme keys, while the join
+  // given a `url` short-circuits to that url alone. If a member of a url-less
+  // path carried an http(s) metadata url, the two key sets would be disjoint
+  // and a reset would spare a key the join reads a stale percentage back from
+  // — which is exactly what the README and decision 9 promise cannot happen.
+  // Nothing else enforces it: no schema or validator for paths.json exists.
+  it.each([...new Set(idSchemeKeyedMembers)])(
+    'resolves %s to metadata carrying no url, or only a scheme url',
+    (memberId) => {
+      const metadata = [ossPathsData, cloudPathsData]
+        .map((data) => (data.guideMetadata as Record<string, { url?: string }>)[memberId])
+        .find((entry) => entry !== undefined);
+
+      const url = metadata?.url;
+      if (url !== undefined) {
+        expect(url.startsWith('bundled:') || url.startsWith('backend-guide:')).toBe(true);
+      }
+    }
+  );
+});
+
+describe('scheme precedence', () => {
+  // The join is tier 1 and cannot import package-engine at runtime, so its
+  // bundled-before-backend-guide group order is a mirror. Cross-check it
+  // against what the composite resolver actually answers for a bundled id: an
+  // App Platform tier moved ahead of bundled would answer a colliding id under
+  // `backend-guide:`, and this reddens instead of surfacing as a wrong member
+  // percentage. The composite's own collision rule is pinned in
+  // composite-resolver.test.ts.
+  it('consults the scheme createCompositeResolver resolves a bundled id to, first', async () => {
+    const packageId = 'first-dashboard';
+    const resolution = await createCompositeResolver({ acceptedTermsAndConditions: true }).resolve(packageId);
+    if (!resolution.ok) {
+      throw new Error(`expected ${packageId} to resolve through the composite resolver`);
+    }
+
+    const firstGroupKey = pathMemberIdSchemeKeys(packageId)[0];
+    const resolvedScheme = resolution.contentUrl.slice(0, resolution.contentUrl.indexOf(':') + 1);
+
+    expect(resolvedScheme).not.toBe(':');
+    expect(firstGroupKey).toBeDefined();
+    expect(firstGroupKey?.startsWith(resolvedScheme)).toBe(true);
+  });
+});
+
+describe('pathMemberIdSchemeKeys', () => {
+  it('carries both bundled launch shapes and the backend-guide shape, unsanitized', () => {
+    expect(pathMemberIdSchemeKeys('guide-a')).toEqual([
+      'bundled:guide-a',
+      'bundled:guide-a/content.json',
+      'backend-guide:guide-a',
+    ]);
+  });
+
+  it('leaves a traversal sequence intact for the raw-keyed namespaces', () => {
+    expect(pathMemberIdSchemeKeys('a..b')).toContain('bundled:a..b');
+  });
+});
+
+describe('normalization refusal (B1)', () => {
+  it('forms no key for an id whose traversal sequence the sanitizer would strip', () => {
+    // `welcome..-to-grafana` sanitizes to `welcome-to-grafana`, a real shipped
+    // guide. resetPath clears these keys, so forming them would delete that
+    // guide's progress.
+    expect(pathMemberContentKeys({ id: 'welcome..-to-grafana' })).toEqual([]);
+  });
+
+  it("resolves such a member as unresolved rather than reading another guide's record", () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'welcome..-to-grafana' },
+      contextWith({ persistedPercentages: { 'bundled:welcome-to-grafana': 80 } })
+    );
+
+    expect(resolution).toEqual({ memberId: 'welcome..-to-grafana', percent: undefined, source: 'unresolved' });
+  });
+
+  it('forms no key for an id long enough to be truncated into a collision', () => {
+    // MAX_KEY_LENGTH is 200 and PACKAGE_ID_MAX_LENGTH is 253, so two distinct
+    // kebab-legal ids can sanitize to one key.
+    const longId = 'a'.repeat(240);
+
+    expect(pathMemberContentKeys({ id: longId })).toEqual([]);
+  });
+
+  it('keeps the bare shape when only the package shape overruns the key length', () => {
+    // 195 chars: `bundled:<id>` fits in 200, `bundled:<id>/content.json` does not.
+    const id = 'b'.repeat(185);
+
+    expect(pathMemberContentKeys({ id })).toEqual(['bundled:' + id, 'backend-guide:' + id]);
+  });
+
+  it('still hands resetPath the raw keys for the namespaces keyed by launch URL', () => {
+    // pathMemberIdSchemeKeys is unsanitized, so a malformed id names only its
+    // own key in milestoneCompletionStorage and journeyCompletionStorage.
+    expect(pathMemberIdSchemeKeys('welcome..-to-grafana')).toEqual([
+      'bundled:welcome..-to-grafana',
+      'bundled:welcome..-to-grafana/content.json',
+      'backend-guide:welcome..-to-grafana',
+    ]);
+  });
+});
+
+describe('resolvePathMemberPercentage', () => {
+  it('reports a completed member as 100 without consulting the record', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ completedMemberIds: ['guide-a'], persistedPercentages: { 'bundled:guide-a': 25 } })
+    );
+
+    expect(resolution).toEqual({ memberId: 'guide-a', percent: 100, source: 'completed' });
+  });
+
+  it('reads the persisted percentage under the bundled scheme', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ persistedPercentages: { 'bundled:guide-a': 40 } })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 40,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a',
+    });
+  });
+
+  it('falls through to the backend-guide scheme when the bundled key holds nothing', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ persistedPercentages: { 'backend-guide:guide-a': 60 } })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 60,
+      source: 'persisted',
+      contentKey: 'backend-guide:guide-a',
+    });
+  });
+
+  it('takes the furthest record when both bundled launch shapes hold one', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({
+        persistedPercentages: { 'bundled:guide-a': 30, 'bundled:guide-a/content.json': 90 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 90,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a/content.json',
+    });
+  });
+
+  it('takes the furthest record regardless of candidate order', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({
+        persistedPercentages: { 'bundled:guide-a': 90, 'bundled:guide-a/content.json': 30 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 90,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a',
+    });
+  });
+
+  it('answers from the bundled scheme even when backend-guide holds more', () => {
+    // The composite resolver settles an id collision bundled-first, so the two
+    // schemes may be different guides and the higher percentage is not this
+    // member's. See createCompositeResolver.
+    const resolution = resolvePathMemberPercentage(
+      { id: 'first-dashboard' },
+      contextWith({
+        persistedPercentages: { 'bundled:first-dashboard': 30, 'backend-guide:first-dashboard': 90 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'first-dashboard',
+      percent: 30,
+      source: 'persisted',
+      contentKey: 'bundled:first-dashboard',
+    });
+  });
+
+  it('trusts a supplied backend-guide URL over a bundled record for the same id', () => {
+    // The join is pure and cannot tell which guide the caller resolved, so a
+    // supplied url is read verbatim — the scheme precedence covers the
+    // id-scheme branch only. See decision 9.
+    const resolution = resolvePathMemberPercentage(
+      { id: 'first-dashboard', url: 'backend-guide:first-dashboard' },
+      contextWith({
+        persistedPercentages: { 'bundled:first-dashboard': 30, 'backend-guide:first-dashboard': 90 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'first-dashboard',
+      percent: 90,
+      source: 'persisted',
+      contentKey: 'backend-guide:first-dashboard',
+    });
+  });
+
+  it('answers from the backend-guide scheme when no bundled shape holds a record', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'fe-alerting-01' },
+      contextWith({ persistedPercentages: { 'backend-guide:fe-alerting-01': 45 } })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'fe-alerting-01',
+      percent: 45,
+      source: 'persisted',
+      contentKey: 'backend-guide:fe-alerting-01',
+    });
+  });
+
+  it('does not fall through to a lower-precedence scheme when the winning record is unreadable', () => {
+    const persisted = { 'bundled:guide-a': '40', 'backend-guide:guide-a': 70 } as unknown as Record<string, number>;
+
+    const resolution = resolvePathMemberPercentage({ id: 'guide-a' }, contextWith({ persistedPercentages: persisted }));
+
+    expect(resolution).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
+  });
+
+  it('takes the furthest record across both sibling shapes of a resolved URL', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a', url: 'bundled:guide-a/content.json' },
+      contextWith({
+        persistedPercentages: { 'bundled:guide-a': 75, 'bundled:guide-a/content.json': 20 },
+      })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 75,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a',
+    });
+  });
+
+  it('prefers a readable record over an unreadable launch shape of the same guide', () => {
+    const persisted = { 'bundled:guide-a': '40', 'bundled:guide-a/content.json': 70 } as unknown as Record<
+      string,
+      number
+    >;
+
+    const resolution = resolvePathMemberPercentage({ id: 'guide-a' }, contextWith({ persistedPercentages: persisted }));
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 70,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a/content.json',
+    });
+  });
+
+  it('excludes and counts a member whose only record is unreadable', () => {
+    const persisted = { 'bundled:guide-a': Number.NaN } as Record<string, number>;
+
+    const result = resolvePathMemberPercentages([{ id: 'guide-a' }], contextWith({ persistedPercentages: persisted }));
+
+    expect(result.members[0]).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
+    expect(result.resolvedPercentages).toEqual([]);
+    expect(result.excludedCount).toBe(1);
+    expect(result.excludedMemberIds).toEqual(['guide-a']);
+  });
+
+  it('excludes and counts a member whose only record is out of range', () => {
+    const persisted = { 'bundled:guide-a': 500 } as Record<string, number>;
+
+    const result = resolvePathMemberPercentages([{ id: 'guide-a' }], contextWith({ persistedPercentages: persisted }));
+
+    expect(result.members[0]).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
+    expect(result.resolvedPercentages).toEqual([]);
+    expect(result.excludedCount).toBe(1);
+  });
+
+  it('does not let an out-of-range record win over a readable sibling', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ persistedPercentages: { 'bundled:guide-a': 40, 'bundled:guide-a/content.json': 500 } })
+    );
+
+    expect(resolution).toEqual({
+      memberId: 'guide-a',
+      percent: 40,
+      source: 'persisted',
+      contentKey: 'bundled:guide-a',
+    });
+  });
+
+  it('excludes a negative record rather than letting it into the mean', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ persistedPercentages: { 'bundled:guide-a': -10 } })
+    );
+
+    expect(resolution).toEqual({ memberId: 'guide-a', percent: undefined, source: 'unreadable' });
+  });
+
+  it('accepts the range boundaries', () => {
+    const atZero = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ persistedPercentages: { 'bundled:guide-a': 0 } })
+    );
+    const atHundred = resolvePathMemberPercentage(
+      { id: 'guide-b' },
+      contextWith({ persistedPercentages: { 'bundled:guide-b': 100 } })
+    );
+
+    expect(atZero.source).toBe('persisted');
+    expect(atZero.percent).toBe(0);
+    expect(atHundred.source).toBe('persisted');
+    expect(atHundred.percent).toBe(100);
+  });
+
+  it('excludes and counts a member whose record is not a number at all', () => {
+    const persisted = { 'bundled:guide-a': 'nearly done' } as unknown as Record<string, number>;
+
+    const result = resolvePathMemberPercentages([{ id: 'guide-a' }], contextWith({ persistedPercentages: persisted }));
+
+    expect(result.members[0]!.source).toBe('unreadable');
+    expect(result.resolvedPercentages).toEqual([]);
+    expect(result.excludedCount).toBe(1);
+  });
+
+  it('distinguishes a persisted zero from a member that was never opened', () => {
+    const persisted = resolvePathMemberPercentage(
+      { id: 'guide-a' },
+      contextWith({ persistedPercentages: { 'bundled:guide-a': 0 } })
+    );
+    const unopened = resolvePathMemberPercentage({ id: 'guide-b' }, EMPTY_CONTEXT);
+
+    expect(persisted.source).toBe('persisted');
+    expect(unopened.source).toBe('unopened');
+    expect(unopened.percent).toBe(0);
+  });
+
+  it('resolves a member id that collides with an Object.prototype key', () => {
+    const resolution = resolvePathMemberPercentage({ id: 'toString' }, EMPTY_CONTEXT);
+
+    expect(resolution).toEqual({ memberId: 'toString', percent: 0, source: 'unopened' });
+  });
+
+  it('marks a member with no formable key unresolved rather than zero', () => {
+    const resolution = resolvePathMemberPercentage(
+      { id: 'step-two' },
+      contextWith({ pathBaseUrl: 'https://grafana.com/docs/learning-journeys/loki/' })
+    );
+
+    expect(resolution).toEqual({ memberId: 'step-two', percent: undefined, source: 'unresolved' });
+  });
+});
+
+describe('resolvePathMemberPercentages', () => {
+  it('excludes unresolved members from the percentages and counts them', () => {
+    const members: PathMember[] = [
+      { id: 'step-one', url: 'https://grafana.com/docs/lj/loki/step-one/' },
+      { id: 'step-two' },
+      { id: 'step-three' },
+    ];
+
+    const result = resolvePathMemberPercentages(
+      members,
+      contextWith({
+        pathBaseUrl: 'https://grafana.com/docs/lj/loki/',
+        persistedPercentages: { 'https://grafana.com/docs/lj/loki/step-one/': 50 },
+      })
+    );
+
+    expect(result.resolvedPercentages).toEqual([50]);
+    expect(result.excludedCount).toBe(2);
+    expect(result.excludedMemberIds).toEqual(['step-two', 'step-three']);
+  });
+
+  it('reports nothing unresolved for a path whose members all key by id scheme', () => {
+    const result = resolvePathMemberPercentages(
+      [{ id: 'guide-a' }, { id: 'guide-b' }],
+      contextWith({ completedMemberIds: ['guide-a'], persistedPercentages: { 'backend-guide:guide-b': 30 } })
+    );
+
+    expect(result.resolvedPercentages).toEqual([100, 30]);
+    expect(result.excludedCount).toBe(0);
+    expect(result.excludedMemberIds).toEqual([]);
+  });
+
+  it('returns an empty result for a path with no members', () => {
+    const result = resolvePathMemberPercentages([], EMPTY_CONTEXT);
+
+    expect(result.members).toEqual([]);
+    expect(result.resolvedPercentages).toEqual([]);
+    expect(result.excludedCount).toBe(0);
+  });
+});

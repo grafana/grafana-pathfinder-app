@@ -35,12 +35,12 @@ argument.
 
 ## The model on one page
 
-| Level     | Progress is                                                    | Reaches 100% by                                                    |
-| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------ |
-| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**    |
-| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                       |
-| Path      | the mean of its milestones' percentages                        | every milestone at 100%                                            |
-| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be) |
+| Level     | Progress is                                                    | Reaches 100% by                                                                             |
+| --------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Guide     | completed interactive steps over the guide's total block count | reaching the final counted block, or clicking **Mark complete**                             |
+| Milestone | the same as a guide — a milestone _is_ a guide                 | the same, via **Mark complete and continue**                                                |
+| Path      | the mean of its resolvable milestones' percentages             | every milestone at 100% (decision 9 — the join ships; the rollup that consumes it does not) |
+| Journey   | the mean of its children's percentages, if journeys ever exist | every child at 100% (decision 5 — not built, and not needed to be)                          |
 
 **A vocabulary warning before you read further.** "Journey" in decision 5 means a
 level _above_ paths — a path of paths. That is not what "journey" means in the
@@ -313,6 +313,139 @@ it, but that is an evidence population and not a firing condition.
 **Its frequency and per-reader state are open.** See
 [open questions](#open-questions).
 
+### Decision 9 — an unresolvable path member is excluded from the mean and counted (the join is built; the rollup that consumes it is not)
+
+**What is built, and what is not.** `src/global-state/path-member-join.ts` and
+its exports ship with this decision; no production code resolves a member
+percentage yet. `calculatePathProgress` remains a completed-count fraction and
+is what every UI consumer still reads. The percentage half lands with the
+rollup, so read the exports below as staged rather than live, and the
+present-tense rules as what the join does when asked.
+
+**Decision.** Decision 4's mean joins each member to its persisted percentage by
+content key, and that key is stored nowhere: a member is keyed by the sanitized
+URL it was launched from, while a path definition carries ids. Where a member's
+launch URL has not resolved, every scheme it could have been launched under is
+read. That set is `bundled:<id>`, `bundled:<id>/content.json`, and
+`backend-guide:<id>`: a bundled guide has two live launch shapes, because My
+Learning opens it bare while the package resolver hands the context panel the
+package form. A resolved `bundled:` URL is therefore read alongside its sibling
+shape in both directions. Where the member cannot be answered for at all, it is
+**excluded from the mean and counted**, never scored zero.
+`src/global-state/path-member-join.ts` owns this: one internal grouped
+id-scheme list is the source of truth, the join's read path maps the content-key
+sanitizer over it, and `resetPath` reads its flattened raw form rather than
+restating the schemes.
+
+**The furthest record wins within a scheme; precedence decides across them.**
+An earlier draft of this decision claimed a reader can only have progressed
+under one key. That is false within `bundled:`: the bare and package launch
+shapes are independently reachable for the same guide and
+`interactiveStepStorage` keys step progress by content key, so each shape
+accrues its own, and taking the first key that holds anything would
+under-report a reader who opened the guide from both surfaces. Within a scheme
+the join therefore takes the maximum, which is the honest answer to how far
+the reader got.
+
+It is also false the other way round — an earlier draft claimed a guide is
+bundled or App Platform and not both. `createCompositeResolver` says the
+opposite: id collisions are possible, nothing enforces the `fe-`-prefix
+convention that makes them unlikely, and bundled/CDN deliberately win one so
+today's fallback behaviour is preserved
+(`src/package-engine/composite-resolver.ts`). Two schemes carrying the same id
+may therefore be two different guides, so a maximum across schemes would report
+a private guide's progress as a bundled member's. The join consults the schemes
+in the resolver's own precedence order and the first one holding a record
+answers — including when that record is unreadable, because falling through
+would substitute a different guide's number for a corrupt one.
+
+**That precedence covers the id-scheme branch only; a supplied member URL is
+trusted verbatim.** `path-member-join.ts` is pure — it cannot consult the
+bundled repository, so when a caller hands it a member with a `url` it has no
+basis to second-guess which guide that URL names, and it reads that key alone
+(plus the sibling launch shape, when the URL is `bundled:`). One case therefore
+stays open rather than being closed here: `resolveGuideMetadata` consults App
+Platform metadata before the static fallback, and that metadata covers every
+published guide rather than only members of App Platform paths, so a colliding
+CR id can hand the join `backend-guide:<id>` for a member of a static bundled
+path. **Known follow-on for the rollup:** the caller resolving member URLs
+bundled-first, matching the composite resolver, so the join is never handed an
+App Platform URL for a bundled member. Until then, do not read decision 9 as a
+guarantee that a private guide's progress can never surface as a bundled
+member's — only that the join's own scheme fallback will not cause it.
+
+**A present but unreadable record is excluded too, not scored zero.** The
+persisted record is unchecked `JSON.parse` output, so a key may be present and
+hold something other than a percentage. `BoundedRecordStorage.set` clamps to
+`[0, 100]` on write, so anything outside that range — or not a finite number at
+all — is corruption. That member _was_ opened, so zero is not the honest answer
+any more than it is for a member with no formable key: it is excluded and
+counted under its own `'unreadable'` source. Under furthest-wins this also
+matters more than it reads — an unclamped 500 would otherwise win every
+candidate set it appears in and inflate the path's number.
+
+**An absent key means never-opened only as far as the record does.** The join
+treats a formable-but-absent key as never-opened and scores it zero, which is
+the honest answer for a reader who has not started that guide. It is _not_
+honest for a reader whose record was evicted: `interactiveCompletionStorage`
+caps at `MAX_INTERACTIVE_COMPLETIONS` (100, `src/lib/user-storage.ts`) and
+`writeWithCap` keeps `entries.slice(-limit)` — insertion order, so the earliest
+keys are dropped and updating an existing key does not move it forward. A reader
+past 100 distinct guides therefore loses real progress on their oldest ones, and
+it arrives at the join as a genuine zero. Reading two candidate shapes per
+bundled member raises the pressure slightly, because a guide opened from both
+surfaces occupies two of the 100 slots.
+
+The information needed to tell eviction from never-opened is gone by the time
+the join runs, so this is not fixable in `path-member-join.ts`. **Known
+follow-on work, storage-side:** raise the cap, evict least-recently-updated
+rather than earliest-inserted, or persist an opened-guides set the join can
+consult. Until one of those lands, a path mean can understate a heavy reader.
+
+**The key spaces `resetPath` clears are not one space.**
+`interactiveCompletionStorage` and `interactiveStepStorage` are keyed by the
+sanitized content key; `milestoneCompletionStorage` and
+`journeyCompletionStorage` are keyed by the raw launch URL. `resetPath` builds
+both from the join — `pathMemberContentKeys` for the sanitized namespaces,
+`pathMemberIdSchemeKeys` for the raw ones.
+
+**A candidate key must survive normalization unchanged, and this is a safety
+rule, not a tidiness one.** `sanitizeContentKey` strips `..` and truncates at
+200 characters, so it is not injective: `welcome..-to-grafana` normalizes onto
+the real `welcome-to-grafana`, and two ids agreeing on their first 192
+characters normalize onto one key — reachable without malformed input at all,
+because a package id may be 253 characters. `resetPath` **deletes** the keys
+the join builds, so a rewritten candidate would destroy a different guide's
+progress irreversibly. The join therefore refuses any candidate the sanitizer
+would rewrite, and such a member resolves as `unresolved` — excluded and
+counted rather than joined to someone else's record.
+
+The consequence is deliberate and worth stating: for such a member the raw-keyed
+namespaces are still cleared, because a raw key names only its own member, while
+the sanitized ones are **spared**. That is the correct trade — sparing a record
+is recoverable, deleting the wrong one is not — and it does not leak a stale
+percentage, because the join refuses the same key it declined to clear. Validating
+ids at the wire boundary, so an id that cannot be keyed safely never reaches a
+path definition, is **known follow-on work** outside this module.
+
+**Why not zero.** A zero is indistinguishable from a real result. It drags the
+path's number down silently and in exactly the direction the
+[rejected alternative](#the-alternative-considered-and-rejected) predicts, so a
+join bug would arrive looking like confirmation of it. Excluding the member
+keeps the mean honest over what it can actually see, and the count is what makes
+the gap visible instead of silent.
+
+**Read the percentage from `interactiveCompletionStorage`, and only that.**
+`journeyCompletionStorage` is the namespace a journey's own output is persisted
+to and is the obvious thing to reach for, but it holds no record under
+`backend-guide:` for a partially progressed member. Joining against it would
+exclude every partially progressed App Platform path member — a systematic
+exclusion, not an edge case.
+
+**A presence check, not a value read.** The storage `get` returns 0 for a
+missing key, which collapses the distinction the decision rests on. The join
+reads the whole record and tests for the key.
+
 ## The alternative considered and rejected
 
 One position argued against the path-level half of this model. It was overridden,
@@ -556,6 +689,10 @@ updated is Jay's call.
 - **`src/lib/guide-stats` publishes the denominator and the per-block positions
   together**, so a numerator and a denominator can never come from two traversals
   — see `completion-denominator-authority` in `docs/design/CONCERN_DETAILS.md`.
+- **An unresolvable member is excluded from the mean, never scored zero**
+  (decision 9), and the join reads `interactiveCompletionStorage` by key
+  presence, taking the furthest record in `[0, 100]` across a member's
+  candidate keys.
 
 ## Related
 
@@ -574,3 +711,5 @@ updated is Jay's call.
 - `src/lib/guide-stats/completion-affordance.ts` — which block types emit
   completion evidence, and why that is a different question from which render
   interactively.
+- `src/global-state/path-member-join.ts` — the content-key join a path member's
+  percentage is resolved through, and the unresolved count decision 9 surfaces.
