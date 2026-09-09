@@ -166,3 +166,23 @@ describe('guideProgress', () => {
     expect(guideProgress(index, [{ kind: 'mark-guide-complete' }])).toMatchObject({ percent: 100, complete: true });
   });
 });
+
+describe('evidence keyed by runtime step id', () => {
+  // The runtime dispatches a "Do it" under the parser's stepId, and almost no
+  // block in the library carries an author id for `positionsById` to match.
+  const index = computeGuideBlockIndex([markdown(), interactive(), interactive('authored')], {
+    resolveStepId: (block, context) => (block.type === 'interactive' ? `derived-${context.index}` : undefined),
+  });
+
+  it('credits a position for an anonymous block the resolver keyed', () => {
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'derived-1' }])).toMatchObject({ position: 2 });
+  });
+
+  it('falls back to the author id when the resolver keys the block under something else', () => {
+    expect(guideProgress(index, [{ kind: 'do-it', blockId: 'authored' }])).toMatchObject({ position: 3 });
+  });
+
+  it('credits nothing for a step id no block in this guide carries', () => {
+    expect(furthestEvidencedPosition(index, [{ kind: 'do-it', blockId: 'derived-9' }])).toBe(0);
+  });
+});

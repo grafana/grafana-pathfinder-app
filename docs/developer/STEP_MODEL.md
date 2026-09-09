@@ -24,6 +24,8 @@ Stable IDs survive position and content edits. They do NOT survive a block-type 
 
 The hash inputs are documented at `src/global-state/step-id.ts` (`deriveStepId(...)`): `sectionId`, zero-based `index`, `action`, `refTarget`, and an optional `variant` — notably no `type`. Audit that file to confirm which authoring edits do and do not orphan prior completion state in `interactiveStepStorage`.
 
+Two walks outside the parser re-derive the same id straight from guide JSON — the AI-fix apply path and the completion counter in `src/lib/guide-stats` — through `resolveStepIdForBlock` in `src/global-state/guide-step-id-resolver.ts`. It must agree with the parser exactly, or a step resolves under a key nothing dispatches; `src/lib/guide-stats/progress.parity.test.ts` pins it over every block type that can emit completion evidence.
+
 ## Completion store — canonical persistence
 
 Step completion lives in `src/global-state/completion-store.ts`. The store is the canonical persistence layer — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store backs the existing `interactiveStepStorage` namespace so localStorage shape is preserved.

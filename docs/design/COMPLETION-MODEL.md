@@ -222,15 +222,13 @@ recount, no CI parity check, no drift between a stamped total and the content it
 counted, and no monotonicity problem when a total changes under a reader mid-path.
 
 **What this means for `rollUpGuideStats`.** `src/lib/guide-stats/summary.ts` sums
-a path's milestones into one `GuideStatsSummary`, and the
-`completion-denominator-authority` invariant currently anticipates that "the
-rollup index lands with the first path-level consumer." Under this decision that
-consumer does not arrive: path progress consumes per-guide percentages, not a
-summed `blockCount`. The rollup remains valid and useful as a **reporting and
+a path's milestones into one `GuideStatsSummary`, and no rollup index ever lands
+beside it: path progress consumes per-guide percentages, not a summed
+`blockCount`. The rollup remains valid and useful as a **reporting and
 authoring** figure — how big is this path, how much of it is instrumented — but
-it is not a completion denominator, and its own docstring's warning (a consumer
-recording a percentage against a rolled-up `blockCount` needs its numerator from
-somewhere else) should be read as a reason not to, rather than as a gap to fill.
+it is not a completion denominator. The `completion-denominator-authority`
+invariant and `rollUpGuideStats`'s own docstring both say so, and the formula
+itself is `meanOfMemberPercentages` in `src/lib/guide-stats/rollup.ts`.
 
 **What we gave up.** Equal weighting means a milestone's contribution is
 unrelated to its size, so a path of one short milestone and one long one reports

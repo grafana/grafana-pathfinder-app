@@ -16,9 +16,10 @@ export type CompletionEvidenceKind = 'do-it' | 'mark-section-complete' | 'mark-g
 export interface CompletionEvidence {
   kind: CompletionEvidenceKind;
   /**
-   * Block id the signal came from: the interactive block for `do-it`, the
-   * section container for `mark-section-complete`. Ignored for
-   * `mark-guide-complete`, which always evidences the whole guide.
+   * Block id the signal came from: the interactive block for `do-it` — its
+   * runtime step id, falling back to an author id — and the section container
+   * for `mark-section-complete`. Ignored for `mark-guide-complete`, which
+   * always evidences the whole guide.
    */
   blockId?: string;
 }
@@ -97,5 +98,8 @@ function evidencedPosition(index: GuideBlockIndex, signal: CompletionEvidence): 
   if (signal.kind === 'mark-section-complete') {
     return index.containerEndPositions.get(signal.blockId) ?? 0;
   }
-  return index.positionsById.get(signal.blockId) ?? 0;
+  // Step id first: the runtime dispatches "Do it" under the parser's stepId,
+  // and only a handful of blocks in the library carry an author id for
+  // `positionsById` to match on.
+  return index.positionsByStepId.get(signal.blockId) ?? index.positionsById.get(signal.blockId) ?? 0;
 }
