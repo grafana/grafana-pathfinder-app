@@ -93,7 +93,7 @@ The CLI accepts these input formats:
 
 | Code | Meaning                                   |
 | ---- | ----------------------------------------- |
-| 0    | All steps passed                          |
+| 0    | No guide produced a failure outcome       |
 | 1    | One or more steps failed                  |
 | 2    | Configuration or setup error              |
 | 3    | Grafana unreachable                       |
@@ -137,8 +137,12 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - Plugin loads guide via `bundled:e2e-test` pattern
 
 3. **Step discovery**
-   - Runner scans DOM for interactive step elements
-   - Collects metadata: step IDs, skip buttons, Do it buttons, multistep status
+   - The runner scans for `[data-test-step-kind][data-test-step-id]` roots.
+   - If current roots are absent, the runner uses the documented legacy selector.
+   - The driver registry collects metadata and identifies supported steps.
+   - Unsupported roots remain in coverage, but the runner does not operate their controls.
+   - A guide with only unsupported roots returns a skipped report before execution.
+   - The skipped report includes each unsupported kind and step ID. It does not include `errorCode`.
 
 4. **Sequential execution**
    - For each step:
@@ -201,7 +205,9 @@ Panel bootstrap uses 20 seconds by default. Post-navigation guide loading uses 3
 
 The legacy fallback remains during plugin rollout. It supports Pathfinder versions that only provide the existing `bundled:e2e-test` URL.
 
-An ordinary guide failure adds that guide to the blocked set. Later milestones still run unless a resolved `depends` edge names a blocked guide.
+An ordinary guide failure or an unsupported-only skip adds that guide to the blocked set.
+
+Later milestones still run unless a resolved `depends` edge names a blocked guide.
 
 If a dependency is blocked, the runner emits the existing `SKIPPED_PREREQ` result. Milestone order does not create a dependency.
 
@@ -305,7 +311,25 @@ Use `--output report.json` to generate a structured report:
     "mandatoryFailed": 1,
     "skippableFailed": 0
   },
-  "steps": [...]
+  "steps": [
+    {
+      "stepId": "section-1-step-1",
+      "stepKind": "plain",
+      "index": 0,
+      "status": "passed",
+      "duration": 1000,
+      "currentUrl": "http://localhost:3000/",
+      "consoleErrors": []
+    }
+  ],
+  "coverage": {
+    "contractSource": "current",
+    "rendered": 2,
+    "supported": 1,
+    "executed": 1,
+    "unsupported": 1,
+    "unsupportedSteps": [{ "stepKind": "quiz", "stepId": "section-1-quiz-1" }]
+  }
 }
 ```
 
@@ -314,11 +338,26 @@ The report contract's single source of truth is the Zod schema in `src/cli/e2e/s
 Key contract fields:
 
 - `outcome`: one of `passed`, `failed`, `aborted`, `skipped`, `infrastructure_error`, or `configuration_error`. Multi-guide reports surface `aborted` when any guide's session expired.
-- `errorCode`: structured failure code on non-passing reports. `TRANSITION_FAILED` identifies a fatal shared-browser transition. `REPORT_MISSING` identifies a missing report or lost browser session. Other notable values include `TIER_MISMATCH`, `SKIPPED_PREREQ`, `AUTH_EXPIRED`, `NO_CAPACITY`, and `PLAYWRIGHT_SPAWN_FAILED`.
+- `errorCode`: structured code for failures. An unsupported-only skipped report omits this field. `TRANSITION_FAILED` identifies a fatal shared-browser transition. `REPORT_MISSING` identifies a missing report or lost browser session. Other values include `TIER_MISMATCH`, `SKIPPED_PREREQ`, `AUTH_EXPIRED`, `NO_CAPACITY`, and `PLAYWRIGHT_SPAWN_FAILED`.
 - `transitionKind`: optional fatal-transition detail. Values cover badge obstruction, guide-load ambiguity, reset ambiguity, tab-close errors, and step-detach errors.
 - `guide.contentDigest`: SHA-256 digest of the exact guide content executed
 - `guide.sourceUrl`: remote package source URL when available
 - `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
+- `steps[].stepKind`: optional registered driver kind for a reported step
+- `coverage.contractSource`: `current` for tracked roots, or `legacy` for the compatibility selector
+- `coverage.rendered`: number of tracked roots in the rendered DOM
+- `coverage.supported`: number of rendered roots with supported drivers
+- `coverage.executed`: number of supported roots that reached a terminal runner result
+- `coverage.unsupported`: number of rendered roots without supported drivers
+- `coverage.unsupportedSteps`: unsupported kind and step ID pairs
+
+Coverage fields are optional and additive. Unsupported roots do not change outcomes when the guide also has a supported root.
+
+A guide with only unsupported roots returns `outcome: "skipped"` before execution. Its report keeps the complete coverage inventory and an explicit reason.
+
+The CLI shows `Skipped (unsupported steps)` and exits with code 0. The skipped guide blocks guides that declare it as a prerequisite.
+
+Multi-guide reports keep coverage inside each individual guide report. The aggregate outcome and step summary use the existing rules.
 
 ### Report validation
 
@@ -694,6 +733,7 @@ In remote modes a package can end in one of these states. `failed`, `provisionin
 | `unsupported_type`            | Repository sweep encountered a non-guide composition package   | No            |
 | `prerequisite_failed`         | A required prerequisite could not be resolved or run           | No            |
 | `skipped_prereq`              | A prerequisite in the same dependency chain failed             | No            |
+| `skipped_unsupported_steps`   | The guide rendered only unsupported step kinds                 | No            |
 | `validation_failed`           | Fetched `content.json` failed guide schema validation          | **Yes**       |
 
 With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).

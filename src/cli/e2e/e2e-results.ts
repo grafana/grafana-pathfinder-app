@@ -45,7 +45,13 @@ export interface PackageMeta {
  * vocabularies cannot drift.
  */
 export type GuideStatus =
-  'passed' | 'failed' | 'provisioning_failed' | 'auth_expired' | 'skipped_prereq' | RemoteSkipReason;
+  | 'passed'
+  | 'failed'
+  | 'provisioning_failed'
+  | 'auth_expired'
+  | 'skipped_prereq'
+  | 'skipped_unsupported_steps'
+  | RemoteSkipReason;
 
 export interface GuideRunResult {
   guide: string;
@@ -63,6 +69,19 @@ export interface GuideRunResult {
   sideEffects?: SideEffectClassification;
 }
 
+export function guideStatusFromResultsData(data: TestResultsData): GuideStatus {
+  if (data.abortReason === 'SKIPPED_PREREQ') {
+    return 'skipped_prereq';
+  }
+  if (data.abortReason === 'AUTH_EXPIRED' || data.errorCode === 'AUTH_EXPIRED') {
+    return 'auth_expired';
+  }
+  if (data.outcome === 'skipped') {
+    return 'skipped_unsupported_steps';
+  }
+  return data.outcome === undefined || data.outcome === 'passed' ? 'passed' : 'failed';
+}
+
 /** Statuses that count as a test failure (non-zero exit). */
 export const FAILURE_STATUSES: ReadonlySet<GuideStatus> = new Set<GuideStatus>([
   'failed',
@@ -73,7 +92,6 @@ export const FAILURE_STATUSES: ReadonlySet<GuideStatus> = new Set<GuideStatus>([
 /** Pre-run skips (the resolver's skip reasons) recorded in the JSON report; excludes skipped_prereq, which carries step data. */
 export const PRE_RUN_SKIP_STATUSES: ReadonlySet<GuideStatus> = new Set<GuideStatus>(REMOTE_SKIP_REASONS);
 
-/** Summary line labels in display order. */
 export const GUIDE_STATUS_LABELS: ReadonlyArray<readonly [GuideStatus, string]> = [
   ['passed', '✅ Passed'],
   ['failed', '❌ Failed'],
@@ -81,6 +99,7 @@ export const GUIDE_STATUS_LABELS: ReadonlyArray<readonly [GuideStatus, string]> 
   ['validation_failed', '❌ Validation failed'],
   ['auth_expired', '🔐 Auth expired'],
   ['skipped_prereq', '⊘ Skipped (prerequisite failed)'],
+  ['skipped_unsupported_steps', '⊘ Skipped (unsupported steps)'],
   ['prerequisite_failed', '⊘ Skipped (prerequisite failed)'],
   ['skipped_tier_mismatch', '⊘ Skipped (tier mismatch)'],
   ['skipped_no_auth', '⊘ Skipped (no cloud auth)'],
@@ -91,7 +110,6 @@ export const GUIDE_STATUS_LABELS: ReadonlyArray<readonly [GuideStatus, string]> 
   ['resolution_failed', '⊘ Skipped (resolution failed)'],
 ];
 
-/** Per-guide listing icons. */
 export const GUIDE_STATUS_ICONS: Record<GuideStatus, string> = {
   passed: '✅',
   failed: '❌',
@@ -99,6 +117,7 @@ export const GUIDE_STATUS_ICONS: Record<GuideStatus, string> = {
   validation_failed: '❌',
   auth_expired: '🔐',
   skipped_prereq: '⊘',
+  skipped_unsupported_steps: '⊘',
   prerequisite_failed: '⊘',
   skipped_tier_mismatch: '⊘',
   skipped_no_auth: '⊘',
