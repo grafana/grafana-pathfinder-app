@@ -875,6 +875,28 @@ describe('ChallengeBlock', () => {
       expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
     });
 
+    it('disables Start challenge and does not provision VM when disabled prop is true in idle', () => {
+      const { openTerminal } = mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'enabled',
+          isEnabled: true,
+          explanation: null,
+          canSkip: false,
+        })
+      );
+
+      render(<ChallengeBlock {...baseProps} disabled={true} stepId="ch-disabled" />);
+
+      const startButton = screen.getByRole('button', { name: /start challenge/i });
+      expect(startButton).toBeInTheDocument();
+      expect(startButton).toBeDisabled();
+
+      fireEvent.click(startButton);
+
+      expect(openTerminal).not.toHaveBeenCalled();
+    });
+
     it('allows starting a coda challenge with requirements and enables Check my work after requirements are met', async () => {
       const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
       setBackend(post);

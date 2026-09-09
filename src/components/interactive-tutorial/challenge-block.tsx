@@ -555,6 +555,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleStart = useCallback(async () => {
+    if (disabled) {
+      return;
+    }
     if (!terminalCtx) {
       setErrorDetail('Terminal integration is not available.');
       setState('setup-failed');
@@ -597,7 +600,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     }
     // No session: the effect below reports the terminal's own reason, which
     // names the actual cause (unregistered backend, role floor, quota).
-  }, [terminalCtx, codaGate, codaEligibility, vmTemplate, vmScenario, vmApp, runSetup, resetToIdle]);
+  }, [disabled, terminalCtx, codaGate, codaEligibility, vmTemplate, vmScenario, vmApp, runSetup, resetToIdle]);
 
   const handleCheckMyWork = useCallback(async () => {
     cancelRequestedRef.current = false;
@@ -757,9 +760,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       )}
 
       <div className={styles.actions}>
-        {/* Start's job is to provision setup, which is what satisfies certain requirements (e.g. coda-exit-zero: depends on this block's own runSetup writing the ready file) — gating Start on isEnabled created a circular dependency for any requirement whose only path to true runs through Start itself. */}
+        {/* Start's job is to provision setup, which is what satisfies certain requirements (e.g. coda-exit-zero: depends on this block's own runSetup writing the ready file) — gating Start on isEnabled created a circular dependency for any requirement whose only path to true runs through Start itself. It still honors the parent-level disabled prop. */}
         {state === 'idle' && !configGateMessage && (
-          <Button variant="primary" icon="play" onClick={handleStart}>
+          <Button variant="primary" icon="play" onClick={handleStart} disabled={disabled}>
             Start challenge
           </Button>
         )}
