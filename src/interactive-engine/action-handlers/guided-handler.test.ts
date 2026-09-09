@@ -84,10 +84,51 @@ describe('GuidedHandler', () => {
   });
 
   describe('resetProgress', () => {
-    it('should reset completed steps tracking', () => {
+    const runTwoStepSequence = async (labelPrefix: string) => {
+      for (const stepIndex of [0, 1]) {
+        await guidedHandler.executeGuidedStep(
+          {
+            targetAction: 'highlight',
+            refTarget: '#drawer',
+            targetState: true,
+            targetComment: `${labelPrefix} step ${stepIndex}`,
+          },
+          stepIndex,
+          2,
+          5
+        );
+      }
+    };
+
+    const firstPaintOf = (labelPrefix: string) =>
+      (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls.find((call) =>
+        String(call[1]).includes(`${labelPrefix} step 0`)
+      )?.[3];
+
+    beforeEach(() => {
+      document.body.innerHTML = '<button id="drawer" aria-expanded="true">Add</button>';
+      const button = document.querySelector<HTMLButtonElement>('#drawer')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
+    });
+
+    it('clears prior-run credit so a restarted sequence paints from zero', async () => {
+      await runTwoStepSequence('run A');
+      expect(firstPaintOf('run A')).toMatchObject({ current: 0, completedSteps: [] });
+
       guidedHandler.resetProgress();
-      // Method should not throw
-      expect(guidedHandler.resetProgress).toBeDefined();
+      await runTwoStepSequence('run B');
+
+      expect(firstPaintOf('run B')).toMatchObject({ current: 0, total: 2, completedSteps: [], progress: 'performed' });
+    });
+
+    it('carries stale credit into a second sequence when it is not called', async () => {
+      await runTwoStepSequence('run A');
+      await runTwoStepSequence('run B');
+
+      // Guard: this is the state resetProgress exists to prevent - a full bar
+      // beside a "Step 1 of 2" badge. interactive-guided.tsx calls it at run start.
+      expect(firstPaintOf('run B')).toMatchObject({ current: 0, completedSteps: [0, 1] });
     });
   });
 

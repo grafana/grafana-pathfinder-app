@@ -42,6 +42,7 @@ export interface CommentBoxOptions {
  */
 export interface CommentBoxStepInfo {
   current: number;
+  /** The consumer's own step set - one guided block, or one tour - never the guide. */
   total: number;
   completedSteps: number[];
   progress: 'performed' | 'position';
@@ -958,7 +959,6 @@ export class NavigationManager {
 
       const progressBar = document.createElement('div');
       progressBar.className = 'interactive-comment-progress-bar';
-      // total is the consumer's own step set - one guided block, or one tour - never the guide.
       progressBar.style.width = `${progressBarPercent(stepInfo)}%`;
 
       progressContainer.appendChild(progressBar);
