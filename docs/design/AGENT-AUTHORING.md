@@ -471,7 +471,12 @@ export const JsonInteractiveBlockSchema = z.object({
     .array(z.string())
     .optional()
     .describe('Prerequisite conditions (e.g., on-page:/dashboards, is-admin)'),
-  objectives: z.array(z.string()).optional().describe('Learning objectives this block addresses'),
+  objectives: z
+    .array(ObjectiveTokenSchema)
+    .optional()
+    .describe(
+      'Conditions that automatically complete this block, in the same vocabulary as `requirements`, checked before them'
+    ),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),
   hint: z.string().optional().describe('Hint text shown if user is stuck'),
   formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
@@ -667,13 +672,14 @@ Optional:
   --tooltip <string>                Tooltip shown on highlighted element
   --requirements <item> (repeatable)
                                     Prerequisite conditions (e.g., on-page:/dashboards)
-  --objectives <item> (repeatable)  Learning objectives this block addresses
+  --objectives <item> (repeatable)  Conditions that automatically complete this block (checked
+                                    before requirements)
   --skippable                       Allow user to skip this block
   --hint <string>                   Hint text shown if user is stuck
   --show-me                         Enable "Show me" button
   --do-it                           Enable "Do it" button
   --complete-early                  Allow completion before all steps done
-  --verify <string>                 CSS selector for post-action verification
+  --verify <string>                 Post-action verification condition
   --open-guide <string>             Guide ID to open when block completes
 
 Constraints:
