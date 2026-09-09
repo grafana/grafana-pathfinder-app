@@ -222,7 +222,7 @@ export function InteractiveConditional({
 
   useEffect(() => {
     const wrapper = conditionalWrapperRef.current;
-    if (!wrapper || !hasRenderableChildren || isEmptyAfterCommit) {
+    if (!wrapper || !hasRenderableChildren) {
       return;
     }
 
@@ -246,7 +246,7 @@ export function InteractiveConditional({
     const observer = new MutationObserver(syncRenderedOutput);
     observer.observe(wrapper, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [hasRenderableChildren, isEmptyAfterCommit, renderToken]);
+  }, [hasRenderableChildren, renderToken]);
 
   // Stable ref to the latest evaluator. Lets long-lived subscriptions
   // (MutationObserver, event listeners) invoke the current evaluator without
@@ -371,15 +371,30 @@ export function InteractiveConditional({
   }
 
   if (childrenToRender.length === 0) {
-    return hasOccupiedNumberingSlot ? <span hidden data-section-numbering-retained="true" /> : null;
+    return hasOccupiedNumberingSlot ? (
+      <span hidden className="section-numbering-retained" data-section-numbering-retained="true" />
+    ) : null;
   }
 
-  // Parsed elements can produce no React output directly, or a nested
-  // component can settle empty after commit. Neither may leave a numbered
-  // wrapper behind; only a slot that previously rendered stays reserved.
-  if (!hasRenderableChildren || isEmptyAfterCommit) {
-    return hasOccupiedNumberingSlot ? <span hidden data-section-numbering-retained="true" /> : null;
+  // A direct null/false result has no child lifecycle to preserve, so it can
+  // use the same null/retained fast path as an empty parsed branch.
+  if (!hasRenderableChildren) {
+    return hasOccupiedNumberingSlot ? (
+      <span hidden className="section-numbering-retained" data-section-numbering-retained="true" />
+    ) : null;
   }
+
+  // Nested components stay mounted when their DOM settles empty so their own
+  // requirement listeners can make them visible again. The direct wrapper
+  // attributes let the numbered <li> hide or retain its slot without
+  // unmounting that subtree.
+  const isEmptyNumberingState = isEmptyAfterCommit && !hasOccupiedNumberingSlot;
+  const isRetainedNumberingState = isEmptyAfterCommit && hasOccupiedNumberingSlot;
+  const numberingStateClass = isEmptyNumberingState
+    ? ' section-numbering-empty'
+    : isRetainedNumberingState
+      ? ' section-numbering-retained'
+      : '';
 
   // Section display preserves its own execution and numbering scope.
   if (display === 'section') {
@@ -394,11 +409,13 @@ export function InteractiveConditional({
     return (
       <div
         ref={conditionalWrapperRef}
-        className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}`}
+        className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}${numberingStateClass}`}
         data-testid={testIds.interactive.conditional(conditionalId)}
         data-conditions={conditions.join(', ')}
         data-passed={String(conditionsPassed)}
         data-display="section"
+        data-section-numbering-empty={isEmptyNumberingState ? 'true' : undefined}
+        data-section-numbering-retained={isRetainedNumberingState ? 'true' : undefined}
       >
         <InteractiveSection
           title={sectionTitle}
@@ -419,10 +436,12 @@ export function InteractiveConditional({
   return (
     <div
       ref={conditionalWrapperRef}
-      className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}`}
+      className={`interactive-conditional ${conditionsPassed ? 'conditions-passed' : 'conditions-failed'}${numberingStateClass}`}
       data-testid={testIds.interactive.conditional(conditionalId)}
       data-conditions={conditions.join(', ')}
       data-passed={String(conditionsPassed)}
+      data-section-numbering-empty={isEmptyNumberingState ? 'true' : undefined}
+      data-section-numbering-retained={isRetainedNumberingState ? 'true' : undefined}
     >
       {alignedChildren}
     </div>

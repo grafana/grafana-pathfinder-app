@@ -253,8 +253,73 @@ describe('InteractiveConditional', () => {
       });
     }
 
-    expect(item).toBeEmptyDOMElement();
+    expect(item.firstElementChild).toHaveAttribute('data-section-numbering-empty', 'true');
+    expect(item.querySelectorAll('.interactive-conditional').length).toBeGreaterThan(1);
     expect(getComputedStyle(item).display).toBe('none');
+  });
+
+  it('keeps an empty nested conditional mounted so its DOM watch can recover', async () => {
+    checkRequirementsFromData.mockImplementation(({ refTarget }: { refTarget?: string }) =>
+      Promise.resolve({
+        pass: refTarget === 'outer' || (refTarget ? document.querySelector(refTarget) != null : false),
+        requirements: '',
+        error: [],
+      })
+    );
+
+    const { container } = render(
+      <div className={getInteractiveStyles(createTheme())}>
+        <ol className="interactive-section-content">
+          {wrapSectionChildrenForNumbering(
+            <InteractiveConditional
+              conditions={['outer']}
+              refTarget="outer"
+              whenTrueChildren={[{ type: 'interactive-conditional', props: {}, children: [] }]}
+              whenFalseChildren={[]}
+              renderElement={(_element, childKey) => (
+                <InteractiveConditional
+                  key={childKey}
+                  conditions={['exists-reftarget']}
+                  refTarget=".late-target"
+                  whenTrueChildren={[{ type: 'p', props: {}, children: ['Recovered nested content'] }]}
+                  whenFalseChildren={[]}
+                  renderElement={(_nestedElement, nestedKey) => <p key={nestedKey}>Recovered nested content</p>}
+                  keyPrefix="recovering-inner"
+                />
+              )}
+              keyPrefix="recovering-outer"
+            />
+          )}
+        </ol>
+      </div>
+    );
+    const item = container.querySelector('ol > li') as HTMLLIElement;
+
+    for (let run = 0; run < 4; run += 1) {
+      await act(async () => {
+        jest.runAllTimers();
+      });
+    }
+    expect(item.firstElementChild).toHaveAttribute('data-section-numbering-empty', 'true');
+    expect(screen.queryByText('Recovered nested content')).not.toBeInTheDocument();
+
+    const target = document.createElement('div');
+    target.className = 'late-target';
+    document.body.appendChild(target);
+    try {
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+        jest.runAllTimers();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Recovered nested content')).toBeInTheDocument();
+      });
+      expect(item.firstElementChild).not.toHaveAttribute('data-section-numbering-empty');
+      expect(getComputedStyle(item).display).not.toBe('none');
+    } finally {
+      target.remove();
+    }
   });
 
   it('keeps visible siblings when a nested conditional is empty', async () => {
@@ -354,9 +419,11 @@ describe('InteractiveConditional', () => {
     await waitFor(() => {
       expect(item.firstElementChild).toHaveAttribute('data-section-numbering-retained', 'true');
     });
-    expect(item.firstElementChild).toHaveAttribute('hidden');
+    expect(item.firstElementChild).toHaveClass('interactive-conditional');
     expect(item.childElementCount).toBe(1);
     expect(item).toHaveAttribute('data-numbered', 'true');
+    expect(getComputedStyle(item).height).toBe('0px');
+    expect(getComputedStyle(item).overflow).toBe('hidden');
   });
 
   it('retains an occupied numbering slot when re-evaluation empties the branch', async () => {
@@ -396,8 +463,12 @@ describe('InteractiveConditional', () => {
 
     expect(item.querySelector('[data-section-numbering-retained="true"]')).toHaveAttribute('hidden');
     expect(item).toHaveAttribute('data-numbered', 'true');
-    expect(getComputedStyle(item).display).not.toBe('none');
-    expect(getComputedStyle(item).counterIncrement).toBe('step-counter');
+    const retainedStyle = getComputedStyle(item);
+    expect(retainedStyle.display).not.toBe('none');
+    expect(retainedStyle.height).toBe('0px');
+    expect(retainedStyle.overflow).toBe('hidden');
+    expect(retainedStyle.padding).toBe('0px');
+    expect(retainedStyle.counterIncrement).toBe('step-counter');
   });
 
   it('keeps passive and interactive branches aligned under one number', async () => {
