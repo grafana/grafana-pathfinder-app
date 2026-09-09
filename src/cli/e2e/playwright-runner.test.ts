@@ -229,6 +229,82 @@ describe('shared Playwright chain', () => {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it('copies transition metadata to missing milestones during partial-result recovery', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'pathfinder-chain-transition-'));
+    try {
+      const transitionFailure = createMinimalResultsData({
+        guide: { id: 'first', title: 'First', path: '/first.json' },
+        outcome: 'infrastructure_error',
+        errorCode: 'TRANSITION_FAILED',
+        transitionKind: 'reset-ambiguous',
+        errorMessage: 'The reset failed',
+      });
+      const paths = {
+        abortFilePath: join(tempRoot, 'abort.json'),
+        resultsFilePath: join(tempRoot, 'results.json'),
+        traceOutputFilePath: join(tempRoot, 'trace.txt'),
+      };
+      writeFileSync(paths.resultsFilePath, JSON.stringify([transitionFailure]));
+
+      const result = processPlaywrightChainResults(
+        1,
+        { trace: false, targetUrl: 'http://localhost:3000' },
+        paths,
+        guides
+      );
+
+      expect(result.resultsData[1]).toMatchObject({
+        outcome: 'infrastructure_error',
+        errorCode: 'TRANSITION_FAILED',
+        transitionKind: 'reset-ambiguous',
+        errorMessage: 'A fatal shared-browser transition error stopped this milestone before it started.',
+        results: [],
+      });
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('gives authentication expiry precedence over a prior transition failure', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'pathfinder-chain-auth-transition-'));
+    try {
+      const transitionFailure = createMinimalResultsData({
+        guide: { id: 'first', title: 'First', path: '/first.json' },
+        outcome: 'infrastructure_error',
+        errorCode: 'TRANSITION_FAILED',
+        transitionKind: 'reset-ambiguous',
+        errorMessage: 'The reset failed',
+      });
+      const paths = {
+        abortFilePath: join(tempRoot, 'abort.json'),
+        resultsFilePath: join(tempRoot, 'results.json'),
+        traceOutputFilePath: join(tempRoot, 'trace.txt'),
+      };
+      writeFileSync(paths.resultsFilePath, JSON.stringify([transitionFailure]));
+      writeFileSync(paths.abortFilePath, JSON.stringify({ abortReason: 'AUTH_EXPIRED', message: 'Expired' }));
+
+      const result = processPlaywrightChainResults(
+        1,
+        { trace: false, targetUrl: 'http://localhost:3000' },
+        paths,
+        guides
+      );
+
+      expect(result.exitCode).toBe(ExitCode.AUTH_FAILURE);
+      expect(result.resultsData[0]).toEqual(transitionFailure);
+      expect(result.resultsData[1]).toMatchObject({
+        outcome: 'aborted',
+        errorCode: 'AUTH_EXPIRED',
+        errorMessage: 'Expired',
+        abortReason: 'AUTH_EXPIRED',
+        results: [],
+      });
+      expect(result.resultsData[1]?.transitionKind).toBeUndefined();
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('resolveStartingUrl', () => {
@@ -315,6 +391,35 @@ describe('processPlaywrightResults', () => {
       errorCode: 'REPORT_MISSING',
     });
   });
+
+  it('preserves an unsupported-only skipped result as a successful process result', () => {
+    const paths = filePaths();
+    const resultsData = {
+      guide: { id: 'unsupported', title: 'Unsupported', path: '/unsupported.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'skipped' as const,
+      errorMessage: 'No executable steps found. Unsupported kinds: quiz',
+      results: [],
+      coverage: {
+        contractSource: 'current' as const,
+        rendered: 1,
+        supported: 0,
+        executed: 0,
+        unsupported: 1,
+        unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+      },
+      aborted: false,
+    };
+    writeFileSync(paths.resultsFilePath, JSON.stringify(resultsData));
+
+    expect(processPlaywrightResults(0, { trace: false }, paths)).toEqual({
+      success: true,
+      exitCode: ExitCode.SUCCESS,
+      traceFile: undefined,
+      resultsData,
+    });
+  });
+
   it('ignores structurally invalid abort metadata', () => {
     const paths = filePaths();
     writeFileSync(paths.abortFilePath, JSON.stringify({ abortReason: 'NOT_A_REAL_REASON' }));

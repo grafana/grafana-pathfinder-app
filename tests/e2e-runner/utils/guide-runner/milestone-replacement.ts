@@ -4,15 +4,16 @@ import { testIds } from '../../../../src/constants/testIds';
 import { StorageEvents } from '../../../../src/lib/event-names';
 import { StorageKeys } from '../../../../src/lib/storage-keys';
 import { dismissBadgeCelebrations } from './badge-celebrations';
+import { STEP_ROOT_SELECTOR } from './constants';
 import { FatalTransitionError, type FatalTransitionKind } from './transition-error';
 
 export const E2E_GUIDE_URL = 'bundled:e2e-test';
-
-const STEP_SELECTOR = '[data-testid^="interactive-step-"]';
 const REPLACEMENT_TIMEOUT_MS = 15_000;
 const RESET_POSTCONDITION_ATTEMPTS = 5;
 const RESET_POSTCONDITION_POLL_MS = 250;
 const HYBRID_STORAGE_TIMESTAMP_SUFFIX = '__timestamp';
+// Add a version only after this runner implements that version's control contract.
+const SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS: readonly number[] = [1];
 
 type StepHandle = ElementHandle<HTMLElement | SVGElement>;
 type WrappedTransitionKind = Exclude<FatalTransitionKind, 'badge-obstruction' | 'step-detach-failed'>;
@@ -118,6 +119,80 @@ async function requireStoredCompletionStaysAbsent(page: Page): Promise<void> {
   }
 }
 
+async function resetWithE2ECapability(page: Page): Promise<boolean> {
+  const result = await page.evaluate(
+    async ({ supportedVersions, timeoutMs }) => {
+      const control = (
+        window as Window & {
+          __pathfinderE2E?: {
+            version?: unknown;
+            resetActiveGuide?: unknown;
+          };
+        }
+      ).__pathfinderE2E;
+      if (!control) {
+        return { status: 'unavailable' } as const;
+      }
+      if (typeof control.version !== 'number' || !supportedVersions.includes(control.version)) {
+        return { status: 'unsupported', version: String(control.version) } as const;
+      }
+      if (typeof control.resetActiveGuide !== 'function') {
+        return { status: 'rejected', message: 'resetActiveGuide is not callable' } as const;
+      }
+      let timeout: number | undefined;
+      try {
+        return await Promise.race([
+          (async () => {
+            try {
+              await control.resetActiveGuide();
+              return { status: 'reset' } as const;
+            } catch (error) {
+              return {
+                status: 'rejected',
+                message: error instanceof Error ? error.message : String(error),
+              } as const;
+            }
+          })(),
+          new Promise<{ status: 'timed_out' }>((resolve) => {
+            timeout = window.setTimeout(() => resolve({ status: 'timed_out' }), timeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timeout !== undefined) {
+          window.clearTimeout(timeout);
+        }
+      }
+    },
+    {
+      supportedVersions: SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS,
+      timeoutMs: REPLACEMENT_TIMEOUT_MS,
+    }
+  );
+
+  if (result.status === 'unavailable') {
+    return false;
+  }
+  if (result.status === 'unsupported') {
+    throw new FatalTransitionError(
+      'reset-ambiguous',
+      `The Pathfinder E2E reset control has unsupported version ${result.version}`
+    );
+  }
+  if (result.status === 'rejected') {
+    throw new FatalTransitionError(
+      'reset-ambiguous',
+      `The Pathfinder E2E reset control rejected reset: ${result.message}`
+    );
+  }
+  if (result.status === 'timed_out') {
+    throw new FatalTransitionError(
+      'reset-ambiguous',
+      `The Pathfinder E2E reset control did not complete within ${REPLACEMENT_TIMEOUT_MS}ms`
+    );
+  }
+  return true;
+}
+
 async function requireEmptyE2EProgressStorage(page: Page): Promise<void> {
   const storage = await inspectE2EProgressStorage(page);
   if (storage.hasMatchingStorage) {
@@ -221,7 +296,7 @@ async function activateE2EGuideTab(page: Page, tabId: string): Promise<void> {
 }
 
 async function currentStepHandles(page: Page): Promise<StepHandle[]> {
-  return page.locator(STEP_SELECTOR).elementHandles();
+  return page.locator(STEP_ROOT_SELECTOR).elementHandles();
 }
 function transitionFailure(kind: WrappedTransitionKind, message: string, error: unknown): FatalTransitionError {
   if (error instanceof FatalTransitionError) {
@@ -291,8 +366,15 @@ async function clearProgressResetProbe(page: Page): Promise<void> {
     .catch(() => undefined);
 }
 
+function legacyResetGuideControl(page: Page) {
+  return page
+    .getByTestId(testIds.docsPanel.resetGuideButton)
+    .or(page.getByRole('button', { name: 'Reset guide', exact: true }))
+    .first();
+}
+
 async function resetInteractiveProgress(page: Page): Promise<void> {
-  const resetButton = page.getByRole('button', { name: 'Reset guide', exact: true });
+  const resetButton = legacyResetGuideControl(page);
   await armProgressResetProbe(page);
   try {
     await resetButton.click({ timeout: REPLACEMENT_TIMEOUT_MS });
@@ -380,8 +462,18 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
 
   await dismissBadgeCelebrations(page);
   let stepsBeforeReset: StepHandle[] = [];
-  if (storage.hasStoredCompletion) {
-    const resetButton = page.getByRole('button', { name: 'Reset guide', exact: true });
+  let usedE2ECapability = false;
+  try {
+    usedE2ECapability = await resetWithE2ECapability(page);
+    if (usedE2ECapability) {
+      await requireEmptyE2EProgressStorage(page);
+    }
+  } catch (error) {
+    throw transitionFailure('reset-ambiguous', 'The plugin-owned E2E reset failed', error);
+  }
+
+  if (!usedE2ECapability && storage.hasStoredCompletion) {
+    const resetButton = legacyResetGuideControl(page);
     try {
       await resetButton.waitFor({ state: 'visible', timeout: REPLACEMENT_TIMEOUT_MS });
       stepsBeforeReset = await currentStepHandles(page);
@@ -394,7 +486,7 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
         error
       );
     }
-  } else {
+  } else if (!usedE2ECapability) {
     try {
       await clearNoCompletionResidue(page);
       await requireEmptyE2EProgressStorage(page);
@@ -439,7 +531,7 @@ export async function replacePreviousE2EGuide(page: Page, previousGuideTabId?: s
     } catch (error) {
       throw transitionFailure(
         'reset-ambiguous',
-        'The acknowledged legacy reset did not reach a safe post-close state',
+        'The previous E2E guide reset did not reach a safe post-close state',
         error
       );
     }

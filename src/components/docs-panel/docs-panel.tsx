@@ -112,6 +112,7 @@ import {
   useTabOverflow,
   useScrollPositionPreservation,
   useContentReset,
+  useE2EResetGuideCapability,
   useCustomGuideCatalogueOnOpen,
   useDevModeLogger,
   usePanelMode,
@@ -1131,6 +1132,10 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // pre-mortem) so children's passive useEffects observe the new URL.
   useGlobalActiveTabExposure({
     activeTabId: activeTab?.id,
+    activeTabCurrentUrl: activeTab?.currentUrl,
+    activeTabBaseUrl: activeTab?.baseUrl,
+  });
+  useE2EResetGuideCapability({
     activeTabCurrentUrl: activeTab?.currentUrl,
     activeTabBaseUrl: activeTab?.baseUrl,
   });

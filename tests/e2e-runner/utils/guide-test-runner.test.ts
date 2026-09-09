@@ -24,7 +24,6 @@ import {
   logStepResult,
   logExecutionSummary,
   parseNthMatchSelector,
-  resolveEffectiveSkippable,
   selectStepAction,
   DEFAULT_STEP_TIMEOUT_MS,
   GUIDE_INITIAL_TIMEOUT_MS,
@@ -36,33 +35,21 @@ import {
 import { printDetailedSummary } from './console-reporter';
 import type { AllStepsResult, StepTestResult, TestableStep } from './guide-runner';
 
-// ============================================
-// Test Fixtures
-// ============================================
-
-/**
- * Create a minimal TestableStep for testing.
- * Only includes fields required by the functions under test.
- */
 function createTestableStep(overrides: Partial<TestableStep> = {}): TestableStep {
   return {
+    stepKind: 'plain',
     stepId: 'test-step-1',
     index: 0,
     skippable: false,
     hasDoItButton: true,
     hasShowMeButton: false,
     isPreCompleted: false,
-    isMultistep: false,
-    internalActionCount: 0,
-    isGuided: false,
-    locator: {} as unknown as TestableStep['locator'], // Mock locator - not used in pure functions
+    actionCount: 0,
+    locator: {} as unknown as TestableStep['locator'],
     ...overrides,
   };
 }
 
-/**
- * Create a minimal StepTestResult for testing.
- */
 function createStepResult(overrides: Partial<StepTestResult> = {}): StepTestResult {
   return {
     stepId: 'test-step-1',
@@ -75,13 +62,9 @@ function createStepResult(overrides: Partial<StepTestResult> = {}): StepTestResu
   };
 }
 
-// ============================================
-// calculateStepTimeout Tests
-// ============================================
-
 describe('calculateStepTimeout', () => {
   it('returns default timeout for non-multistep', () => {
-    const step = createTestableStep({ isMultistep: false });
+    const step = createTestableStep({ stepKind: 'plain' });
 
     const timeout = calculateStepTimeout(step);
 
@@ -90,8 +73,8 @@ describe('calculateStepTimeout', () => {
 
   it('returns default timeout for multistep with zero internal actions', () => {
     const step = createTestableStep({
-      isMultistep: true,
-      internalActionCount: 0,
+      stepKind: 'multistep',
+      actionCount: 0,
     });
 
     const timeout = calculateStepTimeout(step);
@@ -101,52 +84,46 @@ describe('calculateStepTimeout', () => {
 
   it('adds time per internal action for multisteps', () => {
     const step = createTestableStep({
-      isMultistep: true,
-      internalActionCount: 3,
+      stepKind: 'multistep',
+      actionCount: 3,
     });
 
     const timeout = calculateStepTimeout(step);
 
-    // 30s base + 3 * 5s = 45s
     expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 3 * TIMEOUT_PER_MULTISTEP_ACTION_MS);
   });
 
   it('scales linearly with internal action count', () => {
-    const step1 = createTestableStep({ isMultistep: true, internalActionCount: 1 });
-    const step5 = createTestableStep({ isMultistep: true, internalActionCount: 5 });
-    const step10 = createTestableStep({ isMultistep: true, internalActionCount: 10 });
+    const step1 = createTestableStep({ stepKind: 'multistep', actionCount: 1 });
+    const step5 = createTestableStep({ stepKind: 'multistep', actionCount: 5 });
+    const step10 = createTestableStep({ stepKind: 'multistep', actionCount: 10 });
 
     const timeout1 = calculateStepTimeout(step1);
     const timeout5 = calculateStepTimeout(step5);
     const timeout10 = calculateStepTimeout(step10);
 
-    // Verify linear scaling
     expect(timeout5 - timeout1).toBe(4 * TIMEOUT_PER_MULTISTEP_ACTION_MS);
     expect(timeout10 - timeout5).toBe(5 * TIMEOUT_PER_MULTISTEP_ACTION_MS);
-
-    // Verify absolute values
-    expect(timeout1).toBe(DEFAULT_STEP_TIMEOUT_MS + 1 * TIMEOUT_PER_MULTISTEP_ACTION_MS); // 35s
-    expect(timeout5).toBe(DEFAULT_STEP_TIMEOUT_MS + 5 * TIMEOUT_PER_MULTISTEP_ACTION_MS); // 55s
-    expect(timeout10).toBe(DEFAULT_STEP_TIMEOUT_MS + 10 * TIMEOUT_PER_MULTISTEP_ACTION_MS); // 80s
+    expect(timeout1).toBe(DEFAULT_STEP_TIMEOUT_MS + TIMEOUT_PER_MULTISTEP_ACTION_MS);
+    expect(timeout5).toBe(DEFAULT_STEP_TIMEOUT_MS + 5 * TIMEOUT_PER_MULTISTEP_ACTION_MS);
+    expect(timeout10).toBe(DEFAULT_STEP_TIMEOUT_MS + 10 * TIMEOUT_PER_MULTISTEP_ACTION_MS);
   });
 
-  it('ignores isMultistep=false even with non-zero internalActionCount', () => {
-    // Edge case: internalActionCount set but isMultistep is false
+  it('lets the plain driver ignore actionCount', () => {
     const step = createTestableStep({
-      isMultistep: false,
-      internalActionCount: 5,
+      stepKind: 'plain',
+      actionCount: 5,
     });
 
     const timeout = calculateStepTimeout(step);
 
-    // Should use default timeout since isMultistep is false
     expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS);
   });
 
-  it('adds time per guided substep when isGuided and guidedStepCount > 0', () => {
+  it('adds time per guided action', () => {
     const step = createTestableStep({
-      isGuided: true,
-      guidedStepCount: 3,
+      stepKind: 'guided',
+      actionCount: 3,
     });
 
     const timeout = calculateStepTimeout(step);
@@ -154,10 +131,10 @@ describe('calculateStepTimeout', () => {
     expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 3 * TIMEOUT_PER_GUIDED_SUBSTEP_MS);
   });
 
-  it('returns default timeout for guided step with zero guidedStepCount', () => {
+  it('returns default timeout for a guided step with no actions', () => {
     const step = createTestableStep({
-      isGuided: true,
-      guidedStepCount: 0,
+      stepKind: 'guided',
+      actionCount: 0,
     });
 
     const timeout = calculateStepTimeout(step);
@@ -165,23 +142,10 @@ describe('calculateStepTimeout', () => {
     expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS);
   });
 
-  it('returns default timeout for guided step with undefined guidedStepCount', () => {
+  it('uses the selected driver to interpret actionCount', () => {
     const step = createTestableStep({
-      isGuided: true,
-      guidedStepCount: undefined,
-    });
-
-    const timeout = calculateStepTimeout(step);
-
-    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS);
-  });
-
-  it('prefers guided timeout over multistep when both set', () => {
-    const step = createTestableStep({
-      isMultistep: true,
-      internalActionCount: 2,
-      isGuided: true,
-      guidedStepCount: 4,
+      stepKind: 'guided',
+      actionCount: 4,
     });
 
     const timeout = calculateStepTimeout(step);
@@ -239,16 +203,6 @@ describe('determineUnmetRequirementOutcome', () => {
   });
 });
 
-describe('resolveEffectiveSkippable', () => {
-  it('does not make guided steps skippable unless the UI exposes Skip', () => {
-    expect(resolveEffectiveSkippable(false, true)).toBe(false);
-  });
-
-  it('preserves explicit skippability for guided steps', () => {
-    expect(resolveEffectiveSkippable(true, true)).toBe(true);
-  });
-});
-
 describe('parseNthMatchSelector', () => {
   it('splits Pathfinder nth-match syntax into a zero-based locator index and trailing selector', () => {
     expect(
@@ -289,7 +243,7 @@ describe('calculateGuideTimeout', () => {
   });
 
   it('includes guided substep budgets', () => {
-    const guidedStep = createTestableStep({ isGuided: true, guidedStepCount: 3 });
+    const guidedStep = createTestableStep({ stepKind: 'guided', actionCount: 3 });
     const simple = calculateGuideTimeout([createTestableStep()]);
     const guided = calculateGuideTimeout([guidedStep]);
 

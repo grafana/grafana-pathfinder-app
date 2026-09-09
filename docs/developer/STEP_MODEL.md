@@ -24,6 +24,8 @@ Stable IDs survive position and content edits. They do NOT survive a block-type 
 
 The hash inputs are documented at `src/global-state/step-id.ts` (`deriveStepId(...)`): `sectionId`, zero-based `index`, `action`, `refTarget`, and an optional `variant` — notably no `type`. Audit that file to confirm which authoring edits do and do not orphan prior completion state in `interactiveStepStorage`.
 
+Two walks outside the parser re-derive the same id straight from guide JSON — the AI-fix apply path and the completion counter in `src/lib/guide-stats` — through `resolveStepIdForBlock` in `src/global-state/guide-step-id-resolver.ts`. It must agree with the parser exactly, or a step resolves under a key nothing dispatches; `src/lib/guide-stats/progress.parity.test.ts` pins it over every block type that can emit completion evidence.
+
 ## Completion store — canonical persistence
 
 Step completion lives in `src/global-state/completion-store.ts`. The store is the canonical persistence layer — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store backs the existing `interactiveStepStorage` namespace so localStorage shape is preserved.
@@ -113,7 +115,7 @@ Listeners use `subscribeProgressEvent(detail => ...)`. The store fires `kind: 's
 
 The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was removed in C3 — there were no dispatchers anywhere in the repo.
 
-`interactive-progress-cleared` (dispatched by `handleResetSection` and `useContentReset`) is the one remaining legacy event — it still drives ephemeral preview / alignment UI and will fold into `kind: 'guide'` with `hasProgress: false` once those listeners migrate.
+`interactive-progress-cleared` is a first-class event in its own right, not a leftover: its name is owned by `StorageEvents` in `src/lib/event-names.ts`, it is dispatched by the reset paths (`handleResetSection`, `useContentReset`, and the block-editor preview reset), and it is what drives the ephemeral preview and alignment UI. Treat it as part of the contract alongside `PROGRESS_EVENT`, and dispatch it through the name constant rather than a literal.
 
 ## Tab loader
 
