@@ -692,6 +692,40 @@ milestone-click series does not convert. It is not answered here.
 This document does not close, edit, or comment on that PR. Whether it is closed or
 updated is Jay's call.
 
+## Rolling this back
+
+The Mark complete control writes two things: the mark itself, in the per-guide
+`guide-complete-mark-*` namespace this model introduced, and a 100 in
+`interactiveCompletionStorage`, the percentage namespace that predates it and
+that `context.service.ts` reads for recommendation cards and context.
+
+**The 100 is deliberate and survives a rollback.** It is the reader's own
+statement that they finished the guide, recorded in the namespace every other
+reader of "how far through is this guide" already consults. Removing the control
+does not make that statement untrue, so the value is kept rather than treated as
+residue. The consequence to be clear-eyed about: on a prose-only guide, which is
+the majority of the library, nothing else would ever overwrite it — the only
+other writer, `refreshGuidePercentage`, is reached from step- and section-driven
+paths a prose-only guide never takes. A reader who wants it gone after a rollback
+has "Reset all learning progress" and nothing narrower, because the per-guide
+reset affordance is itself gated on the mark counting as progress.
+
+**The mark keys are swept by all three reset scopes, and only while the code is
+present.** Resetting one guide clears its mark
+(`docs-panel/hooks/resetGuideProgress.ts`); resetting a path clears its members'
+(`learning-paths.hook.ts`); "Reset all learning progress" clears the whole
+namespace (`MyLearningTab.tsx`). A rollback removes those sweepers along with the
+writer, so marks written beforehand stay in localStorage unread — inert, but not
+reachable by any in-app control. `syncFromGrafanaStorage`'s `keysToSync` is a
+fixed list of exact keys and cannot express a prefix, so the Grafana-side copies
+are not reachable either.
+
+**The namespace is uncapped**, matching `sectionAcknowledgementStorage`, the
+per-content-key namespace it was modelled on and sits beside. The two bounded
+percentage namespaces are a different shape — one shared record each, which is
+what `createBoundedRecordStorage` bounds — and giving the mark that shape would
+cost the exact-key cross-tab match the store's storage listener depends on.
+
 ## What is safe to change vs load-bearing
 
 **Safe:**

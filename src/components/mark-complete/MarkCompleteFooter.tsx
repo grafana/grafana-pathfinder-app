@@ -198,8 +198,10 @@ export function MarkCompleteFooter({ context, contentUrl, onMarkComplete, onCont
       void guideCompletionMarkStorage.set(contentKey, true).catch((error) => {
         logger.warn('Failed to persist guide completion mark', { error });
       });
-      // Temporary until the completion store derives the percentage from the
-      // mark; today nothing else would move the guide to 100%.
+      // Deliberate, not a placeholder: the percentage namespace is what
+      // recommendation cards and context read, and the reader's statement that
+      // they finished belongs there too. See COMPLETION-MODEL.md, "Rolling this
+      // back".
       void interactiveCompletionStorage.set(contentKey, 100);
       dispatchProgress({ kind: 'guide', contentKey, percentage: 100, hasProgress: true });
     }
