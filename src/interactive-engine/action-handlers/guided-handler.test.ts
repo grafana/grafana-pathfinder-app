@@ -198,6 +198,42 @@ describe('GuidedHandler', () => {
       expect(shownComment).toContain('Click Add');
     });
 
+    it('asks for performed progress, crediting only steps the reader finished', async () => {
+      document.body.innerHTML = '<button id="drawer" aria-expanded="true">Add</button>';
+      const button = document.querySelector<HTMLButtonElement>('#drawer')!;
+      (querySelectorAllEnhanced as jest.Mock).mockReturnValue({ elements: [button], usedFallback: false });
+      mockNavigationManager.highlightWithComment = jest.fn().mockResolvedValue(undefined);
+
+      await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: 'First instruction' },
+        0,
+        2,
+        5
+      );
+      await guidedHandler.executeGuidedStep(
+        { targetAction: 'highlight', refTarget: '#drawer', targetState: true, targetComment: 'Second instruction' },
+        1,
+        2,
+        5
+      );
+
+      const paints = (mockNavigationManager.highlightWithComment as jest.Mock).mock.calls;
+      const stepInfoFor = (needle: string) => paints.find((call) => String(call[1]).includes(needle))?.[3];
+
+      expect(stepInfoFor('First instruction')).toEqual({
+        current: 0,
+        total: 2,
+        completedSteps: [],
+        progress: 'performed',
+      });
+      expect(stepInfoFor('Second instruction')).toEqual({
+        current: 1,
+        total: 2,
+        completedSteps: [0],
+        progress: 'performed',
+      });
+    });
+
     it('still waits for the user when targetState is not yet satisfied', async () => {
       document.body.innerHTML = '<button id="drawer" aria-expanded="false">Add</button>';
       const button = document.querySelector<HTMLButtonElement>('#drawer')!;

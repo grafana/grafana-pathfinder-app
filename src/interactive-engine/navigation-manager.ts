@@ -11,6 +11,7 @@ import {
   isPathfinderContent,
   readToggleState,
 } from '../lib/dom';
+import { assertExhaustive } from '../lib/assert-exhaustive';
 import { logger } from '../lib/logging';
 import { sanitizeDocumentationHTML } from '../security';
 import { applyE2ECommentBoxAttributes } from './e2e-attributes';
@@ -30,6 +31,32 @@ export interface CommentBoxOptions {
   /** E2E contract: selector for current target */
   refTarget?: string;
   nextLabel?: string;
+}
+
+/**
+ * Step progress for the comment box.
+ *
+ * `progress` picks the evidence the bar is drawn from, because consumers mean different
+ * things by `completedSteps`: a guided block records only steps the reader performed,
+ * while a bubble tour records the steps it has shown.
+ */
+export interface CommentBoxStepInfo {
+  current: number;
+  total: number;
+  completedSteps: number[];
+  progress: 'performed' | 'position';
+}
+
+function progressBarPercent(stepInfo: CommentBoxStepInfo): number {
+  switch (stepInfo.progress) {
+    case 'performed':
+      return (stepInfo.completedSteps.length / stepInfo.total) * 100;
+    case 'position':
+      return ((stepInfo.current + 1) / stepInfo.total) * 100;
+    default:
+      assertExhaustive(stepInfo.progress);
+      return ((stepInfo.current + 1) / stepInfo.total) * 100;
+  }
 }
 
 const NAV_ITEM_SELECTOR = 'a[data-testid="data-testid Nav menu item"]';
@@ -125,7 +152,7 @@ export class NavigationManager {
    */
   showCenteredComment(
     comment: string,
-    stepInfo?: { current: number; total: number; completedSteps: number[] },
+    stepInfo?: CommentBoxStepInfo,
     onCancelCallback?: () => void,
     onNextCallback?: () => void,
     onPreviousCallback?: () => void,
@@ -666,7 +693,7 @@ export class NavigationManager {
    * @param element - The element to highlight
    * @param comment - Optional comment text to display in a comment box
    * @param enableAutoCleanup - Whether to enable auto-cleanup on scroll/click (default: true, false for guided mode)
-   * @param stepInfo - Optional step progress info for guided interactions
+   * @param stepInfo - Optional step progress info for guided interactions and tours
    * @param onSkipCallback - Optional callback when skip button is clicked
    * @param onCancelCallback - Optional callback when cancel button is clicked (for guided mode)
    * @param onNextCallback - Optional callback when next button is clicked (for tour mode)
@@ -678,7 +705,7 @@ export class NavigationManager {
     element: HTMLElement,
     comment?: string,
     enableAutoCleanup = true,
-    stepInfo?: { current: number; total: number; completedSteps: number[] },
+    stepInfo?: CommentBoxStepInfo,
     onSkipCallback?: () => void,
     onCancelCallback?: () => void,
     onNextCallback?: () => void,
@@ -858,7 +885,7 @@ export class NavigationManager {
     comment: string,
     targetRect: DOMRect | null,
     highlightRect: { top: number; left: number; width: number; height: number } | null,
-    stepInfo?: { current: number; total: number; completedSteps: number[] },
+    stepInfo?: CommentBoxStepInfo,
     onSkipCallback?: () => void,
     onCancelCallback?: () => void,
     onNextCallback?: () => void,
@@ -932,8 +959,7 @@ export class NavigationManager {
       const progressBar = document.createElement('div');
       progressBar.className = 'interactive-comment-progress-bar';
       // Tour-local: total counts steps inside this guided block, not the guide.
-      const progressPercent = (stepInfo.completedSteps.length / stepInfo.total) * 100;
-      progressBar.style.width = `${progressPercent}%`;
+      progressBar.style.width = `${progressBarPercent(stepInfo)}%`;
 
       progressContainer.appendChild(progressBar);
       content.appendChild(progressContainer);

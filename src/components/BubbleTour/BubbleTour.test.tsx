@@ -62,7 +62,7 @@ describe('BubbleTour', () => {
 
     expect(mockResolveWithRetry).toHaveBeenCalledWith('#one', 'highlight');
     expect(lastHighlight()[ARG.comment]).toBe('First');
-    expect(lastHighlight()[ARG.stepInfo]).toEqual({ current: 0, total: 3, completedSteps: [] });
+    expect(lastHighlight()[ARG.stepInfo]).toEqual({ current: 0, total: 3, completedSteps: [], progress: 'position' });
     expect(lastHighlight()[ARG.onPrevious]).toBeUndefined();
   });
 
@@ -72,7 +72,12 @@ describe('BubbleTour', () => {
     await act(async () => lastHighlight()[ARG.onNext]());
 
     await waitFor(() => expect(lastHighlight()[ARG.comment]).toBe('Second'));
-    expect(lastHighlight()[ARG.stepInfo]).toEqual({ current: 1, total: 3, completedSteps: [0] });
+    expect(lastHighlight()[ARG.stepInfo]).toEqual({
+      current: 1,
+      total: 3,
+      completedSteps: [0],
+      progress: 'position',
+    });
     expect(typeof lastHighlight()[ARG.onPrevious]).toBe('function');
   });
 
@@ -97,7 +102,12 @@ describe('BubbleTour', () => {
       await act(async () => staleNext());
 
       expect(mockHighlightWithComment.mock.calls.map((call) => call[ARG.comment])).not.toContain('Third');
-      expect(lastHighlight()[ARG.stepInfo]).toEqual({ current: 1, total: 3, completedSteps: [0] });
+      expect(lastHighlight()[ARG.stepInfo]).toEqual({
+        current: 1,
+        total: 3,
+        completedSteps: [0],
+        progress: 'position',
+      });
     });
 
     it('waits for a slow paint before painting the next step', async () => {
@@ -136,6 +146,20 @@ describe('BubbleTour', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('asks for position progress, including on the last step', async () => {
+    await renderTour({ steps: [STEPS[0]!, STEPS[1]!] });
+
+    await act(async () => lastHighlight()[ARG.onNext]());
+
+    await waitFor(() => expect(lastHighlight()[ARG.comment]).toBe('Second'));
+    expect(lastHighlight()[ARG.stepInfo]).toEqual({
+      current: 1,
+      total: 2,
+      completedSteps: [0],
+      progress: 'position',
+    });
+  });
+
   it('applies finalStepLabel only to the last step', async () => {
     await renderTour({ steps: [STEPS[0]!, STEPS[1]!], finalStepLabel: 'Start creating' });
 
@@ -155,7 +179,7 @@ describe('BubbleTour', () => {
       const [comment, stepInfo, , onNext] = mockShowCenteredComment.mock.calls.at(-1)!;
       expect(comment).toContain('First');
       expect(comment).toContain("isn't on screen right now");
-      expect(stepInfo).toEqual({ current: 0, total: 3, completedSteps: [] });
+      expect(stepInfo).toEqual({ current: 0, total: 3, completedSteps: [], progress: 'position' });
       expect(typeof onNext).toBe('function');
       expect(mockHighlightWithComment).not.toHaveBeenCalled();
     });
