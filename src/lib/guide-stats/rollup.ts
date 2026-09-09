@@ -37,7 +37,7 @@ export function meanOfMemberPercentages(percentages: readonly number[]): MemberR
   for (const value of percentages) {
     const clamped = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
     total += clamped;
-    if (clamped < 100) {
+    if (value !== 100) {
       complete = false;
     }
   }

@@ -39,6 +39,11 @@ describe('meanOfMemberPercentages', () => {
     expect(meanOfMemberPercentages([-100, 100])).toEqual({ percent: 50, complete: false });
   });
 
+  it('never completes a path from a member above 100', () => {
+    expect(meanOfMemberPercentages([150, 100])).toEqual({ percent: 99, complete: false });
+    expect(meanOfMemberPercentages([100, 101]).complete).toBe(false);
+  });
+
   it('treats a non-finite member as 0 — the percent reaches a durable record', () => {
     expect(meanOfMemberPercentages([Number.NaN, 100]).percent).toBe(50);
     expect(meanOfMemberPercentages([Number.POSITIVE_INFINITY, 100]).percent).toBe(50);

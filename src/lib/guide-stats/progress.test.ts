@@ -178,7 +178,7 @@ describe('evidence keyed by runtime step id', () => {
     expect(guideProgress(index, [{ kind: 'do-it', blockId: 'derived-1' }])).toMatchObject({ position: 2 });
   });
 
-  it('still credits an author id, which the resolver returns unchanged', () => {
+  it('falls back to the author id when the resolver keys the block under something else', () => {
     expect(guideProgress(index, [{ kind: 'do-it', blockId: 'authored' }])).toMatchObject({ position: 3 });
   });
 
