@@ -92,7 +92,7 @@ const COMPLETABLE_SHAPES: ReadonlyArray<{ shape: string; block: JsonBlock }> = [
       dataCheckBlocking: true,
     },
   },
-] as unknown as ReadonlyArray<{ shape: string; block: JsonBlock }>;
+];
 
 /** Every `props.stepId` the parser assigned, in document order. */
 function collectStepIds(elements: readonly ParsedElement[]): string[] {
@@ -135,8 +135,9 @@ describe('step-id parity with the parser, over the completable set', () => {
     // label: a label is hand-written and can drift from what it names, and a
     // mislabelled entry would drop a whole type from the sweep while the suite
     // stayed green. `shape` is a test title and nothing more.
+    const completable: ReadonlyArray<JsonBlock['type']> = [...COMPLETION_AFFORDANCE_BLOCK_TYPES, 'input'];
     const covered = new Set(COMPLETABLE_SHAPES.map((entry) => entry.block.type));
-    const uncovered = [...COMPLETION_AFFORDANCE_BLOCK_TYPES, 'input'].filter((type) => !covered.has(type));
+    const uncovered = completable.filter((type) => !covered.has(type));
 
     expect(uncovered).toEqual([]);
   });
