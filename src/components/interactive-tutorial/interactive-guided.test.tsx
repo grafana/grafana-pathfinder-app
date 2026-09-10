@@ -23,7 +23,16 @@ import type {
   GuidedSubstepStatus,
 } from '../../types/interactive-actions.types';
 import type { useControllerChannel } from '../../global-state/controller-channel';
-import { markStepCompleted, resetStep } from '../../global-state/completion-store';
+import {
+  evictAllContentCaches,
+  evictContentCache,
+  markStepCompleted,
+  resetCompletionStoreForTests,
+  resetSection,
+  resetStep,
+  resetSteps,
+} from '../../global-state/completion-store';
+import { getContentKey } from '../../global-state/content-key';
 
 // ─── Mock @grafana/ui ────────────────────────────────────────────────────────
 jest.mock('@grafana/ui', () => ({
@@ -100,16 +109,22 @@ const mockMarkSkipped = jest.fn(() => {
   mockStoredCompleted = true;
 });
 
-jest.mock('../../global-state/completion-store', () => ({
-  useStepCompletion: jest.fn(() => ({ completed: mockStoredCompleted, reason: null })),
-  markStepCompleted: jest.fn(() => {
-    mockStoredCompleted = true;
-  }),
-  resetStep: jest.fn(() => {
-    mockStoredCompleted = false;
-  }),
-  STANDALONE_SECTION_ID: '__standalone__',
-}));
+jest.mock('../../global-state/completion-store', () => {
+  const actual = jest.requireActual<typeof import('../../global-state/completion-store')>(
+    '../../global-state/completion-store'
+  );
+  return {
+    ...actual,
+    useStepCompletion: jest.fn(() => ({ completed: mockStoredCompleted, reason: null })),
+    markStepCompleted: jest.fn(() => {
+      mockStoredCompleted = true;
+    }),
+    resetStep: jest.fn((stepId: string, sectionId?: string) => {
+      actual.resetStep(stepId, sectionId);
+      mockStoredCompleted = false;
+    }),
+  };
+});
 
 jest.mock('../../requirements-manager/guide-requirements-context', () => ({
   useGuideRequirements: () => ({
@@ -211,6 +226,7 @@ afterEach(async () => {
   try {
     cleanup();
     await act(async () => {
+      resetCompletionStoreForTests();
       await jest.runAllTimersAsync();
     });
   } finally {
@@ -883,19 +899,24 @@ describe('InteractiveGuided evidence contract', () => {
     return JSON.parse(root.getAttribute('data-test-substep-results')!);
   }
   function pendingController() {
-    let finish!: (ok: boolean) => void;
+    const completions: Array<(ok: boolean) => void> = [];
+    const pending = new Map<string, (ok: boolean) => void>();
     const stopProgress = jest.fn();
     const channel = {
       post: jest.fn(),
       requestRequirementCheck: jest.fn(),
       requestFix: jest.fn(),
       awaitStepComplete: jest.fn(
-        () =>
+        (_stepId: string, runId: string) =>
           new Promise<boolean>((resolve) => {
-            finish = resolve;
+            completions.push(resolve);
+            pending.set(runId, resolve);
           })
       ),
-      cancelStepComplete: jest.fn(),
+      cancelStepComplete: jest.fn((_stepId: string, runId: string) => {
+        pending.get(runId)?.(false);
+        pending.delete(runId);
+      }),
       onStepProgress: jest.fn(
         (
           _stepId: string,
@@ -906,7 +927,7 @@ describe('InteractiveGuided evidence contract', () => {
     };
     mockInteractiveMode = 'controller';
     mockControllerChannel = channel;
-    return { channel, stopProgress, finish: (ok: boolean) => finish(ok) };
+    return { channel, stopProgress, finish: (ok: boolean, run = 0) => completions[run]!(ok) };
   }
 
   it.each([
@@ -1201,6 +1222,130 @@ describe('InteractiveGuided evidence contract', () => {
     expect(onComplete).not.toHaveBeenCalled();
     expect(mockPublishAppEvent).not.toHaveBeenCalled();
     expect(stopProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['standalone step', undefined, (stepId: string) => resetStep(stepId)],
+    ['section step', 'section', (stepId: string) => resetStep(stepId, 'section')],
+    ['section tail', 'section', (stepId: string) => resetSteps([stepId], 'section')],
+    ['section', 'section', () => resetSection('section')],
+    ['guide', undefined, () => evictContentCache(getContentKey())],
+    ['all guides', undefined, () => evictAllContentCaches()],
+  ] as const)('ignores remote completion after remount and %s reset', async (_scope, sectionId, reset) => {
+    const { channel, finish } = pendingController();
+    const onStepComplete = sectionId ? jest.fn() : undefined;
+    const onComplete = jest.fn();
+    const props = {
+      stepId: 'remote-remount-reset',
+      sectionId,
+      onStepComplete,
+      onComplete,
+      internalActions: [{ targetAction: 'noop' as const }],
+    };
+    const { unmount } = render(<InteractiveGuided {...props} />);
+    await startAndAdvance();
+    unmount();
+    render(<InteractiveGuided {...props} />);
+
+    await act(async () => {
+      reset(props.stepId);
+      finish(true);
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+    if (onStepComplete) {
+      expect(onStepComplete).not.toHaveBeenCalled();
+    }
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    expect(mockStoredCompleted).toBe(false);
+    expect(channel.cancelStepComplete).toHaveBeenCalledWith(props.stepId, channel.post.mock.calls[0]![0].runId);
+    expect(screen.getByTestId(testIds.interactive.step(props.stepId))).toHaveAttribute('data-test-step-state', 'idle');
+    expect(mockPublishAppEvent).not.toHaveBeenCalled();
+  });
+
+  it('ignores remote success already resolved before a remounted step resets', async () => {
+    const { finish } = pendingController();
+    const onComplete = jest.fn();
+    const props = {
+      stepId: 'remote-resolved-reset',
+      onComplete,
+      internalActions: [{ targetAction: 'noop' as const }],
+    };
+    const { unmount } = render(<InteractiveGuided {...props} />);
+    await startAndAdvance();
+    unmount();
+    render(<InteractiveGuided {...props} />);
+
+    await act(async () => {
+      finish(true);
+      resetStep(props.stepId);
+    });
+
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    expect(mockStoredCompleted).toBe(false);
+    expect(mockPublishAppEvent).not.toHaveBeenCalled();
+  });
+
+  it('preserves remote completion after a harmless remount', async () => {
+    const { channel, finish } = pendingController();
+    const onComplete = jest.fn();
+    const props = {
+      stepId: 'remote-remount',
+      onComplete,
+      internalActions: [{ targetAction: 'noop' as const }],
+    };
+    const { unmount } = render(<InteractiveGuided {...props} />);
+    await startAndAdvance();
+    unmount();
+    render(<InteractiveGuided {...props} />);
+
+    await act(async () => {
+      finish(true);
+    });
+
+    expect(markStepCompleted).toHaveBeenCalledWith(props.stepId, undefined, 'manual');
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(channel.cancelStepComplete).not.toHaveBeenCalled();
+  });
+
+  it('ignores an old remote run after a remounted step starts a replacement', async () => {
+    const { channel, finish } = pendingController();
+    const oldOnComplete = jest.fn();
+    const newOnComplete = jest.fn();
+    const props = {
+      stepId: 'remote-remount-replacement',
+      internalActions: [{ targetAction: 'noop' as const }],
+    };
+    const { unmount } = render(<InteractiveGuided {...props} onComplete={oldOnComplete} />);
+    const oldRoot = screen.getByTestId(testIds.interactive.step(props.stepId));
+    await startAndAdvance();
+    const oldProgress = channel.onStepProgress.mock.calls[0]![2];
+    unmount();
+    render(<InteractiveGuided {...props} onComplete={newOnComplete} />);
+    const newRoot = screen.getByTestId(testIds.interactive.step(props.stepId));
+    await startAndAdvance();
+
+    await act(async () => {
+      oldProgress(0, 1, [{ index: 0, action: 'noop', status: 'completed', durationMs: 10 }]);
+      finish(true);
+    });
+
+    expect(oldOnComplete).not.toHaveBeenCalled();
+    expect(newOnComplete).not.toHaveBeenCalled();
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    expect(evidence(oldRoot)).toEqual([]);
+    expect(evidence(newRoot)).toEqual([]);
+    expect(newRoot).toHaveAttribute('data-test-step-state', 'executing');
+
+    await act(async () => {
+      finish(true, 1);
+    });
+
+    expect(oldOnComplete).not.toHaveBeenCalled();
+    expect(newOnComplete).toHaveBeenCalledTimes(1);
+    expect(markStepCompleted).toHaveBeenCalledTimes(1);
+    expect(newRoot).toHaveAttribute('data-test-step-state', 'completed');
   });
 
   it.each(['cancellation', 'reset'])('ignores remote completion after %s', async (interruption) => {

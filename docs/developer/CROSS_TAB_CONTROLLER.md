@@ -255,6 +255,10 @@ A completion callback can therefore detach the controller root without losing it
 Retries use a new `runId` and clear prior evidence. Stale or cancelled subscriptions cannot update the new run.
 Executor teardown cancels active guided work and prevents later actions from starting.
 
+Pending guided controller runs use the [completion store](STEP_MODEL.md#pending-controller-runs) for reset and replacement checks across component remounts.
+Successful completion can persist after a normal component unmount.
+A reset or replacement invalidates the old waiter and blocks already-resolved success before it writes completion.
+
 ## Requirement evaluation (round-trip)
 
 A controller tab drives a _different_ Grafana tab, so requirements that probe

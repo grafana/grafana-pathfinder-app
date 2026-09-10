@@ -5,11 +5,14 @@ import {
   STANDALONE_SECTION_ID,
   evictAllContentCaches,
   evictContentCache,
+  evictSectionCache,
+  evictSectionCacheForKey,
   getGuideProgress,
   markStepCompleted,
   markStepsCompleted,
   reconcileSection,
   refreshAndNotifyGuideProgress,
+  registerPendingStepRun,
   resetCompletionStoreForTests,
   resetSection,
   resetStep,
@@ -121,6 +124,123 @@ async function flushMicrotasks(): Promise<void> {
     await Promise.resolve();
   });
 }
+
+describe('pending step runs', () => {
+  function trackRun(stepId: string, sectionId: string | undefined) {
+    const cancel = jest.fn();
+    return { ...registerPendingStepRun(stepId, sectionId, cancel), cancel };
+  }
+
+  it.each([
+    {
+      scope: 'step',
+      reset: () => resetStep('step-1', 'section-x'),
+      invalidated: ['current'],
+    },
+    {
+      scope: 'tail',
+      reset: () => resetSteps(['step-1', 'step-2'], 'section-x'),
+      invalidated: ['current', 'next'],
+    },
+    {
+      scope: 'section',
+      reset: () => resetSection('section-x'),
+      invalidated: ['current', 'previous', 'next'],
+    },
+    {
+      scope: 'preview section',
+      reset: () => evictSectionCache('section-x'),
+      invalidated: ['current', 'previous', 'next'],
+    },
+    {
+      scope: 'guide',
+      reset: () => evictContentCache(CONTENT_KEY),
+      invalidated: ['current', 'previous', 'next', 'otherSection'],
+    },
+    {
+      scope: 'all guides',
+      reset: () => evictAllContentCaches(),
+      invalidated: ['current', 'previous', 'next', 'otherSection', 'otherGuide'],
+    },
+  ])('invalidates only the $scope reset scope with an empty cache', ({ reset, invalidated }) => {
+    const current = trackRun('step-1', 'section-x');
+    const previous = trackRun('step-0', 'section-x');
+    const next = trackRun('step-2', 'section-x');
+    const otherSection = trackRun('step-1', 'section-y');
+    setActiveTabUrl('bundled:other-guide');
+    const otherGuide = trackRun('step-1', 'section-x');
+    setActiveTabUrl(CONTENT_KEY);
+    const runs = { current, previous, next, otherSection, otherGuide };
+
+    reset();
+
+    expect(
+      Object.entries(runs)
+        .filter(([, run]) => !run.isCurrent())
+        .map(([name]) => name)
+    ).toEqual(invalidated);
+    for (const [name, run] of Object.entries(runs)) {
+      expect(run.cancel).toHaveBeenCalledTimes(invalidated.includes(name) ? 1 : 0);
+    }
+  });
+
+  it('keeps a replacement current when the previous run releases', () => {
+    const previous = trackRun('step-1', 'section-x');
+    const current = trackRun('step-1', 'section-x');
+
+    expect(previous.isCurrent()).toBe(false);
+    expect(previous.cancel).toHaveBeenCalledTimes(1);
+    previous.release();
+    expect(current.isCurrent()).toBe(true);
+
+    current.release();
+    resetSection('section-x');
+    expect(current.isCurrent()).toBe(false);
+    expect(current.cancel).not.toHaveBeenCalled();
+    expect(previous.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalizes the standalone section for replacement and reset', () => {
+    const previous = trackRun('step-1', undefined);
+    const current = trackRun('step-1', STANDALONE_SECTION_ID);
+
+    expect(previous.isCurrent()).toBe(false);
+    expect(current.isCurrent()).toBe(true);
+    resetStep('step-1');
+    expect(current.isCurrent()).toBe(false);
+    expect(current.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates the registration before it calls the cancellation callback', () => {
+    let currentDuringCancellation: boolean | undefined;
+    const run = registerPendingStepRun('step-1', 'section-x', () => {
+      currentDuringCancellation = run.isCurrent();
+    });
+
+    resetStep('step-1', 'section-x');
+
+    expect(currentDuringCancellation).toBe(false);
+  });
+
+  it('keeps a pending run through objective completion and an ordinary cache refresh', async () => {
+    const run = trackRun('step-1', 'section-x');
+    markStepCompleted('step-1', 'section-x', 'objectives');
+    await flushMicrotasks();
+    evictSectionCacheForKey(CONTENT_KEY, 'section-x');
+
+    expect(run.isCurrent()).toBe(true);
+    expect(run.cancel).not.toHaveBeenCalled();
+  });
+
+  it('does not invalidate a pending run for an empty tail reset', () => {
+    const run = trackRun('step-1', 'section-x');
+
+    resetSteps([], 'section-x');
+
+    expect(run.isCurrent()).toBe(true);
+    expect(run.cancel).not.toHaveBeenCalled();
+  });
+});
 
 describe('completion-store', () => {
   it('returns idle entry before hydration completes', () => {

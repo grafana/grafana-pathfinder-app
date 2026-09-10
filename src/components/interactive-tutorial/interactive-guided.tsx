@@ -25,7 +25,12 @@ import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai
 import { sanitizeDocumentationHTML } from '../../security';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
-import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
+import {
+  markStepCompleted,
+  registerPendingStepRun,
+  resetStep,
+  useStepCompletion,
+} from '../../global-state/completion-store';
 import { useInteractiveMode } from '../../global-state/interactive-mode-context';
 import { useControllerChannel } from '../../global-state/controller-channel';
 import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
@@ -681,8 +686,11 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         setCurrentStepIndex(0);
         setCurrentStepStatus('waiting');
         setWasCancelled(false);
+        const pendingRun = registerPendingStepRun(renderedStepId, sectionId, () => {
+          controllerChannel.cancelStepComplete(renderedStepId, runId);
+        });
         const stopProgress = controllerChannel.onStepProgress(renderedStepId, runId, (index, _total, settled) => {
-          if (activeRunIdRef.current !== runId || controllerCancelledRef.current) {
+          if (!pendingRun.isCurrent() || activeRunIdRef.current !== runId || controllerCancelledRef.current) {
             return;
           }
           if (settled) {
@@ -715,7 +723,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         });
         try {
           const finished = await completion;
-          if (activeRunIdRef.current !== runId || controllerCancelledRef.current) {
+          if (!pendingRun.isCurrent() || activeRunIdRef.current !== runId || controllerCancelledRef.current) {
             return;
           }
           if (finished) {
@@ -734,6 +742,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             });
           }
         } finally {
+          pendingRun.release();
           stopProgress?.();
           if (activeRunIdRef.current === runId) {
             isExecutingRef.current = false;
@@ -765,6 +774,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       onStepComplete,
       onComplete,
       stepId,
+      sectionId,
     ]);
 
     const handleStepRedo = useCallback(() => {
