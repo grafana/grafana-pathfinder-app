@@ -30,9 +30,9 @@ describe('GuidedHandler', () => {
   let mockWaitForReactUpdates: jest.Mock;
 
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
 
-    // Setup mocks
     mockStateManager = new InteractiveStateManager() as jest.Mocked<InteractiveStateManager>;
     mockStateManager.setState = jest.fn();
     mockStateManager.handleError = jest.fn();
@@ -50,6 +50,9 @@ describe('GuidedHandler', () => {
 
   afterEach(() => {
     guidedHandler.cancel();
+    const timerCount = jest.getTimerCount();
+    jest.useRealTimers();
+    expect(timerCount).toBe(0);
   });
 
   describe('execute', () => {
