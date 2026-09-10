@@ -7,7 +7,7 @@
  *      `InteractiveGuide` CRD's `#Manifest` does not declare `startingLocation`, so a
  *      value written at the top level is pruned on write; both the block editor and
  *      `scripts/upsert-learning-path.sh` put it under `additionalFields` instead. Two
- *      locations to handle until the CUE field is promoted (see `docs/design/CONCERNS.md`).
+ *      locations to handle until the CUE field is promoted (see `docs/design/CONCERN_DETAILS.md`).
  *   3. `bundled-interactives/index.json` `url[0]` — fallback for unmigrated bundled guides
  *      (URLs of the form `bundled:<id>`)
  *   4. `null` — for remote guides without a manifest; caller skips prompting and

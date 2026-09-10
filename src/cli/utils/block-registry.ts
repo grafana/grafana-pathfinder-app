@@ -18,6 +18,7 @@ import {
   JsonCalloutBlockSchema,
   JsonCodeBlockBlockSchema,
   JsonConditionalBlockSchema,
+  JsonDividerBlockSchema,
   JsonGuidedBlockSchema,
   JsonHtmlBlockSchema,
   JsonImageBlockSchema,
@@ -47,6 +48,7 @@ import {
  */
 export const BLOCK_SCHEMA_MAP = {
   markdown: JsonMarkdownBlockSchema,
+  divider: JsonDividerBlockSchema,
   html: JsonHtmlBlockSchema,
   image: JsonImageBlockSchema,
   video: JsonVideoBlockSchema,

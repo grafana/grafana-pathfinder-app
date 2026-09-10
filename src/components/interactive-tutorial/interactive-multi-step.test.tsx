@@ -134,6 +134,31 @@ function CompleteEarlyHarness({ skippable = false }: { skippable?: boolean }) {
 }
 
 describe('InteractiveMultiStep — completeEarly lifecycle', () => {
+  it('surfaces an unsupported internal action instead of failing silently', async () => {
+    render(
+      <InteractiveMultiStep
+        stepId="multi-unsupported"
+        internalActions={[{ targetAction: 'unsupported-action' } as any]}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId(testIds.interactive.doItButton('multi-unsupported')));
+
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.step('multi-unsupported'))).toHaveAttribute(
+        'data-test-step-state',
+        'error'
+      )
+    );
+    expect(screen.getByTestId(testIds.interactive.errorMessage('multi-unsupported'))).toHaveTextContent(
+      'Step 1 failed'
+    );
+    expect(screen.getByTestId(testIds.interactive.errorMessage('multi-unsupported'))).toHaveTextContent(
+      'Unsupported action "unsupported-action".'
+    );
+    expect(mockExecuteInteractiveAction).not.toHaveBeenCalled();
+  });
+
   it('reports executing before the early-completion delay elapses', async () => {
     jest.useFakeTimers();
     try {

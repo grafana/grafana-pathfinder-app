@@ -40,6 +40,7 @@ describe('JsonGuideSchema', () => {
           { type: 'html', content: '<p>HTML</p>' },
           { type: 'image', src: 'https://example.com/img.png' },
           { type: 'video', src: 'https://youtube.com/watch?v=abc' },
+          { type: 'divider' },
           {
             type: 'interactive',
             action: 'highlight',
@@ -712,13 +713,50 @@ describe('JsonGuideSchema', () => {
   });
 
   describe('leading heading duplicates title', () => {
-    it('should warn when blocks[0] starts with a heading matching the title exactly', () => {
+    it('should error when blocks[0] starts with a heading matching the title exactly', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Create your first dashboard',
         blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
       });
       const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+      const error = result.errors.find((e) => e.message.includes('duplicates the guide title'));
+      expect(error).toBeDefined();
+      expect(error?.path).toEqual(['blocks', 0]);
+    });
+
+    it('should error when the title has a trailing suffix the heading lacks', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard in Grafana Cloud',
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+      const error = result.errors.find((e) => e.message.includes('duplicates the guide title'));
+      expect(error).toBeDefined();
+    });
+
+    it('should error when the heading has trailing punctuation the title lacks', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Welcome to Grafana',
+        blocks: [{ type: 'markdown', content: '# Welcome to Grafana!\n\nTour time.' }],
+      });
+      const result = validateGuideFromString(guide);
+      expect(result.isValid).toBe(false);
+      const error = result.errors.find((e) => e.message.includes('duplicates the guide title'));
+      expect(error).toBeDefined();
+    });
+
+    it('should stay a warning when allowDuplicateHeading is set, for runtime guide loaders', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
+      });
+      const result = validateGuideFromString(guide, { allowDuplicateHeading: true });
       expect(result.isValid).toBe(true);
       const warning = result.warnings.find(
         (w) => w.type === 'suggestion' && w.message.includes('duplicates the guide title')
@@ -727,70 +765,106 @@ describe('JsonGuideSchema', () => {
       expect(warning?.path).toEqual(['blocks', 0]);
     });
 
-    it('should warn when the title has a trailing suffix the heading lacks', () => {
-      const guide = JSON.stringify({
-        id: 'test',
-        title: 'Create your first dashboard in Grafana Cloud',
-        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
-      });
-      const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
-      expect(warning).toBeDefined();
-    });
-
-    it('should warn when the heading has trailing punctuation the title lacks', () => {
-      const guide = JSON.stringify({
-        id: 'test',
-        title: 'Welcome to Grafana',
-        blocks: [{ type: 'markdown', content: '# Welcome to Grafana!\n\nTour time.' }],
-      });
-      const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
-      expect(warning).toBeDefined();
-    });
-
-    it('should not warn when the first heading is unrelated to the title', () => {
+    it('should not flag when the first heading is unrelated to the title', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Guide editor tutorial',
         blocks: [{ type: 'markdown', content: "# Welcome to the guide editor!\n\nLet's get started." }],
       });
       const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
-      expect(warning).toBeUndefined();
+      expect(result.isValid).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(false);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(false);
     });
 
-    it('should not warn when the first heading is an h2', () => {
+    it('should not flag when the first heading is an h2', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Prometheus & Grafana 101',
         blocks: [{ type: 'markdown', content: '## Prerequisites\n\nYou will need a running Grafana instance.' }],
       });
       const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
-      expect(warning).toBeUndefined();
+      expect(result.isValid).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(false);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(false);
     });
 
-    it('should not warn when the first block is not markdown', () => {
+    it('should not flag when the first block is not markdown', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Create your first dashboard',
         blocks: [{ type: 'html', content: '<h1>Create your first dashboard</h1>' }],
       });
       const result = validateGuideFromString(guide);
-      const warning = result.warnings.find((w) => w.message.includes('duplicates the guide title'));
-      expect(warning).toBeUndefined();
+      expect(result.isValid).toBe(true);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(false);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(false);
     });
 
-    it('should stay a warning in strict mode instead of promoting to an error', () => {
+    it('should error regardless of strict mode', () => {
       const guide = JSON.stringify({
         id: 'test',
         title: 'Create your first dashboard',
         blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
       });
       const result = validateGuideFromString(guide, { strict: true });
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some((e) => e.message.includes('duplicates the guide title'))).toBe(true);
+    });
+
+    it('should report the duplicate heading and an unresolved snippet reference together', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [
+          { type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' },
+          { type: 'snippet-ref', snippetId: 'missing-snippet' },
+        ],
+      });
+      const result = validateGuideFromString(guide, { snippetCatalogIds: new Set(['known-snippet']) });
+      expect(result.isValid).toBe(false);
+      expect(result.errors.map((e) => e.code)).toEqual(['duplicate_heading', 'unknown_snippet_ref']);
+    });
+
+    it('should not promote the downgraded heading advisory to an error in strict mode', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' }],
+      });
+      const result = validateGuideFromString(guide, { allowDuplicateHeading: true, strict: true });
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
+      expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(true);
+    });
+
+    it('should still promote other warnings in strict mode alongside the heading error', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!', unknownField: true }],
+      });
+      const result = validateGuideFromString(guide, { strict: true });
+      expect(result.isValid).toBe(false);
+      expect(result.errors.some((e) => e.code === 'duplicate_heading')).toBe(true);
+      expect(result.errors.some((e) => e.code === 'strict' && e.message.includes('unknownField'))).toBe(true);
+    });
+
+    it('should keep the downgraded heading advisory in warnings when another error fails the guide', () => {
+      const guide = JSON.stringify({
+        id: 'test',
+        title: 'Create your first dashboard',
+        blocks: [
+          { type: 'markdown', content: '# Create your first dashboard\n\nWelcome!' },
+          { type: 'snippet-ref', snippetId: 'missing-snippet' },
+        ],
+      });
+      const result = validateGuideFromString(guide, {
+        allowDuplicateHeading: true,
+        snippetCatalogIds: new Set(['known-snippet']),
+      });
+      expect(result.isValid).toBe(false);
+      expect(result.errors.map((e) => e.code)).toEqual(['unknown_snippet_ref']);
       expect(result.warnings.some((w) => w.message.includes('duplicates the guide title'))).toBe(true);
     });
   });

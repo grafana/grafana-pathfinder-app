@@ -6,6 +6,7 @@
  * Participates in section step counting and sequential execution the same way InteractiveStep does.
  */
 
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
@@ -20,13 +21,14 @@ import { CodeBlock } from '../../docs-retrieval';
 import { testIds } from '../../constants/testIds';
 import { logger } from '../../lib/logging';
 import { useAssistantBlockValue } from '../../integrations/assistant-integration';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 export interface CodeBlockStepProps {
   code: string;
   language?: string;
   refTarget: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   skippable?: boolean;
   hints?: string;
   children?: React.ReactNode;
@@ -301,6 +303,7 @@ export const CodeBlockStep = forwardRef<
     return (
       <div
         className={containerClasses}
+        {...getTrackedStepRootAttributes('codeblock', renderedStepId)}
         data-test-step-state={stepState}
         data-testid={testIds.codeBlock.step(renderedStepId)}
       >

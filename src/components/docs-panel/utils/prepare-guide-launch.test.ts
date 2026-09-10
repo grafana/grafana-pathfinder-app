@@ -202,6 +202,22 @@ describe('prepareGuideLaunch', () => {
       expect(mockInline).not.toHaveBeenCalled();
     });
 
+    it('launches a published guide whose blocks[0] duplicates the title, so readers keep it', async () => {
+      const guide: JsonGuide = {
+        id: 'create-your-first-dashboard',
+        title: 'Create your first dashboard',
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nBuild your first dashboard.' }],
+      };
+      fetchResolves(guide);
+
+      const result = await prepareGuideLaunch('https://grafana.com/docs/x', { title: 'X', source: 'home_page' });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(JSON.parse(result.launch.preparedContent.content)).toEqual(guide);
+      }
+    });
+
     it('returns a failure result when a nested section is missing its blocks', async () => {
       fetchResolves({
         id: 'g',

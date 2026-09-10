@@ -29,9 +29,12 @@ function addModal(left: number, top: number, width: number, height: number, attr
   return el;
 }
 
-function addHighlight(left: number, top: number, width: number, height: number) {
+function addHighlight(left: number, top: number, width: number, height: number, internal = false) {
   const el = document.createElement('div');
   el.className = 'interactive-highlight-outline';
+  if (internal) {
+    el.setAttribute('data-pathfinder-internal', 'true');
+  }
   document.body.appendChild(el);
   mockRect(el, left, top, width, height);
   return el;
@@ -105,6 +108,14 @@ describe('useHighlightDodge — modal dodging', () => {
     // The chosen corner must clear both modals, including the large one.
     const dodge = cap.events.find((e) => e.type === 'dodge');
     expect(dodge?.detail).toEqual({ x: 32, y: 368 }); // bottom-left
+    cap.cleanup();
+  });
+
+  it('ignores a highlight that targets the panel itself, so it cannot flee its own tour', () => {
+    addHighlight(0, 0, 200, 200, true); // overlaps the panel, but is in-panel chrome
+    const cap = captureEvents();
+    renderHook(() => useHighlightDodge(GEOMETRY, false, true));
+    expect(cap.events).toEqual([]);
     cap.cleanup();
   });
 

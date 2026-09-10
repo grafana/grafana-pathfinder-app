@@ -33,6 +33,8 @@ import { renderMachineJson } from '../../utils/output';
 import { projectManifestForCrd } from '../lib/crd-manifest';
 import { PLUGIN_VIEWER_BASE } from '../lib/constants';
 import { tokenLogPrefix } from '../lib/session-token';
+import { encodeAppPlatformGuideBlocks } from '../../../types/app-platform-guide-compat';
+import type { JsonBlock } from '../../../types/json-guide.types';
 import type { AuthoringSessionStore } from '../lib/session-store';
 import { readOnly } from './annotations';
 import { resolveReadOnlyInput } from './read-input';
@@ -135,6 +137,10 @@ async function finalizeImpl(args: {
   // `type` is not declared on `ContentJson`, but clients send it alongside the
   // typed fields, so it has to be stripped through a widened view.
   const { type: _packageType, ...specContent } = content as unknown as Record<string, unknown>;
+  const persistedSpecContent = {
+    ...specContent,
+    blocks: encodeAppPlatformGuideBlocks(specContent.blocks as JsonBlock[]),
+  };
   const crdManifest = projectManifestForCrd(manifest);
 
   const handoff = {
@@ -166,7 +172,7 @@ async function finalizeImpl(args: {
       // declares no `spec.type`, so leaving it in earns a pruning warning on
       // every write. `manifest` carries it, projected onto the CRD's shape.
       spec: {
-        ...specContent,
+        ...persistedSpecContent,
         status,
         ...(crdManifest ? { manifest: crdManifest } : {}),
       },

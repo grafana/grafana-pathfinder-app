@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePluginContext } from '@grafana/data';
 import { isAppPluginEnabled, isAppPluginInstalled } from '@grafana/runtime';
-import { getConfigWithDefaults } from '../../constants';
+import { isCodaTerminalEnabled } from '../../utils/coda-enablement';
 import { recordSandboxUnavailable, type SandboxUnavailableReason } from '../../lib/telemetry/facade';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import {
   CODA_PLUGIN_ID,
   codaRoleForbiddenMessage,
@@ -129,8 +130,9 @@ export function useCodaPluginAvailable(shouldProbe: boolean): boolean {
 
 /**
  * The two operator-owned gates on the sandbox terminal, as the configuration
- * page reports them (`CodaBackendStatus`): Pathfinder's own
- * `enableCodaTerminal`, then the Coda plugin being installed and enabled.
+ * page reports them (`CodaBackendStatus`): `isCodaTerminalEnabled` — the
+ * `pathfinder.coda-terminal` flag, or dev mode plus `enableCodaTerminal` — then
+ * the Coda plugin being installed and enabled.
  *
  * Registration — the third gate that page reports — is deliberately not probed
  * here. It needs a `/capabilities` round trip per caller, and an unregistered
@@ -142,7 +144,7 @@ export type CodaTerminalGate = 'checking' | 'disabled' | 'plugin-missing' | 'con
 export function useCodaTerminalGate(): CodaTerminalGate {
   const pluginContext = usePluginContext();
   const enabled = useMemo(
-    () => getConfigWithDefaults(pluginContext?.meta?.jsonData || {}).enableCodaTerminal,
+    () => isCodaTerminalEnabled(pluginContext?.meta?.jsonData || {}),
     [pluginContext?.meta?.jsonData]
   );
   const availability = useCodaPluginAvailability(enabled);
@@ -250,6 +252,11 @@ export function codaConfigGateMessage(
       return `${subject}, and the sandbox terminal is turned off for this Grafana. An administrator can enable it in Pathfinder’s configuration.`;
     case 'plugin-missing':
       return `${subject}, and the Coda app plugin is not installed or not enabled in this Grafana.`;
+    case 'checking':
+    case 'configured':
+      break;
+    default:
+      assertExhaustive(gate);
   }
   if (eligibility.state === 'role_forbidden') {
     return `${subject}. ${codaRoleForbiddenMessage(eligibility.minimumSessionRole)}`;

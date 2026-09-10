@@ -295,7 +295,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         return; // This handler was created for different content
       }
       const detail = (event as CustomEvent).detail;
-      const currentTabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
+      const currentTabUrl = window.__DocsPluginActiveTabUrl;
       if (detail?.completionPercentage >= 100 && detail?.contentKey && currentTabUrl) {
         // Only trigger if the event is for the current page (strict equality after normalization).
         // Bidirectional startsWith would produce false matches when URLs share a common prefix
@@ -345,7 +345,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   // (progress restoration) runs — prevents stale key from a previous milestone.
   useLayoutEffect(() => {
     try {
-      (window as any).__DocsPluginContentKey = content?.url || '';
+      window.__DocsPluginContentKey = content?.url || '';
     } catch {
       // no-op
     }
@@ -971,7 +971,7 @@ interface StandaloneStepPosition {
  * An `input` block emits `datasource-check-step` instead when its author asked
  * a failing data check to block, and only that form is tracked here.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 3. Adding a new interactive step
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 4. Adding a new interactive step
  * component type requires updates in 3 places:
  *   1. step-type-registry.ts STEP_TYPE_SCHEMAS (parse + orchestration)
  *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES
@@ -1259,6 +1259,7 @@ function renderParsedElement(
           vmTemplate={element.props.vmTemplate}
           vmApp={element.props.vmApp}
           vmScenario={element.props.vmScenario}
+          gcx={element.props.gcx}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
         >

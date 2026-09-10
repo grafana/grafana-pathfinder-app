@@ -35,6 +35,7 @@
  * SECURITY NOTE: Data is NOT encrypted. Do not store sensitive information.
  */
 
+import type { ConditionInput } from '../types/requirements.types';
 import { AppEvents } from '@grafana/data';
 import { getAppEvents, usePluginUserStorage } from '@grafana/runtime';
 import { useCallback, useRef, useEffect } from 'react';
@@ -160,7 +161,9 @@ export function unwrapEnvelope(raw: string | null | undefined): StorageEnvelope 
 
 const LIMITS = {
   MAX_JOURNEY_COMPLETIONS: 100, // Prevent quota exhaustion
-  MAX_INTERACTIVE_COMPLETIONS: 100, // Prevent quota exhaustion
+  // Higher than the journey cap because this record is keyed per guide *and*
+  // per milestone, so one multi-milestone path consumes a slot per milestone.
+  MAX_INTERACTIVE_COMPLETIONS: 250, // Prevent quota exhaustion
   MAX_PERSISTED_TABS: 50, // Prevent quota exhaustion
 } as const;
 
@@ -1355,7 +1358,7 @@ export interface PersistedBundledStep {
     contextStrategy?: string;
   };
   interactiveComment?: string;
-  requirements?: string;
+  requirements?: ConditionInput;
 }
 
 export interface PersistedSectionInfo {
@@ -1363,7 +1366,7 @@ export interface PersistedSectionInfo {
   sectionTitle?: string;
   description?: string;
   interactiveComment?: string;
-  requirements?: string;
+  requirements?: ConditionInput;
 }
 
 export const fullScreenModeStorage = {

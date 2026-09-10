@@ -228,7 +228,8 @@ This helps the reviewer scan the surface quickly.
 - `pkg/plugin/app_platform_identity.go` — forwarded-identity validation helpers.
 - `pkg/plugin/package_recommendations.go` — bounded memory + allowlist pattern.
 - `src/cli/mcp/transports/http.ts` — MCP HTTP transport safety caps.
-- `docs/design/CONCERNS.md` — security concern routing + one-way doors.
+- `docs/design/CONCERNS.md` — security concern routing.
+- `docs/design/CONCERN_DETAILS.md` — security review questions and one-way doors; load through the review concern extractor.
 - `docs/design/MCP-AGENT-UX-HARDENING.md` — MCP UX security guidance.
 - `docs/design/CLIENT-ORCHESTRATION-GUIDE.md`, `docs/design/APP-PLATFORM-PUBLISH-HANDOFF.md` — confirmation flow contracts.
 

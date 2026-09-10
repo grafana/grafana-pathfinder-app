@@ -1,0 +1,11 @@
+{
+  "id": "shared-session-use-unsaved-config",
+  "type": "guide",
+  "repository": "test-fixture",
+  "description": "Requires unsaved form state from the prior milestone.",
+  "startingLocation": "/plugins/grafana-pathfinder-app?page=configuration",
+  "testEnvironment": {
+    "tier": "local",
+    "minVersion": "12.2.0"
+  }
+}

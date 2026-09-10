@@ -15,7 +15,7 @@ import type { ChildKind } from './step-section-utils';
  * React component types whose presence as a direct child of an interactive
  * section counts as an "interactive" step the user must actually execute.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 3. Adding a new interactive step
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 4. Adding a new interactive step
  * component type requires updates in 3 places:
  *   1. step-type-registry.ts `STEP_TYPE_SCHEMAS` (parse + orchestration)
  *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES (this set,
@@ -60,8 +60,8 @@ export const INTERACTIVE_STEP_COMPONENT_TYPES: ReadonlySet<unknown> = new Set<un
  *   markdown HTML, images, videos, plain text, html blocks, divs and any
  *   non-tracked renderable child.
  * - 'ignore': structurally invisible content (whitespace text nodes,
- *   booleans, null, undefined, empty fragments) — does not count for
- *   acknowledgement either way.
+ *   booleans, null, undefined, empty fragments, dividers) — does not count
+ *   for acknowledgement either way.
  */
 export function classifySectionChild(child: React.ReactNode): ChildKind {
   if (child === null || child === undefined || typeof child === 'boolean') {
@@ -77,6 +77,9 @@ export function classifySectionChild(child: React.ReactNode): ChildKind {
     return 'ignore';
   }
   const childType = (child as React.ReactElement).type;
+  if (childType === 'hr') {
+    return 'ignore';
+  }
   if (childType === InteractiveStep) {
     // All InteractiveStep variants — including noop — count as interactive
     // per issue #842. The `nonNoopSteps` filter inside InteractiveSection

@@ -3,7 +3,7 @@ import { StorageKeys } from '../lib/storage-keys';
 import { PANEL_MODE_CHANGE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../lib/event-names';
 // Surgical imports (not the ../lib/telemetry barrel): panel-mode is
 // entry-eager, and the barrel would pull the telemetry package into module.js.
-import { reportPathfinderSurface, reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
+import { reportPathfinderSurfaceClosed } from '../lib/telemetry/surface';
 import { pushFaroUserAction } from '../lib/telemetry/bridge';
 import { type FloatingPanelGeometry, getDefaultFloatingPanelGeometry } from '../constants/floating-panel';
 import { GRAFANA_DRIVING_ACTIONS } from '../constants/interactive-actions';
@@ -229,7 +229,7 @@ class PanelModeManager {
       // instances do not collide on the __DocsPluginActiveTabId window
       // global or on tab storage writes.
       getAppEvents().publish({ type: 'close-extension-sidebar', payload: {} });
-      reportPathfinderSurface(mode);
+      reportPathfinderSurfaceClosed(previous);
     } else if (previous === 'floating' || previous === 'fullscreen') {
       // 'sidebar' mode does not mean the sidebar is open — its mount reports
       // 'sidebar' itself; until then the surface is closed.

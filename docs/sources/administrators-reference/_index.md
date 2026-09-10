@@ -176,6 +176,8 @@ The terminal requires the separate **Coda app plugin** (`grafana-coda-app`) to b
 
 While the Coda app plugin is missing or unregistered, Interactive learning hides the terminal panel and the terminal block types, and the configuration page reports which step is outstanding. See the [Coda terminal integration](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/CODA.md) developer reference for details.
 
+On Grafana Cloud, Grafana Labs can also turn the terminal on remotely for a stack. When that happens, the **Enable Coda terminal** toggle shows as on and is not editable, labelled as feature-flag driven; your own saved setting is left untouched, so the terminal goes away again when the flag is turned off.
+
 ### Live sessions (experimental)
 
 Live sessions enable a presenter to broadcast their **Show me** and **Do it** actions to attendees over a peer-to-peer WebRTC connection. This is gated behind a plugin setting and requires a PeerJS signalling server. See the [Live sessions developer reference](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/LIVE_SESSIONS.md) for setup, scaling considerations, and known limitations.

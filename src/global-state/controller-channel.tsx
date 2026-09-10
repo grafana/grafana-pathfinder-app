@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../types/requirements.types';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CrossTabTransport, createSenderId } from '../lib/cross-tab-transport';
 import {
@@ -42,12 +43,12 @@ interface ControllerChannel {
   post: (payload: CrossTabPayload) => void;
   requestRequirementCheck: (
     stepId: string,
-    requirements: string,
+    requirements: ConditionInput,
     opts?: { targetAction?: string; refTarget?: string; targetValue?: string }
   ) => Promise<RemoteRequirementResult | null>;
   requestFix: (
     stepId: string,
-    opts: { requirements: string; fixType?: string; targetHref?: string; scrollContainer?: string }
+    opts: { requirements: ConditionInput; fixType?: string; targetHref?: string; scrollContainer?: string }
   ) => Promise<FixOutcome>;
   awaitStepComplete: (stepId: string, runId: string) => Promise<boolean>;
   cancelStepComplete: (stepId: string, runId: string) => void;
@@ -56,6 +57,7 @@ interface ControllerChannel {
 
 interface PendingRequest {
   resolve: (value: RemoteRequirementResult | FixOutcome | null) => void;
+  fallback: RemoteRequirementResult | FixOutcome | null;
   timer: ReturnType<typeof setTimeout>;
 }
 
@@ -196,7 +198,7 @@ export function ControllerChannelProvider({
     const failAllPending = () => {
       pending.forEach((entry) => {
         clearTimeout(entry.timer);
-        entry.resolve(null);
+        entry.resolve(entry.fallback);
       });
       pending.clear();
       stepDone.forEach((resolve) => resolve(false));
@@ -317,7 +319,11 @@ export function ControllerChannelProvider({
           pendingRef.current.delete(requestId);
           resolve(fallback);
         }, REQUEST_TIMEOUT_MS);
-        pendingRef.current.set(requestId, { resolve: resolve as PendingRequest['resolve'], timer });
+        pendingRef.current.set(requestId, {
+          resolve: resolve as PendingRequest['resolve'],
+          fallback,
+          timer,
+        });
         post({ ...payload, requestId });
       });
     },

@@ -116,6 +116,10 @@ export enum UserInteraction {
   AlignmentPromptConfirmed = 'alignment_prompt_confirmed',
   AlignmentPromptDismissed = 'alignment_prompt_dismissed',
 
+  // Sandbox gcx credentials
+  GcxCredentialInstalled = 'gcx_credential_installed',
+  GcxSetupSkipped = 'gcx_setup_skipped',
+
   // AI auto-heal
   AiFixOffered = 'ai_fix_offered',
   AiFixAccepted = 'ai_fix_accepted',
@@ -187,14 +191,18 @@ export function getBoundActiveExperiments(): ExperimentAnalyticsEntry[] {
   return getExperimentsForAnalytics() ?? [];
 }
 
+const EXPERIMENT_VARIANT_PRECEDENCE = {
+  excluded: 0,
+  control: 1,
+  treatment: 2,
+} satisfies Record<ExperimentConfig['variant'], number>;
+
 function rollUpVariant(experiments: ExperimentAnalyticsEntry[]): ExperimentConfig['variant'] {
-  if (experiments.some((experiment) => experiment.variant === 'treatment')) {
-    return 'treatment';
-  }
-  if (experiments.some((experiment) => experiment.variant === 'control')) {
-    return 'control';
-  }
-  return 'excluded';
+  return experiments.reduce<ExperimentConfig['variant']>((highest, experiment) => {
+    return EXPERIMENT_VARIANT_PRECEDENCE[experiment.variant] > EXPERIMENT_VARIANT_PRECEDENCE[highest]
+      ? experiment.variant
+      : highest;
+  }, 'excluded');
 }
 
 /**
@@ -269,7 +277,7 @@ export function reportAppInteraction(
     const experiments = activeExperiments && activeExperiments.length > 0 ? activeExperiments : null;
     const variant = experiments ? rollUpVariant(experiments) : null;
 
-    const kioskSessionId = (window as any).__pathfinderKioskSessionId as string | undefined;
+    const kioskSessionId = window.__pathfinderKioskSessionId;
 
     const enrichedProperties: Record<string, unknown> = {
       plugin_version: packageJson.version,
@@ -576,8 +584,8 @@ export function enrichWithJourneyContext(
  */
 export function getSourceDocument(stepId?: string): { source_document: string; step_id: string } {
   try {
-    const tabUrl = (window as any).__DocsPluginActiveTabUrl as string | undefined;
-    const contentKey = (window as any).__DocsPluginContentKey as string | undefined;
+    const tabUrl = window.__DocsPluginActiveTabUrl;
+    const contentKey = window.__DocsPluginContentKey;
     const sourceDocument = tabUrl || contentKey || window.location.pathname || 'unknown';
 
     return {
@@ -688,8 +696,8 @@ export function buildInteractiveStepProperties(
  */
 export function getCurrentStepContext(): Record<string, number> {
   try {
-    const stepIndex = (window as any).__DocsPluginCurrentStepIndex as number | undefined;
-    const totalSteps = (window as any).__DocsPluginTotalSteps as number | undefined;
+    const stepIndex = window.__DocsPluginCurrentStepIndex;
+    const totalSteps = window.__DocsPluginTotalSteps;
 
     if (stepIndex === undefined || totalSteps === undefined) {
       return {};

@@ -62,7 +62,7 @@ describe('json-parser terminal block', () => {
 
     const terminalEl = result.data!.elements.find((el) => el.type === 'terminal-step');
     expect(terminalEl).toBeDefined();
-    expect(terminalEl!.props.requirements).toBe('is-terminal-active');
+    expect(terminalEl!.props.requirements).toEqual(['is-terminal-active']);
     expect(terminalEl!.props.skippable).toBe(true);
     expect(terminalEl!.props.hints).toBe('Connect first');
   });
@@ -157,4 +157,66 @@ describe('json-parser terminal block', () => {
     expect(sectionEl).toBeDefined();
     expect(sectionEl!.props.autoCollapse).toBeUndefined();
   });
+});
+
+describe('json-parser terminal-connect gcx field', () => {
+  function parseConnectBlock(block: Record<string, unknown>) {
+    const result = parseJsonGuide(
+      JSON.stringify({
+        id: 'test-gcx',
+        title: 'gcx test',
+        blocks: [{ type: 'terminal-connect', content: 'Connect', ...block }],
+      })
+    );
+    expect(result.isValid).toBe(true);
+    return result.data!.elements.find((el) => el.type === 'terminal-connect-step')!;
+  }
+
+  it('carries gcx through to the step props', () => {
+    expect(parseConnectBlock({ gcx: true }).props.gcx).toBe(true);
+  });
+
+  it('leaves gcx undefined when the author did not ask for it', () => {
+    // Undefined, not false: the component owns the default, and a parser that
+    // invented one would make "unset" indistinguishable from "opted out".
+    expect(parseConnectBlock({}).props.gcx).toBeUndefined();
+  });
+
+  it('keeps gcx alongside the VM options rather than replacing them', () => {
+    const el = parseConnectBlock({ gcx: true, vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
+    expect(el.props).toMatchObject({ gcx: true, vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
+  });
+
+  it('rejects a non-boolean gcx rather than coercing it', () => {
+    const result = parseJsonGuide(
+      JSON.stringify({
+        id: 'test-gcx-bad',
+        title: 'gcx test',
+        blocks: [{ type: 'terminal-connect', content: 'Connect', gcx: 'yes' }],
+      })
+    );
+    expect(result.isValid).toBe(false);
+  });
+});
+
+it('preserves comma-containing objective and prerequisite tokens', () => {
+  const parsed = parseJsonGuide(
+    JSON.stringify({
+      id: 'comma',
+      title: 'Comma',
+      blocks: [
+        {
+          type: 'interactive',
+          action: 'button',
+          reftarget: 'button',
+          content: 'Save',
+          requirements: ['has-dashboard-named:CPU, memory'],
+          objectives: ['has-dashboard-named:CPU, memory'],
+        },
+      ],
+    })
+  );
+  const step = parsed.data!.elements.find((element) => element.type === 'interactive-step');
+  expect(step?.props.requirements).toEqual(['has-dashboard-named:CPU, memory']);
+  expect(step?.props.objectives).toEqual(['has-dashboard-named:CPU, memory']);
 });

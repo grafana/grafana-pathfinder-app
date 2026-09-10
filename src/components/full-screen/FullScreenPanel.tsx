@@ -16,6 +16,7 @@ import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
+import { reportPathfinderSurface } from '../../lib/telemetry/surface';
 import { REQUEST_FULLSCREEN_GUIDE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../../lib/event-names';
 import { findDocPage } from '../../utils/find-doc-page';
 import { parsePathfinderDeepLink, shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
@@ -51,7 +52,7 @@ export class FullScreenPanel extends SceneObjectBase<FullScreenPanelState> {
 
 function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const panel = useMemo(() => {
-    const globalConfig = (window as any).__pathfinderPluginConfig;
+    const globalConfig = window.__pathfinderPluginConfig;
     const config = getConfigWithDefaults(globalConfig || {});
     return new CombinedLearningJourneyPanel(config);
   }, []);
@@ -68,6 +69,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // here would overwrite the user's stored preference with whatever surface
   // an auto-launch chose before the reload.
   useEffect(() => {
+    reportPathfinderSurface('fullscreen');
     if (panelModeManager.getMode() !== 'fullscreen') {
       panelModeManager.setModeTransient('fullscreen');
     } else {

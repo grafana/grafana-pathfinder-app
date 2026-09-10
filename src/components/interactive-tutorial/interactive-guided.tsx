@@ -1,3 +1,4 @@
+import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
 import { usePluginContext } from '@grafana/data';
@@ -30,6 +31,7 @@ import { useControllerChannel } from '../../global-state/controller-channel';
 import { isGrafanaDrivingHandoffNeeded, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
 import { toCrossTabInternalAction } from '../../types/cross-tab.types';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 /**
  * SafeHTML - Renders sanitized HTML as React components
@@ -102,8 +104,8 @@ interface InteractiveGuidedProps {
   className?: string;
   disabled?: boolean;
   hints?: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   onComplete?: () => void;
   skippable?: boolean;
   completeEarly?: boolean;
@@ -383,6 +385,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         // own, so there's no race left for a mounted-check to guard against.
         setIsExecuting(true);
         setExecutionError(null);
+        guidedHandler.resetProgress();
         setCurrentStepIndex(0);
         setFailedStepIndex(-1);
         setCurrentStepStatus('waiting');
@@ -804,6 +807,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     return (
       <div
         className={`interactive-step interactive-guided${className ? ` ${className}` : ''}${uiState === 'completed' ? ' completed' : ''} interactive-guided--${uiState}`}
+        {...getTrackedStepRootAttributes('guided', stepId || renderedStepId)}
         data-step-id={stepId || renderedStepId}
         data-state={uiState}
         data-testid={testIds.interactive.step(renderedStepId)}

@@ -6,6 +6,7 @@
  * to attendees in real-time.
  */
 
+import type { ConditionInput } from './requirements.types';
 // ============================================================================
 // Core Session Types
 // ============================================================================
@@ -137,7 +138,7 @@ export interface InteractiveAction {
     targetAction: string;
     refTarget?: string;
     targetValue?: string;
-    requirements?: string;
+    requirements?: ConditionInput;
   }>;
 }
 

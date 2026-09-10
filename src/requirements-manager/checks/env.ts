@@ -22,6 +22,7 @@ export async function hasFeatureCheck(check: string): Promise<CheckResultError> 
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Feature check failed: ${error}`,
@@ -47,6 +48,7 @@ export async function inEnvironmentCheck(check: string): Promise<CheckResultErro
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Environment check failed: ${error}`,
@@ -83,6 +85,7 @@ export async function minVersionCheck(check: string): Promise<CheckResultError> 
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Version check failed: ${error}`,
@@ -120,11 +123,13 @@ export async function rendererCheck(check: string): Promise<CheckResultError> {
     return {
       requirement: check,
       pass: false,
+      verdict: 'invalid',
       error: `Unknown renderer value: '${rendererValue}'. Supported values: 'pathfinder', 'website'`,
       context: { renderer: rendererValue, supported: ['pathfinder', 'website'] },
     };
   } catch (error) {
     return {
+      verdict: 'unavailable',
       requirement: check,
       pass: false,
       error: `Renderer check failed: ${error}`,

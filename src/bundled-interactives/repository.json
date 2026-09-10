@@ -109,7 +109,7 @@
     },
     "testEnvironment": {
       "tier": "cloud",
-      "minVersion": "12.2.0"
+      "minVersion": "13.2.0"
     },
     "stats": {
       "version": 1,

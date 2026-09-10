@@ -1,3 +1,4 @@
+import { conditionLabel } from '../lib/condition-input';
 import { InteractiveElementData } from '../types/interactive.types';
 import { InteractiveStateManager } from './interactive-state-manager';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
@@ -49,7 +50,7 @@ export class SequenceManager {
     private dispatchInteractiveAction: (data: InteractiveElementData, click: boolean) => Promise<void>,
     private waitForReactUpdates: () => Promise<void>,
     private isValidInteractiveElement: (data: InteractiveElementData) => boolean,
-    private extractInteractiveDataFromElement: (element: HTMLElement) => InteractiveElementData
+    private extractInteractiveDataFromElement: (element: HTMLElement) => InteractiveElementData | null
   ) {}
 
   /**
@@ -93,7 +94,7 @@ export class SequenceManager {
     logger.warn(
       `${context.stepName} ${context.stepIndex + 1} failed after ${this.MAX_RETRIES} retries, stopping sequence`
     );
-    const requirement = (context.data.requirements ?? '').slice(0, MAX_REQUIREMENT_CONTEXT_LENGTH);
+    const requirement = conditionLabel(context.data.requirements).slice(0, MAX_REQUIREMENT_CONTEXT_LENGTH);
     if (lastFailure === 'action') {
       recordSequenceActionError(requirement, this.MAX_RETRIES, classifySequenceError(lastError));
       return 'failed_action';
@@ -114,7 +115,7 @@ export class SequenceManager {
       const element = elements[i];
       const data = this.extractInteractiveDataFromElement(element as HTMLElement);
 
-      if (!this.isValidInteractiveElement(data)) {
+      if (data === null || !this.isValidInteractiveElement(data)) {
         continue;
       }
 
@@ -147,7 +148,7 @@ export class SequenceManager {
       const element = elements[i];
       const data = this.extractInteractiveDataFromElement(element as HTMLElement);
 
-      if (!this.isValidInteractiveElement(data)) {
+      if (data === null || !this.isValidInteractiveElement(data)) {
         continue;
       }
 

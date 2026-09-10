@@ -16,9 +16,10 @@ export type CompletionEvidenceKind = 'do-it' | 'mark-section-complete' | 'mark-g
 export interface CompletionEvidence {
   kind: CompletionEvidenceKind;
   /**
-   * Block id the signal came from: the interactive block for `do-it`, the
-   * section container for `mark-section-complete`. Ignored for
-   * `mark-guide-complete`, which always evidences the whole guide.
+   * Block id the signal came from: the interactive block for `do-it` — its
+   * runtime step id, falling back to an author id — and the section container
+   * for `mark-section-complete`. Ignored for `mark-guide-complete`, which
+   * always evidences the whole guide.
    */
   blockId?: string;
 }
@@ -41,8 +42,8 @@ export interface GuideProgress {
  * The formula is `position / totalBlockCount`, with no special cases. A guide
  * whose final counted block is completable reaches 100% by clicking it, since
  * that block is position `n` of `n`; a guide with trailing prose after its
- * last "Do it" does not, and carries a "Mark as complete" button at its foot
- * instead — see {@link GuideBlockIndex.finalCompletablePosition}.
+ * last "Do it" reaches 100% only through the "Mark as complete" button, which
+ * every guide carries unconditionally.
  *
  * `percent` is reserved: it reads 100 only when `complete`, so a large
  * denominator one block short of the end rounds down to 99 rather than
@@ -97,5 +98,8 @@ function evidencedPosition(index: GuideBlockIndex, signal: CompletionEvidence): 
   if (signal.kind === 'mark-section-complete') {
     return index.containerEndPositions.get(signal.blockId) ?? 0;
   }
-  return index.positionsById.get(signal.blockId) ?? 0;
+  // Step id first: the runtime dispatches "Do it" under the parser's stepId,
+  // and only a handful of blocks in the library carry an author id for
+  // `positionsById` to match on.
+  return index.positionsByStepId.get(signal.blockId) ?? index.positionsById.get(signal.blockId) ?? 0;
 }

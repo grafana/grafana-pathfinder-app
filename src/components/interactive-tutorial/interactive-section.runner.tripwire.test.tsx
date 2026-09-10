@@ -113,6 +113,7 @@ import { InteractiveSection, resetInteractiveCounters } from './interactive-sect
 const InteractiveGuided = InteractiveGuidedReal as unknown as React.FC<any>;
 const DatasourceCheckStep = DatasourceCheckStepReal as unknown as React.FC<any>;
 import {
+  executeInteractiveActionCalls,
   memoryStore,
   resetSectionHarness,
   setExecuteInteractiveActionOutcome,
@@ -159,6 +160,24 @@ function recordEvents(names: string[]): { events: CapturedEvent[]; unsubscribe: 
 }
 
 describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
+  it('does not route an unknown action through either the show or do branch', async () => {
+    render(
+      <InteractiveSection id="runner" title="Unknown action" autoCollapse={false}>
+        <InteractiveStep targetAction={'unknown-action' as any} refTarget=".a">
+          Unknown action
+        </InteractiveStep>
+      </InteractiveSection>
+    );
+
+    await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toBeInTheDocument());
+    act(() => {
+      screen.getByTestId(doSectionBtn(SECTION_ID)).click();
+    });
+
+    await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument());
+    expect(executeInteractiveActionCalls).toHaveLength(0);
+  });
+
   describe('happy path', () => {
     it('runs all plain steps to completion and dispatches pathfinder:progress (kind: section) exactly once', async () => {
       const { events, unsubscribe } = recordEvents(['pathfinder:progress']);

@@ -478,7 +478,7 @@ describe('ChallengeBlock', () => {
 
       await waitFor(() => {
         expect(mockedCheckPostconditions).toHaveBeenCalledWith(
-          expect.objectContaining({ requirements: 'has-dashboard-named:My Dashboard' })
+          expect.objectContaining({ requirements: ['has-dashboard-named:My Dashboard'] })
         );
       });
     });

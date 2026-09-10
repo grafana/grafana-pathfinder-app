@@ -184,6 +184,8 @@ export class TimeoutManager {
         return INTERACTIVE_CONFIG.delays.debouncing.stateSettling;
       case 'reactiveCheck':
         return INTERACTIVE_CONFIG.delays.debouncing.reactiveCheck;
+      case undefined:
+        return INTERACTIVE_CONFIG.delays.debouncing.stateSettling;
       default:
         return INTERACTIVE_CONFIG.delays.debouncing.stateSettling;
     }

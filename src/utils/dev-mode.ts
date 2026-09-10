@@ -116,7 +116,7 @@ export const toggleDevMode = async (currentState: boolean): Promise<boolean> => 
 export const isDevModeEnabledGlobal = (): boolean => {
   try {
     // Try to get plugin config from global window (set by components)
-    const globalConfig = (window as any).__pathfinderPluginConfig as PathfinderPluginConfig | undefined;
+    const globalConfig = window.__pathfinderPluginConfig;
 
     if (!globalConfig) {
       // Plugin context not available yet - default to false (safest)
@@ -157,7 +157,7 @@ export const isAssistantDevModeEnabled = (pluginConfig: PathfinderPluginConfig):
  */
 export const isAssistantDevModeEnabledGlobal = (): boolean => {
   try {
-    const globalConfig = (window as any).__pathfinderPluginConfig as PathfinderPluginConfig | undefined;
+    const globalConfig = window.__pathfinderPluginConfig;
 
     if (!globalConfig) {
       return false;
@@ -188,9 +188,7 @@ export { adoptLegacyDevModeOptIn };
  */
 export const hasLegacyDevModeOptIn = (pluginConfig: PathfinderPluginConfig): boolean => {
   const userId = config.bootData.user?.id;
-  // The one intentional reader of the deprecated allow-list: this is the upgrade
-  // path that retires it. Nothing writes it.
-  // eslint-disable-next-line @typescript-eslint/no-deprecated
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- the one intentional reader of the deprecated allow-list: this is the upgrade path that retires it, and nothing writes it
   const legacyIds = pluginConfig.devModeUserIds;
 
   return Array.isArray(legacyIds) && userId !== undefined && legacyIds.includes(userId);

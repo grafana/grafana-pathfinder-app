@@ -1,24 +1,29 @@
-export type InteractiveActionType =
-  | 'button'
-  | 'highlight'
-  | 'formfill'
-  | 'navigate'
-  | 'hover'
-  | 'sequence'
-  | 'multistep'
-  | 'guided' // User-performed actions with detection
-  | 'popout'; // Toggle the docs panel between sidebar and floating modes
+import type { ConditionInput } from './requirements.types';
+export const INTERACTIVE_ACTION_TYPES = [
+  'button',
+  'highlight',
+  'formfill',
+  'navigate',
+  'hover',
+  'sequence',
+  'multistep',
+  'guided',
+  'popout',
+  'noop',
+] as const;
+
+export type InteractiveActionType = (typeof INTERACTIVE_ACTION_TYPES)[number];
 
 export interface InteractiveElementData {
   // Core interactive attributes
   refTarget: string;
-  targetAction: string;
+  targetAction: InteractiveActionType;
   targetValue?: string;
   /** Desired end state for a toggle target; see `lib/dom/toggle-state`. */
   targetState?: boolean | string;
   targetComment?: string;
-  requirements?: string;
-  objectives?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
   skippable?: boolean; // Whether this step can be skipped if requirements fail
 
   // Lazy render support for virtualized containers
@@ -62,6 +67,9 @@ export interface InteractiveElementData {
   // Custom data attributes (extensible)
   customData?: Record<string, string>;
 }
+
+/** Requirements also serve component-owned pseudo-actions such as `section`. */
+export type InteractiveRequirementsData = Omit<InteractiveElementData, 'targetAction'> & { targetAction: string };
 
 /**
  * Everything `executeInteractiveAction` needs, bundled by reference.

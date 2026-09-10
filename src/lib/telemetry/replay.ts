@@ -40,6 +40,11 @@ const BLOCK_SELECTOR = `[data-testid="${testIds.codaTerminal.panel}"], .xterm`;
 
 export const DEFAULT_SAMPLING_RATE = 1;
 
+export interface SessionReplayController {
+  pause(): void;
+  resume(): void;
+}
+
 // `pathfinder.session-replay-sampling-rate` is a remote number, so it can
 // arrive as anything — a string from a mistyped MTFF value, NaN, 100 meaning
 // "percent". A previous Faro sample-rate flag was deleted rather than clamped
@@ -63,6 +68,7 @@ function buildReplayOptions(samplingRate: number): ReplayInstrumentationOptions 
     inlineImages: false,
     inlineStylesheet: false,
     collectFonts: false,
+    inactivityThresholdMs: 0,
     recordCrossOriginIframes: false,
     samplingRate,
     beforeSend: scrubReplayEvent,
@@ -103,6 +109,16 @@ class ContinuousReplayInstrumentation extends ReplayInstrumentation {
       this.metas = metas;
     }
   }
+
+  public pauseRecordingForSurface(): void {
+    // Private in the SDK, so unchecked by the compiler; names verified at 2.11.0
+    // and asserted against the real recorder in replay-lifecycle.test.ts.
+    (this as unknown as { pauseRecording: () => void }).pauseRecording();
+  }
+
+  public resumeRecordingForSurface(): void {
+    (this as unknown as { resumeRecording: () => void }).resumeRecording();
+  }
 }
 
 // Deliberately not part of the `instrumentations` array at init: recording
@@ -112,8 +128,18 @@ class ContinuousReplayInstrumentation extends ReplayInstrumentation {
 // late is what makes the replay playable at all.
 // Returns the rate actually used so the caller can tell a remote value that
 // was honored from one that fell back — it has no other way to know.
-export async function activateSessionReplay(faro: Faro, samplingRate?: number): Promise<number> {
+export async function activateSessionReplay(
+  faro: Faro,
+  samplingRate?: number
+): Promise<{ samplingRate: number; controller: SessionReplayController }> {
   const resolved = resolveSamplingRate(samplingRate);
-  faro.instrumentations.add(new ContinuousReplayInstrumentation(buildReplayOptions(resolved)));
-  return resolved;
+  const instrumentation = new ContinuousReplayInstrumentation(buildReplayOptions(resolved));
+  faro.instrumentations.add(instrumentation);
+  return {
+    samplingRate: resolved,
+    controller: {
+      pause: () => instrumentation.pauseRecordingForSurface(),
+      resume: () => instrumentation.resumeRecordingForSurface(),
+    },
+  };
 }

@@ -8,6 +8,7 @@ on:
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
+      - 'src/lib/assert-exhaustive.ts'
       - 'src/lib/guide-stats/**'
       - 'tests/e2e-runner/**'
       - 'tests/fixtures.ts'
@@ -27,6 +28,7 @@ on:
       - 'src/cli/**'
       - 'src/types/**'
       - 'src/validation/**'
+      - 'src/lib/assert-exhaustive.ts'
       - 'src/lib/guide-stats/**'
       - 'tests/e2e-runner/**'
       - 'tests/fixtures.ts'
@@ -110,8 +112,8 @@ jobs:
             /app/dist/cli/cli/index.js schema e2e-report --include-version > schema.json
           node -e '
             const s = require("./schema.json");
-            if (!String(s.$id || "").includes("e2e-test-report-1.0.0")) throw new Error(`unexpected $id: ${s.$id}`);
-            if (s["x-schema-version"] !== "1.0.0") throw new Error(`unexpected x-schema-version: ${s["x-schema-version"]}`);
+            if (!String(s.$id || "").includes("e2e-test-report-1.1.0")) throw new Error(`unexpected $id: ${s.$id}`);
+            if (s["x-schema-version"] !== "1.1.0") throw new Error(`unexpected x-schema-version: ${s["x-schema-version"]}`);
             console.log("E2E report schema contract verified");
           '
       - name: Export tested image for publish job

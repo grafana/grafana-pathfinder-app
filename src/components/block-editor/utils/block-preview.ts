@@ -62,6 +62,10 @@ export function getBlockPreview(block: JsonBlock, options: BlockPreviewOptions =
     return truncate(firstLine, maxLength);
   }
 
+  if (block.type === 'divider') {
+    return 'Horizontal separator';
+  }
+
   if (isHtmlBlock(block)) {
     // Strip HTML tags and show text
     const text = block.content.replace(/<[^>]+>/g, ' ').trim();

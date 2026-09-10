@@ -1,9 +1,12 @@
+import { conditionLabel } from '../lib/condition-input';
 import type React from 'react';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useStepChecker } from './index';
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { checkRequirements } from './requirements-checker.utils';
 import type { UseStepCheckerProps, UseStepCheckerReturn } from '../types/hooks.types';
+import { TERMINAL_STATUS_CHANGED_EVENT } from '../lib/event-names';
+import { dispatchProgress } from '../global-state/progress-events';
 
 // Raise the per-test timeout from jest's 5000ms default. This file exercises
 // real timer-driven fix flows (`timeoutManager.setTimeout(fix-recheck-…)`,
@@ -474,8 +477,9 @@ describe('useStepChecker priority ordering (regression)', () => {
     mockCheckRequirements.mockImplementation(({ requirements }) =>
       Promise.resolve({
         pass: requirements === 'has-datasources',
-        requirements: requirements || '',
-        error: requirements === 'has-datasources' ? [] : [failedRequirement({ requirement: requirements || '' })],
+        requirements: conditionLabel(requirements),
+        error:
+          requirements === 'has-datasources' ? [] : [failedRequirement({ requirement: conditionLabel(requirements) })],
       })
     );
 
@@ -497,8 +501,8 @@ describe('useStepChecker priority ordering (regression)', () => {
     mockCheckRequirements.mockImplementation(({ requirements }) =>
       Promise.resolve({
         pass: false,
-        requirements: requirements || '',
-        error: [failedRequirement({ requirement: requirements || '' })],
+        requirements: conditionLabel(requirements),
+        error: [failedRequirement({ requirement: conditionLabel(requirements) })],
       })
     );
 
@@ -527,7 +531,7 @@ describe('useStepChecker priority ordering (regression)', () => {
           error: [failedRequirement({ requirement: 'has-datasources' })],
         });
       }
-      return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
+      return Promise.resolve({ pass: true, requirements: conditionLabel(requirements), error: [] });
     });
 
     const { result } = await renderStepChecker({
@@ -562,7 +566,7 @@ describe('useStepChecker priority ordering (regression)', () => {
         // Hang forever; the hook's 3s Promise.race timeout will reject for us.
         return new Promise(() => {});
       }
-      return Promise.resolve({ pass: true, requirements: requirements || '', error: [] });
+      return Promise.resolve({ pass: true, requirements: conditionLabel(requirements), error: [] });
     });
 
     try {
@@ -884,5 +888,312 @@ describe('requiresDomElement', () => {
   it('is false when no requirements are set', async () => {
     const { result } = await renderStepChecker({});
     expect(result.current.requiresDomElement).toBe(false);
+  });
+});
+
+describe('terminal status change recheck', () => {
+  // The requirements checker runs outside React and cannot observe the Coda
+  // terminal connecting. The heartbeat watchdog only polls DOM-fragile
+  // requirements (navmenu-open, exists-reftarget, on-page:), so before this
+  // event a step blocked on `is-terminal-active` kept its answer for the whole
+  // guide — and since provisioning takes about a minute, that answer is always
+  // "not connected".
+  async function renderBlockedTerminalStep() {
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-terminal-active',
+      error: [failedRequirement({ requirement: 'is-terminal-active' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-terminal-active' });
+    // Wait out the retry loop. In the real app a VM takes about a minute to
+    // provision, so by the time it connects every terminal step has long since
+    // stopped checking and settled on "blocked" — which is the state this event
+    // exists to break, and the state the `!isChecking` guard below needs.
+    await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+    expect(rendered.result.current.isEnabled).toBe(false);
+    return rendered;
+  }
+
+  it('rechecks a blocked step when the terminal reports a status change', async () => {
+    const rendered = await renderBlockedTerminalStep();
+    const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'is-terminal-active', error: [] });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBeGreaterThan(callsWhileBlocked);
+    expect(rendered.result.current.isEnabled).toBe(true);
+  });
+
+  it('acts on a status change that arrived mid-check, once the check settles', async () => {
+    // A reconnect flips disconnected → connecting → connected inside ~100ms, so
+    // the decisive status can land while a check is running. Dropping it would
+    // leave the step blocked for good, because the event never comes again.
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-terminal-active',
+      error: [failedRequirement({ requirement: 'is-terminal-active' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-terminal-active' });
+
+    // Fire while the very first check is still in flight.
+    expect(rendered.result.current.isChecking).toBe(true);
+    mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'is-terminal-active', error: [] });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(rendered.result.current.isEnabled).toBe(true), { timeout: 10000 });
+  });
+
+  it('stops rechecking once the listener is torn down', async () => {
+    const rendered = await renderBlockedTerminalStep();
+    rendered.unmount();
+    const callsAfterUnmount = mockCheckRequirements.mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBe(callsAfterUnmount);
+  });
+
+  it('leaves a step that does not read the terminal alone', async () => {
+    // Every step in the guide holds one of these listeners, and a reconnect is
+    // three status changes, so an ungated listener means a full requirements
+    // check for every blocked step in the guide, three times over.
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-admin',
+      error: [failedRequirement({ requirement: 'is-admin' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-admin' });
+    await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+    const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBe(callsWhileBlocked);
+  });
+
+  it('subscribes a step whose objectives read the terminal, not only its requirements', async () => {
+    mockCheckRequirements.mockResolvedValue({
+      pass: false,
+      requirements: 'is-admin',
+      error: [failedRequirement({ requirement: 'is-admin' })],
+    });
+    const rendered = await renderStepChecker({ requirements: 'is-admin', objectives: 'coda-exit-zero:test -f /tmp/x' });
+    await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+    const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+      await Promise.resolve();
+    });
+
+    expect(mockCheckRequirements.mock.calls.length).toBeGreaterThan(callsWhileBlocked);
+  });
+});
+
+describe('objective validation at execution time', () => {
+  // The router is mocked here, so each case supplies the verdict the real
+  // router returns for that token (pinned in requirements-checker.utils.test.ts).
+  // The contract this block owns is the hook's: only `satisfied` completes.
+  const unusable = ['has-dashbord-named:Example', 'Learn to build a dashboard', 'has-dashboard-named:', 'var-'];
+
+  it.each(unusable)('does not auto-complete on the invalid objective %s', async (objective) => {
+    // `pre` mode fails open to pass:true for an unusable token, which is
+    // correct for a prerequisite and must never complete a step.
+    mockCheckRequirements.mockResolvedValue({
+      pass: true,
+      verdict: 'invalid',
+      requirements: objective,
+      error: [],
+    });
+    const { result } = await renderStepChecker({ objectives: objective });
+    await act(async () => {
+      await result.current.checkStep();
+    });
+    expect(result.current.isCompleted).toBe(false);
+    expect(result.current.completionReason).not.toBe('objectives');
+  });
+
+  it.each(unusable)('refuses the array form of the invalid objective %s too', async (objective) => {
+    mockCheckRequirements.mockResolvedValue({
+      pass: true,
+      verdict: 'invalid',
+      requirements: objective,
+      error: [],
+    });
+    const { result } = await renderStepChecker({ objectives: [objective] });
+    await act(async () => {
+      await result.current.checkStep();
+    });
+    expect(result.current.isCompleted).toBe(false);
+    expect(result.current.completionReason).not.toBe('objectives');
+  });
+
+  it.each(['unavailable', 'unsatisfied'] as const)('does not complete on a %s verdict', async (verdict) => {
+    mockCheckRequirements.mockResolvedValue({
+      pass: true,
+      verdict,
+      requirements: 'has-datasource:loki',
+      error: [],
+    });
+    const { result } = await renderStepChecker({ objectives: ['has-datasource:loki'] });
+    await act(async () => {
+      await result.current.checkStep();
+    });
+    expect(result.current.isCompleted).toBe(false);
+  });
+
+  it.each([', ,', ''])('ignores a blank objective list (%j) entirely', async (objectives) => {
+    const { result } = await renderStepChecker({ objectives });
+    await act(async () => {
+      await result.current.checkStep();
+    });
+    expect(result.current.isCompleted).toBe(false);
+    expect(result.current.completionReason).not.toBe('objectives');
+  });
+
+  it('still auto-completes on a satisfied objective', async () => {
+    mockCheckRequirements.mockResolvedValue({
+      pass: true,
+      verdict: 'satisfied',
+      requirements: 'has-datasource:loki',
+      error: [],
+    });
+    const { result } = await renderStepChecker({ objectives: ['has-datasource:loki'] });
+    await act(async () => {
+      await result.current.checkStep();
+    });
+    expect(result.current.isCompleted).toBe(true);
+    expect(result.current.completionReason).toBe('objectives');
+  });
+});
+
+// =============================================================================
+// REGRESSION: condition shape parity. `json-parser` forwards `requirements` and
+// `objectives` as ARRAYS, so every guard that inspects them must match per
+// token. `Array.prototype.includes` is an exact-element test and
+// `typeof value === 'string'` is false for an array, so a substring-matching
+// guard silently stops firing — and TypeScript cannot see it, because
+// `.includes` exists on both `string` and `readonly string[]`.
+// =============================================================================
+describe('condition shape parity', () => {
+  const shapes: Array<[string, (token: string) => string | string[]]> = [
+    ['string form', (token) => token],
+    ['array form', (token) => [token]],
+  ];
+
+  describe.each(shapes)('%s', (_label, shape) => {
+    it('subscribes a terminal step to terminal status changes', async () => {
+      mockCheckRequirements.mockResolvedValue({
+        pass: false,
+        requirements: 'is-terminal-active',
+        error: [failedRequirement({ requirement: 'is-terminal-active' })],
+      });
+      const rendered = await renderStepChecker({ requirements: shape('is-terminal-active') });
+      await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+      const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+      mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'is-terminal-active', error: [] });
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+        await Promise.resolve();
+      });
+
+      expect(mockCheckRequirements.mock.calls.length).toBeGreaterThan(callsWhileBlocked);
+    });
+
+    it('subscribes a step whose objectives read the terminal', async () => {
+      mockCheckRequirements.mockResolvedValue({
+        pass: false,
+        requirements: 'is-admin',
+        error: [failedRequirement({ requirement: 'is-admin' })],
+      });
+      const rendered = await renderStepChecker({
+        requirements: shape('is-admin'),
+        objectives: shape('coda-exit-zero:test -f /tmp/x'),
+      });
+      await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+      const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent(TERMINAL_STATUS_CHANGED_EVENT, { detail: { status: 'connected' } }));
+        await Promise.resolve();
+      });
+
+      expect(mockCheckRequirements.mock.calls.length).toBeGreaterThan(callsWhileBlocked);
+    });
+
+    it('rechecks a step gated on section-completed when a section completes', async () => {
+      mockCheckRequirements.mockResolvedValue({
+        pass: false,
+        requirements: 'section-completed:intro',
+        error: [failedRequirement({ requirement: 'section-completed:intro' })],
+      });
+      const rendered = await renderStepChecker({ requirements: shape('section-completed:intro') });
+      await waitFor(() => expect(rendered.result.current.isChecking).toBe(false), { timeout: 10000 });
+      const callsWhileBlocked = mockCheckRequirements.mock.calls.length;
+
+      await act(async () => {
+        dispatchProgress({ kind: 'section', sectionId: 'section-intro', completed: true });
+        await Promise.resolve();
+      });
+
+      expect(mockCheckRequirements.mock.calls.length).toBeGreaterThan(callsWhileBlocked);
+    });
+
+    it('treats an on-page: prerequisite as fragile so the heartbeat watchdog runs', async () => {
+      const originalHeartbeat = { ...INTERACTIVE_CONFIG.requirements.heartbeat };
+      (INTERACTIVE_CONFIG as any).requirements.heartbeat = {
+        enabled: true,
+        onlyForFragile: true,
+        intervalMs: 50,
+        watchWindowMs: 5000,
+      };
+      jest.useFakeTimers();
+      try {
+        mockCheckRequirements.mockResolvedValue({ pass: true, requirements: 'on-page:/dashboards', error: [] });
+        const { result } = renderHook(() =>
+          useStepChecker({
+            requirements: shape('on-page:/dashboards'),
+            stepId: 'fragile-step',
+            isEligibleForChecking: true,
+          })
+        );
+        await act(async () => {
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        await act(async () => {
+          await result.current.checkStep();
+        });
+        expect(result.current.isEnabled).toBe(true);
+
+        mockCheckRequirements.mockResolvedValue({
+          pass: false,
+          requirements: 'on-page:/dashboards',
+          error: [failedRequirement({ requirement: 'on-page:/dashboards' })],
+        });
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(800);
+        });
+
+        expect(result.current.isEnabled).toBe(false);
+      } finally {
+        jest.useRealTimers();
+        (INTERACTIVE_CONFIG as any).requirements.heartbeat = originalHeartbeat;
+      }
+    });
   });
 });

@@ -12,6 +12,7 @@ import { validateGuide } from '../validation';
 import { sanitizeDocumentationHTML } from '../security/html-sanitizer';
 import { renderMarkdown } from '@grafana/data';
 import DOMPurify from 'dompurify';
+import { assertExhaustive } from '../lib/assert-exhaustive';
 import {
   hasAssistantEnabled,
   type JsonGuide,
@@ -38,6 +39,19 @@ import {
   type JsonStep,
   type AssistantProps,
 } from '../types/json-guide.types';
+import { isValidRequirement } from '../types/requirements.types';
+
+/**
+ * Keep only objectives the runtime can evaluate. `objectives` shipped as
+ * free-text "learning objectives" before it became an executable condition, so
+ * a guide already published to a backend repository or CDN can hold prose.
+ * Dropping the unrecognised token here keeps that guide rendering;
+ * `condition-validator` reports it as a build-time warning.
+ */
+function executableObjectives(objectives: string[] | undefined): string[] | undefined {
+  const executable = objectives?.filter(isValidRequirement);
+  return executable?.length ? executable : undefined;
+}
 
 const MARKDOWN_ALLOWED_TAGS = [
   'div',
@@ -109,7 +123,7 @@ export function parseJsonGuide(input: string | JsonGuide, baseUrl?: string): Con
   }
 
   // Zod validation replaces manual checks
-  const validationResult = validateGuide(guide);
+  const validationResult = validateGuide(guide, { allowDuplicateHeading: true });
   if (!validationResult.isValid) {
     return {
       isValid: false,
@@ -278,6 +292,14 @@ function convertBlockByType(
   switch (block.type) {
     case 'markdown':
       return convertMarkdownBlock(block, path, baseUrl);
+    case 'divider':
+      return {
+        element: {
+          type: 'hr',
+          props: { className: 'guide-divider' },
+          children: [],
+        },
+      };
     case 'html':
       return convertHtmlBlock(block, path, baseUrl);
     case 'section':
@@ -528,9 +550,8 @@ function convertSectionBlock(block: JsonSectionBlock, path: string, baseUrl?: st
     }
   }
 
-  // Convert requirements array to comma-separated string (as expected by renderer)
-  const requirements = block.requirements?.join(',') || undefined;
-  const objectives = block.objectives?.join(',') || undefined;
+  const requirements = block.requirements?.length ? block.requirements : undefined;
+  const objectives = executableObjectives(block.objectives);
 
   return {
     element: {
@@ -681,9 +702,8 @@ function convertInteractiveBlock(
     children.unshift(tooltipElement);
   }
 
-  // Convert requirements array to comma-separated string
-  const requirements = block.requirements?.join(',') || undefined;
-  const objectives = block.objectives?.join(',') || undefined;
+  const requirements = block.requirements?.length ? block.requirements : undefined;
+  const objectives = executableObjectives(block.objectives);
 
   return {
     element: {
@@ -727,16 +747,15 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepCont
     refTarget: step.reftarget ?? step.refTarget,
     targetValue: step.targetvalue ?? step.targetValue,
     targetState: step.targetstate ?? step.targetState,
-    requirements: step.requirements?.join(','),
+    requirements: step.requirements,
     targetComment: step.tooltip ? markdownToHtml(step.tooltip) : undefined,
   }));
 
   // Parse content as markdown for children
   const children = parseMarkdownToElements(block.content);
 
-  // Convert requirements array to comma-separated string
-  const requirements = block.requirements?.join(',') || undefined;
-  const objectives = block.objectives?.join(',') || undefined;
+  const requirements = block.requirements?.length ? block.requirements : undefined;
+  const objectives = executableObjectives(block.objectives);
 
   // The multistep's overall identity uses the first internal action as
   // the discriminator — that's the action shown when the block opens.
@@ -772,7 +791,7 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
     refTarget: step.reftarget ?? step.refTarget,
     targetValue: step.targetvalue ?? step.targetValue,
     targetState: step.targetstate ?? step.targetState,
-    requirements: step.requirements?.join(','),
+    requirements: step.requirements,
     // For guided blocks, prefer description (shown in steps panel), fall back to tooltip for backward compatibility
     targetComment: step.description
       ? markdownToHtml(step.description)
@@ -787,9 +806,8 @@ function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: 
   // Parse content as markdown for children
   const children = parseMarkdownToElements(block.content);
 
-  // Convert requirements array to comma-separated string
-  const requirements = block.requirements?.join(',') || undefined;
-  const objectives = block.objectives?.join(',') || undefined;
+  const requirements = block.requirements?.length ? block.requirements : undefined;
+  const objectives = executableObjectives(block.objectives);
 
   const stepId = resolveStepId(
     block.id,
@@ -889,8 +907,7 @@ function convertQuizBlock(block: JsonQuizBlock, path: string, stepContext?: Step
   // Parse question as markdown for the content
   const questionElements = parseMarkdownToElements(block.question);
 
-  // Convert requirements array to comma-separated string
-  const requirements = block.requirements?.join(',') || undefined;
+  const requirements = block.requirements?.length ? block.requirements : undefined;
 
   // Build choices (textElements removed - not used by quiz component)
   const choices = block.choices.map((choice) => ({
@@ -932,8 +949,7 @@ function convertInputBlock(block: JsonInputBlock, path: string, stepContext?: St
   // Parse prompt as markdown for the content
   const promptElements = parseMarkdownToElements(block.prompt);
 
-  // Convert requirements array to comma-separated string
-  const requirements = block.requirements?.join(',') || undefined;
+  const requirements = block.requirements?.length ? block.requirements : undefined;
 
   const hasDataCheck = block.inputType === 'datasource' && Boolean(block.dataCheckQuery?.trim());
 
@@ -990,8 +1006,8 @@ function convertInputBlock(block: JsonInputBlock, path: string, stepContext?: St
 
 function convertTerminalBlock(block: JsonTerminalBlock, _path: string, stepContext?: StepContext): ConversionResult {
   const children = parseMarkdownToElements(block.content);
-  const requirements = block.requirements?.join(',') || undefined;
-  const objectives = block.objectives?.join(',') || undefined;
+  const requirements = block.requirements?.length ? block.requirements : undefined;
+  const objectives = executableObjectives(block.objectives);
   const stepId = resolveStepId(block.id, stepContext, 'terminal', block.command);
 
   return {
@@ -1028,6 +1044,7 @@ function convertTerminalConnectBlock(
         vmTemplate: block.vmTemplate,
         vmApp: block.vmApp,
         vmScenario: block.vmScenario,
+        gcx: block.gcx,
       },
       children,
     },
@@ -1064,8 +1081,8 @@ function convertChallengeBlock(block: JsonChallengeBlock, _path: string, stepCon
 
 function convertCodeBlockBlock(block: JsonCodeBlockBlock, _path: string, stepContext?: StepContext): ConversionResult {
   const children = block.content ? parseMarkdownToElements(block.content) : [];
-  const requirements = block.requirements?.join(',') || undefined;
-  const objectives = block.objectives?.join(',') || undefined;
+  const requirements = block.requirements?.length ? block.requirements : undefined;
+  const objectives = executableObjectives(block.objectives);
   const stepId = resolveStepId(block.id, stepContext, 'code-block', block.reftarget);
 
   return {
@@ -1167,7 +1184,17 @@ function extractDefaultValueFromBlock(block: JsonBlock): string {
       return block.title || '';
     case 'grot-guide':
       return block.welcome.title;
+    case 'divider':
+    case 'conditional':
+    case 'assistant':
+    case 'terminal-connect':
+    case 'code-block':
+    case 'collapsible':
+    case 'challenge':
+    case 'snippet-ref':
+      return '';
     default:
+      assertExhaustive(block);
       return '';
   }
 }

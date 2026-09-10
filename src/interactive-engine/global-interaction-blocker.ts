@@ -575,7 +575,7 @@ class GlobalInteractionBlocker {
     this.statusMessage = message;
     this.sectionBlockingActive = true;
     this.cancelCallback = cancelCallback || null;
-    const stubData: InteractiveElementData = { refTarget: '', targetAction: '', tagName: 'div' };
+    const stubData: InteractiveElementData = { refTarget: '', targetAction: 'noop', tagName: 'div' };
     this.createBlockingOverlay(stubData);
     this.lastKnownModalState = this.isModalActive();
   }

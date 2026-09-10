@@ -6,6 +6,15 @@ import { config } from '@grafana/runtime';
 import { TrackingHook, reportFeatureFlagExposure } from './openfeature-tracking';
 import { StorageKeys } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
+import {
+  EXPERIMENT_VARIANTS,
+  type ExperimentConfig,
+  type HighlightedGuideConfig,
+  type HighlightedGuideDocType,
+} from '../types/openfeature.types';
+
+export { EXPERIMENT_VARIANTS };
+export type { ExperimentConfig, HighlightedGuideConfig, HighlightedGuideDocType };
 
 // ============================================================================
 // TYPES
@@ -24,47 +33,6 @@ type FeatureFlag =
   | { valueType: 'object'; values: readonly JsonValue[]; defaultValue: JsonValue; trackingKey?: string }
   | { valueType: 'number'; values: readonly number[]; defaultValue: number; trackingKey?: string }
   | { valueType: 'string'; values: readonly string[]; defaultValue: string; trackingKey?: string };
-
-/**
- * Experiment configuration returned by GOFF
- * Contains both the variant assignment and target pages for auto-open
- *
- * @param variant - The experiment variant assignment
- * @param pages - Target pages where sidebar should auto-open (for treatment)
- * @param resetCache - When toggled true, clears session storage to allow sidebar to auto-open again
- */
-export interface ExperimentConfig {
-  variant: 'excluded' | 'control' | 'treatment';
-  pages: string[];
-  resetCache?: boolean;
-}
-
-/**
- * Highlighted-guide experiment configuration
- *
- * Drives the once-per-browser A/B test that opens the Pathfinder sidebar on a
- * matched Grafana page and surfaces a specific guide in the Featured slot.
- * Both `control` and `treatment` arms keep Pathfinder visible (this is the
- * key difference from the existing `pathfinder.experiment-variant` flag, whose
- * `control` arm hides the sidebar).
- *
- * @param variant - 'control' and 'treatment' both trigger sidebar-open + injection; 'excluded' is no-op
- * @param pages - URL path patterns where the sidebar should open (empty array ⇒ no match, NOT all pages)
- * @param guideId - Doc id or shorthand: 'bundled:<id>' | 'api:<id>' | 'backend-guide:<id>' | full URL
- * @param autoOpen - When false, only the Featured-slot injection runs (no auto-open of the sidebar)
- * @param resetCache - When toggled true, clears the once-per-browser markers so auto-open re-fires
- * @param docType - Optional override for the Featured-card type. When omitted, `findDocPage`
- *                  infers the type from the URL pattern. Set explicitly when the inference is
- *                  wrong (e.g. a `/docs/learning-paths/...` URL that should open as a learning
- *                  journey, not a single docs page).
- */
-export type HighlightedGuideDocType = 'docs-page' | 'learning-journey' | 'interactive';
-
-export interface HighlightedGuideConfig extends ExperimentConfig {
-  guideId: string;
-  autoOpen: boolean;
-  docType?: HighlightedGuideDocType;
-}
 
 /**
  * Default highlighted-guide config when flag is not set or errors.
@@ -186,9 +154,25 @@ const pathfinderFeatureFlags = {
    */
   'pathfinder.interactive-learning-banner-experiment': {
     valueType: 'object',
-    values: [{ variant: 'excluded' }, { variant: 'control' }, { variant: 'treatment' }],
+    values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
     defaultValue: { variant: 'excluded' },
     trackingKey: 'interactive_learning_banner_experiment',
+  },
+  /**
+   * Enables the Coda sandbox terminal on its own, without the dev-mode
+   * allowlist or `jsonData.enableCodaTerminal`. The app-config toggle reflects
+   * it as an on, disabled switch, and a save never persists the forced value —
+   * so turning this back off restores whatever the stack itself had set.
+   *
+   * Defaults to false because the Coda plugin is not a declared dependency:
+   * enabling this makes every page load probe for `grafana-coda-app`, which
+   * 404s on a stack that does not have it.
+   */
+  'pathfinder.coda-terminal': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'coda_terminal',
   },
 } as const satisfies Record<`pathfinder.${string}`, FeatureFlag>;
 
@@ -579,7 +563,7 @@ export const getHighlightedGuideConfig = (): HighlightedGuideConfig => {
   }
 };
 
-const VALID_VARIANTS: ReadonlySet<HighlightedGuideConfig['variant']> = new Set(['excluded', 'control', 'treatment']);
+const VALID_VARIANTS: ReadonlySet<string> = new Set(EXPERIMENT_VARIANTS);
 
 const VALID_DOC_TYPES: ReadonlySet<HighlightedGuideDocType> = new Set(['docs-page', 'learning-journey', 'interactive']);
 
@@ -600,7 +584,7 @@ export function parseExperimentVariant(value: unknown): ExperimentConfig['varian
     return null;
   }
   const { variant } = value as Record<string, unknown>;
-  if (typeof variant !== 'string' || !VALID_VARIANTS.has(variant as ExperimentConfig['variant'])) {
+  if (typeof variant !== 'string' || !VALID_VARIANTS.has(variant)) {
     return null;
   }
   return variant as ExperimentConfig['variant'];
@@ -613,7 +597,7 @@ function classifyExperimentRejection(value: unknown): 'unknown_variant' | 'inval
     value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>).variant
       : undefined;
-  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant as ExperimentConfig['variant']);
+  const isUnknownArm = typeof variant === 'string' && !VALID_VARIANTS.has(variant);
   return isUnknownArm ? 'unknown_variant' : 'invalid_shape';
 }
 

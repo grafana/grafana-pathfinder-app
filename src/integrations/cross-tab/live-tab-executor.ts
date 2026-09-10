@@ -1,8 +1,11 @@
+import { conditionLabel } from '../../lib/condition-input';
 import { config, getAppEvents } from '@grafana/runtime';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../../styles/interactive.styles';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { INTERACTIVE_CONFIG } from '../../constants/interactive-config';
 import type { InteractiveElementData } from '../../types/interactive.types';
+import { isInteractiveActionType } from '../../lib/interactive-action';
+import { assertExhaustive } from '../../lib/assert-exhaustive';
 import {
   ButtonHandler,
   FocusHandler,
@@ -25,6 +28,7 @@ import {
   type CrossTabPayload,
   type FixRequirementMessage,
   type RemoteRequirementResult,
+  type WireMirrors,
   type StepCommandMessage,
 } from '../../types/cross-tab.types';
 import * as pairingManager from '../../lib/pairing-manager';
@@ -76,10 +80,10 @@ export const DEFAULT_PACING: ExecutorPacing = {
 // F-1056-4: the tier-0 wire mirror (RemoteRequirementResult) and the tier-2 real
 // result (RequirementsCheckResult) must stay structurally interchangeable in BOTH
 // directions — evaluateRequirements posts the real type as the mirror, and the
-// controller reads the mirror back as the real type. Drift in either type makes
-// this assignment fail to compile.
-type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
-const _resultMirrorIsExact: MutuallyAssignable<RemoteRequirementResult, RequirementsCheckResult> = true;
+// controller reads the mirror back as the real type. `WireMirrors` also compares
+// the key set and the required-key set, because mutual assignability alone
+// cannot see a field added as optional on one side only.
+const _resultMirrorIsExact: WireMirrors<RemoteRequirementResult, RequirementsCheckResult> = true;
 void _resultMirrorIsExact;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -155,6 +159,11 @@ export function installLiveTabExecutor(
   let queue: Promise<void> = Promise.resolve();
 
   const runAction = async (action: CrossTabInternalAction, isShow: boolean): Promise<void> => {
+    if (!isInteractiveActionType(action.targetAction)) {
+      logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
+      return;
+    }
+
     const data: InteractiveElementData = {
       refTarget: action.refTarget ?? '',
       targetAction: action.targetAction,
@@ -193,8 +202,13 @@ export function installLiveTabExecutor(
           `[Pathfinder] cross-tab executor: composite action "${action.targetAction}" carried no internalActions to replay`
         );
         break;
+      case 'sequence':
+      case 'popout':
+        logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
+        break;
       default:
         logger.warn(`[Pathfinder] cross-tab executor: unsupported action "${action.targetAction}"`);
+        assertExhaustive(action.targetAction);
     }
   };
 
@@ -317,9 +331,9 @@ export function installLiveTabExecutor(
         requestId: message.requestId,
         stepId: message.stepId,
         result: {
-          requirements: message.requirements,
+          requirements: conditionLabel(message.requirements),
           pass: false,
-          error: [{ requirement: message.requirements, pass: false, error: `${error}` }],
+          error: [{ requirement: conditionLabel(message.requirements), pass: false, error: `${error}` }],
         },
       });
     }
