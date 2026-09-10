@@ -2,12 +2,13 @@
  * Which block types can emit completion evidence.
  *
  * This is a different question from "which blocks render interactively", and
- * conflating the two makes guides permanently uncompletable: a block counted as
- * completable that emits no evidence can become the guide's final counted
- * block, and `finalCompletablePosition === blockCount` is what tells a consumer
- * no foot-of-guide "Mark as complete" button is needed. The reader would then
- * have no way to finish. `content-renderer.tsx` excludes `input-block` from its
- * step count for exactly this reason.
+ * conflating the two leaves a guide stranded short of 100% on its own
+ * interactive path: a block counted as completable that emits no evidence can
+ * become the guide's final counted block, so the furthest evidenced position
+ * can never reach the denominator and the reader is left with only the "Mark as
+ * complete" button. It also makes `finalCompletablePosition` misreport the tail
+ * it is the authoring signal for. `content-renderer.tsx` excludes `input-block`
+ * from its step count for exactly this reason.
  *
  * The runtime authority is `STEP_TYPE_PARSE_KEYS` in
  * `src/components/interactive-tutorial/step-type-registry.ts`. That is tier 4,
@@ -15,7 +16,7 @@
  * is the ratchet that keeps the two in step, and it fails when a parse key is
  * added, removed, or remapped.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 3. See
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 3 of 4. See
  * `.cursor/rules/tracked-step-types.mdc`.
  */
 

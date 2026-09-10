@@ -971,7 +971,7 @@ interface StandaloneStepPosition {
  * An `input` block emits `datasource-check-step` instead when its author asked
  * a failing data check to block, and only that form is tracked here.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 3. Adding a new interactive step
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 4. Adding a new interactive step
  * component type requires updates in 3 places:
  *   1. step-type-registry.ts STEP_TYPE_SCHEMAS (parse + orchestration)
  *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES

@@ -23,7 +23,13 @@ This is the canonical implementation-backed reference for E2E CLI behavior. Veri
 - `src/cli/e2e/cloud-provisioning.ts` and `src/cli/e2e/cloud-stack-pool-manager.ts` — shared-stack service-account isolation and pool-manager isolated stack leasing.
 - `tests/e2e-runner/guide-runner.spec.ts` — isolated, single-guide wrapper for the reusable guide lifecycle.
 - `tests/e2e-runner/shared-guide-runner.spec.ts` — one-test shared browser session for explicit path and journey selections.
-- `tests/e2e-runner/utils/guide-runner/` — step discovery, execution, browser-termination monitoring, requirement fixing, artifact capture, and failure classification.
+- `tests/e2e-runner/utils/guide-runner/discovery.ts` — current and legacy DOM discovery, driver-based inspection, and supported/unsupported coverage collection.
+- `tests/e2e-runner/utils/guide-runner/drivers/types.ts` — the `StepDriver` contract for inspection, timeout calculation, completion checks, skipping, and execution.
+- `tests/e2e-runner/utils/guide-runner/drivers/registry.ts` — the exhaustive registry of tracked step kinds, their supported status, and their concrete drivers.
+- `tests/e2e-runner/utils/guide-runner/drivers/shared.ts` and `drivers/guided.ts` — shared control behavior and guided-step-specific execution.
+- `tests/e2e-runner/utils/guide-runner/execution.ts` — sequential execution through the selected driver and construction of step results.
+- `tests/e2e-runner/utils/guide-runner/run-guide.ts` — guide lifecycle, unsupported-only skips, coverage finalization, and conversion to reporter input.
+- `tests/e2e-runner/utils/console-reporter.ts`, `src/cli/e2e/e2e-reporter.ts`, `src/cli/e2e/e2e-results.ts`, and `src/cli/e2e/schemas/e2e-report.schema.ts` — console output, external report construction, CLI outcome mapping, and the report contract.
 - `tests/e2e-runner/utils/guide-runner/milestone-replacement.ts` — runner-only progress reset and legacy E2E tab replacement.
 - `docs/developer/E2E_TESTING_CONTRACT.md` — stable `data-test-*` selector contract used by the runner.
 
@@ -93,7 +99,7 @@ The CLI accepts these input formats:
 
 | Code | Meaning                                   |
 | ---- | ----------------------------------------- |
-| 0    | All steps passed                          |
+| 0    | No guide produced a failure outcome       |
 | 1    | One or more steps failed                  |
 | 2    | Configuration or setup error              |
 | 3    | Grafana unreachable                       |
@@ -137,8 +143,12 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - Plugin loads guide via `bundled:e2e-test` pattern
 
 3. **Step discovery**
-   - Runner scans DOM for interactive step elements
-   - Collects metadata: step IDs, skip buttons, Do it buttons, multistep status
+   - The runner scans for `[data-test-step-kind][data-test-step-id]` roots.
+   - If current roots are absent, the runner uses the documented legacy selector.
+   - The driver registry collects metadata and identifies supported steps.
+   - Unsupported roots remain in coverage, but the runner does not operate their controls.
+   - A guide with only unsupported roots returns a skipped report before execution.
+   - The skipped report includes each unsupported kind and step ID. It does not include `errorCode`.
 
 4. **Sequential execution**
    - For each step:
@@ -152,6 +162,19 @@ The main Playwright suite and dedicated guide runner use a fixed 1920×1080 Chro
    - Console output with real-time progress
    - JSON report when `--output` is specified; non-passing runs also write a default report under `--artifacts`
    - Failure artifacts in `--artifacts` directory
+
+### Adding support for a step kind
+
+`STEP_DRIVERS` is the runner's extension point. Discovery and execution select behavior from this registry instead of branching on step kinds themselves.
+
+To support a registered kind that is currently reported as unsupported:
+
+1. Implement the `StepDriver` contract from `drivers/types.ts`. Its methods own DOM inspection, timeout calculation, completion checks, skip synchronization, and execution for that kind.
+2. Put behavior shared with existing drivers in `drivers/shared.ts`. Keep specialized behavior in a focused driver module, as `drivers/guided.ts` does.
+3. Replace the kind's `unsupportedDriver(...)` entry in `drivers/registry.ts` with a supported driver. Do not add kind-specific branches to `discovery.ts` or `execution.ts`.
+4. Update `drivers/registry.test.ts` and add focused discovery and execution tests. If the change affects unsupported-only handling or externally reported fields, also update `run-guide.test.ts`, reporter/result tests, and the report schema as required.
+
+When introducing a product step kind rather than enabling an existing one, first add it to `STEP_TYPE_KIND_KEYS`, emit the tracked root attributes, and update the contract tests and [E2E testing contract](./E2E_TESTING_CONTRACT.md). The registry test requires every tracked kind to have exactly one registry entry, supported or unsupported.
 
 ### Shared path and journey sessions
 
@@ -201,7 +224,9 @@ Panel bootstrap uses 20 seconds by default. Post-navigation guide loading uses 3
 
 The legacy fallback remains during plugin rollout. It supports Pathfinder versions that only provide the existing `bundled:e2e-test` URL.
 
-An ordinary guide failure adds that guide to the blocked set. Later milestones still run unless a resolved `depends` edge names a blocked guide.
+An ordinary guide failure or an unsupported-only skip adds that guide to the blocked set.
+
+Later milestones still run unless a resolved `depends` edge names a blocked guide.
 
 If a dependency is blocked, the runner emits the existing `SKIPPED_PREREQ` result. Milestone order does not create a dependency.
 
@@ -305,7 +330,25 @@ Use `--output report.json` to generate a structured report:
     "mandatoryFailed": 1,
     "skippableFailed": 0
   },
-  "steps": [...]
+  "steps": [
+    {
+      "stepId": "section-1-step-1",
+      "stepKind": "plain",
+      "index": 0,
+      "status": "passed",
+      "duration": 1000,
+      "currentUrl": "http://localhost:3000/",
+      "consoleErrors": []
+    }
+  ],
+  "coverage": {
+    "contractSource": "current",
+    "rendered": 2,
+    "supported": 1,
+    "executed": 1,
+    "unsupported": 1,
+    "unsupportedSteps": [{ "stepKind": "quiz", "stepId": "section-1-quiz-1" }]
+  }
 }
 ```
 
@@ -314,11 +357,26 @@ The report contract's single source of truth is the Zod schema in `src/cli/e2e/s
 Key contract fields:
 
 - `outcome`: one of `passed`, `failed`, `aborted`, `skipped`, `infrastructure_error`, or `configuration_error`. Multi-guide reports surface `aborted` when any guide's session expired.
-- `errorCode`: structured failure code on non-passing reports. `TRANSITION_FAILED` identifies a fatal shared-browser transition. `REPORT_MISSING` identifies a missing report or lost browser session. Other notable values include `TIER_MISMATCH`, `SKIPPED_PREREQ`, `AUTH_EXPIRED`, `NO_CAPACITY`, and `PLAYWRIGHT_SPAWN_FAILED`.
+- `errorCode`: structured code for failures. An unsupported-only skipped report omits this field. `TRANSITION_FAILED` identifies a fatal shared-browser transition. `REPORT_MISSING` identifies a missing report or lost browser session. Other values include `TIER_MISMATCH`, `SKIPPED_PREREQ`, `AUTH_EXPIRED`, `NO_CAPACITY`, and `PLAYWRIGHT_SPAWN_FAILED`.
 - `transitionKind`: optional fatal-transition detail. Values cover badge obstruction, guide-load ambiguity, reset ambiguity, tab-close errors, and step-detach errors.
 - `guide.contentDigest`: SHA-256 digest of the exact guide content executed
 - `guide.sourceUrl`: remote package source URL when available
 - `selection`: for an explicitly selected path or journey, the multi-guide report records the root package `id` and `type` separately from its executable leaf-guide reports
+- `steps[].stepKind`: optional registered driver kind for a reported step
+- `coverage.contractSource`: `current` for tracked roots, or `legacy` for the compatibility selector
+- `coverage.rendered`: number of tracked roots in the rendered DOM
+- `coverage.supported`: number of rendered roots with supported drivers
+- `coverage.executed`: number of supported roots that reached a terminal runner result
+- `coverage.unsupported`: number of rendered roots without supported drivers
+- `coverage.unsupportedSteps`: unsupported kind and step ID pairs
+
+Coverage fields are optional and additive. Unsupported roots do not change outcomes when the guide also has a supported root.
+
+A guide with only unsupported roots returns `outcome: "skipped"` before execution. Its report keeps the complete coverage inventory and an explicit reason.
+
+The CLI shows `Skipped (unsupported steps)` and exits with code 0. The skipped guide blocks guides that declare it as a prerequisite.
+
+Multi-guide reports keep coverage inside each individual guide report. The aggregate outcome and step summary use the existing rules.
 
 ### Report validation
 
@@ -694,6 +752,7 @@ In remote modes a package can end in one of these states. `failed`, `provisionin
 | `unsupported_type`            | Repository sweep encountered a non-guide composition package   | No            |
 | `prerequisite_failed`         | A required prerequisite could not be resolved or run           | No            |
 | `skipped_prereq`              | A prerequisite in the same dependency chain failed             | No            |
+| `skipped_unsupported_steps`   | The guide rendered only unsupported step kinds                 | No            |
 | `validation_failed`           | Fetched `content.json` failed guide schema validation          | **Yes**       |
 
 With `--output`, pre-run skips are recorded under a `preRunSkipped` array, and each tested guide's report carries package metadata (`packageId`, `tier`, `instance`, `targetUrl`, `sourceUrl`).

@@ -391,6 +391,35 @@ describe('processPlaywrightResults', () => {
       errorCode: 'REPORT_MISSING',
     });
   });
+
+  it('preserves an unsupported-only skipped result as a successful process result', () => {
+    const paths = filePaths();
+    const resultsData = {
+      guide: { id: 'unsupported', title: 'Unsupported', path: '/unsupported.json' },
+      timestamp: '2026-01-01T00:00:00.000Z',
+      outcome: 'skipped' as const,
+      errorMessage: 'No executable steps found. Unsupported kinds: quiz',
+      results: [],
+      coverage: {
+        contractSource: 'current' as const,
+        rendered: 1,
+        supported: 0,
+        executed: 0,
+        unsupported: 1,
+        unsupportedSteps: [{ stepKind: 'quiz', stepId: 'quiz-1' }],
+      },
+      aborted: false,
+    };
+    writeFileSync(paths.resultsFilePath, JSON.stringify(resultsData));
+
+    expect(processPlaywrightResults(0, { trace: false }, paths)).toEqual({
+      success: true,
+      exitCode: ExitCode.SUCCESS,
+      traceFile: undefined,
+      resultsData,
+    });
+  });
+
   it('ignores structurally invalid abort metadata', () => {
     const paths = filePaths();
     writeFileSync(paths.abortFilePath, JSON.stringify({ abortReason: 'NOT_A_REAL_REASON' }));

@@ -519,19 +519,25 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     }
     // A connection that arrives without handleStart's await seeing it — the
     // panel registering late, an external reconnect — still has to start setup.
-    // Never against the session that was live at click time: openTerminal may
-    // be replacing it, and the SDK deletes the one it replaces.
     if (terminalCtx?.status === 'connected') {
       if (!terminalCtx.sessionId) {
         setErrorDetail('No active sandbox session — the terminal is connected but reported no session id.');
         setState('setup-failed');
         return;
       }
-      if (terminalCtx.sessionId !== staleSessionIdRef.current) {
+      // Never against the session that was already live and connected at click time:
+      // openTerminal may be replacing it, and the SDK deletes the one it replaces.
+      if (statusAtStartRef.current === 'connected' && terminalCtx.sessionId === staleSessionIdRef.current) {
+        return;
+      }
+      const isOurLiveSession =
+        Boolean(staleSessionIdRef.current) && staleSessionIdRef.current === everProvisionedSessionIdRef.current;
+      const isFreshlyProvisioned = terminalCtx.sessionId !== staleSessionIdRef.current || isOurLiveSession;
+      if (isFreshlyProvisioned) {
         provisionedSessionIdRef.current = terminalCtx.sessionId;
         everProvisionedSessionIdRef.current = terminalCtx.sessionId;
-        runSetup(terminalCtx.sessionId);
       }
+      runSetup(terminalCtx.sessionId);
       return;
     }
     // Don't react to the status that was already current when the user
@@ -740,7 +746,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         </div>
       )}
 
-      {!isEnabled && !isCompleted && (
+      {!checker.isEnabled && !isCompleted && checker.status !== 'idle' && (
         <div className={styles.requirementMessage} data-testid={`challenge-requirement-warning-${stepId}`}>
           {checker.explanation || 'Checking requirements…'}
         </div>

@@ -260,9 +260,23 @@ describe('--help --format json — stability contract', () => {
   const flag = (name: string) => all.find((entry) => entry.name === name);
 
   it('emits the documented top-level keys', () => {
-    expect(Object.keys(help).sort()).toEqual(['command', 'optional', 'required', 'summary']);
+    expect(Object.keys(help).sort()).toEqual(['command', 'optional', 'required', 'requiredParams', 'summary']);
     expect(help.command).toBe('interactive');
     expect(help.summary).toBe('Append an interactive block');
+  });
+
+  // The `addressing` bucket is named for role while its two siblings are named for
+  // requiredness, so a required parameter can be absent from both `required` and
+  // `optional` — this is the list that does not have that hole in it.
+  it('states every required parameter in requiredParams, whatever bucket holds it', () => {
+    const requiredFlags = all.filter((entry) => entry.required === true).map((entry) => entry.name);
+    expect([...(help.requiredParams ?? [])].sort()).toEqual([...requiredFlags].sort());
+  });
+
+  // The CLI reader can run `pathfinder-cli requirements list`, so it is pointed at
+  // that rather than handed a copy of the vocabulary on every command.
+  it('omits the requirement vocabulary for a reader that can print it', () => {
+    expect(help.requirementTokens).toBeUndefined();
   });
 
   it('splits required from optional on schema optionality', () => {
