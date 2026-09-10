@@ -184,9 +184,10 @@ export interface RequirementTokenDoc {
  * Enumerated from the enums rather than written out, so a new
  * `FixedRequirementType` or `ParameterizedRequirementPrefix` member appears here
  * — and in every surface that publishes this — without a second edit. A member
- * with no `REQUIREMENT_DESCRIPTIONS` entry, or a prefix with no
- * `PARAMETERIZED_REQUIREMENT_EXAMPLES` entry, is a gap `requirements.types.test.ts`
- * fails on rather than something a reader has to notice is missing.
+ * with no `REQUIREMENT_DESCRIPTIONS` entry publishes a blank description; a prefix
+ * with no `PARAMETERIZED_REQUIREMENT_EXAMPLES` entry publishes the `<prefix><value>`
+ * placeholder below, which reads as an example and is not one. Both are gaps
+ * `requirements.types.test.ts` fails on rather than gaps a reader has to notice.
  */
 export const REQUIREMENT_TOKEN_CATALOGUE: readonly RequirementTokenDoc[] = Object.freeze([
   ...FIXED_REQUIREMENTS.map((token) => ({

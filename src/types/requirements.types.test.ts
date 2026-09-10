@@ -3,8 +3,9 @@
  * requirement vocabulary — the MCP's `pathfinder_help`, `x-requirement-tokens` on
  * the exported JSON Schema, the block editor's chip picker. It is enumerated from
  * the enums so it cannot fall behind them, which leaves exactly one way for it to
- * go wrong: a new enum member with no `REQUIREMENT_DESCRIPTIONS` entry, or a new
- * prefix with no example, publishing as a blank. These fail on that instead.
+ * go wrong: a new enum member with no `REQUIREMENT_DESCRIPTIONS` entry, publishing
+ * as a blank, or a new prefix with no `PARAMETERIZED_REQUIREMENT_EXAMPLES` entry,
+ * publishing the catalogue's `<prefix><value>` placeholder. These fail on both.
  */
 
 import {
@@ -57,5 +58,12 @@ describe('REQUIREMENT_TOKEN_CATALOGUE', () => {
     for (const { prefix, example } of PARAMETERIZED_REQUIREMENT_EXAMPLES) {
       expect(REQUIREMENT_TOKEN_CATALOGUE.find((entry) => entry.token === prefix)?.example).toBe(example);
     }
+  });
+
+  // Nothing above catches a prefix the examples table has never heard of: the
+  // catalogue substitutes `<prefix><value>`, which is non-blank and which
+  // `isValidRequirement` accepts against that very prefix.
+  it.each([...PARAMETERIZED_REQUIREMENT_PREFIXES])('has an authored example for %s', (prefix) => {
+    expect(PARAMETERIZED_REQUIREMENT_EXAMPLES.map((entry) => entry.prefix)).toContain(prefix);
   });
 });

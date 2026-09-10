@@ -376,8 +376,9 @@ export interface HelpJson {
    * that takes the two requiredness-named buckets for the whole interface
    * therefore builds a field list with a required parameter missing from it.
    * This is that list stated once, so no reader has to know the bucket rule:
-   * it is exactly what the MCP preflight (`commandArgViolations`) demands, and
-   * exactly what `requiredByType` reports for the same variant.
+   * it is exactly what the MCP preflight (`commandArgViolations`) demands. On a
+   * group variant that is the discriminator followed by the root's
+   * `requiredByType` entry, so the two lists differ by that one name.
    */
   requiredParams?: string[];
   /** Subcommand names exposed by this command, if any. */
