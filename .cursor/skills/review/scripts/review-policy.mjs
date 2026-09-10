@@ -17,6 +17,8 @@ const SCOPE_EFFECTS = new Set(['within_changed_surface', 'widens_changed_surface
 const ONE_WAY_DOORS = new Set(['partially_reversible', 'irreversible_without_cleanup']);
 const PROTECTED_IMPACTS = new Set(['security', 'data_loss', 'credential_exposure']);
 const PR_CAUSED = new Set(['regression', 'latent_reachable']);
+const ADJACENT_ORIGINS = new Set(['pre_existing', 'latent_unreachable']);
+const REPORTABLE_ADJACENT_SEVERITIES = new Set(['critical', 'high']);
 const MAX_ROUND = 100;
 const MAX_BATCH = 4;
 const MAX_CLEARED = 12;
@@ -128,6 +130,16 @@ function prCausedOneWayDoor(observation) {
   return PR_CAUSED.has(observation.origin) && ONE_WAY_DOORS.has(observation.reversibility);
 }
 
+function adjacentBelowBar(observation) {
+  return (
+    ADJACENT_ORIGINS.has(observation.origin) &&
+    !REPORTABLE_ADJACENT_SEVERITIES.has(observation.severity) &&
+    !PROTECTED_IMPACTS.has(observation.impact) &&
+    !observation.breaks_shipped_path &&
+    !observation.clearance_contradiction
+  );
+}
+
 export function disposeObservation(observation, round) {
   validateObservation(observation);
   const resolvedRound = normalizeRound(round);
@@ -139,12 +151,15 @@ export function disposeObservation(observation, round) {
       return { status: 'final', disposition: 'follow_up', reason: 'carried-optional' };
     }
     if (observation.scope_effect === 'widens_changed_surface') {
-      return { status: 'final', disposition: 'follow_up', reason: 'scope-widening-optional' };
+      return { status: 'dropped', reason: 'scope-widening-optional' };
     }
     return { status: 'final', disposition: observation.kind, reason: 'within-surface-optional' };
   }
   if (protectedHarm(observation)) {
     return { status: 'final', disposition: 'blocking', reason: 'protected-harm' };
+  }
+  if (adjacentBelowBar(observation)) {
+    return { status: 'dropped', reason: 'adjacent-below-bar' };
   }
   if (observation.origin === 'pre_existing') {
     return { status: 'final', disposition: 'follow_up', reason: 'pre-existing' };
@@ -187,10 +202,6 @@ function validateContradictionAgainstState(observation, priorCleared) {
   }
 }
 
-function provisionalBlocking(observation, round) {
-  return observation.kind === 'defect' && disposeObservation(observation, round).disposition === 'blocking';
-}
-
 function validatePriorDeferred(entries) {
   if (!Array.isArray(entries)) {
     throw new Error('prior_deferred must be an array');
@@ -216,7 +227,11 @@ export function advanceReviewPolicy({ observation, verdicts = [], round, prior_d
     }
     return { status: 'final', observation, decision: optional };
   }
-  const verification = decideVerification(observation, verdicts, provisionalBlocking(observation, resolvedRound));
+  const decision = disposeObservation(observation, resolvedRound);
+  if (decision.status === 'dropped') {
+    return { status: 'dropped', observation, reason: decision.reason };
+  }
+  const verification = decideVerification(observation, verdicts, decision.disposition === 'blocking');
   if (verification.status === 'needs_verification') {
     return {
       status: 'needs_verification',
@@ -228,7 +243,7 @@ export function advanceReviewPolicy({ observation, verdicts = [], round, prior_d
   if (verification.status === 'dropped') {
     return { status: 'dropped', observation, reason: 'verification-refuted' };
   }
-  return { status: 'final', observation, decision: disposeObservation(observation, resolvedRound) };
+  return { status: 'final', observation, decision };
 }
 
 function evidenceSurface(observation) {
@@ -244,7 +259,11 @@ export function planVerificationBatches(requests) {
     const { observation, verdicts = [] } = request;
     validateObservation(observation);
     const round = normalizeRound(request.round);
-    const verification = decideVerification(observation, verdicts, provisionalBlocking(observation, round));
+    const decision = disposeObservation(observation, round);
+    if (decision.status === 'dropped') {
+      continue;
+    }
+    const verification = decideVerification(observation, verdicts, decision.disposition === 'blocking');
     if (verification.status !== 'needs_verification' || verification.dispatch.count === 0) {
       continue;
     }
