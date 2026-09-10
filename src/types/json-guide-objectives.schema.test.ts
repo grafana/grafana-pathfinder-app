@@ -1,10 +1,17 @@
 import { parseJsonGuide } from '../docs-retrieval/json-parser';
 import { validateGuide } from '../validation';
-import { JsonInteractiveBlockSchema, JsonSectionBlockSchema } from './json-guide.schema';
+import { JsonConditionalBlockSchema, JsonInteractiveBlockSchema, JsonSectionBlockSchema } from './json-guide.schema';
 import { isValidRequirement } from './requirements.types';
 
-const objectivesDescription = (schema: { shape: Record<string, { description?: string }> }): string =>
-  schema.shape.objectives?.description ?? '';
+interface DescribedShape {
+  shape: Record<string, { description?: string } | undefined>;
+}
+
+const objectivesDescription = (schema: DescribedShape): string => schema.shape.objectives?.description ?? '';
+
+/** The per-branch section config is not exported; reach it through the conditional block that owns it. */
+const branchSectionConfig = (): DescribedShape =>
+  (JsonConditionalBlockSchema.shape.whenTrueSectionConfig as unknown as { unwrap: () => DescribedShape }).unwrap();
 
 const interactiveGuide = (objectives: string[]) => ({
   id: 'objectives',
@@ -90,6 +97,7 @@ describe('executable objectives', () => {
   describe.each([
     ['interactive block', () => objectivesDescription(JsonInteractiveBlockSchema), 'block'],
     ['section', () => objectivesDescription(JsonSectionBlockSchema), 'section'],
+    ['conditional branch', () => objectivesDescription(branchSectionConfig()), 'branch'],
   ])('%s objectives description', (_label, read, container) => {
     it('describes a condition list rather than learning objectives', () => {
       const description = read();
@@ -108,5 +116,25 @@ describe('executable objectives', () => {
       expect(example).toBeDefined();
       expect(isValidRequirement(example!)).toBe(true);
     });
+  });
+
+  // Only blocks have `skippable`. Telling a section or a conditional branch to
+  // weigh objectives against it points the author at a field their container
+  // does not have — the class of error this suite exists to catch.
+  it.each([
+    ['an interactive block', JsonInteractiveBlockSchema as unknown as DescribedShape],
+    ['a section', JsonSectionBlockSchema as unknown as DescribedShape],
+    ['a conditional branch', branchSectionConfig()],
+  ])('weighs objectives against `skippable` only where %s has one', (_label, schema) => {
+    expect(objectivesDescription(schema).includes('`skippable`')).toBe('skippable' in schema.shape);
+  });
+
+  it.each([
+    ['a section', JsonSectionBlockSchema as unknown as DescribedShape, 'section'],
+    ['a conditional branch', branchSectionConfig(), 'branch'],
+  ])('closes %s with what completing the container does to its steps', (_label, schema, container) => {
+    expect(objectivesDescription(schema)).toContain(
+      `When a ${container}'s objectives hold, every step inside it is marked complete too.`
+    );
   });
 });

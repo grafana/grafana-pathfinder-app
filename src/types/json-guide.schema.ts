@@ -54,41 +54,38 @@ const RequirementTokenSchema = z.string().superRefine((token, ctx) => {
 });
 
 /**
- * Schema for the single-string, comma-separated condition form. Every token is
- * held to the same `isValidRequirement` vocabulary as `RequirementTokenSchema`,
- * and splitting on `,` mirrors `conditionTokens` — how the runtime tokenizes
- * the value before checking it.
+ * Schemas for the two condition-carrying fields that stay permissive where
+ * `RequirementTokenSchema` is strict. Both are deliberate, and both for the
+ * same reason.
  *
- * Used by `verify`, which the JSON model carries as one string rather than an
- * array, so a comma inside a parameter value is not expressible here — the
- * same limitation `validateConditionString` has.
- */
-const ConditionStringSchema = z.string().superRefine((value, ctx) => {
-  for (const part of value.split(',')) {
-    const token = part.trim();
-    if (token && !isValidRequirement(token)) {
-      ctx.addIssue({ code: 'custom', message: unknownRequirementMessage(token) });
-    }
-  }
-});
-
-/**
- * Schema for a single objective token. Deliberately permissive where
- * `RequirementTokenSchema` is strict, and it stays that way even though every
- * `objectives` value in the in-repo and published corpora is a valid
- * condition: `upsert-learning-path.sh` forwards `objectives` to the
- * InteractiveGuide CRD under jq shape checks alone, so customer stacks can
- * hold guides this repo cannot enumerate — including the prose this field's
- * own description invited before it was corrected. Rejecting here would blank
- * such a guide (`validateGuide` returns early on a Zod failure), so the
- * vocabulary is enforced one layer later instead — `condition-validator`
- * warns, `json-parser` drops the unrecognised token, and the runtime refuses
- * to complete a step on any non-`satisfied` verdict.
+ * `upsert-learning-path.sh` forwards `objectives` and `verify` to the
+ * InteractiveGuide CRD under jq shape checks alone, and `backend-guide.ts`
+ * re-runs `validateGuide` on CRD-sourced content at render time. A Zod
+ * rejection there returns `{ isValid: false, guide: null }`, so a token check
+ * here would blank an already-published guide for its reader rather than flag
+ * one bad field. Both fields were documented as something other than a
+ * condition for their whole shipped history — `objectives` as learning
+ * metadata, `verify` as a CSS selector — so customer stacks this repo cannot
+ * enumerate may hold exactly the values that documentation invited.
+ *
+ * The vocabulary is enforced one layer later, and not silently:
+ * `condition-validator` walks both fields and warns, `validate --strict`
+ * promotes that warning to an error at the authoring gates, `json-parser`
+ * drops an unexecutable objective, and the runtime refuses to complete a step
+ * on any non-`satisfied` verdict — so an unrecognised `verify` fails that one
+ * step's verification instead of erasing the guide around it.
  */
 const ObjectiveTokenSchema = z.string();
+const VerifyConditionSchema = z.string();
 
-const objectivesDescription = (container: 'block' | 'section' | 'branch'): string =>
-  `Conditions that automatically complete this ${container}, in the same vocabulary as \`requirements\`. Checked first, before eligibility and requirements, so a ${container} whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a ${container} that creates one). Prefer this over \`skippable\` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.`;
+const objectivesDescription = (container: 'block' | 'section' | 'branch'): string => {
+  // Only blocks carry `skippable`; sections and conditional branches have no such field to weigh it against.
+  const closing =
+    container === 'block'
+      ? 'Prefer this over `skippable` for work the reader may already have done: skippable only lets them past the step, objectives record it as done.'
+      : `When a ${container}'s objectives hold, every step inside it is marked complete too.`;
+  return `Conditions that automatically complete this ${container}, in the same vocabulary as \`requirements\`. Checked first, before eligibility and requirements, so a ${container} whose objectives already hold is marked complete without the reader acting (e.g. has-datasource:prometheus for a ${container} that creates one). ${closing}`;
+};
 
 /**
  * Desired end state for a toggle target. `true`/`false` auto-detects the
@@ -384,7 +381,7 @@ export const JsonInteractiveBlockSchema = z
     showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
     doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
     completeEarly: z.boolean().optional().describe('Allow completion before all steps done'),
-    verify: ConditionStringSchema.optional().describe(
+    verify: VerifyConditionSchema.optional().describe(
       'Post-action verification condition, evaluated after the action runs; the step completes only once it is satisfied. Same condition vocabulary as `requirements` (e.g., on-page:/connections/datasources/edit) — not a CSS selector. One string, comma-separated for more than one condition.'
     ),
     lazyRender: z.boolean().optional().describe('Wait for target to appear in DOM (virtual scroll support)'),
