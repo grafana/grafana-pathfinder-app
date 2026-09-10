@@ -318,6 +318,19 @@ test('an unknown routed category is rejected instead of silently deprioritized',
   );
 });
 
+test('inherited property names are rejected as an unknown category', () => {
+  for (const category of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+    assert.throws(
+      () =>
+        buildReviewPlan({
+          mode: 'full',
+          concerns: [{ id: 'security', category, context: [{ path: 'src/a.ts', excerpt: 'x' }] }],
+        }),
+      new RegExp(`unknown category ${category}`)
+    );
+  }
+});
+
 test('general worker slots scale with routed breadth and stay flat for narrow reviews', () => {
   const packet = (index) => ({
     id: `concern-${index}`,

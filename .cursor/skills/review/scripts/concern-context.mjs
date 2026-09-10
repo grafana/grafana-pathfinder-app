@@ -273,9 +273,10 @@ function firedContractGates(contract_evolution) {
 }
 
 const CONCERN_DEPTH = { subsystem: 2, 'cross-cutting': 1, 'always-on': 0 };
+const CONCERN_CATEGORIES = new Set(Object.keys(CONCERN_DEPTH));
 
 function concernDepth(category) {
-  return CONCERN_DEPTH[category] ?? 0;
+  return CONCERN_CATEGORIES.has(category) ? CONCERN_DEPTH[category] : 0;
 }
 
 export function generalWorkerLimit(concernCount) {
@@ -293,7 +294,7 @@ export function buildReviewPlan({ mode, concerns, contract_evolution = null, ske
     if (!concern || !/^[a-z0-9-]+$/.test(concern.id ?? '')) {
       throw new Error('each routed concern must include an id');
     }
-    if (concern.category !== undefined && !(concern.category in CONCERN_DEPTH)) {
+    if (concern.category !== undefined && !CONCERN_CATEGORIES.has(concern.category)) {
       throw new Error(`routed concern ${concern.id} states an unknown category ${concern.category}`);
     }
     return { ...concern, context: normalizeContext(concern.context ?? [], concern.id) };
