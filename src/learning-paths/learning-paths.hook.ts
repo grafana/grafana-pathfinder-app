@@ -79,24 +79,14 @@ function calculatePathProgress(path: LearningPath, completedGuides: string[]): n
   return Math.round((completedCount / path.guides.length) * 100);
 }
 
-// ============================================================================
-// MAIN HOOK
-// ============================================================================
-
-/**
- * Hook for managing learning paths, badges, and progress
- *
- * @returns Learning paths state and actions
- */
 /**
  * Clears interactive progress for every content key a path reads under,
  * completing the whole sweep before reporting.
  *
- * A per-key clear can fail (it has to record that the guide's older,
- * ambiguously keyed records are retired, and browser storage can refuse the
- * write). Failing the whole sweep on the first refusal would leave the rest of
- * the path untouched with nothing said about it, so every key is attempted and
- * the reader is told once at the end if any of them did not take.
+ * A per-key clear rejects when a record survives the delete. Failing the whole
+ * sweep on the first rejection would leave the rest of the path untouched with
+ * nothing said about it, so every key is attempted and the reader is told once
+ * at the end if any of them did not take.
  */
 async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Promise<void> {
   const results = await Promise.allSettled(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
@@ -116,12 +106,21 @@ async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Pr
       t('myLearning.resetPathErrorTitle', 'Reset incomplete'),
       t(
         'myLearning.resetPathErrorMessage',
-        "Some of this path's progress could not be cleared. Free up browser storage and try again."
+        "Some of this path's progress could not be cleared. Reload the page and try again."
       ),
     ],
   });
 }
 
+// ============================================================================
+// MAIN HOOK
+// ============================================================================
+
+/**
+ * Hook for managing learning paths, badges, and progress
+ *
+ * @returns Learning paths state and actions
+ */
 export function useLearningPaths(): UseLearningPathsReturn {
   const [progress, setProgress] = useState<LearningProgress>(DEFAULT_PROGRESS);
   const [isLoading, setIsLoading] = useState(true);

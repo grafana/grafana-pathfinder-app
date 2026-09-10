@@ -22,9 +22,19 @@ import { subscribeProgressEvent, type ProgressEventDetail } from './progress-eve
 import { StorageKeys, buildVersionedSectionStorageKey } from '../lib/storage-keys';
 
 // In-memory mocks for the persisted-storage layer so tests are hermetic
-// and synchronous-where-they-can-be.
-const storedCompleted = new Map<string, Set<string>>(); // `${contentKey}-${sectionId}` -> ids
-const storedAcks = new Map<string, true>(); // `${contentKey}-${sectionId}` -> true
+// and synchronous-where-they-can-be. Records are addressed by a NUL-joined
+// (contentKey, sectionId) pair so no content key can be a prefix of another
+// pair's opening — the ambiguity these mocks exist to model away.
+const PAIR_SEPARATOR = '\x00';
+function pairKey(contentKey: string, sectionId: string): string {
+  return `${contentKey}${PAIR_SEPARATOR}${sectionId}`;
+}
+function belongsTo(pair: string, contentKey: string): boolean {
+  return pair.startsWith(`${contentKey}${PAIR_SEPARATOR}`);
+}
+
+const storedCompleted = new Map<string, Set<string>>(); // pairKey(contentKey, sectionId) -> ids
+const storedAcks = new Map<string, true>(); // pairKey(contentKey, sectionId) -> true
 const guidePercentages = new Map<string, number>();
 
 jest.mock('../lib/user-storage', () => ({
@@ -36,20 +46,20 @@ jest.mock('../lib/user-storage', () => ({
   }),
   interactiveStepStorage: {
     getCompleted: jest.fn(async (contentKey: string, sectionId: string) => {
-      return new Set(storedCompleted.get(`${contentKey}-${sectionId}`) ?? []);
+      return new Set(storedCompleted.get(pairKey(contentKey, sectionId)) ?? []);
     }),
     setCompleted: jest.fn(async (contentKey: string, sectionId: string, ids: Set<string>) => {
-      storedCompleted.set(`${contentKey}-${sectionId}`, new Set(ids));
+      storedCompleted.set(pairKey(contentKey, sectionId), new Set(ids));
     }),
     clear: jest.fn(async (contentKey: string, sectionId: string) => {
-      storedCompleted.delete(`${contentKey}-${sectionId}`);
+      storedCompleted.delete(pairKey(contentKey, sectionId));
     }),
-    // Mirrors the production contract: sections are addressed exactly, from
-    // the roster the caller passes, never by scanning for a shared opening.
-    countAllCompleted: jest.fn((contentKey: string, sectionIds?: readonly string[]) => {
+    countAllCompleted: jest.fn((contentKey: string) => {
       let total = 0;
-      for (const sectionId of sectionIds ?? mockRegisteredSectionIds) {
-        total += storedCompleted.get(`${contentKey}-${sectionId}`)?.size ?? 0;
+      for (const [pair, ids] of storedCompleted) {
+        if (belongsTo(pair, contentKey)) {
+          total += ids.size;
+        }
       }
       return total;
     }),
@@ -65,10 +75,10 @@ jest.mock('../lib/user-storage', () => ({
     }),
   },
   sectionAcknowledgementStorage: {
-    countAllAcknowledged: jest.fn((contentKey: string, sectionIds?: readonly string[]) => {
+    countAllAcknowledged: jest.fn((contentKey: string) => {
       let count = 0;
-      for (const sectionId of sectionIds ?? mockRegisteredSectionIds) {
-        if (storedAcks.get(`${contentKey}-${sectionId}`)) {
+      for (const pair of storedAcks.keys()) {
+        if (belongsTo(pair, contentKey)) {
           count++;
         }
       }
@@ -79,11 +89,9 @@ jest.mock('../lib/user-storage', () => ({
 
 let mockTotalDocumentSteps = 0;
 let mockRegisteredSectionCount = 0;
-let mockRegisteredSectionIds: string[] = [];
 jest.mock('./section-registry', () => ({
   getTotalDocumentSteps: () => mockTotalDocumentSteps,
   getRegisteredSectionCount: () => mockRegisteredSectionCount,
-  getRegisteredSectionIds: () => mockRegisteredSectionIds,
 }));
 
 const CONTENT_KEY = 'bundled:test-guide';
@@ -94,7 +102,6 @@ beforeEach(() => {
   guidePercentages.clear();
   mockTotalDocumentSteps = 0;
   mockRegisteredSectionCount = 0;
-  mockRegisteredSectionIds = [];
   resetCompletionStoreForTests();
   resetContentKeyForTests();
   setActiveTabUrl(CONTENT_KEY);
@@ -124,7 +131,7 @@ describe('completion-store', () => {
   });
 
   it('hydrates completed steps from storage', async () => {
-    storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1']));
+    storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1']));
     render(<StepProbe stepId="step-1" sectionId="section-x" />);
     await flushMicrotasks();
     expect(screen.getByTestId('completed').textContent).toBe('true');
@@ -140,7 +147,7 @@ describe('completion-store', () => {
     });
     expect(screen.getByTestId('completed').textContent).toBe('true');
     expect(screen.getByTestId('reason').textContent).toBe('manual');
-    expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)?.has('step-1')).toBe(true);
+    expect(storedCompleted.get(pairKey(CONTENT_KEY, 'section-x'))?.has('step-1')).toBe(true);
   });
 
   it('treats undefined section as standalone', async () => {
@@ -149,7 +156,7 @@ describe('completion-store', () => {
     act(() => {
       markStepCompleted('step-1', undefined, 'manual');
     });
-    expect(storedCompleted.get(`${CONTENT_KEY}-${STANDALONE_SECTION_ID}`)?.has('step-1')).toBe(true);
+    expect(storedCompleted.get(pairKey(CONTENT_KEY, STANDALONE_SECTION_ID))?.has('step-1')).toBe(true);
   });
 
   it('resetStep clears completion and updates persistence', async () => {
@@ -165,7 +172,7 @@ describe('completion-store', () => {
     expect(screen.getByTestId('completed').textContent).toBe('false');
     // Empty completion set fully clears the storage entry rather than
     // leaving a `{}` marker — see `persistSection`.
-    expect(storedCompleted.has(`${CONTENT_KEY}-section-x`)).toBe(false);
+    expect(storedCompleted.has(pairKey(CONTENT_KEY, 'section-x'))).toBe(false);
   });
 
   it('skips redundant writes when the same step is marked with the same reason twice', async () => {
@@ -225,23 +232,20 @@ describe('completion-store', () => {
     it('returns 100% once every registered section is acknowledged', () => {
       mockTotalDocumentSteps = 0;
       mockRegisteredSectionCount = 1;
-      mockRegisteredSectionIds = ['section-passive'];
-      storedAcks.set(`${CONTENT_KEY}-section-passive`, true);
+      storedAcks.set(pairKey(CONTENT_KEY, 'section-passive'), true);
       expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 1, percentage: 100 });
     });
 
     it('returns a partial percentage for multi-section guides with one ack', () => {
       mockTotalDocumentSteps = 0;
       mockRegisteredSectionCount = 4;
-      mockRegisteredSectionIds = ['section-1', 'section-2', 'section-3', 'section-4'];
-      storedAcks.set(`${CONTENT_KEY}-section-1`, true);
+      storedAcks.set(pairKey(CONTENT_KEY, 'section-1'), true);
       expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 4, percentage: 25 });
     });
 
     it('returns 0% when no sections are acknowledged yet', () => {
       mockTotalDocumentSteps = 0;
       mockRegisteredSectionCount = 3;
-      mockRegisteredSectionIds = ['section-1', 'section-2', 'section-3'];
       expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 3, percentage: 0 });
     });
 
@@ -254,9 +258,8 @@ describe('completion-store', () => {
     it('refreshAndNotifyGuideProgress persists the percentage to interactiveCompletionStorage', () => {
       mockTotalDocumentSteps = 0;
       mockRegisteredSectionCount = 2;
-      mockRegisteredSectionIds = ['section-1', 'section-2'];
-      storedAcks.set(`${CONTENT_KEY}-section-1`, true);
-      storedAcks.set(`${CONTENT_KEY}-section-2`, true);
+      storedAcks.set(pairKey(CONTENT_KEY, 'section-1'), true);
+      storedAcks.set(pairKey(CONTENT_KEY, 'section-2'), true);
 
       refreshAndNotifyGuideProgress(CONTENT_KEY);
 
@@ -265,8 +268,7 @@ describe('completion-store', () => {
   });
 
   it('getGuideProgress computes percentage when total steps is known', () => {
-    storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
-    mockRegisteredSectionIds = ['section-x'];
+    storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1', 'step-2']));
     mockTotalDocumentSteps = 4;
     expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 2, total: 4, percentage: 50 });
   });
@@ -281,7 +283,7 @@ describe('completion-store', () => {
 
   describe('hydration race', () => {
     it('does not resurrect a step the user reset while hydration was in flight', async () => {
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1', 'step-2']));
       render(<StepProbe stepId="step-1" sectionId="section-x" />);
       // Reset BEFORE hydration's microtask runs — this is the race window.
       act(() => {
@@ -294,38 +296,38 @@ describe('completion-store', () => {
       void rerender;
       await flushMicrotasks();
       // Storage now reflects the post-reset state — step-1 cleared, step-2 kept.
-      expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)).toEqual(new Set(['step-2']));
+      expect(storedCompleted.get(pairKey(CONTENT_KEY, 'section-x'))).toEqual(new Set(['step-2']));
     });
 
     it('drops the entire snapshot when resetSection runs during hydration', async () => {
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1', 'step-2']));
       render(<StepProbe stepId="step-1" sectionId="section-x" />);
       act(() => {
         resetSection('section-x');
       });
       await flushMicrotasks();
       expect(screen.getByTestId('completed').textContent).toBe('false');
-      expect(storedCompleted.has(`${CONTENT_KEY}-section-x`)).toBe(false);
+      expect(storedCompleted.has(pairKey(CONTENT_KEY, 'section-x'))).toBe(false);
     });
 
     it('honours resetSteps tail-clear across the hydration boundary', async () => {
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2', 'step-3']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1', 'step-2', 'step-3']));
       render(<StepProbe stepId="step-2" sectionId="section-x" />);
       act(() => {
         resetSteps(['step-2', 'step-3'], 'section-x');
       });
       await flushMicrotasks();
       expect(screen.getByTestId('completed').textContent).toBe('false');
-      expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)).toEqual(new Set(['step-1']));
+      expect(storedCompleted.get(pairKey(CONTENT_KEY, 'section-x'))).toEqual(new Set(['step-1']));
     });
 
     it('mark issued during pending hydration survives the resolve', async () => {
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-a']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-a']));
       render(<StepProbe stepId="step-b" sectionId="section-x" />);
       // Hydration pending.
       act(() => markStepCompleted('step-b', 'section-x', 'manual'));
       await flushMicrotasks();
-      expect(storedCompleted.get(`${CONTENT_KEY}-section-x`)).toEqual(new Set(['step-a', 'step-b']));
+      expect(storedCompleted.get(pairKey(CONTENT_KEY, 'section-x'))).toEqual(new Set(['step-a', 'step-b']));
     });
   });
 
@@ -414,14 +416,14 @@ describe('completion-store', () => {
     });
 
     it('evictContentCache lets a fresh hydration repopulate from storage', async () => {
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1']));
       render(<StepProbe stepId="step-1" sectionId="section-x" />);
       await flushMicrotasks();
       expect(screen.getByTestId('completed').textContent).toBe('true');
 
       // Storage cleared elsewhere — caller then evicts the cache. We
       // simulate that order here.
-      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+      storedCompleted.delete(pairKey(CONTENT_KEY, 'section-x'));
       act(() => evictContentCache(CONTENT_KEY));
       await flushMicrotasks();
       expect(screen.getByTestId('completed').textContent).toBe('false');
@@ -464,10 +466,10 @@ describe('completion-store', () => {
     // ensureHydrated.then the stale IDs are silently re-inserted and the
     // UI flips back to "completed".
     it('evictContentCache during in-flight hydration does not resurrect snapshot', async () => {
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1', 'step-2']));
       render(<StepProbe stepId="step-1" sectionId="section-x" />);
       act(() => {
-        storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+        storedCompleted.delete(pairKey(CONTENT_KEY, 'section-x'));
         evictContentCache(CONTENT_KEY);
       });
       await flushMicrotasks();
@@ -489,14 +491,14 @@ describe('completion-store', () => {
   //     pre-reconcile window.
   describe('roster reconciliation + percentage clamp', () => {
     it('reconcileSection drops storage IDs not present in the roster', async () => {
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-a', 'step-b', 'orphan']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-a', 'step-b', 'orphan']));
       render(<StepProbe stepId="step-a" sectionId="section-x" />);
       await flushMicrotasks();
       act(() => {
         reconcileSection('section-x', ['step-a', 'step-b']);
       });
       await flushMicrotasks();
-      const stored = storedCompleted.get(`${CONTENT_KEY}-section-x`);
+      const stored = storedCompleted.get(pairKey(CONTENT_KEY, 'section-x'));
       expect(stored).toBeDefined();
       expect(stored!.has('orphan')).toBe(false);
       expect(stored!.has('step-a')).toBe(true);
@@ -504,7 +506,7 @@ describe('completion-store', () => {
     });
 
     it('reconcileSection is a no-op when storage matches the roster', async () => {
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-a']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-a']));
       render(<StepProbe stepId="step-a" sectionId="section-x" />);
       await flushMicrotasks();
       const persistSpy = jest.spyOn(storedCompleted, 'set');
@@ -512,16 +514,15 @@ describe('completion-store', () => {
         reconcileSection('section-x', ['step-a']);
       });
       // No write — set was not called again for this section.
-      expect(persistSpy.mock.calls.some((call) => call[0] === `${CONTENT_KEY}-section-x`)).toBe(false);
+      expect(persistSpy.mock.calls.some((call) => call[0] === pairKey(CONTENT_KEY, 'section-x'))).toBe(false);
       persistSpy.mockRestore();
     });
 
     it('getGuideProgress clamps to 100 when storage holds orphan IDs that inflate the numerator', () => {
       // Storage has 5 IDs across two sections; roster total is only 3.
       // Pre-clamp this returned 167; clamp keeps it user-presentable.
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['s1', 's2', 's3']));
-      storedCompleted.set(`${CONTENT_KEY}-section-y`, new Set(['s4', 's5']));
-      mockRegisteredSectionIds = ['section-x', 'section-y'];
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['s1', 's2', 's3']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-y'), new Set(['s4', 's5']));
       mockTotalDocumentSteps = 3;
       const progress = getGuideProgress(CONTENT_KEY);
       expect(progress.completed).toBe(5);
@@ -552,7 +553,7 @@ describe('completion-store', () => {
       // Simulate tab A clearing its progress: localStorage now holds
       // an empty set for our section, and the storage event fires in
       // tab B (this test runner). Our listener should evict the cache.
-      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+      storedCompleted.delete(pairKey(CONTENT_KEY, 'section-x'));
       act(() => {
         window.dispatchEvent(
           new StorageEvent('storage', {
@@ -617,14 +618,14 @@ describe('completion-store', () => {
       const LONG_KEY = 'bundled:loki-101-extended';
 
       setActiveTabUrl(SHORT_KEY);
-      storedCompleted.set(`${SHORT_KEY}-section-x`, new Set(['step-1']));
+      storedCompleted.set(pairKey(SHORT_KEY, 'section-x'), new Set(['step-1']));
       const short = render(<StepProbe stepId="step-1" sectionId="section-x" />);
       await flushMicrotasks();
       expect(short.getByTestId('completed').textContent).toBe('true');
       short.unmount();
 
       setActiveTabUrl(LONG_KEY);
-      storedCompleted.set(`${LONG_KEY}-section-y`, new Set(['step-2']));
+      storedCompleted.set(pairKey(LONG_KEY, 'section-y'), new Set(['step-2']));
       const long = render(<StepProbe stepId="step-2" sectionId="section-y" />);
       await flushMicrotasks();
       expect(long.getByTestId('completed').textContent).toBe('true');
@@ -633,7 +634,7 @@ describe('completion-store', () => {
       // the LONG key only. Exact matching evicts the LONG pair; prefix
       // matching would have evicted a non-existent `(SHORT_KEY, "extended-section-y")`
       // and left the LONG cache untouched.
-      storedCompleted.delete(`${LONG_KEY}-section-y`);
+      storedCompleted.delete(pairKey(LONG_KEY, 'section-y'));
       act(() => {
         window.dispatchEvent(
           new StorageEvent('storage', {
@@ -664,11 +665,11 @@ describe('completion-store', () => {
       // in-flight `.then` then resolves — without the version check it
       // would merge `{step-1, step-2}` back into the now-empty cache,
       // silently undoing tab A's clear.
-      storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
+      storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1', 'step-2']));
       render(<StepProbe stepId="step-2" sectionId="section-x" />);
       // Hydration pending — do NOT flush yet. The original `.then` is
       // queued with `expectedVersion = 0`.
-      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+      storedCompleted.delete(pairKey(CONTENT_KEY, 'section-x'));
       act(() => {
         window.dispatchEvent(
           new StorageEvent('storage', {

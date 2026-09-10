@@ -110,7 +110,7 @@
     "pathsDescription": "Structured guides to help you master Grafana step by step",
     "privatePaths": "Private paths",
     "privatePathsDescription": "Paths published for your organization",
-    "resetPathErrorMessage": "Some of this path's progress could not be cleared. Free up browser storage and try again.",
+    "resetPathErrorMessage": "Some of this path's progress could not be cleared. Reload the page and try again.",
     "resetPathErrorTitle": "Reset incomplete",
     "subtitle": "Track your progress, earn badges, and master Grafana"
   },
