@@ -8,6 +8,8 @@ import {
   journeyCompletionStorage,
   milestoneCompletionStorage,
   sectionAcknowledgementStorage,
+  sectionCollapseStorage,
+  sectionDoneStorage,
   tabStorage,
   unwrapEnvelope,
   wrapEnvelope,
@@ -429,10 +431,10 @@ describe('sectionAcknowledgementStorage.countAllAcknowledged', () => {
 });
 
 // ============================================================================
-// interactiveStepStorage.clearAllForContent — ack-prefix sweep TESTS
+// interactiveStepStorage.clearAllForContent — content-key isolation tests
 // ============================================================================
 
-describe('interactiveStepStorage.clearAllForContent — ack prefix sweep (#842)', () => {
+describe('interactiveStepStorage.clearAllForContent — content-key isolation (#1846)', () => {
   beforeEach(() => {
     localStorage.clear();
   });
@@ -455,6 +457,59 @@ describe('interactiveStepStorage.clearAllForContent — ack prefix sweep (#842)'
 
     expect(await sectionAcknowledgementStorage.get('guide-a', 'section-1')).toBeNull();
     expect(await sectionAcknowledgementStorage.get('guide-b', 'section-1')).toBe(true);
+  });
+
+  it('does not remove progress when another content key shares its prefix', async () => {
+    const target = 'bundled:welcome-to-grafana';
+    const sibling = 'bundled:welcome-to-grafana-cloud';
+    const sectionId = 'section-1';
+
+    await interactiveStepStorage.setCompleted(target, sectionId, new Set(['step-1']));
+    await sectionCollapseStorage.set(target, sectionId, true);
+    await sectionAcknowledgementStorage.set(target, sectionId, true);
+    await sectionDoneStorage.set(target, sectionId, true);
+
+    await interactiveStepStorage.setCompleted(sibling, sectionId, new Set(['step-1']));
+    await sectionCollapseStorage.set(sibling, sectionId, true);
+    await sectionAcknowledgementStorage.set(sibling, sectionId, true);
+    await sectionDoneStorage.set(sibling, sectionId, true);
+
+    await interactiveStepStorage.clearAllForContent(target);
+
+    expect(await interactiveStepStorage.getCompleted(target, sectionId)).toEqual(new Set());
+    expect(await sectionCollapseStorage.get(target, sectionId)).toBe(false);
+    expect(await sectionAcknowledgementStorage.get(target, sectionId)).toBeNull();
+    expect(await sectionDoneStorage.get(target, sectionId)).toBeNull();
+
+    expect(await interactiveStepStorage.getCompleted(sibling, sectionId)).toEqual(new Set(['step-1']));
+    expect(await sectionCollapseStorage.get(sibling, sectionId)).toBe(true);
+    expect(await sectionAcknowledgementStorage.get(sibling, sectionId)).toBe(true);
+    expect(await sectionDoneStorage.get(sibling, sectionId)).toBe(true);
+  });
+
+  it('clears versioned progress on subsequent resets without affecting a prefix-sharing sibling', async () => {
+    const target = 'bundled:welcome-to-grafana';
+    const sibling = 'bundled:welcome-to-grafana-cloud';
+    const sectionId = 'section-1';
+
+    await interactiveStepStorage.setCompleted(target, sectionId, new Set(['legacy-step']));
+    await interactiveStepStorage.setCompleted(sibling, sectionId, new Set(['sibling-step']));
+
+    await interactiveStepStorage.clearAllForContent(target);
+
+    await interactiveStepStorage.setCompleted(target, sectionId, new Set(['versioned-step']));
+    await sectionCollapseStorage.set(target, sectionId, true);
+    await sectionAcknowledgementStorage.set(target, sectionId, true);
+    await sectionDoneStorage.set(target, sectionId, true);
+
+    await interactiveStepStorage.clearAllForContent(target);
+
+    expect(await interactiveStepStorage.getCompleted(target, sectionId)).toEqual(new Set());
+    expect(await sectionCollapseStorage.get(target, sectionId)).toBe(false);
+    expect(await sectionAcknowledgementStorage.get(target, sectionId)).toBeNull();
+    expect(await sectionDoneStorage.get(target, sectionId)).toBeNull();
+
+    expect(await interactiveStepStorage.getCompleted(sibling, sectionId)).toEqual(new Set(['sibling-step']));
   });
 });
 

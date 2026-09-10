@@ -13,7 +13,8 @@ export const StorageKeys = {
   INTERACTIVE_COMPLETION: 'grafana-pathfinder-app-interactive-completion', // Stores completion percentage by contentKey
   TABS: 'grafana-pathfinder-app-tabs',
   ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
-  INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Dynamic: grafana-pathfinder-app-interactive-steps-{contentKey}-{sectionId}
+  INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-', // Legacy prefix; reset guides use versioned section keys.
+  CONTENT_PROGRESS_V2_PREFIX: 'grafana-pathfinder-app-content-progress-v2:',
   WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview', // HTML content for editor persistence
   WYSIWYG_PREVIEW_JSON: 'grafana-pathfinder-app-wysiwyg-preview-json', // JSON content for test preview
   E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide', // JSON content for E2E test runner
@@ -104,4 +105,12 @@ export type StorageKeyValue = (typeof StorageKeys)[StorageKeyName];
  */
 export function buildAssistantStorageKey(contentKey: string, assistantId: string): string {
   return `${StorageKeys.ASSISTANT_CUSTOMIZATION_PREFIX}${contentKey}-${assistantId}`;
+}
+
+export function buildVersionedSectionStorageKey(prefix: string, contentKey: string, sectionId: string): string {
+  return `${prefix}${contentKey.length}:${contentKey}:${sectionId}`;
+}
+
+export function buildVersionedContentStorageKey(prefix: string, contentKey: string): string {
+  return `${prefix}${contentKey.length}:${contentKey}`;
 }

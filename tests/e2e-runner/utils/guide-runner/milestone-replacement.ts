@@ -2,7 +2,7 @@ import type { ElementHandle, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
 import { StorageEvents } from '../../../../src/lib/event-names';
-import { StorageKeys } from '../../../../src/lib/storage-keys';
+import { StorageKeys, buildVersionedContentStorageKey } from '../../../../src/lib/storage-keys';
 import { dismissBadgeCelebrations } from './badge-celebrations';
 import { STEP_ROOT_SELECTOR } from './constants';
 import { FatalTransitionError, type FatalTransitionKind } from './transition-error';
@@ -37,15 +37,28 @@ async function activeGuideTab(page: Page): Promise<{ id: string; url: string }> 
 }
 
 async function inspectE2EProgressStorage(page: Page): Promise<E2EProgressStorageState> {
+  const legacyPrefixes = {
+    steps: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${E2E_GUIDE_URL}-`,
+    collapse: `${StorageKeys.SECTION_COLLAPSE_PREFIX}${E2E_GUIDE_URL}-`,
+    acknowledged: `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${E2E_GUIDE_URL}-`,
+    done: `${StorageKeys.SECTION_DONE_PREFIX}${E2E_GUIDE_URL}-`,
+  };
+
+  const versionedPrefixes = {
+    steps: `${buildVersionedContentStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, E2E_GUIDE_URL)}:`,
+    collapse: `${buildVersionedContentStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, E2E_GUIDE_URL)}:`,
+    acknowledged: `${buildVersionedContentStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, E2E_GUIDE_URL)}:`,
+    done: `${buildVersionedContentStorageKey(StorageKeys.SECTION_DONE_PREFIX, E2E_GUIDE_URL)}:`,
+  };
+
+  const markerKey = buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, E2E_GUIDE_URL);
+
   return page.evaluate(
-    ({ contentKey, keys, timestampSuffix }) => {
-      const stepsPrefix = `${keys.stepsPrefix}${contentKey}-`;
-      const matchingPrefixes = [
-        stepsPrefix,
-        `${keys.collapsePrefix}${contentKey}-`,
-        `${keys.acknowledgedPrefix}${contentKey}-`,
-        `${keys.donePrefix}${contentKey}-`,
-      ];
+    ({ contentKey, completionKey, timestampSuffix, markerKey, legacyPrefixes, versionedPrefixes }) => {
+      const prefixes = localStorage.getItem(markerKey) !== null ? versionedPrefixes : legacyPrefixes;
+
+      const matchingPrefixes = [prefixes.steps, prefixes.collapse, prefixes.acknowledged, prefixes.done];
+
       let hasStoredCompletion = false;
       let hasMatchingStorage = false;
 
@@ -54,10 +67,13 @@ async function inspectE2EProgressStorage(page: Page): Promise<E2EProgressStorage
         if (!key || key.endsWith(timestampSuffix) || !matchingPrefixes.some((prefix) => key.startsWith(prefix))) {
           continue;
         }
+
         hasMatchingStorage = true;
-        if (!key.startsWith(stepsPrefix)) {
+
+        if (!key.startsWith(prefixes.steps)) {
           continue;
         }
+
         const value = localStorage.getItem(key);
         try {
           const completedIds = value ? JSON.parse(value) : [];
@@ -67,10 +83,11 @@ async function inspectE2EProgressStorage(page: Page): Promise<E2EProgressStorage
         } catch {
           // A malformed step value is ambiguous and requires the mounted reset path.
         }
+
         hasStoredCompletion = true;
       }
 
-      const completionValue = localStorage.getItem(keys.completion);
+      const completionValue = localStorage.getItem(completionKey);
       if (completionValue) {
         try {
           const completion = JSON.parse(completionValue);
@@ -92,14 +109,11 @@ async function inspectE2EProgressStorage(page: Page): Promise<E2EProgressStorage
     },
     {
       contentKey: E2E_GUIDE_URL,
-      keys: {
-        stepsPrefix: StorageKeys.INTERACTIVE_STEPS_PREFIX,
-        collapsePrefix: StorageKeys.SECTION_COLLAPSE_PREFIX,
-        acknowledgedPrefix: StorageKeys.SECTION_ACKNOWLEDGED_PREFIX,
-        donePrefix: StorageKeys.SECTION_DONE_PREFIX,
-        completion: StorageKeys.INTERACTIVE_COMPLETION,
-      },
+      completionKey: StorageKeys.INTERACTIVE_COMPLETION,
       timestampSuffix: HYBRID_STORAGE_TIMESTAMP_SUFFIX,
+      markerKey,
+      legacyPrefixes,
+      versionedPrefixes,
     }
   );
 }
@@ -204,42 +218,51 @@ async function requireEmptyE2EProgressStorage(page: Page): Promise<void> {
 }
 
 async function clearNoCompletionResidue(page: Page): Promise<void> {
+  const markerKey = buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, E2E_GUIDE_URL);
+
+  const versionedPrefixes = [
+    StorageKeys.INTERACTIVE_STEPS_PREFIX,
+    StorageKeys.SECTION_COLLAPSE_PREFIX,
+    StorageKeys.SECTION_ACKNOWLEDGED_PREFIX,
+    StorageKeys.SECTION_DONE_PREFIX,
+  ].map((prefix) => `${buildVersionedContentStorageKey(prefix, E2E_GUIDE_URL)}:`);
+
   await page.evaluate(
-    ({ contentKey, keys }) => {
-      const prefixes = [keys.stepsPrefix, keys.collapsePrefix, keys.acknowledgedPrefix, keys.donePrefix].map(
-        (prefix) => `${prefix}${contentKey}-`
-      );
+    ({ contentKey, completionKey, markerKey, versionedPrefixes }) => {
       const keysToRemove: string[] = [];
+
       for (let index = 0; index < localStorage.length; index++) {
         const key = localStorage.key(index);
-        if (key && prefixes.some((prefix) => key.startsWith(prefix))) {
+        if (key && versionedPrefixes.some((prefix) => key.startsWith(prefix))) {
           keysToRemove.push(key);
         }
       }
+
       keysToRemove.forEach((key) => localStorage.removeItem(key));
 
-      const completionValue = localStorage.getItem(keys.completion);
+      // Legacy section keys cannot be deleted safely because content keys may
+      // share a prefix. Switching this content key to v2 makes those entries
+      // logically inactive while preserving sibling-guide progress.
+      localStorage.setItem(markerKey, 'true');
+
+      const completionValue = localStorage.getItem(completionKey);
       if (completionValue) {
         try {
           const completion = JSON.parse(completionValue);
           if (completion && typeof completion === 'object' && !Array.isArray(completion)) {
             delete completion[contentKey];
-            localStorage.setItem(keys.completion, JSON.stringify(completion));
+            localStorage.setItem(completionKey, JSON.stringify(completion));
           }
         } catch {
-          localStorage.removeItem(keys.completion);
+          localStorage.removeItem(completionKey);
         }
       }
     },
     {
       contentKey: E2E_GUIDE_URL,
-      keys: {
-        stepsPrefix: StorageKeys.INTERACTIVE_STEPS_PREFIX,
-        collapsePrefix: StorageKeys.SECTION_COLLAPSE_PREFIX,
-        acknowledgedPrefix: StorageKeys.SECTION_ACKNOWLEDGED_PREFIX,
-        donePrefix: StorageKeys.SECTION_DONE_PREFIX,
-        completion: StorageKeys.INTERACTIVE_COMPLETION,
-      },
+      completionKey: StorageKeys.INTERACTIVE_COMPLETION,
+      markerKey,
+      versionedPrefixes,
     }
   );
 }

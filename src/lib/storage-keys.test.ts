@@ -10,7 +10,12 @@
  * When ADDING a new key, add it here too. When CHANGING an existing value, stop
  * and consider the migration implications before updating this test.
  */
-import { StorageKeys, buildAssistantStorageKey } from './storage-keys';
+import {
+  StorageKeys,
+  buildAssistantStorageKey,
+  buildVersionedContentStorageKey,
+  buildVersionedSectionStorageKey,
+} from './storage-keys';
 
 describe('StorageKeys — stable string contract', () => {
   it('matches the locked key values exactly', () => {
@@ -21,6 +26,7 @@ describe('StorageKeys — stable string contract', () => {
       TABS: 'grafana-pathfinder-app-tabs',
       ACTIVE_TAB: 'grafana-pathfinder-app-active-tab',
       INTERACTIVE_STEPS_PREFIX: 'grafana-pathfinder-app-interactive-steps-',
+      CONTENT_PROGRESS_V2_PREFIX: 'grafana-pathfinder-app-content-progress-v2:',
       WYSIWYG_PREVIEW: 'grafana-pathfinder-app-wysiwyg-preview',
       WYSIWYG_PREVIEW_JSON: 'grafana-pathfinder-app-wysiwyg-preview-json',
       E2E_TEST_GUIDE: 'grafana-pathfinder-app-e2e-test-guide',
@@ -81,5 +87,10 @@ describe('StorageKeys — stable string contract', () => {
 
   it('builds the assistant customization key from the prefix', () => {
     expect(buildAssistantStorageKey('my-content', 'asst-1')).toBe('pathfinder-assistant-my-content-asst-1');
+  });
+
+  it('builds collision-safe versioned storage keys', () => {
+    expect(buildVersionedContentStorageKey('progress:', 'guide-a')).toBe('progress:7:guide-a');
+    expect(buildVersionedSectionStorageKey('steps:', 'guide-a', 'section-1')).toBe('steps:7:guide-a:section-1');
   });
 });
