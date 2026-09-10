@@ -282,6 +282,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // tearing it down and the SDK deletes it on the way out.
   const staleSessionIdRef = useRef<string | null>(null);
   const provisionedSessionIdRef = useRef<string | null>(null);
+  const setupSessionIdRef = useRef<string | null>(null);
 
   const { completed: storedCompleted, reason: storedReason } = useStepCompletion(stepId, sectionId);
   const isStandalone = !onStepComplete;
@@ -309,7 +310,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         : (state === 'ready' || state === 'failed-check') &&
           terminalCtx?.status === 'connected' &&
           Boolean(terminalCtx?.sessionId) &&
-          terminalCtx?.sessionId === provisionedSessionIdRef.current);
+          terminalCtx?.sessionId === setupSessionIdRef.current);
 
     if (!isReadyForProbe || safeObjectives.length === 0) {
       setObjectivesMet((prev) => (prev ? false : prev));
@@ -363,6 +364,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   const resetToIdle = useCallback(() => {
     setupStartedRef.current = false;
     provisionedSessionIdRef.current = null;
+    setupSessionIdRef.current = null;
     setSetupProgress(null);
     setErrorDetail('');
     setState(mode === 'standard' ? 'ready' : 'idle');
@@ -398,7 +400,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       }
       setupStartedRef.current = true;
       cancelRequestedRef.current = false;
-      provisionedSessionIdRef.current = sessionId;
+      setupSessionIdRef.current = sessionId;
       setState('preparing');
 
       // Two paths: a single bash script (preferred, allows multi-line / heredocs
@@ -525,6 +527,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         return;
       }
       if (terminalCtx.sessionId !== staleSessionIdRef.current) {
+        provisionedSessionIdRef.current = terminalCtx.sessionId;
         runSetup(terminalCtx.sessionId);
       }
       return;
@@ -578,6 +581,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setupStartedRef.current = false;
     cancelRequestedRef.current = false;
     statusAtStartRef.current = terminalCtx.status;
+    const sessionIdBeforeStart = terminalCtx.status === 'connected' ? terminalCtx.sessionId : null;
     // The session the terminal holds right now is not ours to use: if this
     // challenge wants a different VM, openTerminal replaces it and the SDK
     // deletes it. The effect below must not start setup against it either.
@@ -596,6 +600,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       return;
     }
     if (nextSessionId) {
+      if (nextSessionId !== sessionIdBeforeStart) {
+        provisionedSessionIdRef.current = nextSessionId;
+      }
       runSetup(nextSessionId);
     }
     // No session: the effect below reports the terminal's own reason, which
