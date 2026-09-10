@@ -202,7 +202,10 @@ describe('useLearningPaths — resetPath reports a partial failure once', () => 
     expect(mockPublish).toHaveBeenCalledTimes(1);
     expect(mockPublish).toHaveBeenCalledWith({
       type: AppEvents.alertError.name,
-      payload: ['Reset incomplete', "Some of this path's progress could not be cleared. Reload the page and try again."],
+      payload: [
+        'Reset incomplete',
+        "Some of this path's progress could not be cleared. Reload the page and try again.",
+      ],
     });
   });
 

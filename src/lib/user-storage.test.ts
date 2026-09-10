@@ -858,9 +858,9 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
       // Every write is a deletion companion the backend put beside a record
       // this reset had just removed — no marker, no key of the reset's own.
       expect(writtenKeys).toEqual(removedKeys.map((key) => `${key}__timestamp`));
-      expect(
-        Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.CONTENT_PROGRESS_V2_PREFIX))
-      ).toEqual([]);
+      expect(Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.CONTENT_PROGRESS_V2_PREFIX))).toEqual(
+        []
+      );
     } finally {
       setGlobalStorage(createLocalStorage());
       jest.useRealTimers();

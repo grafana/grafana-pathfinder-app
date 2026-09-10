@@ -29,11 +29,7 @@ import { renderHook, act } from '@testing-library/react';
 import type { GrafanaUserStorage } from '../types/storage.types';
 
 import { __resetSyncedForTests, createLocalStorage, setGlobalStorage, useUserStorage } from './user-storage';
-import {
-  StorageKeys,
-  buildDiscardedSectionStorageKey,
-  buildVersionedSectionStorageKey,
-} from './storage-keys';
+import { StorageKeys, buildDiscardedSectionStorageKey, buildVersionedSectionStorageKey } from './storage-keys';
 
 const usePluginUserStorageMock = jest.fn();
 

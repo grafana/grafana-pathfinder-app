@@ -75,10 +75,7 @@ export function listProgressEntries(prefix: string, contentKey: string): RawProg
   return entries;
 }
 
-const DISCARDABLE_PREFIXES: readonly string[] = [
-  ...PROGRESS_SECTION_PREFIXES,
-  StorageKeys.CONTENT_PROGRESS_V2_PREFIX,
-];
+const DISCARDABLE_PREFIXES: readonly string[] = [...PROGRESS_SECTION_PREFIXES, StorageKeys.CONTENT_PROGRESS_V2_PREFIX];
 
 /**
  * True for a key in one of the four progress namespaces that is not a
