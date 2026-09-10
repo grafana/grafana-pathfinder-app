@@ -64,6 +64,30 @@ test('includes the concern anchor and named invariants', () => {
   assert.equal(context.named_invariants[0].name, 'payload-boundary-normalization');
 });
 
+test('records the docs retrieval and rendering ownership chain', () => {
+  const context = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'docs-retrieval-and-rendering',
+  });
+
+  assert.equal(context.contract_anchor.evidence, '#894 → #1716');
+  assert.match(context.contract_anchor.contract, /fetchContent/);
+  assert.match(context.contract_anchor.contract, /ContentRenderer/);
+  assert.match(context.contract_anchor.contract, /shouldUseDocsLoader/);
+  assert.match(context.contract_anchor.contract, /loadDocsTabContentResult/);
+  assert.match(context.contract_anchor.contract, /loadTabContent/);
+  assert.match(context.contract_anchor.contract, /resolveDocsLoadAlignment/);
+  assert.match(context.contract_anchor.contract, /#1692 established manifest precedence/);
+  assert.match(context.contract_anchor.contract, /#1712 made `package-info-from-url\.ts`/);
+  assert.match(
+    context.contract_anchor.contract,
+    /plain guides prefer `spec\.id`, while `path` and `journey` keep the immutable resource name \(`packageId`\)/
+  );
+  assert.match(context.contract_anchor.contract, /`packageId` remains the fallback when no `spec\.id` exists/);
+  assert.match(context.contract_anchor.contract, /legacy `loadTabContent` arm is a known accepted residual/);
+});
+
 test('records the review orchestration contract under ai-subsystem', () => {
   const context = extractConcernContext({
     routingMarkdown: concerns,
@@ -220,6 +244,7 @@ test('emits every completion-records doc as one loadable path', () => {
     'docs/design/BACKEND_PROXY_PATTERN.md',
     '.cursor/rules/systemPatterns.mdc (tier-1 lib/ guide-stats bullet)',
     'docs/developer/STEP_MODEL.md',
+    'docs/design/COMPLETION-MODEL.md',
   ]);
   for (const doc of context.load_docs) {
     assert.doesNotMatch(doc, /`/);

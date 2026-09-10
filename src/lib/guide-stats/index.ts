@@ -10,6 +10,8 @@ export {
   computeGuideBlockIndex,
   OPAQUE_PARENT_BLOCK_TYPES,
   TRANSPARENT_CONTAINER_BLOCK_TYPES,
+  type BlockIndexOptions,
+  type BlockStepIdContext,
   type CountableBlock,
   type CountedBlock,
   type GuideBlockIndex,
@@ -23,6 +25,8 @@ export {
   type CompletionEvidenceKind,
   type GuideProgress,
 } from './progress';
+
+export { meanOfMemberPercentages, type MemberRollupProgress } from './rollup';
 
 export {
   GUIDE_STATS_VERSION,

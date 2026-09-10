@@ -10,6 +10,7 @@ import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 // ============ Types ============
 
@@ -467,6 +468,7 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
       className={cx(styles.container, {
         [styles.blocked]: isBlocked,
       })}
+      {...getTrackedStepRootAttributes('quiz', stepId)}
       data-testid={testIds.interactive.quiz(stepId)}
     >
       {/* Label header */}

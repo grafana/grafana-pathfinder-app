@@ -1,4 +1,4 @@
-import { NavigationManager } from './navigation-manager';
+import { NavigationManager, type CommentBoxStepInfo } from './navigation-manager';
 import * as domUtils from '../lib/dom';
 
 jest.mock('../lib/dom');
@@ -20,10 +20,11 @@ const mockIsPathfinderContent = domUtils.isPathfinderContent as jest.MockedFunct
   typeof domUtils.isPathfinderContent
 >;
 
-const stepInfo = (current: number, total: number, completedSteps: number[] = []) => ({
+const stepInfo = (current: number, total: number, completedSteps: number[] = []): CommentBoxStepInfo => ({
   current,
   total,
   completedSteps,
+  progress: 'position',
 });
 
 function commentBox(): HTMLElement {

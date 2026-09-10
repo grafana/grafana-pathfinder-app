@@ -161,7 +161,9 @@ export function unwrapEnvelope(raw: string | null | undefined): StorageEnvelope 
 
 const LIMITS = {
   MAX_JOURNEY_COMPLETIONS: 100, // Prevent quota exhaustion
-  MAX_INTERACTIVE_COMPLETIONS: 100, // Prevent quota exhaustion
+  // Higher than the journey cap because this record is keyed per guide *and*
+  // per milestone, so one multi-milestone path consumes a slot per milestone.
+  MAX_INTERACTIVE_COMPLETIONS: 250, // Prevent quota exhaustion
   MAX_PERSISTED_TABS: 50, // Prevent quota exhaustion
 } as const;
 

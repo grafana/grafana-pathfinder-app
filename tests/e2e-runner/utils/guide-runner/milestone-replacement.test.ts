@@ -1,10 +1,12 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { ElementHandle, Page } from '@playwright/test';
+
 import { testIds } from '../../../../src/constants/testIds';
 import { StorageKeys } from '../../../../src/lib/storage-keys';
 
 import { dismissBadgeCelebrations } from './badge-celebrations';
+import { STEP_ROOT_SELECTOR } from './constants';
 import { E2E_GUIDE_URL, openLegacyE2EGuide, replacePreviousE2EGuide } from './milestone-replacement';
 import { FatalTransitionError } from './transition-error';
 
@@ -65,12 +67,21 @@ function expectMatchingStorageEmpty(): void {
 interface ReplacementHarnessOptions {
   resetControlCount: number;
   resetControlCountBeforeWait?: number;
+  resetTestIdAvailable?: boolean;
   resetSteps?: FakeStepHandle[];
   closeSteps?: FakeStepHandle[];
   resetClearsStorage?: boolean;
   resetRecreatesResidue?: boolean;
   closeError?: Error;
   closeDetachesSteps?: boolean;
+  capability?: {
+    version: unknown;
+    resetActiveGuide?: unknown;
+    rejects?: Error;
+    hangs?: boolean;
+    settlesAfterMs?: number;
+    clearsStorage?: boolean;
+  };
 }
 
 function replacementHarness(options: ReplacementHarnessOptions) {
@@ -79,34 +90,52 @@ function replacementHarness(options: ReplacementHarnessOptions) {
   const closeSteps = options.closeSteps ?? [];
   const handleQueues = [resetSteps, closeSteps];
   let resetControlCount = options.resetControlCountBeforeWait ?? options.resetControlCount;
-  const resetButton = {
-    count: jest.fn().mockImplementation(() => Promise.resolve(resetControlCount)),
-    waitFor: jest.fn().mockImplementation(async () => {
-      resetControlCount = options.resetControlCount;
-      if (resetControlCount === 0) {
-        const error = new Error('The Reset guide control did not become visible');
-        error.name = 'TimeoutError';
-        throw error;
-      }
-    }),
-    click: jest.fn().mockImplementation(async () => {
-      operations.push('reset');
-      resetSteps.forEach((step) => {
-        step.connected = false;
-      });
-      if (options.resetClearsStorage !== false) {
-        clearMatchingE2EStorage();
-      }
-      window.dispatchEvent(
-        new CustomEvent('interactive-progress-cleared', {
-          detail: { contentKey: E2E_GUIDE_URL },
-        })
-      );
-      if (options.resetRecreatesResidue) {
-        seedNoCompletionResidue();
-      }
-    }),
+  let activeEvaluationCount = 0;
+  const waitForReset = async () => {
+    resetControlCount = options.resetControlCount;
+    if (resetControlCount === 0) {
+      const error = new Error('The Reset guide control did not become visible');
+      error.name = 'TimeoutError';
+      throw error;
+    }
   };
+  const clickReset = async () => {
+    operations.push('reset');
+    resetSteps.forEach((step) => {
+      step.connected = false;
+    });
+    if (options.resetClearsStorage !== false) {
+      clearMatchingE2EStorage();
+    }
+    window.dispatchEvent(
+      new CustomEvent('interactive-progress-cleared', {
+        detail: { contentKey: E2E_GUIDE_URL },
+      })
+    );
+    if (options.resetRecreatesResidue) {
+      seedNoCompletionResidue();
+    }
+  };
+  const testIdResetButton = {
+    count: jest
+      .fn()
+      .mockImplementation(() => Promise.resolve(options.resetTestIdAvailable === false ? 0 : resetControlCount)),
+    waitFor: jest.fn().mockImplementation(waitForReset),
+    click: jest.fn().mockImplementation(clickReset),
+    or: jest.fn(),
+    first: jest.fn(),
+  };
+  const roleResetButton = {
+    count: jest.fn().mockImplementation(() => Promise.resolve(resetControlCount)),
+    waitFor: jest.fn().mockImplementation(waitForReset),
+    click: jest.fn().mockImplementation(clickReset),
+    or: jest.fn(),
+    first: jest.fn(),
+  };
+  const resetButton = options.resetTestIdAvailable === false ? roleResetButton : testIdResetButton;
+  testIdResetButton.or.mockReturnValue(resetButton);
+  testIdResetButton.first.mockReturnValue(testIdResetButton);
+  roleResetButton.first.mockReturnValue(roleResetButton);
   const closeButton = {
     click: jest.fn().mockImplementation(async () => {
       if (options.closeError) {
@@ -130,7 +159,14 @@ function replacementHarness(options: ReplacementHarnessOptions) {
     }),
   };
   const page = {
-    evaluate: jest.fn().mockImplementation((callback, argument) => Promise.resolve(callback(argument))),
+    evaluate: jest.fn().mockImplementation(async (callback, argument) => {
+      activeEvaluationCount++;
+      try {
+        return await callback(argument);
+      } finally {
+        activeEvaluationCount--;
+      }
+    }),
     waitForFunction: jest.fn().mockImplementation((callback, argument) => {
       if (!callback(argument)) {
         return Promise.reject(new Error('Condition not met'));
@@ -141,15 +177,61 @@ function replacementHarness(options: ReplacementHarnessOptions) {
     locator: jest.fn().mockReturnValue({
       elementHandles: jest.fn().mockImplementation(() => Promise.resolve(handleQueues.shift() ?? [])),
     }),
-    getByRole: jest.fn().mockReturnValue(resetButton),
+    getByRole: jest.fn().mockReturnValue(roleResetButton),
     getByTestId: jest.fn().mockImplementation((id: string) => {
-      return id === testIds.docsPanel.tab('tab-1') ? tabButton : closeButton;
+      if (id === testIds.docsPanel.tab('tab-1')) {
+        return tabButton;
+      }
+      if (id === testIds.docsPanel.resetGuideButton) {
+        return testIdResetButton;
+      }
+      return closeButton;
     }),
     reload: jest.fn(),
   } as unknown as Page;
   (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId = 'tab-1';
   (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = E2E_GUIDE_URL;
-  return { page, operations, resetButton, closeButton, tabButton };
+  if (options.capability) {
+    const capability = options.capability;
+    const control: { version: unknown; resetActiveGuide?: unknown } = {
+      version: capability.version,
+    };
+    const defaultReset = jest.fn().mockImplementation(async () => {
+      operations.push('capability-reset');
+      if (capability.hangs) {
+        return new Promise<void>(() => undefined);
+      }
+      if (capability.settlesAfterMs !== undefined) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, capability.settlesAfterMs);
+        });
+      }
+      if (capability.rejects) {
+        throw capability.rejects;
+      }
+      if (capability.clearsStorage !== false) {
+        clearMatchingE2EStorage();
+      }
+    });
+    control.resetActiveGuide = Object.prototype.hasOwnProperty.call(capability, 'resetActiveGuide')
+      ? capability.resetActiveGuide
+      : defaultReset;
+    (
+      window as unknown as {
+        __pathfinderE2E?: { version: unknown; resetActiveGuide?: unknown };
+      }
+    ).__pathfinderE2E = control;
+  }
+  return {
+    page,
+    operations,
+    resetButton,
+    testIdResetButton,
+    roleResetButton,
+    closeButton,
+    tabButton,
+    activeEvaluationCount: () => activeEvaluationCount,
+  };
 }
 
 function waitForOpenedGuide(tabId = 'opened-tab'): Promise<{ url: string; title: string }> {
@@ -173,6 +255,175 @@ afterEach(() => {
   localStorage.clear();
   delete (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId;
   delete (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl;
+  delete window.__pathfinderE2E;
+});
+
+it('prefers the plugin reset capability and verifies empty storage before close', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 0,
+    capability: { version: 1 },
+  });
+
+  await replacePreviousE2EGuide(harness.page);
+
+  expect(harness.operations).toEqual(['capability-reset', 'close']);
+  expect(harness.resetButton.waitFor).not.toHaveBeenCalled();
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.page.waitForTimeout).toHaveBeenCalledTimes(4);
+  expectMatchingStorageEmpty();
+});
+
+it('uses the plugin reset capability when only no-completion residue exists', async () => {
+  seedNoCompletionResidue();
+  const harness = replacementHarness({
+    resetControlCount: 0,
+    capability: { version: 1 },
+  });
+
+  await replacePreviousE2EGuide(harness.page);
+
+  expect(harness.operations).toEqual(['capability-reset', 'close']);
+  expectMatchingStorageEmpty();
+});
+
+it('fails fatally when the plugin reset capability rejects reset', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: 1, rejects: new Error('Reset failed') },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('Reset failed'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
+});
+
+it('fails fatally when the plugin reset capability does not settle', async () => {
+  jest.useFakeTimers();
+  try {
+    seedStoredCompletion();
+    const harness = replacementHarness({
+      resetControlCount: 1,
+      capability: { version: 1, hangs: true },
+    });
+
+    const rejection = expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+      name: 'FatalTransitionError',
+      kind: 'reset-ambiguous',
+      message: expect.stringContaining('did not complete within 15000ms'),
+    });
+    await jest.advanceTimersByTimeAsync(15_000);
+    await rejection;
+    expect(harness.activeEvaluationCount()).toBe(0);
+
+    expect(harness.resetButton.click).not.toHaveBeenCalled();
+    expect(harness.closeButton.click).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('observes a plugin reset rejection that occurs after the timeout', async () => {
+  jest.useFakeTimers();
+  try {
+    seedStoredCompletion();
+    const harness = replacementHarness({
+      resetControlCount: 1,
+      capability: {
+        version: 1,
+        rejects: new Error('Late reset failure'),
+        settlesAfterMs: 16_000,
+      },
+    });
+
+    const rejection = expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+      name: 'FatalTransitionError',
+      kind: 'reset-ambiguous',
+      message: expect.stringContaining('did not complete within 15000ms'),
+    });
+    await jest.advanceTimersByTimeAsync(15_000);
+    await rejection;
+    expect(harness.activeEvaluationCount()).toBe(0);
+
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(harness.activeEvaluationCount()).toBe(0);
+    expect(harness.resetButton.click).not.toHaveBeenCalled();
+    expect(harness.closeButton.click).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('fails fatally for an unsupported plugin reset capability version', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: 2 },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('unsupported version 2'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
+});
+
+it('fails fatally for a non-numeric plugin reset capability version', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: '1' },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('unsupported version 1'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['missing', undefined],
+  ['non-callable', 'reset'],
+])('fails fatally when the plugin reset capability method is %s', async (_description, resetActiveGuide) => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: 1, resetActiveGuide },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('resetActiveGuide is not callable'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
+});
+
+it('fails fatally when the plugin reset capability leaves scoped storage', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    capability: { version: 1, clearsStorage: false },
+  });
+
+  await expect(replacePreviousE2EGuide(harness.page)).rejects.toMatchObject({
+    name: 'FatalTransitionError',
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('still has matching progress storage'),
+  });
+  expect(harness.resetButton.click).not.toHaveBeenCalled();
+  expect(harness.closeButton.click).not.toHaveBeenCalled();
 });
 
 it('waits for reset synchronization before closing and detaches both step generations', async () => {
@@ -191,6 +442,7 @@ it('waits for reset synchronization before closing and detaches both step genera
   expectMatchingStorageEmpty();
   expect(resetStep.dispose).toHaveBeenCalledTimes(1);
   expect(closeStep.dispose).toHaveBeenCalledTimes(1);
+  expect(harness.page.locator).toHaveBeenCalledWith(STEP_ROOT_SELECTOR);
   expect(harness.page.reload).not.toHaveBeenCalled();
   expect(dismissBadgeCelebrations).toHaveBeenCalledWith(harness.page);
 });
@@ -203,9 +455,26 @@ it('waits for an interactive restored tab to render its Reset guide control', as
   });
 
   await replacePreviousE2EGuide(harness.page, 'tab-1');
+  expect(harness.page.getByTestId).toHaveBeenCalledWith(testIds.docsPanel.resetGuideButton);
+  expect(harness.page.getByRole).toHaveBeenCalledWith('button', { name: 'Reset guide', exact: true });
 
   expect(harness.resetButton.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 15_000 });
   expect(harness.operations).toEqual(['reset', 'close']);
+});
+it('uses the accessible Reset guide control when the legacy plugin has no reset test ID', async () => {
+  seedStoredCompletion();
+  const harness = replacementHarness({
+    resetControlCount: 1,
+    resetTestIdAvailable: false,
+  });
+
+  await replacePreviousE2EGuide(harness.page);
+
+  expect(harness.testIdResetButton.waitFor).not.toHaveBeenCalled();
+  expect(harness.roleResetButton.waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 15_000 });
+  expect(harness.roleResetButton.click).toHaveBeenCalledTimes(1);
+  expect(harness.operations).toEqual(['reset', 'close']);
+  expectMatchingStorageEmpty();
 });
 
 it('clears no-completion residue and closes without requiring Reset guide', async () => {
@@ -237,7 +506,10 @@ it('fails fatally when legacy reset leaves stored completion after tab close', a
   const replacement = replacePreviousE2EGuide(harness.page);
 
   await expect(replacement).rejects.toBeInstanceOf(FatalTransitionError);
-  await expect(replacement).rejects.toMatchObject({ kind: 'reset-ambiguous' });
+  await expect(replacement).rejects.toMatchObject({
+    kind: 'reset-ambiguous',
+    message: expect.stringContaining('The previous E2E guide reset did not reach a safe post-close state'),
+  });
 
   expect(harness.operations).toEqual(['reset', 'close']);
   expect(harness.closeButton.click).toHaveBeenCalledTimes(1);

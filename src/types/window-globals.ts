@@ -21,6 +21,10 @@ interface PathfinderExperimentDebugger {
   showExposures: () => ExposureMarker[];
   clearExposures: () => { cleared: number };
 }
+export interface PathfinderE2EControlV1 {
+  readonly version: 1;
+  resetActiveGuide(): Promise<void>;
+}
 
 declare global {
   interface Window {
@@ -36,6 +40,7 @@ declare global {
     __pathfinderAutoOpenUnlisten?: () => void;
     __pathfinderDeepLinkNavUnlisten?: () => void;
     __pathfinderHighlightedGuideNavUnlisten?: () => void;
+    __pathfinderE2E?: PathfinderE2EControlV1;
   }
 }
 

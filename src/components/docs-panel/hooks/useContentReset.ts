@@ -1,12 +1,3 @@
-/**
- * Hook for resetting interactive guide progress.
- * Handles the complex orchestration of analytics, storage clearing,
- * state updates, event dispatching, and content reloading.
- *
- * Extracted from docs-panel.tsx to enable unit testing and reduce
- * complexity in the reset guide button onClick handler.
- */
-
 import { useCallback } from 'react';
 import { getAppEvents } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
@@ -18,33 +9,18 @@ import {
   enrichWithStepContext,
 } from '../../../lib/analytics';
 import { logger } from '../../../lib/logging';
-import { interactiveStepStorage, interactiveCompletionStorage } from '../../../lib/user-storage';
-import { StorageEvents } from '../../../lib/event-names';
-import { evictContentCache } from '../../../global-state/completion-store';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
+import { resetGuideProgress } from './resetGuideProgress';
 
 interface UseContentResetOptions {
   model: DocsPanelModelOperations;
 }
 
-/**
- * Returns a function that resets all interactive guide progress for a given content item.
- * The reset includes:
- * 1. Analytics tracking
- * 2. Storage clearing (interactive steps + completion percentage)
- * 3. Cross-component event dispatch (notifies recommendations panel and
- *    `useGuideProgressState`, which clears its `hasInteractiveProgress` flag)
- * 4. Content reload to reset UI state
- *
- * @param options - Configuration object with model
- * @returns Async function that performs the reset
- */
 export function useContentReset({ model }: UseContentResetOptions) {
   return useCallback(
     async (progressKey: string, activeTab: LearningJourneyTab) => {
       try {
-        // Step 1: Track analytics
         const analyticsUrl = activeTab?.content?.url || activeTab?.baseUrl || '';
         reportAppInteraction(
           UserInteraction.ResetProgressClick,
@@ -55,29 +31,9 @@ export function useContentReset({ model }: UseContentResetOptions) {
           })
         );
 
-        // Step 2: Clear storage (async, sequential)
-        await interactiveStepStorage.clearAllForContent(progressKey);
-        await interactiveCompletionStorage.clear(progressKey);
+        await resetGuideProgress(progressKey);
 
-        // Step 2b: Evict the completion store's in-memory cache for this
-        // content key. Without this, `useStepCompletion` / `useSectionCompletion`
-        // subscribers would keep returning the prior completion snapshot
-        // until the section components remount — the storage clear alone
-        // doesn't invalidate the in-memory state.
-        evictContentCache(progressKey);
-
-        // Step 3: Dispatch cross-component event.
-        // Notifies the recommendations panel to refresh and `useGuideProgressState`
-        // to clear its `hasInteractiveProgress` flag for this contentKey.
-        window.dispatchEvent(
-          new CustomEvent(StorageEvents.InteractiveProgressCleared, {
-            detail: { contentKey: progressKey },
-          })
-        );
-
-        // Step 4: Reload content to reset UI state. `internal_reload` is
-        // aligned-by-construction, so the implied-0th-step evaluator won't
-        // surface a spurious alignment prompt on top of the fresh guide.
+        // An internal reload does not request alignment for the fresh guide.
         await model.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl, {
           source: 'internal_reload',
         });
@@ -93,7 +49,7 @@ export function useContentReset({ model }: UseContentResetOptions) {
             ),
           ],
         });
-        throw error; // Re-throw so caller can handle if needed
+        throw error;
       }
     },
     [model]
