@@ -191,7 +191,7 @@ export function computeGate({ base, head, concern, windowDays = DEFAULT_WINDOW_D
     fix_count: fixes,
     feat_count: features,
     signals,
-    triggered: Object.values(signals).some(Boolean),
+    triggered: signals.fix_heavy_history,
     recent_semantic_changes: history.pullRequests.slice(0, 3),
     unmapped_semantic_commits: history.unmapped,
     unclassified_commits: history.unclassified,

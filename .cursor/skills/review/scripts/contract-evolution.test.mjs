@@ -102,6 +102,32 @@ test('gate counts distinct prior PRs and excludes current branch commits', () =>
   );
   assert.deepEqual(result.in_stack_shas.sort(), [head, inStackOne].sort());
   assert.equal(result.in_stack_shas.includes(base), false);
+  assert.equal(result.signals.at_least_two_prior_semantic_prs, true);
+  assert.equal(result.signals.fix_heavy_history, false);
+  assert.equal(result.triggered, false);
+});
+
+test('prior PR volume alone never triggers the specialist, fix-heavy history does', () => {
+  const volume = createRepo();
+  commit(volume, 'feat(telemetry): add facade (#20)', 'feature\n');
+  commit(volume, 'fix(telemetry): repair one (#21)', 'fix one\n');
+  const busy = commit(volume, 'feat(telemetry): extend facade (#22)', 'feature two\n');
+  const volumeOnly = computeGate({ base: busy, head: busy, concern: 'telemetry', cwd: volume });
+
+  assert.equal(volumeOnly.prior_semantic_pr_count, 3);
+  assert.equal(volumeOnly.signals.at_least_two_prior_semantic_prs, true);
+  assert.equal(volumeOnly.signals.fix_heavy_history, false);
+  assert.equal(volumeOnly.triggered, false);
+
+  const churn = createRepo();
+  commit(churn, 'feat(telemetry): add facade (#30)', 'feature\n');
+  commit(churn, 'fix(telemetry): repair one (#31)', 'fix one\n');
+  const fixHeavy = commit(churn, 'fix(telemetry): repair two (#32)', 'fix two\n');
+  const result = computeGate({ base: fixHeavy, head: fixHeavy, concern: 'telemetry', cwd: churn });
+
+  assert.equal(result.fix_count, 2);
+  assert.equal(result.feat_count, 1);
+  assert.equal(result.signals.fix_heavy_history, true);
   assert.equal(result.triggered, true);
 });
 
