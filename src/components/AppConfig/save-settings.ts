@@ -22,6 +22,12 @@
  *     `resourceVersion` so a concurrent admin save conflicts rather than losing.
  *   - The legacy `jsonData` path remains for OSS, self-managed, and local dev,
  *     and still spreads the existing document first so provisioned fields survive.
+ *
+ * The two stores take opposite write shapes, and the reason is which side owns
+ * the gaps. The kind fills an omitted field from its own defaults, so the
+ * resource write sends everything. Nothing fills an omitted field in `jsonData`,
+ * so the fallback write sends only what it was given and leaves the rest to
+ * resolve against `DEFAULT_*` on the next read.
  */
 
 import { PathfinderTenantSettings, getConfigWithDefaults } from '../../constants';
@@ -46,18 +52,21 @@ export async function saveTenantSettings({ pluginId, changes }: SaveTenantSettin
   // stale snapshot overwriting another tab's recent save.
   const { config: current, pluginSettings, tenant } = await resolveTenantSettings(pluginId);
 
-  // The complete resolved tenant config, with this form's edits applied on top.
-  const next = { ...getConfigWithDefaults(current), ...changes };
-
-  if (await savePathfinderSettings(next, tenant)) {
+  // Dense on purpose. The kind defaults every field it is not sent, and those
+  // defaults are a second set maintained in another repo that can drift from
+  // ours — `enableAiAutoHeal` already has. Sending every field is what keeps a
+  // drifted default from deciding anything.
+  if (await savePathfinderSettings({ ...getConfigWithDefaults(current), ...changes }, tenant)) {
     return;
   }
 
-  // No App Platform resource here — fall back to plugin settings. `devModeOptIn`
-  // is per-user and must not enter the org-wide document; the leading spread
-  // preserves provisioned fields such as `stackId`, and `enabled`/`pinned` are
-  // echoed from the authoritative read rather than omitted.
-  const { devModeOptIn: _devModeOptIn, ...tenantOnly } = next;
+  // Sparse on purpose, and for the opposite reason: nothing fills gaps in
+  // `jsonData`, so an absent field keeps resolving against `DEFAULT_*` at read
+  // time, while a written one freezes this stack at whatever today's default is.
+  // `devModeOptIn` is per-user and must not enter the org-wide document; the
+  // leading spread preserves provisioned fields such as `stackId`, and
+  // `enabled`/`pinned` are echoed from the authoritative read rather than omitted.
+  const { devModeOptIn: _devModeOptIn, ...tenantOnly } = { ...current, ...changes };
 
   await updatePluginSettings(pluginId, {
     enabled: pluginSettings.enabled,

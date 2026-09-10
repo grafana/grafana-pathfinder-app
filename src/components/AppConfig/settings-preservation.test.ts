@@ -21,7 +21,7 @@
  * @see https://grafana.com/developers/plugin-tools/how-to-guides/app-plugins/add-authentication-for-app-plugins
  */
 
-import { getConfigWithDefaults, PathfinderPluginConfig } from '../../constants';
+import { DEFAULT_ENABLE_AI_AUTO_HEAL, getConfigWithDefaults, PathfinderPluginConfig } from '../../constants';
 import { fetchPathfinderSettingsSnapshot, savePathfinderSettings } from '../../utils/pathfinder-settings-api';
 import { fetchPluginSettings, updatePluginSettings } from '../../utils/utils.plugin';
 import { saveTenantSettings } from './save-settings';
@@ -211,6 +211,52 @@ describe('saveTenantSettings — the kind is not served here', () => {
       saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://new.example.com' } })
     ).rejects.toThrow('forbidden');
     expect(mockUpdatePlugin).not.toHaveBeenCalled();
+  });
+});
+
+describe('saveTenantSettings — a field this tab does not own', () => {
+  // Main's #1654 rule: an unrelated save must not write down a field nobody has
+  // set, because a written field stops tracking `DEFAULT_*` for that stack.
+  // `enableAiAutoHeal` is the field it was written for — its default flipped to
+  // true, and any stack whose settings had been saved once would have missed it.
+  it('does not materialize an unset field into the jsonData document', async () => {
+    mockFetchPlugin.mockResolvedValue({
+      jsonData: { tutorialUrl: 'https://original.example.com' },
+      enabled: true,
+      pinned: true,
+    });
+
+    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://changed.example.com' } });
+
+    const written = mockUpdatePlugin.mock.calls[0]![1].jsonData as Record<string, unknown>;
+    expect(written).not.toHaveProperty('enableAiAutoHeal');
+    // Still resolves to the live default, which is the whole point of not writing it.
+    expect(getConfigWithDefaults(written).enableAiAutoHeal).toBe(DEFAULT_ENABLE_AI_AUTO_HEAL);
+  });
+
+  it('leaves an admin-chosen value for that field alone', async () => {
+    mockFetchPlugin.mockResolvedValue({
+      jsonData: { enableAiAutoHeal: false, tutorialUrl: 'https://original.example.com' },
+      enabled: true,
+      pinned: true,
+    });
+
+    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://changed.example.com' } });
+
+    const written = mockUpdatePlugin.mock.calls[0]![1].jsonData as PathfinderPluginConfig;
+    expect(written.enableAiAutoHeal).toBe(false);
+  });
+
+  it('still sends it to the settings resource, where an omission is not a gap', async () => {
+    // The opposite shape, and deliberately so: the kind defaults a field it is
+    // not sent, and its `enableAiAutoHeal` default disagrees with ours. Omitting
+    // the field there would hand the decision to a value in another repo.
+    mockSaveTenant.mockResolvedValue(true);
+    mockFetchTenant.mockResolvedValue(tenantSnapshot({}));
+
+    await saveTenantSettings({ pluginId: PLUGIN_ID, changes: { tutorialUrl: 'https://changed.example.com' } });
+
+    expect(mockSaveTenant.mock.calls[0]![0].enableAiAutoHeal).toBe(DEFAULT_ENABLE_AI_AUTO_HEAL);
   });
 });
 
