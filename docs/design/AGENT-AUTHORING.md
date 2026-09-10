@@ -474,7 +474,7 @@ export const JsonInteractiveBlockSchema = z
     objectives: z.array(ObjectiveTokenSchema).optional().describe(objectivesDescription('block')),
     skippable: z.boolean().optional().describe('Allow user to skip this block'),
     hint: z.string().optional().describe('Hint text shown if user is stuck'),
-    formHint: z.string().optional().describe('Placeholder text for formfill input fields'),
+    formHint: z.string().optional().describe('Validation-failure message for formfill input fields'),
     validateInput: z.boolean().optional().describe('Strictly validate formfill input against targetvalue'),
     showMe: z.boolean().optional().describe('Enable "Show me" button (highlights target without acting)'),
     doIt: z.boolean().optional().describe('Enable "Do it" button (performs action automatically)'),
