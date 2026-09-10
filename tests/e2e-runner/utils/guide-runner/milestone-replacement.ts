@@ -2,7 +2,11 @@ import type { ElementHandle, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
 import { StorageEvents } from '../../../../src/lib/event-names';
-import { StorageKeys, buildVersionedContentStorageKey } from '../../../../src/lib/storage-keys';
+import {
+  HYBRID_TIMESTAMP_SUFFIX,
+  StorageKeys,
+  buildVersionedContentStorageKey,
+} from '../../../../src/lib/storage-keys';
 import { dismissBadgeCelebrations } from './badge-celebrations';
 import { STEP_ROOT_SELECTOR } from './constants';
 import { FatalTransitionError, type FatalTransitionKind } from './transition-error';
@@ -11,7 +15,6 @@ export const E2E_GUIDE_URL = 'bundled:e2e-test';
 const REPLACEMENT_TIMEOUT_MS = 15_000;
 const RESET_POSTCONDITION_ATTEMPTS = 5;
 const RESET_POSTCONDITION_POLL_MS = 250;
-const HYBRID_STORAGE_TIMESTAMP_SUFFIX = '__timestamp';
 // Add a version only after this runner implements that version's control contract.
 const SUPPORTED_PATHFINDER_E2E_CONTROL_VERSIONS: readonly number[] = [1];
 
@@ -99,7 +102,7 @@ async function inspectE2EProgressStorage(page: Page): Promise<E2EProgressStorage
     {
       contentKey: E2E_GUIDE_URL,
       completionKey: StorageKeys.INTERACTIVE_COMPLETION,
-      timestampSuffix: HYBRID_STORAGE_TIMESTAMP_SUFFIX,
+      timestampSuffix: HYBRID_TIMESTAMP_SUFFIX,
       prefixes,
     }
   );

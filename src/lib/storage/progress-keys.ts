@@ -28,6 +28,7 @@ import {
   buildVersionedSectionStorageKey,
   parseVersionedStorageKey,
 } from '../storage-keys';
+import { collectKeysByPrefix } from './key-utils';
 
 /** One section's stored value, still serialized as it sits in localStorage. */
 export interface RawProgressEntry {
@@ -74,6 +75,11 @@ export function listProgressEntries(prefix: string, contentKey: string): RawProg
   return entries;
 }
 
+const DISCARDABLE_PREFIXES: readonly string[] = [
+  ...PROGRESS_SECTION_PREFIXES,
+  StorageKeys.CONTENT_PROGRESS_V2_PREFIX,
+];
+
 /**
  * True for a key in one of the four progress namespaces that is not a
  * well-formed section key, and for the per-content marker the previous scheme
@@ -117,17 +123,23 @@ function isDiscardedProgressKey(key: string): boolean {
  * Idempotent — a second pass finds nothing.
  */
 export function sweepDiscardedProgressRecords(): number {
-  const discarded: string[] = [];
-  try {
-    for (let index = 0; index < localStorage.length; index++) {
-      const key = localStorage.key(index);
-      if (key && isDiscardedProgressKey(stripTimestampCompanion(key))) {
-        discarded.push(key);
+  const discarded = new Set<string>();
+  for (const prefix of DISCARDABLE_PREFIXES) {
+    for (const key of collectKeysByPrefix(localStorage, prefix)) {
+      if (isDiscardedProgressKey(stripTimestampCompanion(key))) {
+        discarded.add(key);
       }
     }
-    discarded.forEach((key) => localStorage.removeItem(key));
-  } catch (error) {
-    logger.warn('Failed to sweep discarded progress records', { error, removed: discarded.length });
   }
-  return discarded.length;
+
+  let removed = 0;
+  try {
+    for (const key of discarded) {
+      localStorage.removeItem(key);
+      removed++;
+    }
+  } catch (error) {
+    logger.warn('Failed to sweep discarded progress records', { error, removed });
+  }
+  return removed;
 }

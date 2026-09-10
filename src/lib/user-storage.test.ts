@@ -2,6 +2,8 @@ import { getAppEvents } from '@grafana/runtime';
 
 import {
   __resetQuotaWarningForTests,
+  createHybridStorage,
+  createLocalStorage,
   guideResponseStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
@@ -10,6 +12,7 @@ import {
   sectionAcknowledgementStorage,
   sectionCollapseStorage,
   sectionDoneStorage,
+  setGlobalStorage,
   tabStorage,
   unwrapEnvelope,
   wrapEnvelope,
@@ -824,19 +827,44 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
     expect(await sectionDoneStorage.get(SHORT_GUIDE, 'section-1')).toBeNull();
   });
 
-  it('records nothing of its own, so it cannot fail for want of space', async () => {
-    // A reset the reader reaches for when storage is full must not depend on
-    // storing anything: the previous scheme completed by writing a marker, and
-    // a refused write left the old progress live and still read.
-    await interactiveStepStorage.setCompleted(SHORT_GUIDE, 'section-1', new Set(['step-1']));
-    const setItem = jest.spyOn(Storage.prototype, 'setItem');
+  it('writes no record of its own — only the backend timestamp companions of records it removed', async () => {
+    // The interim scheme completed a reset by writing a per-content marker, so
+    // a refused write left the old progress live and still read. Nothing is
+    // written on the reset's own behalf now. The hybrid backend still records
+    // each delete with a `__timestamp` companion, which is why a reset can
+    // still fail and why it re-reads rather than claiming success.
+    jest.useFakeTimers();
+    const grafanaStorage = {
+      getItem: jest.fn(async () => null),
+      setItem: jest.fn(async () => undefined),
+    };
+    setGlobalStorage(createHybridStorage(grafanaStorage));
 
-    await expect(interactiveStepStorage.clearAllForContent(SHORT_GUIDE)).resolves.toBeUndefined();
+    try {
+      await interactiveStepStorage.setCompleted(SHORT_GUIDE, 'section-1', new Set(['step-1']));
+      await sectionDoneStorage.set(SHORT_GUIDE, 'section-1', true);
+      const removedKeys = [
+        buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, SHORT_GUIDE, 'section-1'),
+        buildVersionedSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, SHORT_GUIDE, 'section-1'),
+      ];
+      const setItem = jest.spyOn(Storage.prototype, 'setItem');
 
-    const progressWrites = setItem.mock.calls.filter(
-      ([key]) => typeof key === 'string' && key.startsWith('grafana-pathfinder-app-')
-    );
-    setItem.mockRestore();
-    expect(progressWrites).toEqual([]);
+      await expect(interactiveStepStorage.clearAllForContent(SHORT_GUIDE)).resolves.toBeUndefined();
+
+      const writtenKeys = setItem.mock.calls
+        .map(([key]) => key)
+        .filter((key): key is string => typeof key === 'string' && key.startsWith('grafana-pathfinder-app-'));
+      setItem.mockRestore();
+
+      // Every write is a deletion companion the backend put beside a record
+      // this reset had just removed — no marker, no key of the reset's own.
+      expect(writtenKeys).toEqual(removedKeys.map((key) => `${key}__timestamp`));
+      expect(
+        Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.CONTENT_PROGRESS_V2_PREFIX))
+      ).toEqual([]);
+    } finally {
+      setGlobalStorage(createLocalStorage());
+      jest.useRealTimers();
+    }
   });
 });
