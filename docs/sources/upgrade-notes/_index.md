@@ -9,17 +9,17 @@ weight: 100
 
 This section contains the headline changes for each Interactive learning release, including breaking changes and migration steps. For the full per-release detail, see the project [CHANGELOG](https://github.com/grafana/grafana-pathfinder-app/blob/main/CHANGELOG.md).
 
-## Version 3.0: unfinished guides restart from the beginning
+## Version 3.0: Unfinished guides restart from the beginning
 
-**One-time effect on everyone with a guide in progress.** Completed guides, badges, streaks, and finished milestones are unaffected.
+**One-time effect for anyone with a guide in progress.** Completed guides, badges, streaks, and finished milestones are unaffected.
 
 ### What changed
 
-Step-by-step progress inside a guide was stored under a key that did not mark where one guide's name ended, so a guide whose name is the start of another's — "welcome to Grafana" and "welcome to Grafana Cloud", for example — could count the other guide's steps in its own percentage. Progress is now stored under a key that marks the boundary, so one guide can never read another's records.
+Step-by-step progress inside a guide was saved under a name that did not mark where one guide's name ended, so a guide whose name begins another's — **Welcome to Grafana** and **Welcome to Grafana Cloud**, for example — could count the other guide's steps toward its own percent complete. Progress is now saved under a name that marks the boundary, so one guide can never count another guide's steps.
 
-Progress saved before the upgrade does not say which guide it belongs to, so moving it to the new format would risk attaching it to the wrong guide permanently. It is discarded instead, in one pass on the first page load after the upgrade.
+Progress saved before the upgrade does not identify which guide it belongs to, so moving it to the new format would risk attaching it to the wrong guide permanently. It is discarded instead, the first time you open Grafana after upgrading.
 
-For a reader, the effect is that a guide they had started and not finished reopens at the beginning. A guide's listed percentage may also stay at its last computed value until the reader opens the guide, at which point it recomputes.
+The effect is that a guide you started and did not finish opens at its first step again. A guide's percent complete in the guide list can also keep its previous value until you open that guide, and updates when you do.
 
 ### Action required
 
