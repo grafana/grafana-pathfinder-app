@@ -2,9 +2,10 @@
  * Step completion store.
  *
  * Authoritative in-memory store for per-step completion, backed by
- * the existing `interactiveStepStorage` namespace so localStorage and
- * Grafana-user-storage shapes stay unchanged. Hydration is lazy and
- * scoped to the (contentKey, sectionId) the caller asks about.
+ * `interactiveStepStorage`. Existing guides keep reading their legacy
+ * keys until a reset switches that content key to collision-safe
+ * versioned section keys. Hydration is lazy and scoped to the
+ * (contentKey, sectionId) the caller asks about.
  *
  * Every step component subscribes via `useStepCompletion(stepId, sectionId)`
  * and writes via `markStepCompleted` / `resetStep`. Section-managed steps
@@ -34,7 +35,7 @@ import {
   sectionAcknowledgementStorage,
 } from '../lib/user-storage';
 import { StorageEvents } from '../lib/event-names';
-import { StorageKeys } from '../lib/storage-keys';
+import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
 
 import { getContentKey } from './content-key';
@@ -851,31 +852,53 @@ function handleStorageEvent(event: StorageEvent): void {
     evictAllContentCaches();
     return;
   }
+
+  if (event.key.startsWith(StorageKeys.CONTENT_PROGRESS_V2_PREFIX)) {
+    const knownContentKeys = new Set(entries.keys());
+
+    for (const hydratedKey of hydratedSections) {
+      const separator = hydratedKey.indexOf('::');
+      if (separator > 0) {
+        knownContentKeys.add(hydratedKey.slice(0, separator));
+      }
+    }
+
+    for (const contentKey of knownContentKeys) {
+      const markerKey = buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, contentKey);
+
+      if (event.key !== markerKey) {
+        continue;
+      }
+
+      interactiveStepStorage.invalidateCountCache(contentKey);
+      evictContentCache(contentKey);
+      return;
+    }
+
+    return;
+  }
+
   if (!event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)) {
     return;
   }
-  // Key shape: `${INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`.
-  // `contentKey` may contain hyphens (URLs, bundled paths), so naive
-  // prefix matching against a single `contentKey` would misroute when
-  // one active key is a prefix of another (e.g. `bundled:loki-101` and
-  // `bundled:loki-101-extended` both match an event for the longer
-  // key). Disambiguate by reconstructing each known
-  // `(contentKey, sectionId)` pair from `hydratedSections` and
-  // requiring an exact match. Every section with an in-memory cache
-  // passes through `ensureHydrated`, which adds the pair before the
-  // async read fires and keeps it until eviction, so in-flight
-  // hydration (the exact case the `hydrationVersion` guard exists for)
-  // is still represented here. Content keys we've never seen produce
-  // no match; the next render hydrates fresh.
-  const stripped = event.key.slice(StorageKeys.INTERACTIVE_STEPS_PREFIX.length);
+  // Step progress may use either the legacy `${contentKey}-${sectionId}`
+  // suffix or the collision-safe length-prefixed format. Because legacy
+  // keys are ambiguous when content keys share a prefix, match both forms
+  // against the exact (contentKey, sectionId) pairs already known to this
+  // store instead of trying to parse the key.
   for (const hydratedKey of hydratedSections) {
     const separator = hydratedKey.indexOf('::');
     if (separator <= 0) {
       continue;
     }
+
     const contentKey = hydratedKey.slice(0, separator);
     const sectionId = hydratedKey.slice(separator + 2);
-    if (`${contentKey}-${sectionId}` !== stripped) {
+
+    const legacyKey = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
+    const versionedKey = buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
+
+    if (event.key !== legacyKey && event.key !== versionedKey) {
       continue;
     }
     evictSectionCacheForKey(contentKey, sectionId);

@@ -92,7 +92,9 @@ describe('resetGuideProgress integration', () => {
     try {
       await resetGuideProgress(E2E_GUIDE_URL);
 
-      e2eKeys.forEach((key) => expect(localStorage.getItem(key)).toBeNull());
+      // Legacy section keys remain physically present after reset; the per-content
+      // v2 marker makes them logically inactive without risking prefix collisions.
+      e2eKeys.forEach((key) => expect(localStorage.getItem(key)).toBe(JSON.stringify([STEP_ID])));
       expect(localStorage.getItem(otherGuideKey)).toBe(JSON.stringify([STEP_ID]));
       expect(JSON.parse(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION) ?? '{}')).toEqual({
         [OTHER_GUIDE_URL]: 50,

@@ -3,7 +3,7 @@ import { join } from 'path';
 import type { ElementHandle, Page } from '@playwright/test';
 
 import { testIds } from '../../../../src/constants/testIds';
-import { StorageKeys } from '../../../../src/lib/storage-keys';
+import { StorageKeys, buildVersionedContentStorageKey } from '../../../../src/lib/storage-keys';
 
 import { dismissBadgeCelebrations } from './badge-celebrations';
 import { STEP_ROOT_SELECTOR } from './constants';
@@ -60,8 +60,16 @@ function seedNoCompletionResidue(): void {
 }
 
 function expectMatchingStorageEmpty(): void {
-  expect(Object.values(E2E_STORAGE_KEYS).every((key) => localStorage.getItem(key) === null)).toBe(true);
-  expect(JSON.parse(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION) ?? '{}')).toEqual({ other: 50 });
+  const markerKey = buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, E2E_GUIDE_URL);
+
+  const legacyStorageIsInactive =
+    localStorage.getItem(markerKey) !== null ||
+    Object.values(E2E_STORAGE_KEYS).every((key) => localStorage.getItem(key) === null);
+
+  expect(legacyStorageIsInactive).toBe(true);
+  expect(JSON.parse(localStorage.getItem(StorageKeys.INTERACTIVE_COMPLETION) ?? '{}')).toEqual({
+    other: 50,
+  });
 }
 
 interface ReplacementHarnessOptions {
@@ -285,6 +293,24 @@ it('uses the plugin reset capability when only no-completion residue exists', as
 
   expect(harness.operations).toEqual(['capability-reset', 'close']);
   expectMatchingStorageEmpty();
+});
+
+it('preserves legacy progress for a sibling guide whose content key shares the E2E guide prefix', async () => {
+  const siblingKey = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${E2E_GUIDE_URL}-cloud-section-1`;
+  const siblingValue = JSON.stringify(['step-1']);
+
+  localStorage.setItem(siblingKey, siblingValue);
+
+  const harness = replacementHarness({
+    resetControlCount: 0,
+  });
+
+  (window as Window & { __DocsPluginActiveTabId?: string }).__DocsPluginActiveTabId = '';
+  (window as Window & { __DocsPluginActiveTabUrl?: string }).__DocsPluginActiveTabUrl = '';
+
+  await replacePreviousE2EGuide(harness.page);
+
+  expect(localStorage.getItem(siblingKey)).toBe(siblingValue);
 });
 
 it('fails fatally when the plugin reset capability rejects reset', async () => {
@@ -527,7 +553,7 @@ it('accepts and clears safe residue recreated after reset acknowledgment', async
   expectMatchingStorageEmpty();
 });
 
-it('ignores and removes a hybrid-storage timestamp companion after legacy reset', async () => {
+it('ignores a legacy hybrid-storage timestamp companion after reset', async () => {
   seedStoredCompletion();
   const timestampKey = `${E2E_STORAGE_KEYS.steps}__timestamp`;
   localStorage.setItem(timestampKey, '1757060000000');
@@ -537,7 +563,7 @@ it('ignores and removes a hybrid-storage timestamp companion after legacy reset'
 
   expect(harness.operations).toEqual(['reset', 'close']);
   expectMatchingStorageEmpty();
-  expect(localStorage.getItem(timestampKey)).toBeNull();
+  expect(localStorage.getItem(timestampKey)).toBe('1757060000000');
 });
 
 it('preserves malformed shared completion data and requires the reset path', async () => {

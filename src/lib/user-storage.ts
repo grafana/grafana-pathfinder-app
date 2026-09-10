@@ -46,7 +46,7 @@ import { StorageEvents } from './event-names';
 import { getLearningJourneyBaseUrl } from './learning-journey-url';
 import { logger } from './logging';
 import { createBoundedRecordStorage } from './storage/bounded-record-storage';
-import { StorageKeys } from './storage-keys';
+import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from './storage-keys';
 
 // ============================================================================
 // LEARNING PROGRESS SCHEMA (for defense-in-depth validation)
@@ -109,6 +109,30 @@ const TIMESTAMP_SUFFIX = '__timestamp';
  */
 function getTimestampKey(key: string): string {
   return `${key}${TIMESTAMP_SUFFIX}`;
+}
+
+function getContentProgressV2MarkerKey(contentKey: string): string {
+  return buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, contentKey);
+}
+
+function usesVersionedProgressStorage(contentKey: string): boolean {
+  try {
+    return localStorage.getItem(getContentProgressV2MarkerKey(contentKey)) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function buildProgressSectionStorageKey(prefix: string, contentKey: string, sectionId: string): string {
+  return usesVersionedProgressStorage(contentKey)
+    ? buildVersionedSectionStorageKey(prefix, contentKey, sectionId)
+    : `${prefix}${contentKey}-${sectionId}`;
+}
+
+function buildProgressContentStoragePrefix(prefix: string, contentKey: string): string {
+  return usesVersionedProgressStorage(contentKey)
+    ? `${buildVersionedContentStorageKey(prefix, contentKey)}:`
+    : `${prefix}${contentKey}-`;
 }
 
 // ============================================================================
@@ -969,7 +993,7 @@ export const interactiveStepStorage = {
   async getCompleted(contentKey: string, sectionId: string): Promise<Set<string>> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
       const ids = await storage.getItem<string[]>(key);
       return new Set(ids || []);
     } catch {
@@ -985,7 +1009,7 @@ export const interactiveStepStorage = {
       // Invalidate count cache before write so next countAllCompleted() re-scans
       completedCountCache.delete(contentKey);
       const storage = createUserStorage();
-      const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
       await storage.setItem(key, Array.from(completedIds));
     } catch (error) {
       logger.warn('Failed to save completed steps', { error });
@@ -999,7 +1023,7 @@ export const interactiveStepStorage = {
     try {
       completedCountCache.delete(contentKey);
       const storage = createUserStorage();
-      const key = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
       await storage.removeItem(key);
     } catch (error) {
       logger.warn('Failed to clear completed steps', { error });
@@ -1011,7 +1035,7 @@ export const interactiveStepStorage = {
    */
   async hasProgress(contentKey: string): Promise<boolean> {
     try {
-      const prefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
+      const prefix = buildProgressContentStoragePrefix(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey);
       // Check localStorage directly for keys matching the prefix
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -1036,23 +1060,29 @@ export const interactiveStepStorage = {
   },
 
   /**
-   * Clear all progress for a content key (all sections)
-   * Also clears section collapse states for the same content
+   * Clears all logical section progress for one content key.
+   *
+   * Legacy section keys are intentionally left in place because their
+   * `${contentKey}-${sectionId}` suffix is ambiguous when content keys
+   * share a prefix. The per-content v2 marker makes subsequent reads ignore
+   * those legacy entries and use collision-safe length-prefixed keys.
    */
   async clearAllForContent(contentKey: string): Promise<void> {
     try {
       completedCountCache.delete(contentKey);
-      const stepsPrefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
-      const collapsePrefix = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-`;
-      const ackPrefix = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-`;
-      const donePrefix = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-`;
+      const storage = createUserStorage();
 
-      // Find and remove all matching keys
+      const stepsPrefix = `${buildVersionedContentStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)}:`;
+      const collapsePrefix = `${buildVersionedContentStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey)}:`;
+      const ackPrefix = `${buildVersionedContentStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey)}:`;
+      const donePrefix = `${buildVersionedContentStorageKey(StorageKeys.SECTION_DONE_PREFIX, contentKey)}:`;
+
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (
           key &&
+          !key.endsWith(TIMESTAMP_SUFFIX) &&
           (key.startsWith(stepsPrefix) ||
             key.startsWith(collapsePrefix) ||
             key.startsWith(ackPrefix) ||
@@ -1062,8 +1092,8 @@ export const interactiveStepStorage = {
         }
       }
 
-      // Remove all matching keys
-      keysToRemove.forEach((key) => localStorage.removeItem(key));
+      await Promise.all(keysToRemove.map((key) => storage.removeItem(key)));
+      await storage.setItem(getContentProgressV2MarkerKey(contentKey), true);
     } catch (error) {
       logger.warn('Failed to clear all progress for content', { error });
     }
@@ -1117,7 +1147,7 @@ export const interactiveStepStorage = {
     }
 
     try {
-      const prefix = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-`;
+      const prefix = buildProgressContentStoragePrefix(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey);
       let total = 0;
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -1157,7 +1187,7 @@ export const sectionCollapseStorage = {
   async get(contentKey: string, sectionId: string): Promise<boolean> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
       const isCollapsed = await storage.getItem<boolean>(key);
       return isCollapsed ?? false; // Default to expanded (false)
     } catch {
@@ -1171,7 +1201,7 @@ export const sectionCollapseStorage = {
   async set(contentKey: string, sectionId: string, isCollapsed: boolean): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
       await storage.setItem(key, isCollapsed);
     } catch (error) {
       logger.warn('Failed to save section collapse state', { error });
@@ -1184,7 +1214,7 @@ export const sectionCollapseStorage = {
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.SECTION_COLLAPSE_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_COLLAPSE_PREFIX, contentKey, sectionId);
       await storage.removeItem(key);
     } catch (error) {
       logger.warn('Failed to clear section collapse state', { error });
@@ -1220,7 +1250,7 @@ export const sectionAcknowledgementStorage = {
   async get(contentKey: string, sectionId: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
       const acknowledged = await storage.getItem<boolean>(key);
       return acknowledged === true ? true : null;
     } catch {
@@ -1237,7 +1267,7 @@ export const sectionAcknowledgementStorage = {
   async set(contentKey: string, sectionId: string, isAcknowledged: true): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
       await storage.setItem(key, isAcknowledged);
     } catch (error) {
       logger.warn('Failed to save section acknowledgement state', { error });
@@ -1253,7 +1283,7 @@ export const sectionAcknowledgementStorage = {
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey, sectionId);
       await storage.removeItem(key);
     } catch (error) {
       logger.warn('Failed to clear section acknowledgement state', { error });
@@ -1268,7 +1298,7 @@ export const sectionAcknowledgementStorage = {
    */
   countAllAcknowledged(contentKey: string): number {
     try {
-      const prefix = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}${contentKey}-`;
+      const prefix = buildProgressContentStoragePrefix(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey);
       let count = 0;
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -1307,7 +1337,7 @@ export const sectionDoneStorage = {
   async get(contentKey: string, sectionId: string): Promise<true | null> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
       const done = await storage.getItem<boolean>(key);
       return done === true ? true : null;
     } catch {
@@ -1318,7 +1348,7 @@ export const sectionDoneStorage = {
   async set(contentKey: string, sectionId: string, isDone: true): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
       await storage.setItem(key, isDone);
     } catch (error) {
       logger.warn('Failed to save section done state', { error });
@@ -1328,7 +1358,7 @@ export const sectionDoneStorage = {
   async clear(contentKey: string, sectionId: string): Promise<void> {
     try {
       const storage = createUserStorage();
-      const key = `${StorageKeys.SECTION_DONE_PREFIX}${contentKey}-${sectionId}`;
+      const key = buildProgressSectionStorageKey(StorageKeys.SECTION_DONE_PREFIX, contentKey, sectionId);
       await storage.removeItem(key);
     } catch (error) {
       logger.warn('Failed to clear section done state', { error });

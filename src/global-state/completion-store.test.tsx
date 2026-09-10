@@ -19,7 +19,7 @@ import {
 } from './completion-store';
 import { setActiveTabUrl, resetContentKeyForTests } from './content-key';
 import { subscribeProgressEvent, type ProgressEventDetail } from './progress-events';
-import { StorageKeys } from '../lib/storage-keys';
+import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../lib/storage-keys';
 
 // In-memory mocks for the persisted-storage layer so tests are hermetic
 // and synchronous-where-they-can-be.
@@ -550,6 +550,54 @@ describe('completion-store', () => {
       await flushMicrotasks();
       // Subscriber re-reads authoritative storage on the next render
       // and sees the empty set.
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+    });
+
+    it('evicts the in-memory section cache for versioned storage keys', async () => {
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+      await flushMicrotasks();
+
+      expect(screen.getByTestId('completed').textContent).toBe('true');
+
+      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, CONTENT_KEY, 'section-x'),
+            newValue: null,
+            oldValue: '["step-1"]',
+          })
+        );
+      });
+
+      await flushMicrotasks();
+
+      expect(screen.getByTestId('completed').textContent).toBe('false');
+    });
+
+    it('evicts the content cache when another tab switches the guide to versioned progress storage', async () => {
+      render(<StepProbe stepId="step-1" sectionId="section-x" />);
+      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
+      await flushMicrotasks();
+
+      expect(screen.getByTestId('completed').textContent).toBe('true');
+
+      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
+
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, CONTENT_KEY),
+            newValue: 'true',
+            oldValue: null,
+          })
+        );
+      });
+
+      await flushMicrotasks();
+
       expect(screen.getByTestId('completed').textContent).toBe('false');
     });
 
