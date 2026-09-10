@@ -282,6 +282,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // tearing it down and the SDK deletes it on the way out.
   const staleSessionIdRef = useRef<string | null>(null);
   const provisionedSessionIdRef = useRef<string | null>(null);
+  const everProvisionedSessionIdRef = useRef<string | null>(null);
   const setupSessionIdRef = useRef<string | null>(null);
 
   const { completed: storedCompleted, reason: storedReason } = useStepCompletion(stepId, sectionId);
@@ -528,6 +529,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       }
       if (terminalCtx.sessionId !== staleSessionIdRef.current) {
         provisionedSessionIdRef.current = terminalCtx.sessionId;
+        everProvisionedSessionIdRef.current = terminalCtx.sessionId;
         runSetup(terminalCtx.sessionId);
       }
       return;
@@ -582,6 +584,8 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     cancelRequestedRef.current = false;
     statusAtStartRef.current = terminalCtx.status;
     const sessionIdBeforeStart = terminalCtx.status === 'connected' ? terminalCtx.sessionId : null;
+    const isOurLiveSession =
+      Boolean(sessionIdBeforeStart) && sessionIdBeforeStart === everProvisionedSessionIdRef.current;
     // The session the terminal holds right now is not ours to use: if this
     // challenge wants a different VM, openTerminal replaces it and the SDK
     // deletes it. The effect below must not start setup against it either.
@@ -600,8 +604,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       return;
     }
     if (nextSessionId) {
-      if (nextSessionId !== sessionIdBeforeStart) {
+      if (nextSessionId !== sessionIdBeforeStart || isOurLiveSession) {
         provisionedSessionIdRef.current = nextSessionId;
+        everProvisionedSessionIdRef.current = nextSessionId;
       }
       runSetup(nextSessionId);
     }
@@ -661,6 +666,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       const isOwner = Boolean(provisionedSessionIdRef.current) && provisionedSessionIdRef.current === liveSessionId;
       if (isOwner) {
         terminalCtx?.disconnect();
+        everProvisionedSessionIdRef.current = null;
       }
       resetToIdle();
     } else if (state === 'ready' || state === 'checking' || state === 'failed-check' || state === 'setup-failed') {

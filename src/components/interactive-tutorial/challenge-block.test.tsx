@@ -1611,6 +1611,153 @@ describe('ChallengeBlock', () => {
       });
     });
 
+    it('disconnects terminal on cancel after setup fails and try again succeeds on the same session', async () => {
+      const post = jest
+        .fn()
+        .mockResolvedValueOnce({ stdout: '', stderr: 'mock setup error', exitCode: 1, durationMs: 1 })
+        .mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const RETRY_SESSION = 'ch-session-retry-owned';
+      const openTerminal = jest.fn().mockResolvedValue(RETRY_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['echo fail-first']} stepId="ch-coda-cancel-retry-owned" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: RETRY_SESSION, disconnect, openTerminal });
+      rerender(
+        <ChallengeBlock {...baseProps} setupCommands={['echo fail-first']} stepId="ch-coda-cancel-retry-owned" />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('restores session ownership on restart after resetTrigger while session remains live', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const SESSION = 'ch-session-reset-live';
+      const openTerminal = jest.fn().mockResolvedValue(SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reset-live" resetTrigger={0} />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reset-live" resetTrigger={0} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reset-live" resetTrigger={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal when reusing another step session, but disconnects a newly provisioned session on subsequent start', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const REUSED_SESSION = 'ch-session-initial-reused';
+      const NEW_SESSION = 'ch-session-subsequent-owned';
+      let currentSessionId: string | null = REUSED_SESSION;
+      const openTerminal = jest.fn().mockImplementation(() => Promise.resolve(currentSessionId));
+      const disconnect = jest.fn().mockImplementation(() => {
+        currentSessionId = null;
+      });
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: REUSED_SESSION,
+        openTerminal,
+        disconnect,
+      });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reuse-then-own" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+
+      currentSessionId = NEW_SESSION;
+      mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+        disconnect,
+      });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reuse-then-own" />);
+
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: NEW_SESSION,
+        openTerminal,
+        disconnect,
+      });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reuse-then-own" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
     it('resets local state and checker when resetTrigger increments after a skip', () => {
       mockTerminalCtx({ status: 'disconnected' });
       const mockResetStep = jest.fn();
