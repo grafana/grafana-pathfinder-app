@@ -38,12 +38,6 @@ const storedAcks = new Map<string, true>(); // pairKey(contentKey, sectionId) ->
 const guidePercentages = new Map<string, number>();
 
 jest.mock('../lib/user-storage', () => ({
-  createUserStorage: () => ({
-    getItem: jest.fn(async () => null),
-    setItem: jest.fn(async () => undefined),
-    removeItem: jest.fn(async () => undefined),
-    clear: jest.fn(async () => undefined),
-  }),
   interactiveStepStorage: {
     getCompleted: jest.fn(async (contentKey: string, sectionId: string) => {
       return new Set(storedCompleted.get(pairKey(contentKey, sectionId)) ?? []);

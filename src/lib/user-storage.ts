@@ -1075,10 +1075,12 @@ export const interactiveStepStorage = {
       logger.warn('Failed to clear progress for content', { error });
     }
 
-    // A reset must not look like it worked when it did not. The removals above
-    // can be refused — the backend records each delete with a timestamp write,
-    // which browser storage can reject when it is full — so the reader is only
-    // told the guide is clear once nothing is left to read.
+    // A reset must not look like it worked when it did not. The removal path
+    // swallows its own failures — `createLocalStorage.removeItem` logs and
+    // returns — so a removal that did not take is invisible here. Re-reading is
+    // what lets the reader be told the guide is clear only once it is, and it
+    // holds however a record came to survive: the check is on what is left, not
+    // on why.
     const remaining = keysFor();
     if (remaining.length > 0) {
       throw new Error(`Progress reset left ${remaining.length} record(s) in place`);

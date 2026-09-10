@@ -830,9 +830,8 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
   it('writes no record of its own — only the backend timestamp companions of records it removed', async () => {
     // The interim scheme completed a reset by writing a per-content marker, so
     // a refused write left the old progress live and still read. Nothing is
-    // written on the reset's own behalf now. The hybrid backend still records
-    // each delete with a `__timestamp` companion, which is why a reset can
-    // still fail and why it re-reads rather than claiming success.
+    // written on the reset's own behalf now — the only writes are the backend's
+    // own deletion companions, one beside each record it removed.
     jest.useFakeTimers();
     const grafanaStorage = {
       getItem: jest.fn(async () => null),
