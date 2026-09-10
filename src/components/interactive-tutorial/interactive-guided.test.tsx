@@ -9,7 +9,7 @@
  */
 
 import React from 'react';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { flushSync } from 'react-dom';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
@@ -191,6 +191,7 @@ jest.mock('../../global-state/panel-mode', () => {
 });
 
 beforeEach(() => {
+  jest.useFakeTimers();
   mockStoredCompleted = false;
   mockCompletionReason = 'none';
   mockInteractiveMode = 'interactive';
@@ -204,6 +205,17 @@ beforeEach(() => {
   mockMarkSkipped.mockImplementation(() => {
     mockStoredCompleted = true;
   });
+});
+
+afterEach(async () => {
+  try {
+    cleanup();
+    await act(async () => {
+      await jest.runAllTimersAsync();
+    });
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 describe('InteractiveGuided — double skip button (issue #786)', () => {
@@ -725,12 +737,10 @@ describe('InteractiveGuided — full-screen sidebar handoff', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
-
-    await waitFor(() => {
-      expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /start guided interaction/i }));
     });
-    // The handoff must complete before the first guided step runs, not after.
+    expect(mockRequestSidebarHandoffAndWait).toHaveBeenCalledWith({ targetPath: '/connections' });
     const handoffCallOrder = mockRequestSidebarHandoffAndWait.mock.invocationCallOrder[0]!;
     const execCallOrder = mockExecuteGuidedStep.mock.invocationCallOrder[0]!;
     expect(handoffCallOrder).toBeLessThan(execCallOrder);
@@ -834,17 +844,12 @@ describe('InteractiveGuided — full-screen sidebar handoff', () => {
 
 describe('InteractiveGuided evidence contract', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
     mockGetMode.mockReturnValue('sidebar');
     (useStepChecker as jest.Mock).mockReturnValue({
       isEnabled: true,
       isChecking: false,
       completionReason: 'none',
     });
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
   });
 
   function settleWith(statuses: GuidedSubstepStatus[]) {
