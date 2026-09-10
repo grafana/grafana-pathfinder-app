@@ -13,6 +13,7 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { flushSync } from 'react-dom';
 import { deriveGuidedUiState, InteractiveGuided } from './interactive-guided';
 import { useStepChecker } from '../../requirements-manager';
+import { useStepChecker as useRealStepChecker } from '../../requirements-manager/step-checker.hook';
 import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai-fix-enabled';
 import { testIds } from '../../constants/testIds';
 import type {
@@ -22,6 +23,7 @@ import type {
   GuidedSubstepStatus,
 } from '../../types/interactive-actions.types';
 import type { useControllerChannel } from '../../global-state/controller-channel';
+import { markStepCompleted, resetStep } from '../../global-state/completion-store';
 
 // ─── Mock @grafana/ui ────────────────────────────────────────────────────────
 jest.mock('@grafana/ui', () => ({
@@ -38,12 +40,9 @@ jest.mock('@grafana/data', () => ({
   usePluginContext: () => ({ meta: { jsonData: {} } }),
 }));
 
-// ─── Mock @grafana/runtime ───────────────────────────────────────────────────
-// The component publishes app-event toasts via getAppEvents(); importing the
-// real module pulls in config/LocationService, which needs @grafana/data's
-// getThemeById (not provided by the mock above).
+const mockPublishAppEvent = jest.fn();
 jest.mock('@grafana/runtime', () => ({
-  getAppEvents: () => ({ publish: jest.fn() }),
+  getAppEvents: () => ({ publish: mockPublishAppEvent }),
 }));
 
 // ─── Mock useAiFixEnabled (off) — avoids pulling @grafana/assistant, which this
@@ -63,18 +62,16 @@ jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
 }));
 
-// ─── Mock constants ──────────────────────────────────────────────────────────
 jest.mock('../../constants', () => ({
   getConfigWithDefaults: jest.fn(() => ({})),
 }));
 jest.mock('../../constants/interactive-config', () => ({
-  getGuidedStepTimeout: jest.requireActual('../../constants/interactive-config').getGuidedStepTimeout,
+  ...jest.requireActual('../../constants/interactive-config'),
   getInteractiveConfig: jest.fn(() => ({
     autoDetection: { enabled: false },
     guided: { stepTimeout: 120000, hoverDwell: 500 },
     delays: {},
   })),
-  INTERACTIVE_CONFIG: { guided: { stepTimeout: 120000 } },
 }));
 
 // ─── Mock DOM utils ──────────────────────────────────────────────────────────
@@ -103,23 +100,30 @@ const mockMarkSkipped = jest.fn(() => {
   mockStoredCompleted = true;
 });
 
-// ─── Mock completion store ────────────────────────────────────────────────
 jest.mock('../../global-state/completion-store', () => ({
   useStepCompletion: jest.fn(() => ({ completed: mockStoredCompleted, reason: null })),
   markStepCompleted: jest.fn(() => {
     mockStoredCompleted = true;
   }),
-  resetStep: jest.fn(),
+  resetStep: jest.fn(() => {
+    mockStoredCompleted = false;
+  }),
   STANDALONE_SECTION_ID: '__standalone__',
 }));
 
-// ─── Mock requirements manager ───────────────────────────────────────────────
-jest.mock('../../requirements-manager', () => ({
+jest.mock('../../requirements-manager/guide-requirements-context', () => ({
   useGuideRequirements: () => ({
     checkRequirements: mockCheckGuidedRequirements,
     guideId: 'guide-owner',
     contentKey: 'bundled:guide-owner',
   }),
+}));
+
+jest.mock('../../context-engine', () => ({
+  onContextChange: () => jest.fn(),
+}));
+jest.mock('../../requirements-manager', () => ({
+  useGuideRequirements: jest.requireMock('../../requirements-manager/guide-requirements-context').useGuideRequirements,
   useStepChecker: jest.fn(() => ({
     isEnabled: true,
     isChecking: false,
@@ -147,12 +151,13 @@ jest.mock('../../lib/async-utils', () => ({
   }),
 }));
 
-// ─── Mock interactive engine ──────────────────────────────────────────────────
 const mockExecuteGuidedStep = jest.fn();
 const mockCancel = jest.fn();
 const mockClearAllHighlights = jest.fn();
 
 jest.mock('../../interactive-engine', () => ({
+  useInteractiveElements: () => ({ fixNavigationRequirements: jest.fn() }),
+  useSequentialStepState: () => undefined,
   GuidedHandler: jest.fn().mockImplementation(() => ({
     executeGuidedStep: mockExecuteGuidedStep,
     execute: jest.fn(),
@@ -185,12 +190,14 @@ jest.mock('../../global-state/panel-mode', () => {
   };
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
 beforeEach(() => {
   mockStoredCompleted = false;
   mockCompletionReason = 'none';
   mockInteractiveMode = 'interactive';
   mockControllerChannel = null;
+  mockPublishAppEvent.mockClear();
+  jest.mocked(markStepCompleted).mockClear();
+  jest.mocked(resetStep).mockClear();
   mockCheckGuidedRequirements.mockClear();
   mockExecuteGuidedStep.mockReset();
   mockMarkSkipped.mockReset();
@@ -870,6 +877,32 @@ describe('InteractiveGuided evidence contract', () => {
   function evidence(root: HTMLElement): GuidedSubstepResult[] {
     return JSON.parse(root.getAttribute('data-test-substep-results')!);
   }
+  function pendingController() {
+    let finish!: (ok: boolean) => void;
+    const stopProgress = jest.fn();
+    const channel = {
+      post: jest.fn(),
+      requestRequirementCheck: jest.fn(),
+      requestFix: jest.fn(),
+      awaitStepComplete: jest.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          })
+      ),
+      cancelStepComplete: jest.fn(),
+      onStepProgress: jest.fn(
+        (
+          _stepId: string,
+          _runId: string,
+          _callback: Parameters<NonNullable<ReturnType<typeof useControllerChannel>>['onStepProgress']>[2]
+        ) => stopProgress
+      ),
+    };
+    mockInteractiveMode = 'controller';
+    mockControllerChannel = channel;
+    return { channel, stopProgress, finish: (ok: boolean) => finish(ok) };
+  }
 
   it.each([
     [undefined, 120000],
@@ -1005,6 +1038,68 @@ describe('InteractiveGuided evidence contract', () => {
     expect(evidence(root)).toEqual([{ index: 0, action: 'highlight', status: 'error', durationMs: 10 }]);
   });
 
+  it.each(['timeout', 'error', 'cancelled'] as const)(
+    'clears persisted completion before a retry that ends with %s',
+    async (outcome) => {
+      jest.mocked(useStepChecker).mockImplementation(useRealStepChecker);
+      let finishRetry!: (result: string) => void;
+      let storedAtRetryStart: boolean | undefined;
+      const onComplete = jest.fn(() => {
+        throw new Error('Completion callback failed');
+      });
+      mockExecuteGuidedStep
+        .mockImplementationOnce(async (_action, _index, _total, _timeout, complete) => {
+          complete();
+          return 'completed';
+        })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              storedAtRetryStart = mockStoredCompleted;
+              finishRetry = resolve;
+            })
+        );
+      const props = {
+        stepId: 'persisted-retry',
+        completeEarly: true,
+        onComplete,
+        internalActions: [{ targetAction: 'noop' as const }],
+      };
+      const { unmount } = render(<InteractiveGuided {...props} />);
+      const root = screen.getByTestId(testIds.interactive.step('persisted-retry'));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(250);
+      });
+      await startAndAdvance();
+      expect(root).toHaveAttribute('data-test-step-state', 'error');
+      expect(root).toHaveAttribute('data-test-requirements-state', 'met');
+      expect(mockStoredCompleted).toBe(true);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId(testIds.interactive.requirementRetryButton('persisted-retry')));
+      });
+      expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(2);
+      expect(resetStep).toHaveBeenCalledWith('persisted-retry', undefined);
+      expect(storedAtRetryStart).toBe(false);
+      expect(root).toHaveAttribute('data-test-step-state', 'executing');
+
+      await act(async () => {
+        finishRetry(outcome);
+      });
+      expect(root).toHaveAttribute('data-test-step-state', outcome === 'cancelled' ? 'cancelled' : 'error');
+      expect(mockStoredCompleted).toBe(false);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+
+      unmount();
+      render(<InteractiveGuided {...props} />);
+      expect(screen.getByTestId(testIds.interactive.step('persisted-retry'))).toHaveAttribute(
+        'data-test-step-state',
+        'idle'
+      );
+    }
+  );
+
   it('clears evidence on retry and ignores a late result from the prior run', async () => {
     let priorOptions: GuidedStepOptions;
     mockExecuteGuidedStep.mockImplementationOnce(
@@ -1042,6 +1137,91 @@ describe('InteractiveGuided evidence contract', () => {
     });
     expect(evidence(root)).toEqual([]);
     expect(mockExecuteGuidedStep).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['standalone', 'section-managed'])('preserves remote completion after a %s step unmounts', async (owner) => {
+    const { channel, stopProgress, finish } = pendingController();
+    const onStepComplete = owner === 'section-managed' ? jest.fn() : undefined;
+    const onComplete = jest.fn();
+    const sectionId = owner === 'section-managed' ? 'section' : undefined;
+    const { unmount } = render(
+      <InteractiveGuided
+        stepId="remote-unmount"
+        sectionId={sectionId}
+        onStepComplete={onStepComplete}
+        onComplete={onComplete}
+        internalActions={[{ targetAction: 'noop' }]}
+      />
+    );
+    const root = screen.getByTestId(testIds.interactive.step('remote-unmount'));
+    await startAndAdvance();
+    const progress = channel.onStepProgress.mock.calls[0]![2];
+    const settled: GuidedSubstepResult[] = [{ index: 0, action: 'noop', status: 'completed', durationMs: 10 }];
+    unmount();
+
+    await act(async () => {
+      progress(0, 1, settled);
+      finish(true);
+    });
+
+    expect(root.isConnected).toBe(false);
+    expect(evidence(root)).toEqual(settled);
+    if (onStepComplete) {
+      expect(onStepComplete).toHaveBeenCalledTimes(1);
+      expect(onStepComplete).toHaveBeenCalledWith('remote-unmount');
+      expect(markStepCompleted).not.toHaveBeenCalled();
+    } else {
+      expect(markStepCompleted).toHaveBeenCalledTimes(1);
+      expect(markStepCompleted).toHaveBeenCalledWith('remote-unmount', undefined, 'manual');
+    }
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(mockPublishAppEvent).not.toHaveBeenCalled();
+    expect(stopProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores remote failure after unmount', async () => {
+    const { stopProgress, finish } = pendingController();
+    const onComplete = jest.fn();
+    const { unmount } = render(
+      <InteractiveGuided stepId="remote-failure" onComplete={onComplete} internalActions={[{ targetAction: 'noop' }]} />
+    );
+    await startAndAdvance();
+    unmount();
+
+    await act(async () => {
+      finish(false);
+    });
+
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(mockPublishAppEvent).not.toHaveBeenCalled();
+    expect(stopProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['cancellation', 'reset'])('ignores remote completion after %s', async (interruption) => {
+    const { stopProgress, finish } = pendingController();
+    const onComplete = jest.fn();
+    const props = {
+      stepId: 'remote-stale',
+      onComplete,
+      internalActions: [{ targetAction: 'noop' as const }],
+    };
+    const { rerender } = render(<InteractiveGuided {...props} />);
+    await startAndAdvance();
+    if (interruption === 'cancellation') {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel tour' }));
+    } else {
+      rerender(<InteractiveGuided {...props} resetTrigger={1} />);
+    }
+
+    await act(async () => {
+      finish(true);
+    });
+
+    expect(markStepCompleted).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(mockPublishAppEvent).not.toHaveBeenCalled();
+    expect(stopProgress).toHaveBeenCalledTimes(1);
   });
 
   it('retries remotely and ignores evidence from the failed remote run', async () => {

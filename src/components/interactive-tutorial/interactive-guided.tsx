@@ -339,7 +339,8 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       objectives,
       hints,
       stepId: stepId || renderedStepId,
-      isEligibleForChecking: isEligibleForChecking && !isCompleted,
+      isEligibleForChecking:
+        isEligibleForChecking && (!isCompleted || isExecuting || Boolean(executionError) || wasCancelled),
       skippable,
       refTarget: firstActionRefTarget,
       targetAction: firstActionTargetAction,
@@ -714,7 +715,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         });
         try {
           const finished = await completion;
-          if (activeRunIdRef.current !== runId || !isMountedRef.current) {
+          if (activeRunIdRef.current !== runId || controllerCancelledRef.current) {
             return;
           }
           if (finished) {
@@ -725,7 +726,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
             if (onComplete) {
               onComplete();
             }
-          } else if (!controllerCancelledRef.current) {
+          } else if (isMountedRef.current) {
             setExecutionError('The live tab did not finish this guided step. Retry the step.');
             getAppEvents().publish({
               type: 'alert-warning',
@@ -801,6 +802,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
     }, [stepId, onStepComplete, onComplete, persistCompletion, markSkipped]);
 
     const handleRetry = useCallback(async () => {
+      persistReset();
       setExecutionError(null);
       setCurrentStepStatus('waiting');
       setWasCancelled(false);
@@ -814,7 +816,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       } finally {
         allowCompletedRetryRef.current = false;
       }
-    }, [executeStep, handleDoAction, mode]);
+    }, [executeStep, handleDoAction, mode, persistReset]);
 
     const handleCancel = useCallback(async () => {
       controllerCancelledRef.current = true;
