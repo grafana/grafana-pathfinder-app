@@ -14,7 +14,7 @@ import {
   unwrapEnvelope,
   wrapEnvelope,
 } from './user-storage';
-import { StorageKeys } from './storage-keys';
+import { StorageKeys, buildVersionedSectionStorageKey } from './storage-keys';
 
 // Mock `@grafana/runtime` so the quota-toast helper can publish through a
 // jest spy. The mock is also necessary because user-storage.ts statically
@@ -233,7 +233,10 @@ describe('interactiveStepStorage.clearAll', () => {
 
   it('should invalidate completedCountCache so countAllCompleted returns 0', async () => {
     // Seed data and prime the cache
-    localStorage.setItem(`${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-1`, JSON.stringify(['s1', 's2']));
+    localStorage.setItem(
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, 'guide-a', 'section-1'),
+      JSON.stringify(['s1', 's2'])
+    );
     const beforeClear = interactiveStepStorage.countAllCompleted('guide-a');
     expect(beforeClear).toBe(2);
 
@@ -265,11 +268,11 @@ describe('interactiveStepStorage.countAllCompleted — #842 ack-marker filter', 
     // document completion numerator — getTotalDocumentSteps() excludes it
     // from the denominator.
     localStorage.setItem(
-      `${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-passive`,
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, 'guide-a', 'section-passive'),
       JSON.stringify(['section-passive::ack-marker'])
     );
     localStorage.setItem(
-      `${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-a-section-real`,
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, 'guide-a', 'section-real'),
       JSON.stringify(['real-step-1', 'real-step-2'])
     );
 
@@ -280,7 +283,7 @@ describe('interactiveStepStorage.countAllCompleted — #842 ack-marker filter', 
     // Use a distinct content key so the in-memory completedCountCache from a
     // sibling test cannot bleed into this assertion.
     localStorage.setItem(
-      `${StorageKeys.INTERACTIVE_STEPS_PREFIX}guide-only-passive-section-passive`,
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, 'guide-only-passive', 'section-passive'),
       JSON.stringify(['section-passive::ack-marker'])
     );
 
@@ -389,10 +392,11 @@ describe('sectionAcknowledgementStorage', () => {
     expect(await sectionAcknowledgementStorage.get('guide-a', 'section-2')).toBeNull();
   });
 
-  it('uses the SECTION_ACKNOWLEDGED_PREFIX storage key shape', async () => {
+  it('writes under the collision-safe SECTION_ACKNOWLEDGED_PREFIX key shape', async () => {
     await sectionAcknowledgementStorage.set('guide-a', 'section-1', true);
-    const key = `${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}guide-a-section-1`;
+    const key = buildVersionedSectionStorageKey(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, 'guide-a', 'section-1');
     expect(localStorage.getItem(key)).not.toBeNull();
+    expect(localStorage.getItem(`${StorageKeys.SECTION_ACKNOWLEDGED_PREFIX}guide-a-section-1`)).toBeNull();
   });
 });
 
@@ -714,5 +718,125 @@ describe('guideResponseStorage — own-key lookups', () => {
 
     await expect(guideResponseStorage.getResponse('docs-grafana-alerting', 'toString')).resolves.toBeUndefined();
     await expect(guideResponseStorage.hasResponse('docs-grafana-alerting', 'toString')).resolves.toBe(false);
+  });
+});
+
+// ============================================================================
+// Prefix-sharing content keys (#1846)
+//
+// `bundled:welcome-to-grafana` and `bundled:welcome-to-grafana-cloud` both
+// ship. The superseded key shape joined the content key and the section id
+// with a hyphen and marked neither boundary, so a scan for the first also
+// matched every record belonging to the second.
+// ============================================================================
+
+const SHORT_GUIDE = 'bundled:welcome-to-grafana';
+const LONG_GUIDE = 'bundled:welcome-to-grafana-cloud';
+
+describe('progress counters — prefix-sharing content keys', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    interactiveStepStorage.invalidateCountCache(SHORT_GUIDE);
+    interactiveStepStorage.invalidateCountCache(LONG_GUIDE);
+  });
+
+  it('counts no steps for a guide whose only records belong to a longer-named neighbour', async () => {
+    await interactiveStepStorage.setCompleted(LONG_GUIDE, 'section-1', new Set(['cloud-step-1', 'cloud-step-2']));
+
+    expect(interactiveStepStorage.countAllCompleted(SHORT_GUIDE)).toBe(0);
+    expect(interactiveStepStorage.countAllCompleted(LONG_GUIDE)).toBe(2);
+  });
+
+  it('counts only its own steps when both guides have records', async () => {
+    await interactiveStepStorage.setCompleted(SHORT_GUIDE, 'section-1', new Set(['step-1']));
+    await interactiveStepStorage.setCompleted(LONG_GUIDE, 'section-1', new Set(['cloud-step-1', 'cloud-step-2']));
+
+    expect(interactiveStepStorage.countAllCompleted(SHORT_GUIDE)).toBe(1);
+    expect(interactiveStepStorage.countAllCompleted(LONG_GUIDE)).toBe(2);
+  });
+
+  it('counts no acknowledgements for a guide whose only records belong to a longer-named neighbour', async () => {
+    await sectionAcknowledgementStorage.set(LONG_GUIDE, 'section-1', true);
+
+    expect(sectionAcknowledgementStorage.countAllAcknowledged(SHORT_GUIDE)).toBe(0);
+    expect(sectionAcknowledgementStorage.countAllAcknowledged(LONG_GUIDE)).toBe(1);
+  });
+
+  it('reports no progress for a guide whose neighbour holds the only records', async () => {
+    await interactiveStepStorage.setCompleted(LONG_GUIDE, 'section-1', new Set(['cloud-step-1']));
+
+    expect(await interactiveStepStorage.hasProgress(SHORT_GUIDE)).toBe(false);
+    expect(await interactiveStepStorage.hasProgress(LONG_GUIDE)).toBe(true);
+  });
+
+  it('reads back only its own section state, section by section', async () => {
+    await interactiveStepStorage.setCompleted(LONG_GUIDE, 'section-1', new Set(['cloud-step-1']));
+    await sectionCollapseStorage.set(LONG_GUIDE, 'section-1', true);
+    await sectionDoneStorage.set(LONG_GUIDE, 'section-1', true);
+
+    expect(await interactiveStepStorage.getCompleted(SHORT_GUIDE, 'section-1')).toEqual(new Set());
+    expect(await sectionCollapseStorage.get(SHORT_GUIDE, 'section-1')).toBe(false);
+    expect(await sectionDoneStorage.get(SHORT_GUIDE, 'section-1')).toBeNull();
+  });
+
+  it('keeps the two guides isolated after only one of them has been reset', async () => {
+    await interactiveStepStorage.setCompleted(SHORT_GUIDE, 'section-1', new Set(['step-1']));
+    await interactiveStepStorage.setCompleted(LONG_GUIDE, 'section-1', new Set(['cloud-step-1', 'cloud-step-2']));
+
+    await interactiveStepStorage.clearAllForContent(LONG_GUIDE);
+    interactiveStepStorage.invalidateCountCache(SHORT_GUIDE);
+
+    expect(interactiveStepStorage.countAllCompleted(LONG_GUIDE)).toBe(0);
+    expect(interactiveStepStorage.countAllCompleted(SHORT_GUIDE)).toBe(1);
+  });
+});
+
+describe('interactiveStepStorage.clearAllForContent — a reset that cannot complete says so', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    interactiveStepStorage.invalidateCountCache(SHORT_GUIDE);
+  });
+
+  it('rejects when a record survives the reset', async () => {
+    await interactiveStepStorage.setCompleted(SHORT_GUIDE, 'section-1', new Set(['step-1']));
+    const removeItem = jest.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => undefined);
+
+    try {
+      await expect(interactiveStepStorage.clearAllForContent(SHORT_GUIDE)).rejects.toThrow(/left 1 record/);
+    } finally {
+      removeItem.mockRestore();
+    }
+
+    expect(await interactiveStepStorage.getCompleted(SHORT_GUIDE, 'section-1')).toEqual(new Set(['step-1']));
+  });
+
+  it('resolves once every record for the guide is gone', async () => {
+    await interactiveStepStorage.setCompleted(SHORT_GUIDE, 'section-1', new Set(['step-1']));
+    await sectionCollapseStorage.set(SHORT_GUIDE, 'section-1', true);
+    await sectionAcknowledgementStorage.set(SHORT_GUIDE, 'section-1', true);
+    await sectionDoneStorage.set(SHORT_GUIDE, 'section-1', true);
+
+    await expect(interactiveStepStorage.clearAllForContent(SHORT_GUIDE)).resolves.toBeUndefined();
+
+    expect(await interactiveStepStorage.getCompleted(SHORT_GUIDE, 'section-1')).toEqual(new Set());
+    expect(await sectionCollapseStorage.get(SHORT_GUIDE, 'section-1')).toBe(false);
+    expect(await sectionAcknowledgementStorage.get(SHORT_GUIDE, 'section-1')).toBeNull();
+    expect(await sectionDoneStorage.get(SHORT_GUIDE, 'section-1')).toBeNull();
+  });
+
+  it('records nothing of its own, so it cannot fail for want of space', async () => {
+    // A reset the reader reaches for when storage is full must not depend on
+    // storing anything: the previous scheme completed by writing a marker, and
+    // a refused write left the old progress live and still read.
+    await interactiveStepStorage.setCompleted(SHORT_GUIDE, 'section-1', new Set(['step-1']));
+    const setItem = jest.spyOn(Storage.prototype, 'setItem');
+
+    await expect(interactiveStepStorage.clearAllForContent(SHORT_GUIDE)).resolves.toBeUndefined();
+
+    const progressWrites = setItem.mock.calls.filter(
+      ([key]) => typeof key === 'string' && key.startsWith('grafana-pathfinder-app-')
+    );
+    setItem.mockRestore();
+    expect(progressWrites).toEqual([]);
   });
 });

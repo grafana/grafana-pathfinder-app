@@ -6,7 +6,9 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { config } from '@grafana/runtime';
+import { AppEvents } from '@grafana/data';
+import { t } from '@grafana/i18n';
+import { config, getAppEvents } from '@grafana/runtime';
 
 import type {
   LearningPath,
@@ -86,6 +88,40 @@ function calculatePathProgress(path: LearningPath, completedGuides: string[]): n
  *
  * @returns Learning paths state and actions
  */
+/**
+ * Clears interactive progress for every content key a path reads under,
+ * completing the whole sweep before reporting.
+ *
+ * A per-key clear can fail (it has to record that the guide's older,
+ * ambiguously keyed records are retired, and browser storage can refuse the
+ * write). Failing the whole sweep on the first refusal would leave the rest of
+ * the path untouched with nothing said about it, so every key is attempted and
+ * the reader is told once at the end if any of them did not take.
+ */
+async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Promise<void> {
+  const results = await Promise.allSettled(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+  const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  const firstFailure = failures[0];
+  if (!firstFailure) {
+    return;
+  }
+  logger.error('[LearningPaths] Failed to reset interactive progress', {
+    failed: failures.length,
+    total: contentKeys.length,
+    error: firstFailure.reason,
+  });
+  getAppEvents().publish({
+    type: AppEvents.alertError.name,
+    payload: [
+      t('myLearning.resetPathErrorTitle', 'Reset incomplete'),
+      t(
+        'myLearning.resetPathErrorMessage',
+        "Some of this path's progress could not be cleared. Free up browser storage and try again."
+      ),
+    ],
+  });
+}
+
 export function useLearningPaths(): UseLearningPathsReturn {
   const [progress, setProgress] = useState<LearningProgress>(DEFAULT_PROGRESS);
   const [isLoading, setIsLoading] = useState(true);
@@ -429,7 +465,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
         const milestoneKeys = Object.keys(completions).filter((key) => key.startsWith(normalizedUrl));
         const journeyKeys = [path.url, ...Object.keys(journeyCompletions).filter((k) => k.startsWith(normalizedUrl))];
 
-        await Promise.all(milestoneKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        await clearInteractiveProgressForContentKeys(milestoneKeys);
         await interactiveCompletionStorage.clearMany(milestoneKeys);
         await journeyCompletionStorage.clearMany(journeyKeys);
 
@@ -454,7 +490,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
           await milestoneCompletionStorage.clear(pathKey);
         }
 
-        await Promise.all(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        await clearInteractiveProgressForContentKeys(contentKeys);
         // Batched, not one clear per key: each helper read-modify-writes a single shared record.
         await interactiveCompletionStorage.clearMany(contentKeys);
         await journeyCompletionStorage.clearMany(rawSchemeKeys);

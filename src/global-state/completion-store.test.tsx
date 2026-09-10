@@ -19,7 +19,7 @@ import {
 } from './completion-store';
 import { setActiveTabUrl, resetContentKeyForTests } from './content-key';
 import { subscribeProgressEvent, type ProgressEventDetail } from './progress-events';
-import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../lib/storage-keys';
+import { StorageKeys, buildVersionedSectionStorageKey } from '../lib/storage-keys';
 
 // In-memory mocks for the persisted-storage layer so tests are hermetic
 // and synchronous-where-they-can-be.
@@ -28,6 +28,12 @@ const storedAcks = new Map<string, true>(); // `${contentKey}-${sectionId}` -> t
 const guidePercentages = new Map<string, number>();
 
 jest.mock('../lib/user-storage', () => ({
+  createUserStorage: () => ({
+    getItem: jest.fn(async () => null),
+    setItem: jest.fn(async () => undefined),
+    removeItem: jest.fn(async () => undefined),
+    clear: jest.fn(async () => undefined),
+  }),
   interactiveStepStorage: {
     getCompleted: jest.fn(async (contentKey: string, sectionId: string) => {
       return new Set(storedCompleted.get(`${contentKey}-${sectionId}`) ?? []);
@@ -38,13 +44,13 @@ jest.mock('../lib/user-storage', () => ({
     clear: jest.fn(async (contentKey: string, sectionId: string) => {
       storedCompleted.delete(`${contentKey}-${sectionId}`);
     }),
-    countAllCompleted: jest.fn((contentKey: string) => {
+    // Mirrors the production contract: sections are addressed exactly, from
+    // the roster the caller passes, never by scanning for a shared opening.
+    countAllCompleted: jest.fn((contentKey: string, sectionIds?: readonly string[]) => {
       let total = 0;
-      storedCompleted.forEach((ids, key) => {
-        if (key.startsWith(`${contentKey}-`)) {
-          total += ids.size;
-        }
-      });
+      for (const sectionId of sectionIds ?? mockRegisteredSectionIds) {
+        total += storedCompleted.get(`${contentKey}-${sectionId}`)?.size ?? 0;
+      }
       return total;
     }),
     // Cross-tab sync invalidates the per-tab numerator cache without
@@ -59,13 +65,13 @@ jest.mock('../lib/user-storage', () => ({
     }),
   },
   sectionAcknowledgementStorage: {
-    countAllAcknowledged: jest.fn((contentKey: string) => {
+    countAllAcknowledged: jest.fn((contentKey: string, sectionIds?: readonly string[]) => {
       let count = 0;
-      storedAcks.forEach((_value, key) => {
-        if (key.startsWith(`${contentKey}-`)) {
+      for (const sectionId of sectionIds ?? mockRegisteredSectionIds) {
+        if (storedAcks.get(`${contentKey}-${sectionId}`)) {
           count++;
         }
-      });
+      }
       return count;
     }),
   },
@@ -73,9 +79,11 @@ jest.mock('../lib/user-storage', () => ({
 
 let mockTotalDocumentSteps = 0;
 let mockRegisteredSectionCount = 0;
+let mockRegisteredSectionIds: string[] = [];
 jest.mock('./section-registry', () => ({
   getTotalDocumentSteps: () => mockTotalDocumentSteps,
   getRegisteredSectionCount: () => mockRegisteredSectionCount,
+  getRegisteredSectionIds: () => mockRegisteredSectionIds,
 }));
 
 const CONTENT_KEY = 'bundled:test-guide';
@@ -86,6 +94,7 @@ beforeEach(() => {
   guidePercentages.clear();
   mockTotalDocumentSteps = 0;
   mockRegisteredSectionCount = 0;
+  mockRegisteredSectionIds = [];
   resetCompletionStoreForTests();
   resetContentKeyForTests();
   setActiveTabUrl(CONTENT_KEY);
@@ -216,6 +225,7 @@ describe('completion-store', () => {
     it('returns 100% once every registered section is acknowledged', () => {
       mockTotalDocumentSteps = 0;
       mockRegisteredSectionCount = 1;
+      mockRegisteredSectionIds = ['section-passive'];
       storedAcks.set(`${CONTENT_KEY}-section-passive`, true);
       expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 1, percentage: 100 });
     });
@@ -223,6 +233,7 @@ describe('completion-store', () => {
     it('returns a partial percentage for multi-section guides with one ack', () => {
       mockTotalDocumentSteps = 0;
       mockRegisteredSectionCount = 4;
+      mockRegisteredSectionIds = ['section-1', 'section-2', 'section-3', 'section-4'];
       storedAcks.set(`${CONTENT_KEY}-section-1`, true);
       expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 4, percentage: 25 });
     });
@@ -230,6 +241,7 @@ describe('completion-store', () => {
     it('returns 0% when no sections are acknowledged yet', () => {
       mockTotalDocumentSteps = 0;
       mockRegisteredSectionCount = 3;
+      mockRegisteredSectionIds = ['section-1', 'section-2', 'section-3'];
       expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 3, percentage: 0 });
     });
 
@@ -242,6 +254,7 @@ describe('completion-store', () => {
     it('refreshAndNotifyGuideProgress persists the percentage to interactiveCompletionStorage', () => {
       mockTotalDocumentSteps = 0;
       mockRegisteredSectionCount = 2;
+      mockRegisteredSectionIds = ['section-1', 'section-2'];
       storedAcks.set(`${CONTENT_KEY}-section-1`, true);
       storedAcks.set(`${CONTENT_KEY}-section-2`, true);
 
@@ -253,6 +266,7 @@ describe('completion-store', () => {
 
   it('getGuideProgress computes percentage when total steps is known', () => {
     storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['step-1', 'step-2']));
+    mockRegisteredSectionIds = ['section-x'];
     mockTotalDocumentSteps = 4;
     expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 2, total: 4, percentage: 50 });
   });
@@ -507,6 +521,7 @@ describe('completion-store', () => {
       // Pre-clamp this returned 167; clamp keeps it user-presentable.
       storedCompleted.set(`${CONTENT_KEY}-section-x`, new Set(['s1', 's2', 's3']));
       storedCompleted.set(`${CONTENT_KEY}-section-y`, new Set(['s4', 's5']));
+      mockRegisteredSectionIds = ['section-x', 'section-y'];
       mockTotalDocumentSteps = 3;
       const progress = getGuideProgress(CONTENT_KEY);
       expect(progress.completed).toBe(5);
@@ -541,7 +556,7 @@ describe('completion-store', () => {
       act(() => {
         window.dispatchEvent(
           new StorageEvent('storage', {
-            key: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${CONTENT_KEY}-section-x`,
+            key: buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, CONTENT_KEY, 'section-x'),
             newValue: '[]',
             oldValue: '["step-1"]',
           })
@@ -550,54 +565,6 @@ describe('completion-store', () => {
       await flushMicrotasks();
       // Subscriber re-reads authoritative storage on the next render
       // and sees the empty set.
-      expect(screen.getByTestId('completed').textContent).toBe('false');
-    });
-
-    it('evicts the in-memory section cache for versioned storage keys', async () => {
-      render(<StepProbe stepId="step-1" sectionId="section-x" />);
-      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
-      await flushMicrotasks();
-
-      expect(screen.getByTestId('completed').textContent).toBe('true');
-
-      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
-
-      act(() => {
-        window.dispatchEvent(
-          new StorageEvent('storage', {
-            key: buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, CONTENT_KEY, 'section-x'),
-            newValue: null,
-            oldValue: '["step-1"]',
-          })
-        );
-      });
-
-      await flushMicrotasks();
-
-      expect(screen.getByTestId('completed').textContent).toBe('false');
-    });
-
-    it('evicts the content cache when another tab switches the guide to versioned progress storage', async () => {
-      render(<StepProbe stepId="step-1" sectionId="section-x" />);
-      act(() => markStepCompleted('step-1', 'section-x', 'manual'));
-      await flushMicrotasks();
-
-      expect(screen.getByTestId('completed').textContent).toBe('true');
-
-      storedCompleted.delete(`${CONTENT_KEY}-section-x`);
-
-      act(() => {
-        window.dispatchEvent(
-          new StorageEvent('storage', {
-            key: buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, CONTENT_KEY),
-            newValue: 'true',
-            oldValue: null,
-          })
-        );
-      });
-
-      await flushMicrotasks();
-
       expect(screen.getByTestId('completed').textContent).toBe('false');
     });
 
@@ -644,6 +611,8 @@ describe('completion-store', () => {
       // (`bundled:loki-101-extended`), `stripped.startsWith(short + '-')`
       // matched the shorter key first and evicted the wrong pair,
       // leaving the longer guide's cache stale until the next mount.
+      // The key shape now marks the boundary, and the listener still
+      // compares whole keys rather than parsing them.
       const SHORT_KEY = 'bundled:loki-101';
       const LONG_KEY = 'bundled:loki-101-extended';
 
@@ -668,7 +637,7 @@ describe('completion-store', () => {
       act(() => {
         window.dispatchEvent(
           new StorageEvent('storage', {
-            key: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${LONG_KEY}-section-y`,
+            key: buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, LONG_KEY, 'section-y'),
             newValue: null,
             oldValue: '["step-2"]',
           })
@@ -703,7 +672,7 @@ describe('completion-store', () => {
       act(() => {
         window.dispatchEvent(
           new StorageEvent('storage', {
-            key: `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${CONTENT_KEY}-section-x`,
+            key: buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, CONTENT_KEY, 'section-x'),
             newValue: null,
             oldValue: '["step-1","step-2"]',
           })

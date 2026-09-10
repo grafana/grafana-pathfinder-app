@@ -2,10 +2,10 @@
  * Step completion store.
  *
  * Authoritative in-memory store for per-step completion, backed by
- * `interactiveStepStorage`. Existing guides keep reading their legacy
- * keys until a reset switches that content key to collision-safe
- * versioned section keys. Hydration is lazy and scoped to the
- * (contentKey, sectionId) the caller asks about.
+ * `interactiveStepStorage`, which keys every record by content key and
+ * section id in a shape that cannot confuse two guides whose names share
+ * an opening. Hydration is lazy and scoped to the (contentKey, sectionId)
+ * the caller asks about.
  *
  * Every step component subscribes via `useStepCompletion(stepId, sectionId)`
  * and writes via `markStepCompleted` / `resetStep`. Section-managed steps
@@ -35,7 +35,7 @@ import {
   sectionAcknowledgementStorage,
 } from '../lib/user-storage';
 import { StorageEvents } from '../lib/event-names';
-import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../lib/storage-keys';
+import { StorageKeys, buildVersionedSectionStorageKey } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
 
 import { getContentKey } from './content-key';
@@ -853,39 +853,11 @@ function handleStorageEvent(event: StorageEvent): void {
     return;
   }
 
-  if (event.key.startsWith(StorageKeys.CONTENT_PROGRESS_V2_PREFIX)) {
-    const knownContentKeys = new Set(entries.keys());
-
-    for (const hydratedKey of hydratedSections) {
-      const separator = hydratedKey.indexOf('::');
-      if (separator > 0) {
-        knownContentKeys.add(hydratedKey.slice(0, separator));
-      }
-    }
-
-    for (const contentKey of knownContentKeys) {
-      const markerKey = buildVersionedContentStorageKey(StorageKeys.CONTENT_PROGRESS_V2_PREFIX, contentKey);
-
-      if (event.key !== markerKey) {
-        continue;
-      }
-
-      interactiveStepStorage.invalidateCountCache(contentKey);
-      evictContentCache(contentKey);
-      return;
-    }
-
-    return;
-  }
-
   if (!event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)) {
     return;
   }
-  // Step progress may use either the legacy `${contentKey}-${sectionId}`
-  // suffix or the collision-safe length-prefixed format. Because legacy
-  // keys are ambiguous when content keys share a prefix, match both forms
-  // against the exact (contentKey, sectionId) pairs already known to this
-  // store instead of trying to parse the key.
+  // Rebuild the key for each (contentKey, sectionId) pair this store knows
+  // about and compare it whole, rather than parsing the event's key.
   for (const hydratedKey of hydratedSections) {
     const separator = hydratedKey.indexOf('::');
     if (separator <= 0) {
@@ -895,10 +867,7 @@ function handleStorageEvent(event: StorageEvent): void {
     const contentKey = hydratedKey.slice(0, separator);
     const sectionId = hydratedKey.slice(separator + 2);
 
-    const legacyKey = `${StorageKeys.INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`;
-    const versionedKey = buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId);
-
-    if (event.key !== legacyKey && event.key !== versionedKey) {
+    if (event.key !== buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId)) {
       continue;
     }
     evictSectionCacheForKey(contentKey, sectionId);
