@@ -106,7 +106,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
  * Input Block component for collecting user responses.
  */
 export function InputBlock({
-  prompt,
   inputType,
   variableName,
   placeholder,

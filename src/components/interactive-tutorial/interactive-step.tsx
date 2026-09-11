@@ -204,6 +204,7 @@ export const InteractiveStep = forwardRef<
       description,
       children,
       requirements,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- grandfathered: arrives from the section but is never forwarded to useStepChecker; see #1815
       objectives,
       hints,
       onComplete,
@@ -596,7 +597,7 @@ export const InteractiveStep = forwardRef<
     // Auto-detection: Use shared hook for detecting user actions
     // Handler for auto-detected action match
     const handleAutoDetectedMatch = useCallback(
-      async (detectedAction: DetectedActionEvent) => {
+      async (_detectedAction: DetectedActionEvent) => {
         // Run post-verification if specified (same as "Do it" button)
         if (postVerify && postVerify.trim() !== '') {
           try {
@@ -625,7 +626,7 @@ export const InteractiveStep = forwardRef<
               );
               return;
             }
-          } catch (error) {
+          } catch {
             // Verification error - don't auto-complete
             // Track failure in analytics
             reportAppInteraction(

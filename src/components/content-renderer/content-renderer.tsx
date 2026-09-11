@@ -655,14 +655,7 @@ interface ContentProcessorProps {
   fullScreenFallbackLocation?: string;
 }
 
-function ContentProcessor({
-  html,
-  contentType,
-  baseUrl,
-  onReady,
-  responses,
-  fullScreenFallbackLocation,
-}: ContentProcessorProps) {
+function ContentProcessor({ html, baseUrl, responses, fullScreenFallbackLocation }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Reset interactive counters only when content changes (not on every render)
