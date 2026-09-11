@@ -1,12 +1,35 @@
 import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
-import { milestoneCompletionStorage } from '../../lib/user-storage';
+import { interactiveCompletionStorage, milestoneCompletionStorage } from '../../lib/user-storage';
 import type { Milestone } from '../../types/content.types';
 
 jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: (_t, p) => String(p) }),
   Icon: ({ name }: { name: string }) => <span data-icon={name} />,
+  // `@grafana/runtime`'s own module init reaches for these two, and the real
+  // percentage calculation this file exercises imports it transitively
+  // (docs-retrieval -> security -> dev-mode -> @grafana/runtime).
+  createLogger: () => ({
+    logger: () => undefined,
+    enable: () => undefined,
+    disable: () => undefined,
+    isEnabled: () => false,
+  }),
+  attachDebugger: () => undefined,
+}));
+
+// The percentage the cover page shows is the real shared calculation, so the
+// modules it reaches through have to load. Only the Grafana platform surface
+// is stubbed — never the calculation itself, or this file would agree with a
+// reimplementation instead of the code that ships.
+jest.mock('@grafana/runtime', () => ({
+  config: { bootData: { user: { id: 1, orgId: 1 } }, namespace: 'stacks-123', featureToggles: {} },
+  getAppEvents: () => ({ publish: jest.fn() }),
+  getBackendSrv: () => ({ fetch: jest.fn(), get: jest.fn(), post: jest.fn() }),
+  locationService: { push: jest.fn(), getSearchObject: () => ({}) },
+  usePluginUserStorage: jest.fn(),
+  reportInteraction: jest.fn(),
 }));
 
 jest.mock('@grafana/i18n', () => ({
@@ -17,30 +40,10 @@ jest.mock('@grafana/i18n', () => ({
 jest.mock('../../lib/user-storage', () => ({
   milestoneCompletionStorage: { getCompleted: jest.fn(), getCompletedSync: jest.fn(() => new Set()) },
   interactiveCompletionStorage: { peekAll: jest.fn(() => ({})) },
-}));
-
-jest.mock('../../docs-retrieval', () => ({
-  // A hand-rolled stand-in, not the real implementation: the real one lives
-  // in learning-journey-helpers.ts, which pulls in completion-records' full
-  // @grafana/runtime surface — overkill for a render-only test. Equivalent
-  // to the real mean-of-percentages for every scenario this file exercises
-  // (binary completed/not-completed; no partial persisted percentage is
-  // ever configured here). The real calculation has its own dedicated
-  // tests in learning-journey-helpers.test.ts and rollup.test.ts.
-  journeyProgressFromMilestones: (baseUrl: string, milestones: ReadonlyArray<{ url: string; isLocked?: boolean }>) => {
-    // jest.mock factories are hoisted, so they can't close over a top-level import.
-    const { milestoneCompletionStorage: storage } = require('../../lib/user-storage');
-    const { getMilestoneSlug: slugOf } = require('../../lib/learning-journey-url');
-    const unlocked = milestones.filter((m) => !m.isLocked);
-    if (unlocked.length === 0) {
-      return 0;
-    }
-    const completed: Set<string> = storage.getCompletedSync(baseUrl);
-    const completedCount = unlocked.filter((m) => completed.has(slugOf(m.url))).length;
-    return completedCount === unlocked.length
-      ? 100
-      : Math.min(99, Math.floor((completedCount / unlocked.length) * 100));
-  },
+  // Reached by the real calculation's module graph, never called from a
+  // render path here.
+  journeyCompletionStorage: { getAll: jest.fn(), set: jest.fn(), clear: jest.fn() },
+  learningProgressStorage: { get: jest.fn(), save: jest.fn() },
 }));
 
 const getBadgeForPathMock = jest.fn();
@@ -53,6 +56,9 @@ const getCompletedMock = milestoneCompletionStorage.getCompleted as jest.MockedF
 >;
 const getCompletedSyncMock = milestoneCompletionStorage.getCompletedSync as jest.MockedFunction<
   typeof milestoneCompletionStorage.getCompletedSync
+>;
+const peekAllMock = interactiveCompletionStorage.peekAll as jest.MockedFunction<
+  typeof interactiveCompletionStorage.peekAll
 >;
 
 /** Sets both the async completion read (drives checkmarks/CTA target) and
@@ -71,7 +77,10 @@ const milestones: Milestone[] = [
 ];
 
 describe('LearningPathTableOfContents', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    peekAllMock.mockReturnValue({});
+  });
 
   it('renders every milestone title with a heading', async () => {
     setCompletedSlugs(new Set());
@@ -147,6 +156,18 @@ describe('LearningPathTableOfContents', () => {
     expect(cta.closest('button')).toHaveAttribute('data-milestone-url', milestones[1]!.url);
     expect(cta.closest('button')).toHaveAttribute('data-interaction-location', 'resume_cta');
     expect(await screen.findByText('50%')).toBeInTheDocument();
+  });
+
+  // The number on this page is the mean of the milestones' OWN percentages,
+  // not a completed-count fraction: one module finished and the next 40%
+  // through reads 70%, where counting completed modules would read 50%.
+  it("averages the milestones' own percentages, not the count of completed ones", async () => {
+    setCompletedSlugs(new Set(['set-up']));
+    peekAllMock.mockReturnValue({ [milestones[1]!.url]: 40 });
+    render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
+
+    expect(await screen.findByText('70%')).toBeInTheDocument();
+    expect(screen.queryByText('50%')).not.toBeInTheDocument();
   });
 
   it('hides the CTA once every milestone is completed', async () => {
