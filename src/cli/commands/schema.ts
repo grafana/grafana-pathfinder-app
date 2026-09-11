@@ -7,7 +7,8 @@
 
 import { z } from 'zod';
 
-import { defineCommand } from '../contracts';
+import { REQUIREMENT_TOKEN_CATALOGUE } from '../../types/requirements.types';
+import { carriesRequirementTokens, defineCommand } from '../contracts';
 import type { CommandOutcome } from '../utils/output';
 import { JsonGuideSchemaStrict, JsonBlockSchema, CURRENT_SCHEMA_VERSION } from '../../types/json-guide.schema';
 import {
@@ -102,6 +103,33 @@ export const SCHEMA_REGISTRY: Record<string, SchemaRegistryEntry> = {
   },
 };
 
+/**
+ * Does this JSON Schema declare a property that takes requirement tokens?
+ *
+ * Walked rather than declared per registry entry: a schema carries the
+ * vocabulary because it has somewhere to put it, and `guide` / `block` /
+ * `content` gaining or losing a `requirements` field should not need a second
+ * edit here. `RequirementTokenSchema` is a refined `z.string()`, so the tokens
+ * themselves are invisible in the converted schema — a consumer that only reads
+ * the export has no other way to learn them.
+ */
+function declaresRequirementTokens(node: unknown): boolean {
+  if (!node || typeof node !== 'object') {
+    return false;
+  }
+  if (Array.isArray(node)) {
+    return node.some(declaresRequirementTokens);
+  }
+  const obj = node as Record<string, unknown>;
+  const properties = obj['properties'];
+  if (properties && typeof properties === 'object' && !Array.isArray(properties)) {
+    if (Object.keys(properties).some(carriesRequirementTokens)) {
+      return true;
+    }
+  }
+  return Object.values(obj).some(declaresRequirementTokens);
+}
+
 function stripAdditionalPropertiesFalse(node: unknown): void {
   if (!node || typeof node !== 'object' || Array.isArray(node)) {
     return;
@@ -133,6 +161,10 @@ function convertSchema(entry: SchemaRegistryEntry, includeVersion: boolean): Rec
 
   if (entry.refinements && entry.refinements.length > 0) {
     jsonSchema['x-refinements'] = entry.refinements;
+  }
+
+  if (declaresRequirementTokens(jsonSchema)) {
+    jsonSchema['x-requirement-tokens'] = REQUIREMENT_TOKEN_CATALOGUE;
   }
 
   if (includeVersion) {

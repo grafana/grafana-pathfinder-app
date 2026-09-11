@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Readable } from 'stream';
 
 import { Command } from 'commander';
 
@@ -12,7 +13,7 @@ import { editBlockSpec, runEditBlock } from '../commands/edit-block';
 import { runInspect } from '../commands/inspect';
 import { runRemoveBlock } from '../commands/remove-block';
 import { runSetManifest, setManifestSpec } from '../commands/set-manifest';
-import { runValidate } from '../commands/validate';
+import { runValidate, runValidateCli } from '../commands/validate';
 import { collectCommanderInput, mountCommander, parseCommandInput } from '../contracts';
 import { readPackage } from '../utils/package-io';
 import type { ContentJson } from '../../types/package.types';
@@ -763,6 +764,83 @@ describe('runValidate', () => {
       expect(result.data?.id).toBe('cmd-test-abc123');
       expect(result.data?.blocks).toBe(1);
     }
+  });
+
+  it("reports a file's independent warnings even when the file is invalid", async () => {
+    const dir = tempDir();
+    const file = path.join(dir, 'guide.json');
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        id: 'dup-heading-guide',
+        title: 'Create your first dashboard',
+        blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nWelcome!', unknownField: true }],
+      })
+    );
+
+    const lines: string[] = [];
+    const spy = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      lines.push(args.join(' '));
+    });
+    let outcome;
+    try {
+      outcome = await runValidateCli({
+        files: [file],
+        bundled: false,
+        stdin: false,
+        strict: false,
+        format: 'json',
+        verbose: false,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(outcome.status).toBe('error');
+    const summary = JSON.parse(lines.join('\n'));
+    expect(summary.invalidFiles).toBe(1);
+    expect(JSON.stringify(summary.errors)).toContain('duplicates the guide title');
+    expect(summary.filesWithWarnings).toBe(1);
+    expect(JSON.stringify(summary.warnings)).toContain('unknownField');
+  });
+
+  it('prints independent warnings in stdin text output even when the guide is invalid', async () => {
+    const guide = JSON.stringify({
+      id: 'dup-heading-stdin',
+      title: 'Create your first dashboard',
+      blocks: [{ type: 'markdown', content: '# Create your first dashboard\n\nHi', unknownField: true }],
+    });
+
+    const originalStdin = Object.getOwnPropertyDescriptor(process, 'stdin')!;
+    Object.defineProperty(process, 'stdin', {
+      value: Readable.from([Buffer.from(guide, 'utf-8')]),
+      configurable: true,
+    });
+
+    const lines: string[] = [];
+    const spy = jest.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      lines.push(args.join(' '));
+    });
+    let outcome;
+    try {
+      outcome = await runValidateCli({
+        files: [],
+        bundled: false,
+        stdin: true,
+        strict: false,
+        format: 'text',
+        verbose: false,
+      });
+    } finally {
+      spy.mockRestore();
+      Object.defineProperty(process, 'stdin', originalStdin);
+    }
+
+    const output = lines.join('\n');
+    expect(outcome.status).toBe('error');
+    expect(output).toContain('Invalid guide');
+    expect(output).toContain('duplicates the guide title');
+    expect(output).toContain('unknownField');
   });
 
   it('surfaces structured issues for a broken artifact', () => {

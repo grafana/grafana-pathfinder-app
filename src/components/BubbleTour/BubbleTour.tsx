@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { NavigationManager } from '../../interactive-engine';
+import { NavigationManager, type CommentBoxStepInfo } from '../../interactive-engine';
 import { resolveWithRetry } from '../../lib/dom';
 import { logger } from '../../lib/logging';
 import { safeEventHandler } from '../../utils/safe-event-handler.util';
@@ -66,10 +66,11 @@ export function BubbleTour({ steps, onClose, finalStepLabel }: BubbleTourProps) 
 
     let cancelled = false;
 
-    const stepInfo = {
+    const stepInfo: CommentBoxStepInfo = {
       current: currentStep,
       total: totalSteps,
       completedSteps: Array.from({ length: stepsReached }, (_, i) => i),
+      progress: 'position',
     };
     const onPrevious = currentStep > 0 ? goToPrevious : undefined;
     const isLastStep = currentStep === totalSteps - 1;

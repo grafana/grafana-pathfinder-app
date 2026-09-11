@@ -89,6 +89,12 @@
     "body": "",
     "title": ""
   },
+  "markComplete": {
+    "completed": "",
+    "guideButton": "",
+    "milestoneButton": "",
+    "percentComplete": ""
+  },
   "userProfileBar": {
     "allComplete": "Tüm öğrenme yolları tamamlandı!",
     "allCompleteTooltip": "Tüm öğrenme yollarını tamamladınız — harika!",

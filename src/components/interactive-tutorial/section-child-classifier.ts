@@ -15,7 +15,7 @@ import type { ChildKind } from './step-section-utils';
  * React component types whose presence as a direct child of an interactive
  * section counts as an "interactive" step the user must actually execute.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 3. Adding a new interactive step
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 2 of 4. Adding a new interactive step
  * component type requires updates in 3 places:
  *   1. step-type-registry.ts `STEP_TYPE_SCHEMAS` (parse + orchestration)
  *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES (this set,

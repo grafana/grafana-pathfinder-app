@@ -361,6 +361,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         className={styles.secondaryActionButton}
                         aria-label={t('docsPanel.resetGuide', 'Reset guide')}
                         title={t('docsPanel.resetGuideTooltip', 'Resets all interactive steps')}
+                        data-testid={testIds.docsPanel.resetGuideButton}
                         onClick={async () => {
                           if (progressKey && activeTab) {
                             await handleResetGuide(progressKey, activeTab);
@@ -428,6 +429,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                           metadata: stableContent.metadata,
                           guideTitle: activeTab?.title,
                         })
+                      }
+                      onContinueToNextMilestone={
+                        model.canNavigateNext() ? () => void model.navigateToNextMilestone() : undefined
                       }
                     />
                   </AlignmentPendingContext.Provider>

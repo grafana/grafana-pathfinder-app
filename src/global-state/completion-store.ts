@@ -2,9 +2,10 @@
  * Step completion store.
  *
  * Authoritative in-memory store for per-step completion, backed by
- * the existing `interactiveStepStorage` namespace so localStorage and
- * Grafana-user-storage shapes stay unchanged. Hydration is lazy and
- * scoped to the (contentKey, sectionId) the caller asks about.
+ * `interactiveStepStorage`, which keys every record by content key and
+ * section id in a shape that cannot confuse two guides whose names share
+ * an opening. Hydration is lazy and scoped to the (contentKey, sectionId)
+ * the caller asks about.
  *
  * Every step component subscribes via `useStepCompletion(stepId, sectionId)`
  * and writes via `markStepCompleted` / `resetStep`. Section-managed steps
@@ -29,12 +30,13 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 import {
+  guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
   sectionAcknowledgementStorage,
 } from '../lib/user-storage';
 import { StorageEvents } from '../lib/event-names';
-import { StorageKeys } from '../lib/storage-keys';
+import { StorageKeys, buildVersionedSectionStorageKey, parseVersionedStorageKey } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
 
 import { getContentKey } from './content-key';
@@ -234,8 +236,23 @@ function ensureHydrated(contentKey: string, sectionId: string): void {
     });
 }
 
-function isPreviewContentKey(contentKey: string): boolean {
-  return contentKey.indexOf('devtools') > -1 || contentKey.startsWith('block-editor://preview/');
+/**
+ * A throwaway content key from the block-editor preview or devtools. Callers
+ * that persist guide-level state consult this so a preview never writes
+ * progress the reader would find on a real guide.
+ */
+export function isPreviewContentKey(contentKey: string): boolean {
+  return contentKey.indexOf('devtools') > -1 || isBlockEditorPreviewUrl(contentKey);
+}
+
+/**
+ * A block-editor preview's own content URL. Narrower than
+ * {@link isPreviewContentKey} on purpose: that predicate's `devtools` arm is a
+ * substring test written for a resolved content key, and applied to a URL it
+ * would capture any docs page whose path happens to contain the word.
+ */
+export function isBlockEditorPreviewUrl(value: string): boolean {
+  return value.startsWith('block-editor://preview/');
 }
 
 function persistSection(contentKey: string, sectionId: string): void {
@@ -288,6 +305,13 @@ function persistSection(contentKey: string, sectionId: string): void {
 }
 
 function refreshGuidePercentage(contentKey: string): number | undefined {
+  // The mark is the reader's own statement that the guide is finished, so it
+  // outranks the step and ack counts the branches below derive from — without
+  // this, the next step write would move a marked guide back down.
+  if (guideCompletionMarkStorage.isMarked(contentKey)) {
+    interactiveCompletionStorage.set(contentKey, 100);
+    return 100;
+  }
   const docTotal = getTotalDocumentSteps();
   if (docTotal < 1) {
     // All-passive guide (F-1, #909 follow-up): no interactive steps
@@ -406,6 +430,14 @@ export interface GuideProgress {
 }
 
 export function getGuideProgress(contentKey: string): GuideProgress {
+  // Checked before anything is counted, as in `refreshGuidePercentage`: the
+  // mark outranks every derived count, and this runs as a
+  // `useSyncExternalStore` snapshot on every render of the Mark complete
+  // footer, where `countAllAcknowledged` would be an uncached scan over the
+  // whole of localStorage. Counts of 0 because none were derived.
+  if (guideCompletionMarkStorage.isMarked(contentKey)) {
+    return { completed: 0, total: 0, percentage: 100 };
+  }
   const total = getTotalDocumentSteps();
   const completedRaw = interactiveStepStorage.countAllCompleted(contentKey);
   const completed = completedRaw < 0 ? 0 : completedRaw;
@@ -418,8 +450,11 @@ export function getGuideProgress(contentKey: string): GuideProgress {
     if (sectionCount < 1) {
       return { completed: 0, total: 0, percentage: 0 };
     }
-    const percentage = Math.min(100, Math.round((ackCount / sectionCount) * 100));
-    return { completed: ackCount, total: sectionCount, percentage };
+    return {
+      completed: ackCount,
+      total: sectionCount,
+      percentage: Math.min(100, Math.round((ackCount / sectionCount) * 100)),
+    };
   }
   // Defensive ceiling. `countAllCompleted` reads roster-blind from
   // storage; if a guide ships a v2 schema that renames or removes a
@@ -428,8 +463,7 @@ export function getGuideProgress(contentKey: string): GuideProgress {
   // structural fix is `reconcileSection` which self-heals on first
   // mount; this clamp covers the pre-reconcile window so users never
   // see "167% complete" in a progress chip.
-  const percentage = Math.min(100, Math.round((completed / total) * 100));
-  return { completed, total, percentage };
+  return { completed, total, percentage: Math.min(100, Math.round((completed / total) * 100)) };
 }
 
 /** Subscribe to per-content progress changes. Returns an unsubscribe function. */
@@ -851,31 +885,36 @@ function handleStorageEvent(event: StorageEvent): void {
     evictAllContentCaches();
     return;
   }
+
+  // The mark is authoritative for the guide percentage, so a mark another tab
+  // writes has to reach this tab's subscribers — otherwise the footer shows
+  // 100% beside a still-clickable button, and the click mints a second durable
+  // record. The mark is keyed by content key alone, so a well-formed key parses
+  // with an empty section id; the parser rejects the hybrid backend's timestamp
+  // companion and the superseded shape on its own.
+  if (event.key.startsWith(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX)) {
+    const parsed = parseVersionedStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, event.key);
+    if (parsed && parsed.sectionId === '') {
+      notify(parsed.contentKey);
+    }
+    return;
+  }
+
   if (!event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)) {
     return;
   }
-  // Key shape: `${INTERACTIVE_STEPS_PREFIX}${contentKey}-${sectionId}`.
-  // `contentKey` may contain hyphens (URLs, bundled paths), so naive
-  // prefix matching against a single `contentKey` would misroute when
-  // one active key is a prefix of another (e.g. `bundled:loki-101` and
-  // `bundled:loki-101-extended` both match an event for the longer
-  // key). Disambiguate by reconstructing each known
-  // `(contentKey, sectionId)` pair from `hydratedSections` and
-  // requiring an exact match. Every section with an in-memory cache
-  // passes through `ensureHydrated`, which adds the pair before the
-  // async read fires and keeps it until eviction, so in-flight
-  // hydration (the exact case the `hydrationVersion` guard exists for)
-  // is still represented here. Content keys we've never seen produce
-  // no match; the next render hydrates fresh.
-  const stripped = event.key.slice(StorageKeys.INTERACTIVE_STEPS_PREFIX.length);
+  // Rebuild the key for each (contentKey, sectionId) pair this store knows
+  // about and compare it whole, rather than parsing the event's key.
   for (const hydratedKey of hydratedSections) {
     const separator = hydratedKey.indexOf('::');
     if (separator <= 0) {
       continue;
     }
+
     const contentKey = hydratedKey.slice(0, separator);
     const sectionId = hydratedKey.slice(separator + 2);
-    if (`${contentKey}-${sectionId}` !== stripped) {
+
+    if (event.key !== buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey, sectionId)) {
       continue;
     }
     evictSectionCacheForKey(contentKey, sectionId);

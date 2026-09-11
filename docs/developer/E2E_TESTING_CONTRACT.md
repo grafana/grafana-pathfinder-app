@@ -20,9 +20,58 @@ See: [`docs/developer/interactive-examples/json-guide-format.md`](./interactive-
 
 Used by E2E tests to observe the current state of the interactive system. These are **declarative** - they describe what state the component is in.
 
-Examples: `data-test-step-state`, `data-test-substep-index`, `data-test-action`
+Examples: `data-test-step-kind`, `data-test-step-id`, `data-test-step-state`, `data-test-substep-index`, `data-test-action`
 
 **This document describes the E2E testing contract attributes.**
+
+---
+
+## Tracked step root contract
+
+Each tracked step component exposes these attributes on its stable root:
+
+- `data-test-step-kind`: The registered kind of the tracked step.
+- `data-test-step-id`: The stable test step ID from the guide, or the generated ID for a standalone component.
+
+The registered kind values are:
+
+- `plain`
+- `multistep`
+- `guided`
+- `quiz`
+- `terminal`
+- `terminal-connect`
+- `codeblock`
+- `challenge`
+- `datasource-check`
+
+`getTrackedStepRootAttributes()` is the sole writer of `data-test-step-kind` and `data-test-step-id`. `StepTypeKind` is derived from `STEP_TYPE_KIND_KEYS`.
+
+The registry owns the set of kind values. Each component owns its stable root and stable test step ID.
+
+The plain, multistep, and guided roots keep the existing `data-step-id` runtime attribute. The other tracked roots do not add this runtime attribute.
+
+The guide runner discovers current roots with `[data-test-step-kind][data-test-step-id]`. It records `current` as the contract source.
+
+If current roots are absent, the runner uses the legacy `interactive-step-*` test IDs. It records `legacy` as the contract source.
+
+The legacy selector excludes `interactive-step-completed-*` badges. These badges share the old step test ID prefix.
+
+One `StepDriver` registry owns metadata inspection, product controls, execution, skip behavior, and completion rules. The registry uses `data-test-step-kind` keys.
+
+The runner supports `plain`, `multistep`, and `guided`. It reports the other registered kinds as unsupported coverage and does not operate their controls.
+
+Unsupported roots do not change the outcome when a guide also renders a supported root. The runner reports each unsupported kind and step ID.
+
+A guide with only unsupported roots returns a skipped report before execution. The report includes each unsupported kind and step ID.
+
+This report has `outcome: "skipped"` and no `errorCode`. It keeps the complete coverage inventory and gives an explicit reason.
+
+The CLI shows `Skipped (unsupported steps)` and exits with code 0. The skipped guide blocks guides that declare it as a prerequisite.
+
+Browser actions use only rendered DOM state. Raw guide JSON can identify authored interactive content, but it cannot control browser actions.
+
+These runner changes do not change root ownership, existing test IDs, state values, or product completion behavior.
 
 ---
 
@@ -36,6 +85,8 @@ The guide runner must establish a ready Pathfinder panel before it can load guid
 - **Content open**: the panel listens for `pathfinder-auto-open-docs` on `document` with detail `{ url: string; title: string; source?: string }`.
 
 The Grafana-owned Help button and `grafana.navigation.extensionSidebarDocked` storage entry are recovery hints, not Pathfinder-owned contracts. A docs-panel or sidebar refactor must preserve the four Pathfinder signals above, or update the guide runner, contract tests, and this document in the same change.
+
+Pathfinder-owned window globals are declared in `src/types/window-globals.ts`; add new globals there and access them through `window` directly.
 
 The runner waits for Help only after Pathfinder readiness signals do not prove that the panel is ready. Bootstrap owns this fallback.
 
@@ -57,18 +108,40 @@ Before each later runnable milestone, the runner uses this replacement sequence:
 2. It opens the Pathfinder panel at the prior location.
 3. It activates the exact E2E tab that the previous milestone opened.
 4. It dismisses Pathfinder badge celebrations through bounded DOM event dispatch.
-5. It inspects stored step completion for `bundled:e2e-test`.
-6. If completion exists, it captures step roots and clicks the existing `Reset guide` control.
-7. It waits for `interactive-progress-cleared`.
-8. If completion does not exist, it clears only namespaced residue and the E2E percentage entry.
-9. It captures current step roots and closes the E2E guide tab.
-10. It waits until all captured step roots detach.
-11. After the acknowledged reset, it requires completed step IDs to remain absent during a bounded post-close check.
-12. It removes matching residue that the legacy product reload recreated.
-13. It navigates to the authored starting location only when necessary.
-14. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
-15. It dispatches `pathfinder-auto-open-docs` and records the new tab ID.
-16. It waits for the replacement content before step discovery.
+5. If `window.__pathfinderE2E` exists, it requires version 1 and calls `resetActiveGuide()`.
+6. It requires empty E2E progress storage before tab closure.
+7. If the control is absent, it uses the legacy reset sequence below.
+8. It captures current step roots and closes the E2E guide tab.
+9. It waits until all captured step roots detach.
+10. It navigates to the authored starting location only when necessary.
+11. It writes the next guide JSON to `StorageKeys.E2E_TEST_GUIDE`.
+12. It dispatches `pathfinder-auto-open-docs` and records the new tab ID.
+13. It waits for the replacement content before step discovery.
+
+The plugin exposes `window.__pathfinderE2E` only while the exact `bundled:e2e-test` guide is active.
+
+Version 1 contains one parameterless method: `resetActiveGuide(): Promise<void>`.
+
+The method clears step, collapse, acknowledgment, done, percentage, and in-memory completion state. It emits `interactive-progress-cleared`.
+
+The method does not reload guide content or Grafana. It preserves other guide progress and all non-progress application state.
+
+The plugin removes the control when another tab becomes active or the panel unmounts.
+
+An unsupported version or rejected reset is a fatal transition error. The runner does not use the legacy path in these cases.
+
+If the control is absent, the runner uses this legacy sequence:
+
+1. It inspects stored step completion for `bundled:e2e-test`.
+2. If completion exists, it captures step roots and clicks `Reset guide`.
+3. It waits for `interactive-progress-cleared`.
+4. If completion does not exist, it clears namespaced residue and the E2E percentage entry.
+
+If the prior guide had stored completion, the runner performs a bounded post-close check after either reset path.
+
+Completed step IDs must remain absent.
+
+It then removes matching safe residue.
 
 The runner uses stored completion for the reset decision. It does not use the authored interactive-block count.
 
@@ -78,7 +151,11 @@ If no prior tab opened, the runner clears stored E2E residue before it continues
 
 A page reload can clear the active-tab globals. The recorded tab ID lets the runner reactivate a visible or overflowed E2E tab.
 
-The tab close control uses `docs-panel-tab-close-${tabId}`. This test ID is part of the shared runner contract.
+The tab close control uses `docs-panel-tab-close-${tabId}`. The reset control uses `docs-panel-reset-guide-button`.
+
+Both test IDs are part of the shared runner contract.
+
+For plugin versions that predate this test ID, the legacy reset locator also accepts the exact accessible name `Reset guide`.
 
 The standalone runner and first shared milestone can reload once during panel recovery. A later milestone never reloads during recovery.
 
@@ -92,7 +169,7 @@ The legacy UI reset clears Pathfinder progress and its in-memory completion cach
 
 The legacy product reload can recreate matching storage without completed step IDs. The runner accepts this state only after tab closure.
 
-The runner then removes the safe residue. Stored completion that remains after the bounded check is a fatal transition error.
+Stored completion that remains after the bounded check is a fatal transition error.
 
 Hybrid `__timestamp` keys are not completion evidence. Residue cleanup removes them to match the product reset.
 
@@ -100,7 +177,11 @@ Direct no-completion cleanup does not evict the mounted cache. It is not a gener
 
 The same page, browser context, cookies, session storage, form values, and application memory remain active.
 
-This is a runner-only contract. The installed Pathfinder frontend and `bundled:e2e-test` loader remain unchanged.
+The legacy fallback remains until all supported Pathfinder versions provide reset control version 1.
+
+Fatal transitions use report error code `TRANSITION_FAILED`. The optional `transitionKind` uses the runner's bounded fatal-transition values.
+
+The same code and kind appear on each unrun milestone that the fatal transition stops.
 
 If this handshake changes, update both runner specs, runner contract tests, and this document in one change.
 
@@ -519,8 +600,9 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 ### Location
 
 - `src/components/interactive-tutorial/data-attributes.contract.test.tsx` - React component attributes
+- `src/components/interactive-tutorial/tracked-step-root.contract.test.ts` - Tracked step root attributes and registry parity
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
-- `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, window globals, scroll-restoration)
+- `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, bootstrap signals, scroll-restoration)
 - `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
 - `src/integrations/coda/GcxSetupPanel.contract.test.tsx` - gcx credential test IDs, source references, and the form's visibility states
 
@@ -559,16 +641,18 @@ npm test -- data-attributes.contract  # Run specific contract tests
 
 ## E2E Test Integration
 
-### Selector Patterns
+### Selector patterns
 
-**Recommended**: Use attribute selectors for stable queries
+Use attribute selectors for stable queries.
+For tracked roots, use the [tracked step root contract](#tracked-step-root-contract).
 
 ```typescript
 // ✅ Good - semantic state selector
 await page.waitForSelector('[data-test-step-state="completed"]');
-
-// ✅ Good - combine with step ID for specificity
-await page.waitForSelector('[data-step-id="create-dashboard"][data-test-step-state="idle"]');
+// ✅ Good - combine the tracked kind, test step ID, and state
+await page.waitForSelector(
+  '[data-test-step-kind="guided"][data-test-step-id="create-dashboard"][data-test-step-state="idle"]'
+);
 
 // ❌ Bad - fragile to UI changes
 await page.waitForSelector('.interactive-step.completed');

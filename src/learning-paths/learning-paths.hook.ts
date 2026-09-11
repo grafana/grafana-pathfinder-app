@@ -6,7 +6,9 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { config } from '@grafana/runtime';
+import { AppEvents } from '@grafana/data';
+import { t } from '@grafana/i18n';
+import { config, getAppEvents } from '@grafana/runtime';
 
 import type {
   LearningPath,
@@ -26,8 +28,10 @@ import {
   interactiveCompletionStorage,
   journeyCompletionStorage,
   milestoneCompletionStorage,
+  guideCompletionMarkStorage,
 } from '../lib/user-storage';
 import { evictContentCache } from '../global-state/completion-store';
+import { pathMemberContentKeys, pathMemberIdSchemeKeys } from '../global-state/path-member-join';
 import { BADGES } from './badges';
 import { getStreakInfo } from './streak-tracker';
 import { getPathsData } from './paths-data';
@@ -74,6 +78,39 @@ function calculatePathProgress(path: LearningPath, completedGuides: string[]): n
 
   const completedCount = path.guides.filter((g) => completedGuides.includes(g)).length;
   return Math.round((completedCount / path.guides.length) * 100);
+}
+
+/**
+ * Clears interactive progress for every content key a path reads under,
+ * completing the whole sweep before reporting.
+ *
+ * A per-key clear rejects when a record survives the delete. Failing the whole
+ * sweep on the first rejection would leave the rest of the path untouched with
+ * nothing said about it, so every key is attempted and the reader is told once
+ * at the end if any of them did not take.
+ */
+async function clearInteractiveProgressForContentKeys(contentKeys: string[]): Promise<void> {
+  const results = await Promise.allSettled(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+  const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+  const firstFailure = failures[0];
+  if (!firstFailure) {
+    return;
+  }
+  logger.error('[LearningPaths] Failed to reset interactive progress', {
+    failed: failures.length,
+    total: contentKeys.length,
+    error: firstFailure.reason,
+  });
+  getAppEvents().publish({
+    type: AppEvents.alertError.name,
+    payload: [
+      t('myLearning.resetPathErrorTitle', 'Reset incomplete'),
+      t(
+        'myLearning.resetPathErrorMessage',
+        "Some of this path's progress could not be cleared. Reload the page and try again."
+      ),
+    ],
+  });
 }
 
 // ============================================================================
@@ -428,29 +465,40 @@ export function useLearningPaths(): UseLearningPathsReturn {
         const milestoneKeys = Object.keys(completions).filter((key) => key.startsWith(normalizedUrl));
         const journeyKeys = [path.url, ...Object.keys(journeyCompletions).filter((k) => k.startsWith(normalizedUrl))];
 
-        await Promise.all(milestoneKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        await clearInteractiveProgressForContentKeys(milestoneKeys);
         await interactiveCompletionStorage.clearMany(milestoneKeys);
         await journeyCompletionStorage.clearMany(journeyKeys);
+        // Prefix sweep, not `milestoneKeys`: a marked milestone the reader
+        // never stepped through has no interactive completion record to
+        // recover its key from.
+        await guideCompletionMarkStorage.clearAllWithPrefix(normalizedUrl);
 
         milestoneKeys.forEach((key) => evictContentCache(key));
       } else {
         // No base URL: either a static bundled path (`bundled:<id>`) or an App
         // Platform path whose members are `backend-guide:<id>`. We can't tell
-        // them apart from `path.guides` alone, so clear both content schemes.
-        const pathKeys = [`bundled:${path.id}`, `backend-guide:${path.id}`];
+        // them apart from `path.guides` alone, so clear every scheme the join
+        // reads under. Milestone and journey records are keyed by the raw
+        // launch URL, the interactive namespaces by its sanitized content key.
+        const rawPathSchemeKeys = pathMemberIdSchemeKeys(path.id);
+        const rawSchemeKeys = [
+          ...rawPathSchemeKeys,
+          ...path.guides.flatMap((guideId) => pathMemberIdSchemeKeys(guideId)),
+        ];
         const contentKeys = [
-          ...pathKeys,
-          ...path.guides.flatMap((guideId) => [`bundled:${guideId}`, `backend-guide:${guideId}`]),
+          ...pathMemberContentKeys({ id: path.id }),
+          ...path.guides.flatMap((guideId) => pathMemberContentKeys({ id: guideId })),
         ];
 
-        for (const pathKey of pathKeys) {
+        for (const pathKey of rawPathSchemeKeys) {
           await milestoneCompletionStorage.clear(pathKey);
         }
 
-        await Promise.all(contentKeys.map((key) => interactiveStepStorage.clearAllForContent(key)));
+        await clearInteractiveProgressForContentKeys(contentKeys);
         // Batched, not one clear per key: each helper read-modify-writes a single shared record.
         await interactiveCompletionStorage.clearMany(contentKeys);
-        await journeyCompletionStorage.clearMany(contentKeys);
+        await journeyCompletionStorage.clearMany(rawSchemeKeys);
+        await guideCompletionMarkStorage.clearMany(contentKeys);
 
         contentKeys.forEach((key) => evictContentCache(key));
 

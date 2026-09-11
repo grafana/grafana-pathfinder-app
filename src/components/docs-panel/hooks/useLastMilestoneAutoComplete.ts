@@ -2,8 +2,9 @@
  * Auto-completes the final milestone of a learning journey when it has no
  * interactive steps to drive completion from clicks.
  *
- * The last milestone has no "Next" button, so without this auto-complete
- * a journey can never reach 100%. We wait 500 ms for the DOM to settle,
+ * The last milestone has no "Next" button, so without this auto-complete a
+ * journey completes only when the reader marks it complete by hand. We wait
+ * 500 ms for the DOM to settle,
  * scan for `[data-step-id]` elements, and if none are present, mark the
  * milestone done via the existing `markMilestoneDone` side effect.
  *

@@ -87,20 +87,21 @@ There is no token/similarity heuristic — a correct fix often shares no tokens 
 
 ## Module map
 
-| File                                                            | Role                                                            |
-| --------------------------------------------------------------- | --------------------------------------------------------------- |
-| `integrations/assistant-integration/ai-fix-event.ts`            | Event name + `AiFixRequestDetail` contract                      |
-| `integrations/assistant-integration/use-ai-fix-enabled.ts`      | `useAiFixEnabled()` dual gate                                   |
-| `integrations/assistant-integration/ai-fix-patch.schema.ts`     | Patch wire-format schema + `SafeSelectorSchema`                 |
-| `integrations/assistant-integration/useAiFixGeneration.hook.ts` | Assistant call, prompt building, sentinel + schema parsing      |
-| `integrations/assistant-integration/ai-fix-dom-context.ts`      | `collectDomContext` + DOM candidate scoring helpers             |
-| `integrations/assistant-integration/ai-fix-step-content.ts`     | `extractStepContent` (failing step's instruction text)          |
-| `integrations/assistant-integration/ai-fix-step-id.ts`          | `materializeStepIds` / `materializeStepIdsInJson` canonical ids |
-| `integrations/assistant-integration/ai-fix-confidence.ts`       | `evaluatePatchConfidence` live-DOM gate                         |
-| `integrations/assistant-integration/apply-ai-fix-patch.ts`      | `applyPatchToGuide` (validate → mutate → re-validate)           |
-| `components/docs-panel/AiFixOrchestrator.tsx`                   | Listener; orchestrates generate → gate → apply; lazy-mounted    |
-| `components/interactive-tutorial/ai-fix-button.tsx`             | Shared `<AiFixButton>` + `dispatchAiFixRequest`                 |
-| `requirements-manager/step-checker.hook.ts`                     | `requiresDomElement` signal + `refTarget` recheck               |
+| File                                                            | Role                                                                                                      |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `integrations/assistant-integration/ai-fix-event.ts`            | Event name + `AiFixRequestDetail` contract                                                                |
+| `integrations/assistant-integration/use-ai-fix-enabled.ts`      | `useAiFixEnabled()` dual gate                                                                             |
+| `integrations/assistant-integration/ai-fix-patch.schema.ts`     | Patch wire-format schema + `SafeSelectorSchema`                                                           |
+| `integrations/assistant-integration/useAiFixGeneration.hook.ts` | Assistant call, prompt building, sentinel + schema parsing                                                |
+| `integrations/assistant-integration/ai-fix-dom-context.ts`      | `collectDomContext` + DOM candidate scoring helpers                                                       |
+| `integrations/assistant-integration/ai-fix-step-content.ts`     | `extractStepContent` (failing step's instruction text)                                                    |
+| `integrations/assistant-integration/ai-fix-step-id.ts`          | `materializeStepIds` / `materializeStepIdsInJson` — the walk that writes canonical ids onto a guide clone |
+| `global-state/guide-step-id-resolver.ts`                        | `resolveStepIdForBlock` — the canonical id itself, shared with the completion counter                     |
+| `integrations/assistant-integration/ai-fix-confidence.ts`       | `evaluatePatchConfidence` live-DOM gate                                                                   |
+| `integrations/assistant-integration/apply-ai-fix-patch.ts`      | `applyPatchToGuide` (validate → mutate → re-validate)                                                     |
+| `components/docs-panel/AiFixOrchestrator.tsx`                   | Listener; orchestrates generate → gate → apply; lazy-mounted                                              |
+| `components/interactive-tutorial/ai-fix-button.tsx`             | Shared `<AiFixButton>` + `dispatchAiFixRequest`                                                           |
+| `requirements-manager/step-checker.hook.ts`                     | `requiresDomElement` signal + `refTarget` recheck                                                         |
 
 ## Testing
 

@@ -35,8 +35,8 @@ export const GUIDE_STATS_VERSION = 1;
  * - `completableBlockCount` — counted blocks carrying a completion affordance.
  * - `finalCompletablePosition` — position of the last completable block, 0 when
  *   there is none. Equal to `blockCount` when the final counted block is
- *   completable, which is the signal that the guide needs no "Mark as complete"
- *   button at its foot.
+ *   completable. An authoring signal only; the foot-of-guide "Mark as complete"
+ *   button is unconditional, so this is not a rendering predicate.
  */
 export type { GuideStatsSummary };
 
@@ -67,9 +67,12 @@ export function summarizeGuideBlocks(blocks: readonly CountableBlock[] | undefin
  *
  * Only totals roll up: per-block positions stay per guide, on the
  * `computeGuideBlockIndex` of each part. A consumer recording a percentage
- * against a rolled-up `blockCount` therefore needs its numerator from
- * somewhere else — see issue #1666, which carries the tier-0 schema and the
- * first consumer.
+ * against a rolled-up `blockCount` would need its numerator from somewhere
+ * else, which is a reason not to rather than a gap to fill: a path's
+ * percentage is the mean of its members' percentages, via
+ * `meanOfMemberPercentages` in `rollup.ts`. This figure is for reporting and
+ * authoring — how big is this path, how much of it is instrumented — and
+ * never a completion denominator.
  *
  * Callers must summarize every milestone before its parent; the ordering is
  * load-bearing, not incidental.

@@ -3,7 +3,12 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { buildReviewPlan, extractConcernContext, validateConcernRegistry } from './concern-context.mjs';
+import {
+  buildReviewPlan,
+  extractConcernContext,
+  generalWorkerLimit,
+  validateConcernRegistry,
+} from './concern-context.mjs';
 
 const concernsPath = fileURLToPath(new URL('../../../../docs/design/CONCERNS.md', import.meta.url));
 const concernDetailsPath = fileURLToPath(new URL('../../../../docs/design/CONCERN_DETAILS.md', import.meta.url));
@@ -62,6 +67,30 @@ test('includes the concern anchor and named invariants', () => {
   assert.equal(context.contract_anchor.evidence, '#1411 → #1700');
   assert.equal(context.named_invariants.length, 7);
   assert.equal(context.named_invariants[0].name, 'payload-boundary-normalization');
+});
+
+test('records the docs retrieval and rendering ownership chain', () => {
+  const context = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'docs-retrieval-and-rendering',
+  });
+
+  assert.equal(context.contract_anchor.evidence, '#894 → #1716');
+  assert.match(context.contract_anchor.contract, /fetchContent/);
+  assert.match(context.contract_anchor.contract, /ContentRenderer/);
+  assert.match(context.contract_anchor.contract, /shouldUseDocsLoader/);
+  assert.match(context.contract_anchor.contract, /loadDocsTabContentResult/);
+  assert.match(context.contract_anchor.contract, /loadTabContent/);
+  assert.match(context.contract_anchor.contract, /resolveDocsLoadAlignment/);
+  assert.match(context.contract_anchor.contract, /#1692 established manifest precedence/);
+  assert.match(context.contract_anchor.contract, /#1712 made `package-info-from-url\.ts`/);
+  assert.match(
+    context.contract_anchor.contract,
+    /plain guides prefer `spec\.id`, while `path` and `journey` keep the immutable resource name \(`packageId`\)/
+  );
+  assert.match(context.contract_anchor.contract, /`packageId` remains the fallback when no `spec\.id` exists/);
+  assert.match(context.contract_anchor.contract, /legacy `loadTabContent` arm is a known accepted residual/);
 });
 
 test('records the review orchestration contract under ai-subsystem', () => {
@@ -220,6 +249,7 @@ test('emits every completion-records doc as one loadable path', () => {
     'docs/design/BACKEND_PROXY_PATTERN.md',
     '.cursor/rules/systemPatterns.mdc (tier-1 lib/ guide-stats bullet)',
     'docs/developer/STEP_MODEL.md',
+    'docs/design/COMPLETION-MODEL.md',
   ]);
   for (const doc of context.load_docs) {
     assert.doesNotMatch(doc, /`/);
@@ -278,6 +308,73 @@ test('incremental routing uses one general worker, one conditional specialist, a
   assert.deepEqual(plan.root.concern_ids, ['testing-and-verification']);
   assert.equal(plan.coverage['correctness-and-reliability'], 'general-1');
   assert.equal(plan.coverage['testing-and-verification'], 'root');
+});
+
+test('worker slots go to subsystem depth before always-on breadth', () => {
+  const packet = (id, category) => ({
+    id,
+    category,
+    context: [{ path: `src/${id}.ts`, excerpt: 'x'.repeat(20_000) }],
+  });
+  const plan = buildReviewPlan({
+    mode: 'full',
+    concerns: [
+      packet('security', 'always-on'),
+      packet('correctness-and-reliability', 'always-on'),
+      packet('interactive-engine', 'subsystem'),
+      packet('performance-and-bundle', 'cross-cutting'),
+    ],
+  });
+
+  assert.equal(plan.coverage['interactive-engine'], 'general-1');
+  assert.equal(plan.coverage['performance-and-bundle'], 'general-2');
+  assert.equal(plan.coverage['security'], 'root');
+  assert.equal(plan.coverage['correctness-and-reliability'], 'root');
+});
+
+test('an unknown routed category is rejected instead of silently deprioritized', () => {
+  assert.throws(
+    () =>
+      buildReviewPlan({
+        mode: 'full',
+        concerns: [{ id: 'security', category: 'subsytem', context: [{ path: 'src/a.ts', excerpt: 'x' }] }],
+      }),
+    /unknown category subsytem/
+  );
+});
+
+test('inherited property names are rejected as an unknown category', () => {
+  for (const category of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+    assert.throws(
+      () =>
+        buildReviewPlan({
+          mode: 'full',
+          concerns: [{ id: 'security', category, context: [{ path: 'src/a.ts', excerpt: 'x' }] }],
+        }),
+      new RegExp(`unknown category ${category}`)
+    );
+  }
+});
+
+test('general worker slots scale with routed breadth and stay flat for narrow reviews', () => {
+  const packet = (index) => ({
+    id: `concern-${index}`,
+    category: 'subsystem',
+    context: [{ path: `src/${index}.ts`, excerpt: 'x'.repeat(20_000) }],
+  });
+  const plan = (count) =>
+    buildReviewPlan({ mode: 'full', concerns: Array.from({ length: count }, (_, i) => packet(i)) });
+
+  assert.equal(generalWorkerLimit(4), 2);
+  assert.equal(generalWorkerLimit(16), 6);
+  assert.equal(generalWorkerLimit(60), 6);
+  assert.equal(plan(4).workers.length, 2);
+  assert.equal(plan(4).root.concern_ids.length, 2);
+  assert.equal(plan(16).workers.length, 6);
+  assert.equal(plan(16).root.concern_ids.length, 10);
+  assert.ok(
+    plan(16).workers.every(({ files, context_characters }) => files.length <= 8 && context_characters <= 30_000)
+  );
 });
 
 test('a packet above eight files or 30,000 characters stays with the root synthesizer', () => {

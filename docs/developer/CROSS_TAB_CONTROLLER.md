@@ -155,7 +155,12 @@ Defense in depth on top of authentication:
 - **Same-build / same-origin / one-session assumption.** Controller and live
   tabs are the same plugin build in the same browser profile and session; there
   is no protocol-version negotiation and cross-version compatibility is not a
-  goal.
+  goal. Requirement traffic is a concrete example: `check-requirements` can
+  carry array-shaped guide `requirements`, and `fix-requirement` carries the
+  same `ConditionInput` shape. Guide `objectives` are evaluated in the
+  controller tab and never cross this wire. An older validator that accepts
+  only strings can drop a command; the timeout behavior differs by message kind
+  as described below.
 
 ### Known limitations / future work
 
@@ -260,10 +265,13 @@ Controller (useStepChecker, controller mode)        Live tab (installLiveTabExec
   `requestRequirementCheck` posts regardless of connection state (the channel
   value omits `connected`), so the check fires the moment a step renders;
   `connected` only drives the presence badge.
-- If no live tab answers within the timeout, the round-tripped half falls back to
-  stripping the tab-local tokens and evaluating the rest locally —
-  session/permission requirements still gate, and a disconnected controller never
-  hangs. The guide-scoped half is unaffected: it never depended on the live tab.
+- If no live tab answers within the 4-second request timeout, a
+  `check-requirements` request falls back to stripping the tab-local tokens and
+  evaluating the rest locally — session/permission requirements still gate, and
+  a disconnected controller never hangs. A `fix-requirement` request instead
+  returns `No live tab responded`, is not retried locally, and leaves the step
+  blocked while logging a warning. The guide-scoped half is unaffected: it
+  never depended on the live tab.
 
 ## Presence
 

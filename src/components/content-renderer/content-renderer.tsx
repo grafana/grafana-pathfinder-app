@@ -61,7 +61,10 @@ import { substituteVariables } from '../../utils/variable-substitution';
 import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
+import { resolveGuideContentKey } from '../../global-state/guide-content-key';
+import { StorageEvents } from '../../lib/event-names';
 import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
+import { MarkCompleteFooter } from '../mark-complete';
 import { resolveFullScreenFallbackLocation } from './full-screen-fallback-location';
 
 /**
@@ -108,6 +111,13 @@ interface ContentRendererProps {
   content: RawContent;
   onContentReady?: () => void;
   onGuideComplete?: () => void;
+  /**
+   * Advance to the next milestone, for the milestone form of the Mark complete
+   * control. Surfaces that cannot navigate — or that are on the last milestone
+   * — leave it unset, which downgrades the label to "Mark complete"; the
+   * control itself is never conditional.
+   */
+  onContinueToNextMilestone?: () => void;
   className?: string;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -126,6 +136,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   content,
   onContentReady,
   onGuideComplete,
+  onContinueToNextMilestone,
   className,
   containerRef,
 }: ContentRendererProps) {
@@ -150,10 +161,59 @@ export const ContentRenderer = React.memo(function ContentRenderer({
     onGuideCompleteRef.current = onGuideComplete;
   }, [onGuideComplete]);
 
+  const markCompleteRearmedRef = useRef(false);
+
+  // The one gate every completion route passes through — the automatic
+  // section/step routes below and the Mark complete control at the foot of the
+  // content alike — so a guide records exactly one completion however it was
+  // finished, and a click followed by an auto-complete does not record twice.
+  // Emitting also spends any pending re-arm: whichever route gets here first
+  // is the one completion, so a later click cannot re-open a gate that has
+  // already closed on this guide.
+  const triggerGuideComplete = useCallback(() => {
+    if (guideCompleteCalledRef.current) {
+      return;
+    }
+    guideCompleteCalledRef.current = true;
+    markCompleteRearmedRef.current = false;
+    onGuideCompleteRef.current?.();
+  }, []);
+
+  // The Mark complete route's own entry to that gate. A reset arms this route
+  // and only this route, so the reader's next click records once; the gate
+  // closes again inside `triggerGuideComplete`, leaving the automatic routes
+  // exactly the state they would have seen without the reset.
+  const triggerGuideCompleteFromMark = useCallback(() => {
+    if (markCompleteRearmedRef.current) {
+      markCompleteRearmedRef.current = false;
+      guideCompleteCalledRef.current = false;
+    }
+    triggerGuideComplete();
+  }, [triggerGuideComplete]);
+
   // Reset tracking state when content changes (new guide = fresh start)
   useEffect(() => {
     guideCompleteCalledRef.current = false;
     completedSectionsRef.current = new Set();
+    markCompleteRearmedRef.current = false;
+  }, [content?.url]);
+
+  // A reset clears a guide's progress without remounting this renderer, so a
+  // re-mark afterwards would otherwise write progress and record no completion.
+  // This arms the Mark complete route only: the automatic routes read the
+  // shared gate at their own invocation time and a reset must not change what
+  // they see, so nothing here touches the gate or the tracked sections.
+  useEffect(() => {
+    const handleCleared = (event: Event) => {
+      const clearedKey = (event as CustomEvent).detail?.contentKey;
+      if (clearedKey === '*' || clearedKey === resolveGuideContentKey(content?.url)) {
+        markCompleteRearmedRef.current = true;
+      }
+    };
+    window.addEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    return () => {
+      window.removeEventListener(StorageEvents.InteractiveProgressCleared, handleCleared);
+    };
   }, [content?.url]);
 
   // Ref to track the current content URL - updated synchronously before effects run
@@ -207,8 +267,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         }
         const totalSections = countSections();
         if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current?.();
+          triggerGuideComplete();
         }
       }, 100); // Small delay to ensure DOM is stable
     };
@@ -233,10 +292,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
 
       // Check if all sections complete - trigger immediately if count is accurate
       if (totalSections > 0 && completedSectionsRef.current.size >= totalSections) {
-        if (!guideCompleteCalledRef.current && onGuideCompleteRef.current) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current();
-        }
+        triggerGuideComplete();
       } else {
         // If count seems off, use debounced check as fallback
         debouncedCompletionCheck();
@@ -271,8 +327,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
       const allComplete = Array.from(sections).every((section) => section.classList.contains('completed'));
 
       if (allComplete) {
-        guideCompleteCalledRef.current = true;
-        onGuideCompleteRef.current?.();
+        triggerGuideComplete();
       }
     };
 
@@ -303,8 +358,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         const eventKeyNorm = detail.contentKey.replace(/\/+$/, '');
         const tabUrlNorm = currentTabUrl.replace(/\/+$/, '');
         if (eventKeyNorm === tabUrlNorm) {
-          guideCompleteCalledRef.current = true;
-          onGuideCompleteRef.current?.();
+          triggerGuideComplete();
         }
       }
     };
@@ -338,7 +392,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         clearTimeout(debounceTimer);
       }
     };
-  }, [activeRef, content?.url]); // Removed onGuideComplete - using ref instead
+  }, [activeRef, content?.url, triggerGuideComplete]); // Removed onGuideComplete - using ref instead
 
   // Expose current content key globally for interactive persistence.
   // MUST be useLayoutEffect so the global is set before children's useEffect
@@ -412,8 +466,9 @@ export const ContentRenderer = React.memo(function ContentRenderer({
   const fullScreenFallbackLocation =
     resolveFullScreenFallbackLocation(getCurrentMilestone(content)?.startingLocation) ??
     resolveFullScreenFallbackLocation(typeof courseStartingLocation === 'string' ? courseStartingLocation : undefined);
+  const isCoverPage = isJourneyCoverPage(content);
   const beforeContent =
-    isJourneyCoverPage(content) && journey && journey.milestones.length > 0 ? (
+    isCoverPage && journey && journey.milestones.length > 0 ? (
       <LearningPathTableOfContents
         milestones={journey.milestones}
         baseUrl={journey.baseUrl}
@@ -422,6 +477,19 @@ export const ContentRenderer = React.memo(function ContentRenderer({
         description={pathDescription}
       />
     ) : null;
+
+  // Unconditional for every guide and every milestone (COMPLETION-MODEL.md,
+  // decision 2). A path's cover page is the one thing it is absent from, and
+  // that is not the deleted predicate: a table of contents is neither a guide
+  // nor a milestone, and marking it complete would record a guide nobody read.
+  const afterContent = isCoverPage ? null : (
+    <MarkCompleteFooter
+      context={content.type === 'learning-journey' && journey ? 'milestone' : 'guide'}
+      contentUrl={content.url}
+      onMarkComplete={triggerGuideCompleteFromMark}
+      onContinue={onContinueToNextMilestone}
+    />
+  );
 
   return (
     <GuideResponseProvider guideId={guideId}>
@@ -438,6 +506,7 @@ export const ContentRenderer = React.memo(function ContentRenderer({
           selectionState={selectionState}
           documentContext={documentContext}
           beforeContent={beforeContent}
+          afterContent={afterContent}
           fullScreenFallbackLocation={fullScreenFallbackLocation}
         />
       </GuideRequirementsProvider>
@@ -458,6 +527,7 @@ interface ContentWithVariablesProps {
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
+  afterContent?: React.ReactNode;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
 }
@@ -474,6 +544,7 @@ function ContentWithVariables({
   selectionState,
   documentContext,
   beforeContent,
+  afterContent,
   fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
@@ -559,6 +630,7 @@ function ContentWithVariables({
         responses={responses}
         fullScreenFallbackLocation={fullScreenFallbackLocation}
       />
+      {afterContent}
       {selectionState.isValid && (
         <AssistantSelectionPopover
           selectedText={selectionState.selectedText}
@@ -960,11 +1032,12 @@ interface StandaloneStepPosition {
  * `src/components/interactive-tutorial/step-type-registry.ts`.
  *
  * Note: input-block is intentionally excluded — it doesn't track completion
- * and would inflate the total step count, making 100% completion impossible.
+ * and would inflate the total step count, putting a step-derived 100% out of
+ * reach.
  * An `input` block emits `datasource-check-step` instead when its author asked
  * a failing data check to block, and only that form is tracked here.
  *
- * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 3. Adding a new interactive step
+ * ⚠ TRACKED STEP TYPE REGISTRY — site 1 of 4. Adding a new interactive step
  * component type requires updates in 3 places:
  *   1. step-type-registry.ts STEP_TYPE_SCHEMAS (parse + orchestration)
  *   2. section-child-classifier.ts INTERACTIVE_STEP_COMPONENT_TYPES

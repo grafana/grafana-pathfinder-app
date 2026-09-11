@@ -11,7 +11,7 @@ import { tmpdir } from 'os';
 import { ExitCode } from './exit-codes';
 import { E2E_ENV, encodeEnvFlag, parseE2EChainInput, type E2EChainPackageMetadata } from './e2e-runner-contract';
 import type { LoadedGuide } from '../utils/file-loader';
-import type { E2EErrorCode } from './schemas/e2e-report.schema';
+import type { E2EErrorCode, E2ETransitionKind } from './schemas/e2e-report.schema';
 import { contentDigest, createMinimalResultsData, type TestResultsData } from './e2e-reporter';
 import { resolveStartingPath } from './starting-location';
 
@@ -253,7 +253,8 @@ function missingChainResult(
   targetUrl: string,
   errorCode: E2EErrorCode,
   message: string,
-  abortReason?: AbortReason
+  abortReason?: AbortReason,
+  transitionKind?: E2ETransitionKind
 ): TestResultsData {
   const parsed = JSON.parse(guide.guide.content) as { title?: unknown };
   return createMinimalResultsData({
@@ -266,6 +267,7 @@ function missingChainResult(
     },
     outcome: abortReason === 'AUTH_EXPIRED' ? 'aborted' : 'infrastructure_error',
     errorCode,
+    ...(transitionKind ? { transitionKind } : {}),
     errorMessage: message,
     ...(abortReason ? { abortReason } : {}),
   });
@@ -281,12 +283,25 @@ export function processPlaywrightChainResults(
   const resultsData = parsePartialChainResults(filePaths.resultsFilePath, guides);
   const abortValue = readJsonIfExists<unknown>(filePaths.abortFilePath);
   const abortContent = isAbortFileContent(abortValue) ? abortValue : undefined;
-  const errorCode: E2EErrorCode = abortContent?.abortReason === 'AUTH_EXPIRED' ? 'AUTH_EXPIRED' : 'REPORT_MISSING';
+  const lastPartialResult = resultsData[resultsData.length - 1];
+  const fatalTransition = lastPartialResult?.errorCode === 'TRANSITION_FAILED';
+  const errorCode: E2EErrorCode =
+    abortContent?.abortReason === 'AUTH_EXPIRED'
+      ? 'AUTH_EXPIRED'
+      : fatalTransition
+        ? 'TRANSITION_FAILED'
+        : 'REPORT_MISSING';
+  const transitionKind = errorCode === 'TRANSITION_FAILED' ? lastPartialResult?.transitionKind : undefined;
   const errorMessage =
-    abortContent?.message ?? 'The shared Playwright process ended before this milestone produced a result report.';
+    abortContent?.message ??
+    (fatalTransition
+      ? 'A fatal shared-browser transition error stopped this milestone before it started.'
+      : 'The shared Playwright process ended before this milestone produced a result report.');
 
   for (const guide of guides.slice(resultsData.length)) {
-    resultsData.push(missingChainResult(guide, options.targetUrl, errorCode, errorMessage, abortContent?.abortReason));
+    resultsData.push(
+      missingChainResult(guide, options.targetUrl, errorCode, errorMessage, abortContent?.abortReason, transitionKind)
+    );
   }
 
   const allResultsPassed =

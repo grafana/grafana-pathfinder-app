@@ -17,6 +17,7 @@ import {
   LearningJourneyMilestoneToolbar,
   type LearningJourneyMilestoneToolbarProps,
 } from './LearningJourneyMilestoneToolbar';
+import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
@@ -254,6 +255,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
     it('shows Reset guide when interactive progress exists', () => {
       renderToolbar({ hasInteractiveProgress: true, progressKey: 'progress-1' });
       expect(screen.getByLabelText('Reset guide')).toBeInTheDocument();
+      expect(screen.getAllByTestId(testIds.docsPanel.resetGuideButton)).toHaveLength(1);
     });
 
     it('hides Reset guide when there is no interactive progress and the tab is not interactive', () => {

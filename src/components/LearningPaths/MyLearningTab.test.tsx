@@ -18,7 +18,11 @@ import { prepareGuideLaunch, type PrepareGuideLaunchResult } from '../docs-panel
 import { pushFaroLog } from '../../lib/telemetry/bridge';
 import { reportAppInteraction } from '../../lib/analytics';
 import { testIds } from '../../constants/testIds';
-import { learningProgressStorage, milestoneCompletionStorage } from '../../lib/user-storage';
+import {
+  guideCompletionMarkStorage,
+  learningProgressStorage,
+  milestoneCompletionStorage,
+} from '../../lib/user-storage';
 import { discardQueuedCompletionWrites } from '../../completion-records';
 
 jest.mock('../docs-panel/utils/prepare-guide-launch', () => ({
@@ -119,6 +123,7 @@ jest.mock('../../lib/user-storage', () => ({
   interactiveStepStorage: { clearAll: jest.fn() },
   interactiveCompletionStorage: { clearAll: jest.fn() },
   milestoneCompletionStorage: { clearAll: jest.fn() },
+  guideCompletionMarkStorage: { clearAllWithPrefix: jest.fn() },
 }));
 jest.mock('../../global-state/completion-store', () => ({ evictAllContentCaches: jest.fn() }));
 
@@ -853,6 +858,16 @@ describe('MyLearningTab — reset all learning progress', () => {
     fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
 
     await waitFor(() => expect(milestoneCompletionStorage.clearAll).toHaveBeenCalledTimes(1));
+    confirmSpy.mockRestore();
+  });
+
+  it('drops every guide completion mark, so a marked guide comes back unmarked', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<MyLearningTab onOpenGuide={jest.fn()} />);
+    fireEvent.click(screen.getByTestId(testIds.learningPaths.resetProgressButton));
+
+    await waitFor(() => expect(guideCompletionMarkStorage.clearAllWithPrefix).toHaveBeenCalledTimes(1));
     confirmSpy.mockRestore();
   });
 

@@ -24,9 +24,19 @@ Stable IDs survive position and content edits. They do NOT survive a block-type 
 
 The hash inputs are documented at `src/global-state/step-id.ts` (`deriveStepId(...)`): `sectionId`, zero-based `index`, `action`, `refTarget`, and an optional `variant` — notably no `type`. Audit that file to confirm which authoring edits do and do not orphan prior completion state in `interactiveStepStorage`.
 
+Two walks outside the parser re-derive the same id straight from guide JSON — the AI-fix apply path and the completion counter in `src/lib/guide-stats` — through `resolveStepIdForBlock` in `src/global-state/guide-step-id-resolver.ts`. It must agree with the parser exactly, or a step resolves under a key nothing dispatches; `src/lib/guide-stats/progress.parity.test.ts` pins it over every block type that can emit completion evidence.
+
 ## Completion store — canonical persistence
 
-Step completion lives in `src/global-state/completion-store.ts`. The store is the canonical persistence layer — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store backs the existing `interactiveStepStorage` namespace so localStorage shape is preserved.
+Step completion lives in `src/global-state/completion-store.ts`. The store is the canonical persistence layer — `SectionState` no longer carries a parallel `completed` set, and step components no longer maintain a local `isLocallyCompleted` flag. The store uses `interactiveStepStorage`, whose keys are built by `src/lib/storage/progress-keys.ts`.
+
+### Progress key shape
+
+The four per-section namespaces — interactive steps, section collapse, section acknowledgement, section done — all key records as `{prefix}{len(contentKey)}:{contentKey}:{sectionId}`. The character count in front of the content key marks the boundary, which matters because content keys contain hyphens (`bundled:welcome-to-grafana`) or are whole tab URLs: the shape this replaced joined content key and section id with a hyphen and marked neither end, so a scan for `bundled:welcome-to-grafana` also matched every record belonging to `bundled:welcome-to-grafana-cloud` (#1846).
+
+Records in the superseded shape are not read. Which guide one belongs to cannot be recovered — the information was never stored — so they are discarded rather than migrated, in one pass per page load (`sweepDiscardedProgressRecords`, called from `useUserStorage`). The same pass removes the `CONTENT_PROGRESS_V2_PREFIX` markers the interim scheme used. What a reader loses is their position inside a guide they started and did not finish; completed guides, badges and the streak live under `LEARNING_PROGRESS`, finished milestones under `MILESTONE_COMPLETION`, and durable completions in the completion-record queue, none of which the sweep can reach.
+
+`clearAllForContent` (the per-guide reset) writes no record of its own — the interim scheme completed by writing a per-content marker, and a refused write left the old progress live and still read. It deletes, then re-reads. The removal path swallows its own failures, so a removal that did not take is invisible to the caller; re-reading is what lets a reader be told the guide is clear only once it is. Any record still present at that point makes the reset throw rather than appear to work, whatever left it there.
 
 The step-checker FSM (`src/requirements-manager/step-checker.hook.ts`) and the `SequentialRequirementsManager` orchestrator remain as mirrors of the store — they hold the in-memory checking state needed to drive the UI. The FSM writes through to the store on every terminal transition (manual completion, skipped, objectives auto-complete, and reset) via `writeStoreCompletion` / `writeStoreReset`, so the orchestration mirrors and the canonical store cannot disagree on either axis. The `step-checker.store-bridge.test.ts` tripwire pins this contract.
 
@@ -39,7 +49,7 @@ Public API:
 - `markStepsCompleted(stepIds, sectionId, reason?)` — atomic bulk write (used by the section's objectives-auto-complete and run-section paths).
 - `resetSteps(stepIds, sectionId)` — atomic tail-reset used by the section's individual-step redo path.
 - `resetSection(sectionId)` — atomic clear used by the section's full-reset path.
-- `getGuideProgress(contentKey)` — `{ completed, total, percentage }` snapshot.
+- `getGuideProgress(contentKey)` — `{ completed, total, percentage }` snapshot. A guide carrying the `guideCompletionMarkStorage` mark reports `percentage: 100` regardless of step and ack counts, and `refreshGuidePercentage` persists the same, so a later step write cannot move a marked guide back down. Rationale: `docs/design/COMPLETION-MODEL.md`, decision 2.
 - `evictSectionCache(sectionId)` — drop a section's cache + hydration marker without writing storage. Called by `InteractiveSection`'s preview-mode unmount path so a remount under the same preview key starts fresh.
 - `evictContentCache(contentKey)` — drop one content key's cache + hydration state + version counters. Called by per-guide reset paths so subscribers re-render against an empty completion set immediately.
 - `evictAllContentCaches()` — drop every active content key's cache. Counterpart to `interactiveStepStorage.clearAll`.
@@ -57,7 +67,7 @@ Known reset sites (each pairs the storage clear with a cache eviction):
 - `learning-paths.hook.ts` per-path reset — `interactiveStepStorage.clearAllForContent` + `evictContentCache` (URL and bundled branches).
 - `MyLearningTab.handleResetProgress` (global "Reset all progress") — `interactiveStepStorage.clearAll` + `evictAllContentCaches`.
 
-Adding a new reset path: pair the storage clear with the corresponding eviction.
+Adding a new reset path: pair the storage clear with the corresponding eviction, and clear `guideCompletionMarkStorage` too — the mark outranks the step counts, so a path that leaves it behind resets a guide straight back to 100%.
 
 ## Cross-tab synchronization
 
@@ -66,7 +76,7 @@ The completion store's caches (`entries`, `hydratedSections`, `hydrationVersion`
 A module-scope `storage` event listener (installed via `installCrossTabSync` at module init) reacts to cross-tab writes:
 
 1. `event.key === null` — another tab called `localStorage.clear()`; drop every in-memory cache via `evictAllContentCaches`.
-2. `event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)` — another tab wrote a `(contentKey, sectionId)` slot; resolve the contentKey against the live set of active keys (`entries` ∪ `hydratedSections`), then `evictSectionCacheForKey` + `notify` so the subscriber re-hydrates from authoritative storage on the next render.
+2. `event.key.startsWith(StorageKeys.INTERACTIVE_STEPS_PREFIX)` — another tab wrote a `(contentKey, sectionId)` slot; rebuild the key for each active section and compare it whole rather than parsing the event's key, then `evictSectionCacheForKey` + `notify` so the subscriber re-hydrates from authoritative storage on the next render.
 
 A per-section monotonic `hydrationVersion` counter closes the in-flight hydration race: every cache-clearing path bumps the version, and `ensureHydrated` snapshots the version at schedule time. When the storage read resolves, a mismatch indicates the cycle was invalidated (by an eviction or a fresh re-hydration kicked off by the listener) and the merge is dropped. This strictly supersedes the `!hydratedSections.has(key)` race guard — the version check also catches the case where a new `ensureHydrated` cycle has already re-added the key before the old `.then` runs.
 
@@ -113,7 +123,7 @@ Listeners use `subscribeProgressEvent(detail => ...)`. The store fires `kind: 's
 
 The orphan `step-auto-skipped` listener at `step-checker.hook.ts:746` was removed in C3 — there were no dispatchers anywhere in the repo.
 
-`interactive-progress-cleared` (dispatched by `handleResetSection` and `useContentReset`) is the one remaining legacy event — it still drives ephemeral preview / alignment UI and will fold into `kind: 'guide'` with `hasProgress: false` once those listeners migrate.
+`interactive-progress-cleared` is a first-class event in its own right, not a leftover: its name is owned by `StorageEvents` in `src/lib/event-names.ts`, it is dispatched by the reset paths (`handleResetSection`, `useContentReset`, and the block-editor preview reset), and it is what drives the ephemeral preview and alignment UI. Treat it as part of the contract alongside `PROGRESS_EVENT`, and dispatch it through the name constant rather than a literal.
 
 ## Tab loader
 

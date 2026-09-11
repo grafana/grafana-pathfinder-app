@@ -8,6 +8,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { testIds } from '../../../constants/testIds';
 import { DocsPanelContentArea, type DocsPanelContentAreaProps } from './DocsPanelContentArea';
 
 jest.mock('@grafana/i18n', () => ({
@@ -74,6 +75,8 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
       openEditorTab: jest.fn(),
       confirmAlignment: jest.fn(),
       dismissAlignment: jest.fn(),
+      canNavigateNext: jest.fn(() => false),
+      navigateToNextMilestone: jest.fn(),
     } as any,
     contextPanel: { Component: () => null } as any,
     isFullScreenActive: false,
@@ -97,6 +100,20 @@ function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPane
 describe('DocsPanelContentArea', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+  it('uses the stable reset selector for docs-like guides', () => {
+    const base = makeProps();
+    render(
+      <DocsPanelContentArea
+        {...makeProps({
+          activeTab: { ...base.activeTab, type: 'interactive' } as any,
+          hasInteractiveProgress: true,
+          progressKey: 'bundled:e2e-test',
+        })}
+      />
+    );
+
+    expect(screen.getByTestId(testIds.docsPanel.resetGuideButton)).toHaveAccessibleName('Reset guide');
   });
 
   describe('Return to my learning footer button', () => {
