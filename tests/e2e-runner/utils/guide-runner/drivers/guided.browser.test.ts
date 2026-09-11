@@ -286,13 +286,23 @@ describeBrowser('guided driver with real Playwright DOM fixtures', () => {
     expect(await page.getByTestId('interactive-step-guided').count()).toBe(0);
   });
 
-  it('keeps completeEarly evidence without inventing later results', async () => {
-    const result = await run(['button', 'hover', 'formfill'], { completeEarlyAt: 0 });
+  it('keeps completeEarly evidence after the final settlement', async () => {
+    const result = await run(['button', 'hover', 'formfill'], { completeEarlyAt: 2 });
 
     expect(result).toEqual({
       outcome: 'completed',
-      substeps: [{ index: 0, action: 'button', status: 'completed', durationMs: 10 }],
+      substeps: [
+        { index: 0, action: 'button', status: 'completed', durationMs: 10 },
+        { index: 1, action: 'hover', status: 'completed', durationMs: 20 },
+        { index: 2, action: 'formfill', status: 'completed', durationMs: 30 },
+      ],
     });
+  });
+
+  it('rejects detachment before the remaining substeps settle', async () => {
+    await expect(run(['button', 'hover', 'formfill'], { completeEarlyAt: 0 })).rejects.toThrow(
+      'Guided step detached before all substeps settled'
+    );
   });
 
   it.each(['timeout', 'cancelled', 'error'] as const)(

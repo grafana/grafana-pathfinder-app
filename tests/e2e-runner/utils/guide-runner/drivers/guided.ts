@@ -233,6 +233,19 @@ function assertGuidedState(snapshot: GuidedSnapshot): void {
   }
 }
 
+function hasCompleteSubstepEvidence(
+  snapshot: GuidedSnapshot,
+  actionCount: number,
+  attemptedIndexes: ReadonlySet<number>
+): boolean {
+  const expectedIndexes = Array.from({ length: Math.max(1, actionCount) }, (_, index) => index);
+  if (snapshot.substeps === undefined) {
+    return expectedIndexes.every((index) => attemptedIndexes.has(index));
+  }
+  const settledIndexes = new Set(snapshot.substeps.map((result) => result.index));
+  return expectedIndexes.every((index) => settledIndexes.has(index));
+}
+
 function isCurrentSubstep(snapshot: GuidedSnapshot, index: number): boolean {
   return (
     snapshot.attached &&
@@ -414,7 +427,13 @@ async function driveGuidedSubsteps(
   for (;;) {
     const snapshot = await evidence.read();
     assertGuidedState(snapshot);
-    if (snapshot.state === 'completed' || !snapshot.attached) {
+    if (snapshot.state === 'completed') {
+      return;
+    }
+    if (!snapshot.attached) {
+      if (!hasCompleteSubstepEvidence(snapshot, step.actionCount, attempted)) {
+        throw new Error('Guided step detached before all substeps settled');
+      }
       return;
     }
     const index = snapshot.index;

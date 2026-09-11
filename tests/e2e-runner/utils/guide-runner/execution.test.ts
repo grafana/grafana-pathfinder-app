@@ -568,19 +568,19 @@ describe('waitForGuidedCommentBoxReady', () => {
 });
 
 describe('runGuidedSubstepLoop', () => {
-  it('treats a successfully-confirmed detached step as completion (e.g. after a completeEarly navigation)', async () => {
+  it('rejects a root that detaches before any substep attempt', async () => {
     const stepLocator = createLocator({ count: jest.fn().mockResolvedValue(0) });
     const page = {
       getByTestId: jest.fn().mockReturnValue(stepLocator),
     } as unknown as Page;
     const step = createTestableStep();
 
-    const result = await runGuidedSubstepLoop(page, step, {
-      stepLocator,
-      perSubstepTimeoutMs: 1000,
-    });
-
-    expect(result).toEqual({ completed: true });
+    await expect(
+      runGuidedSubstepLoop(page, step, {
+        stepLocator,
+        perSubstepTimeoutMs: 1000,
+      })
+    ).rejects.toThrow('Guided step detached before all substeps settled');
   });
 
   it('propagates a genuine query failure instead of reporting false completion', async () => {
@@ -600,7 +600,7 @@ describe('runGuidedSubstepLoop', () => {
     ).rejects.toThrow('Target closed');
   });
 
-  function createButtonSubstepHarness() {
+  function createButtonSubstepHarness(resultOnClick: string | null = null) {
     const listeners = new Map<string, Array<() => void>>();
     const snapshot = {
       attached: true,
@@ -609,7 +609,7 @@ describe('runGuidedSubstepLoop', () => {
       skippable: null,
       timeout: null,
       formState: null,
-      results: null,
+      results: null as string | null,
     };
     const handle = {
       evaluate: jest.fn(async () => ({ ...snapshot })),
@@ -631,6 +631,7 @@ describe('runGuidedSubstepLoop', () => {
 
     const buttonTarget = createLocator();
     (buttonTarget.click as jest.Mock).mockImplementation(async () => {
+      snapshot.results = resultOnClick;
       snapshot.attached = false;
       for (const handler of listeners.get('framenavigated') ?? []) {
         handler();
@@ -677,6 +678,32 @@ describe('runGuidedSubstepLoop', () => {
       Math.min(1000, GUIDED_RELOAD_LOAD_TIMEOUT_MS)
     );
     expect(handle.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a detached modern root with unsettled substeps', async () => {
+    const settled = JSON.stringify([{ index: 0, action: 'button', status: 'completed', durationMs: 10 }]);
+    const { listeners, initialStepLocator, comments, roleLocator } = createButtonSubstepHarness(settled);
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(initialStepLocator),
+      locator: jest.fn().mockReturnValue(comments),
+      getByRole: jest.fn().mockReturnValue(roleLocator),
+      url: jest.fn().mockReturnValue('http://localhost:3000/'),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      waitForLoadState: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn().mockImplementation((event: string, handler: () => void) => {
+        const handlers = listeners.get(event) ?? [];
+        handlers.push(handler);
+        listeners.set(event, handlers);
+      }),
+      off: jest.fn(),
+    } as unknown as Page;
+
+    await expect(
+      runGuidedSubstepLoop(page, createTestableStep({ actionCount: 2 }), {
+        stepLocator: initialStepLocator,
+        perSubstepTimeoutMs: 1000,
+      })
+    ).rejects.toThrow('Guided step detached before all substeps settled');
   });
 
   it('propagates a failed reload sync instead of treating it as completion', async () => {
