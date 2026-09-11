@@ -25,6 +25,7 @@ import {
   type ArtifactPaths,
   type StepCoverage,
   type ReportStepResult,
+  type ReportSubstepResult,
   type GuideMetadata,
   type ReportConfig,
   type E2ETestReport,
@@ -38,10 +39,6 @@ import {
 // Types - Input from Test Execution
 // ============================================
 
-/**
- * Step result from the test runner (input type).
- * This matches the StepTestResult interface from guide-test-runner.ts.
- */
 export interface TestStepResult {
   stepId: string;
   stepKind?: ReportStepResult['stepKind'];
@@ -52,10 +49,9 @@ export interface TestStepResult {
   error?: string;
   skipReason?: string;
   skippable: boolean;
-  /** Error classification for failure triage (L3-5C) */
   classification?: ErrorClassification;
-  /** Paths to failure artifacts (L3-5D) */
   artifacts?: ArtifactPaths;
+  substeps?: Array<Omit<ReportSubstepResult, 'duration'> & { durationMs: number }>;
 }
 
 /**
@@ -119,14 +115,6 @@ export function generateSummary(results: TestStepResult[]): ReportSummary {
   };
 }
 
-/**
- * Convert test step results to report step results.
- *
- * Transforms from internal format (durationMs) to report format (duration).
- *
- * @param results - Array of test step results
- * @returns Array of report step results
- */
 export function convertStepResults(results: TestStepResult[]): ReportStepResult[] {
   return results.map((result, index) => {
     const reportStep: ReportStepResult = {
@@ -141,7 +129,12 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
       reportStep.stepKind = result.stepKind;
     }
 
-    // Add optional fields only if present
+    if (result.substeps !== undefined) {
+      reportStep.substeps = result.substeps.map(({ durationMs, ...substep }) => ({
+        ...substep,
+        duration: durationMs,
+      }));
+    }
     if (result.skipReason) {
       reportStep.skipReason = result.skipReason;
     }
@@ -150,17 +143,14 @@ export function convertStepResults(results: TestStepResult[]): ReportStepResult[
       reportStep.error = result.error;
     }
 
-    // Include skippable flag for failed steps (useful for understanding why test passed/failed)
     if (result.status === 'failed') {
       reportStep.skippable = result.skippable;
     }
 
-    // L3-5C: Include classification for failed or not_reached steps
     if ((result.status === 'failed' || result.status === 'not_reached') && result.classification) {
       reportStep.classification = result.classification;
     }
 
-    // L3-5D: Include artifact paths for failed steps
     if (result.status === 'failed' && result.artifacts) {
       reportStep.artifacts = result.artifacts;
     }

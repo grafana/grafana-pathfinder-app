@@ -319,34 +319,32 @@ describe('dismissBadgeCelebrations', () => {
 
   it('dismisses the toast before a hidden target reveal hover', async () => {
     const { page: badgePage, events } = createBadgeHarness(['First badge']);
+    const snapshot = {
+      attached: true,
+      state: 'executing',
+      index: '0',
+      skippable: null,
+      timeout: null,
+      formState: null,
+      results: null,
+    };
     const stepLocator = {
-      count: jest.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValue(0),
-      getAttribute: jest.fn(async (name: string) => {
-        if (name === 'data-test-step-state') {
-          return 'executing';
-        }
-        if (name === 'data-test-substep-index') {
-          return '0';
-        }
-        return null;
+      count: jest.fn().mockResolvedValue(1),
+      elementHandle: jest.fn().mockResolvedValue({
+        evaluate: jest.fn(async () => ({ ...snapshot })),
+        dispose: jest.fn().mockResolvedValue(undefined),
       }),
     } as unknown as Locator;
     const commentBox = {
       count: jest.fn().mockResolvedValue(1),
       isVisible: jest.fn().mockResolvedValue(true),
-      getAttribute: jest.fn(async (name: string) => {
-        if (name === 'data-test-action') {
-          return 'hover';
-        }
-        if (name === 'data-test-reftarget') {
-          return '#guided-target';
-        }
-        return null;
-      }),
+      evaluate: jest.fn().mockResolvedValue({ action: 'hover', reftarget: '#guided-target', targetValue: null }),
     } as unknown as Locator;
     const commentBoxLocator = {
       first: jest.fn(() => commentBox),
+      filter: jest.fn(),
     } as unknown as Locator;
+    (commentBoxLocator.filter as jest.Mock).mockReturnValue(commentBoxLocator);
     let targetVisible = false;
     const panel = {
       count: jest.fn().mockResolvedValue(1),
@@ -365,6 +363,7 @@ describe('dismissBadgeCelebrations', () => {
       scrollIntoViewIfNeeded: jest.fn().mockResolvedValue(undefined),
       hover: jest.fn(async () => {
         events.push('target-hover');
+        snapshot.state = 'completed';
       }),
     } as unknown as Locator;
     target.first = jest.fn(() => target);
@@ -377,7 +376,7 @@ describe('dismissBadgeCelebrations', () => {
         return getBadgeLocator(testId);
       }),
       locator: jest.fn((selector: string) => {
-        return selector === '.interactive-comment-box' ? commentBoxLocator : target;
+        return selector.startsWith('.interactive-comment-box') ? commentBoxLocator : target;
       }),
       waitForTimeout: badgePage.waitForTimeout.bind(badgePage),
     } as unknown as Page;

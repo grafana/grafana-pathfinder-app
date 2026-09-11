@@ -784,26 +784,24 @@ function convertMultistepBlock(block: JsonMultistepBlock, path: string, stepCont
 }
 
 function convertGuidedBlock(block: JsonGuidedBlock, path: string, stepContext?: StepContext): ConversionResult {
-  // Convert steps to internalActions format expected by renderer.
-  // Accept either the lowercase canonical or the camelCase alias on each step.
   const internalActions = block.steps.map((step: JsonStep) => ({
     targetAction: step.action ?? step.targetAction,
     refTarget: step.reftarget ?? step.refTarget,
     targetValue: step.targetvalue ?? step.targetValue,
     targetState: step.targetstate ?? step.targetState,
     requirements: step.requirements,
-    // For guided blocks, prefer description (shown in steps panel), fall back to tooltip for backward compatibility
     targetComment: step.description
       ? markdownToHtml(step.description)
       : step.tooltip
         ? markdownToHtml(step.tooltip)
         : undefined,
     isSkippable: step.skippable ?? false,
-    formHint: step.formHint, // Pass form hint for formfill validation feedback
-    validateInput: step.validateInput, // Pass validation toggle for formfill
+    formHint: step.formHint,
+    validateInput: step.validateInput,
+    lazyRender: step.lazyRender,
+    scrollContainer: step.scrollContainer,
   }));
 
-  // Parse content as markdown for children
   const children = parseMarkdownToElements(block.content);
 
   const requirements = block.requirements?.length ? block.requirements : undefined;

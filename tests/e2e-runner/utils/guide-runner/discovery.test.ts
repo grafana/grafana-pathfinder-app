@@ -41,6 +41,26 @@ function pageWithRoots(current: Locator[], legacy: Locator[] = []): Page {
 }
 
 describe('discoverStepsFromDOM', () => {
+  it.each([
+    ['30000', 30000],
+    ['45000', 45000],
+    ['60000', 60000],
+    [null, 120000],
+  ])('inspects the guided timeout %s from the DOM', async (rawTimeout, timeoutMs) => {
+    const page = pageWithRoots([
+      root({
+        'data-test-step-kind': 'guided',
+        'data-test-step-id': 'guided-1',
+        'data-test-substep-total': '3',
+        'data-test-step-timeout': rawTimeout as string | null,
+      }),
+    ]);
+
+    const result = await discoverStepsFromDOM(page);
+
+    expect(result.steps[0]).toMatchObject({ actionCount: 3, substepTimeoutMs: timeoutMs });
+    expect(result.coverage).toMatchObject({ rendered: 1, supported: 1, executed: 0, unsupported: 0 });
+  });
   it('uses the current tracked-root contract and reports unsupported roots', async () => {
     const page = pageWithRoots([
       root({

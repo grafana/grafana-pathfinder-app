@@ -7,6 +7,7 @@ import {
   reftargetExistsCheck,
   navmenuOpenCheck,
   getVisibleHighlightTarget,
+  scrollUntilElementFound,
 } from './dom-utils';
 import { INTERACTIVE_ACTION_TYPES } from '../../types/interactive.types';
 
@@ -561,6 +562,77 @@ describe('scrollUntilElementFound', () => {
     });
 
     expect(result).toBeNull();
+  });
+});
+
+describe('bounded lazy discovery', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(1000);
+    document.body.replaceChildren();
+    container = document.createElement('div');
+    container.className = 'scrollbar-view';
+    Object.defineProperties(container, {
+      clientHeight: { value: 500 },
+      scrollHeight: { value: 5000 },
+    });
+    container.scrollBy = jest.fn();
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('does not scroll after an expired deadline', async () => {
+    await expect(scrollUntilElementFound('#missing', { deadline: Date.now() })).resolves.toBeNull();
+    expect(container.scrollBy).not.toHaveBeenCalled();
+  });
+
+  it('does not scroll with an aborted signal', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(scrollUntilElementFound('#missing', { signal: controller.signal })).resolves.toBeNull();
+    expect(container.scrollBy).not.toHaveBeenCalled();
+  });
+
+  it('limits the final render wait to the remaining deadline', async () => {
+    const result = scrollUntilElementFound('#missing', { deadline: Date.now() + 500 });
+    await jest.advanceTimersByTimeAsync(500);
+    await expect(result).resolves.toBeNull();
+    expect(container.scrollBy).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(container.scrollBy).toHaveBeenCalledTimes(2);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('ends a render wait immediately on cancellation', async () => {
+    const controller = new AbortController();
+    const result = scrollUntilElementFound('#missing', { signal: controller.signal });
+    await jest.advanceTimersByTimeAsync(100);
+    controller.abort();
+    await expect(result).resolves.toBeNull();
+    expect(container.scrollBy).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(container.scrollBy).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('stops when a lazy target appears', async () => {
+    const target = document.createElement('button');
+    target.id = 'target';
+    container.scrollBy = jest
+      .fn()
+      .mockImplementationOnce(() => {})
+      .mockImplementationOnce(() => container.appendChild(target));
+    const result = scrollUntilElementFound('#target', { deadline: Date.now() + 5000 });
+    await jest.advanceTimersByTimeAsync(700);
+    await expect(result).resolves.toBe(target);
+    expect(container.scrollBy).toHaveBeenCalledTimes(2);
+    expect(jest.getTimerCount()).toBe(0);
   });
 });
 

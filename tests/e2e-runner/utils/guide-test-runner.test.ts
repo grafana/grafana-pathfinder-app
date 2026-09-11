@@ -67,8 +67,13 @@ describe('calculateStepTimeout', () => {
     const step = createTestableStep({ stepKind: 'plain' });
 
     const timeout = calculateStepTimeout(step);
-
     expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS);
+  });
+
+  it.each([30000, 45000, 60000, 120000])('adds block overhead to the effective %ims guided budget', (timeoutMs) => {
+    const step = createTestableStep({ stepKind: 'guided', actionCount: 3, substepTimeoutMs: timeoutMs });
+
+    expect(calculateStepTimeout(step)).toBe(DEFAULT_STEP_TIMEOUT_MS + 3 * timeoutMs);
   });
 
   it('returns default timeout for multistep with zero internal actions', () => {
@@ -131,15 +136,14 @@ describe('calculateStepTimeout', () => {
     expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + 3 * TIMEOUT_PER_GUIDED_SUBSTEP_MS);
   });
 
-  it('returns default timeout for a guided step with no actions', () => {
+  it('keeps one guided budget when the action count is zero', () => {
     const step = createTestableStep({
       stepKind: 'guided',
       actionCount: 0,
     });
 
     const timeout = calculateStepTimeout(step);
-
-    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS);
+    expect(timeout).toBe(DEFAULT_STEP_TIMEOUT_MS + TIMEOUT_PER_GUIDED_SUBSTEP_MS);
   });
 
   it('uses the selected driver to interpret actionCount', () => {

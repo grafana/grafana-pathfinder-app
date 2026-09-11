@@ -1,40 +1,16 @@
-/**
- * Section completion check — `section-completed:<sectionId>` requirement.
- *
- * Moved out of `lib/dom` because the check is domain-aware (knows about
- * content keys + the completion-store persistence namespace) and does
- * not belong in the DOM-utility layer. The previous home required a
- * dynamic `await import('../user-storage')` to dodge JSDOM/Prism test
- * flake when `lib/dom` was partially mocked; living in the engines
- * tier means we can import `user-storage` statically.
- *
- * Use cases:
- * - Sequential tutorials: ensure users complete steps in order.
- * - Prerequisites: verify setup steps before advanced features.
- * - Learning paths: enforce completion of foundational concepts.
- *
- * How it works:
- *  1. Read `sectionDoneStorage` first — works for sections that are NOT
- *     currently mounted (other milestones, virtualized regions,
- *     conditional branches that haven't rendered yet).
- *  2. Fall back to the DOM check (`#sectionId.completed`). Covers the
- *     transitional window between the section reaching `isCompleted`
- *     and the async storage write resolving, and any legacy guides
- *     that complete via paths that bypass the section component.
- */
-
 import type { CheckResultError } from '../../types/requirements.types';
-import { getContentKey } from '../../global-state/content-key';
+import { getContentKey, sanitizeContentKey } from '../../global-state/content-key';
 import { sectionDoneStorage } from '../../lib/user-storage';
 import { logger } from '../../lib/logging';
 
-export async function sectionCompletedCheck(check: string): Promise<CheckResultError> {
+export async function sectionCompletedCheck(check: string, contentKey?: string): Promise<CheckResultError> {
   try {
     const rawId = check.replace('section-completed:', '');
     const sectionId = rawId.startsWith('section-') ? rawId : `section-${rawId}`;
 
-    const contentKey = getContentKey();
-    const persistedDone = await sectionDoneStorage.get(contentKey, sectionId);
+    const localContentKey = getContentKey();
+    const scopedContentKey = contentKey === undefined ? localContentKey : sanitizeContentKey(contentKey);
+    const persistedDone = await sectionDoneStorage.get(scopedContentKey, sectionId);
     if (persistedDone === true) {
       return {
         requirement: check,
@@ -43,7 +19,8 @@ export async function sectionCompletedCheck(check: string): Promise<CheckResultE
       };
     }
 
-    const sectionElement = document.getElementById(sectionId);
+    // A remote guide cannot borrow completion from a section in the live tab.
+    const sectionElement = contentKey === undefined ? document.getElementById(sectionId) : null;
     const isCompleted = sectionElement?.classList.contains('completed') || false;
 
     return {

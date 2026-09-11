@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { MAX_GUIDED_STEP_TIMEOUT_MS } from './interactive-actions.types';
 
 import type { JsonBlock } from './json-guide.types';
 import { isValidRequirement, unknownRequirementMessage } from './requirements.types';
@@ -444,7 +445,13 @@ export const JsonGuidedBlockSchema = z.object({
   id: z.string().optional().describe('Stable identifier for this block (required for container blocks via CLI)'),
   content: z.string().min(1, 'Guided content is required').describe('Block heading/intro text'),
   steps: z.array(JsonStepSchema).min(1, EMPTY_STEPS_MESSAGE).describe('Ordered steps; populated via add-step'),
-  stepTimeout: z.number().optional().describe('Per-step timeout in milliseconds'),
+  stepTimeout: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_GUIDED_STEP_TIMEOUT_MS)
+    .optional()
+    .describe('Per-step timeout in milliseconds (maximum 10 minutes)'),
   requirements: z.array(RequirementTokenSchema).optional().describe('Prerequisite conditions'),
   objectives: z.array(ObjectiveTokenSchema).optional().describe(objectivesDescription('block')),
   skippable: z.boolean().optional().describe('Allow user to skip this block'),

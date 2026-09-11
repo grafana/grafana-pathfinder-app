@@ -1,4 +1,5 @@
 import type { ConditionInput } from '../types/requirements.types';
+import type { GuidedSubstepResult } from '../types/interactive-actions.types';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CrossTabTransport, createSenderId } from '../lib/cross-tab-transport';
 import {
@@ -12,6 +13,7 @@ import {
 import { generateSessionKeyPair } from '../security/cross-tab-crypto';
 import {
   SIGNED_MESSAGE_KINDS,
+  validateCrossTabMessage,
   type CheckRequirementsMessage,
   type CrossTabMessage,
   type CrossTabPayload,
@@ -28,6 +30,13 @@ interface ChannelTransport {
   stop(): void;
   post(payload: CrossTabPayload): void;
   onMessage(listener: (message: CrossTabMessage) => void): () => void;
+}
+
+type StepProgressCallback = (index: number, total: number, substepResults?: GuidedSubstepResult[]) => void;
+
+interface StepProgressSubscription {
+  callback: StepProgressCallback;
+  latest?: { index: number; total: number };
 }
 
 interface FixOutcome {
@@ -52,7 +61,7 @@ interface ControllerChannel {
   ) => Promise<FixOutcome>;
   awaitStepComplete: (stepId: string, runId: string) => Promise<boolean>;
   cancelStepComplete: (stepId: string, runId: string) => void;
-  onStepProgress: (stepId: string, runId: string, cb: (index: number, total: number) => void) => () => void;
+  onStepProgress: (stepId: string, runId: string, cb: StepProgressCallback) => () => void;
 }
 
 interface PendingRequest {
@@ -90,12 +99,10 @@ export function ControllerChannelProvider({
   const pairingChallengeRef = useRef<CrossTabPayload | null>(null);
   const preparedHandBackRef = useRef<CrossTabPayload | null>(null);
   const lastLiveSeenRef = useRef(0);
-  // The one live tab this controller is bound to (first to send a `live`
-  // heartbeat); replies from any other tab are ignored.
   const pairedLiveIdRef = useRef<string | null>(null);
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
   const stepCompletionRef = useRef<Map<string, (ok: boolean) => void>>(new Map());
-  const stepProgressRef = useRef<Map<string, (index: number, total: number) => void>>(new Map());
+  const stepProgressRef = useRef<Map<string, StepProgressSubscription>>(new Map());
 
   const signForLive = useCallback(
     async (payload: CrossTabPayload): Promise<CrossTabPayload | null> => {
@@ -206,7 +213,11 @@ export function ControllerChannelProvider({
       stepProgressRef.current.clear();
     };
 
-    const unsubscribe = active.onMessage((message) => {
+    const unsubscribe = active.onMessage((incoming) => {
+      const message = validateCrossTabMessage(incoming);
+      if (!message) {
+        return;
+      }
       if (message.kind === 'pairing-accept') {
         if (message.sessionId !== sessionId || pairedLiveIdRef.current !== null || !pairing) {
           return;
@@ -245,12 +256,7 @@ export function ControllerChannelProvider({
       ) {
         return;
       }
-      // live→controller replies are unauthenticated by design: senderId is a
-      // forgeable plaintext field, so this only scopes replies to the paired
-      // tab, it does not prove origin. A same-origin script can spoof reply
-      // CONTENT (mislead this controller's UI) but cannot issue commands or
-      // drive the live tab — that requires the controller private key. See
-      // docs/developer/CROSS_TAB_CONTROLLER.md "Known limitations".
+      // Reply sender IDs scope the UI, but do not authenticate the reply.
       if (pairedLiveIdRef.current === null || message.senderId !== pairedLiveIdRef.current) {
         return;
       }
@@ -260,13 +266,32 @@ export function ControllerChannelProvider({
         settle(message.requestId, { ok: message.ok, error: message.error });
       } else if (message.kind === 'step-progress') {
         const key = `${message.stepId}:${message.runId}`;
-        stepProgressRef.current.get(key)?.(message.index, message.total);
+        const subscription = stepProgressRef.current.get(key);
+        if (subscription) {
+          subscription.latest = { index: message.index, total: message.total };
+          subscription.callback(message.index, message.total, message.substepResults);
+        }
       } else {
         const key = `${message.stepId}:${message.runId}`;
+        const subscription = stepProgressRef.current.get(key);
+        const results = message.substepResults;
+        if (results && subscription?.latest && results.length > subscription.latest.total) {
+          return;
+        }
         const resolve = stepDone.get(key);
-        if (resolve) {
-          stepDone.delete(key);
-          resolve(message.ok);
+        stepDone.delete(key);
+        stepProgressRef.current.delete(key);
+        try {
+          // Completion can detach the step, so publish its evidence before resolving.
+          if (results) {
+            subscription?.callback(
+              subscription.latest?.index ?? Math.max(0, results.length - 1),
+              subscription.latest?.total ?? Math.max(1, results.length),
+              results
+            );
+          }
+        } finally {
+          resolve?.(message.ok);
         }
       }
     });
@@ -372,6 +397,7 @@ export function ControllerChannelProvider({
 
   const cancelStepComplete = useCallback<ControllerChannel['cancelStepComplete']>((stepId, runId) => {
     const key = `${stepId}:${runId}`;
+    stepProgressRef.current.delete(key);
     const resolve = stepCompletionRef.current.get(key);
     if (resolve) {
       stepCompletionRef.current.delete(key);
@@ -381,9 +407,10 @@ export function ControllerChannelProvider({
 
   const onStepProgress = useCallback<ControllerChannel['onStepProgress']>((stepId, runId, cb) => {
     const key = `${stepId}:${runId}`;
-    stepProgressRef.current.set(key, cb);
+    const subscription: StepProgressSubscription = { callback: cb };
+    stepProgressRef.current.set(key, subscription);
     return () => {
-      if (stepProgressRef.current.get(key) === cb) {
+      if (stepProgressRef.current.get(key) === subscription) {
         stepProgressRef.current.delete(key);
       }
     };

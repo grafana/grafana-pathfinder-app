@@ -1,4 +1,5 @@
 import type { DocsPluginConfig } from '../constants';
+import { MAX_GUIDED_STEP_TIMEOUT_MS } from '../types/interactive-actions.types';
 
 /**
  * Configuration for interactive delays and timing
@@ -193,6 +194,11 @@ export function getInteractiveConfig(pluginConfig?: DocsPluginConfig) {
  * Components can migrate to getInteractiveConfig() over time
  */
 export const INTERACTIVE_CONFIG = INTERACTIVE_CONFIG_DEFAULTS;
+export function getGuidedStepTimeout(timeout?: number): number {
+  return typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0
+    ? Math.min(MAX_GUIDED_STEP_TIMEOUT_MS, Math.max(1, Math.floor(timeout)))
+    : INTERACTIVE_CONFIG.guided.stepTimeout;
+}
 
 /**
  * Clear command constant for form fill operations
