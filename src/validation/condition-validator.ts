@@ -288,6 +288,20 @@ export function validateBlockConditions(guide: JsonGuide): ConditionIssue[] {
       issues.push(...validateConditions(block.requirements, [...path, 'requirements']));
     }
 
+    if (block.type === 'challenge' && 'requirements' in block && Array.isArray(block.requirements)) {
+      block.requirements.forEach((token, i) => {
+        if (typeof token === 'string' && token.startsWith('coda-exit-zero:')) {
+          issues.push({
+            condition: token,
+            message:
+              "coda-exit-zero: cannot be used as a challenge requirement because it depends on the challenge's own setup running first — use it in `objectives` instead, or move this check into successCriteria.",
+            code: 'invalid_format',
+            path: [...path, 'requirements', i],
+          });
+        }
+      });
+    }
+
     // Check objectives if present
     if ('objectives' in block && block.objectives) {
       issues.push(...validateConditions(block.objectives, [...path, 'objectives']));

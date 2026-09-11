@@ -1,12 +1,18 @@
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 
-import { ChallengeBlock, resetChallengeCounter } from './challenge-block';
+import { ChallengeBlock, resetChallengeCounter, resetSessionHoldersForTest } from './challenge-block';
 import { resetInteractiveCounters } from './interactive-section';
 import { useTerminalContext } from '../../integrations/coda/TerminalContext';
 import { useCodaSessionEligibility, useCodaTerminalGate } from '../../integrations/coda/useCodaAvailability.hook';
 import { execInSession } from '../../integrations/coda/coda-api';
-import { checkPostconditions } from '../../requirements-manager';
+import { checkPostconditions, checkRequirements } from '../../requirements-manager';
+import { useStepCompletion } from '../../global-state/completion-store';
+import type { ConditionInput, StepStatus } from '../../types/requirements.types';
+
+const { useStepChecker: realUseStepChecker } = jest.requireActual<
+  typeof import('../../requirements-manager/step-checker.hook')
+>('../../requirements-manager/step-checker.hook');
 
 jest.mock('../../integrations/coda/TerminalContext', () => ({
   useTerminalContext: jest.fn(),
@@ -20,11 +26,35 @@ jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
   useCodaSessionEligibility: jest.fn(),
 }));
 
+const mockMarkSkipped = jest.fn();
+const mockUseStepChecker = jest.fn(
+  (props: { requirements?: ConditionInput; objectives?: ConditionInput; skippable?: boolean }): any => ({
+    status: 'enabled' as StepStatus,
+    isEnabled: true,
+    isSequentialBlock: false,
+    isCompleted: false,
+    isChecking: false,
+    explanation: null as string | null | undefined,
+    canSkip: Boolean(props.skippable),
+    markSkipped: mockMarkSkipped,
+    resetStep: jest.fn(),
+  })
+);
+
 jest.mock('../../requirements-manager', () => {
   const checkPostconditions = jest.fn();
+  const checkRequirements = jest.fn();
+  const defaultManager = {
+    subscribe: () => () => {},
+    getSnapshot: () => new Map(),
+  };
   return {
+    checkRequirements,
     checkPostconditions,
-    useGuideRequirements: () => ({ checkPostconditions }),
+    validateInteractiveRequirements: jest.fn(),
+    useGuideRequirements: () => ({ checkPostconditions, checkRequirements }),
+    useRequirementsManager: () => ({ manager: defaultManager }),
+    useStepChecker: (props: Parameters<typeof mockUseStepChecker>[0]) => mockUseStepChecker(props),
   };
 });
 
@@ -43,12 +73,14 @@ jest.mock('../../global-state/completion-store', () => ({
 }));
 
 const mockedUseTerminalContext = useTerminalContext as jest.MockedFunction<typeof useTerminalContext>;
+const mockedUseStepCompletion = useStepCompletion as jest.MockedFunction<typeof useStepCompletion>;
 const mockedUseCodaTerminalGate = useCodaTerminalGate as jest.MockedFunction<typeof useCodaTerminalGate>;
 const mockedUseCodaSessionEligibility = useCodaSessionEligibility as jest.MockedFunction<
   typeof useCodaSessionEligibility
 >;
 const mockedExecInSession = execInSession as jest.MockedFunction<typeof execInSession>;
 const mockedCheckPostconditions = checkPostconditions as jest.MockedFunction<typeof checkPostconditions>;
+const mockedCheckRequirements = checkRequirements as jest.MockedFunction<typeof checkRequirements>;
 
 const SESSION_ID = 's_0123456789abcdef0123456789abcdef';
 
@@ -63,31 +95,33 @@ function setBackend(post: jest.Mock): void {
 interface MockCtxOverrides {
   status?: 'disconnected' | 'connecting' | 'connected' | 'error';
   openTerminal?: jest.Mock;
+  disconnect?: jest.Mock;
   sessionId?: string | null;
   error?: string | null;
   isTerminalRegistered?: boolean;
 }
 
-function mockTerminalCtx(overrides: MockCtxOverrides = {}): { openTerminal: jest.Mock } {
+function mockTerminalCtx(overrides: MockCtxOverrides = {}): { openTerminal: jest.Mock; disconnect: jest.Mock } {
   // openTerminal resolves with the session the caller may use — the contract
   // that keeps setup off a session being torn down.
   const openTerminal =
     overrides.openTerminal ??
     jest.fn().mockResolvedValue(overrides.sessionId === undefined ? SESSION_ID : overrides.sessionId);
+  const disconnect = overrides.disconnect ?? jest.fn();
   mockedUseTerminalContext.mockReturnValue({
     status: overrides.status ?? 'disconnected',
     sessionId: overrides.sessionId === undefined ? SESSION_ID : overrides.sessionId,
     error: overrides.error ?? null,
     isTerminalRegistered: overrides.isTerminalRegistered ?? true,
     connect: jest.fn(),
-    disconnect: jest.fn(),
+    disconnect,
     sendCommand: jest.fn(),
     openTerminal,
     isExpanded: false,
     setIsExpanded: jest.fn(),
     _register: jest.fn(),
   });
-  return { openTerminal };
+  return { openTerminal, disconnect };
 }
 
 const baseProps = {
@@ -97,11 +131,50 @@ const baseProps = {
   successCriteria: 'coda-exit-zero:curl -sf localhost:9090/-/healthy',
 };
 
+interface MockCheckerOverrides {
+  status?: StepStatus;
+  isEnabled?: boolean;
+  isSequentialBlock?: boolean;
+  isCompleted?: boolean;
+  isChecking?: boolean;
+  explanation?: string | null | undefined;
+  canSkip?: boolean;
+  resetStep?: jest.Mock;
+}
+
+function mockCheckerState(overrides: MockCheckerOverrides = {}) {
+  return {
+    status: overrides.status ?? (overrides.isChecking ? ('checking' as StepStatus) : ('enabled' as StepStatus)),
+    isEnabled: true,
+    isSequentialBlock: false,
+    isCompleted: false,
+    isChecking: false,
+    explanation: null as string | null | undefined,
+    canSkip: true,
+    markSkipped: mockMarkSkipped,
+    resetStep: jest.fn(),
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   resetChallengeCounter();
+  resetSessionHoldersForTest();
+  mockUseStepChecker.mockImplementation((props) => ({
+    status: 'enabled' as StepStatus,
+    isEnabled: true,
+    isSequentialBlock: false,
+    isCompleted: false,
+    isChecking: false,
+    explanation: null as string | null | undefined,
+    canSkip: Boolean(props.skippable),
+    markSkipped: mockMarkSkipped,
+    resetStep: jest.fn(),
+  }));
   mockedUseCodaTerminalGate.mockReturnValue('configured');
   mockedUseCodaSessionEligibility.mockReturnValue({ state: 'eligible' });
+  mockedUseStepCompletion.mockReturnValue({ completed: false, reason: null });
 });
 
 describe('ChallengeBlock', () => {
@@ -379,6 +452,48 @@ describe('ChallengeBlock', () => {
     expect(screen.getByRole('button', { name: /check again/i })).toBeInTheDocument();
   });
 
+  it('ignores a late-resolving check after Cancel resets the block to idle', async () => {
+    const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    let resolveCheck: (value: Awaited<ReturnType<typeof checkPostconditions>>) => void = () => undefined;
+    mockedCheckPostconditions.mockImplementation(
+      () =>
+        new Promise<Awaited<ReturnType<typeof checkPostconditions>>>((resolve) => {
+          resolveCheck = resolve;
+        })
+    );
+
+    render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-cancel-check" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/checking your work/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    resolveCheck({ requirements: baseProps.successCriteria, pass: true, error: [] });
+
+    await waitFor(() => {
+      expect(mockedCheckPostconditions).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+  });
+
   it('cancel button returns the block to idle without finishing setup', async () => {
     // Setup never resolves so we can observe the Cancel button rendered
     // during 'preparing' and verify the state machine returns to idle.
@@ -407,6 +522,76 @@ describe('ChallengeBlock', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+  });
+
+  it('does not write setup-failed over idle when in-flight exec throws after cancel during preparing', async () => {
+    let rejectFirst: (error: Error) => void = () => {};
+    const post = jest.fn().mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectFirst = reject;
+        })
+    );
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={['sleep 30']} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      rejectFirst(new Error('session_not_found'));
+    });
+
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+  });
+
+  it('ignores late-resolving exec from cancelled setup when subsequent start is in flight', async () => {
+    let resolveFirstAttempt: (value: unknown) => void = () => {};
+    const post = jest
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirstAttempt = resolve;
+          })
+      )
+      .mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    setBackend(post);
+    mockTerminalCtx({ status: 'connected' });
+
+    render(<ChallengeBlock {...baseProps} setupCommands={['cmd1', 'cmd2']} />);
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+    await act(async () => {
+      resolveFirstAttempt({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
     });
   });
 
@@ -497,6 +682,84 @@ describe('ChallengeBlock', () => {
       await waitFor(() => {
         expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
       });
+    });
+
+    it('skip in standard mode never disconnects the shared terminal session', () => {
+      const { disconnect } = mockTerminalCtx({ status: 'disconnected' });
+
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+      const skipProps = {
+        ...baseProps,
+        mode: 'standard' as const,
+        skippable: true,
+        stepId: 'ch-std-skip',
+        successCriteria: 'has-dashboard-named:My Dashboard',
+      };
+      render(<ChallengeBlock {...skipProps} />);
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      expect(mockMarkSkipped).toHaveBeenCalled();
+      expect(disconnect).not.toHaveBeenCalled();
+    });
+
+    it('skip in standard mode resets to ready rather than idle when completion is cleared', () => {
+      mockTerminalCtx({ status: 'disconnected' });
+
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+      const skipProps = {
+        ...baseProps,
+        mode: 'standard' as const,
+        skippable: true,
+        stepId: 'ch-std-skip-reset',
+        successCriteria: 'has-dashboard-named:My Dashboard',
+      };
+      const { rerender } = render(<ChallengeBlock {...skipProps} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      mockedUseStepCompletion.mockReturnValue({ completed: true, reason: 'skipped' });
+      rerender(<ChallengeBlock {...skipProps} />);
+      expect(screen.getByText(/challenge skipped/i)).toBeInTheDocument();
+
+      mockedUseStepCompletion.mockReturnValue({ completed: false, reason: null });
+      rerender(<ChallengeBlock {...skipProps} />);
+
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /start challenge/i })).not.toBeInTheDocument();
+    });
+
+    it('clears latched cancel on subsequent Check my work so retry succeeds after Skip in standard mode', async () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+      mockedCheckPostconditions.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        error: [],
+      });
+
+      const skipProps = {
+        ...baseProps,
+        mode: 'standard' as const,
+        skippable: true,
+        stepId: 'ch-std-skip-retry',
+        successCriteria: 'has-dashboard-named:My Dashboard',
+      };
+      const { rerender } = render(<ChallengeBlock {...skipProps} />);
+
+      // Skip sets cancelRequestedRef.current = true via handleCancel
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      // Simulate store cleared on subsequent retry
+      mockedUseStepCompletion.mockReturnValue({ completed: false, reason: null });
+      rerender(<ChallengeBlock {...skipProps} />);
+
+      // Check my work should clear cancelRequestedRef and reach solved, not stay stuck on Checking
+      fireEvent.click(screen.getByRole('button', { name: /check my work/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/challenge solved/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/checking your work/i)).not.toBeInTheDocument();
     });
   });
 
@@ -642,6 +905,1547 @@ describe('ChallengeBlock', () => {
 
       const third = render(<ChallengeBlock {...baseProps} />);
       expect(third.getByTestId('challenge-block-challenge-1')).toBeInTheDocument();
+    });
+  });
+
+  describe('requirements, objectives, and skippable gating', () => {
+    beforeEach(() => {
+      mockMarkSkipped.mockClear();
+      mockUseStepChecker.mockImplementation((props) => ({
+        status: 'enabled' as StepStatus,
+        isEnabled: true,
+        isSequentialBlock: false,
+        isCompleted: false,
+        isChecking: false,
+        explanation: null,
+        canSkip: Boolean(props.skippable),
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      }));
+    });
+
+    it('renders requirement warning banner while keeping Start button reachable in idle when disabled by requirements', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue({
+        status: 'blocked' as StepStatus,
+        isEnabled: false,
+        isSequentialBlock: false,
+        isCompleted: false,
+        isChecking: false,
+        explanation: 'Complete previous step first',
+        canSkip: false,
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      });
+
+      render(<ChallengeBlock {...baseProps} requirements={['req-1']} stepId="ch-1" />);
+
+      expect(screen.getByTestId('challenge-requirement-warning-ch-1')).toHaveTextContent(
+        'Complete previous step first'
+      );
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    it('disables Start challenge and does not provision VM when disabled prop is true in idle', () => {
+      const { openTerminal } = mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'enabled',
+          isEnabled: true,
+          explanation: null,
+          canSkip: false,
+        })
+      );
+
+      render(<ChallengeBlock {...baseProps} disabled={true} stepId="ch-disabled" />);
+
+      const startButton = screen.getByRole('button', { name: /start challenge/i });
+      expect(startButton).toBeInTheDocument();
+      expect(startButton).toBeDisabled();
+
+      fireEvent.click(startButton);
+
+      expect(openTerminal).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('challenge-requirement-warning-ch-disabled')).not.toBeInTheDocument();
+    });
+
+    it('does not render requirement warning banner when disabled is true but checker is enabled', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'enabled',
+          isEnabled: true,
+          explanation: null,
+          canSkip: false,
+        })
+      );
+
+      render(<ChallengeBlock {...baseProps} disabled={true} stepId="ch-disabled-req-met" />);
+
+      expect(screen.queryByTestId('challenge-requirement-warning-ch-disabled-req-met')).not.toBeInTheDocument();
+    });
+
+    it('does not render requirement warning banner when checker status is idle', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'idle',
+          isEnabled: false,
+          explanation: undefined,
+          canSkip: false,
+        })
+      );
+
+      render(<ChallengeBlock {...baseProps} requirements={['req-1']} stepId="ch-idle-req" />);
+
+      expect(screen.queryByTestId('challenge-requirement-warning-ch-idle-req')).not.toBeInTheDocument();
+    });
+
+    it('does not render requirement warning banner on mount when challenge has no requirements and checker is idle', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'idle',
+          isEnabled: false,
+          explanation: undefined,
+          canSkip: false,
+        })
+      );
+
+      render(<ChallengeBlock {...baseProps} stepId="ch-no-req-idle" />);
+
+      expect(screen.queryByTestId('challenge-requirement-warning-ch-no-req-idle')).not.toBeInTheDocument();
+    });
+
+    it('allows starting a coda challenge with requirements and enables Check my work after requirements are met', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      mockTerminalCtx({ status: 'connected' });
+
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'blocked',
+          isEnabled: false,
+          explanation: 'Prerequisites unmet',
+          canSkip: false,
+        })
+      );
+
+      const { rerender } = render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="coda"
+          requirements={['coda-exit-zero:check-ready']}
+          skippable={false}
+          stepId="ch-coda-req"
+        />
+      );
+
+      const startButton = screen.getByRole('button', { name: /start challenge/i });
+      expect(startButton).toBeInTheDocument();
+      expect(screen.getByTestId('challenge-requirement-warning-ch-coda-req')).toBeInTheDocument();
+
+      fireEvent.click(startButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeDisabled();
+
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'enabled',
+          isEnabled: true,
+          explanation: null,
+          canSkip: false,
+        })
+      );
+      rerender(
+        <ChallengeBlock
+          {...baseProps}
+          mode="coda"
+          requirements={['coda-exit-zero:check-ready']}
+          skippable={false}
+          stepId="ch-coda-req"
+        />
+      );
+
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeEnabled();
+    });
+
+    it('passes objectives: "" to useStepChecker to prevent Phase 1 auto-completion and does not show solved UI', () => {
+      mockTerminalCtx();
+      render(<ChallengeBlock {...baseProps} objectives={['obj-1']} stepId="ch-2" />);
+
+      expect(mockUseStepChecker).toHaveBeenCalledWith(
+        expect.objectContaining({
+          objectives: '',
+          stepId: 'ch-2',
+        })
+      );
+      // Ensure challenge block is not solved until check passes
+      expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+    });
+
+    it('renders Skip button when skippable is true and calls markSkipped and onStepComplete(id) on click', () => {
+      mockTerminalCtx();
+      const onStepComplete = jest.fn();
+
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+      const skipProps = { ...baseProps, skippable: true, stepId: 'ch-3', onStepComplete };
+      render(<ChallengeBlock {...skipProps} />);
+
+      const skipButton = screen.getByRole('button', { name: /skip/i });
+      expect(skipButton).toBeInTheDocument();
+
+      fireEvent.click(skipButton);
+
+      expect(mockMarkSkipped).toHaveBeenCalled();
+      expect(onStepComplete).toHaveBeenCalledWith('ch-3');
+    });
+
+    it('hides Skip while sequentially blocked even when skippable', () => {
+      mockTerminalCtx();
+      // canSkip echoes the skippable prop through SET_BLOCKED, so the gate is isSequentialBlock.
+      mockUseStepChecker.mockReturnValue({
+        status: 'blocked' as StepStatus,
+        isEnabled: false,
+        isSequentialBlock: true,
+        isCompleted: false,
+        isChecking: false,
+        explanation: 'Complete previous step first',
+        canSkip: true,
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      });
+
+      render(<ChallengeBlock {...baseProps} skippable={true} stepId="ch-blocked-skip" />);
+
+      expect(screen.queryByRole('button', { name: /skip/i })).not.toBeInTheDocument();
+    });
+
+    it('still offers Skip when this step’s own requirements fail (not a sequential block)', () => {
+      mockTerminalCtx();
+      // Resolve as requirement-failed rather than sequentially blocked.
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'blocked',
+          isEnabled: false,
+          isSequentialBlock: false,
+          isCompleted: false,
+          isChecking: false,
+          explanation: 'Dashboard not found yet',
+          canSkip: true,
+        })
+      );
+      render(<ChallengeBlock {...baseProps} skippable={true} stepId="ch-own-reqs" />);
+
+      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
+    });
+
+    it('hides Skip while the checker is idle (unresolved), even when not sequentially blocked', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'idle',
+          isEnabled: false,
+          isSequentialBlock: false,
+          isCompleted: false,
+          isChecking: false,
+          explanation: undefined,
+          canSkip: true,
+        })
+      );
+
+      render(<ChallengeBlock {...baseProps} skippable={true} stepId="ch-unresolved-skip" />);
+
+      expect(screen.queryByRole('button', { name: /skip/i })).not.toBeInTheDocument();
+    });
+
+    it('shows Skip once an unresolved check resolves as not blocked', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'idle',
+          isEnabled: false,
+          isSequentialBlock: false,
+          isCompleted: false,
+          isChecking: false,
+          explanation: undefined,
+          canSkip: true,
+        })
+      );
+      const resolvingProps = { ...baseProps, skippable: true, stepId: 'ch-resolve-skip' };
+      const { rerender } = render(<ChallengeBlock {...resolvingProps} />);
+
+      expect(screen.queryByRole('button', { name: /skip/i })).not.toBeInTheDocument();
+
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'enabled',
+          isEnabled: true,
+          isSequentialBlock: false,
+          isCompleted: false,
+          isChecking: false,
+          explanation: null,
+          canSkip: true,
+        })
+      );
+      rerender(<ChallengeBlock {...resolvingProps} />);
+
+      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
+    });
+
+    it('keeps Skip visible during a later heartbeat recheck', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+      const recheckProps = { ...baseProps, skippable: true, stepId: 'ch-recheck-skip' };
+      const { rerender } = render(<ChallengeBlock {...recheckProps} />);
+      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
+
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'checking', isChecking: true }));
+      rerender(<ChallengeBlock {...recheckProps} />);
+      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
+
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled', isChecking: false }));
+      rerender(<ChallengeBlock {...recheckProps} />);
+      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
+    });
+
+    it('hides Skip while provisioning so Cancel is the only exit', async () => {
+      mockedExecInSession.mockImplementation(() => new Promise(() => {}));
+      mockTerminalCtx({ status: 'connected' });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={['echo one']} skippable={true} stepId="ch-provision" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', { name: /skip/i })).not.toBeInTheDocument();
+    });
+
+    it('renders Challenge skipped when the stored completion reason is skipped', () => {
+      mockTerminalCtx();
+      mockedUseStepCompletion.mockReturnValue({ completed: true, reason: 'skipped' });
+
+      render(<ChallengeBlock {...baseProps} stepId="ch-skipped" />);
+
+      expect(screen.getByText(/challenge skipped/i)).toBeInTheDocument();
+      expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
+    });
+
+    it('does not complete from objectives alone; Check my work is still required', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        error: [],
+      });
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          objectives={['has-dashboard-named:My Dashboard']}
+          stepId="ch-objectives"
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockedCheckRequirements).toHaveBeenCalledWith(
+          expect.objectContaining({ requirements: ['has-dashboard-named:My Dashboard'] })
+        );
+      });
+      await waitFor(() => {
+        expect(screen.getByText(/objective already met/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/challenge solved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+
+    it('does not display objective already met note when check verdict is invalid even if pass is true', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'has-role:',
+        pass: true,
+        verdict: 'invalid',
+        error: [{ requirement: 'has-role:', pass: false, verdict: 'invalid', error: 'Invalid requirement: has-role:' }],
+      });
+
+      render(
+        <ChallengeBlock {...baseProps} mode="standard" objectives={['has-role:']} stepId="ch-invalid-objective" />
+      );
+
+      await waitFor(() => {
+        expect(mockedCheckRequirements).toHaveBeenCalledWith(expect.objectContaining({ requirements: ['has-role:'] }));
+      });
+      expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+    });
+
+    it('clears objective already met note when a subsequent probe resolution returns unsatisfied', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValueOnce({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          objectives={['has-dashboard-named:My Dashboard']}
+          stepId="ch-dynamic-objectives"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/objective already met/i)).toBeInTheDocument();
+      });
+
+      mockedCheckRequirements.mockResolvedValueOnce({
+        requirements: 'has-dashboard-named:Updated Dashboard',
+        pass: false,
+        verdict: 'unsatisfied',
+        error: [
+          {
+            requirement: 'has-dashboard-named:Updated Dashboard',
+            pass: false,
+            verdict: 'unsatisfied',
+            error: 'Dashboard not found',
+          },
+        ],
+      });
+
+      rerender(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          objectives={['has-dashboard-named:Updated Dashboard']}
+          stepId="ch-dynamic-objectives"
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+      });
+    });
+
+    it('never invokes checkRequirements with coda-exit-zero tokens in objectives', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'coda-exit-zero:something',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          objectives={['coda-exit-zero:something']}
+          stepId="ch-coda-exit-zero-objective"
+        />
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockedCheckRequirements).not.toHaveBeenCalled();
+      expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+    });
+
+    it('filters out coda-exit-zero from mixed objectives before probing', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          objectives={['has-dashboard-named:My Dashboard', 'coda-exit-zero:something']}
+          stepId="ch-mixed-objectives"
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockedCheckRequirements).toHaveBeenCalledWith(
+          expect.objectContaining({ requirements: ['has-dashboard-named:My Dashboard'] })
+        );
+      });
+
+      expect(mockedCheckRequirements).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          requirements: expect.arrayContaining([expect.stringContaining('coda-exit-zero')]),
+        })
+      );
+      await waitFor(() => {
+        expect(screen.getByText(/objective already met/i)).toBeInTheDocument();
+      });
+    });
+
+    it('does not probe objectives when isEligibleForChecking is false', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="standard"
+          isEligibleForChecking={false}
+          objectives={['has-dashboard-named:My Dashboard']}
+          stepId="ch-ineligible-objectives"
+        />
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockedCheckRequirements).not.toHaveBeenCalled();
+      expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+    });
+
+    it('does not probe objectives in Coda mode while idle', async () => {
+      mockTerminalCtx();
+      mockedCheckRequirements.mockResolvedValue({
+        requirements: 'has-dashboard-named:My Dashboard',
+        pass: true,
+        verdict: 'satisfied',
+        error: [],
+      });
+
+      render(
+        <ChallengeBlock
+          {...baseProps}
+          mode="coda"
+          objectives={['has-dashboard-named:My Dashboard']}
+          stepId="ch-coda-idle-objectives"
+        />
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(mockedCheckRequirements).not.toHaveBeenCalled();
+      expect(screen.queryByText(/objective already met/i)).not.toBeInTheDocument();
+    });
+
+    it('handles Skip correctly in standalone mode without onStepComplete or sectionId', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+      const standaloneProps = {
+        ...baseProps,
+        skippable: true,
+        stepId: 'ch-standalone',
+        onStepComplete: undefined,
+        sectionId: undefined,
+      };
+      render(<ChallengeBlock {...standaloneProps} />);
+
+      const skipButton = screen.getByRole('button', { name: /skip/i });
+      fireEvent.click(skipButton);
+
+      expect(mockMarkSkipped).toHaveBeenCalled();
+      expect(mockUseStepChecker).toHaveBeenCalledWith(expect.objectContaining({ sectionId: undefined }));
+    });
+
+    it('renders Skip for a skippable challenge with no requirements using real useStepChecker', async () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockImplementation((props) => realUseStepChecker(props as any));
+
+      render(
+        <ChallengeBlock {...baseProps} requirements={undefined} skippable={true} stepId="ch-no-reqs-regression" />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
+      });
+    });
+
+    it('renders Skip when status transitions directly from idle to enabled without an intermediate checking commit', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'idle',
+          isEnabled: false,
+          isChecking: false,
+        })
+      );
+
+      const skipProps = { ...baseProps, requirements: undefined, skippable: true, stepId: 'ch-fast-path' };
+      const { rerender } = render(<ChallengeBlock {...skipProps} />);
+      expect(screen.queryByRole('button', { name: /skip/i })).not.toBeInTheDocument();
+
+      // Hook resolves directly to enabled without any intermediate isChecking: true commit
+      mockUseStepChecker.mockReturnValue(
+        mockCheckerState({
+          status: 'enabled',
+          isEnabled: true,
+          isChecking: false,
+        })
+      );
+      rerender(<ChallengeBlock {...skipProps} />);
+      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument();
+    });
+
+    it('keeps Try again (disabled) and offers Cancel when setup failed but isEnabled is false', async () => {
+      mockTerminalCtx({ status: 'connected', sessionId: null });
+      mockUseStepChecker.mockImplementation((props) => ({
+        status: 'enabled' as StepStatus,
+        isEnabled: true,
+        isSequentialBlock: false,
+        isCompleted: false,
+        isChecking: false,
+        explanation: null,
+        canSkip: Boolean(props.skippable),
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      }));
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} setupCommands={['echo one']} />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+      });
+
+      // Now simulate requirements becoming unsatisfied (isEnabled -> false)
+      mockUseStepChecker.mockImplementation((props) => ({
+        status: 'blocked' as StepStatus,
+        isEnabled: false,
+        isSequentialBlock: false,
+        isCompleted: false,
+        isChecking: false,
+        explanation: 'Prerequisites unmet',
+        canSkip: Boolean(props.skippable),
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      }));
+
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['echo one']} />);
+
+      expect(screen.getByRole('button', { name: /try again/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    });
+
+    it('keeps Check my work (disabled) and offers Cancel when requirements regress after reaching ready', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      mockTerminalCtx({ status: 'connected' });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-regress" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      mockUseStepChecker.mockImplementation((props) => ({
+        status: 'blocked' as StepStatus,
+        isEnabled: false,
+        isSequentialBlock: false,
+        isCompleted: false,
+        isChecking: false,
+        explanation: 'Complete previous step first',
+        canSkip: Boolean(props.skippable),
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      }));
+
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-regress" />);
+
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    });
+
+    it('renders a fallback message while a requirements recheck has no explanation yet', () => {
+      mockTerminalCtx();
+      mockUseStepChecker.mockReturnValue({
+        status: 'checking' as StepStatus,
+        isEnabled: false,
+        isSequentialBlock: false,
+        isCompleted: false,
+        isChecking: true,
+        explanation: undefined,
+        canSkip: false,
+        markSkipped: mockMarkSkipped,
+        resetStep: jest.fn(),
+      });
+
+      render(<ChallengeBlock {...baseProps} requirements={['req-1']} stepId="ch-recheck" />);
+
+      const banner = screen.getByTestId('challenge-requirement-warning-ch-recheck');
+      expect(banner.textContent).not.toBe('');
+      expect(banner).toHaveTextContent(/checking requirements/i);
+    });
+
+    it('does not disconnect terminal on skip when this challenge does not own the session', () => {
+      const { disconnect } = mockTerminalCtx({
+        status: 'connected',
+        sessionId: 'session-opened-by-other-step',
+      });
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+
+      const skipProps = {
+        ...baseProps,
+        mode: 'coda' as const,
+        skippable: true,
+        stepId: 'ch-coda-skip-non-owner',
+      };
+      render(<ChallengeBlock {...skipProps} />);
+
+      const skipButton = screen.getByRole('button', { name: /skip/i });
+      fireEvent.click(skipButton);
+
+      expect(mockMarkSkipped).toHaveBeenCalled();
+      expect(disconnect).not.toHaveBeenCalled();
+    });
+
+    it('does not disconnect terminal on skip even when this challenge owns the session', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const NEW_SESSION = 'ch-session-owned-skip';
+      const openTerminal = jest.fn().mockResolvedValue(NEW_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled' }));
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={[]} skippable={true} stepId="ch-coda-skip-owned" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: NEW_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} skippable={true} stepId="ch-coda-skip-owned" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      const skipButton = screen.getByRole('button', { name: /skip/i });
+      fireEvent.click(skipButton);
+
+      expect(mockMarkSkipped).toHaveBeenCalled();
+      expect(disconnect).not.toHaveBeenCalled();
+    });
+
+    it('does not disconnect terminal on cancel when the live session belongs to another step', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const PROVISIONED_SESSION = 'ch-session-1';
+      const openTerminal = jest.fn().mockResolvedValue(PROVISIONED_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-other-step" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: PROVISIONED_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-other-step" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      // Another step opened a new session in the shared terminal context
+      mockTerminalCtx({ status: 'connected', sessionId: 'session-opened-by-other-step', disconnect });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-other-step" />);
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel when this challenge reused an existing session', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const REUSED_SESSION = 'ch-session-reused';
+      const openTerminal = jest.fn().mockResolvedValue(REUSED_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'connected',
+        sessionId: REUSED_SESSION,
+        openTerminal,
+      });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-reused" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel in ready state even when this challenge provisioned the session', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const NEW_SESSION = 'ch-session-owned';
+      const openTerminal = jest.fn().mockResolvedValue(NEW_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-owned" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: NEW_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-owned" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel after setup fails and try again succeeds on the same session', async () => {
+      const post = jest
+        .fn()
+        .mockResolvedValueOnce({ stdout: '', stderr: 'mock setup error', exitCode: 1, durationMs: 1 })
+        .mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const RETRY_SESSION = 'ch-session-retry-owned';
+      const openTerminal = jest.fn().mockResolvedValue(RETRY_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['echo fail-first']} stepId="ch-coda-cancel-retry-owned" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: RETRY_SESSION, disconnect, openTerminal });
+      rerender(
+        <ChallengeBlock {...baseProps} setupCommands={['echo fail-first']} stepId="ch-coda-cancel-retry-owned" />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel after restart following resetTrigger while session remains live', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const SESSION = 'ch-session-reset-live';
+      const openTerminal = jest.fn().mockResolvedValue(SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reset-live" resetTrigger={0} />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reset-live" resetTrigger={0} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reset-live" resetTrigger={1} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel in ready state whether reusing or provisioning a session', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const REUSED_SESSION = 'ch-session-initial-reused';
+      const NEW_SESSION = 'ch-session-subsequent-owned';
+      let currentSessionId: string | null = REUSED_SESSION;
+      const openTerminal = jest.fn().mockImplementation(() => Promise.resolve(currentSessionId));
+      const disconnect = jest.fn().mockImplementation(() => {
+        currentSessionId = null;
+      });
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: REUSED_SESSION,
+        openTerminal,
+        disconnect,
+      });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reuse-then-own" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+
+      currentSessionId = NEW_SESSION;
+      mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+        disconnect,
+      });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reuse-then-own" />);
+
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: NEW_SESSION,
+        openTerminal,
+        disconnect,
+      });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-reuse-then-own" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel when a reused session connects late via the effect', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const REUSED_SESSION = 'ch-session-late-reused';
+      const openTerminal = jest.fn().mockReturnValue(new Promise(() => {}));
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: REUSED_SESSION,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-late-reused" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: REUSED_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-late-reused" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('runs setup and reaches ready when a reused session connects late via the effect, without claiming ownership', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const REUSED_SESSION = 'ch-session-late-hang-fix';
+      const openTerminal = jest.fn().mockReturnValue(new Promise(() => {}));
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: REUSED_SESSION,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['echo setup-ran']} stepId="ch-coda-late-hang-fix" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: REUSED_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['echo setup-ran']} stepId="ch-coda-late-hang-fix" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+      });
+
+      expect(post).toHaveBeenCalled();
+      expect(post.mock.calls[0]![0]).toBe(REUSED_SESSION);
+      expect(post.mock.calls[0]![1]).toMatchObject({ command: 'echo setup-ran' });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('claims ownership and disconnects on cancel while preparing when a newly provisioned session connects late via the effect', async () => {
+      let resolveSetup: (value: unknown) => void = () => {};
+      const post = jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSetup = resolve;
+          })
+      );
+      setBackend(post);
+      const NEW_SESSION = 'ch-session-late-owned';
+      const openTerminal = jest.fn().mockReturnValue(new Promise(() => {}));
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-late-owned" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: NEW_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-late-owned" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      resolveSetup({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('preserves shared session when provisioning block is cancelled after a second block joins', async () => {
+      const post = jest.fn().mockResolvedValue({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      setBackend(post);
+      const SHARED_SESSION = 'ch-session-shared-survives';
+      let currentSessionId: string | null = null;
+      let currentStatus: 'disconnected' | 'connected' = 'disconnected';
+      const disconnect = jest.fn().mockImplementation(() => {
+        currentSessionId = null;
+        currentStatus = 'disconnected';
+      });
+      const openTerminal = jest.fn().mockImplementation(() => {
+        currentSessionId = SHARED_SESSION;
+        currentStatus = 'connected';
+        return Promise.resolve(SHARED_SESSION);
+      });
+      mockTerminalCtx({
+        status: currentStatus,
+        sessionId: currentSessionId,
+        openTerminal,
+        disconnect,
+      });
+
+      const { rerender } = render(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-b" />
+          </div>
+        </div>
+      );
+
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: SHARED_SESSION,
+        openTerminal,
+        disconnect,
+      });
+      rerender(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-b" />
+          </div>
+        </div>
+      );
+
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId('block-a')).getByRole('button', { name: /check my work/i })
+        ).toBeInTheDocument();
+      });
+
+      fireEvent.click(within(screen.getByTestId('block-b')).getByRole('button', { name: /start challenge/i }));
+
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId('block-b')).getByRole('button', { name: /check my work/i })
+        ).toBeInTheDocument();
+      });
+
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i })
+        ).toBeInTheDocument();
+      });
+      expect(within(screen.getByTestId('block-b')).getByRole('button', { name: /check my work/i })).toBeInTheDocument();
+    });
+
+    it('disconnects terminal on cancel while preparing if this block provisioned the session', async () => {
+      let resolveSetup: (value: unknown) => void = () => {};
+      const post = jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSetup = resolve;
+          })
+      );
+      setBackend(post);
+      const NEW_SESSION = 'ch-session-cancel-preparing';
+      const openTerminal = jest.fn().mockResolvedValue(NEW_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-prep" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: NEW_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-prep" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      resolveSetup({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('disconnects terminal on cancel while connecting if openTerminal provisions a new session', async () => {
+      let resolveOpenTerminal: (sessionId: string) => void = () => {};
+      const openTerminal = jest.fn().mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveOpenTerminal = resolve;
+        })
+      );
+      const NEW_SESSION = 'ch-session-cancel-conn';
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-conn" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      await act(async () => {
+        resolveOpenTerminal(NEW_SESSION);
+      });
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel while connecting if openTerminal returns an existing session', async () => {
+      let resolveOpenTerminal: (sessionId: string) => void = () => {};
+      const openTerminal = jest.fn().mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveOpenTerminal = resolve;
+        })
+      );
+      const EXISTING_SESSION = 'ch-session-exist-conn';
+      const { disconnect } = mockTerminalCtx({
+        status: 'connected',
+        sessionId: EXISTING_SESSION,
+        openTerminal,
+      });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-conn-exist" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      await act(async () => {
+        resolveOpenTerminal(EXISTING_SESSION);
+      });
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect a reused session held while disconnected when cancelled after openTerminal awaits', async () => {
+      let resolveOpenTerminal: (sessionId: string) => void = () => {};
+      const openTerminal = jest.fn().mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveOpenTerminal = resolve;
+        })
+      );
+      const REUSED_DISCONNECTED_SESSION = 'ch-session-reused-disconnected';
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: REUSED_DISCONNECTED_SESSION,
+        openTerminal,
+      });
+
+      render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-cancel-conn-reused-disc" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      await act(async () => {
+        resolveOpenTerminal(REUSED_DISCONNECTED_SESSION);
+      });
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect a reused session held while disconnected when cancelled during preparing', async () => {
+      let resolveSetup: (value: unknown) => void = () => {};
+      const post = jest.fn().mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveSetup = resolve;
+          })
+      );
+      setBackend(post);
+      const REUSED_DISCONNECTED_SESSION = 'ch-session-reused-disc-prep';
+      const openTerminal = jest.fn().mockResolvedValue(REUSED_DISCONNECTED_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: REUSED_DISCONNECTED_SESSION,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-disc-prep" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: REUSED_DISCONNECTED_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-coda-cancel-disc-prep" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      resolveSetup({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect terminal on cancel when setup has failed', async () => {
+      const post = jest
+        .fn()
+        .mockResolvedValueOnce({ stdout: '', stderr: 'mock setup error', exitCode: 1, durationMs: 1 });
+      setBackend(post);
+      const FAILED_SESSION = 'ch-session-setup-failed';
+      const openTerminal = jest.fn().mockResolvedValue(FAILED_SESSION);
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(
+        <ChallengeBlock {...baseProps} setupCommands={['exit 1']} stepId="ch-coda-cancel-failed" />
+      );
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({ status: 'connected', sessionId: FAILED_SESSION, disconnect, openTerminal });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={['exit 1']} stepId="ch-coda-cancel-failed" />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /start challenge/i })).toBeInTheDocument();
+      });
+    });
+
+    it('does not disconnect shared session when one of two concurrently connecting blocks is cancelled', async () => {
+      let resolveSetupA: (value: unknown) => void = () => {};
+      let resolveSetupB: (value: unknown) => void = () => {};
+      let callCount = 0;
+      const post = jest.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return new Promise((resolve) => {
+            resolveSetupA = resolve;
+          });
+        }
+        return new Promise((resolve) => {
+          resolveSetupB = resolve;
+        });
+      });
+      setBackend(post);
+      const SHARED_SESSION = 'ch-session-concurrent-connecting';
+      const openTerminal = jest.fn().mockResolvedValue(SHARED_SESSION);
+      const disconnect = jest.fn();
+      mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+        disconnect,
+      });
+
+      const { rerender } = render(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-concurrent-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-concurrent-b" />
+          </div>
+        </div>
+      );
+
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i }));
+      fireEvent.click(within(screen.getByTestId('block-b')).getByRole('button', { name: /start challenge/i }));
+
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: SHARED_SESSION,
+        openTerminal,
+        disconnect,
+      });
+      rerender(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-concurrent-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={['sleep 60']} stepId="ch-concurrent-b" />
+          </div>
+        </div>
+      );
+
+      await waitFor(() => {
+        expect(within(screen.getByTestId('block-a')).getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+      });
+
+      // Cancel block-a while block-b is still in preparing on the same provisioned session
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(
+          within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i })
+        ).toBeInTheDocument();
+      });
+
+      // Block-b is still preparing; cancelling it now tears down the session since no other block holds it
+      fireEvent.click(within(screen.getByTestId('block-b')).getByRole('button', { name: /cancel/i }));
+
+      expect(disconnect).toHaveBeenCalledTimes(1);
+      resolveSetupA({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+      resolveSetupB({ stdout: '', stderr: '', exitCode: 0, durationMs: 1 });
+    });
+
+    it('does not disconnect terminal on cancel-after-await if terminal is attached to a different session', async () => {
+      let resolveOpenTerminal: (sessionId: string) => void = () => {};
+      const openTerminal = jest.fn().mockReturnValue(
+        new Promise<string>((resolve) => {
+          resolveOpenTerminal = resolve;
+        })
+      );
+      const NEW_SESSION = 'ch-session-new-provisioned';
+      const OTHER_SESSION = 'ch-session-other-active';
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      const { rerender } = render(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-diff-sess" />);
+      fireEvent.click(screen.getByRole('button', { name: /start challenge/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+      // External event moves terminal to another session before openTerminal resolves
+      mockTerminalCtx({
+        status: 'connected',
+        sessionId: OTHER_SESSION,
+        openTerminal,
+        disconnect,
+      });
+      rerender(<ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-coda-diff-sess" />);
+
+      await act(async () => {
+        resolveOpenTerminal(NEW_SESSION);
+      });
+
+      expect(disconnect).not.toHaveBeenCalled();
+    });
+
+    it('does not disconnect terminal on cancel-after-await if another block is connecting', async () => {
+      let resolveOpenTerminalA: (sessionId: string) => void = () => {};
+      let resolveOpenTerminalB: (sessionId: string) => void = () => {};
+      let callCount = 0;
+      const openTerminal = jest.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return new Promise<string>((resolve) => {
+            resolveOpenTerminalA = resolve;
+          });
+        }
+        return new Promise<string>((resolve) => {
+          resolveOpenTerminalB = resolve;
+        });
+      });
+      const NEW_SESSION = 'ch-session-await-concurrent';
+      const { disconnect } = mockTerminalCtx({
+        status: 'disconnected',
+        sessionId: null,
+        openTerminal,
+      });
+
+      render(
+        <div>
+          <div data-testid="block-a">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-postawait-a" />
+          </div>
+          <div data-testid="block-b">
+            <ChallengeBlock {...baseProps} setupCommands={[]} stepId="ch-postawait-b" />
+          </div>
+        </div>
+      );
+
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /start challenge/i }));
+      fireEvent.click(within(screen.getByTestId('block-b')).getByRole('button', { name: /start challenge/i }));
+
+      // Cancel block A while both are awaiting connection
+      fireEvent.click(within(screen.getByTestId('block-a')).getByRole('button', { name: /cancel/i }));
+
+      await act(async () => {
+        resolveOpenTerminalA(NEW_SESSION);
+      });
+
+      // Block B is still connecting, so A's post-await resolution must NOT disconnect
+      expect(disconnect).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveOpenTerminalB(NEW_SESSION);
+      });
+    });
+
+    it('resets local state and checker when resetTrigger increments after a skip', () => {
+      mockTerminalCtx({ status: 'disconnected' });
+      const mockResetStep = jest.fn();
+      mockUseStepChecker.mockReturnValue(mockCheckerState({ status: 'enabled', resetStep: mockResetStep }));
+
+      const skipProps = {
+        ...baseProps,
+        mode: 'standard' as const,
+        skippable: true,
+        stepId: 'ch-reset-trigger',
+        resetTrigger: 0,
+      };
+      const { rerender } = render(<ChallengeBlock {...skipProps} />);
+
+      // Skip the challenge
+      fireEvent.click(screen.getByRole('button', { name: /skip/i }));
+
+      // Parent section clears completion store and increments resetTrigger
+      mockedUseStepCompletion.mockReturnValue({ completed: false, reason: null });
+      rerender(<ChallengeBlock {...skipProps} resetTrigger={1} />);
+
+      expect(mockResetStep).toHaveBeenCalledWith({ skipStoreWrite: true });
+      expect(screen.getByRole('button', { name: /check my work/i })).toBeInTheDocument();
     });
   });
 });

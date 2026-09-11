@@ -12,7 +12,7 @@
  * on top of the UI gating.
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Button, Icon, useStyles2, Alert } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 import { css } from '@emotion/css';
@@ -34,9 +34,13 @@ import {
   PATHFINDER_READY_FILE,
   type ExecResponse,
 } from '../../integrations/coda/coda-api';
-import { useGuideRequirements } from '../../requirements-manager';
+import type { ConditionInput } from '../../types/requirements.types';
+import { useGuideRequirements, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
 import { markStepCompleted, useStepCompletion } from '../../global-state/completion-store';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { checkVerdict } from '../../lib/check-verdict';
+import { conditionTokens } from '../../lib/condition-input';
+import { testIds } from '../../constants/testIds';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 // The atomic temp+rename guarantees the gated coda-exit-zero check never
@@ -83,15 +87,75 @@ export interface ChallengeBlockProps {
   successCriteria: string;
   hintLevels?: ChallengeHintProps[];
   failureMessage?: string;
+  requirements?: ConditionInput;
+  objectives?: ConditionInput;
+  skippable?: boolean;
 
   stepId?: string;
+  isEligibleForChecking?: boolean;
   onStepComplete?: (stepId: string) => void;
+  // Accepted from content-renderer for parity with other blocks; unused locally.
   stepIndex?: number;
   totalSteps?: number;
   sectionId?: string;
+  disabled?: boolean;
+  resetTrigger?: number;
 }
 
 let challengeCounter = 0;
+let instanceCounter = 0;
+
+const activeSessionHolders = new Map<string, Set<string>>();
+const activeConnectingInstances = new Set<string>();
+
+function registerSessionHolder(sessionId: string, instanceId: string): void {
+  let holders = activeSessionHolders.get(sessionId);
+  if (!holders) {
+    holders = new Set();
+    activeSessionHolders.set(sessionId, holders);
+  }
+  holders.add(instanceId);
+}
+
+function unregisterSessionHolder(sessionId: string, instanceId: string): void {
+  const holders = activeSessionHolders.get(sessionId);
+  if (holders) {
+    holders.delete(instanceId);
+    if (holders.size === 0) {
+      activeSessionHolders.delete(sessionId);
+    }
+  }
+}
+
+function hasOtherSessionHolders(sessionId: string, instanceId: string): boolean {
+  const holders = activeSessionHolders.get(sessionId);
+  if (!holders) {
+    return false;
+  }
+  for (const holder of holders) {
+    if (holder !== instanceId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function registerConnectingInstance(instanceId: string): void {
+  activeConnectingInstances.add(instanceId);
+}
+
+function unregisterConnectingInstance(instanceId: string): void {
+  activeConnectingInstances.delete(instanceId);
+}
+
+function hasOtherConnectingInstances(instanceId: string): boolean {
+  for (const id of activeConnectingInstances) {
+    if (id !== instanceId) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
@@ -135,6 +199,27 @@ const getStyles = (theme: GrafanaTheme2) => ({
       marginTop: '2px',
       color: theme.colors.warning.text,
     },
+  }),
+  requirementMessage: css({
+    padding: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    backgroundColor: theme.colors.warning.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.warning.border}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
+  }),
+  objectiveNote: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    padding: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    backgroundColor: theme.colors.info.transparent,
+    borderRadius: theme.shape.radius.default,
+    border: `1px solid ${theme.colors.info.border}`,
+    fontSize: theme.typography.bodySmall.fontSize,
+    color: theme.colors.text.secondary,
   }),
   actions: css({
     display: 'flex',
@@ -182,22 +267,50 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   successCriteria,
   hintLevels = [],
   failureMessage,
+  requirements,
+  objectives,
+  skippable = false,
   stepId: providedStepId,
+  isEligibleForChecking = true,
   onStepComplete,
   sectionId,
+  disabled = false,
+  resetTrigger,
 }) => {
   const styles = useStyles2(getStyles);
   const terminalCtx = useTerminalContext();
+  const terminalCtxRef = useRef(terminalCtx);
+  useEffect(() => {
+    terminalCtxRef.current = terminalCtx;
+  }, [terminalCtx]);
   const codaGate = useCodaTerminalGate();
   const codaEligibility = useCodaSessionEligibility(codaGate !== 'disabled');
   useReportSandboxUnavailable(codaGate, codaEligibility, !!terminalCtx?.isTerminalRegistered, 'challenge');
-  const { checkPostconditions } = useGuideRequirements();
+  const { checkPostconditions, checkRequirements } = useGuideRequirements();
 
   const [generatedStepId] = useState(() => {
     challengeCounter += 1;
     return `challenge-${challengeCounter}`;
   });
   const stepId = providedStepId ?? generatedStepId;
+
+  useMemo(() => {
+    validateInteractiveRequirements({ requirements, stepId }, 'ChallengeBlock');
+  }, [requirements, stepId]);
+
+  const checker = useStepChecker({
+    requirements,
+    objectives: '',
+    targetAction: 'noop',
+    refTarget: '',
+    stepId,
+    isEligibleForChecking,
+    skippable,
+    sectionId,
+  });
+  const { resetStep: checkerResetStep } = checker;
+
+  const isEnabled = checker.isEnabled && !disabled;
 
   // Standard-mode challenges have no provisioning step to opt into — the
   // brief and Check my work are visible immediately. Coda-mode challenges
@@ -215,6 +328,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // command still completes (we don't abort fetches mid-flight today) but no
   // subsequent commands run and the block returns to idle.
   const cancelRequestedRef = useRef(false);
+  const setupRunIdRef = useRef(0);
   // Status the terminal had when the user clicked Start. We use this to
   // ignore a stale 'error' (or any other) status until the terminal has
   // observably transitioned in response to our openTerminal call — otherwise
@@ -225,10 +339,94 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   // against it: if this challenge asked for a different VM, openTerminal is
   // tearing it down and the SDK deletes it on the way out.
   const staleSessionIdRef = useRef<string | null>(null);
+  const [instanceId] = useState(() => `ch-inst-${++instanceCounter}`);
+  const provisionedSessionIdRef = useRef<string | null>(null);
+  const setupSessionIdRef = useRef<string | null>(null);
+  const heldSessionIdRef = useRef<string | null>(null);
 
-  const { completed: storedCompleted } = useStepCompletion(stepId, sectionId);
+  const claimSession = useCallback(
+    (sessionId: string) => {
+      if (heldSessionIdRef.current && heldSessionIdRef.current !== sessionId) {
+        unregisterSessionHolder(heldSessionIdRef.current, instanceId);
+      }
+      heldSessionIdRef.current = sessionId;
+      registerSessionHolder(sessionId, instanceId);
+    },
+    [instanceId]
+  );
+
+  const releaseSession = useCallback(() => {
+    unregisterConnectingInstance(instanceId);
+    if (heldSessionIdRef.current) {
+      unregisterSessionHolder(heldSessionIdRef.current, instanceId);
+      heldSessionIdRef.current = null;
+    }
+  }, [instanceId]);
+
+  useEffect(() => {
+    return () => {
+      releaseSession();
+    };
+  }, [releaseSession]);
+
+  const { completed: storedCompleted, reason: storedReason } = useStepCompletion(stepId, sectionId);
   const isStandalone = !onStepComplete;
   const isCompleted = storedCompleted || state === 'solved';
+  const isSkipped = storedReason === 'skipped';
+
+  // Objectives are probed read-only here, never through the gating checker:
+  // a satisfied objectives string on useStepChecker would SET_COMPLETED and
+  // persist to this block's store key, solving the challenge without successCriteria.
+  const [objectivesMet, setObjectivesMet] = useState(false);
+  useEffect(() => {
+    // coda-exit-zero: is excluded from the informational probe because
+    // probing it would exec the author's command in the learner's VM outside
+    // the Check my work flow — an informational check must never have side
+    // effects. (See also B1/round-3 review: the same token is now rejected
+    // outright in `requirements`, since only the challenge's own setup can
+    // ever satisfy it there.)
+    const safeObjectives = conditionTokens(objectives).filter((token) => !token.startsWith('coda-exit-zero:'));
+    const isReadyForProbe =
+      isEligibleForChecking &&
+      isEnabled &&
+      !isCompleted &&
+      (mode === 'standard'
+        ? state === 'ready' || state === 'failed-check'
+        : (state === 'ready' || state === 'failed-check') &&
+          terminalCtx?.status === 'connected' &&
+          Boolean(terminalCtx?.sessionId) &&
+          terminalCtx?.sessionId === setupSessionIdRef.current);
+
+    if (!isReadyForProbe || safeObjectives.length === 0) {
+      setObjectivesMet((prev) => (prev ? false : prev));
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await checkRequirements({ requirements: safeObjectives, stepId, maxRetries: 0 });
+        if (!cancelled) {
+          setObjectivesMet(checkVerdict(result) === 'satisfied');
+        }
+      } catch {
+        // Informational probe — a failed check leaves the normal flow untouched.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    objectives,
+    stepId,
+    checkRequirements,
+    isEligibleForChecking,
+    isEnabled,
+    isCompleted,
+    mode,
+    state,
+    terminalCtx?.status,
+    terminalCtx?.sessionId,
+  ]);
 
   const markComplete = useCallback(() => {
     if (storedCompleted) {
@@ -249,11 +447,29 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
   }, [storedCompleted, onStepComplete, stepId, sectionId, isStandalone]);
 
   const resetToIdle = useCallback(() => {
+    setupRunIdRef.current++;
     setupStartedRef.current = false;
+    provisionedSessionIdRef.current = null;
+    setupSessionIdRef.current = null;
+    releaseSession();
     setSetupProgress(null);
     setErrorDetail('');
-    setState('idle');
-  }, []);
+    setState(mode === 'standard' ? 'ready' : 'idle');
+  }, [mode, releaseSession]);
+
+  // Handle reset trigger from parent section.
+  /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset challenge state when parent section increments resetTrigger */
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      cancelRequestedRef.current = false;
+      setHintsRevealed(0);
+      resetToIdle();
+      if (checkerResetStep) {
+        checkerResetStep({ skipStoreWrite: true });
+      }
+    }
+  }, [resetTrigger]); // eslint-disable-line react-hooks/exhaustive-deps -- reset challenge state only when parent section increments resetTrigger
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Every exec is pinned to the session the caller resolved, never to whatever
   // the last render happened to hold: starting a challenge against a different
@@ -271,28 +487,32 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       }
       setupStartedRef.current = true;
       cancelRequestedRef.current = false;
+      unregisterConnectingInstance(instanceId);
+      const runId = ++setupRunIdRef.current;
+      setupSessionIdRef.current = sessionId;
+      claimSession(sessionId);
       setState('preparing');
+
+      const isAborted = () => runId !== setupRunIdRef.current || cancelRequestedRef.current;
 
       // Two paths: a single bash script (preferred, allows multi-line / heredocs
       // / control flow) or the legacy per-command array. setupScript wins when
       // both are set.
       const useScript = !!setupScript && setupScript.trim().length > 0;
       // +1 for the sentinel write that always follows successful setup.
-      const totalSteps = useScript ? 2 : setupCommands.length + 1;
-      setSetupProgress({ current: 0, total: totalSteps });
+      const totalStepsToRun = useScript ? 2 : setupCommands.length + 1;
+      setSetupProgress({ current: 0, total: totalStepsToRun });
       try {
         if (useScript) {
-          if (cancelRequestedRef.current) {
-            resetToIdle();
+          if (isAborted()) {
             return;
           }
-          setSetupProgress({ current: 1, total: totalSteps });
+          setSetupProgress({ current: 1, total: totalStepsToRun });
           // 120s timeout — apt-get / systemctl restart / service-startup waits
           // are realistic and need the headroom. Backend hard-caps at the same
           // value, so we just request it.
           const result = await runExec(sessionId, setupScript!, 120_000);
-          if (cancelRequestedRef.current) {
-            resetToIdle();
+          if (isAborted()) {
             return;
           }
           if (result.exitCode !== 0) {
@@ -302,15 +522,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
           }
         } else {
           for (let i = 0; i < setupCommands.length; i++) {
-            if (cancelRequestedRef.current) {
-              resetToIdle();
+            if (isAborted()) {
               return;
             }
-            setSetupProgress({ current: i + 1, total: totalSteps });
+            setSetupProgress({ current: i + 1, total: totalStepsToRun });
             const cmd = setupCommands[i]!;
             const result = await runExec(sessionId, cmd, 30000);
-            if (cancelRequestedRef.current) {
-              resetToIdle();
+            if (isAborted()) {
               return;
             }
             if (result.exitCode !== 0) {
@@ -324,14 +542,12 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         }
         // Sentinel write — must be last. Once present, the gated coda-exit-zero
         // check is allowed to evaluate the author's success criterion.
-        if (cancelRequestedRef.current) {
-          resetToIdle();
+        if (isAborted()) {
           return;
         }
-        setSetupProgress({ current: totalSteps, total: totalSteps });
+        setSetupProgress({ current: totalStepsToRun, total: totalStepsToRun });
         const sentinel = await runExec(sessionId, SENTINEL_WRITE_COMMAND, 5000);
-        if (cancelRequestedRef.current) {
-          resetToIdle();
+        if (isAborted()) {
           return;
         }
         if (sentinel.exitCode !== 0) {
@@ -342,6 +558,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         setSetupProgress(null);
         setState('ready');
       } catch (err) {
+        if (isAborted()) {
+          return;
+        }
         // Branch on the backend's error code. The message is for display and
         // its wording is not a contract.
         const codaErr = toCodaError(err);
@@ -359,7 +578,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         setState('setup-failed');
       }
     },
-    [setupCommands, setupScript, resetToIdle, runExec]
+    [setupCommands, setupScript, runExec, claimSession, instanceId]
   );
 
   // Watch terminal status while we're trying to connect. When it goes live,
@@ -388,17 +607,22 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     }
     // A connection that arrives without handleStart's await seeing it — the
     // panel registering late, an external reconnect — still has to start setup.
-    // Never against the session that was live at click time: openTerminal may
-    // be replacing it, and the SDK deletes the one it replaces.
     if (terminalCtx?.status === 'connected') {
       if (!terminalCtx.sessionId) {
         setErrorDetail('No active sandbox session — the terminal is connected but reported no session id.');
         setState('setup-failed');
         return;
       }
-      if (terminalCtx.sessionId !== staleSessionIdRef.current) {
-        runSetup(terminalCtx.sessionId);
+      // Never against the session that was already live and connected at click time:
+      // openTerminal may be replacing it, and the SDK deletes the one it replaces.
+      if (statusAtStartRef.current === 'connected' && terminalCtx.sessionId === staleSessionIdRef.current) {
+        return;
       }
+      claimSession(terminalCtx.sessionId);
+      if (terminalCtx.sessionId !== staleSessionIdRef.current) {
+        provisionedSessionIdRef.current = terminalCtx.sessionId;
+      }
+      runSetup(terminalCtx.sessionId);
       return;
     }
     // Don't react to the status that was already current when the user
@@ -423,10 +647,14 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     codaGate,
     codaEligibility,
     runSetup,
+    claimSession,
   ]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleStart = useCallback(async () => {
+    if (disabled) {
+      return;
+    }
     if (!terminalCtx) {
       setErrorDetail('Terminal integration is not available.');
       setState('setup-failed');
@@ -447,10 +675,13 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     setupStartedRef.current = false;
     cancelRequestedRef.current = false;
     statusAtStartRef.current = terminalCtx.status;
+    const sessionIdBeforeStart = terminalCtx.sessionId;
     // The session the terminal holds right now is not ours to use: if this
     // challenge wants a different VM, openTerminal replaces it and the SDK
     // deletes it. The effect below must not start setup against it either.
     staleSessionIdRef.current = terminalCtx.sessionId;
+    provisionedSessionIdRef.current = null;
+    registerConnectingInstance(instanceId);
     setState('connecting');
     const vmOpts =
       vmTemplate || vmScenario || vmApp
@@ -460,17 +691,45 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     // actually ended up connected, which is the only id setup may run against.
     const nextSessionId = await terminalCtx.openTerminal(vmOpts);
     if (cancelRequestedRef.current) {
+      const currentLiveSessionId = terminalCtxRef.current?.sessionId;
+      const isProvisioner = Boolean(nextSessionId) && nextSessionId !== sessionIdBeforeStart;
+      const isDifferentSession = Boolean(currentLiveSessionId) && currentLiveSessionId !== nextSessionId;
+      const hasOther =
+        (Boolean(nextSessionId) && hasOtherSessionHolders(nextSessionId!, instanceId)) ||
+        hasOtherConnectingInstances(instanceId);
+      if (isProvisioner && !isDifferentSession && !hasOther) {
+        terminalCtxRef.current?.disconnect();
+      }
+      releaseSession();
       resetToIdle();
       return;
     }
     if (nextSessionId) {
+      claimSession(nextSessionId);
+      if (nextSessionId !== sessionIdBeforeStart) {
+        provisionedSessionIdRef.current = nextSessionId;
+      }
       runSetup(nextSessionId);
     }
     // No session: the effect below reports the terminal's own reason, which
     // names the actual cause (unregistered backend, role floor, quota).
-  }, [terminalCtx, codaGate, codaEligibility, vmTemplate, vmScenario, vmApp, runSetup, resetToIdle]);
+  }, [
+    disabled,
+    terminalCtx,
+    codaGate,
+    codaEligibility,
+    vmTemplate,
+    vmScenario,
+    vmApp,
+    runSetup,
+    resetToIdle,
+    claimSession,
+    releaseSession,
+    instanceId,
+  ]);
 
   const handleCheckMyWork = useCallback(async () => {
+    cancelRequestedRef.current = false;
     setState('checking');
     setErrorDetail('');
     try {
@@ -479,6 +738,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         stepId,
         maxRetries: 0,
       });
+      if (cancelRequestedRef.current) {
+        return;
+      }
       if (result.pass) {
         setState('solved');
         markComplete();
@@ -488,6 +750,9 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         setState('failed-check');
       }
     } catch (err) {
+      if (cancelRequestedRef.current) {
+        return;
+      }
       // Unexpected pipeline failure (network blip, requirements bug). Surface it
       // as a failed check so the user can retry instead of being stuck on a
       // spinner with no action available.
@@ -503,14 +768,20 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
 
   const handleCancel = useCallback(() => {
     cancelRequestedRef.current = true;
-    if (state === 'connecting') {
-      // No setup is in flight yet — bail immediately. (Setup will see the
-      // flag if it starts after this and skip out before running anything.)
-      resetToIdle();
+    setupRunIdRef.current++;
+    if (state === 'connecting' || state === 'preparing') {
+      const liveSessionId = terminalCtxRef.current?.sessionId;
+      const isOwner = Boolean(provisionedSessionIdRef.current) && provisionedSessionIdRef.current === liveSessionId;
+      const hasOther =
+        (Boolean(liveSessionId) && hasOtherSessionHolders(liveSessionId!, instanceId)) ||
+        hasOtherConnectingInstances(instanceId);
+      if (isOwner && !hasOther) {
+        terminalCtxRef.current?.disconnect();
+        provisionedSessionIdRef.current = null;
+      }
     }
-    // For 'preparing': the in-flight runExec resolves first; the loop checks
-    // cancelRequestedRef on the next iteration and calls resetToIdle itself.
-  }, [state, resetToIdle]);
+    resetToIdle();
+  }, [state, resetToIdle, instanceId]);
 
   // Standard mode never touches Coda, so it must never see a Coda gate.
   const configGateMessage = mode === 'coda' ? codaConfigGateMessage(codaGate, codaEligibility, SANDBOX_SUBJECT) : null;
@@ -551,7 +822,7 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
         <h4 className={styles.title}>{title}</h4>
         <div className={styles.brief}>{brief}</div>
         <div className={styles.solved}>
-          <Icon name="check-circle" /> Challenge solved
+          <Icon name={isSkipped ? 'forward' : 'check-circle'} /> {isSkipped ? 'Challenge skipped' : 'Challenge solved'}
         </div>
       </div>
     );
@@ -566,6 +837,19 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
     >
       <h4 className={styles.title}>{title}</h4>
       <div className={styles.brief}>{brief}</div>
+
+      {objectivesMet && (
+        <div className={styles.objectiveNote} data-testid={`challenge-objectives-note-${stepId}`}>
+          <Icon name="info-circle" />
+          <span>Objective already met — Check my work is still required to finish the challenge.</span>
+        </div>
+      )}
+
+      {!checker.isEnabled && !isCompleted && checker.status !== 'idle' && (
+        <div className={styles.requirementMessage} data-testid={`challenge-requirement-warning-${stepId}`}>
+          {checker.explanation || 'Checking requirements…'}
+        </div>
+      )}
 
       {state === 'setup-failed' && (
         <Alert title="Could not start the challenge" severity="error">
@@ -594,31 +878,64 @@ export const ChallengeBlock: React.FC<ChallengeBlockProps> = ({
       )}
 
       <div className={styles.actions}>
+        {/* Start's job is to provision setup, which is what satisfies certain requirements (e.g. coda-exit-zero: depends on this block's own runSetup writing the ready file) — gating Start on isEnabled created a circular dependency for any requirement whose only path to true runs through Start itself. It still honors the parent-level disabled prop. */}
         {state === 'idle' && !configGateMessage && (
-          <Button variant="primary" icon="play" onClick={handleStart}>
+          <Button variant="primary" icon="play" onClick={handleStart} disabled={disabled}>
             Start challenge
           </Button>
         )}
         {state === 'ready' && (
-          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+          <Button variant="primary" icon="check" onClick={handleCheckMyWork} disabled={!isEnabled || disabled}>
             Check my work
           </Button>
         )}
         {state === 'failed-check' && (
-          <Button variant="primary" icon="check" onClick={handleCheckMyWork}>
+          <Button variant="primary" icon="check" onClick={handleCheckMyWork} disabled={!isEnabled || disabled}>
             Check again
           </Button>
         )}
         {state === 'setup-failed' && (
-          <Button variant="secondary" icon="sync" onClick={handleStart}>
+          <Button variant="secondary" icon="sync" onClick={handleStart} disabled={!isEnabled || disabled}>
             Try again
           </Button>
         )}
-        {(state === 'connecting' || state === 'preparing') && (
-          <Button variant="secondary" icon="times" onClick={handleCancel}>
-            Cancel
-          </Button>
-        )}
+        {mode === 'coda' &&
+          (state === 'connecting' ||
+            state === 'preparing' ||
+            state === 'ready' ||
+            state === 'checking' ||
+            state === 'failed-check' ||
+            state === 'setup-failed') && (
+            <Button variant="secondary" icon="times" onClick={handleCancel}>
+              Cancel
+            </Button>
+          )}
+        {skippable &&
+          !isCompleted &&
+          checker.status !== 'idle' &&
+          !checker.isSequentialBlock &&
+          state !== 'connecting' &&
+          state !== 'preparing' && (
+            <Button
+              size="sm"
+              variant="secondary"
+              fill="text"
+              onClick={() => {
+                handleCancel();
+                checker.markSkipped?.();
+                onStepComplete?.(stepId);
+                window.dispatchEvent(
+                  new CustomEvent('interactive-action-completed', {
+                    detail: { stepId, blockType: 'challenge', state: 'completed' },
+                  })
+                );
+              }}
+              disabled={disabled}
+              data-testid={testIds.interactive.skipButton(stepId)}
+            >
+              Skip
+            </Button>
+          )}
       </div>
 
       {hintLevels.length > 0 && (state === 'ready' || state === 'failed-check') && (
@@ -645,4 +962,11 @@ ChallengeBlock.displayName = 'ChallengeBlock';
 /** Reset the anonymous challenge counter (test/Storybook helper). */
 export function resetChallengeCounter(): void {
   challengeCounter = 0;
+  activeSessionHolders.clear();
+  activeConnectingInstances.clear();
+}
+
+export function resetSessionHoldersForTest(): void {
+  activeSessionHolders.clear();
+  activeConnectingInstances.clear();
 }

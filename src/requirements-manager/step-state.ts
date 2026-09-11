@@ -14,11 +14,9 @@
 
 import { INTERACTIVE_CONFIG } from '../constants/interactive-config';
 import { assertExhaustive } from '../lib/assert-exhaustive';
+import type { StepStatus } from '../types/requirements.types';
 
-/**
- * Step status enum representing all possible step states
- */
-export type StepStatus = 'idle' | 'checking' | 'blocked' | 'enabled' | 'completed';
+export type { StepStatus };
 
 /**
  * Reason why a step was completed
@@ -41,6 +39,8 @@ export interface StepState {
   retryCount: number;
   maxRetries: number;
   canSkip: boolean;
+  /** True only when blocked by an unmet sequential dependency (SET_BLOCKED), never by own failed requirements (SET_ERROR). */
+  isSequentialBlock: boolean;
 }
 
 /**
@@ -85,6 +85,7 @@ export function createInitialState(options?: { canSkip?: boolean }): StepState {
     retryCount: 0,
     maxRetries: INTERACTIVE_CONFIG.delays.requirements.maxRetries,
     canSkip: options?.canSkip ?? false,
+    isSequentialBlock: false,
   };
 }
 
@@ -116,6 +117,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
         fixType: undefined,
         targetHref: undefined,
         scrollContainer: undefined,
+        isSequentialBlock: true,
       };
 
     case 'SET_ENABLED':
@@ -128,6 +130,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
         fixType: action.fixType,
         targetHref: action.targetHref,
         scrollContainer: action.scrollContainer,
+        isSequentialBlock: false,
       };
 
     case 'SET_COMPLETED':
@@ -146,6 +149,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
         fixType: undefined,
         targetHref: undefined,
         scrollContainer: undefined,
+        isSequentialBlock: false,
       };
 
     case 'SET_ERROR':
@@ -158,6 +162,7 @@ export function stepReducer(state: StepState, action: StepAction): StepState {
         fixType: action.fixType,
         targetHref: action.targetHref,
         scrollContainer: action.scrollContainer,
+        isSequentialBlock: false,
       };
 
     case 'UPDATE_RETRY':
@@ -218,6 +223,7 @@ export function deriveIsRetrying(state: StepState): boolean {
  */
 export function toLegacyState(state: StepState) {
   return {
+    status: state.status,
     isEnabled: deriveIsEnabled(state),
     isCompleted: deriveIsCompleted(state),
     isChecking: deriveIsChecking(state),
@@ -233,5 +239,6 @@ export function toLegacyState(state: StepState) {
     retryCount: state.retryCount,
     maxRetries: state.maxRetries,
     isRetrying: deriveIsRetrying(state),
+    isSequentialBlock: state.isSequentialBlock,
   };
 }

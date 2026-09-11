@@ -1,3 +1,5 @@
+export type StepStatus = 'idle' | 'checking' | 'blocked' | 'enabled' | 'completed';
+
 export type CheckVerdict = 'satisfied' | 'unsatisfied' | 'unavailable' | 'invalid';
 
 export type ConditionInput = string | readonly string[];
