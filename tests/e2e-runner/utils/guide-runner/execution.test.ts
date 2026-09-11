@@ -600,7 +600,7 @@ describe('runGuidedSubstepLoop', () => {
     ).rejects.toThrow('Target closed');
   });
 
-  function createButtonSubstepHarness(resultOnClick: string | null = null) {
+  function createButtonSubstepHarness(resultOnClick: string | null = null, executionContextDestroyed = false) {
     const listeners = new Map<string, Array<() => void>>();
     const snapshot = {
       attached: true,
@@ -612,7 +612,12 @@ describe('runGuidedSubstepLoop', () => {
       results: null as string | null,
     };
     const handle = {
-      evaluate: jest.fn(async () => ({ ...snapshot })),
+      evaluate: jest.fn(async () => {
+        if (executionContextDestroyed && !snapshot.attached) {
+          throw new Error('Execution context was destroyed');
+        }
+        return { ...snapshot };
+      }),
       dispose: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -678,6 +683,31 @@ describe('runGuidedSubstepLoop', () => {
       Math.min(1000, GUIDED_RELOAD_LOAD_TIMEOUT_MS)
     );
     expect(handle.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a final navigation when document replacement hides the final settlement', async () => {
+    const { listeners, initialStepLocator, comments, roleLocator } = createButtonSubstepHarness('[]', true);
+    const page = {
+      getByTestId: jest.fn().mockReturnValue(initialStepLocator),
+      locator: jest.fn().mockReturnValue(comments),
+      getByRole: jest.fn().mockReturnValue(roleLocator),
+      url: jest.fn().mockReturnValue('http://localhost:3000/'),
+      waitForTimeout: jest.fn().mockResolvedValue(undefined),
+      waitForLoadState: jest.fn().mockResolvedValue(undefined),
+      on: jest.fn().mockImplementation((event: string, handler: () => void) => {
+        const handlers = listeners.get(event) ?? [];
+        handlers.push(handler);
+        listeners.set(event, handlers);
+      }),
+      off: jest.fn(),
+    } as unknown as Page;
+
+    await expect(
+      runGuidedSubstepLoop(page, createTestableStep(), {
+        stepLocator: initialStepLocator,
+        perSubstepTimeoutMs: 1000,
+      })
+    ).resolves.toEqual({ completed: true });
   });
 
   it('rejects a detached modern root with unsettled substeps', async () => {

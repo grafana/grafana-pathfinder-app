@@ -16,6 +16,7 @@ interface FixtureOptions {
   keepOldBoxes?: boolean;
   detachOnComplete?: boolean;
   completeEarlyAt?: number;
+  navigateAt?: number;
   failureAt?: number;
   failureStatus?: 'timeout' | 'cancelled' | 'error';
   callbackFailureAt?: number;
@@ -162,10 +163,13 @@ async function mountFixture(
           } else if (options.invalidFormTarget === index) {
             target.textContent = 'Not a form input';
           }
-          target.addEventListener(
-            action === 'formfill' ? 'input' : action === 'hover' ? 'mouseenter' : 'click',
-            complete
-          );
+          const eventType = action === 'formfill' ? 'input' : action === 'hover' ? 'mouseenter' : 'click';
+          target.addEventListener(eventType, complete);
+          if (options.navigateAt === index) {
+            target.addEventListener(eventType, () => {
+              window.location.href = 'about:blank?guided-complete';
+            });
+          }
           targets.appendChild(target);
         }
         if (skippable) {
@@ -297,6 +301,13 @@ describeBrowser('guided driver with real Playwright DOM fixtures', () => {
         { index: 2, action: 'formfill', status: 'completed', durationMs: 30 },
       ],
     });
+  });
+
+  it('keeps final navigation completion when document replacement hides the last record', async () => {
+    const result = await run(['button'], { completeEarlyAt: 0, navigateAt: 0 });
+
+    expect(result).toEqual({ outcome: 'completed', substeps: [] });
+    expect(page.url()).toBe('about:blank?guided-complete');
   });
 
   it('rejects detachment before the remaining substeps settle', async () => {

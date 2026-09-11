@@ -236,14 +236,18 @@ function assertGuidedState(snapshot: GuidedSnapshot): void {
 function hasCompleteSubstepEvidence(
   snapshot: GuidedSnapshot,
   actionCount: number,
-  attemptedIndexes: ReadonlySet<number>
+  attemptedIndexes: ReadonlySet<number>,
+  navigatedIndexes: ReadonlySet<number>
 ): boolean {
   const expectedIndexes = Array.from({ length: Math.max(1, actionCount) }, (_, index) => index);
   if (snapshot.substeps === undefined) {
     return expectedIndexes.every((index) => attemptedIndexes.has(index));
   }
   const settledIndexes = new Set(snapshot.substeps.map((result) => result.index));
-  return expectedIndexes.every((index) => settledIndexes.has(index));
+  const finalIndex = expectedIndexes.length - 1;
+  return expectedIndexes.every(
+    (index) => settledIndexes.has(index) || (index === finalIndex && navigatedIndexes.has(index))
+  );
 }
 
 function isCurrentSubstep(snapshot: GuidedSnapshot, index: number): boolean {
@@ -296,22 +300,22 @@ async function performGuidedAction(
   comment: GuidedComment,
   deadlineMs: number,
   isCurrent: () => Promise<boolean>
-): Promise<void> {
+): Promise<'performed' | 'navigated'> {
   if (comment.action === 'noop') {
     await dismissBadgeCelebrations(page);
     if (await isCurrent()) {
       await commentBox.getByRole('button', { name: /Continue/ }).click({ timeout: operationTimeout(deadlineMs) });
     }
-    return;
+    return 'performed';
   }
   const target = await resolveGuidedTarget(page, comment.reftarget!, comment.action, deadlineMs);
   if (!(await isCurrent())) {
-    return;
+    return 'performed';
   }
   await target.scrollIntoViewIfNeeded({ timeout: operationTimeout(deadlineMs) });
   await dismissBadgeCelebrations(page);
   if (!(await isCurrent())) {
-    return;
+    return 'performed';
   }
 
   switch (comment.action) {
@@ -337,17 +341,18 @@ async function performGuidedAction(
         } catch (error) {
           throw new GuidedNavigationError(error instanceof Error ? error.message : String(error));
         }
+        return 'navigated';
       }
-      return;
+      return 'performed';
     }
     case 'hover':
       await target.hover({ timeout: operationTimeout(deadlineMs) });
       await pause(page, GUIDED_HOVER_DWELL_MS, deadlineMs);
-      return;
+      return 'performed';
     case 'formfill':
       await target.fill(comment.targetValue ?? '', { timeout: operationTimeout(deadlineMs) });
       await waitForFormfillSettle(page, stepLocator, target, comment.targetValue ?? '', { deadlineMs, isCurrent });
-      return;
+      return 'performed';
     default:
       assertExhaustive(comment.action);
   }
@@ -423,6 +428,7 @@ async function driveGuidedSubsteps(
   let settledIndex: number | undefined;
   let deadlineMs = options.commentBoxDeadlineMs ?? Date.now() + getGuidedStepTimeout(options.perSubstepTimeoutMs);
   const attempted = new Set<number>();
+  const navigated = new Set<number>();
 
   for (;;) {
     const snapshot = await evidence.read();
@@ -431,7 +437,7 @@ async function driveGuidedSubsteps(
       return;
     }
     if (!snapshot.attached) {
-      if (!hasCompleteSubstepEvidence(snapshot, step.actionCount, attempted)) {
+      if (!hasCompleteSubstepEvidence(snapshot, step.actionCount, attempted, navigated)) {
         throw new Error('Guided step detached before all substeps settled');
       }
       return;
@@ -483,7 +489,17 @@ async function driveGuidedSubsteps(
       console.log(`   Guided substep ${index + 1}/${step.actionCount}: ${comment.action}`);
     }
     try {
-      await performGuidedAction(page, options.stepLocator, commentBox, comment, deadlineMs, isCurrent);
+      const actionOutcome = await performGuidedAction(
+        page,
+        options.stepLocator,
+        commentBox,
+        comment,
+        deadlineMs,
+        isCurrent
+      );
+      if (actionOutcome === 'navigated') {
+        navigated.add(index);
+      }
     } catch (error) {
       if (!(await skipFailedGuidedAction(page, evidence, index, deadlineMs, error))) {
         throw error;
