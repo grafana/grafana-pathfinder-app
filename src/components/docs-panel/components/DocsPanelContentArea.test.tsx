@@ -223,7 +223,12 @@ describe('DocsPanelContentArea', () => {
           ...base.activeTab,
           type: 'learning-journey',
           isLoading: true,
-          content: { url: base.activeTab!.baseUrl, type: 'learning-journey', content: '', metadata: { learningJourney: lj } },
+          content: {
+            url: base.activeTab!.baseUrl,
+            type: 'learning-journey',
+            content: '',
+            metadata: { learningJourney: lj },
+          },
         } as any,
       });
 

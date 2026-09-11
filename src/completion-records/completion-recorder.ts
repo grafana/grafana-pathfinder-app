@@ -1,7 +1,13 @@
 import { logger } from '../lib/logging';
 import { completionEmittedStorage } from '../lib/user-storage';
 
-import type { CompletionFact, CompletionKind, CompletionListener, GuideCompletionFact, JourneyCompletionFact } from './types';
+import type {
+  CompletionFact,
+  CompletionKind,
+  CompletionListener,
+  GuideCompletionFact,
+  JourneyCompletionFact,
+} from './types';
 
 const listeners = new Set<CompletionListener>();
 

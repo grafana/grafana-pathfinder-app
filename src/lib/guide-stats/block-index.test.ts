@@ -175,17 +175,13 @@ describe('computeGuideBlockIndex', () => {
   });
 
   it('excludes a positionsByStepId entry for every sibling after a snippet-ref, but keeps the ref itself and earlier siblings', () => {
-    const resolveStepId = jest.fn((_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
-      `${context.parentSectionId}:${context.index}`
+    const resolveStepId = jest.fn(
+      (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+        `${context.parentSectionId}:${context.index}`
     );
 
     const index = computeGuideBlockIndex(
-      [
-        interactive(),
-        { type: 'snippet-ref', blocks: [] },
-        interactive(),
-        interactive(),
-      ],
+      [interactive(), { type: 'snippet-ref', blocks: [] }, interactive(), interactive()],
       { resolveStepId }
     );
 
@@ -204,10 +200,7 @@ describe('computeGuideBlockIndex', () => {
       `${context.parentSectionId}:${context.index}`;
 
     const index = computeGuideBlockIndex(
-      [
-        section([{ type: 'snippet-ref', blocks: [] }, interactive()], 'a'),
-        section([interactive()], 'b'),
-      ],
+      [section([{ type: 'snippet-ref', blocks: [] }, interactive()], 'a'), section([interactive()], 'b')],
       { resolveStepId }
     );
 

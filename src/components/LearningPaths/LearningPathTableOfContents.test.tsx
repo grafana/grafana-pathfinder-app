@@ -37,7 +37,9 @@ jest.mock('../../docs-retrieval', () => ({
     }
     const completed: Set<string> = storage.getCompletedSync(baseUrl);
     const completedCount = unlocked.filter((m) => completed.has(slugOf(m.url))).length;
-    return completedCount === unlocked.length ? 100 : Math.min(99, Math.floor((completedCount / unlocked.length) * 100));
+    return completedCount === unlocked.length
+      ? 100
+      : Math.min(99, Math.floor((completedCount / unlocked.length) * 100));
   },
 }));
 

@@ -315,7 +315,7 @@ describe('cross-surface percentage parity (C2)', () => {
     resetCompletionStoreForTests();
   });
 
-  it('a single-member path rollup equals the member\'s own persisted percentage', () => {
+  it("a single-member path rollup equals the member's own persisted percentage", () => {
     const memberPercent = 47;
     const { resolvedPercentages } = resolvePathMemberPercentages([{ id: 'solo' }], {
       completedMemberIds: [],
@@ -354,7 +354,7 @@ describe('cross-surface percentage parity (C2)', () => {
     }
     const stepId = [...index.positionsByStepId.entries()].find(([, pos]) => pos === firstCompletable.position)?.[0];
     if (!stepId) {
-      throw new Error('fixture guide\'s first completable block has no resolvable step id');
+      throw new Error("fixture guide's first completable block has no resolvable step id");
     }
     const expectedPercent = guideProgress(index, [{ kind: 'do-it', blockId: stepId }]).percent;
 

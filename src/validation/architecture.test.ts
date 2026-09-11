@@ -321,7 +321,7 @@ const ALLOWED_PERCENTAGE_CALCULATION_ENTRIES: readonly AllowedArchitectureEntry[
   {
     violation: 'lib/analytics.ts',
     reason:
-      "The step-model's \"Step N of M\" analytics property (calculateStepCompletion) — a step-model fact over mounted step components, explicitly out of scope for the block-count completion model (see STEP_MODEL.md).",
+      'The step-model\'s "Step N of M" analytics property (calculateStepCompletion) — a step-model fact over mounted step components, explicitly out of scope for the block-count completion model (see STEP_MODEL.md).',
     tracking: ARCHITECTURE_BY_DESIGN,
   },
   {

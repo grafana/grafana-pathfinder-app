@@ -110,7 +110,7 @@ describe('App Platform path progress — completion write → getPathProgress re
   // Decision 4: path progress is the MEAN of member percentages, not a
   // completed-count fraction — a member's own partial progress must show,
   // not just whole-guide completion membership.
-  it('reads a member\'s partial persisted percentage into the mean, not just completed-guide membership', async () => {
+  it("reads a member's partial persisted percentage into the mean, not just completed-guide membership", async () => {
     await interactiveCompletionStorage.set(`backend-guide:${MEMBERS[0]}`, 40);
 
     const result = await renderPaths();

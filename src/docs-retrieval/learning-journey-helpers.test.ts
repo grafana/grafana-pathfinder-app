@@ -98,7 +98,7 @@ describe('getJourneyProgress', () => {
     expect(getJourneyProgress(content)).toBe(0);
   });
 
-  it('reads the doc\'s worked example end to end — four milestones at 100/25/0/0 reads 31%', () => {
+  it("reads the doc's worked example end to end — four milestones at 100/25/0/0 reads 31%", () => {
     const m1 = milestone(1, { url: 'backend-guide:m1' });
     const m2 = milestone(2, { url: 'backend-guide:m2' });
     const m3 = milestone(3, { url: 'backend-guide:m3' });

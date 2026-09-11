@@ -10,7 +10,12 @@
 import * as React from 'react';
 import { act, render, screen } from '@testing-library/react';
 
-import { markStepCompleted, peekGuidePercentage, resetCompletionStoreForTests, useStepCompletion } from './completion-store';
+import {
+  markStepCompleted,
+  peekGuidePercentage,
+  resetCompletionStoreForTests,
+  useStepCompletion,
+} from './completion-store';
 import { resetContentKeyForTests, setActiveTabUrl } from './content-key';
 import { publishGuideIndex } from './active-guide-index';
 import { computeGuideBlockIndex, type CountableBlock } from '../lib/guide-stats';
