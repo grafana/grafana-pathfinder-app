@@ -254,10 +254,14 @@ describe('useLearningPaths — resetPath reports a partial failure once', () => 
         'journey:bundled:bundled-path',
         'guide:app-platform:bundled-path',
         'journey:app-platform:bundled-path',
+        'guide:interactive-tutorials:bundled-path',
+        'journey:interactive-tutorials:bundled-path',
         'guide:bundled:bundled-guide',
         'journey:bundled:bundled-guide',
         'guide:app-platform:bundled-guide',
         'journey:app-platform:bundled-guide',
+        'guide:interactive-tutorials:bundled-guide',
+        'journey:interactive-tutorials:bundled-guide',
       ])
     );
   });

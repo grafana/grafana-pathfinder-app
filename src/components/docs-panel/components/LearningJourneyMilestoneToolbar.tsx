@@ -31,7 +31,7 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import { getJourneyProgress } from '../../../docs-retrieval';
+import { getJourneyProgress, journeyMilestonePercentages } from '../../../docs-retrieval';
 import { usePanelModeControls } from '../../../global-state/use-panel-mode';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import { testIds } from '../../../constants/testIds';
@@ -202,15 +202,22 @@ export function LearningJourneyMilestoneToolbar({
     </Menu>
   );
 
+  // Fill comes from the shared calculation (docs/design/COMPLETION-MODEL.md,
+  // decision 4), the same numbers the journey percentage is the mean of, so a
+  // reader who only pages forward leaves the segments behind them unfilled.
+  // The label and the current-position highlight stay navigation-derived.
+  const completedMilestoneNumbers = new Set(
+    journeyMilestonePercentages(lj.baseUrl, lj.milestones)
+      .filter(({ percent }) => percent === 100)
+      .map(({ milestone }) => milestone.number)
+  );
+
   const segments = Array.from({ length: lj.totalMilestones || 0 }, (_, i) => {
     const number = i + 1;
-    if (number < (lj.currentMilestone ?? 0)) {
-      return 'done';
-    }
     if (number === (lj.currentMilestone ?? 0)) {
       return 'current';
     }
-    return 'upcoming';
+    return completedMilestoneNumbers.has(number) ? 'done' : 'upcoming';
   });
 
   return (

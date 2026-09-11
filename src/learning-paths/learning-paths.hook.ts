@@ -50,11 +50,13 @@ const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMeta
 
 // Completion-record identity (`guideSource`) is resolved from a manifest we
 // don't have in hand here, so this invalidates the write-side dedupe guard
-// under every source a path member is realistically recorded under, rather
+// under every source a path member is realistically recorded under —
+// including `interactive-tutorials`, which `completion-identity.ts` uses as
+// its default when no manifest resolves one — rather
 // than fetching each member's manifest just to reset a guard. Harmless when
 // a member's real source isn't in this list: that guard is simply not lifted
 // for it, a narrower miss than the reset-then-re-mark defect this exists to close.
-const KNOWN_PATH_MEMBER_GUIDE_SOURCES = ['bundled', 'app-platform'] as const;
+const KNOWN_PATH_MEMBER_GUIDE_SOURCES = ['bundled', 'app-platform', 'interactive-tutorials'] as const;
 
 function invalidateEmittedCompletionsForPathMembers(memberIds: readonly string[]): void {
   for (const memberId of memberIds) {

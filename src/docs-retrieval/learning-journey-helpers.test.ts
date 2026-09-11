@@ -9,6 +9,7 @@ import {
   getJourneyProgress,
   getMilestoneSlug,
   getNextMilestoneUrl,
+  journeyMilestonePercentages,
   getPreviousMilestoneUrl,
   isLastMilestone,
 } from './learning-journey-helpers';
@@ -151,6 +152,47 @@ describe('getJourneyProgress', () => {
     setCompletedMilestoneSlugs(content.metadata.learningJourney!.baseUrl, [getMilestoneSlug(m1.url)!]);
 
     expect(getJourneyProgress(content)).toBe(100);
+  });
+});
+
+// The per-member half of the same calculation, which the toolbar's segmented
+// bar paints one mark per milestone from — so a segment and the journey
+// percentage can never disagree about a milestone.
+describe('journeyMilestonePercentages', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('reports each unlocked milestone in journey order, locked ones omitted', () => {
+    const m1 = milestone(1, { url: 'backend-guide:m1' });
+    const m2 = milestone(2, { url: 'backend-guide:m2' });
+    const locked = milestone(3, { isLocked: true, url: '' });
+
+    localStorage.setItem(StorageKeys.MILESTONE_COMPLETION, JSON.stringify({ 'backend-guide:path': ['m1'] }));
+    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ 'backend-guide:m2': 40 }));
+
+    expect(journeyMilestonePercentages('backend-guide:path', [m1, m2, locked])).toEqual([
+      { milestone: m1, percent: 100 },
+      { milestone: m2, percent: 40 },
+    ]);
+  });
+
+  it('reports zero for a milestone the reader has only navigated to', () => {
+    const m1 = milestone(1, { url: 'backend-guide:m1' });
+    const m2 = milestone(2, { url: 'backend-guide:m2' });
+
+    expect(journeyMilestonePercentages('backend-guide:path', [m1, m2]).map((entry) => entry.percent)).toEqual([0, 0]);
+  });
+
+  it('is the set the journey percentage is the mean of', () => {
+    const m1 = milestone(1, { url: 'backend-guide:m1' });
+    const m2 = milestone(2, { url: 'backend-guide:m2' });
+    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ 'backend-guide:m1': 50 }));
+
+    const percentages = journeyMilestonePercentages('backend-guide:path', [m1, m2]);
+
+    expect(percentages.map((entry) => entry.percent)).toEqual([50, 0]);
+    expect(getJourneyProgress(journeyContent(1, [m1, m2]))).toBe(25);
   });
 });
 

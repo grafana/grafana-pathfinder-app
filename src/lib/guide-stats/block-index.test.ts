@@ -195,6 +195,22 @@ describe('computeGuideBlockIndex', () => {
     expect(index.positionsByStepId.has('__standalone__:3')).toBe(false); // after the ref
   });
 
+  it('excludes blocks nested inside a sibling that follows a snippet-ref', () => {
+    const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
+      `${context.parentSectionId}:${context.index}`;
+
+    const index = computeGuideBlockIndex([{ type: 'snippet-ref', blocks: [] }, section([interactive()])], {
+      resolveStepId,
+    });
+
+    // The id-less section's own key is derived from its PRE-inlining sibling
+    // index, which the expansion shifts — so its children must not claim a
+    // step id either, or they claim one the runtime gives another block.
+    expect(index.positionsByStepId.has('section:blocks[1].blocks:0')).toBe(false);
+    expect(index.positionsByStepId.get('__standalone__:0')).toBe(1);
+    expect(index.positionsByStepId.size).toBe(1);
+  });
+
   it('does not let a snippet-ref in one section suppress step ids in a sibling section', () => {
     const resolveStepId = (_block: CountableBlock, context: { parentSectionId: string; index: number }) =>
       `${context.parentSectionId}:${context.index}`;

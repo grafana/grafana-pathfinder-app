@@ -148,10 +148,26 @@ export function getTotalMilestones(content: RawContent): number {
  * second, independent one. A reader must not see two different percentages
  * for the same journey on adjacent screens.
  */
-export function journeyProgressFromMilestones(baseUrl: string, milestones: readonly Milestone[]): number {
+export interface MilestonePercentage {
+  milestone: Milestone;
+  /** `undefined` when the member resolved to no key at all — excluded from the mean. */
+  percent: number | undefined;
+}
+
+/**
+ * Each unlocked milestone's own percentage, in journey order — the per-member
+ * half of {@link journeyProgressFromMilestones}, exposed so a surface that
+ * paints one mark per milestone (the toolbar's segmented bar) reads the very
+ * numbers the journey percentage is the mean of, rather than a second opinion
+ * such as navigation position.
+ */
+export function journeyMilestonePercentages(
+  baseUrl: string,
+  milestones: readonly Milestone[]
+): readonly MilestonePercentage[] {
   const unlocked = milestones.filter((m) => !m.isLocked);
   if (unlocked.length === 0) {
-    return 0;
+    return [];
   }
 
   const members: PathMember[] = unlocked.map((m) => ({ id: getMilestoneSlug(m.url) ?? m.url, url: m.url }));
@@ -164,13 +180,21 @@ export function journeyProgressFromMilestones(baseUrl: string, milestones: reado
       milestones.map((m) => m.url)
     )
   );
-  const { resolvedPercentages } = resolvePathMemberPercentages(members, {
+  const { members: resolved } = resolvePathMemberPercentages(members, {
     completedMemberIds,
     // interactiveCompletionStorage, and only that — journeyCompletionStorage
     // holds no record under backend-guide: for a partially progressed
     // member, so joining against it would exclude every one of them.
     persistedPercentages: interactiveCompletionStorage.peekAll(),
   });
+
+  return unlocked.map((milestone, index) => ({ milestone, percent: resolved[index]?.percent }));
+}
+
+export function journeyProgressFromMilestones(baseUrl: string, milestones: readonly Milestone[]): number {
+  const resolvedPercentages = journeyMilestonePercentages(baseUrl, milestones).flatMap(({ percent }) =>
+    percent === undefined ? [] : [percent]
+  );
 
   return meanOfMemberPercentages(resolvedPercentages).percent;
 }

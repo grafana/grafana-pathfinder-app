@@ -155,10 +155,10 @@ export interface GuideBlockIndex {
    * Position by runtime step id — the key a completed "Do it" arrives under,
    * which is the author id only for the rare block that carries one. Empty
    * when no resolver was supplied. First occurrence wins, as with
-   * {@link positionsById}. Excludes every block after a `snippet-ref`
-   * sibling in the same parent — see the traversal's own comment — so those
-   * blocks fall back to {@link positionsById}/0 rather than a step id the
-   * runtime will never dispatch.
+   * {@link positionsById}. Excludes every block that follows a `snippet-ref`
+   * sibling, nested descendants included — see the traversal's own comment —
+   * so those blocks fall back to {@link positionsById}/0 rather than a step
+   * id the runtime will never dispatch.
    */
   positionsByStepId: ReadonlyMap<string, number>;
   /**
@@ -213,7 +213,8 @@ export function computeGuideBlockIndex(
     // anonymous block's progress. `undefined` means the parser supplies no
     // step context, which is what makes a `collapsible` child unaddressable.
     parentSectionId: string | undefined,
-    jsonPath: string
+    jsonPath: string,
+    afterSnippetRef: boolean
   ): void {
     if (!Array.isArray(children)) {
       return;
@@ -226,12 +227,14 @@ export function computeGuideBlockIndex(
     // waiting on the snippet CDN, which would defeat the frozen index's
     // stability guarantee (see `active-guide-index.ts`). So once a
     // snippet-ref has been seen among this parent's children, later
-    // siblings are excluded from `positionsByStepId` rather than keyed
-    // under an index the runtime will never dispatch: a miss falls through
-    // to `positionsById`/0, the honest degradation an unauthored block
-    // already gets, instead of colliding with whatever unrelated block
-    // happens to hash to the same wrong-index step id.
-    let sawSnippetRefSibling = false;
+    // siblings — and everything nested inside them, whose own keys are
+    // derived from those same shifted indices — are excluded from
+    // `positionsByStepId` rather than keyed under an index the runtime will
+    // never dispatch: a miss falls through to `positionsById`/0, the honest
+    // degradation an unauthored block already gets, instead of colliding
+    // with whatever unrelated block happens to hash to the same
+    // wrong-index step id.
+    let stepIdsUnpredictable = afterSnippetRef;
 
     for (let index = 0; index < children.length; index++) {
       const block = children[index];
@@ -247,7 +250,7 @@ export function computeGuideBlockIndex(
         }
         const before = counted.length;
         const containerId = childSectionId(block, blockJsonPath);
-        visit(block.blocks, path, containerId, `${blockJsonPath}.blocks`);
+        visit(block.blocks, path, containerId, `${blockJsonPath}.blocks`, stepIdsUnpredictable);
         if (
           containerId !== undefined &&
           typeof block.id === 'string' &&
@@ -266,7 +269,7 @@ export function computeGuideBlockIndex(
       if (typeof block.id === 'string' && block.id.length > 0 && !positionsById.has(block.id)) {
         positionsById.set(block.id, position);
       }
-      if (resolveStepId && parentSectionId !== undefined && !sawSnippetRefSibling) {
+      if (resolveStepId && parentSectionId !== undefined && !stepIdsUnpredictable) {
         const stepId = resolveStepId(block, { parentSectionId, index });
         if (stepId && !positionsByStepId.has(stepId)) {
           positionsByStepId.set(stepId, position);
@@ -277,12 +280,12 @@ export function computeGuideBlockIndex(
         finalCompletablePosition = position;
       }
       if (block.type === 'snippet-ref') {
-        sawSnippetRefSibling = true;
+        stepIdsUnpredictable = true;
       }
     }
   }
 
-  visit(blocks, [], STANDALONE_PARENT_ID, 'blocks');
+  visit(blocks, [], STANDALONE_PARENT_ID, 'blocks', false);
 
   return {
     totalBlockCount: counted.length,

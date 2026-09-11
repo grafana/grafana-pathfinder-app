@@ -32,10 +32,16 @@ jest.mock('@grafana/runtime', () => ({
 import { resolveCountedBlockStepId, resolveStepIdForBlock } from '../../global-state/guide-step-id-resolver';
 import { parseJsonGuide } from '../../docs-retrieval/json-parser';
 import { journeyProgressFromMilestones } from '../../docs-retrieval/learning-journey-helpers';
-import { peekGuidePercentage, resetCompletionStoreForTests } from '../../global-state/completion-store';
+import {
+  markStepCompleted,
+  peekGuidePercentage,
+  resetCompletionStoreForTests,
+} from '../../global-state/completion-store';
+import { resetContentKeyForTests, setActiveTabUrl } from '../../global-state/content-key';
+import { interactiveCompletionStorage } from '../user-storage';
 import { publishGuideIndex } from '../../global-state/active-guide-index';
 import { resolvePathMemberPercentages } from '../../global-state/path-member-join';
-import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../storage-keys';
+import { StorageKeys, buildVersionedContentStorageKey } from '../storage-keys';
 import type { Milestone, ParsedElement } from '../../types/content.types';
 import type { JsonBlock, JsonGuide } from '../../types/json-guide.types';
 import { computeGuideBlockIndex } from './block-index';
@@ -310,9 +316,15 @@ describe('cross-surface percentage parity (C2)', () => {
     return journeyProgressFromMilestones('backend-guide:parity-journey', [milestone]);
   }
 
+  /** The store's percentage write reads the record before rewriting it, so it lands a microtask later. */
+  async function flushStorageWrites(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
   beforeEach(() => {
     localStorage.clear();
     resetCompletionStoreForTests();
+    resetContentKeyForTests();
   });
 
   it("a single-member path rollup equals the member's own persisted percentage", () => {
@@ -346,7 +358,11 @@ describe('cross-surface percentage parity (C2)', () => {
     expect(journeyPercentFor(CONTENT_KEY)).toBe(100);
   });
 
-  it('agrees on a genuine partial position, evidenced by the first "do it"', () => {
+  // The store's own write is what the journey and path surfaces read back, so
+  // this drives the real completion path rather than seeding the percentage:
+  // a store that reported one number and persisted another would still agree
+  // with itself, and only this catches it.
+  it('agrees on a genuine partial position, evidenced by the first "do it"', async () => {
     const index = freshIndex();
     const firstCompletable = index.blocks.find((b) => b.completable);
     if (!firstCompletable) {
@@ -359,13 +375,13 @@ describe('cross-surface percentage parity (C2)', () => {
     const expectedPercent = guideProgress(index, [{ kind: 'do-it', blockId: stepId }]).percent;
 
     publishGuideIndex({ contentKey: CONTENT_KEY, index, denominatorSource: 'live-pre-inlining' });
-    localStorage.setItem(
-      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, CONTENT_KEY, '__standalone__'),
-      JSON.stringify([stepId])
-    );
-    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ [CONTENT_KEY]: expectedPercent }));
+    setActiveTabUrl(CONTENT_KEY);
+
+    markStepCompleted(stepId, undefined, 'manual');
+    await flushStorageWrites();
 
     expect(peekGuidePercentage(CONTENT_KEY)).toBe(expectedPercent);
+    expect(interactiveCompletionStorage.peekAll()[CONTENT_KEY]).toBe(expectedPercent);
     expect(journeyPercentFor(CONTENT_KEY)).toBe(expectedPercent);
   });
 });
