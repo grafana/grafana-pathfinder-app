@@ -275,6 +275,38 @@ Ensures a dashboard with a specific title exists (case-insensitive).
 }
 ```
 
+## IRM/OnCall requirements
+
+### `has-escalation-chains`
+
+Ensures at least one IRM/OnCall escalation chain in the org has one or more escalation steps configured.
+A chain with zero escalation steps notifies nobody, so it does not count as "configured."
+
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/a/grafana-irm-app/escalations",
+  "objectives": ["has-escalation-chains"],
+  "content": "Create your first escalation chain."
+}
+```
+
+### `has-escalation-chain:<name>`
+
+Ensures an escalation chain matching `<name>` (case-insensitive) exists and has one or more escalation
+steps configured.
+
+```json
+{
+  "type": "interactive",
+  "action": "navigate",
+  "reftarget": "/a/grafana-irm-app/escalations",
+  "objectives": ["has-escalation-chain:Production - Default"],
+  "content": "Create the Production - Default escalation chain."
+}
+```
+
 ## System and environment requirements
 
 ### `has-feature:<toggle>`
@@ -519,16 +551,17 @@ The CLI validates condition syntax statically. Invalid conditions produce **warn
 
 ### Fixed requirements (no parameters)
 
-| Requirement        | Purpose                                |
-| ------------------ | -------------------------------------- |
-| `navmenu-open`     | Navigation menu is open and visible    |
-| `exists-reftarget` | Target element exists on the page      |
-| `form-valid`       | Current form passes validation         |
-| `is-logged-in`     | User is authenticated                  |
-| `is-admin`         | User has Grafana admin privileges      |
-| `is-editor`        | User has at least Editor role          |
-| `has-datasources`  | At least one data source is configured |
-| `dashboard-exists` | At least one dashboard exists          |
+| Requirement             | Purpose                                                       |
+| ----------------------- | ------------------------------------------------------------- |
+| `navmenu-open`          | Navigation menu is open and visible                           |
+| `exists-reftarget`      | Target element exists on the page                             |
+| `form-valid`            | Current form passes validation                                |
+| `is-logged-in`          | User is authenticated                                         |
+| `is-admin`              | User has Grafana admin privileges                             |
+| `is-editor`             | User has at least Editor role                                 |
+| `has-datasources`       | At least one data source is configured                        |
+| `dashboard-exists`      | At least one dashboard exists                                 |
+| `has-escalation-chains` | At least one IRM/OnCall escalation chain has steps configured |
 
 ### Parameterized requirements
 
@@ -542,6 +575,7 @@ The CLI validates condition syntax statically. Invalid conditions produce **warn
 | `has-plugin:<pluginId>`              | Specific plugin is installed                           |
 | `plugin-enabled:<pluginId>`          | Specific plugin is installed and enabled               |
 | `has-dashboard-named:<title>`        | Dashboard with specific title exists                   |
+| `has-escalation-chain:<name>`        | Named IRM/OnCall escalation chain has steps configured |
 | `has-feature:<toggle>`               | Feature toggle is enabled                              |
 | `in-environment:<env>`               | Running in a specific environment                      |
 | `min-version:<version>`              | Grafana version meets minimum requirement              |
