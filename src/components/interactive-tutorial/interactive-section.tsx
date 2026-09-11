@@ -324,7 +324,7 @@ export function InteractiveSection({
   // Roster reconciliation (MF-2): drop any stored step IDs that no
   // longer appear in the section's current roster. Self-heals storage
   // after author edits (rename / delete / re-order under stable IDs)
-  // so `countAllCompleted` / `getGuideProgress` can't run > 100%. Runs
+  // so the completion percentage can't run > 100%. Runs
   // once per roster change; idempotent when storage is already aligned.
   // Skipped in preview mode where storage writes are sandboxed.
   useEffect(() => {

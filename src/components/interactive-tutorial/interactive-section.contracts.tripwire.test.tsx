@@ -96,6 +96,8 @@ import { InteractiveSection, resetInteractiveCounters, STEP_TYPE_LOOKUP } from '
 import { STEP_TYPE_SCHEMAS } from './step-type-registry';
 import { INTERACTIVE_STEP_COMPONENT_TYPES } from './section-child-classifier';
 import { memoryStore, resetSectionHarness, silenceSectionWarnings } from '../../test-utils/interactive-section-harness';
+import { publishGuideIndex, evictAllGuideIndexes } from '../../global-state/active-guide-index';
+import { computeGuideBlockIndex } from '../../lib/guide-stats';
 
 const NON_PREVIEW_KEY = '/';
 const PREVIEW_KEY = 'block-editor://preview/test-guide';
@@ -148,6 +150,7 @@ afterAll(() => {
 beforeEach(() => {
   resetSectionHarness();
   resetInteractiveCounters();
+  evictAllGuideIndexes();
   (window as any).__DocsPluginActiveTabUrl = undefined;
   (window as any).__DocsPluginContentKey = undefined;
   delete (window as any).__DocsPluginCurrentStepIndex;
@@ -206,6 +209,13 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
     it('dispatches pathfinder:progress (kind: guide) with { contentKey, hasProgress, percentage } on persistence', async () => {
       const { events, unsubscribe } = recordSectionEvents();
       try {
+        // The frozen index content-renderer.tsx would publish at content-load —
+        // this harness renders InteractiveSection directly, so it stands in.
+        publishGuideIndex({
+          contentKey: NON_PREVIEW_KEY,
+          index: computeGuideBlockIndex([{ type: 'interactive', id: STEP_ID }]),
+          denominatorSource: 'live-pre-inlining',
+        });
         renderSingleStepSection();
         await waitFor(() => expect(screen.getByTestId(completeBtn(STEP_ID))).toBeInTheDocument());
         act(() => {

@@ -4,26 +4,35 @@
  * `bundled:welcome-to-grafana` and `bundled:welcome-to-grafana-cloud` both
  * ship, and in the superseded key shape every record belonging to the second
  * began with the first's identifier. These tests run the real store against
- * the real storage and the real section registry — no key-shape mocks — so
- * they measure what a reader would see in the progress chip.
+ * the real storage — no key-shape mocks — so they measure what a reader
+ * would see in the progress chip.
  */
 import * as React from 'react';
 import { act, render, screen } from '@testing-library/react';
 
-import {
-  getGuideProgress,
-  markStepCompleted,
-  resetCompletionStoreForTests,
-  useStepCompletion,
-} from './completion-store';
+import { markStepCompleted, peekGuidePercentage, resetCompletionStoreForTests, useStepCompletion } from './completion-store';
 import { resetContentKeyForTests, setActiveTabUrl } from './content-key';
-import { registerSectionSteps, resetRegistry } from './section-registry';
+import { publishGuideIndex } from './active-guide-index';
+import { computeGuideBlockIndex, type CountableBlock } from '../lib/guide-stats';
 import { StorageKeys, buildVersionedSectionStorageKey } from '../lib/storage-keys';
 import { interactiveStepStorage } from '../lib/user-storage';
 
 const SHORT_GUIDE = 'bundled:welcome-to-grafana';
 const LONG_GUIDE = 'bundled:welcome-to-grafana-cloud';
 const SECTION_ID = 'section-1';
+
+/** Four "do it" blocks, ids `step-1`..`step-4`, so evidence resolves by author id. */
+function fourStepBlocks(): CountableBlock[] {
+  return [1, 2, 3, 4].map((n) => ({ type: 'interactive', id: `step-${n}` }));
+}
+
+function publishFourStepIndex(contentKey: string): void {
+  publishGuideIndex({
+    contentKey,
+    index: computeGuideBlockIndex(fourStepBlocks()),
+    denominatorSource: 'live-pre-inlining',
+  });
+}
 
 function seedSteps(contentKey: string, stepIds: string[]): void {
   localStorage.setItem(
@@ -45,7 +54,6 @@ async function flushMicrotasks(): Promise<void> {
 
 beforeEach(() => {
   localStorage.clear();
-  resetRegistry();
   resetCompletionStoreForTests();
   resetContentKeyForTests();
   interactiveStepStorage.invalidateCountCache(SHORT_GUIDE);
@@ -54,24 +62,27 @@ beforeEach(() => {
 
 describe('guide percentage — prefix-sharing content keys', () => {
   it('reports 0% for a guide whose neighbour holds all the progress', () => {
+    publishFourStepIndex(SHORT_GUIDE);
+    publishFourStepIndex(LONG_GUIDE);
     seedSteps(LONG_GUIDE, ['step-1', 'step-2', 'step-3', 'step-4']);
-    registerSectionSteps(SECTION_ID, 4);
 
-    expect(getGuideProgress(SHORT_GUIDE)).toEqual({ completed: 0, total: 4, percentage: 0 });
-    expect(getGuideProgress(LONG_GUIDE)).toEqual({ completed: 4, total: 4, percentage: 100 });
+    expect(peekGuidePercentage(SHORT_GUIDE)).toBe(0);
+    expect(peekGuidePercentage(LONG_GUIDE)).toBe(100);
   });
 
   it('reports each guide own progress when both have some', () => {
+    publishFourStepIndex(SHORT_GUIDE);
+    publishFourStepIndex(LONG_GUIDE);
     seedSteps(SHORT_GUIDE, ['step-1']);
     seedSteps(LONG_GUIDE, ['step-1', 'step-2', 'step-3', 'step-4']);
-    registerSectionSteps(SECTION_ID, 4);
 
-    expect(getGuideProgress(SHORT_GUIDE).percentage).toBe(25);
-    expect(getGuideProgress(LONG_GUIDE).percentage).toBe(100);
+    expect(peekGuidePercentage(SHORT_GUIDE)).toBe(25);
+    expect(peekGuidePercentage(LONG_GUIDE)).toBe(100);
   });
 
   it('does not carry a step completed in one guide into the other', async () => {
-    registerSectionSteps(SECTION_ID, 2);
+    publishFourStepIndex(SHORT_GUIDE);
+    publishFourStepIndex(LONG_GUIDE);
     setActiveTabUrl(LONG_GUIDE);
     render(<StepProbe stepId="step-1" />);
     await flushMicrotasks();
@@ -83,13 +94,13 @@ describe('guide percentage — prefix-sharing content keys', () => {
 
     expect(screen.getByTestId('step-1')).toHaveTextContent('true');
     interactiveStepStorage.invalidateCountCache(SHORT_GUIDE);
-    expect(getGuideProgress(SHORT_GUIDE).completed).toBe(0);
-    expect(getGuideProgress(LONG_GUIDE).completed).toBe(1);
+    expect(peekGuidePercentage(SHORT_GUIDE)).toBe(0);
+    expect(peekGuidePercentage(LONG_GUIDE)).toBe(25);
   });
 
   it('shows the neighbour steps as not completed when reading the shorter guide', async () => {
+    publishFourStepIndex(SHORT_GUIDE);
     seedSteps(LONG_GUIDE, ['step-1']);
-    registerSectionSteps(SECTION_ID, 1);
     setActiveTabUrl(SHORT_GUIDE);
 
     render(<StepProbe stepId="step-1" />);

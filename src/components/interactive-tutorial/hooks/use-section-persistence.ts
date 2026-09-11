@@ -18,7 +18,10 @@
  *   - `interactiveStepStorage`         — read-only at mount for the
  *     migration decision; the store handles the write path now.
  *
- * Preview-mode sandbox: ack/collapse writes are gated by `isPreviewMode`.
+ * Preview-mode sandbox: ack/collapse storage writes are gated by
+ * `isPreviewMode`. The ack itself still reaches the completion store's
+ * evidence bridge in preview, via `notePreviewSectionAcknowledged`'s
+ * in-memory record rather than `sectionAcknowledgementStorage`.
  */
 
 import { useCallback, useEffect, useRef } from 'react';
@@ -29,6 +32,7 @@ import {
   sectionCollapseStorage,
   sectionDoneStorage,
 } from '../../../lib/user-storage';
+import { notePreviewSectionAcknowledged } from '../../../global-state/completion-store';
 import type { StepInfo } from '../../../types/component-props.types';
 import type { AcknowledgementAnalysis } from '../step-section-utils';
 import { getContentKey } from '../get-content-key';
@@ -66,29 +70,38 @@ export function useSectionPersistence({
   dispatch,
 }: UseSectionPersistenceArgs): UseSectionPersistenceResult {
   const clearStepAcknowledgement = useCallback(() => {
-    if (!isPreviewMode) {
-      const contentKey = getContentKey();
-      sectionAcknowledgementStorage.clear(contentKey, sectionId);
+    const contentKey = getContentKey();
+    if (isPreviewMode) {
+      notePreviewSectionAcknowledged(contentKey, sectionId, false);
+      return;
     }
+    sectionAcknowledgementStorage.clear(contentKey, sectionId);
   }, [sectionId, isPreviewMode]);
 
   const setAcknowledgement = useCallback(() => {
-    if (!isPreviewMode) {
-      const contentKey = getContentKey();
-      sectionAcknowledgementStorage.set(contentKey, sectionId, true);
+    const contentKey = getContentKey();
+    if (isPreviewMode) {
+      // Not persisted (see `sectionAcknowledgementStorage`'s guard below),
+      // but the completion store's evidence bridge needs a record of it to
+      // show the author their real position — see `collectEvidence`.
+      notePreviewSectionAcknowledged(contentKey, sectionId, true);
+      return;
     }
+    sectionAcknowledgementStorage.set(contentKey, sectionId, true);
   }, [sectionId, isPreviewMode]);
 
   const clearAckAndCollapseStorage = useCallback(() => {
-    if (!isPreviewMode) {
-      const contentKey = getContentKey();
-      sectionCollapseStorage.clear(contentKey, sectionId);
-      sectionAcknowledgementStorage.clear(contentKey, sectionId);
-      // The section's own `isCompleted` effect also clears `sectionDoneStorage`
-      // when it flips to false, but the user-facing reset path ought to be
-      // atomic — sweep it here too in case the effect runs out of order.
-      sectionDoneStorage.clear(contentKey, sectionId);
+    const contentKey = getContentKey();
+    if (isPreviewMode) {
+      notePreviewSectionAcknowledged(contentKey, sectionId, false);
+      return;
     }
+    sectionCollapseStorage.clear(contentKey, sectionId);
+    sectionAcknowledgementStorage.clear(contentKey, sectionId);
+    // The section's own `isCompleted` effect also clears `sectionDoneStorage`
+    // when it flips to false, but the user-facing reset path ought to be
+    // atomic — sweep it here too in case the effect runs out of order.
+    sectionDoneStorage.clear(contentKey, sectionId);
   }, [sectionId, isPreviewMode]);
 
   // Mount-only restore (#842, Bug 4 fix).

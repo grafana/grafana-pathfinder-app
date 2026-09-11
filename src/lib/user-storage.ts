@@ -996,9 +996,9 @@ export const interactiveStepStorage = {
   /**
    * Drop the cached completion count for a content key without touching
    * localStorage. Used by the cross-tab `storage` listener in
-   * `completion-store.ts` so the next `countAllCompleted` / `getGuideProgress`
-   * call re-scans from authoritative storage rather than returning a
-   * stale per-tab snapshot.
+   * `completion-store.ts` so the next `countAllCompleted` call re-scans
+   * from authoritative storage rather than returning a stale per-tab
+   * snapshot.
    *
    * Idempotent on unknown keys; safe to call from any tab.
    */
@@ -1159,6 +1159,33 @@ export const interactiveStepStorage = {
       return 0;
     }
   },
+
+  /**
+   * Synchronously list every completed step id across every section for a
+   * content key — the numerator `completion-store.ts`'s evidence bridge
+   * feeds into `guideProgress`. Same scan and same #842 ack-marker filter
+   * as `countAllCompleted`, uncached: callers that need the ids themselves
+   * rather than just a count are the completion percentage's write path,
+   * not a render-loop hot path.
+   */
+  listAllCompleted(contentKey: string): readonly string[] {
+    try {
+      const ids: string[] = [];
+      for (const { raw } of listProgressEntries(StorageKeys.INTERACTIVE_STEPS_PREFIX, contentKey)) {
+        const stepIds = parseStepIds(raw);
+        if (stepIds) {
+          for (const id of stepIds) {
+            if (typeof id === 'string' && !id.endsWith('::ack-marker')) {
+              ids.push(id);
+            }
+          }
+        }
+      }
+      return ids;
+    } catch {
+      return [];
+    }
+  },
 };
 
 /**
@@ -1289,6 +1316,25 @@ export const sectionAcknowledgementStorage = {
       return count;
     } catch {
       return 0;
+    }
+  },
+
+  /**
+   * Synchronously list every acknowledged section id for a content key —
+   * the `mark-section-complete` evidence `completion-store.ts`'s evidence
+   * bridge feeds into `guideProgress`. Mirrors `countAllAcknowledged`.
+   */
+  listAllAcknowledged(contentKey: string): readonly string[] {
+    try {
+      const sectionIds: string[] = [];
+      for (const { sectionId, raw } of listProgressEntries(StorageKeys.SECTION_ACKNOWLEDGED_PREFIX, contentKey)) {
+        if (raw === 'true') {
+          sectionIds.push(sectionId);
+        }
+      }
+      return sectionIds;
+    } catch {
+      return [];
     }
   },
 };

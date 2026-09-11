@@ -38,10 +38,10 @@ import {
 import { StorageEvents } from '../lib/event-names';
 import { StorageKeys, buildVersionedSectionStorageKey, parseVersionedStorageKey } from '../lib/storage-keys';
 import { logger } from '../lib/logging';
+import { guideProgress, type CompletionEvidence } from '../lib/guide-stats';
 
-import { evictAllGuideIndexes, evictGuideIndex } from './active-guide-index';
+import { evictAllGuideIndexes, evictGuideIndex, getGuideIndex } from './active-guide-index';
 import { getContentKey } from './content-key';
-import { getRegisteredSectionCount, getTotalDocumentSteps } from './section-registry';
 import { dispatchProgress, type ProgressReason } from './progress-events';
 
 /** Synthetic section ID for steps that are not inside an `<InteractiveSection>`. */
@@ -256,6 +256,98 @@ export function isBlockEditorPreviewUrl(value: string): boolean {
   return value.startsWith('block-editor://preview/');
 }
 
+/**
+ * In-memory ack tracking for preview content keys only. Real content keys
+ * read acknowledgement from `sectionAcknowledgementStorage`, which persists;
+ * a preview never persists (see `persistSection` below), so an author
+ * stepping through a preview's ack-gated section would otherwise have no
+ * record at all for the evidence bridge to read — this is that record.
+ */
+const previewAcknowledgedSections = new Map<string, Set<string>>();
+
+/** Called by `useSectionPersistence`'s preview branch in place of the storage write it skips. */
+export function notePreviewSectionAcknowledged(contentKey: string, sectionId: string, acknowledged: boolean): void {
+  if (!acknowledged) {
+    previewAcknowledgedSections.get(contentKey)?.delete(sectionId);
+  } else {
+    let sectionIds = previewAcknowledgedSections.get(contentKey);
+    if (!sectionIds) {
+      sectionIds = new Set();
+      previewAcknowledgedSections.set(contentKey, sectionIds);
+    }
+    sectionIds.add(sectionId);
+  }
+  refreshAndNotifyGuideProgress(contentKey);
+}
+
+/**
+ * Every completion signal observed for a guide, bridged into the shared
+ * evidence shape `src/lib/guide-stats/progress.ts` consumes. The completion
+ * store is the sole producer of a guide's percentage: this is the one place
+ * that assembles evidence, and `guideProgress` (against the frozen index) is
+ * the one place that turns it into a position.
+ *
+ * Preview content keys read step/ack evidence from the in-memory caches
+ * above rather than from storage, because `persistSection` and
+ * `useSectionPersistence` both skip the storage write for a preview key —
+ * there is nothing there to read.
+ */
+function collectEvidence(contentKey: string): CompletionEvidence[] {
+  const evidence: CompletionEvidence[] = [];
+
+  if (isPreviewContentKey(contentKey)) {
+    entries.get(contentKey)?.forEach((bySteps) => {
+      bySteps.forEach((entry, stepId) => {
+        if (entry.completed) {
+          evidence.push({ kind: 'do-it', blockId: stepId });
+        }
+      });
+    });
+    previewAcknowledgedSections.get(contentKey)?.forEach((sectionId) => {
+      evidence.push({ kind: 'mark-section-complete', blockId: sectionId });
+    });
+  } else {
+    for (const stepId of interactiveStepStorage.listAllCompleted(contentKey)) {
+      evidence.push({ kind: 'do-it', blockId: stepId });
+    }
+    for (const sectionId of sectionAcknowledgementStorage.listAllAcknowledged(contentKey)) {
+      evidence.push({ kind: 'mark-section-complete', blockId: sectionId });
+    }
+  }
+
+  return evidence;
+}
+
+interface GuidePercentage {
+  percent: number;
+  complete: boolean;
+}
+
+/**
+ * The guide's current percentage. The mark is checked first and short-circuits
+ * everything else, as `refreshGuidePercentage` always did: it outranks every
+ * derived signal, and this runs as a `useSyncExternalStore` snapshot on every
+ * render of the Mark complete footer, where scanning storage for the other
+ * evidence kinds would be an uncached, unnecessary read. Short-circuiting
+ * here also means a mark is authoritative even before this content key's
+ * frozen index has published — the two are otherwise unrelated facts.
+ *
+ * Past the mark, `undefined` when the index hasn't published yet for this
+ * content key (the content-load seam in `content-renderer.tsx` hasn't run)
+ * or the content has no countable blocks at all (not guide-shaped).
+ */
+function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
+  if (guideCompletionMarkStorage.isMarked(contentKey)) {
+    return { percent: 100, complete: true };
+  }
+  const active = getGuideIndex(contentKey);
+  if (!active) {
+    return undefined;
+  }
+  const progress = guideProgress(active.index, collectEvidence(contentKey));
+  return { percent: progress.percent, complete: progress.complete };
+}
+
 function persistSection(contentKey: string, sectionId: string): void {
   const bySteps = stepsFor(contentKey, sectionId);
   const completedIds = new Set<string>();
@@ -267,7 +359,8 @@ function persistSection(contentKey: string, sectionId: string): void {
   // Preview-mode sandbox (#842 Bug 3): block-editor previews must not
   // pollute localStorage with progress tied to throwaway content keys.
   // The in-memory cache + the events still update so ephemeral UI
-  // (preview "Reset guide" button) keeps reacting.
+  // (preview "Reset guide" button) keeps reacting, and so does the Mark
+  // complete footer's own live percentage — see `collectEvidence`.
   const isPreview = isPreviewContentKey(contentKey);
   if (!isPreview) {
     // Empty completedIds → fully clear the storage entry rather than
@@ -279,7 +372,7 @@ function persistSection(contentKey: string, sectionId: string): void {
       interactiveStepStorage.setCompleted(contentKey, sectionId, completedIds);
     }
   }
-  const percentage = isPreview ? undefined : refreshGuidePercentage(contentKey);
+  const percentage = refreshGuidePercentage(contentKey);
   if (completedIds.size > 0 && percentage !== undefined) {
     dispatchProgress({ kind: 'guide', contentKey, percentage, hasProgress: true });
   }
@@ -305,33 +398,27 @@ function persistSection(contentKey: string, sectionId: string): void {
   }
 }
 
+/**
+ * The completion store's sole write path for a guide's percentage: the
+ * frozen block index (`active-guide-index.ts`) owns the denominator and
+ * positions, `collectEvidence` bridges every storage-backed signal into the
+ * shared evidence shape, and `guideProgress` (`src/lib/guide-stats`) turns
+ * that into a position — the same arithmetic every other reader of the
+ * percentage agrees with, so no clamp is needed here: `guideProgressAtPosition`
+ * already clamps a non-finite or over-range position.
+ */
 function refreshGuidePercentage(contentKey: string): number | undefined {
-  // The mark is the reader's own statement that the guide is finished, so it
-  // outranks the step and ack counts the branches below derive from — without
-  // this, the next step write would move a marked guide back down.
-  if (guideCompletionMarkStorage.isMarked(contentKey)) {
-    interactiveCompletionStorage.set(contentKey, 100);
-    return 100;
+  const progress = computeGuideProgress(contentKey);
+  if (progress === undefined) {
+    return undefined;
   }
-  const docTotal = getTotalDocumentSteps();
-  if (docTotal < 1) {
-    // All-passive guide (F-1, #909 follow-up): no interactive steps
-    // means no `interactiveStepStorage` writes, so derive the
-    // percentage from `sectionAcknowledgementStorage` — the namespace
-    // the production ack writer actually persists to.
-    const sectionCount = getRegisteredSectionCount();
-    if (sectionCount < 1) {
-      return undefined;
-    }
-    const ackCount = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
-    const percentage = Math.min(100, Math.round((ackCount / sectionCount) * 100));
-    interactiveCompletionStorage.set(contentKey, percentage);
-    return percentage;
+  // Preview content keys never persist (see `persistSection`) — writing here
+  // would also crowd `interactiveCompletionStorage`'s capped namespace with
+  // throwaway entries that displace real readers' progress.
+  if (!isPreviewContentKey(contentKey)) {
+    interactiveCompletionStorage.set(contentKey, progress.percent);
   }
-  const allCompleted = interactiveStepStorage.countAllCompleted(contentKey);
-  const percentage = Math.round((allCompleted / docTotal) * 100);
-  interactiveCompletionStorage.set(contentKey, percentage);
-  return percentage;
+  return progress.percent;
 }
 
 /**
@@ -340,9 +427,6 @@ function refreshGuidePercentage(contentKey: string): number | undefined {
  * is never called and would otherwise leave the percentage stale.
  */
 export function refreshAndNotifyGuideProgress(contentKey: string): void {
-  if (isPreviewContentKey(contentKey)) {
-    return;
-  }
   const percentage = refreshGuidePercentage(contentKey);
   if (percentage !== undefined) {
     dispatchProgress({ kind: 'guide', contentKey, percentage, hasProgress: percentage > 0 });
@@ -424,47 +508,17 @@ export function resetStep(stepId: string, sectionId: string | undefined = STANDA
   });
 }
 
-export interface GuideProgress {
-  completed: number;
-  total: number;
-  percentage: number;
-}
-
-export function getGuideProgress(contentKey: string): GuideProgress {
-  // Checked before anything is counted, as in `refreshGuidePercentage`: the
-  // mark outranks every derived count, and this runs as a
-  // `useSyncExternalStore` snapshot on every render of the Mark complete
-  // footer, where `countAllAcknowledged` would be an uncached scan over the
-  // whole of localStorage. Counts of 0 because none were derived.
-  if (guideCompletionMarkStorage.isMarked(contentKey)) {
-    return { completed: 0, total: 0, percentage: 100 };
-  }
-  const total = getTotalDocumentSteps();
-  const completedRaw = interactiveStepStorage.countAllCompleted(contentKey);
-  const completed = completedRaw < 0 ? 0 : completedRaw;
-  if (total < 1) {
-    // All-passive branch (F-1, #909 follow-up): `completed` / `total`
-    // here count sections, not steps, since there are no interactive
-    // steps to divide by.
-    const sectionCount = getRegisteredSectionCount();
-    const ackCount = sectionAcknowledgementStorage.countAllAcknowledged(contentKey);
-    if (sectionCount < 1) {
-      return { completed: 0, total: 0, percentage: 0 };
-    }
-    return {
-      completed: ackCount,
-      total: sectionCount,
-      percentage: Math.min(100, Math.round((ackCount / sectionCount) * 100)),
-    };
-  }
-  // Defensive ceiling. `countAllCompleted` reads roster-blind from
-  // storage; if a guide ships a v2 schema that renames or removes a
-  // step under stable IDs (`MF-1`), storage may temporarily hold IDs
-  // that the current roster doesn't recognise, producing > 100%. The
-  // structural fix is `reconcileSection` which self-heals on first
-  // mount; this clamp covers the pre-reconcile window so users never
-  // see "167% complete" in a progress chip.
-  return { completed, total, percentage: Math.min(100, Math.round((completed / total) * 100)) };
+/**
+ * Synchronous read of a guide's current percentage — for the Mark complete
+ * footer's live display, as a `useSyncExternalStore` snapshot on every
+ * render. Delegates to the same `computeGuideProgress` bridge
+ * `refreshGuidePercentage` writes from, so every reader of the percentage
+ * agrees: the completion store is the sole producer. 0 before the guide's
+ * frozen index has published for this content key, or for content with no
+ * countable blocks at all.
+ */
+export function peekGuidePercentage(contentKey: string): number {
+  return computeGuideProgress(contentKey)?.percent ?? 0;
 }
 
 /** Subscribe to per-content progress changes. Returns an unsubscribe function. */
@@ -700,6 +754,7 @@ export function evictContentCache(contentKey: string): void {
   // index still published and skip recomputing it (publishGuideIndex is
   // idempotent per content key), serving stale positions after a reset.
   evictGuideIndex(contentKey);
+  previewAcknowledgedSections.delete(contentKey);
   entries.delete(contentKey);
   const prefix = `${contentKey}::`;
   for (const key of Array.from(hydratedSections)) {
@@ -831,6 +886,7 @@ export function markStepsCompleted(
  */
 export function evictAllContentCaches(): void {
   evictAllGuideIndexes();
+  previewAcknowledgedSections.clear();
   const contentKeys = Array.from(listenersByContent.keys());
   // Bump every existing hydration version BEFORE clearing the maps so
   // any in-flight hydration cycle drops its merge on resolve. Clearing
@@ -859,6 +915,8 @@ export function resetCompletionStoreForTests(): void {
   hydrationVersion.clear();
   listenersByContent.clear();
   sectionVersions.clear();
+  previewAcknowledgedSections.clear();
+  evictAllGuideIndexes();
 }
 
 /**
@@ -925,8 +983,8 @@ function handleStorageEvent(event: StorageEvent): void {
     }
     evictSectionCacheForKey(contentKey, sectionId);
     // `completedCountCache` in `user-storage.ts` is also per-tab and
-    // would otherwise return a stale numerator on the next
-    // `getGuideProgress` call.
+    // would otherwise return a stale count on the next `countAllCompleted`
+    // call (the tail-reset zero-check in `persistSection`, below).
     interactiveStepStorage.invalidateCountCache(contentKey);
     notify(contentKey);
     return;

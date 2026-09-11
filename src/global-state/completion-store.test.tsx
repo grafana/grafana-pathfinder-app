@@ -5,9 +5,9 @@ import {
   STANDALONE_SECTION_ID,
   evictAllContentCaches,
   evictContentCache,
-  getGuideProgress,
   markStepCompleted,
   markStepsCompleted,
+  peekGuidePercentage,
   reconcileSection,
   refreshAndNotifyGuideProgress,
   resetCompletionStoreForTests,
@@ -19,7 +19,28 @@ import {
 } from './completion-store';
 import { setActiveTabUrl, resetContentKeyForTests } from './content-key';
 import { subscribeProgressEvent, type ProgressEventDetail } from './progress-events';
+import { publishGuideIndex } from './active-guide-index';
+import { computeGuideBlockIndex, type CountableBlock } from '../lib/guide-stats';
 import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../lib/storage-keys';
+
+/**
+ * Publishes a frozen index of `n` generic (non-completable) blocks, with
+ * `ids[i]` (if given) as block `i + 1`'s author id — so a test's stored step
+ * completions resolve to a real position via `positionsById`.
+ */
+function publishFlatIndex(contentKey: string, n: number, ids: readonly string[] = []): void {
+  const blocks: CountableBlock[] = Array.from({ length: n }, (_, i) => ({
+    type: 'markdown',
+    ...(ids[i] ? { id: ids[i] } : {}),
+  }));
+  publishGuideIndex({ contentKey, index: computeGuideBlockIndex(blocks), denominatorSource: 'live-pre-inlining' });
+}
+
+/** Publishes an index of `n` sections, each one block, ids `sectionIds[i]` — for ack-evidence tests. */
+function publishSectionedIndex(contentKey: string, sectionIds: readonly string[]): void {
+  const blocks: CountableBlock[] = sectionIds.map((id) => ({ type: 'section', id, blocks: [{ type: 'markdown' }] }));
+  publishGuideIndex({ contentKey, index: computeGuideBlockIndex(blocks), denominatorSource: 'live-pre-inlining' });
+}
 
 // In-memory mocks for the persisted-storage layer so tests are hermetic
 // and synchronous-where-they-can-be. Records are addressed by a NUL-joined
@@ -58,6 +79,15 @@ jest.mock('../lib/user-storage', () => ({
       }
       return total;
     }),
+    listAllCompleted: jest.fn((contentKey: string) => {
+      const ids: string[] = [];
+      for (const [pair, stepIds] of storedCompleted) {
+        if (belongsTo(pair, contentKey)) {
+          ids.push(...stepIds);
+        }
+      }
+      return ids;
+    }),
     // Cross-tab sync invalidates the per-tab numerator cache without
     // touching localStorage. Our in-memory mock has no cache to clear,
     // so this is a no-op stub — present only to satisfy the production
@@ -82,14 +112,17 @@ jest.mock('../lib/user-storage', () => ({
       }
       return count;
     }),
+    listAllAcknowledged: jest.fn((contentKey: string) => {
+      const sectionIds: string[] = [];
+      for (const pair of storedAcks.keys()) {
+        if (belongsTo(pair, contentKey)) {
+          // pairKey is `${contentKey}\x00${sectionId}` — strip the prefix.
+          sectionIds.push(pair.slice(contentKey.length + PAIR_SEPARATOR.length));
+        }
+      }
+      return sectionIds;
+    }),
   },
-}));
-
-let mockTotalDocumentSteps = 0;
-let mockRegisteredSectionCount = 0;
-jest.mock('./section-registry', () => ({
-  getTotalDocumentSteps: () => mockTotalDocumentSteps,
-  getRegisteredSectionCount: () => mockRegisteredSectionCount,
 }));
 
 const CONTENT_KEY = 'bundled:test-guide';
@@ -99,8 +132,6 @@ beforeEach(() => {
   storedAcks.clear();
   guidePercentages.clear();
   storedMarks.clear();
-  mockTotalDocumentSteps = 0;
-  mockRegisteredSectionCount = 0;
   resetCompletionStoreForTests();
   resetContentKeyForTests();
   setActiveTabUrl(CONTENT_KEY);
@@ -217,46 +248,37 @@ describe('completion-store', () => {
     expect(screen.getByTestId('reason').textContent).toBe('manual');
   });
 
-  it('getGuideProgress returns 0% when total is unknown and nothing has been completed', () => {
-    mockTotalDocumentSteps = 0;
-    expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 0, percentage: 0 });
+  it('peekGuidePercentage returns 0% when no frozen index has published for this content key', () => {
+    expect(peekGuidePercentage(CONTENT_KEY)).toBe(0);
   });
 
-  // F-1 (#909 follow-up): all-passive guides have no interactive
-  // steps, so `getGuideProgress` must derive the percentage from
-  // `sectionAcknowledgementStorage` (where the production ack writer
-  // persists) divided by `getRegisteredSectionCount()`, not from the
-  // 0/0 step-count division the pre-fix code did.
+  // F-1 (#909 follow-up): all-passive guides have no interactive steps, so
+  // the percentage must derive from section-ack evidence against the
+  // frozen index's section containers, not a step-count division.
   describe('all-passive guide progress (F-1)', () => {
     it('returns 100% once every registered section is acknowledged', () => {
-      mockTotalDocumentSteps = 0;
-      mockRegisteredSectionCount = 1;
+      publishSectionedIndex(CONTENT_KEY, ['section-passive']);
       storedAcks.set(pairKey(CONTENT_KEY, 'section-passive'), true);
-      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 1, percentage: 100 });
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
     });
 
     it('returns a partial percentage for multi-section guides with one ack', () => {
-      mockTotalDocumentSteps = 0;
-      mockRegisteredSectionCount = 4;
+      publishSectionedIndex(CONTENT_KEY, ['section-1', 'section-2', 'section-3', 'section-4']);
       storedAcks.set(pairKey(CONTENT_KEY, 'section-1'), true);
-      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 1, total: 4, percentage: 25 });
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(25);
     });
 
     it('returns 0% when no sections are acknowledged yet', () => {
-      mockTotalDocumentSteps = 0;
-      mockRegisteredSectionCount = 3;
-      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 3, percentage: 0 });
+      publishSectionedIndex(CONTENT_KEY, ['section-1', 'section-2', 'section-3']);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(0);
     });
 
     it('returns 0% when no sections are registered yet (guide not mounted)', () => {
-      mockTotalDocumentSteps = 0;
-      mockRegisteredSectionCount = 0;
-      expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 0, total: 0, percentage: 0 });
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(0);
     });
 
     it('refreshAndNotifyGuideProgress persists the percentage to interactiveCompletionStorage', () => {
-      mockTotalDocumentSteps = 0;
-      mockRegisteredSectionCount = 2;
+      publishSectionedIndex(CONTENT_KEY, ['section-1', 'section-2']);
       storedAcks.set(pairKey(CONTENT_KEY, 'section-1'), true);
       storedAcks.set(pairKey(CONTENT_KEY, 'section-2'), true);
 
@@ -271,20 +293,22 @@ describe('completion-store', () => {
   // move a marked guide back down.
   describe('a marked guide', () => {
     it('reports 100% with no steps completed at all', () => {
-      mockTotalDocumentSteps = 3;
+      publishFlatIndex(CONTENT_KEY, 3);
       storedMarks.add(CONTENT_KEY);
 
-      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
     });
 
-    it('reports 100% for a prose-only guide, which has neither steps nor sections', () => {
+    it('reports 100% for a prose-only guide, before any frozen index has even published', () => {
+      // The mark is checked before the index lookup, so it is authoritative
+      // even independent of whether this content key's guide has loaded.
       storedMarks.add(CONTENT_KEY);
 
-      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
     });
 
     it('stays at 100% for every reader after a later step completion', async () => {
-      mockTotalDocumentSteps = 3;
+      publishFlatIndex(CONTENT_KEY, 3, ['step-1']);
       storedMarks.add(CONTENT_KEY);
       render(<StepProbe stepId="step-1" sectionId="section-x" />);
       await flushMicrotasks();
@@ -293,13 +317,13 @@ describe('completion-store', () => {
         markStepCompleted('step-1', 'section-x', 'manual');
       });
 
-      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
       // The persisted percentage is what the recommendation card reads.
       expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
     });
 
     it('stays at 100% after an all-passive ack recomputes the percentage', () => {
-      mockRegisteredSectionCount = 3;
+      publishSectionedIndex(CONTENT_KEY, ['section-1', 'section-2', 'section-3']);
       storedAcks.set(pairKey(CONTENT_KEY, 'section-1'), true);
       storedMarks.add(CONTENT_KEY);
 
@@ -307,52 +331,59 @@ describe('completion-store', () => {
         refreshAndNotifyGuideProgress(CONTENT_KEY);
       });
 
-      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
       expect(guidePercentages.get(CONTENT_KEY)).toBe(100);
     });
 
-    it('still reports 100% once the in-memory caches are gone, as after a reload', () => {
-      mockTotalDocumentSteps = 3;
+    it('still reports 100% once the in-memory caches are gone and the guide reloads', () => {
+      publishFlatIndex(CONTENT_KEY, 3);
       storedMarks.add(CONTENT_KEY);
 
       evictAllContentCaches();
       resetCompletionStoreForTests();
+      // A reload remounts ContentRenderer, which republishes the frozen
+      // index before anything reads the percentage — the mark itself
+      // (checked here, unconditionally) needs no index at all, but a
+      // guide WITH one still needs it republished after eviction.
+      publishFlatIndex(CONTENT_KEY, 3);
 
-      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
     });
 
     it('counts nothing, because the mark settles the answer before any storage scan', () => {
-      // `getGuideProgress` is a `useSyncExternalStore` snapshot, so it runs on
-      // every render of the Mark complete footer; `countAllAcknowledged` is an
-      // uncached scan over the whole of localStorage.
+      // `peekGuidePercentage` is a `useSyncExternalStore` snapshot, so it runs
+      // on every render of the Mark complete footer; `countAllAcknowledged`
+      // is an uncached scan over the whole of localStorage.
       const { interactiveStepStorage, sectionAcknowledgementStorage } = jest.requireMock('../lib/user-storage');
-      mockRegisteredSectionCount = 3;
+      publishSectionedIndex(CONTENT_KEY, ['section-1', 'section-2', 'section-3']);
       storedMarks.add(CONTENT_KEY);
       interactiveStepStorage.countAllCompleted.mockClear();
+      interactiveStepStorage.listAllCompleted.mockClear();
       sectionAcknowledgementStorage.countAllAcknowledged.mockClear();
+      sectionAcknowledgementStorage.listAllAcknowledged.mockClear();
 
-      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
 
-      expect(sectionAcknowledgementStorage.countAllAcknowledged).not.toHaveBeenCalled();
-      expect(interactiveStepStorage.countAllCompleted).not.toHaveBeenCalled();
+      expect(sectionAcknowledgementStorage.listAllAcknowledged).not.toHaveBeenCalled();
+      expect(interactiveStepStorage.listAllCompleted).not.toHaveBeenCalled();
     });
 
     it('drops back to the derived percentage once the mark is cleared', () => {
-      mockTotalDocumentSteps = 4;
+      publishFlatIndex(CONTENT_KEY, 4, ['step-1']);
       storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1']));
       storedMarks.add(CONTENT_KEY);
-      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
 
       storedMarks.delete(CONTENT_KEY);
 
-      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(25);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(25);
     });
   });
 
-  it('getGuideProgress computes percentage when total steps is known', () => {
+  it('peekGuidePercentage computes percentage when the frozen index is known', () => {
+    publishFlatIndex(CONTENT_KEY, 4, ['step-1', 'step-2']);
     storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-1', 'step-2']));
-    mockTotalDocumentSteps = 4;
-    expect(getGuideProgress(CONTENT_KEY)).toEqual({ completed: 2, total: 4, percentage: 50 });
+    expect(peekGuidePercentage(CONTENT_KEY)).toBe(50);
   });
 
   it('subscribeProgress fires when steps are marked completed', async () => {
@@ -559,18 +590,18 @@ describe('completion-store', () => {
     });
   });
 
-  // MF-2 — roster reconciliation + getGuideProgress clamp.
+  // MF-2 — roster reconciliation + the frozen-index clamp.
   //
   // Stable step IDs (MF-1) make storage durable across renames, so
   // editing a guide can leave orphan IDs in localStorage that the
-  // section's roster doesn't recognise. Without reconciliation /
-  // clamp, `getGuideProgress` divides `countAllCompleted` (storage,
-  // roster-blind) by `getTotalDocumentSteps()` (registry, roster-
-  // aware) and can surface > 100% in the progress chip. The pair of
-  // fixes:
+  // guide's current frozen index doesn't recognise (no matching
+  // position). Without reconciliation, storage keeps accumulating
+  // orphans; `guideProgressAtPosition`'s own clamp keeps a
+  // position-mismatch from ever reading over 100% regardless. The
+  // pair:
   //   - `reconcileSection` drops orphans from storage on first mount.
-  //   - `getGuideProgress`'s `Math.min(100, ...)` covers the
-  //     pre-reconcile window.
+  //   - unmatched evidence resolves to position 0 rather than
+  //     inflating anything, and the position clamp covers the rest.
   describe('roster reconciliation + percentage clamp', () => {
     it('reconcileSection drops storage IDs not present in the roster', async () => {
       storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['step-a', 'step-b', 'orphan']));
@@ -600,16 +631,14 @@ describe('completion-store', () => {
       persistSpy.mockRestore();
     });
 
-    it('getGuideProgress clamps to 100 when storage holds orphan IDs that inflate the numerator', () => {
-      // Storage has 5 IDs across two sections; roster total is only 3.
-      // Pre-clamp this returned 167; clamp keeps it user-presentable.
+    it('does not exceed 100% when storage holds orphan IDs the frozen index has no position for', () => {
+      // Storage has 5 IDs across two sections; the index only knows s1-s3.
+      // s4/s5 are orphans (e.g. from a since-edited guide) and evidence
+      // nothing — the position clamp keeps this from reading over 100%.
+      publishFlatIndex(CONTENT_KEY, 3, ['s1', 's2', 's3']);
       storedCompleted.set(pairKey(CONTENT_KEY, 'section-x'), new Set(['s1', 's2', 's3']));
       storedCompleted.set(pairKey(CONTENT_KEY, 'section-y'), new Set(['s4', 's5']));
-      mockTotalDocumentSteps = 3;
-      const progress = getGuideProgress(CONTENT_KEY);
-      expect(progress.completed).toBe(5);
-      expect(progress.total).toBe(3);
-      expect(progress.percentage).toBe(100);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
     });
   });
 
@@ -756,7 +785,7 @@ describe('completion-store', () => {
       });
 
       expect(listener).toHaveBeenCalledTimes(1);
-      expect(getGuideProgress(CONTENT_KEY).percentage).toBe(100);
+      expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
     });
 
     it('spares a sibling guide whose key merely starts with the written one', () => {
