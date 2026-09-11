@@ -41,6 +41,7 @@ export const TELEMETRY_EVENTS = {
   sessionReplaySamplingFallback: 'pathfinder_session_replay_sampling_fallback',
   customGuideCatalogueUnavailable: 'pathfinder_custom_guide_catalogue_unavailable',
   sandboxUnavailable: 'pathfinder_sandbox_unavailable',
+  settingsStoreResolved: 'pathfinder_settings_store_resolved',
   gcxCredentialDegraded: 'pathfinder_gcx_credential_degraded',
 } as const;
 

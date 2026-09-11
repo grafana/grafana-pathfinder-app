@@ -24,8 +24,7 @@ import {
 jest.mock('@grafana/runtime', () => ({
   isAppPluginEnabled: jest.fn(),
   isAppPluginInstalled: jest.fn(),
-  // Silences getConfigWithDefaults' platform-detection warning. `user.id` is
-  // what the dev-mode allowlist half of the enablement gate is keyed on.
+  // Silences getConfigWithDefaults' platform-detection warning.
   config: {
     bootData: { user: { id: 7 }, settings: { buildInfo: { versionString: 'Grafana v13.1.0' } } },
   },
@@ -52,8 +51,6 @@ const mockedIsAppPluginInstalled = isAppPluginInstalled as jest.MockedFunction<t
 const mockedUsePluginContext = usePluginContext as jest.MockedFunction<typeof usePluginContext>;
 const mockedGetCapabilities = getCapabilities as jest.MockedFunction<typeof getCapabilities>;
 const mockedGetFeatureFlagValue = getFeatureFlagValue as jest.MockedFunction<typeof getFeatureFlagValue>;
-
-const DEV_MODE_USER_ID = 7;
 
 function capabilities(overrides: Partial<CodaCapabilities> = {}): CodaCapabilities {
   return {
@@ -241,7 +238,7 @@ describe('isCodaPluginAvailable', () => {
 describe('useCodaTerminalGate', () => {
   function withTerminalSetting(enableCodaTerminal: boolean) {
     mockedUsePluginContext.mockReturnValue({
-      meta: { jsonData: { enableCodaTerminal, devMode: true, devModeUserIds: [DEV_MODE_USER_ID] } },
+      meta: { jsonData: { enableCodaTerminal, devMode: true, devModeOptIn: true } },
     } as never);
   }
 
@@ -275,7 +272,7 @@ describe('useCodaTerminalGate', () => {
   // "the sandbox terminal is not available here".
   it('reports disabled for the setting alone, matching the terminal panel it shares a gate with', () => {
     mockedUsePluginContext.mockReturnValue({
-      meta: { jsonData: { enableCodaTerminal: true, devMode: false, devModeUserIds: [] } },
+      meta: { jsonData: { enableCodaTerminal: true, devMode: false, devModeOptIn: false } },
     } as never);
     const { result } = renderHook(() => useCodaTerminalGate());
 

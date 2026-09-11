@@ -1,4 +1,4 @@
-import { getConfigWithDefaults, type DocsPluginConfig } from '../constants';
+import { getConfigWithDefaults, type PathfinderPluginConfig } from '../constants';
 import { isDevModeEnabled } from './dev-mode';
 import { getFeatureFlagValue } from './openfeature';
 
@@ -24,9 +24,9 @@ export function resetCodaTerminalFlagCache(): void {
  * and the `TerminalPanel` mount cannot disagree. Says nothing about the Coda app
  * plugin being installed — that probe is deliberately gated behind this.
  */
-export function isCodaTerminalEnabled(pluginConfig: DocsPluginConfig, currentUserId?: number): boolean {
+export function isCodaTerminalEnabled(pluginConfig: PathfinderPluginConfig): boolean {
   return (
     isCodaTerminalForcedByFlag() ||
-    (isDevModeEnabled(pluginConfig, currentUserId) && getConfigWithDefaults(pluginConfig).enableCodaTerminal)
+    (isDevModeEnabled(pluginConfig) && getConfigWithDefaults(pluginConfig).enableCodaTerminal)
   );
 }

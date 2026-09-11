@@ -381,7 +381,7 @@ Recommendations are filtered and sorted based on accuracy and content type:
 
 ## Configuration
 
-Configuration is managed through plugin settings (`DocsPluginConfig`):
+Configuration is managed through plugin settings (`PathfinderPluginConfig`):
 
 **Recommendation Service**:
 

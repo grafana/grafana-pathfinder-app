@@ -46,7 +46,7 @@ describe('docsPage plugin config', () => {
   it('constructs the panel with the config published by plugin.init on window', () => {
     (window as any).__pathfinderPluginConfig = {
       devMode: true,
-      devModeUserIds: [1],
+      devModeOptIn: true,
     };
 
     (globalThis as any).__docsPageContextScene();
@@ -54,7 +54,7 @@ describe('docsPage plugin config', () => {
     expect((globalThis as any).__docsPagePanelConfig).toEqual(
       expect.objectContaining({
         devMode: true,
-        devModeUserIds: [1],
+        devModeOptIn: true,
       })
     );
   });

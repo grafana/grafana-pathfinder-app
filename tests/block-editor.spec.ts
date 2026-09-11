@@ -15,6 +15,8 @@ import {
   clickAddBlockInSection,
 } from './helpers/block-editor.helpers';
 import { TIMEOUTS } from './constants';
+import { StorageKeys } from '../src/lib/storage-keys';
+import type { APIRequestContext } from '@playwright/test';
 
 /**
  * Block Editor E2E Tests
@@ -30,36 +32,54 @@ import { TIMEOUTS } from './constants';
  */
 
 test.describe.serial('Block Editor', () => {
-  // Enable dev mode before tests run (needed for recording overlay tests)
-  test.beforeAll(async ({ request }) => {
-    await request.post('/api/plugins/grafana-pathfinder-app/settings', {
+  /**
+   * Dev mode needs both gates: the tenant flag and this user's opt-in.
+   *
+   * The tenant flag goes to plugin settings — on the e2e stack there is no App
+   * Platform aggregation, so that is the store in play. It must be written as a
+   * read-modify-write that echoes `enabled`, `pinned` and the existing jsonData:
+   * Grafana replaces jsonData wholesale and reads an omitted `pinned` as false,
+   * so a two-field POST would wipe every other setting on the stack and unpin the
+   * plugin from the nav.
+   *
+   * The opt-in is per-browser localStorage, seeded per page below.
+   */
+  const SETTINGS_URL = '/api/plugins/grafana-pathfinder-app/settings';
+
+  async function setTenantDevMode(request: APIRequestContext, devMode: boolean) {
+    const current = await request.get(SETTINGS_URL);
+    const settings = current.ok() ? await current.json() : {};
+
+    await request.post(SETTINGS_URL, {
       data: {
-        enabled: true,
-        jsonData: {
-          devMode: true,
-          devModeUserIds: [1],
-        },
+        enabled: settings.enabled !== false,
+        pinned: settings.pinned === true,
+        jsonData: { ...(settings.jsonData ?? {}), devMode },
       },
     });
+  }
+
+  test.beforeAll(async ({ request }) => {
+    await setTenantDevMode(request, true);
   });
 
   // Clean up after tests
   test.afterAll(async ({ request }) => {
-    await request.post('/api/plugins/grafana-pathfinder-app/settings', {
-      data: {
-        enabled: true,
-        jsonData: {
-          devMode: false,
-          devModeUserIds: [],
-        },
-      },
-    });
+    await setTenantDevMode(request, false);
   });
 
-  // Clear localStorage before each test to ensure isolation
+  // Clear localStorage before each test to ensure isolation, then seed this
+  // user's dev-mode opt-in — clearing state also clears the opt-in.
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(
+      ([key]) => {
+        window.localStorage.setItem(key, 'true');
+      },
+      [StorageKeys.DEV_MODE_OPT_IN]
+    );
     await page.goto('/');
     await clearBlockEditorState(page);
+    await page.evaluate(([key]) => window.localStorage.setItem(key, 'true'), [StorageKeys.DEV_MODE_OPT_IN]);
   });
 
   test('should open block editor via editor tab', async ({ page }) => {

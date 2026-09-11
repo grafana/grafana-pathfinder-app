@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePluginContext } from '@grafana/data';
-import { config, isAppPluginEnabled, isAppPluginInstalled } from '@grafana/runtime';
+import { isAppPluginEnabled, isAppPluginInstalled } from '@grafana/runtime';
 import { isCodaTerminalEnabled } from '../../utils/coda-enablement';
 import { recordSandboxUnavailable, type SandboxUnavailableReason } from '../../lib/telemetry/facade';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
@@ -144,7 +144,7 @@ export type CodaTerminalGate = 'checking' | 'disabled' | 'plugin-missing' | 'con
 export function useCodaTerminalGate(): CodaTerminalGate {
   const pluginContext = usePluginContext();
   const enabled = useMemo(
-    () => isCodaTerminalEnabled(pluginContext?.meta?.jsonData || {}, config.bootData.user?.id),
+    () => isCodaTerminalEnabled(pluginContext?.meta?.jsonData || {}),
     [pluginContext?.meta?.jsonData]
   );
   const availability = useCodaPluginAvailability(enabled);

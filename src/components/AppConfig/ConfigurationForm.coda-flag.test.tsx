@@ -1,28 +1,29 @@
 /**
  * The `pathfinder.coda-terminal` flag is display-only on this page: it must show
- * the toggle as on without ever writing that value into jsonData, so turning the
- * flag off restores whatever the stack itself had set.
+ * the toggle as on without ever writing that value into tenant settings, so
+ * turning the flag off restores whatever the stack itself had set.
  *
  * A real render + submit, deliberately: `settings-preservation.test.ts` asserts
- * hand-written jsonData literals, so a regression in this form's own save path
- * stays green there.
+ * the writer in isolation, so a regression in this form's own save path stays
+ * green there.
  */
 
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { AppPluginMeta, PluginConfigPageProps } from '@grafana/data';
-import { config } from '@grafana/runtime';
 
 import ConfigurationForm from './ConfigurationForm';
+import { saveTenantSettings } from './save-settings';
+import { usePathfinderPluginConfig } from '../../hooks';
+import { getConfigWithDefaults, PathfinderPluginConfig } from '../../constants';
 import { testIds } from '../../constants/testIds';
-import type { DocsPluginConfig } from '../../constants';
-import { fetchPluginJsonData, updatePluginSettings } from '../../utils/utils.plugin';
 import { isCodaTerminalForcedByFlag } from '../../utils/coda-enablement';
 
-jest.mock('../../utils/utils.plugin', () => ({
-  fetchPluginJsonData: jest.fn(),
-  updatePluginSettings: jest.fn(),
+jest.mock('./save-settings', () => ({ saveTenantSettings: jest.fn() }));
+
+jest.mock('../../hooks', () => ({
+  usePathfinderPluginConfig: jest.fn(),
 }));
 
 jest.mock('../../utils/coda-enablement', () => ({
@@ -36,23 +37,21 @@ jest.mock('./CodaBackendStatus', () => ({
   ),
 }));
 
-const mockedFetchPluginJsonData = fetchPluginJsonData as jest.MockedFunction<typeof fetchPluginJsonData>;
-const mockedUpdatePluginSettings = updatePluginSettings as jest.MockedFunction<typeof updatePluginSettings>;
+const mockSave = saveTenantSettings as jest.MockedFunction<typeof saveTenantSettings>;
+const mockConfig = usePathfinderPluginConfig as jest.MockedFunction<typeof usePathfinderPluginConfig>;
 const mockedIsCodaTerminalForcedByFlag = isCodaTerminalForcedByFlag as jest.MockedFunction<
   typeof isCodaTerminalForcedByFlag
 >;
 
-const USER_ID = 7;
+const PLUGIN_ID = 'grafana-pathfinder-app';
 
-// The dev-mode allowlist is keyed on the boot user, which the test env leaves unset.
-beforeAll(() => {
-  config.bootData.user = { ...config.bootData.user, id: USER_ID };
-});
+function renderForm(stored: PathfinderPluginConfig) {
+  mockConfig.mockReturnValue({ config: getConfigWithDefaults(stored), isResolved: true });
 
-function renderForm(jsonData: DocsPluginConfig) {
   const props = {
-    plugin: { meta: { id: 'grafana-grafanadocsplugin-app', enabled: true, pinned: true, jsonData } },
-  } as unknown as PluginConfigPageProps<AppPluginMeta<DocsPluginConfig>>;
+    plugin: { meta: { id: PLUGIN_ID, jsonData: {} } },
+    query: {},
+  } as unknown as PluginConfigPageProps<AppPluginMeta<PathfinderPluginConfig>>;
 
   return render(
     <MemoryRouter>
@@ -61,25 +60,35 @@ function renderForm(jsonData: DocsPluginConfig) {
   );
 }
 
-function savedJsonData(): DocsPluginConfig {
-  const call = mockedUpdatePluginSettings.mock.calls[0];
+/** The tenant changes this form's submit actually wrote. */
+function savedChanges(): Partial<PathfinderPluginConfig> {
+  const call = mockSave.mock.calls[0];
   if (!call) {
-    throw new Error('updatePluginSettings was never called');
+    throw new Error('saveTenantSettings was never called');
   }
-  return call[1].jsonData as DocsPluginConfig;
+  return call[0].changes;
+}
+
+/**
+ * Settle the handler's awaits without advancing to the reload it schedules on
+ * success — jsdom cannot navigate, and `location.reload` is not redefinable.
+ */
+async function settle() {
+  await act(async () => {
+    await Promise.resolve();
+  });
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockedUpdatePluginSettings.mockResolvedValue(undefined);
+  mockSave.mockResolvedValue(undefined);
 });
 
 describe('Coda terminal section, forced by the feature flag', () => {
-  const noDevMode: DocsPluginConfig = { devMode: false, devModeUserIds: [], enableCodaTerminal: false };
+  const noDevMode: PathfinderPluginConfig = { devMode: false, devModeOptIn: false, enableCodaTerminal: false };
 
   beforeEach(() => {
     mockedIsCodaTerminalForcedByFlag.mockReturnValue(true);
-    mockedFetchPluginJsonData.mockResolvedValue(noDevMode);
   });
 
   it('shows the section with no dev mode, toggled on and not editable', async () => {
@@ -102,21 +111,21 @@ describe('Coda terminal section, forced by the feature flag', () => {
     await screen.findByTestId(testIds.appConfig.codaTerminalToggle);
 
     fireEvent.click(screen.getByTestId(testIds.appConfig.submit));
+    await settle();
 
-    await waitFor(() => expect(mockedUpdatePluginSettings).toHaveBeenCalledTimes(1));
-    expect(savedJsonData().enableCodaTerminal).toBe(false);
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(savedChanges().enableCodaTerminal).toBe(false);
   });
 
   it('leaves an explicit opt-in alone rather than flattening it', async () => {
-    const optedIn: DocsPluginConfig = { ...noDevMode, enableCodaTerminal: true };
-    mockedFetchPluginJsonData.mockResolvedValue(optedIn);
-    renderForm(optedIn);
+    renderForm({ ...noDevMode, enableCodaTerminal: true });
     await screen.findByTestId(testIds.appConfig.codaTerminalToggle);
 
     fireEvent.click(screen.getByTestId(testIds.appConfig.submit));
+    await settle();
 
-    await waitFor(() => expect(mockedUpdatePluginSettings).toHaveBeenCalledTimes(1));
-    expect(savedJsonData().enableCodaTerminal).toBe(true);
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(savedChanges().enableCodaTerminal).toBe(true);
   });
 });
 
@@ -125,18 +134,14 @@ describe('Coda terminal section, without the feature flag', () => {
     mockedIsCodaTerminalForcedByFlag.mockReturnValue(false);
   });
 
-  it('is hidden when dev mode is off', async () => {
-    mockedFetchPluginJsonData.mockResolvedValue({ devMode: false, devModeUserIds: [] });
-    renderForm({ devMode: false, devModeUserIds: [] });
+  it('is hidden when dev mode is off', () => {
+    renderForm({ devMode: false, devModeOptIn: false });
 
-    await waitFor(() => expect(mockedFetchPluginJsonData).toHaveBeenCalled());
     expect(screen.queryByTestId(testIds.appConfig.codaTerminalToggle)).not.toBeInTheDocument();
   });
 
   it('stays editable in dev mode', async () => {
-    const devMode: DocsPluginConfig = { devMode: true, devModeUserIds: [USER_ID], enableCodaTerminal: false };
-    mockedFetchPluginJsonData.mockResolvedValue(devMode);
-    renderForm(devMode);
+    renderForm({ devMode: true, devModeOptIn: true, enableCodaTerminal: false });
 
     const toggle = await screen.findByTestId(testIds.appConfig.codaTerminalToggle);
     expect(toggle).not.toBeChecked();
@@ -144,8 +149,9 @@ describe('Coda terminal section, without the feature flag', () => {
 
     fireEvent.click(toggle);
     fireEvent.click(screen.getByTestId(testIds.appConfig.submit));
+    await settle();
 
-    await waitFor(() => expect(mockedUpdatePluginSettings).toHaveBeenCalledTimes(1));
-    expect(savedJsonData().enableCodaTerminal).toBe(true);
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    expect(savedChanges().enableCodaTerminal).toBe(true);
   });
 });

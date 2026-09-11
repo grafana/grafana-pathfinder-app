@@ -1,4 +1,4 @@
-import type { DocsPluginConfig } from '../constants';
+import type { PathfinderPluginConfig } from '../constants';
 
 /**
  * Configuration for interactive delays and timing
@@ -157,7 +157,7 @@ export const INTERACTIVE_CONFIG_DEFAULTS = {
  * @param pluginConfig - Optional plugin configuration to override defaults
  * @returns Complete interactive configuration with user preferences applied
  */
-export function getInteractiveConfig(pluginConfig?: DocsPluginConfig) {
+export function getInteractiveConfig(pluginConfig?: PathfinderPluginConfig) {
   const defaults = INTERACTIVE_CONFIG_DEFAULTS;
 
   return {
