@@ -144,6 +144,25 @@ describe('computeGuideBlockIndex', () => {
     expect(index.containerEndPositions.get('section:blocks[1]')).toBe(3);
   });
 
+  it('omits an id-less section whose path a snippet-ref shifted, rather than crediting another section', () => {
+    // Post-inlining the first section sits where the second one is keyed here,
+    // so registering either would credit the wrong section's end position —
+    // and progress is monotonic, so that could never be corrected downward.
+    const index = computeGuideBlockIndex([
+      { type: 'snippet-ref', blocks: [] },
+      section([markdown(), interactive()]),
+      section([markdown()]),
+    ]);
+
+    expect([...index.containerEndPositions.keys()]).toEqual([]);
+  });
+
+  it('still registers an id-bearing section after a snippet-ref, whose id no splice can shift', () => {
+    const index = computeGuideBlockIndex([{ type: 'snippet-ref', blocks: [] }, section([markdown()], 'setup')]);
+
+    expect(index.containerEndPositions.get('section-setup')).toBe(2);
+  });
+
   it('omits containers with no counted descendants from the container-end map', () => {
     const index = computeGuideBlockIndex([section([], 'empty')]);
 

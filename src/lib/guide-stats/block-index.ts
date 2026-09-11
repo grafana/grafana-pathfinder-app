@@ -182,7 +182,9 @@ export interface GuideBlockIndex {
    * `sectionRuntimeId` derives for both halves of the seam, because that is
    * the namespace the acknowledgement the reader actually produces arrives
    * under. A section without an author id is addressed by its path and is
-   * acknowledgeable like any other, so it is registered too. Containers with
+   * acknowledgeable like any other, so it is registered too — unless a
+   * `snippet-ref` shifts that path, where the honest miss is the same choice
+   * {@link positionsByStepId} makes. Containers with
    * no counted descendants are absent. First occurrence wins when ids are
    * duplicated, matching `positionsById`: last-wins would let a click on the
    * earlier container permanently over-credit progress, and progress is
@@ -271,15 +273,19 @@ export function computeGuideBlockIndex(
         const before = counted.length;
         const namespace = childSectionNamespace(block, blockJsonPath);
         const childJsonPathShifted = jsonPathShifted || sawSnippetRefSibling;
-        visit(
-          block.blocks,
-          path,
-          namespace.id,
-          `${blockJsonPath}.blocks`,
-          namespace.indexDerived && childJsonPathShifted,
-          childJsonPathShifted
-        );
-        if (namespace.id !== undefined && counted.length > before && !containerEndPositions.has(namespace.id)) {
+        // The container's own runtime id is as unpredictable as its children's
+        // step ids when the namespace embeds an index a splice moved, and a
+        // wrong container key credits ANOTHER section's end position — which
+        // monotonic progress can never take back. Same rule, same reason as
+        // `positionsByStepId` below.
+        const namespaceShifted = namespace.indexDerived && childJsonPathShifted;
+        visit(block.blocks, path, namespace.id, `${blockJsonPath}.blocks`, namespaceShifted, childJsonPathShifted);
+        if (
+          namespace.id !== undefined &&
+          !namespaceShifted &&
+          counted.length > before &&
+          !containerEndPositions.has(namespace.id)
+        ) {
           containerEndPositions.set(namespace.id, counted.length);
         }
         continue;

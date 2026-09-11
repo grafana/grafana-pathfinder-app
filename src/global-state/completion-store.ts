@@ -321,6 +321,8 @@ function collectEvidence(contentKey: string): CompletionEvidence[] {
 interface GuidePercentage {
   percent: number;
   complete: boolean;
+  /** Whether any evidence was found at all — what the announcement reports as `hasProgress`. */
+  evidenced: boolean;
 }
 
 /**
@@ -338,14 +340,16 @@ interface GuidePercentage {
  */
 function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
   if (guideCompletionMarkStorage.isMarked(contentKey)) {
-    return { percent: 100, complete: true };
+    return { percent: 100, complete: true, evidenced: true };
   }
   const active = getGuideIndex(contentKey);
   if (!active) {
     return undefined;
   }
   const progress = guideProgress(active.index, collectEvidence(contentKey));
-  return { percent: progress.percent, complete: progress.complete };
+  // `position`, not `percent`: the first step of a 250-block guide rounds to
+  // 0%, and a reader who has done something has progress either way.
+  return { percent: progress.percent, complete: progress.complete, evidenced: progress.position > 0 };
 }
 
 function persistSection(contentKey: string, sectionId: string): void {
@@ -372,10 +376,7 @@ function persistSection(contentKey: string, sectionId: string): void {
       interactiveStepStorage.setCompleted(contentKey, sectionId, completedIds);
     }
   }
-  const percentage = refreshGuidePercentage(contentKey);
-  if (completedIds.size > 0 && percentage !== undefined) {
-    dispatchProgress({ kind: 'guide', contentKey, percentage, hasProgress: true });
-  }
+  refreshGuidePercentage(contentKey);
   // Tail-reset / partial-reset coverage for the legacy
   // `interactive-progress-cleared` event. The manual reset paths
   // (handleResetSection, useContentReset, block-editor preview reset)
@@ -407,30 +408,58 @@ function persistSection(contentKey: string, sectionId: string): void {
  * percentage agrees with, so no clamp is needed here: `guideProgressAtPosition`
  * already clamps a non-finite or over-range position.
  */
-function refreshGuidePercentage(contentKey: string): number | undefined {
+function refreshGuidePercentage(contentKey: string): void {
   const progress = computeGuideProgress(contentKey);
   if (progress === undefined) {
-    return undefined;
+    return;
   }
   // Preview content keys never persist (see `persistSection`) — writing here
   // would also crowd `interactiveCompletionStorage`'s capped namespace with
-  // throwaway entries that displace real readers' progress.
-  if (!isPreviewContentKey(contentKey)) {
-    interactiveCompletionStorage.set(contentKey, progress.percent);
+  // throwaway entries that displace real readers' progress. Nothing durable
+  // to wait for, so the announcement goes out now.
+  if (isPreviewContentKey(contentKey)) {
+    announceGuidePercentage(contentKey, progress);
+    return;
   }
-  return progress.percent;
+  void persistAndAnnounceGuidePercentage(contentKey, progress);
+}
+
+function announceGuidePercentage(contentKey: string, progress: GuidePercentage): void {
+  dispatchProgress({
+    kind: 'guide',
+    contentKey,
+    percentage: progress.percent,
+    hasProgress: progress.evidenced,
+  });
+}
+
+/**
+ * The announcement every reader of the percentage that does NOT recompute it
+ * — a path rollup, a journey mean — depends on to re-read. It fires after the
+ * write it describes, and from here rather than from a caller, so a reset-only
+ * write (redoing the last completed step in a section persists a lower
+ * percentage) announces exactly like a completion does. Announcing before the
+ * write landed would let a subscriber that reads storage on notification see
+ * the number this call replaced.
+ */
+async function persistAndAnnounceGuidePercentage(contentKey: string, progress: GuidePercentage): Promise<void> {
+  try {
+    await interactiveCompletionStorage.set(contentKey, progress.percent);
+  } catch (error) {
+    // Announce regardless: the derived number moved whether or not the record
+    // took, and a reader recomputing from evidence would otherwise stay stale.
+    logger.warn('Failed to persist guide percentage', { error });
+  }
+  announceGuidePercentage(contentKey, progress);
 }
 
 /**
  * Public entry point for callers that update progress outside the
- * step-write path (e.g. all-passive section ack), where `persistSection`
+ * step-write path (e.g. a section acknowledgement), where `persistSection`
  * is never called and would otherwise leave the percentage stale.
  */
 export function refreshAndNotifyGuideProgress(contentKey: string): void {
-  const percentage = refreshGuidePercentage(contentKey);
-  if (percentage !== undefined) {
-    dispatchProgress({ kind: 'guide', contentKey, percentage, hasProgress: percentage > 0 });
-  }
+  refreshGuidePercentage(contentKey);
   notify(contentKey);
 }
 

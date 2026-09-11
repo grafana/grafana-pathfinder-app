@@ -18,6 +18,7 @@ import {
   useStepCompletion,
 } from './completion-store';
 import { setActiveTabUrl, resetContentKeyForTests } from './content-key';
+import { interactiveCompletionStorage } from '../lib/user-storage';
 import { subscribeProgressEvent, type ProgressEventDetail } from './progress-events';
 import { publishGuideIndex } from './active-guide-index';
 import { computeGuideBlockIndex, type CountableBlock } from '../lib/guide-stats';
@@ -490,6 +491,62 @@ describe('completion-store', () => {
         { kind: 'step', stepId: 's-2', sectionId: 'section-x', completed: true, reason: 'objectives' },
       ]);
       unsubscribe();
+    });
+
+    // The rollup surfaces (a path mean, a journey mean) do not recompute the
+    // percentage — they re-read the persisted one when the store announces it.
+    // A reset-only write moves that number just as a completion does.
+    it('announces the percentage a step reset lowered, not only one a completion raised', async () => {
+      publishFlatIndex(CONTENT_KEY, 4, ['a1', 'a2', 'b1']);
+      act(() => {
+        markStepsCompleted(['a1', 'a2'], 'section-a', 'manual');
+        markStepCompleted('b1', 'section-b', 'manual');
+      });
+      await flushMicrotasks();
+      expect(guidePercentages.get(CONTENT_KEY)).toBe(75);
+
+      const announced: ProgressEventDetail[] = [];
+      const unsubscribe = subscribeProgressEvent((detail) => {
+        if (detail.kind === 'guide') {
+          announced.push(detail);
+        }
+      });
+      act(() => {
+        resetSteps(['b1'], 'section-b');
+      });
+      await flushMicrotasks();
+      unsubscribe();
+
+      expect(guidePercentages.get(CONTENT_KEY)).toBe(50);
+      expect(announced.map((detail) => detail.kind === 'guide' && detail.percentage)).toEqual([50]);
+    });
+
+    it('announces only after the percentage it reports has been persisted', async () => {
+      publishFlatIndex(CONTENT_KEY, 2, ['s-1', 's-2']);
+      // The real record is read before it is rewritten, so the write lands a
+      // microtask after the call — model that, or the gap is invisible here.
+      (interactiveCompletionStorage.set as jest.Mock).mockImplementationOnce(
+        async (contentKey: string, percentage: number) => {
+          await Promise.resolve();
+          guidePercentages.set(contentKey, percentage);
+        }
+      );
+      const seenAtAnnouncement: Array<number | undefined> = [];
+      const unsubscribe = subscribeProgressEvent((detail) => {
+        if (detail.kind === 'guide') {
+          seenAtAnnouncement.push(guidePercentages.get(CONTENT_KEY));
+        }
+      });
+
+      act(() => {
+        markStepCompleted('s-1', 'section-a', 'manual');
+      });
+      await flushMicrotasks();
+      unsubscribe();
+
+      // A subscriber that reads the record on notification must not see the
+      // value this write replaced.
+      expect(seenAtAnnouncement).toEqual([50]);
     });
 
     it('resetSteps dispatches per-step reset events for actually-cleared steps', async () => {
