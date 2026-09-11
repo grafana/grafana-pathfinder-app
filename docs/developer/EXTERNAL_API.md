@@ -272,9 +272,9 @@ It comes with one sharp caveat. The provider refreshes `spec` from the
 server on every read and takes arrays wholesale, so a block field the
 CRD prunes (see [block fields the CRD doesn't
 declare](#block-fields-the-crd-doesnt-declare)) turns into a plan that
-never converges rather than a silent content loss. Keep
-`upsert-learning-path.sh --dry-run --strict-blocks` as the pre-flight
-that names the offending field.
+never converges rather than a silent content loss. For package-shaped
+content, keep `upsert-learning-path.sh --dry-run --strict-blocks` as the
+pre-flight that names the offending field; a bare spec has none.
 
 See [`TERRAFORM.md`](TERRAFORM.md) for a worked example, the
 path-ordering pattern, and what Terraform does and does not solve.

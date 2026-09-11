@@ -9,9 +9,9 @@ a Kubernetes-style manifest.
 On stacks where the aggregator is already enabled, this replaces the
 [`scripts/upsert-guide.sh`](../../scripts/upsert-guide.sh) workflow **for
 content the CRD fully declares**, and adds three things the scripts cannot do:
-deletion, drift detection, and real state. For content that uses fields the
-CRD prunes, Terraform is not a weaker option but an unusable one — the plan
-never converges. Check your content against [what "covered by the CRD shape"
+deletion, drift detection, and real state. For content using fields the CRD
+prunes it is not weaker but unusable — the plan never converges. Check yours
+against [what "covered by the CRD shape"
 means](#what-covered-by-the-crd-shape-means) before retiring the script path.
 
 This document is a **partial** answer to
@@ -78,7 +78,7 @@ library; a published guide is live in the docs panel. Unlike
 
 ```hcl
 terraform {
-  required_version = ">= 1.11"
+  required_version = ">= 1.16"
   required_providers {
     grafana = {
       source  = "grafana/grafana"
@@ -129,11 +129,9 @@ terraform apply
 Terraform reports `1 added`. The guide is now in the stack's library and, at
 `"status": "published"`, live in the docs panel.
 
-Re-running `terraform plan` with nothing changed reports no changes. That
-clean second plan is the property the bash scripts cannot offer, and it is the
-first thing to check on a new manifest — though it is necessary rather than
-sufficient, for reasons in [what "covered by the CRD shape"
-means](#what-covered-by-the-crd-shape-means).
+Re-running `terraform plan` with nothing changed reports no changes — the
+property the bash scripts cannot offer, and the first thing to check on a new
+manifest, though [not a sufficient one](#what-covered-by-the-crd-shape-means).
 
 ### Changing and removing a guide
 
@@ -181,9 +179,15 @@ resource "grafana_apps_generic_resource" "drilldown_logs_path" {
 }
 ```
 
-For a path, `metadata.name` and `spec.id` must not diverge — the manifest's
-`milestones` key on `spec.id` while milestone resolution GETs by
-`metadata.name`. See [`spec.id` must be a valid resource
+Every resource in a path — cover page and each member — must keep
+`metadata.name` and `spec.id` identical. `milestones` keys on `spec.id`, and
+milestone resolution string-templates that id into a URL that addresses
+resources by name, so a member whose `spec.id` is `view-logs` under the name
+`drilldown-logs-view-logs` 404s with nothing surfaced in the UI. Terraform
+makes this easier to get wrong than the scripts, which slugify the name from
+`spec.id` for you: here the name is hand-typed in HCL while `spec.id` sits in
+a separate JSON file. So `view-logs.json` above has to declare
+`"id": "drilldown-logs-view-logs"`. See [`spec.id` must be a valid resource
 name](EXTERNAL_API.md#specid-must-be-a-valid-resource-name).
 
 The cover page's own `spec` carries the manifest, and it should declare
@@ -204,13 +208,13 @@ The cover page's own `spec` carries the manifest, and it should declare
 }
 ```
 
-Leaving `repository` out is fine under the scripts and a permadiff under
-Terraform. The server defaults it to `"app-platform"`, the provider's refresh
-back-fills any key the server added that your configuration does not declare,
-and the next plan proposes to remove it — after which the server defaults it
-again. This is a second, distinct cause of a plan that never converges:
-pruning removes what you declared, defaulting adds what you did not. Declare
-every server-defaulted key explicitly so configuration and server agree.
+Declare `repository` explicitly even though the server defaults it to
+`"app-platform"`. This one is derived from the provider's refresh logic rather
+than verified live: the refresh merges in both directions — retaining a
+configuration value when the key is missing from the live object, and
+back-filling a live-only key inside a map both sides declare — so a default
+you did not declare lands in state, the next plan proposes to remove it, and
+the server defaults it again. Declaring it costs nothing and forecloses that.
 
 Two manifest transformations `upsert-learning-path.sh` performs are yours to
 do by hand here, because `jsondecode` passes the file through unchanged:
@@ -220,19 +224,22 @@ do by hand here, because `jsondecode` passes the file through unchanged:
   `"depends": [["needs-loki"]]`.
 - **Undeclared manifest keys must be nested under `additionalFields`** —
   `recommends`, `suggests`, `startingLocation`, a `stats` stamp, and `author`
-  subkeys beyond `name` and `team` are pruned anywhere else.
+  subkeys beyond `name` and `team` are pruned anywhere else. Nesting
+  preserves the data but does not restore the behavior: `recommends` and
+  `suggests` are inert from there, a `stats` stamp is dropped at the wire
+  boundary, and only `startingLocation` takes effect — on some launch routes
+  only.
 
 See [the manifest field table](EXTERNAL_API.md#manifest) for which keys the
 CRD declares. Pasting an existing package's `manifest.json` straight under
-`spec` therefore gets you a 422 on the first and silent loss on the second —
-and per [check 2](#checking-a-manifest-before-you-trust-it), a plan will not
-catch the silent half.
+`spec` therefore gets you a 422 on the first and silent loss on the second,
+and [nothing catches the silent
+half](#checking-a-manifest-before-you-trust-it).
 
 ## What "covered by the CRD shape" means
 
 Terraform provisions guides reliably **for content the CRD fully declares**.
-That qualifier is load-bearing, and this section is the reason the document
-exists.
+That qualifier is load-bearing.
 
 The CRD's block schema is generated from `kinds/interactiveguide.cue` in
 [grafana-pathfinder-backend](https://github.com/grafana/grafana-pathfinder-backend/blob/main/kinds/interactiveguide.cue).
@@ -275,12 +282,10 @@ Each apply reports a change, the server prunes the field again, and the next
 plan shows the same diff. `terraform plan -detailed-exitcode` returns 2
 forever, so the loop also breaks any CI gate built on a clean plan.
 
-A pruned key inside a map is the quieter case, and the recursion is why: when
-a key your configuration declares is missing from the live object, the refresh
-keeps the configuration's value rather than the server's absence. State
+A pruned key inside a map is the quieter case: the refresh keeps your
+configuration's value when the key is missing from the live object, so state
 matches configuration, no diff appears, and the field is gone on the stack
-anyway. Everything under `spec.manifest` behaves this way, so pruning there is
-as silent under Terraform as it is under the scripts.
+anyway. Everything under `spec.manifest` behaves this way.
 
 This is a provider-side diffing issue, not a Pathfinder one, and
 `grafana_apps_generic_resource` is documented as experimental with diffing
@@ -288,72 +293,74 @@ semantics subject to change.
 
 ### Checking a manifest before you trust it
 
-Two checks, in order of cost:
+**Package-shaped content** can be dry-run with the existing script, which
+names the exact block fields your content would lose and turns that warning
+into a failure under `--strict-blocks`:
 
-1. **Dry-run the content** with the existing script, which warns with the
-   exact fields your blocks would lose and turns that warning into a failure
-   under `--strict-blocks`:
+```bash
+export PATHFINDER_SA_TOKEN="$GRAFANA_SA_TOKEN"
 
-   ```bash
-   export PATHFINDER_SA_TOKEN="$GRAFANA_SA_TOKEN"
+scripts/upsert-learning-path.sh \
+  --stack slug.grafana.net \
+  --package ./my-package \
+  --dry-run --strict-blocks
+```
 
-   scripts/upsert-learning-path.sh \
-     --stack slug.grafana.net \
-     --package ./my-package \
-     --dry-run --strict-blocks
-   ```
+`--package` wants a directory holding `manifest.json` + `content.json`, so
+this does not apply to the bare-spec flow the worked example uses, and
+`upsert-guide.sh --spec` has no block scan at all. A bare spec has no shipped
+pre-flight; keeping a parallel package tree just to run one is not worth the
+drift.
 
-   The block-field half of this check makes no network call, but the script
-   refuses to start without a token and exits 64 with usage before validating
-   anything — so a CI job running only this check still has to set
-   `PATHFINDER_SA_TOKEN`. The value need only be present, not valid. The
-   collision half does reach the stack, which
-   [#1869](https://github.com/grafana/grafana-pathfinder-app/issues/1869)
-   currently blocks; the header then reports `Collisions: not checked` and the
-   field validation still runs.
+The token need only be present, not valid: the block-field half makes no
+network call, but the script exits 64 with usage if `PATHFINDER_SA_TOKEN` is
+unset. The collision half does reach the stack, which
+[#1869](https://github.com/grafana/grafana-pathfinder-app/issues/1869)
+currently blocks; the header then reports `Collisions: not checked` and the
+field validation still runs.
 
-2. **Apply, then plan again.** A clean second plan is necessary but not
-   sufficient. It proves the block array round-tripped, because the provider
-   takes arrays from the server wholesale — which is exactly why block pruning
-   surfaces as the permadiff above. It proves nothing about map-nested keys,
-   including everything under `spec.manifest`: when a key your configuration
-   declares is missing from the live object, `refreshConfigScopedSpec` keeps
-   the configuration's value, so state matches configuration and the plan is
-   clean while the field is gone on the server.
+**Any content** can be applied and then planned again. A clean second plan is
+necessary but not sufficient: it proves the block array round-tripped, because
+the provider takes arrays from the server wholesale — which is why block
+pruning surfaces as the permadiff above — and proves nothing about map-nested
+keys, including everything under `spec.manifest`. When a diff does reappear,
+its direction names the cause: a field Terraform proposes to **add** was
+pruned by the server; one it proposes to **remove** was defaulted by the
+server and is absent from your configuration.
 
-   When a diff does reappear after an apply, its direction names the cause: a
-   field Terraform proposes to **add** was pruned by the server; one it
-   proposes to **remove** was defaulted by the server and is absent from your
-   configuration (see [paths and journeys](#paths-and-journeys)).
-
-That asymmetry is why check 1 stays in CI even after provisioning moves to
-Terraform: it is the only one of the two that detects a silently pruned
-map-nested field, and for block fields it reports _which_ field is lossy where
-Terraform reports only that something is.
+Neither check detects a pruned manifest key. The script's scan walks `.blocks`
+only, and its `build_manifest` silently relocates undeclared manifest keys
+into `additionalFields` rather than reporting them, so no shipped tool catches
+that case — declaring every manifest key explicitly is the only defense. The
+dry run's value is naming _which block field_ is lossy where Terraform reports
+only that something is, which is reason enough to keep it in CI for
+package-shaped content.
 
 A dry run with no warnings is a statement about the CUE at its `main`, not
 about the stack you are uploading to. A stack on an older backend prunes more.
 
 ## What Terraform gives you over the scripts
 
-| Capability                                    | `upsert-guide.sh` | Terraform          |
-| --------------------------------------------- | ----------------- | ------------------ |
-| Create and update                             | Yes               | Yes                |
-| `resourceVersion` handling, conflict retry    | Yes               | Yes                |
-| Namespace discovery                           | Yes               | Yes                |
-| Delete a guide that left the source of truth  | No                | Yes                |
-| Detect an out-of-band edit                    | No                | Yes                |
-| Ownership model                               | An annotation     | State plus manager |
-| Reports which block field the CRD would prune | Yes               | No                 |
+| Capability                                    | Either script                     | Terraform          |
+| --------------------------------------------- | --------------------------------- | ------------------ |
+| Create and update                             | Yes                               | Yes                |
+| `resourceVersion` handling, conflict retry    | Yes                               | Yes                |
+| Namespace discovery                           | Yes                               | Yes                |
+| Delete a guide that left the source of truth  | No                                | Yes                |
+| Detect an out-of-band edit                    | No                                | Yes                |
+| Ownership model                               | An annotation, only when opted in | State plus manager |
+| Reports which block field the CRD would prune | `upsert-learning-path.sh` only    | No                 |
 
-Ownership is worth a note. The scripts record provenance in a
-`pathfinderbackend.ext.grafana.app/managed-by` annotation and refuse to
-overwrite a resource that lacks it. Terraform stamps
+Ownership is worth a note. Terraform stamps
 `grafana.app/managedBy: terraform` and `grafana.app/managerId`, and knows what
-it owns from state. The two models do not know about each other: a
-Terraform-managed guide carries no `managed-by` annotation, so a later script
-run treats it as foreign and refuses it, which is the safe direction. Pick one
-owner per guide.
+it owns from state. The scripts use a
+`pathfinderbackend.ext.grafana.app/managed-by` annotation instead, but only
+`upsert-learning-path.sh` without `--overwrite` refuses a resource that lacks
+it — `upsert-guide.sh` records and enforces the annotation only if the caller
+passes `--annotation` / `--require-annotation`, so a bare run PUTs straight
+over a Terraform-managed guide with no guard. With no revision history on
+these resources that clobber is unrecoverable. Pick one owner per guide, and
+do not leave both paths live in CI.
 
 ## What this does not solve
 
