@@ -42,12 +42,23 @@ jest.mock('../lib/user-storage', () => ({
       persistedEmitted.clear();
     },
   },
+  // Reset-path plumbing resetGuideProgress also touches, irrelevant to this
+  // file's identity-boundary focus — no-op stand-ins so importing it doesn't
+  // require re-deriving its whole dependency graph here.
+  guideCompletionMarkStorage: { clear: jest.fn().mockResolvedValue(undefined) },
+  interactiveCompletionStorage: { clear: jest.fn().mockResolvedValue(undefined) },
+  interactiveStepStorage: { clearAllForContent: jest.fn().mockResolvedValue(undefined) },
 }));
 
 jest.mock('../learning-paths', () => ({
   __esModule: true,
   markGuideCompleted: (...a: unknown[]) => markGuideCompletedMock(...a),
   getPathsData: () => getPathsDataMock(),
+}));
+
+jest.mock('../global-state/completion-store', () => ({
+  __esModule: true,
+  evictContentCache: jest.fn(),
 }));
 
 import { of } from 'rxjs';
@@ -61,8 +72,10 @@ import {
   markMilestoneDone,
   resolveExpectedMilestoneIds,
   recordGuideCompletionForSurface,
+  resolveActiveMilestoneSlug,
   getMilestoneSlug,
 } from './learning-journey-helpers';
+import { resetGuideProgress } from '../components/docs-panel/hooks/resetGuideProgress';
 import type { LearningJourneyMetadata, Milestone } from '../types/content.types';
 import { onCompletionRecorded, __resetRecorderForTests, type CompletionFact } from '../completion-records';
 import {
@@ -250,6 +263,39 @@ describe('learning-journey milestone completion (trigger class B / milestone-as-
       packageManifest: { id: 'fe-alerting-01', repository: 'app-platform' },
     });
     expect(emitted[0]).toMatchObject({ guideSource: 'app-platform', guideId: 'm1' });
+  });
+
+  // Mainstream shape both earlier fix rounds missed: a manifest is present,
+  // and its id ('fe-alerting-01') differs from the milestone slug ('m1'). The
+  // reset path must lift the guard under the SAME identity markMilestoneDone
+  // wrote it under (app-platform:m1) — not under the manifest id, which is
+  // what resolveCompletionIdentity would resolve to if the reset path called
+  // it directly with this manifest. Reddens without the reset path deriving
+  // milestone identity through resolveMilestoneCompletionIdentity.
+  it('re-marking after a reset still emits a second durable record when a manifest is present (pf-cutover-milestone-reset-identity-manifest)', async () => {
+    const context = { packageManifest: { id: 'fe-alerting-01', repository: 'app-platform' } };
+    await markMilestoneDone('base', 'm1', undefined, context);
+    expect(emitted).toHaveLength(1);
+
+    // The exact predicate recordGuideCompletionForSurface uses to decide a
+    // reset target is a milestone — the reset path must derive the same
+    // slug this way, not guess at it independently.
+    const milestoneSlug = resolveActiveMilestoneSlug({
+      contentType: 'learning-journey',
+      currentUrl: 'https://example.com/journey/m1',
+      journeyBaseUrl: 'base',
+    });
+    expect(milestoneSlug).toBe('m1');
+
+    await resetGuideProgress('base', {
+      packageManifest: context.packageManifest,
+      milestoneSlug,
+    });
+
+    await markMilestoneDone('base', 'm1', undefined, context);
+
+    expect(emitted).toHaveLength(2);
+    expect(emitted[1]).toMatchObject({ guideSource: 'app-platform', guideId: 'm1' });
   });
 });
 

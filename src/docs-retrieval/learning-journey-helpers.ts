@@ -30,8 +30,8 @@ import {
   recordGuideCompletion,
   recordJourneyCompletion,
   resolveCompletionIdentity,
+  resolveMilestoneCompletionIdentity,
   manifestGuideId,
-  manifestGuideSource,
 } from '../completion-records';
 import { escapeHtml, sanitizeHtmlUrl } from '../security/html-sanitizer';
 
@@ -614,6 +614,26 @@ export interface SurfaceCompletionInput {
 }
 
 /**
+ * The milestone slug for the given content, iff it names a learning-journey
+ * milestone under a resolvable journey base — otherwise `undefined`. This is
+ * the ONE predicate for "is this a milestone, and under what slug", shared by
+ * the writer ({@link recordGuideCompletionForSurface}, which calls
+ * `markMilestoneDone` exactly when this resolves) and any reader that needs
+ * to agree with it — the reset path in particular. A caller that re-derived
+ * this check independently could disagree with the writer about which
+ * content counts as a milestone, which is the same class of drift the
+ * identity-derivation split above exists to prevent.
+ */
+export function resolveActiveMilestoneSlug(input: {
+  contentType?: string;
+  currentUrl?: string;
+  journeyBaseUrl?: string;
+}): string | undefined {
+  const slug = input.contentType === 'learning-journey' && input.currentUrl ? getMilestoneSlug(input.currentUrl) : '';
+  return slug && input.journeyBaseUrl ? slug : undefined;
+}
+
+/**
  * The single surface-neutral completion emitter. Wired by each content-owning
  * component (DocsPanelContentArea, FloatingPanelContent, GuideReaderOverlay) so
  * every surface routes terminal completion through the same decision, rather
@@ -625,7 +645,7 @@ export function recordGuideCompletionForSurface(input: SurfaceCompletionInput): 
   // journey's resolved cover URL that milestone progress is stored under.
   const surfaceBase = baseUrl || contentUrl;
   const journeyBase = metadata?.learningJourney?.baseUrl;
-  const slug = contentType === 'learning-journey' && currentUrl ? getMilestoneSlug(currentUrl) : '';
+  const slug = resolveActiveMilestoneSlug({ contentType, currentUrl, journeyBaseUrl: journeyBase }) ?? '';
   const willMarkMilestone = Boolean(slug && journeyBase);
   const completionContext: CompletionContext = {
     packageManifest: metadata?.packageManifest,
@@ -725,10 +745,10 @@ export async function markMilestoneDone(
   // warehouse. Local progress is unaffected — milestone progress is stored per
   // journey base URL — so a collision never grants unearned credit. Tracked for
   // RFC reconciliation.
-  const milestoneIdentity = resolveCompletionIdentity({
-    repository: context?.repository ?? manifestGuideSource(context?.packageManifest),
-    fallbackId: milestoneSlug,
-    fallbackSource: 'bundled',
+  const milestoneIdentity = resolveMilestoneCompletionIdentity({
+    repository: context?.repository,
+    packageManifest: context?.packageManifest,
+    milestoneSlug,
   });
   recordGuideCompletion({
     kind: 'guide',

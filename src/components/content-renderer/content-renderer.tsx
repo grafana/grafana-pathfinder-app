@@ -58,11 +58,12 @@ import {
   TextSelectionState,
 } from '../../integrations/assistant-integration';
 import { substituteVariables } from '../../utils/variable-substitution';
-import { STANDALONE_SECTION_ID } from '../../global-state/completion-store';
+import { STANDALONE_SECTION_ID, isBlockEditorPreviewUrl } from '../../global-state/completion-store';
 import { registerCompatibilityGuideId } from '../../global-state/guide-identity';
 import { subscribeProgressEvent } from '../../global-state/progress-events';
 import { resolveGuideContentKey } from '../../global-state/guide-content-key';
 import {
+  evictGuideIndex,
   getGuideIndexEvictionRevision,
   publishGuideIndex,
   subscribeGuideIndexEvictions,
@@ -736,12 +737,35 @@ function ContentProcessor({
     getGuideIndexEvictionRevision
   );
 
+  // The freeze contract's premise — a content key's content is immutable —
+  // holds for a real guide but not for a block-editor preview, whose key
+  // (block-editor://preview/<id>) stays constant for the whole editing
+  // session while the content underneath it changes on every edit. Tracking
+  // the last rawGuide this component published under a given preview key
+  // lets the effect below tell "content actually changed" apart from
+  // "this render was caused by the eviction this same effect just made" —
+  // without that distinction, evicting on every run would notify, which
+  // re-renders, which re-runs the effect, forever.
+  const lastPublishedPreviewGuideRef = useRef<{ contentKey: string; guide: JsonGuide } | null>(null);
+
   useEffect(() => {
     if (!rawGuide) {
       return;
     }
+    const contentKey = resolveGuideContentKey(baseUrl);
+    if (isBlockEditorPreviewUrl(baseUrl)) {
+      const last = lastPublishedPreviewGuideRef.current;
+      if (last && last.contentKey === contentKey && last.guide !== rawGuide) {
+        // Content changed under the same stable preview key — republish
+        // rather than silently keep serving the index from before this
+        // edit, which is what publishGuideIndex's ordinary idempotency
+        // would otherwise do.
+        evictGuideIndex(contentKey);
+      }
+      lastPublishedPreviewGuideRef.current = { contentKey, guide: rawGuide };
+    }
     publishGuideIndex({
-      contentKey: resolveGuideContentKey(baseUrl),
+      contentKey,
       index: computeGuideBlockIndex(rawGuide.blocks, { resolveStepId: resolveCountedBlockStepId }),
       denominatorSource: 'live-pre-inlining',
     });

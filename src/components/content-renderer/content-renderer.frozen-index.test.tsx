@@ -108,4 +108,35 @@ describe('ContentRenderer — the frozen block index', () => {
     expect(getGuideIndex(MILESTONE_TWO)?.index.totalBlockCount).toBe(5);
     expect(getGuideIndex(MILESTONE_ONE)?.index.totalBlockCount).toBe(3);
   });
+
+  describe('block-editor preview', () => {
+    const previewUrl = 'block-editor://preview/my-guide';
+
+    // A real guide's content key really is immutable, which is what the
+    // freeze (and publishGuideIndex's idempotency) correctly depends on. The
+    // preview breaks that premise: its key is constant for the whole editing
+    // session while the content underneath changes on every edit. Without a
+    // republish here, the index would stay frozen at whatever it was on the
+    // first edit, and the previewed percentage would never track further
+    // edits — pf-cutover-preview-index-stale-on-edit.
+    it('republishes when the previewed content changes, without remounting', () => {
+      const { rerender } = render(<ContentRenderer content={makeContent(previewUrl, 3)} />);
+      expect(getGuideIndex(previewUrl)?.index.totalBlockCount).toBe(3);
+
+      rerender(<ContentRenderer content={makeContent(previewUrl, 5)} />);
+
+      expect(getGuideIndex(previewUrl)?.index.totalBlockCount).toBe(5);
+    });
+
+    // The narrowing must not spill onto a real guide's content key, where a
+    // second publish for the same key genuinely should be a no-op.
+    it('still leaves a real guide frozen after its content "changes" under the same key', () => {
+      const { rerender } = render(<PanelLike content={makeContent(MILESTONE_ONE, 3)} />);
+      expect(getGuideIndex(MILESTONE_ONE)?.index.totalBlockCount).toBe(3);
+
+      rerender(<PanelLike content={makeContent(MILESTONE_ONE, 7)} />);
+
+      expect(getGuideIndex(MILESTONE_ONE)?.index.totalBlockCount).toBe(3);
+    });
+  });
 });

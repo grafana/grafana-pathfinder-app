@@ -9,6 +9,7 @@ import {
   enrichWithStepContext,
 } from '../../../lib/analytics';
 import { logger } from '../../../lib/logging';
+import { resolveActiveMilestoneSlug } from '../../../docs-retrieval';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 import { resetGuideProgress } from './resetGuideProgress';
@@ -34,6 +35,11 @@ export function useContentReset({ model }: UseContentResetOptions) {
         await resetGuideProgress(progressKey, {
           packageManifest: activeTab?.content?.metadata?.packageManifest,
           repository: activeTab?.content?.metadata?.repository,
+          milestoneSlug: resolveActiveMilestoneSlug({
+            contentType: activeTab?.content?.type,
+            currentUrl: activeTab?.currentUrl,
+            journeyBaseUrl: activeTab?.content?.metadata?.learningJourney?.baseUrl,
+          }),
         });
 
         // An internal reload does not request alignment for the fresh guide.
