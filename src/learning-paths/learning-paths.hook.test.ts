@@ -36,6 +36,7 @@ jest.mock('./paths-data', () => ({
 }));
 
 const mockClearAllForContent = jest.fn(async (_contentKey: string): Promise<void> => undefined);
+const mockCompletionEmittedClear = jest.fn(async (_dedupeKey: string): Promise<void> => undefined);
 jest.mock('../lib/user-storage', () => ({
   learningProgressStorage: {
     get: jest.fn().mockResolvedValue({
@@ -63,6 +64,12 @@ jest.mock('../lib/user-storage', () => ({
   guideCompletionMarkStorage: {
     clearMany: jest.fn().mockResolvedValue(undefined),
     clearAllWithPrefix: jest.fn().mockResolvedValue(undefined),
+  },
+  completionEmittedStorage: {
+    isEmitted: jest.fn().mockReturnValue(false),
+    markEmitted: jest.fn().mockResolvedValue(undefined),
+    clear: (dedupeKey: string) => mockCompletionEmittedClear(dedupeKey),
+    clearAll: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -225,5 +232,32 @@ describe('useLearningPaths — resetPath reports a partial failure once', () => 
 
     expect(mockClearAllForContent).toHaveBeenCalledTimes(SWEPT_CONTENT_KEYS.length);
     expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  // Reset-then-re-mark defect: a member re-completed after a path reset must
+  // not dedupe against the completion this reset just erased.
+  it('lifts the completion-recorder dedupe guard for the path and every member', async () => {
+    mockClearAllForContent.mockImplementation(async () => undefined);
+
+    const { result } = renderHook(() => useLearningPaths());
+    await waitFor(() => expect(result.current.paths.map((p) => p.id)).toContain('bundled-path'));
+
+    await act(async () => {
+      await result.current.resetPath('bundled-path');
+    });
+
+    const invalidatedKeys = mockCompletionEmittedClear.mock.calls.map(([key]) => key);
+    expect(new Set(invalidatedKeys)).toEqual(
+      new Set([
+        'guide:bundled:bundled-path',
+        'journey:bundled:bundled-path',
+        'guide:app-platform:bundled-path',
+        'journey:app-platform:bundled-path',
+        'guide:bundled:bundled-guide',
+        'journey:bundled:bundled-guide',
+        'guide:app-platform:bundled-guide',
+        'journey:app-platform:bundled-guide',
+      ])
+    );
   });
 });

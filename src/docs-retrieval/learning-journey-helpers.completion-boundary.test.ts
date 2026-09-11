@@ -17,6 +17,8 @@ const awardBadgeMock = jest.fn();
 const markGuideCompletedMock = jest.fn();
 const getPathsDataMock = jest.fn();
 
+const persistedEmitted = new Set<string>();
+
 jest.mock('../lib/user-storage', () => ({
   __esModule: true,
   journeyCompletionStorage: { set: (...a: unknown[]) => journeySetMock(...a) },
@@ -25,6 +27,21 @@ jest.mock('../lib/user-storage', () => ({
     getCompleted: (...a: unknown[]) => milestoneGetCompletedMock(...a),
   },
   learningProgressStorage: { awardBadge: (...a: unknown[]) => awardBadgeMock(...a) },
+  // The recorder's durable dedupe guard. A plain in-memory fake here (rather
+  // than the real storage) matches this file's existing "real recorder,
+  // mocked storage" split — the recorder's own tests cover the guard itself.
+  completionEmittedStorage: {
+    isEmitted: (key: string) => persistedEmitted.has(key),
+    markEmitted: async (key: string) => {
+      persistedEmitted.add(key);
+    },
+    clear: async (key: string) => {
+      persistedEmitted.delete(key);
+    },
+    clearAll: async () => {
+      persistedEmitted.clear();
+    },
+  },
 }));
 
 jest.mock('../learning-paths', () => ({
@@ -59,6 +76,7 @@ let unsubscribe: () => void;
 beforeEach(() => {
   jest.clearAllMocks();
   __resetRecorderForTests();
+  persistedEmitted.clear();
   emitted = [];
   unsubscribe = onCompletionRecorded((fact) => emitted.push(fact));
   milestoneGetCompletedMock.mockResolvedValue(new Set());

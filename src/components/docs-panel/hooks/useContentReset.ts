@@ -31,7 +31,10 @@ export function useContentReset({ model }: UseContentResetOptions) {
           })
         );
 
-        await resetGuideProgress(progressKey);
+        await resetGuideProgress(progressKey, {
+          packageManifest: activeTab?.content?.metadata?.packageManifest,
+          repository: activeTab?.content?.metadata?.repository,
+        });
 
         // An internal reload does not request alignment for the fresh guide.
         await model.loadTab(activeTab.id, activeTab.currentUrl || activeTab.baseUrl, {

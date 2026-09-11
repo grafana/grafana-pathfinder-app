@@ -7,6 +7,8 @@ export {
   recordGuideCompletion,
   recordJourneyCompletion,
   onCompletionRecorded,
+  invalidateEmittedCompletion,
+  invalidateAllEmittedCompletions,
   __resetRecorderForTests,
 } from './completion-recorder';
 export { resolveCompletionIdentity, manifestGuideId, manifestGuideSource } from './completion-identity';

@@ -20,6 +20,7 @@ import type {
   GuideMetadataEntry,
 } from '../types/learning-paths.types';
 
+import { invalidateEmittedCompletion } from '../completion-records';
 import { StorageEvents } from '../lib/event-names';
 import { logger } from '../lib/logging';
 import {
@@ -40,6 +41,22 @@ import { fetchAppPlatformLearningPaths, type AppPlatformPathsResult } from './ap
 import { markGuideCompleted as coordinatorMarkGuideCompleted } from './badge-coordinator';
 
 const EMPTY_APP_PLATFORM_RESULT: AppPlatformPathsResult = { paths: [], guideMetadata: Object.create(null) };
+
+// Completion-record identity (`guideSource`) is resolved from a manifest we
+// don't have in hand here, so this invalidates the write-side dedupe guard
+// under every source a path member is realistically recorded under, rather
+// than fetching each member's manifest just to reset a guard. Harmless when
+// a member's real source isn't in this list: that guard is simply not lifted
+// for it, a narrower miss than the reset-then-re-mark defect this exists to close.
+const KNOWN_PATH_MEMBER_GUIDE_SOURCES = ['bundled', 'app-platform'] as const;
+
+function invalidateEmittedCompletionsForPathMembers(memberIds: readonly string[]): void {
+  for (const memberId of memberIds) {
+    for (const guideSource of KNOWN_PATH_MEMBER_GUIDE_SOURCES) {
+      invalidateEmittedCompletion(guideSource, memberId);
+    }
+  }
+}
 
 // ============================================================================
 // CONSTANTS
@@ -504,6 +521,11 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
         await learningProgressStorage.removeCompletedGuides(path.guides);
       }
+
+      // Lifts the write-side dedupe guard for the path itself and every
+      // member, so a member re-completed after this reset emits a fresh
+      // durable record rather than deduping against the one just erased.
+      invalidateEmittedCompletionsForPathMembers([path.id, ...path.guides]);
 
       window.dispatchEvent(
         new CustomEvent(StorageEvents.InteractiveProgressCleared, {

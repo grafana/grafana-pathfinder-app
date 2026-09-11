@@ -1431,6 +1431,58 @@ export const guideCompletionMarkStorage = {
 };
 
 /**
+ * Durable half of `completion-records/completion-recorder.ts`'s exactly-once
+ * guard. Keyed by the recorder's own `kind:guideSource:guideId` dedupe
+ * string — not a content key — via the same versioned-key builder, so the
+ * guard survives a page reload rather than resetting with the module's
+ * in-memory `Set`. A reset invalidates the specific keys for the guide being
+ * reset (`completion-records`'s `invalidateEmittedCompletion`), which is what
+ * lets a re-marked guide emit a fresh record.
+ */
+function completionEmittedKey(dedupeKey: string): string {
+  return buildVersionedContentStorageKey(StorageKeys.COMPLETION_EMITTED_PREFIX, dedupeKey);
+}
+
+export const completionEmittedStorage = {
+  /** Synchronous read — the recorder's dedupe check runs outside React render, but must stay non-blocking. */
+  isEmitted(dedupeKey: string): boolean {
+    try {
+      return localStorage.getItem(completionEmittedKey(dedupeKey)) === 'true';
+    } catch {
+      return false;
+    }
+  },
+
+  async markEmitted(dedupeKey: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.setItem(completionEmittedKey(dedupeKey), true);
+    } catch (error) {
+      logger.warn('Failed to persist completion dedupe key', { error });
+    }
+  },
+
+  async clear(dedupeKey: string): Promise<void> {
+    try {
+      const storage = createUserStorage();
+      await storage.removeItem(completionEmittedKey(dedupeKey));
+    } catch (error) {
+      logger.warn('Failed to clear completion dedupe key', { error });
+    }
+  },
+
+  async clearAll(): Promise<void> {
+    try {
+      const keys = Array.from(collectKeysByPrefix(localStorage, StorageKeys.COMPLETION_EMITTED_PREFIX));
+      const storage = createUserStorage();
+      await Promise.all(keys.map((key) => storage.removeItem(key)));
+    } catch (error) {
+      logger.warn('Failed to clear completion dedupe keys', { error });
+    }
+  },
+};
+
+/**
  * Full screen mode state storage operations
  * Used to persist recording state across page refreshes
  */

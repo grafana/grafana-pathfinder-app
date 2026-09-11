@@ -8,14 +8,36 @@
  *   - guide and journey keys are independent; distinct guides emit separately
  *   - a throwing subscriber never breaks the completion path
  *   - with zero subscribers the recorder is a behavior-neutral no-op
+ *   - the guard is durable across a reload (a fresh in-memory Set), and
+ *     `invalidateEmittedCompletion`/`invalidateAllEmittedCompletions` are the
+ *     only way to lift it — the reset-then-re-mark and duplicate-write fixes
  */
 import {
   recordGuideCompletion,
   recordJourneyCompletion,
   onCompletionRecorded,
+  invalidateEmittedCompletion,
+  invalidateAllEmittedCompletions,
   __resetRecorderForTests,
 } from './completion-recorder';
 import type { CompletionFact, GuideCompletionFact, JourneyCompletionFact } from './types';
+
+const persistedEmitted = new Map<string, true>();
+
+jest.mock('../lib/user-storage', () => ({
+  completionEmittedStorage: {
+    isEmitted: (key: string) => persistedEmitted.has(key),
+    markEmitted: async (key: string) => {
+      persistedEmitted.set(key, true);
+    },
+    clear: async (key: string) => {
+      persistedEmitted.delete(key);
+    },
+    clearAll: async () => {
+      persistedEmitted.clear();
+    },
+  },
+}));
 
 function guideFact(overrides: Partial<GuideCompletionFact> = {}): GuideCompletionFact {
   return {
@@ -37,6 +59,7 @@ function journeyFact(overrides: Partial<Omit<JourneyCompletionFact, 'kind'>> = {
 
 beforeEach(() => {
   __resetRecorderForTests();
+  persistedEmitted.clear();
 });
 
 describe('completion recorder — emitter seam', () => {
@@ -125,6 +148,95 @@ describe('completion recorder — exactly-once (double-fire guard, brief §4)', 
     recordJourneyCompletion(journeyFact({ guideId: 'j' }));
 
     expect(seen.filter((f) => f.kind === 'journey')).toHaveLength(1);
+  });
+});
+
+describe('completion recorder — durable guard survives a reload (duplicate-write defect)', () => {
+  it('does not re-emit for the same identity after the in-memory Set resets, because the persisted guard remembers', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded((fact) => seen.push(fact));
+
+    recordGuideCompletion(guideFact({ guideId: 'marked-guide' }));
+    expect(seen).toHaveLength(1);
+
+    // Simulate a reload: the module's in-memory Set is empty again, but the
+    // persisted guard (a mocked `completionEmittedStorage` here) is not — a
+    // real reload does not clear localStorage either.
+    __resetRecorderForTests();
+    onCompletionRecorded((fact) => seen.push(fact));
+
+    // Mirrors defect B: an already-marked guide's percentage short-circuits
+    // to 100 on every later step write, re-dispatching the same 100%
+    // completion signal into a fresh mount's automatic route.
+    recordGuideCompletion(guideFact({ guideId: 'marked-guide' }));
+
+    expect(seen).toHaveLength(1);
+  });
+});
+
+describe('completion recorder — invalidateEmittedCompletion / invalidateAllEmittedCompletions (reset-then-re-mark defect)', () => {
+  it('lifts the guard for the invalidated identity, letting a re-completion emit', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded((fact) => seen.push(fact));
+
+    recordGuideCompletion(guideFact({ guideSource: 'bundled', guideId: 'reset-me' }));
+    expect(seen).toHaveLength(1);
+
+    invalidateEmittedCompletion('bundled', 'reset-me');
+    recordGuideCompletion(guideFact({ guideSource: 'bundled', guideId: 'reset-me' }));
+
+    expect(seen).toHaveLength(2);
+  });
+
+  it('lifts the guard even across a reload, because it clears the persisted half too', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded((fact) => seen.push(fact));
+
+    recordGuideCompletion(guideFact({ guideSource: 'bundled', guideId: 'reset-me' }));
+    __resetRecorderForTests();
+    onCompletionRecorded((fact) => seen.push(fact));
+
+    invalidateEmittedCompletion('bundled', 'reset-me');
+    recordGuideCompletion(guideFact({ guideSource: 'bundled', guideId: 'reset-me' }));
+
+    expect(seen).toHaveLength(2);
+  });
+
+  it('does not affect a different identity', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded((fact) => seen.push(fact));
+
+    recordGuideCompletion(guideFact({ guideSource: 'bundled', guideId: 'untouched' }));
+    invalidateEmittedCompletion('bundled', 'reset-me');
+    recordGuideCompletion(guideFact({ guideSource: 'bundled', guideId: 'untouched' }));
+
+    expect(seen).toHaveLength(1);
+  });
+
+  it('also lifts the journey-kind guard for the same identity', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded((fact) => seen.push(fact));
+
+    recordJourneyCompletion(journeyFact({ guideSource: 'bundled', guideId: 'reset-me' }));
+    invalidateEmittedCompletion('bundled', 'reset-me');
+    recordJourneyCompletion(journeyFact({ guideSource: 'bundled', guideId: 'reset-me' }));
+
+    expect(seen).toHaveLength(2);
+  });
+
+  it('invalidateAllEmittedCompletions lifts the guard for every identity', () => {
+    const seen: CompletionFact[] = [];
+    onCompletionRecorded((fact) => seen.push(fact));
+
+    recordGuideCompletion(guideFact({ guideId: 'a' }));
+    recordGuideCompletion(guideFact({ guideId: 'b' }));
+
+    invalidateAllEmittedCompletions();
+
+    recordGuideCompletion(guideFact({ guideId: 'a' }));
+    recordGuideCompletion(guideFact({ guideId: 'b' }));
+
+    expect(seen).toHaveLength(4);
   });
 });
 

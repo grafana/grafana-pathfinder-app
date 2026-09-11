@@ -135,14 +135,20 @@ describe('arming', () => {
     expect(sent).toHaveLength(1);
   });
 
-  it('does not subscribe or persist when the user and org identity is unavailable', async () => {
+  it('does not subscribe or persist a write-queue entry when the user and org identity is unavailable', async () => {
     armCompletionWriteHook(deps({ ownerKey: () => null }));
 
     recordGuideCompletion(guideFact({ guideId: 'unowned' }));
     await runTimer();
 
     expect(sent).toHaveLength(0);
-    expect(localStorage.length).toBe(0);
+    // The recorder's own durable dedupe guard (completion-recorder.ts) still
+    // persists — it tracks "was this fact emitted", independent of whether
+    // any listener could act on it. Only the write queue is identity-gated.
+    const writeQueueKeys = Object.keys(localStorage).filter((key) =>
+      key.startsWith('grafana-pathfinder-app-completion-write-queue-v2:')
+    );
+    expect(writeQueueKeys).toHaveLength(0);
   });
 
   it('warns when it goes inert, so an anonymous user is distinguishable from a broken one', () => {
