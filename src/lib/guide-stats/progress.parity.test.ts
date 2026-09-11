@@ -139,6 +139,32 @@ function collectStepIds(elements: readonly ParsedElement[]): string[] {
   return ids;
 }
 
+/**
+ * Every section id the parser stamps on a rendered section — the key that
+ * section records an acknowledgement under.
+ */
+function collectSectionIds(elements: readonly ParsedElement[]): string[] {
+  const ids: string[] = [];
+  const walk = (nodes: ReadonlyArray<ParsedElement | string>): void => {
+    for (const node of nodes) {
+      if (typeof node === 'string') {
+        continue;
+      }
+      if (node.type === 'interactive-section') {
+        const sectionId = node.props?.sectionId;
+        if (typeof sectionId === 'string' && sectionId.length > 0) {
+          ids.push(sectionId);
+        }
+      }
+      if (node.children) {
+        walk(node.children);
+      }
+    }
+  };
+  walk(elements);
+  return ids;
+}
+
 /** Wrap blocks in the minimum a guide needs to pass schema validation. */
 function guideOf(blocks: readonly JsonBlock[]): JsonGuide {
   return { schemaVersion: '1.0.0', id: 'parity-fixture', title: 'Parity fixture', blocks } as JsonGuide;
@@ -253,6 +279,35 @@ describe('step-id parity with the parser, over the completable set', () => {
   });
 });
 
+describe('section-id parity with the parser', () => {
+  function parseSectionIds(guide: JsonGuide): string[] {
+    const result = parseJsonGuide(guide);
+    expect(result.errors ?? []).toEqual([]);
+    return collectSectionIds(result.data?.elements ?? []);
+  }
+
+  it('keys the container end position under the id the parser gives an id-bearing section', () => {
+    const blocks: JsonBlock[] = [
+      { type: 'section', id: 'setup', title: 'Setup', blocks: [{ type: 'markdown', content: 'Prose' }] },
+    ] as unknown as JsonBlock[];
+    const index = withResolver(blocks);
+
+    expect(parseSectionIds(guideOf(blocks))).toEqual([...index.containerEndPositions.keys()]);
+  });
+
+  it('keys it under the id the parser gives a section with no author id', () => {
+    // `id` is optional on a section. Both sides derive the same path-based id,
+    // so acknowledging one still evidences its last block.
+    const blocks: JsonBlock[] = [
+      { type: 'markdown', content: 'Preamble' },
+      { type: 'section', title: 'Setup', blocks: [{ type: 'markdown', content: 'Prose' }] },
+    ] as unknown as JsonBlock[];
+    const index = withResolver(blocks);
+
+    expect(parseSectionIds(guideOf(blocks))).toEqual([...index.containerEndPositions.keys()]);
+  });
+});
+
 describe('step-id parity on the bundled corpus', () => {
   const BUNDLED_DIR = path.resolve(__dirname, '../../bundled-interactives');
   const guides = fs
@@ -267,6 +322,18 @@ describe('step-id parity on the bundled corpus', () => {
 
   it('finds bundled guides to sweep', () => {
     expect(guides.length).toBeGreaterThan(0);
+  });
+
+  it.each(guides)('$name keys every acknowledgeable section under the id the parser stamps', ({ guide }) => {
+    const index = withResolver(guide.blocks);
+    const parsed = parseJsonGuide(guide);
+    const stamped = new Set(collectSectionIds(parsed.data?.elements ?? []));
+
+    const unaddressable = [...index.containerEndPositions.keys()].filter(
+      (containerId) => containerId.startsWith('section') && !stamped.has(containerId)
+    );
+
+    expect(unaddressable).toEqual([]);
   });
 
   it.each(guides)('$name resolves every completable block to a parser step id', ({ guide }) => {

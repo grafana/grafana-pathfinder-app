@@ -138,6 +138,12 @@ describe('computeGuideBlockIndex', () => {
     expect(index.containerEndPositions.get('section-setup')).toBe(3);
   });
 
+  it('maps a section with no author id under its path, so its acknowledgement can evidence a position', () => {
+    const index = computeGuideBlockIndex([markdown(), section([markdown(), interactive()]), markdown()]);
+
+    expect(index.containerEndPositions.get('section:blocks[1]')).toBe(3);
+  });
+
   it('omits containers with no counted descendants from the container-end map', () => {
     const index = computeGuideBlockIndex([section([], 'empty')]);
 

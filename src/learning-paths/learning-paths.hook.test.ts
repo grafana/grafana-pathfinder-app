@@ -5,8 +5,9 @@
  * clear that only partly took. Other hook behavior (badges, streaks) is
  * exercised elsewhere; this file mocks those dependencies down to no-ops.
  */
+import React from 'react';
 import { AppEvents } from '@grafana/data';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 
 let mockNamespace: string | undefined = 'stacks-123';
 const mockPublish = jest.fn();
@@ -174,6 +175,43 @@ describe('useLearningPaths — URL-based path rollup (decision 4)', () => {
 
     expect(result.current.getPathProgress('linux-server-integration')).toBe(0);
     expect(result.current.isPathCompleted('linux-server-integration')).toBe(false);
+  });
+
+  // The rollup reads each member's percentage out of storage at call time, so
+  // the number goes stale unless the completion store's own announcement
+  // re-renders the surface displaying it — the way the Mark complete footer
+  // stays live. Mirrors My Learning, which memoises on `getPathProgress`.
+  it('re-reads the rollup when the completion store announces new evidence', async () => {
+    useUrlBasedPath();
+
+    function Probe() {
+      const { getPathProgress } = useLearningPaths();
+      const percent = React.useMemo(() => getPathProgress('linux-server-integration'), [getPathProgress]);
+      return React.createElement('span', { 'data-testid': 'rollup' }, String(percent));
+    }
+
+    // A baseline only reachable once the three modules have loaded, so the
+    // move below cannot be the fetch resolving.
+    mockPeekAll.mockReturnValue({ [LINUX_MODULES['select-platform']!]: 30 });
+
+    render(React.createElement(Probe));
+    await waitFor(() => expect(screen.getByTestId('rollup').textContent).toBe('10'));
+
+    mockPeekAll.mockReturnValue({ [LINUX_MODULES['select-platform']!]: 90 });
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder:progress', {
+          detail: {
+            kind: 'guide',
+            contentKey: LINUX_MODULES['select-platform'],
+            percentage: 90,
+            hasProgress: true,
+          },
+        })
+      );
+    });
+
+    await waitFor(() => expect(screen.getByTestId('rollup').textContent).toBe('30'));
   });
 
   it('is complete only once every module is', async () => {

@@ -25,6 +25,7 @@
 
 import type { JsonBlock } from '../../types/json-guide.types';
 import { emitsCompletionEvidence } from './completion-affordance';
+import { sectionRuntimeId } from './section-identity';
 
 /**
  * The narrowest block shape the counter needs. `JsonBlock` satisfies it; so
@@ -101,9 +102,7 @@ interface ContainerNamespace {
 
 function childSectionNamespace(block: CountableBlock, jsonPath: string): ContainerNamespace {
   if (block.type === 'section') {
-    return block.id
-      ? { id: `section-${block.id}`, indexDerived: false }
-      : { id: `section:${jsonPath}`, indexDerived: true };
+    return { id: sectionRuntimeId(block.id, jsonPath), indexDerived: !block.id };
   }
   if (block.type === 'assistant') {
     return { id: `assistant:${jsonPath}`, indexDerived: true };
@@ -177,15 +176,17 @@ export interface GuideBlockIndex {
    */
   positionsByStepId: ReadonlyMap<string, number>;
   /**
-   * For each container carrying an id, the position of the last counted block
-   * inside it — the position "mark as complete" on that container evidences.
-   * Keyed by the container's RUNTIME id (`section-<authorId>`, as
-   * `childSectionNamespace` spells it), not the bare author id, because that is the
-   * namespace the acknowledgement the reader actually produces arrives under.
-   * Containers with no counted descendants are absent. First occurrence wins
-   * when ids are duplicated, matching `positionsById`: last-wins would let a
-   * click on the earlier container permanently over-credit progress, and
-   * progress is monotonic so it could never be corrected downward.
+   * For each container the runtime can address, the position of the last
+   * counted block inside it — the position "mark as complete" on that
+   * container evidences. Keyed by the container's RUNTIME id, which
+   * `sectionRuntimeId` derives for both halves of the seam, because that is
+   * the namespace the acknowledgement the reader actually produces arrives
+   * under. A section without an author id is addressed by its path and is
+   * acknowledgeable like any other, so it is registered too. Containers with
+   * no counted descendants are absent. First occurrence wins when ids are
+   * duplicated, matching `positionsById`: last-wins would let a click on the
+   * earlier container permanently over-credit progress, and progress is
+   * monotonic so it could never be corrected downward.
    */
   containerEndPositions: ReadonlyMap<string, number>;
   /** Transparent `section` containers encountered. Not part of the denominator. */
@@ -278,13 +279,7 @@ export function computeGuideBlockIndex(
           namespace.indexDerived && childJsonPathShifted,
           childJsonPathShifted
         );
-        if (
-          namespace.id !== undefined &&
-          typeof block.id === 'string' &&
-          block.id.length > 0 &&
-          counted.length > before &&
-          !containerEndPositions.has(namespace.id)
-        ) {
+        if (namespace.id !== undefined && counted.length > before && !containerEndPositions.has(namespace.id)) {
           containerEndPositions.set(namespace.id, counted.length);
         }
         continue;

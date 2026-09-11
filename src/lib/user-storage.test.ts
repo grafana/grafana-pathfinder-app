@@ -2,6 +2,7 @@ import { getAppEvents } from '@grafana/runtime';
 
 import {
   __resetQuotaWarningForTests,
+  completionEmittedStorage,
   createHybridStorage,
   createLocalStorage,
   guideResponseStorage,
@@ -17,7 +18,7 @@ import {
   unwrapEnvelope,
   wrapEnvelope,
 } from './user-storage';
-import { StorageKeys, buildVersionedSectionStorageKey } from './storage-keys';
+import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from './storage-keys';
 
 // Mock `@grafana/runtime` so the quota-toast helper can publish through a
 // jest spy. The mock is also necessary because user-storage.ts statically
@@ -954,6 +955,53 @@ describe('interactiveStepStorage.clearAllForContent — a reset that cannot comp
     expect(await sectionCollapseStorage.get(SHORT_GUIDE, 'section-1')).toBe(false);
     expect(await sectionAcknowledgementStorage.get(SHORT_GUIDE, 'section-1')).toBeNull();
     expect(await sectionDoneStorage.get(SHORT_GUIDE, 'section-1')).toBeNull();
+  });
+
+  it('clears every completion dedupe guard without breeding timestamp companions', async () => {
+    // `removeItem` writes a deletion companion beside whatever it removes, so
+    // a reset that hands it the previous reset's companions deepens the tail
+    // by one level each time and doubles the backend writes.
+    jest.useFakeTimers();
+    const grafanaStorage = {
+      getItem: jest.fn(async () => null),
+      setItem: jest.fn(async () => undefined),
+    };
+    setGlobalStorage(createHybridStorage(grafanaStorage));
+
+    try {
+      await completionEmittedStorage.markEmitted('guide:bundled:one');
+      await completionEmittedStorage.markEmitted('guide:bundled:two');
+
+      const setItem = jest.spyOn(Storage.prototype, 'setItem');
+      await completionEmittedStorage.clearAll();
+      const writtenKeys = setItem.mock.calls
+        .map(([key]) => key)
+        .filter((key): key is string => typeof key === 'string');
+      setItem.mockRestore();
+      await completionEmittedStorage.clearAll();
+
+      expect(completionEmittedStorage.isEmitted('guide:bundled:one')).toBe(false);
+      expect(completionEmittedStorage.isEmitted('guide:bundled:two')).toBe(false);
+      // One deletion companion per guard — a companion handed back through
+      // `removeItem` would write another one beside itself.
+      expect(new Set(writtenKeys)).toEqual(
+        new Set(
+          ['guide:bundled:one', 'guide:bundled:two'].map(
+            (dedupeKey) =>
+              `${buildVersionedContentStorageKey(StorageKeys.COMPLETION_EMITTED_PREFIX, dedupeKey)}__timestamp`
+          )
+        )
+      );
+      expect(writtenKeys).toHaveLength(2);
+      // Nothing left under the namespace — not the guards, not the deletion
+      // companions the removals wrote, and no companion of a companion.
+      expect(Object.keys(localStorage).filter((key) => key.startsWith(StorageKeys.COMPLETION_EMITTED_PREFIX))).toEqual(
+        []
+      );
+    } finally {
+      setGlobalStorage(createLocalStorage());
+      jest.useRealTimers();
+    }
   });
 
   it('writes no record of its own — only the backend timestamp companions of records it removed', async () => {

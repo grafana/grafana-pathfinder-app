@@ -1551,9 +1551,22 @@ export const completionEmittedStorage = {
 
   async clearAll(): Promise<void> {
     try {
-      const keys = Array.from(collectKeysByPrefix(localStorage, StorageKeys.COMPLETION_EMITTED_PREFIX));
       const storage = createUserStorage();
-      await Promise.all(keys.map((key) => storage.removeItem(key)));
+      const guardKeys = collectKeysByPrefix(localStorage, StorageKeys.COMPLETION_EMITTED_PREFIX).filter(
+        (key) => !key.endsWith(HYBRID_TIMESTAMP_SUFFIX)
+      );
+      await Promise.all(guardKeys.map((key) => storage.removeItem(key)));
+      // The hybrid backend writes a deletion-timestamp companion beside every
+      // key it removes, so these are swept after the removals rather than
+      // passed back through `removeItem` — which would breed one a level
+      // deeper, and double the backend writes, on every reset. The queued
+      // deletion envelope is what settles the remote copy; the local
+      // companion has nothing left to arbitrate.
+      for (const key of collectKeysByPrefix(localStorage, StorageKeys.COMPLETION_EMITTED_PREFIX)) {
+        if (key.endsWith(HYBRID_TIMESTAMP_SUFFIX)) {
+          localStorage.removeItem(key);
+        }
+      }
     } catch (error) {
       logger.warn('Failed to clear completion dedupe keys', { error });
     }

@@ -5,7 +5,7 @@
  * Provides a unified API for components to interact with the learning system.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { AppEvents } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { config, getAppEvents } from '@grafana/runtime';
@@ -32,6 +32,7 @@ import {
   guideCompletionMarkStorage,
 } from '../lib/user-storage';
 import { evictContentCache } from '../global-state/completion-store';
+import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../global-state/progress-events';
 import {
   pathMemberContentKeys,
   pathMemberIdSchemeKeys,
@@ -103,8 +104,11 @@ function formatLegacyBadgeTitle(badgeId: string): string {
  * its members are addressed by a docs URL that cannot be derived from the
  * member id, so without it the join can form no key, every member resolves
  * `'unresolved'`, and the mean is taken over the completed ones alone — one
- * finished module out of six would read 100%. Bundled and App Platform
- * members carry no URL and resolve through the id schemes instead.
+ * finished module out of six would read 100%. An App Platform member also
+ * carries one (`backend-guide:<id>`, stamped by `app-platform-paths.ts`),
+ * which the join then treats as the member's only candidate group — narrower,
+ * and correct, since that is the scheme it was published under. Only a
+ * bundled member arrives without one and falls back to the id schemes.
  */
 function calculatePathRollup(
   path: LearningPath,
@@ -436,6 +440,15 @@ export function useLearningPaths(): UseLearningPathsReturn {
     [resolveGuideMetadata]
   );
 
+  // A member's percentage lives in storage, so a rollup goes stale unless the
+  // store's own announcement re-renders this hook's host — `LearningProgressUpdated`
+  // fires on membership and badge changes, never on a per-step percentage write.
+  const guideProgressRevision = useSyncExternalStore(
+    subscribeGuideProgressRevision,
+    getGuideProgressRevision,
+    getGuideProgressRevision
+  );
+
   // Get completion percentage for a path
   const getPathProgress = useCallback(
     (pathId: string): number => {
@@ -445,7 +458,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
       }
       return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).percent;
     },
-    [paths, progress.completedGuides, getGuideUrlForPath]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the revision is not read here, it is what re-identifies this callback so a consumer memoising on it (My Learning's card list) recomputes when the evidence moves
+    [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]
   );
 
   // Check if a path is completed. Not `getPathProgress(pathId) === 100` — a
@@ -459,7 +473,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
       }
       return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).complete;
     },
-    [paths, progress.completedGuides, getGuideUrlForPath]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the revision re-identifies the callback, it is not an input the body reads
+    [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]
   );
 
   // Mark a guide as completed.

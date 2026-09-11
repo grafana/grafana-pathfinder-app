@@ -20,7 +20,7 @@
  * surfaces that previously had no way to change panel mode from here.
  */
 
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { Button, Dropdown, Menu, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
@@ -32,6 +32,7 @@ import {
   AnalyticsLinkType,
 } from '../../../lib/analytics';
 import { getJourneyProgress, journeyMilestonePercentages } from '../../../docs-retrieval';
+import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { usePanelModeControls } from '../../../global-state/use-panel-mode';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import { testIds } from '../../../constants/testIds';
@@ -83,6 +84,9 @@ export function LearningJourneyMilestoneToolbar({
 }: LearningJourneyMilestoneToolbarProps) {
   const styles = useStyles2(getMilestoneStyles);
   const { panelMode, handleTogglePanelMode, handleGoFullScreen } = usePanelModeControls();
+  // The segments below read each milestone's percentage out of storage, so the
+  // store's announcement is what keeps them from painting a stale fill.
+  useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
 
   const lj = activeTab.content?.type === 'learning-journey' ? activeTab.content.metadata.learningJourney : undefined;
   const showMilestoneProgress = activeTab.type === 'learning-journey' && Boolean(lj);

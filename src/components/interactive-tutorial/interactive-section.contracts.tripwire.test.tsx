@@ -97,7 +97,7 @@ import { STEP_TYPE_SCHEMAS } from './step-type-registry';
 import { INTERACTIVE_STEP_COMPONENT_TYPES } from './section-child-classifier';
 import { memoryStore, resetSectionHarness, silenceSectionWarnings } from '../../test-utils/interactive-section-harness';
 import { publishGuideIndex, evictAllGuideIndexes } from '../../global-state/active-guide-index';
-import { computeGuideBlockIndex } from '../../lib/guide-stats';
+import { computeGuideBlockIndex, type CountableBlock } from '../../lib/guide-stats';
 import { peekGuidePercentage } from '../../global-state/completion-store';
 
 const NON_PREVIEW_KEY = '/';
@@ -147,6 +147,18 @@ function renderMixedSection() {
         Step
       </InteractiveStep>
       <p>Read this before moving on.</p>
+    </InteractiveSection>
+  );
+}
+
+/**
+ * A section with no author id: the parser derives its id from the block path
+ * and stamps it on, which is the id an acknowledgement is recorded under.
+ */
+function renderAnonymousSection(sectionId: string) {
+  return render(
+    <InteractiveSection sectionId={sectionId} title="Anonymous section" autoCollapse={false}>
+      <p>Read this.</p>
     </InteractiveSection>
   );
 }
@@ -214,6 +226,31 @@ describe('InteractiveSection — an acknowledgement moves the guide percentage',
       .filter((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'guide')
       .map((e) => e.detail.percentage);
   }
+
+  it('credits an acknowledged section that carries no author id', async () => {
+    const { events, unsubscribe } = recordSectionEvents();
+    try {
+      const blocks: CountableBlock[] = [{ type: 'section', blocks: [{ type: 'markdown' }] }];
+      const index = computeGuideBlockIndex(blocks);
+      const sectionId = [...index.containerEndPositions.keys()][0]!;
+      publishGuideIndex({ contentKey: NON_PREVIEW_KEY, index, denominatorSource: 'live-pre-inlining' });
+
+      renderAnonymousSection(sectionId);
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.markSectionCompleteButton(sectionId))).toBeInTheDocument()
+      );
+      act(() => {
+        screen.getByTestId(testIds.interactive.markSectionCompleteButton(sectionId)).click();
+      });
+
+      // The writer and the reader derive the id in one place, so the ack lands
+      // on the container the index registered.
+      await waitFor(() => expect(guidePercentages(events)).toContain(100));
+      expect(peekGuidePercentage(NON_PREVIEW_KEY)).toBe(100);
+    } finally {
+      unsubscribe();
+    }
+  });
 
   it('credits the section end when a mixed section is acknowledged, and persists the same number', async () => {
     const { events, unsubscribe } = recordSectionEvents();
@@ -465,10 +502,10 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
           screen.getByTestId(completeBtn(STEP_ID)).click();
         });
 
-        // In preview mode the section-level progress event still fires
-        // so the editor's "Reset guide" button can react. The kind:'guide'
-        // event is suppressed in preview because it carries the
-        // completion-percentage (preview has no document total).
+        // In preview mode the section-level progress event still fires so the
+        // editor's "Reset guide" button can react. A `kind: 'guide'` event
+        // fires for a preview key too now — the percentage comes from the
+        // store's in-memory evidence — but nothing durable is written.
         await waitFor(() => {
           expect(events.find((e) => e.name === 'pathfinder:progress' && e.detail.kind === 'section')).toBeDefined();
         });

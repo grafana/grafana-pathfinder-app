@@ -1242,6 +1242,7 @@ function renderParsedElement(
           objectives={element.props.objectives}
           hints={element.props.hints}
           id={element.props.id} // Pass the HTML id attribute
+          sectionId={element.props.sectionId}
           autoCollapse={element.props.autoCollapse}
         >
           {renderChildren(element.children)}

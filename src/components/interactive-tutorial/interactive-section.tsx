@@ -155,19 +155,23 @@ export function InteractiveSection({
   disabled = false,
   className,
   id, // HTML id attribute from parsed content
+  sectionId: derivedSectionId, // `sectionRuntimeId`, stamped on by the JSON parser
   autoCollapse, // Author control for auto-collapse behavior
 }: InteractiveSectionProps) {
-  // Use provided HTML id or generate sequential fallback
   const sectionId = useMemo(() => {
-    if (id) {
-      // Use the HTML id attribute, prefixed with section- for consistency
-      const generatedId = `section-${id}`;
-      return generatedId;
+    // The parser's derivation wins: it is the same function the block index
+    // keys container positions under, so an acknowledgement stored under it
+    // resolves to a position. The two fallbacks are for HTML-parsed content,
+    // which carries no block path — the counter is a last resort and cannot
+    // carry evidence, being unstable across renders.
+    if (derivedSectionId) {
+      return derivedSectionId;
     }
-    // Fallback to sequential ID for sections without explicit id
-    const generatedId = `section-${nextSectionCounter()}`;
-    return generatedId;
-  }, [id]);
+    if (id) {
+      return `section-${id}`;
+    }
+    return `section-${nextSectionCounter()}`;
+  }, [derivedSectionId, id]);
 
   // Sequential state management.
   //
