@@ -1,6 +1,7 @@
 import { invalidateEmittedCompletion, resolveCompletionIdentity } from '../../../completion-records';
 import { evictContentCache } from '../../../global-state/completion-store';
 import { StorageEvents } from '../../../lib/event-names';
+import { getMilestoneSlug } from '../../../lib/learning-journey-url';
 import {
   guideCompletionMarkStorage,
   interactiveCompletionStorage,
@@ -12,8 +13,17 @@ export interface ResetGuideProgressIdentity {
   repository?: string;
 }
 
-/** Best-effort fallback identity when no manifest is in hand — matches the stripping already used in learning-journey-helpers.ts. */
+/**
+ * Best-effort fallback identity when no manifest is in hand. A journey
+ * milestone is addressed by a web URL but recorded under its slug alone
+ * (`markMilestoneDone`), so reduce one the same way `getMilestoneSlug` does —
+ * otherwise the reset lifts the guard under a key no record was ever written
+ * under. Scheme-addressed keys keep the stripping the recorders use for them.
+ */
 function fallbackGuideIdFromContentKey(contentKey: string): string {
+  if (/^https?:\/\//.test(contentKey)) {
+    return getMilestoneSlug(contentKey) || contentKey;
+  }
   return contentKey.replace(/^(bundled|backend-guide):/, '').replace(/\/content\.json$/, '');
 }
 

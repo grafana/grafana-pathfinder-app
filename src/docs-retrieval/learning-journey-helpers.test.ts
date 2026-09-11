@@ -132,6 +132,18 @@ describe('getJourneyProgress', () => {
     expect(getJourneyProgress(content)).toBe(100);
   });
 
+  it('sees a milestone completion stored under a milestone-URL alias, as the cover page does', () => {
+    // The cover page's own async read passes the milestone URLs, so without
+    // them here the same milestone reads completed on one screen and 0% on
+    // the percentage beside it.
+    const m1 = milestone(1, { url: 'bundled:demo-milestone/content.json' });
+    const content = journeyContent(1, [m1], 'bundled:demo-cover/content.json');
+
+    localStorage.setItem(StorageKeys.MILESTONE_COMPLETION, JSON.stringify({ [m1.url]: [getMilestoneSlug(m1.url)] }));
+
+    expect(getJourneyProgress(content)).toBe(100);
+  });
+
   it('reads 100 for a member in the completed set even with no persisted percentage', () => {
     const m1 = milestone(1, { url: 'backend-guide:m1' });
     const content = journeyContent(1, [m1]);

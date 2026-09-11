@@ -132,16 +132,16 @@ describe('computeGuideBlockIndex', () => {
     expect(index.finalCompletablePosition).toBe(4);
   });
 
-  it('maps a container id to the position of its last counted descendant', () => {
+  it('maps a container to its last counted descendant, keyed as the runtime section id', () => {
     const index = computeGuideBlockIndex([markdown(), section([markdown(), interactive()], 'setup'), markdown()]);
 
-    expect(index.containerEndPositions.get('setup')).toBe(3);
+    expect(index.containerEndPositions.get('section-setup')).toBe(3);
   });
 
   it('omits containers with no counted descendants from the container-end map', () => {
     const index = computeGuideBlockIndex([section([], 'empty')]);
 
-    expect(index.containerEndPositions.has('empty')).toBe(false);
+    expect(index.containerEndPositions.has('section-empty')).toBe(false);
   });
 
   it('keeps the first position when ids are duplicated', () => {
@@ -158,7 +158,7 @@ describe('computeGuideBlockIndex', () => {
       section([markdown('c'), markdown('d')], 'dup'),
     ]);
 
-    expect(index.containerEndPositions.get('dup')).toBe(2);
+    expect(index.containerEndPositions.get('section-dup')).toBe(2);
   });
 
   it('counts a snippet-ref as one block and does not descend into it', () => {

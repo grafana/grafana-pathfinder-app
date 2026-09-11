@@ -36,9 +36,18 @@ function publishFlatIndex(contentKey: string, n: number, ids: readonly string[] 
   publishGuideIndex({ contentKey, index: computeGuideBlockIndex(blocks), denominatorSource: 'live-pre-inlining' });
 }
 
-/** Publishes an index of `n` sections, each one block, ids `sectionIds[i]` — for ack-evidence tests. */
-function publishSectionedIndex(contentKey: string, sectionIds: readonly string[]): void {
-  const blocks: CountableBlock[] = sectionIds.map((id) => ({ type: 'section', id, blocks: [{ type: 'markdown' }] }));
+/**
+ * Publishes an index of sections, each one block, addressed by the RUNTIME
+ * section ids an acknowledgement arrives under. Author ids in a guide carry no
+ * `section-` prefix — `InteractiveSection` adds it — so the fixture models
+ * that split rather than letting the two namespaces coincide.
+ */
+function publishSectionedIndex(contentKey: string, runtimeSectionIds: readonly string[]): void {
+  const blocks: CountableBlock[] = runtimeSectionIds.map((runtimeId) => ({
+    type: 'section',
+    id: runtimeId.replace(/^section-/, ''),
+    blocks: [{ type: 'markdown' }],
+  }));
   publishGuideIndex({ contentKey, index: computeGuideBlockIndex(blocks), denominatorSource: 'live-pre-inlining' });
 }
 

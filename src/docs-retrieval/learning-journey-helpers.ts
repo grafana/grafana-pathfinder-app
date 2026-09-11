@@ -155,7 +155,15 @@ export function journeyProgressFromMilestones(baseUrl: string, milestones: reado
   }
 
   const members: PathMember[] = unlocked.map((m) => ({ id: getMilestoneSlug(m.url) ?? m.url, url: m.url }));
-  const completedMemberIds = Array.from(milestoneCompletionStorage.getCompletedSync(baseUrl));
+  // The milestone URLs resolve alias-keyed records the canonical base URL
+  // alone would miss — the same argument the cover page's async read passes,
+  // so both screens see one set of completed milestones.
+  const completedMemberIds = Array.from(
+    milestoneCompletionStorage.getCompletedSync(
+      baseUrl,
+      milestones.map((m) => m.url)
+    )
+  );
   const { resolvedPercentages } = resolvePathMemberPercentages(members, {
     completedMemberIds,
     // interactiveCompletionStorage, and only that — journeyCompletionStorage

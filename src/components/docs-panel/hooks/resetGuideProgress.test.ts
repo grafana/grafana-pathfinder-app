@@ -76,4 +76,13 @@ describe('resetGuideProgress', () => {
 
     expect(mockInvalidateEmittedCompletion).toHaveBeenCalledWith('bundled', 'e2e-test');
   });
+
+  // `markMilestoneDone` records a manifest-less milestone under its slug
+  // alone, so a reset keyed on the milestone's full URL would leave the
+  // guard set and silently swallow the second completion.
+  it('reduces a milestone URL to the slug the milestone was recorded under', async () => {
+    await resetGuideProgress('https://grafana.com/docs/learning-journeys/demo/milestone-2/');
+
+    expect(mockInvalidateEmittedCompletion).toHaveBeenCalledWith('bundled', 'milestone-2');
+  });
 });

@@ -715,7 +715,13 @@ function ContentProcessor({
   // an unrelated prop change is a no-op here. It owns both the denominator
   // and the numerator's positions so they can never come from two
   // traversals and disagree.
-  useMemo(() => {
+  //
+  // Passive effect, not `useMemo`/`useLayoutEffect`, for the same reason
+  // MarkCompleteFooter resolves its key in one: both producers of the
+  // content key publish it from a layout effect, so resolving during
+  // render (or in a child layout effect, which runs first) would publish
+  // the PREVIOUS milestone's key and leave this one with no index at all.
+  useEffect(() => {
     if (!rawGuide) {
       return;
     }

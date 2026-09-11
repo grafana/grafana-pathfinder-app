@@ -164,6 +164,9 @@ export interface GuideBlockIndex {
   /**
    * For each container carrying an id, the position of the last counted block
    * inside it — the position "mark as complete" on that container evidences.
+   * Keyed by the container's RUNTIME id (`section-<authorId>`, as
+   * `childSectionId` spells it), not the bare author id, because that is the
+   * namespace the acknowledgement the reader actually produces arrives under.
    * Containers with no counted descendants are absent. First occurrence wins
    * when ids are duplicated, matching `positionsById`: last-wins would let a
    * click on the earlier container permanently over-credit progress, and
@@ -243,14 +246,16 @@ export function computeGuideBlockIndex(
           sectionCount++;
         }
         const before = counted.length;
-        visit(block.blocks, path, childSectionId(block, blockJsonPath), `${blockJsonPath}.blocks`);
+        const containerId = childSectionId(block, blockJsonPath);
+        visit(block.blocks, path, containerId, `${blockJsonPath}.blocks`);
         if (
+          containerId !== undefined &&
           typeof block.id === 'string' &&
           block.id.length > 0 &&
           counted.length > before &&
-          !containerEndPositions.has(block.id)
+          !containerEndPositions.has(containerId)
         ) {
-          containerEndPositions.set(block.id, counted.length);
+          containerEndPositions.set(containerId, counted.length);
         }
         continue;
       }
