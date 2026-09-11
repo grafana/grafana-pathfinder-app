@@ -949,9 +949,7 @@ export class GuidedHandler {
     return new Promise<CompletionResult>((resolve) => {
       let isResolved = false;
       let debounceTimer: NodeJS.Timeout | undefined;
-      let successTimer: NodeJS.Timeout | undefined;
       const DEBOUNCE_DELAY = 2000;
-      const SUCCESS_ANIMATION_DELAY = 800;
 
       const cleanup = (result: CompletionResult) => {
         if (isResolved) {
@@ -959,7 +957,6 @@ export class GuidedHandler {
         }
         isResolved = true;
         clearTimeout(debounceTimer);
-        clearTimeout(successTimer);
         resolve(arbiter.settle(result));
       };
       signal.addEventListener('abort', () => cleanup('cancelled'), { once: true });
@@ -983,8 +980,7 @@ export class GuidedHandler {
           return;
         }
         this.updateFormValidationFeedback(element, 'valid');
-        clearTimeout(successTimer);
-        successTimer = setTimeout(() => cleanup('completed'), SUCCESS_ANIMATION_DELAY);
+        cleanup('completed');
       };
       const validateValue = () => {
         if (isResolved || !arbiter.isActive()) {
@@ -1011,7 +1007,6 @@ export class GuidedHandler {
           return;
         }
         clearTimeout(debounceTimer);
-        clearTimeout(successTimer);
         this.updateFormValidationFeedback(element, 'checking');
         debounceTimer = setTimeout(validateValue, DEBOUNCE_DELAY);
       };

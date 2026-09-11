@@ -206,6 +206,30 @@ describe('GuidedHandler substep contract', () => {
     });
   });
 
+  it('completes a validated formfill without spending the remaining budget on success feedback', async () => {
+    const target = addTarget('formfill') as HTMLInputElement;
+    const onCompleted = jest.fn();
+    const onSettled = jest.fn();
+    const result = handler.executeGuidedStep(
+      { targetAction: 'formfill', refTarget: '#target', targetValue: 'Grafana', validateInput: true },
+      0,
+      1,
+      4000,
+      onCompleted,
+      { onSettled }
+    );
+    await jest.advanceTimersByTimeAsync(1500);
+    target.value = 'Grafana';
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    await jest.advanceTimersByTimeAsync(2000);
+    await expect(result).resolves.toBe('completed');
+    await jest.advanceTimersByTimeAsync(800);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(onCompleted).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledWith({ index: 0, action: 'formfill', status: 'completed', durationMs: 3500 });
+  });
+
   it('preserves a near-miss click accepted before synchronous effects cross the deadline', async () => {
     const target = addTarget();
     jest.spyOn(target, 'getBoundingClientRect').mockReturnValue({
