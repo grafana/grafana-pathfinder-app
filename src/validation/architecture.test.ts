@@ -25,6 +25,7 @@ import {
   TIER_MAP,
   ARCHITECTURE_BY_DESIGN,
   assertRatchet,
+  collectSourceFiles,
   findCycles,
   validateAllowedArchitectureEntries,
   getAllFileImports,
@@ -244,11 +245,100 @@ const ALLOWED_CYCLES: readonly AllowedArchitectureEntry[] = [
 
 const ALLOWED_CYCLE_KEYS = new Set(ALLOWED_CYCLES.map((entry) => entry.violation));
 
+/**
+ * Files that own the completion model's percentage arithmetic
+ * (docs/design/COMPLETION-MODEL.md, `completion-denominator-authority` in
+ * CONCERN_DETAILS.md). Nothing outside this set may compute a percentage of
+ * guide/path/journey progress — a numerator and a denominator from two
+ * independent traversals is exactly how a reader ends up seeing two
+ * different numbers for the same guide on adjacent screens.
+ */
+const PERCENTAGE_CALCULATION_OWNERS = [
+  'lib/guide-stats/', // computeGuideBlockIndex, guideProgress, meanOfMemberPercentages
+  'global-state/completion-store.ts', // the sole producer of a guide's percentage
+  'global-state/path-member-join.ts', // the content-key join a path/journey member resolves through
+  'global-state/active-guide-index.ts', // publishes the frozen index this all reads
+  'docs-retrieval/learning-journey-helpers.ts', // getJourneyProgress / journeyProgressFromMilestones
+  'learning-paths/learning-paths.hook.ts', // calculatePathRollup
+];
+
+/**
+ * Loose on purpose: catches `<numerator> / <denominator-carrying-one-of-
+ * these-words>) * 100`-shaped expressions — every real guide/path/journey
+ * percentage calculation in this codebase takes that shape. It also catches
+ * unrelated domains that happen to divide-then-scale-by-100 (video view %,
+ * badge/streak %, tour position) — see the allowlist below for why each of
+ * those is a different metric, not a second copy of completion.
+ */
+const PERCENTAGE_CALCULATION_KEYWORDS_RE = /(total|count|steps|blocks|milestones|guides|position)/i;
+const TIMES_100_RE = /\)\s*\*\s*100\b/;
+
+function findPercentageCalculationViolations(): Set<string> {
+  const violations = new Set<string>();
+  for (const file of collectSourceFiles()) {
+    if (isTestFile(file)) {
+      continue;
+    }
+    const relPath = toPosixPath(path.relative(SRC_DIR, file));
+    if (PERCENTAGE_CALCULATION_OWNERS.some((owner) => relPath === owner || relPath.startsWith(owner))) {
+      continue;
+    }
+    const content = fs.readFileSync(file, 'utf-8');
+    const hasCalculation = content
+      .split('\n')
+      .some((line) => TIMES_100_RE.test(line) && line.includes('/') && PERCENTAGE_CALCULATION_KEYWORDS_RE.test(line));
+    if (hasCalculation) {
+      violations.add(relPath);
+    }
+  }
+  return violations;
+}
+
+const ALLOWED_PERCENTAGE_CALCULATION_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  {
+    violation: 'interactive-engine/navigation-manager.ts',
+    reason:
+      "The guided-tour comment box's progress bar tracks position within one guided/multistep block's own child steps (COMPLETION-MODEL.md decision 5, A5 — explicitly out of scope). A different altitude from guide/path/journey completion; never a denominator this model owns.",
+    tracking: ARCHITECTURE_BY_DESIGN,
+  },
+  {
+    violation: 'components/interactive-tutorial/interactive-section.tsx',
+    reason:
+      "Section-local step percentage and step-progress rendering, scoped to this one section's own mounted steps (getTotalDocumentSteps/getDocumentStepPosition's step-model badge) — not a guide-level completion percentage, and explicitly out of scope for the block-count model.",
+    tracking: ARCHITECTURE_BY_DESIGN,
+  },
+  {
+    violation: 'docs-retrieval/components/docs/youtube-video-renderer.tsx',
+    reason: 'Video view percentage — an unrelated domain (how much of a video was watched), not guide completion.',
+    tracking: ARCHITECTURE_BY_DESIGN,
+  },
+  {
+    violation: 'components/LearningPaths/badge-utils.ts',
+    reason:
+      'Badge and streak progress toward an award threshold — a different metric from guide/path/journey completion, which never gates a badge on its own percentage.',
+    tracking: ARCHITECTURE_BY_DESIGN,
+  },
+  {
+    violation: 'lib/analytics.ts',
+    reason:
+      "The step-model's \"Step N of M\" analytics property (calculateStepCompletion) — a step-model fact over mounted step components, explicitly out of scope for the block-count completion model (see STEP_MODEL.md).",
+    tracking: ARCHITECTURE_BY_DESIGN,
+  },
+  {
+    violation: 'learning-paths/streak-tracker.ts',
+    reason:
+      'Daily-streak progress toward the next streak badge threshold — a different metric from guide/path/journey completion.',
+    tracking: ARCHITECTURE_BY_DESIGN,
+  },
+];
+const ALLOWED_PERCENTAGE_CALCULATIONS = new Set(ALLOWED_PERCENTAGE_CALCULATION_ENTRIES.map((entry) => entry.violation));
+
 const ARCHITECTURE_ALLOWLISTS = {
   ALLOWED_VERTICAL_VIOLATIONS: { entries: ALLOWED_VERTICAL_VIOLATION_ENTRIES, allowByDesign: true },
   ALLOWED_LATERAL_VIOLATIONS: { entries: ALLOWED_LATERAL_VIOLATION_ENTRIES, allowByDesign: false },
   ALLOWED_BARREL_VIOLATIONS: { entries: ALLOWED_BARREL_VIOLATION_ENTRIES, allowByDesign: true },
   ALLOWED_CYCLES: { entries: ALLOWED_CYCLES, allowByDesign: false },
+  ALLOWED_PERCENTAGE_CALCULATIONS: { entries: ALLOWED_PERCENTAGE_CALCULATION_ENTRIES, allowByDesign: true },
 } as const;
 
 /**
@@ -440,6 +530,28 @@ describe('Barrel export discipline', () => {
   });
 });
 
+describe('Completion percentage: single shared calculation', () => {
+  it('should not compute a percentage of guide/path/journey progress outside the shared module', () => {
+    const violations = findPercentageCalculationViolations();
+
+    assertRatchet(
+      violations,
+      ALLOWED_PERCENTAGE_CALCULATIONS,
+      'percentage-of-progress calculations outside the shared module',
+      'ALLOWED_PERCENTAGE_CALCULATION_ENTRIES',
+      `A guide/path/journey completion percentage must be computed by the shared module — ` +
+        `src/lib/guide-stats/, src/global-state/completion-store.ts, ` +
+        `src/global-state/path-member-join.ts, src/global-state/active-guide-index.ts, ` +
+        `src/docs-retrieval/learning-journey-helpers.ts, or src/learning-paths/learning-paths.hook.ts — ` +
+        `so a numerator and a denominator can never come from two independent traversals and disagree. ` +
+        `If this is a genuinely different metric (not guide/path/journey completion — e.g. a video view ` +
+        `percentage, a badge/streak threshold, or tour position within one guided/multistep block), add a ` +
+        `structured entry to ALLOWED_PERCENTAGE_CALCULATION_ENTRIES with a substantive reason and ` +
+        `accountability reference. Otherwise, compute it via the shared module instead.`
+    );
+  });
+});
+
 describe('Import graph: circular dependencies', () => {
   it('reports the current circular-dependency footprint', () => {
     const cycles = findCycles();
@@ -482,6 +594,7 @@ describe('Import graph: circular dependencies', () => {
       'ALLOWED_LATERAL_VIOLATIONS',
       'ALLOWED_BARREL_VIOLATIONS',
       'ALLOWED_CYCLES',
+      'ALLOWED_PERCENTAGE_CALCULATIONS',
     ]);
     const errors = Object.entries(ARCHITECTURE_ALLOWLISTS).flatMap(([name, { entries, allowByDesign }]) =>
       validateAllowedArchitectureEntries(entries, { allowByDesign }).map((error) => `${name}: ${error}`)
@@ -577,7 +690,8 @@ describe('Architecture ratchet progress', () => {
       `[architecture-ratchet] vertical=${ALLOWED_VERTICAL_VIOLATIONS.size}` +
         ` lateral=${ALLOWED_LATERAL_VIOLATIONS.size}` +
         ` barrel=${ALLOWED_BARREL_VIOLATIONS.size}` +
-        ` cycles=${ALLOWED_CYCLES.length}`
+        ` cycles=${ALLOWED_CYCLES.length}` +
+        ` percentageCalculations=${ALLOWED_PERCENTAGE_CALCULATIONS.size}`
     );
   });
 });

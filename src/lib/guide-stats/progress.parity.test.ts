@@ -18,12 +18,30 @@
  * file activates that concern's reviewer with the contract anchor loaded.
  */
 
+// Minimal enough for completion-store.ts / learning-journey-helpers.ts's
+// module-level evaluation to succeed; the cross-surface parity describe
+// block below reads/writes only the sync, localStorage-backed halves of
+// each store, never the async @grafana/runtime-backed paths.
+jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'stacks-123' },
+  usePluginUserStorage: jest.fn(),
+  getAppEvents: jest.fn(() => ({ publish: jest.fn() })),
+  reportInteraction: jest.fn(),
+}));
+
 import { resolveCountedBlockStepId, resolveStepIdForBlock } from '../../global-state/guide-step-id-resolver';
 import { parseJsonGuide } from '../../docs-retrieval/json-parser';
-import type { ParsedElement } from '../../types/content.types';
+import { journeyProgressFromMilestones } from '../../docs-retrieval/learning-journey-helpers';
+import { peekGuidePercentage, resetCompletionStoreForTests } from '../../global-state/completion-store';
+import { publishGuideIndex } from '../../global-state/active-guide-index';
+import { resolvePathMemberPercentages } from '../../global-state/path-member-join';
+import { StorageKeys, buildVersionedContentStorageKey, buildVersionedSectionStorageKey } from '../storage-keys';
+import type { Milestone, ParsedElement } from '../../types/content.types';
 import type { JsonBlock, JsonGuide } from '../../types/json-guide.types';
 import { computeGuideBlockIndex } from './block-index';
 import { COMPLETION_AFFORDANCE_BLOCK_TYPES, emitsCompletionEvidence } from './completion-affordance';
+import { guideProgress } from './progress';
+import { meanOfMemberPercentages } from './rollup';
 import fs from 'fs';
 import path from 'path';
 
@@ -259,5 +277,95 @@ describe('step-id parity on the bundled corpus', () => {
 
     expect(unresolved).toEqual([]);
     expect(foreign).toEqual([]);
+  });
+});
+
+/**
+ * Cross-surface percentage parity (C2).
+ *
+ * Every surface a reader can see a guide's percentage on must agree: the
+ * completion store (`peekGuidePercentage`), a journey wrapping it as a
+ * single milestone (`getJourneyProgress` / `journeyProgressFromMilestones`),
+ * a path rolling it up as a single member (`meanOfMemberPercentages` over
+ * `path-member-join.ts`'s resolution), and the module directly
+ * (`guideProgress`). If any of these drift, a reader sees two different
+ * numbers for the same guide on adjacent screens — exactly what this model
+ * exists to prevent.
+ *
+ * Fixture is a real bundled guide, read from `src/bundled-interactives/`,
+ * not an invented tree — matching the corpus sweep above.
+ */
+describe('cross-surface percentage parity (C2)', () => {
+  const FIXTURE_GUIDE: JsonGuide = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '../../bundled-interactives/welcome-to-grafana/content.json'), 'utf-8')
+  );
+  const CONTENT_KEY = 'bundled:parity-fixture';
+
+  function freshIndex() {
+    return computeGuideBlockIndex(FIXTURE_GUIDE.blocks, { resolveStepId: resolveCountedBlockStepId });
+  }
+
+  function journeyPercentFor(contentKey: string): number {
+    const milestone: Milestone = { number: 1, title: 'Milestone', url: contentKey, isActive: true };
+    return journeyProgressFromMilestones('backend-guide:parity-journey', [milestone]);
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    resetCompletionStoreForTests();
+  });
+
+  it('a single-member path rollup equals the member\'s own persisted percentage', () => {
+    const memberPercent = 47;
+    const { resolvedPercentages } = resolvePathMemberPercentages([{ id: 'solo' }], {
+      completedMemberIds: [],
+      persistedPercentages: { 'bundled:solo': memberPercent },
+    });
+
+    expect(meanOfMemberPercentages(resolvedPercentages).percent).toBe(memberPercent);
+  });
+
+  it('agrees at 0% before anything is evidenced', () => {
+    publishGuideIndex({ contentKey: CONTENT_KEY, index: freshIndex(), denominatorSource: 'live-pre-inlining' });
+
+    expect(peekGuidePercentage(CONTENT_KEY)).toBe(0);
+    expect(guideProgress(freshIndex(), []).percent).toBe(0);
+    expect(journeyPercentFor(CONTENT_KEY)).toBe(0);
+  });
+
+  it('agrees at 100% once the guide is marked complete', () => {
+    publishGuideIndex({ contentKey: CONTENT_KEY, index: freshIndex(), denominatorSource: 'live-pre-inlining' });
+    localStorage.setItem(
+      buildVersionedContentStorageKey(StorageKeys.GUIDE_COMPLETION_MARK_PREFIX, CONTENT_KEY),
+      'true'
+    );
+    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ [CONTENT_KEY]: 100 }));
+
+    expect(peekGuidePercentage(CONTENT_KEY)).toBe(100);
+    expect(guideProgress(freshIndex(), [{ kind: 'mark-guide-complete' }]).percent).toBe(100);
+    expect(journeyPercentFor(CONTENT_KEY)).toBe(100);
+  });
+
+  it('agrees on a genuine partial position, evidenced by the first "do it"', () => {
+    const index = freshIndex();
+    const firstCompletable = index.blocks.find((b) => b.completable);
+    if (!firstCompletable) {
+      throw new Error('fixture guide has no completable block — pick a different one');
+    }
+    const stepId = [...index.positionsByStepId.entries()].find(([, pos]) => pos === firstCompletable.position)?.[0];
+    if (!stepId) {
+      throw new Error('fixture guide\'s first completable block has no resolvable step id');
+    }
+    const expectedPercent = guideProgress(index, [{ kind: 'do-it', blockId: stepId }]).percent;
+
+    publishGuideIndex({ contentKey: CONTENT_KEY, index, denominatorSource: 'live-pre-inlining' });
+    localStorage.setItem(
+      buildVersionedSectionStorageKey(StorageKeys.INTERACTIVE_STEPS_PREFIX, CONTENT_KEY, '__standalone__'),
+      JSON.stringify([stepId])
+    );
+    localStorage.setItem(StorageKeys.INTERACTIVE_COMPLETION, JSON.stringify({ [CONTENT_KEY]: expectedPercent }));
+
+    expect(peekGuidePercentage(CONTENT_KEY)).toBe(expectedPercent);
+    expect(journeyPercentFor(CONTENT_KEY)).toBe(expectedPercent);
   });
 });
